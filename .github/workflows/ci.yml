@@ -1,0 +1,47 @@
+name: CI
+
+# Keep types clean, tests green, and the web app buildable on every push / PR.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typecheck-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install web deps
+        run: npm ci --prefix web
+
+      - name: Typecheck (root + web)
+        run: npm run typecheck
+
+      - name: Unit tests (node:test + tsx)
+        # Dummy secrets so modules that import auth.ts (which fail-fasts on missing
+        # JWT_SECRET/DAEMON_BOOTSTRAP_KEY at load) can be loaded by the test runner.
+        # authFailFast.unit.test.ts spawns a subprocess with these explicitly unset,
+        # so the fail-fast behavior is still verified independently of this env.
+        env:
+          JWT_SECRET: ci-test-secret
+          DAEMON_BOOTSTRAP_KEY: ci-test-bootstrap-key
+        run: npx tsx --test --test-force-exit test/*.unit.test.ts src/daemon/*.test.ts
+
+      - name: Security audit (prod deps, high+)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Build web
+        run: npm run build --prefix web
+
+      - name: Build daemon package (@fancyboi999/open-tag-daemon bundle)
+        run: npm run pkg:daemon:build

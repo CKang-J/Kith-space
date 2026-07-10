@@ -1,0 +1,11 @@
+open-tag
+Copyright 2026 The open-tag authors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this project except in compliance with the License.
+A copy of the License is provided in the LICENSE file.
+
+open-tag is an independent implementation. It is not affiliated with,
+sponsored by, or endorsed by Anthropic. "Claude" and "Claude Tag" are
+trademarks of Anthropic, referenced only to describe interoperability
+and positioning.
