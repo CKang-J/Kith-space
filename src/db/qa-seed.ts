@@ -15,7 +15,7 @@ async function main() {
   // Reuse a dev-login QA user if present, but remove its default-workspace membership to keep the fixture isolated.
   let qa = (await db.select().from(users).where(eq(users.name, "qa")))[0];
   if (!qa) qa = (await db.insert(users).values({ name: "qa", displayName: "QA", email: "qa@dev.local" }).returning())[0]!;
-  const defaultWorkspace = (await db.select().from(servers).where(eq(servers.slug, "open-tag")))[0];
+  const defaultWorkspace = (await db.select().from(servers).where(eq(servers.slug, "kith-space")))[0];
   if (defaultWorkspace) await db.delete(serverMembers).where(and(eq(serverMembers.userId, qa.id), eq(serverMembers.serverId, defaultWorkspace.id)));
 
   const [srv] = await db.insert(servers).values({ name: "QA Workspace", slug: "qa", ownerId: qa.id, plan: "free" }).returning();

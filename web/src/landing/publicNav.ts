@@ -1,4 +1,4 @@
-export const GITHUB_URL = "https://github.com/fancyboi999/open-tag";
+export const GITHUB_URL = "https://github.com/fancyboi999/kith-space";
 export const MARKETING_SITE_URL = "https://getopentag.com";
 export const DOCS_SITE_URL = "https://docs.getopentag.com/";
 export const PUBLIC_BRAND_MARK_SRC = "/favicon.svg";

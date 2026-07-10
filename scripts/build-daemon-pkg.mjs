@@ -1,13 +1,13 @@
-// Bundle the publishable @fancyboi999/open-tag-daemon package, so `npx @fancyboi999/open-tag-daemon` runs on any machine
+// Bundle the publishable @fancyboi999/kith-space-daemon package, so `npx @fancyboi999/kith-space-daemon` runs on any machine
 // without a repo clone, node_modules, or tsx. Produces TWO self-contained ESM bundles in
 // packages/daemon/dist/:
-//   • cli.mjs       — the daemon entry (src/daemon/index.ts); the `open-tag-daemon` bin.
+//   • cli.mjs       — the daemon entry (src/daemon/index.ts); the `kith-space-daemon` bin.
 //   • agent-cli.mjs — the agent-side CLI (src/cli/index.ts) the daemon injects into each spawned
-//                     agent's PATH. ensureOpenTagBin() points the wrapper at this sibling when it
+//                     agent's PATH. ensureKithSpaceBin() points the wrapper at this sibling when it
 //                     finds it (bundled mode), else falls back to `tsx src/cli/index.ts` (repo mode).
 // Neither touches the DB; daemon's only third-party dep is `ws`, the CLI's is `commander` — both
 // bundled in. ws's optional native accelerators stay external (ws falls back to pure JS).
-// ESM output (not CJS) so `import.meta.url` in openTagBin.ts resolves correctly.
+// ESM output (not CJS) so `import.meta.url` in kithSpaceBin.ts resolves correctly.
 import { build } from "esbuild";
 import { chmodSync, mkdirSync, statSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

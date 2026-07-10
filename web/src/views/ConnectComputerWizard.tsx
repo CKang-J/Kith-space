@@ -7,8 +7,8 @@ import { daemonConnectCommand } from "../machineUi.ts";
 
 // Self-contained onboarding nudge state (reused from the old AddComputerModal): once-per-tab session
 // dismiss + a permanent global opt-out checkbox. Only the "onboard" mode reads/writes these.
-const COMPUTER_OPTOUT_KEY = "open-tag.onboard.computer.optout";        // localStorage: permanent opt-out
-const COMPUTER_DISMISSED_KEY = "open-tag.onboard.computer.dismissed";  // sessionStorage: this tab session
+const COMPUTER_OPTOUT_KEY = "kith-space.onboard.computer.optout";        // localStorage: permanent opt-out
+const COMPUTER_DISMISSED_KEY = "kith-space.onboard.computer.dismissed";  // sessionStorage: this tab session
 
 type Mode = "onboard" | "add" | "reconnect";
 type Step = "intro" | "connect" | "connected";

@@ -10,7 +10,7 @@ import { TOKEN_KEY } from "../routing.ts"; // single source for the session-toke
 // user's workspace (see workspaceHome); "/" is only a defensive fallback (it renders the marketing Landing, NOT a redirect).
 function finishAuth(token: string, to = "/") {
   localStorage.setItem(TOKEN_KEY, token);
-  localStorage.removeItem("open-tag.devuser"); // clear dev user so dev-login doesn't override the real account
+  localStorage.removeItem("kith-space.devuser"); // clear dev user so dev-login doesn't override the real account
   window.location.assign(to);
 }
 
@@ -100,7 +100,7 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="auth-brand">open-tag</div>
+        <div className="auth-brand">Kith-space</div>
         <h1>{mode === "register" ? t("auth.createAccount") : t("auth.login")}</h1>
         <form className="auth-form" onSubmit={submit}>
           <AuthFields mode={mode} name={name} email={email} password={password} err={err} onName={setName} onEmail={setEmail} onPassword={setPassword} />
@@ -141,11 +141,11 @@ export function JoinPage() {
     } catch (e: any) { setErr(String(e?.message || e)); } finally { setBusy(false); }
   };
   if (!info) return <div className="auth-page"><div className="auth-card">{t("auth.loading")}</div></div>;
-  if (!info.valid) return <div className="auth-page"><div className="auth-card"><div className="auth-brand">open-tag</div><h1>{t("auth.invalidInvite")}</h1><p className="modal-note">{t("auth.invalidInviteDesc")}</p><a href="/">{t("auth.backHome")}</a></div></div>;
+  if (!info.valid) return <div className="auth-page"><div className="auth-card"><div className="auth-brand">Kith-space</div><h1>{t("auth.invalidInvite")}</h1><p className="modal-note">{t("auth.invalidInviteDesc")}</p><a href="/">{t("auth.backHome")}</a></div></div>;
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="auth-brand">open-tag</div>
+        <div className="auth-brand">Kith-space</div>
         <h1>{t("auth.joinTitle", { serverName: info.serverName })}</h1>
         <p className="modal-note">{info.inviterName ? t("auth.invitedBy", { inviter: info.inviterName }) : t("auth.youAreInvited")}{t("auth.joinWorkspace", { serverName: info.serverName, role: info.role })}</p>
         {loggedIn ? (

@@ -1,18 +1,18 @@
 {
-  "name": "open-tag",
+  "name": "kith-space",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Open-source, self-hosted alternative to Claude Tag — a Slack-style workspace where humans and AI agents collaborate as teammates in channels, threads and DMs.",
+  "description": "Desktop-first, local-first workspace where people collaborate with a team of persistent AI agents across channels, tasks, and memory.",
   "license": "Apache-2.0",
   "author": "fancyboi999",
-  "homepage": "https://github.com/fancyboi999/open-tag#readme",
+  "homepage": "https://github.com/fancyboi999/kith-space#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/fancyboi999/open-tag.git"
+    "url": "https://github.com/fancyboi999/kith-space.git"
   },
   "bugs": {
-    "url": "https://github.com/fancyboi999/open-tag/issues"
+    "url": "https://github.com/fancyboi999/kith-space/issues"
   },
   "keywords": [
     "ai",

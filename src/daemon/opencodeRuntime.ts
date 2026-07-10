@@ -37,7 +37,7 @@ export interface OpencodeEmit {
   error?: string;
 }
 
-// handleOpencodeEvent maps one parsed `opencode run --format json` event to open-tag callbacks.
+// handleOpencodeEvent maps one parsed `opencode run --format json` event to kith-space callbacks.
 // Event envelope (verified against 1.15.5): { type, timestamp, sessionID, part:{ type, ... } }.
 export function handleOpencodeEvent(evt: any): OpencodeEmit {
   const out: OpencodeEmit = { trajectory: [] };

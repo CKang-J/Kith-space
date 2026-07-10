@@ -37,7 +37,7 @@ export async function handlePublicAuth(ctx: BaseCtx): Promise<boolean> {
     if (!rl.ok) return (sendErr(res, 429, "too many requests", { retryAfter: rl.retryAfter }), true);
     const b = await readJson(req);
     if (!safeEqual(String(b.token ?? ""), tok)) return (sendErr(res, 403, "invalid setup token"), true);
-    const ws = (await db.select().from(schema.servers).where(eq(schema.servers.slug, "open-tag")))[0];
+    const ws = (await db.select().from(schema.servers).where(eq(schema.servers.slug, "kith-space")))[0];
     if (!ws) return (sendErr(res, 409, "no default workspace; run seed first"), true);
     const admin = (await db.select().from(schema.users).where(eq(schema.users.id, ws.ownerId)))[0];
     if (!admin) return (sendErr(res, 409, "default workspace owner missing"), true);

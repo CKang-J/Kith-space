@@ -8,9 +8,9 @@ set -euo pipefail
 val() { grep -E "^$1=" .env | head -1 | cut -d= -f2-; }
 PORT=$(val PORT)
 KEY=$(val DAEMON_BOOTSTRAP_KEY)
-HOME_DIR=$(val OPEN_TAG_HOME | sed "s|^\$HOME|$HOME|; s|^~|$HOME|")
+HOME_DIR=$(val KITH_SPACE_HOME | sed "s|^\$HOME|$HOME|; s|^~|$HOME|")
 : "${PORT:?PORT missing in .env}" "${KEY:?DAEMON_BOOTSTRAP_KEY missing in .env}"
-RUN="${HOME_DIR:-$HOME/.open-tag}"
+RUN="${HOME_DIR:-$HOME/.kith-space}"
 
 command -v claude >/dev/null 2>&1 || { echo "✗ 'claude' CLI not found on PATH — install + authenticate it before dev:e2e (agents won't run otherwise)"; exit 1; }
 

@@ -18,9 +18,9 @@ test("serves the app shell for real client-side routes", () => {
     "/register",
     "/register/",
     "/join/invite-token",
-    "/s/open-tag",
-    "/s/open-tag/channel",
-    "/s/open-tag/agent/123",
+    "/s/kith-space",
+    "/s/kith-space/channel",
+    "/s/kith-space/agent/123",
   ]) {
     assert.equal(shouldServeAppShell(pathname), true, pathname);
   }

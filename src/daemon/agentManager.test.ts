@@ -19,7 +19,7 @@ const baseConfig = (agentId: string): AgentConfig => ({
 });
 
 test("deliver received during async start is flushed to runtime session", async () => {
-  const root = mkdtempSync(path.join(tmpdir(), "open-tag-agent-manager-"));
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-agent-manager-"));
   const delivered: string[] = [];
   const fakeRuntime: Runtime = {
     name: "fake",
@@ -51,7 +51,7 @@ test("deliver received during async start is flushed to runtime session", async 
 });
 
 test("one-shot runtime start with pending delivery uses wake nudge without a second notice", async () => {
-  const root = mkdtempSync(path.join(tmpdir(), "open-tag-agent-manager-"));
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-agent-manager-"));
   const delivered: string[] = [];
   let initialPrompt: string | undefined;
   const fakeRuntime: Runtime = {
@@ -78,8 +78,8 @@ test("one-shot runtime start with pending delivery uses wake nudge without a sec
     await start;
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    assert.match(initialPrompt ?? "", /open-tag message check/);
-    assert.match(initialPrompt ?? "", /open-tag message send/);
+    assert.match(initialPrompt ?? "", /kith-space message check/);
+    assert.match(initialPrompt ?? "", /kith-space message send/);
     assert.equal(delivered.length, 0);
     mgr.stopAll();
   } finally {
@@ -88,7 +88,7 @@ test("one-shot runtime start with pending delivery uses wake nudge without a sec
 });
 
 test("concurrent starts for the same agent are idempotent", async () => {
-  const root = mkdtempSync(path.join(tmpdir(), "open-tag-agent-manager-"));
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-agent-manager-"));
   let startCount = 0;
   const fakeRuntime: Runtime = {
     name: "fake",

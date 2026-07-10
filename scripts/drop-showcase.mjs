@@ -30,21 +30,21 @@ const sql = postgres(url);
 
 // Mirror src/paths.ts uploadsDir() so local-driver blobs can be located for best-effort deletion.
 const uploadsDir = () =>
-  process.env.OPEN_TAG_UPLOAD_DIR ??
-  path.join(process.env.OPEN_TAG_HOME ?? path.join(os.homedir(), ".open-tag"), "uploads");
+  process.env.KITH_SPACE_UPLOAD_DIR ??
+  path.join(process.env.KITH_SPACE_HOME ?? path.join(os.homedir(), ".kith-space"), "uploads");
 
 /** Best-effort delete one attachment blob from whichever storage backend the server uses (mirrors src/server/storage.ts). */
 async function deleteBlob(storageKey) {
-  const driver = process.env.OPEN_TAG_STORAGE ?? "local";
+  const driver = process.env.KITH_SPACE_STORAGE ?? "local";
   if (driver === "s3") {
     const mod = await import("@aws-sdk/client-s3");
     const client = new mod.S3Client({
-      endpoint: process.env.OPEN_TAG_S3_ENDPOINT,
-      region: process.env.OPEN_TAG_S3_REGION ?? "us-east-1",
+      endpoint: process.env.KITH_SPACE_S3_ENDPOINT,
+      region: process.env.KITH_SPACE_S3_REGION ?? "us-east-1",
       forcePathStyle: true,
-      credentials: { accessKeyId: process.env.OPEN_TAG_S3_KEY, secretAccessKey: process.env.OPEN_TAG_S3_SECRET },
+      credentials: { accessKeyId: process.env.KITH_SPACE_S3_KEY, secretAccessKey: process.env.KITH_SPACE_S3_SECRET },
     });
-    await client.send(new mod.DeleteObjectCommand({ Bucket: process.env.OPEN_TAG_S3_BUCKET, Key: storageKey }));
+    await client.send(new mod.DeleteObjectCommand({ Bucket: process.env.KITH_SPACE_S3_BUCKET, Key: storageKey }));
   } else {
     await unlink(path.join(uploadsDir(), storageKey));
   }

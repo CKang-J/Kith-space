@@ -28,7 +28,7 @@ export interface PiEmit {
   error?: string; // a model/turn error Pi reports IN the message (it still exits 0) — must be surfaced loudly
 }
 
-// handlePiEvent maps one parsed `pi -p --mode json` event to open-tag callbacks. Verified vs pi 0.73.1:
+// handlePiEvent maps one parsed `pi -p --mode json` event to kith-space callbacks. Verified vs pi 0.73.1:
 // a `session` event carries `.id`; `message_end` carries `.message` (role + content[] blocks of
 // {type:"text",text} and {type:"toolCall",name,arguments}, plus stopReason/errorMessage). We read
 // message_end only — `agent_end` repeats the final assistant message, so parsing both would double-count.

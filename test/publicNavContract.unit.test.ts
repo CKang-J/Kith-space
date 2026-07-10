@@ -19,7 +19,7 @@ const docsCss = fs.readFileSync(new URL("../docs-site/src/styles/docs.css", impo
 
 test("public nav source of truth exports the shared brand asset and top-level links", () => {
   assert.match(navContract, /PUBLIC_BRAND_MARK_SRC\s*=\s*"\/favicon\.svg"/);
-  assert.match(navContract, /GITHUB_URL\s*=\s*"https:\/\/github\.com\/fancyboi999\/open-tag"/);
+  assert.match(navContract, /GITHUB_URL\s*=\s*"https:\/\/github\.com\/fancyboi999\/kith-space"/);
   for (const key of ["features", "capabilities", "engines", "selfHosted", "docs"]) {
     assert.match(navContract, new RegExp(`key:\\s*"${key}"`), `missing shared nav key ${key}`);
   }
@@ -49,7 +49,7 @@ test("docs imports the shared public nav contract and renders the shared public-
   assert.match(docs, /<div class="lp-container lp-nav__inner">/);
   assert.match(docs, /class="lp-brand"/);
   assert.match(docs, /class="lp-brand-mark"/);
-  assert.match(docs, /class="lp-brand-word">open<b>-tag<\/b><\/span>/);
+  assert.match(docs, /class="lp-brand-word">Kith<b>-space<\/b><\/span>/);
   assert.match(docs, /class="lp-nav__links"/);
   assert.match(docs, /class="lp-nav__cta"/);
   assert.match(docs, /class="lp-btn lp-btn--ghost lp-btn--sm"/);

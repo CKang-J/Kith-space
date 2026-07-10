@@ -6,7 +6,7 @@ import { createMessage } from "./core.js";
 import { createLogger } from "../log.js";
 
 const log = createLogger("server:reminders");
-const TICK_MS = Number(process.env.OPEN_TAG_REMINDER_TICK_MS ?? 20_000);
+const TICK_MS = Number(process.env.KITH_SPACE_REMINDER_TICK_MS ?? 20_000);
 
 export function startReminderScheduler(): void {
   let ticking = false; // reentry guard: skip this tick if the previous one is still running (avoids overlapping ticks reprocessing in a single process)

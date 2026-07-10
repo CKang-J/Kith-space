@@ -25,7 +25,7 @@ test("command template uses @latest and a visible placeholder instead of inventi
   const cmd = daemonUpdateCommandTemplate("https://tag.example.com");
   assert.equal(
     cmd,
-    "npx @fancyboi999/open-tag-daemon@latest --server-url https://tag.example.com --api-key <your sk_machine_... key>",
+    "npx @fancyboi999/kith-space-daemon@latest --server-url https://tag.example.com --api-key <your sk_machine_... key>",
   );
   assert.match(cmd, /@latest/);
   assert.match(cmd, /<your sk_machine_\.\.\. key>/);

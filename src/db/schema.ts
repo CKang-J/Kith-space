@@ -1,4 +1,4 @@
-// open-tag backend table definitions (Drizzle / Postgres)
+// kith-space backend table definitions (Drizzle / Postgres)
 // Field names and semantics are derived from observed /api/* response shapes (see root CLAUDE.md "Data Model").
 // All primary keys are uuid. message.seq is a globally monotonic sequence per server (from Redis INCR), driving incremental sync.
 import { pgTable, uuid, text, boolean, integer, bigint, jsonb, timestamp, primaryKey, index, uniqueIndex } from "drizzle-orm/pg-core";
@@ -58,7 +58,7 @@ export const machines = pgTable("machines", {
 
 // ── Agent (AI employee) ────────────────────────────────────────
 export const agents = pgTable("agents", {
-  id: uuid("id").defaultRandom().primaryKey(),    // also used as the workspace directory name ~/.open-tag/agents/<id>
+  id: uuid("id").defaultRandom().primaryKey(),    // also used as the workspace directory name ~/.kith-space/agents/<id>
   serverId: uuid("server_id").notNull().references(() => servers.id),
   machineId: uuid("machine_id").references(() => machines.id), // which machine this agent runs on
   name: text("name").notNull(),                   // @mention identifier

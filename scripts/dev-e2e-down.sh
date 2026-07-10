@@ -3,8 +3,8 @@
 # Usage: npm run dev:e2e:down
 set -euo pipefail
 [ -f .env ] || { echo "✗ no .env in $(pwd)"; exit 1; }
-HOME_DIR=$(grep -E "^OPEN_TAG_HOME=" .env | head -1 | cut -d= -f2- | sed "s|^\$HOME|$HOME|; s|^~|$HOME|")
-RUN="${HOME_DIR:-$HOME/.open-tag}"
+HOME_DIR=$(grep -E "^KITH_SPACE_HOME=" .env | head -1 | cut -d= -f2- | sed "s|^\$HOME|$HOME|; s|^~|$HOME|")
+RUN="${HOME_DIR:-$HOME/.kith-space}"
 for svc in server daemon; do
   f="$RUN/dev-e2e-$svc.pid"
   # Kill the whole process tree, not just the recorded npm-exec parent: `kill $pid` alone orphans the

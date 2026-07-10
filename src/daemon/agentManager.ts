@@ -4,17 +4,17 @@ import path from "node:path";
 import os from "node:os";
 import { buildSystemPrompt, STARTUP_NUDGE, RESUME_NUDGE, ONE_SHOT_WAKE_NUDGE, inboxNotice } from "./prompt.js";
 import { seedMemory, applyProfileToMemory } from "./memory.js";
-import { ensureOpenTagBin } from "./openTagBin.js";
+import { ensureKithSpaceBin } from "./kithSpaceBin.js";
 import { getRuntime } from "./runtimes.js";
 import type { Runtime, RuntimeSession, RuntimeCallbacks } from "./runtime.js";
 import { createLogger } from "../log.js";
 import { agentsDir } from "../paths.js";
 
 const DATA_DIR = agentsDir();
-const IDLE_MS = Number(process.env.OPEN_TAG_IDLE_MS ?? 10 * 60 * 1000); // how long before idle sleep (kills process to save memory; next wake uses --resume)
-const DELIVER_DEBOUNCE_MS = Number(process.env.OPEN_TAG_DELIVER_DEBOUNCE_MS ?? 3000); // batching window for deliveries while agent is busy (saves tokens, reduces interruptions)
-const ONE_SHOT_DELIVER_DEBOUNCE_MS = Number(process.env.OPEN_TAG_ONE_SHOT_DELIVER_DEBOUNCE_MS ?? process.env.OPEN_TAG_HERMES_DELIVER_DEBOUNCE_MS ?? 500); // One-shot runtimes need a short fixed wait when there is only one live notice.
-const PENDING_DELIVER_TTL_MS = Number(process.env.OPEN_TAG_PENDING_DELIVER_TTL_MS ?? 15_000); // start+deliver can arrive back-to-back; keep deliver briefly while start prepares workspace
+const IDLE_MS = Number(process.env.KITH_SPACE_IDLE_MS ?? 10 * 60 * 1000); // how long before idle sleep (kills process to save memory; next wake uses --resume)
+const DELIVER_DEBOUNCE_MS = Number(process.env.KITH_SPACE_DELIVER_DEBOUNCE_MS ?? 3000); // batching window for deliveries while agent is busy (saves tokens, reduces interruptions)
+const ONE_SHOT_DELIVER_DEBOUNCE_MS = Number(process.env.KITH_SPACE_ONE_SHOT_DELIVER_DEBOUNCE_MS ?? process.env.KITH_SPACE_HERMES_DELIVER_DEBOUNCE_MS ?? 500); // One-shot runtimes need a short fixed wait when there is only one live notice.
+const PENDING_DELIVER_TTL_MS = Number(process.env.KITH_SPACE_PENDING_DELIVER_TTL_MS ?? 15_000); // start+deliver can arrive back-to-back; keep deliver briefly while start prepares workspace
 
 export interface AgentConfig {
   name: string; displayName: string; description?: string | null;
@@ -50,7 +50,7 @@ export class AgentManager {
   private runtimeResolver: (name: string) => Runtime | null;
   private log = createLogger("daemon:agents");
   constructor(private send: (msg: unknown) => void, opts: AgentManagerOptions = {}) {
-    this.binDir = opts.binDir ?? ensureOpenTagBin();
+    this.binDir = opts.binDir ?? ensureKithSpaceBin();
     this.dataDir = opts.dataDir ?? DATA_DIR;
     this.deliverDebounceMs = opts.deliverDebounceMs ?? DELIVER_DEBOUNCE_MS;
     this.oneShotDeliverDebounceMs = opts.oneShotDeliverDebounceMs ?? ONE_SHOT_DELIVER_DEBOUNCE_MS;
@@ -167,7 +167,7 @@ export class AgentManager {
     const env: NodeJS.ProcessEnv = {
       ...process.env, FORCE_COLOR: "0",
       PATH: `${this.binDir}:${process.env.PATH ?? ""}`,
-      OPEN_TAG_SERVER_URL: config.serverUrl, OPEN_TAG_AGENT_ID: agentId, OPEN_TAG_AGENT_TOKEN: config.agentToken ?? "",
+      KITH_SPACE_SERVER_URL: config.serverUrl, KITH_SPACE_AGENT_ID: agentId, KITH_SPACE_AGENT_TOKEN: config.agentToken ?? "",
     };
     delete env.CLAUDECODE; delete env.CLAUDE_CODE_ENTRYPOINT;
 

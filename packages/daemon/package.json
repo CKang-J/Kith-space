@@ -1,11 +1,11 @@
 {
-  "name": "@fancyboi999/open-tag-daemon",
+  "name": "@fancyboi999/kith-space-daemon",
   "version": "0.8.3",
-  "description": "open-tag compute-plane daemon — connect any machine to an open-tag server so its agents run there. No repo clone needed.",
+  "description": "Kith-space compute-plane daemon — connect a machine to a Kith-space server so its agents can run there. No repo clone needed.",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
-    "open-tag-daemon": "dist/cli.mjs"
+    "kith-space-daemon": "dist/cli.mjs"
   },
   "files": [
     "dist",
@@ -15,18 +15,18 @@
     "node": ">=20"
   },
   "keywords": [
-    "open-tag",
+    "kith-space",
     "ai-agents",
     "daemon",
     "self-hosted"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fancyboi999/open-tag.git",
+    "url": "git+https://github.com/fancyboi999/kith-space.git",
     "directory": "packages/daemon"
   },
-  "homepage": "https://github.com/fancyboi999/open-tag#readme",
-  "bugs": "https://github.com/fancyboi999/open-tag/issues",
+  "homepage": "https://github.com/fancyboi999/kith-space#readme",
+  "bugs": "https://github.com/fancyboi999/kith-space/issues",
   "publishConfig": {
     "access": "public"
   }

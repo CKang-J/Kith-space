@@ -4,7 +4,7 @@
 // messages, but agents had no equivalent, so an @ sent to an offline agent's machine sat unread forever.
 //
 // "Backfilling" missed messages is NOT message replay: a woken agent's STARTUP_NUDGE / RESUME_NUDGE
-// (daemon/prompt.ts) drives it to run `open-tag message check`, which pulls every unread (seq > lastReadSeq)
+// (daemon/prompt.ts) drives it to run `kith-space message check`, which pulls every unread (seq > lastReadSeq)
 // including the ones missed while offline. So catch-up only needs to wake the right agents — the agent
 // pulls the rest itself.
 //
@@ -25,7 +25,7 @@ const log = createLogger("server:catchup");
 // Per-machine anti-thrash: a flapping link (connect/drop/connect) must not re-scan + re-wake on every blip.
 // Single-instance, like daemonHub's in-memory registry. lastReadSeq advancing after the agent checks is the
 // real idempotency guard (a checked agent has no backlog next time); this just caps the scan rate.
-const COOLDOWN_MS = Number(process.env.OPEN_TAG_CATCHUP_COOLDOWN_MS ?? 30_000);
+const COOLDOWN_MS = Number(process.env.KITH_SPACE_CATCHUP_COOLDOWN_MS ?? 30_000);
 const lastRun = new Map<string, number>(); // machineId → last catch-up start ts
 
 interface Backlog { count: number; from: string; targetName: string; }

@@ -1,5 +1,5 @@
 // Public /features page. Static, unauthenticated marketing page that showcases the
-// real open-tag collaboration shape: channel message -> task -> thread -> result.
+// real kith-space collaboration shape: channel message -> task -> thread -> result.
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
@@ -95,14 +95,14 @@ export const COPY: Record<Lang, FeatureCopy> = {
     hero: {
       eyebrow: "Feature showcase",
       title: "Work starts in a channel. The evidence lives in the thread.",
-      lead: "open-tag turns the Claude Tag idea into a self-hosted workspace: humans and agents collaborate in channels, tasks, DMs, and threads while the compute runs on machines you control.",
+      lead: "Kith-space turns the Claude Tag idea into a self-hosted workspace: humans and agents collaborate in channels, tasks, DMs, and threads while the compute runs on machines you control.",
       explore: "Explore cases",
-      proofAria: "open-tag collaboration loop",
+      proofAria: "Kith-space collaboration loop",
       proof: ["Channel context", "Tracked task", "Thread evidence"],
     },
     cases: {
-      eyebrow: "How teams use open-tag",
-      title: "How teams use open-tag",
+      eyebrow: "How teams use Kith-space",
+      title: "How teams use Kith-space",
       lead: "Agents can share work in the format your team needs, right in the thread.",
       tabAria: "Feature cases",
       items: [
@@ -287,14 +287,14 @@ export const COPY: Record<Lang, FeatureCopy> = {
     hero: {
       eyebrow: "功能展示",
       title: "工作从频道开始，证据沉淀在线程里。",
-      lead: "open-tag 把 Claude Tag 的产品概念做成可自托管的团队工作区：人和 agent 在频道、任务、私信、thread 里协作，执行发生在你控制的机器上。",
+      lead: "Kith-space 把 Claude Tag 的产品概念做成可自托管的团队工作区：人和 agent 在频道、任务、私信、thread 里协作，执行发生在你控制的机器上。",
       explore: "查看案例",
-      proofAria: "open-tag 协作链路",
+      proofAria: "Kith-space 协作链路",
       proof: ["频道上下文", "可追踪任务", "线程证据"],
     },
     cases: {
-      eyebrow: "团队如何使用 open-tag",
-      title: "团队如何使用 open-tag",
+      eyebrow: "团队如何使用 Kith-space",
+      title: "团队如何使用 Kith-space",
       lead: "agent 可以按团队需要的格式交付工作，结果就在 thread 里。",
       tabAria: "功能案例",
       items: [
@@ -492,12 +492,12 @@ function DialoguePictogram() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (customElements.get("dotlottie-player")) { setReady(true); return; }
-    const existing = document.querySelector<HTMLScriptElement>('script[data-open-tag-dotlottie="true"]');
+    const existing = document.querySelector<HTMLScriptElement>('script[data-kith-space-dotlottie="true"]');
     const script = existing ?? document.createElement("script");
     if (!existing) {
       script.type = "module";
       script.src = DOT_LOTTIE_PLAYER_SRC;
-      script.dataset.openTagDotlottie = "true";
+      script.dataset.kithSpaceDotlottie = "true";
       document.head.appendChild(script);
     }
     const onLoad = () => setReady(true);
@@ -534,7 +534,7 @@ export function Features() {
   const nextLang: Lang = lang === "en" ? "zh" : "en";
   const switchLanguage = () => {
     void i18n.changeLanguage(nextLang);
-    try { localStorage.setItem("open-tag.lang", nextLang); } catch { /* ignore */ }
+    try { localStorage.setItem("kith-space.lang", nextLang); } catch { /* ignore */ }
   };
 
   useEffect(() => {

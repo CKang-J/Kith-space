@@ -20,7 +20,7 @@ export function ServerSwitcher() {
   const close = () => { setOpen(false); setCreating(false); setName(""); };
   return (
     <div className="sw-wrap">
-      <button className="brand" title={cur?.name || "open-tag"} aria-label={t("server.switchAriaLabel")} onClick={() => setOpen((o) => !o)}>
+      <button className="brand" title={cur?.name || "Kith-space"} aria-label={t("server.switchAriaLabel")} onClick={() => setOpen((o) => !o)}>
         {serverAvatar ? <img className="brand-img" src={serverAvatar} alt="" /> : (cur?.name?.[0]?.toUpperCase() || "f")}
         <span className="dot" />
       </button>

@@ -68,7 +68,7 @@ body:
       label: Daemon version
       description: >
         The `daemonVersion` shown in the machine row of the UI, or the output
-        of `npx @fancyboi999/open-tag-daemon --version` (if available).
+        of `npx @fancyboi999/kith-space-daemon --version` (if available).
       placeholder: "0.4.0 / dev"
     validations:
       required: false

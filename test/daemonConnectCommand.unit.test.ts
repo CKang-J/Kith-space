@@ -5,5 +5,5 @@ import { daemonConnectCommand } from "../web/src/machineUi.ts";
 
 test("daemonConnectCommand embeds origin and key", () => {
   const cmd = daemonConnectCommand("https://x.test", "sk_machine_abc");
-  assert.equal(cmd, "npx @fancyboi999/open-tag-daemon@latest --server-url https://x.test --api-key sk_machine_abc");
+  assert.equal(cmd, "npx @fancyboi999/kith-space-daemon@latest --server-url https://x.test --api-key sk_machine_abc");
 });

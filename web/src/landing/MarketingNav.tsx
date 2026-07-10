@@ -29,7 +29,7 @@ function PublicBrandContent() {
   return (
     <>
       <img className="lp-brand-mark" src={PUBLIC_BRAND_MARK_SRC} alt="" width={34} height={34} />
-      <span className="lp-brand-word">open<b>-tag</b></span>
+      <span className="lp-brand-word">Kith<b>-space</b></span>
     </>
   );
 }
@@ -44,7 +44,7 @@ function GithubIcon({ size = 16 }: { size?: number }) {
 
 export function PublicBrand({ href, className = "" }: PublicBrandProps) {
   const classes = ["lp-brand", className].filter(Boolean).join(" ");
-  if (href) return <a className={classes} href={href} aria-label="open-tag home"><PublicBrandContent /></a>;
+  if (href) return <a className={classes} href={href} aria-label="Kith-space home"><PublicBrandContent /></a>;
   return <div className={classes}><PublicBrandContent /></div>;
 }
 
@@ -66,7 +66,7 @@ export function MarketingNav({
         {variant === "landing" ? (
           <PublicBrand href="#top" />
         ) : (
-          <Link className="lp-brand" to="/" aria-label="open-tag home">
+          <Link className="lp-brand" to="/" aria-label="Kith-space home">
             <PublicBrandContent />
           </Link>
         )}

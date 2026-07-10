@@ -1,5 +1,5 @@
-// Unified structured logging: JSON lines written to ~/.open-tag/logs/<component>.log plus human-readable console output.
-// To tail logs: tail -f ~/.open-tag/logs/server.log  (or daemon/cli/agent-<id>)
+// Unified structured logging: JSON lines written to ~/.kith-space/logs/<component>.log plus human-readable console output.
+// To tail logs: tail -f ~/.kith-space/logs/server.log  (or daemon/cli/agent-<id>)
 import fs from "node:fs";
 import path from "node:path";
 import { logsDir } from "./paths.js";
@@ -9,7 +9,7 @@ try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch { /* */ }
 
 type Level = "debug" | "info" | "warn" | "error";
 const order: Record<Level, number> = { debug: 10, info: 20, warn: 30, error: 40 };
-const MIN = order[(process.env.OPEN_TAG_LOG_LEVEL as Level) ?? "debug"] ?? 10;
+const MIN = order[(process.env.KITH_SPACE_LOG_LEVEL as Level) ?? "debug"] ?? 10;
 
 export interface Logger {
   debug(msg: string, fields?: Record<string, unknown>): void;

@@ -1,6 +1,6 @@
 // Parser test for the Copilot runtime's pure event mapping, run against REAL JSONL captured from
 // GitHub Copilot CLI 1.0.61 (src/daemon/__fixtures__/copilot-*.jsonl). Run: `npx tsx --test src/daemon/copilotRuntime.test.ts`.
-// This is the repo's first test — open-tag otherwise verifies via typecheck + real-run E2E. node:test
+// This is the repo's first test — kith-space otherwise verifies via typecheck + real-run E2E. node:test
 // is stdlib (no new dependency) so it adds no infrastructure.
 import { test } from "node:test";
 import assert from "node:assert/strict";

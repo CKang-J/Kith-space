@@ -74,7 +74,7 @@ const localTime = (d: Date | string | null | undefined) => { const t = d instanc
 // Message rendering: header + task suffix [task #N status=] + attachment suffix
 export const fmt = (m: typeof schema.messages.$inferSelect, target: string, atts: { filename: string; id: string }[] = []) => {
   const taskSuffix = m.taskStatus ? ` [task #${m.taskNumber} status=${m.taskStatus}]` : "";
-  const attSuffix = atts.length ? ` [${atts.length} attachment${atts.length > 1 ? "s" : ""}: ${atts.map((a) => `${a.filename} (id:${a.id})`).join(", ")} — use open-tag attachment view to download]` : "";
+  const attSuffix = atts.length ? ` [${atts.length} attachment${atts.length > 1 ? "s" : ""}: ${atts.map((a) => `${a.filename} (id:${a.id})`).join(", ")} — use kith-space attachment view to download]` : "";
   const type = m.senderType === "user" ? "human" : m.senderType; // message header uses "human" for human senders, not "user"
   // A thread-anchor message (m.threadId set = the thread it owns) is rendered as #chan:<this message's id>
   // — NOT the thread channel id — because resolveTarget resolves the suffix as a PARENT MESSAGE id prefix
@@ -149,7 +149,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
       const tname = await addressableTarget(ch, agent.id);
       const history = newer.map((m) => fmt(m, tname)).join("\n");
       const n = newer.length, pl = n > 1 ? "s" : "";
-      const text = `Freshness hold: showing latest ${n} of ${n} newer message${pl}.\nYour message has been saved as a draft. Review the bounded context shown here, then choose one path.\n\n## Message History for ${tname} (${n} message${pl})\n\n${history}\n\nTo update the draft, send revised content normally:\n  open-tag message send --target "${b.target}" <<'MSG'\n  revised message\n  MSG\nTo send the current draft unchanged:\n  open-tag message send --send-draft --target "${b.target}"`;
+      const text = `Freshness hold: showing latest ${n} of ${n} newer message${pl}.\nYour message has been saved as a draft. Review the bounded context shown here, then choose one path.\n\n## Message History for ${tname} (${n} message${pl})\n\n${history}\n\nTo update the draft, send revised content normally:\n  kith-space message send --target "${b.target}" <<'MSG'\n  revised message\n  MSG\nTo send the current draft unchanged:\n  kith-space message send --send-draft --target "${b.target}"`;
       return (sendJson(res, 200, { held: true, draft: true, newerCount: n, messages: newer.map((m) => ({ ...serialize(m), text: fmt(m, tname) })), text }), true);
     }
     return post(b.content || "", atts);
@@ -291,7 +291,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     const tm = (await db.select().from(schema.messages).where(eq(schema.messages.id, mid)))[0];
     const threadTarget = tm ? `thread:${mid.slice(0, 8)}` : null;
     return (sendJson(res, 200, { ok: true, claimed: mid, number: tm?.taskNumber ?? null, threadTarget,
-      followUp: threadTarget ? `Follow up in the task's thread: open-tag message send --target "${threadTarget}"` : null }), true);
+      followUp: threadTarget ? `Follow up in the task's thread: kith-space message send --target "${threadTarget}"` : null }), true);
   }
   if (p === "/agent-api/task/update" && method === "POST") {
     const b = await readJson(req);
@@ -345,7 +345,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
       number: assigned.taskNumber ?? null,
       to: targetAgent.name,
       threadTarget,
-      followUp: threadTarget ? `Follow up in the task's thread: open-tag message send --target "${threadTarget}"` : null,
+      followUp: threadTarget ? `Follow up in the task's thread: kith-space message send --target "${threadTarget}"` : null,
     }), true);
   }
   // Create new task (agent delegates work to a channel/other agent): reuses createMessage(asTask). Batch {tasks:[{title}]} or single --title

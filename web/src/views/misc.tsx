@@ -358,7 +358,7 @@ export function Settings() {
 function AccountSettings({ api }: { api: any }) {
   const { logout } = useStore();
   const { t, i18n } = useTranslation();
-  const setLang = (l: string) => { i18n.changeLanguage(l); localStorage.setItem("open-tag.lang", l); };
+  const setLang = (l: string) => { i18n.changeLanguage(l); localStorage.setItem("kith-space.lang", l); };
   const [u, setU] = useState<any>(null);
   const [saved, setSaved] = useState(false);
   useEffect(() => { (async () => setU(await api("GET", "/api/auth/me")))(); }, []);

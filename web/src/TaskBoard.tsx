@@ -49,11 +49,11 @@ export function TaskBoard({ channelId, onOpenThread }: { channelId: string | nul
   const [tasks, setTasks] = useState<Msg[]>([]);
   const [view, setView] = useState<"board" | "list">("board");
   // DONE and CLOSED columns are collapsed by default, with the state persisted to localStorage
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => { try { const s = localStorage.getItem("open-tag.tasks.collapsed"); return new Set<string>(s ? JSON.parse(s) : ["done", "closed"]); } catch { return new Set(["done", "closed"]); } });
-  const toggleCol = (k: string) => setCollapsed((c) => { const n = new Set(c); n.has(k) ? n.delete(k) : n.add(k); try { localStorage.setItem("open-tag.tasks.collapsed", JSON.stringify([...n])); } catch { /* */ } return n; });
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => { try { const s = localStorage.getItem("kith-space.tasks.collapsed"); return new Set<string>(s ? JSON.parse(s) : ["done", "closed"]); } catch { return new Set(["done", "closed"]); } });
+  const toggleCol = (k: string) => setCollapsed((c) => { const n = new Set(c); n.has(k) ? n.delete(k) : n.add(k); try { localStorage.setItem("kith-space.tasks.collapsed", JSON.stringify([...n])); } catch { /* */ } return n; });
   // Board layout: horizontal Kanban columns (default) vs the legacy vertical stack; persisted like `collapsed`.
-  const [boardLayout, setBoardLayout] = useState<"columns" | "stack">(() => { try { return localStorage.getItem("open-tag.tasks.boardLayout") === "stack" ? "stack" : "columns"; } catch { return "columns"; } });
-  const setLayout = (l: "columns" | "stack") => { setBoardLayout(l); try { localStorage.setItem("open-tag.tasks.boardLayout", l); } catch { /* */ } };
+  const [boardLayout, setBoardLayout] = useState<"columns" | "stack">(() => { try { return localStorage.getItem("kith-space.tasks.boardLayout") === "stack" ? "stack" : "columns"; } catch { return "columns"; } });
+  const setLayout = (l: "columns" | "stack") => { setBoardLayout(l); try { localStorage.setItem("kith-space.tasks.boardLayout", l); } catch { /* */ } };
   const [creatorKey, setCreatorKey] = useState(""); // "" = all | "me" | "type:id"
   const [assigneeKey, setAssigneeKey] = useState(""); // "" = all | "unclaimed" | "type:id"
   const [mkOpen, setMkOpen] = useState(false);

@@ -13,12 +13,12 @@ test("Hermes profile comes from runtimeConfig first, then model, then default", 
   assert.equal(hermesProfile(undefined, null), "default");
 });
 
-test("Hermes CLI args use quiet chat mode for OpenTag", () => {
-  assert.deepEqual(buildHermesArgs("hello"), ["chat", "-q", "hello", "-Q", "--source", "open-tag"]);
+test("Hermes CLI args use quiet chat mode for Kith-space", () => {
+  assert.deepEqual(buildHermesArgs("hello"), ["chat", "-q", "hello", "-Q", "--source", "kith-space"]);
 });
 
 test("Hermes CLI args resume the captured native Hermes session", () => {
-  assert.deepEqual(buildHermesArgs("hello", "20260702_221211_1991f1"), ["chat", "-q", "hello", "-Q", "--source", "open-tag", "--resume", "20260702_221211_1991f1"]);
+  assert.deepEqual(buildHermesArgs("hello", "20260702_221211_1991f1"), ["chat", "-q", "hello", "-Q", "--source", "kith-space", "--resume", "20260702_221211_1991f1"]);
 });
 
 test("Hermes session id is parsed from quiet stderr", () => {
@@ -27,15 +27,15 @@ test("Hermes session id is parsed from quiet stderr", () => {
   assert.equal(parseHermesSessionId("Session not found: missing"), null);
 });
 
-test("Hermes prompt carries OpenTag system prompt, cwd, and user message", () => {
-  const prompt = buildHermesPrompt("please help", { cwd: "/tmp/open-tag-agent", systemPrompt: "use open-tag cli" });
-  assert.match(prompt, /isolated workspace: \/tmp\/open-tag-agent/);
-  assert.match(prompt, /use open-tag cli/);
+test("Hermes prompt carries Kith-space system prompt, cwd, and user message", () => {
+  const prompt = buildHermesPrompt("please help", { cwd: "/tmp/kith-space-agent", systemPrompt: "use kith-space cli" });
+  assert.match(prompt, /isolated workspace: \/tmp\/kith-space-agent/);
+  assert.match(prompt, /use kith-space cli/);
   assert.match(prompt, /please help/);
 });
 
 test("Hermes profile discovery reads profile dirs with default first, then alphabetical", () => {
-  const root = mkdtempSync(path.join(tmpdir(), "open-tag-hermes-"));
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-hermes-"));
   try {
     mkdirSync(path.join(root, "zeta-helper"));
     writeFileSync(path.join(root, "zeta-helper", "SOUL.md"), "# Zeta\n");
@@ -57,7 +57,7 @@ test("Hermes profile discovery reads profile dirs with default first, then alpha
 });
 
 test("Hermes profile home resolves named profiles without changing global defaults", () => {
-  const root = mkdtempSync(path.join(tmpdir(), "open-tag-hermes-home-"));
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-hermes-home-"));
   try {
     mkdirSync(path.join(root, ".hermes", "profiles", "alpha-helper"), { recursive: true });
     assert.equal(hermesProfileHome("alpha-helper", root), path.join(root, ".hermes", "profiles", "alpha-helper"));
@@ -69,7 +69,7 @@ test("Hermes profile home resolves named profiles without changing global defaul
 });
 
 test("Hermes runtime default profile clears inherited profile env", () => {
-  const root = mkdtempSync(path.join(tmpdir(), "open-tag-hermes-env-"));
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-hermes-env-"));
   try {
     const inheritedHome = path.join(root, "old-home");
     const { env, profile } = hermesRuntimeEnv({ HERMES_HOME: inheritedHome, HERMES_PROFILE: "old-profile" }, root, "default", root);
@@ -83,7 +83,7 @@ test("Hermes runtime default profile clears inherited profile env", () => {
 });
 
 test("Hermes runtime resolves profiles from HERMES_PROFILE_DIR as well as ~/.hermes/profiles", () => {
-  const root = mkdtempSync(path.join(tmpdir(), "open-tag-hermes-profile-dir-"));
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-hermes-profile-dir-"));
   try {
     const customProfiles = path.join(root, "custom-profiles");
     mkdirSync(path.join(customProfiles, "custom-helper"), { recursive: true });
@@ -107,7 +107,7 @@ test("Hermes final response bridge requires check/read evidence and filters unsa
 
   assert.deepEqual(hermesBridgeDecision("I handled that.", parseHermesTurnEvents("")), {
     ok: false,
-    reason: "no-open-tag-read",
+    reason: "no-kith-space-read",
   });
   assert.equal(hermesBridgeDecision("Error: provider rejected the request", checked).ok, false);
   assert.equal(hermesBridgeDecision("┊ review diff\na/MEMORY.md → b/MEMORY.md\n@@ -1 +1", checked).ok, false);

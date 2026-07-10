@@ -37,10 +37,10 @@ test("message list render is mutually exclusive with the loading skeleton", () =
 
 test("chat load failure copy is localized", () => {
   assert.equal(en.chat.loadFailedTitle, "Could not load this conversation");
-  assert.equal(en.chat.loadFailedBody, "OpenTag could not reach the server. Check that the control plane is running, then retry.");
+  assert.equal(en.chat.loadFailedBody, "Kith-space could not reach the server. Check that the control plane is running, then retry.");
   assert.equal(en.chat.retryLoad, "Retry");
 
   assert.equal(zh.chat.loadFailedTitle, "无法加载此对话");
-  assert.equal(zh.chat.loadFailedBody, "OpenTag 暂时连不上服务端。确认 control plane 正在运行后重试。");
+  assert.equal(zh.chat.loadFailedBody, "Kith-space 暂时连不上服务端。确认 control plane 正在运行后重试。");
   assert.equal(zh.chat.retryLoad, "重试");
 });

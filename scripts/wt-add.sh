@@ -6,7 +6,7 @@ set -euo pipefail
 NAME="${1:-}"
 [ -z "$NAME" ] && { echo "Usage: npm run wt:add -- <name>  (e.g. msg-edit)"; exit 1; }
 SAFE="${NAME//[^a-zA-Z0-9]/_}"
-WT="../open-tag-$NAME"
+WT="../kith-space-$NAME"
 [ -e "$WT" ] && { echo "✗ $WT already exists"; exit 1; }
 
 # Scan for free ports (server from 7801, vite from 5301; avoids dev 7777/5273 and prod 7788).
@@ -36,7 +36,7 @@ DATABASE_URL=postgres://opentag:opentag@localhost:5433/$DB
 REDIS_URL=redis://localhost:6380/$RDB
 JWT_SECRET=$WT_JWT_SECRET
 DAEMON_BOOTSTRAP_KEY=$WT_BOOTSTRAP_KEY
-OPEN_TAG_HOME=$HOME/.open-tag-$SAFE
+KITH_SPACE_HOME=$HOME/.kith-space-$SAFE
 ALLOW_DEV_LOGIN=true
 EOF
 

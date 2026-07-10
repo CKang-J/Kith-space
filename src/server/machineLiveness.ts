@@ -12,8 +12,8 @@ import { publish } from "./realtime.js";
 import { createLogger } from "../log.js";
 
 const log = createLogger("server:liveness");
-const SWEEP_MS = Number(process.env.OPEN_TAG_MACHINE_SWEEP_MS ?? 30_000);  // how often to scan for stale machines
-const STALE_MS = Number(process.env.OPEN_TAG_MACHINE_STALE_MS ?? 90_000);  // > ping interval (30s) × ~2.5 so a live daemon (pong every ≤30s) never trips
+const SWEEP_MS = Number(process.env.KITH_SPACE_MACHINE_SWEEP_MS ?? 30_000);  // how often to scan for stale machines
+const STALE_MS = Number(process.env.KITH_SPACE_MACHINE_STALE_MS ?? 90_000);  // > ping interval (30s) × ~2.5 so a live daemon (pong every ≤30s) never trips
 
 /** On boot the in-memory daemonHub is empty — no daemon is connected to this fresh instance yet.
  *  Flip every "online" machine to "offline" so the frontend (which reads machines.status) doesn't

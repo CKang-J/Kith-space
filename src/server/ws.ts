@@ -28,7 +28,7 @@ async function onDaemon(ws: WebSocket, key: string): Promise<void> {
   let serverId: string | null = null;
   let machineId: string | null = null;
   if (safeEqual(key, BOOTSTRAP_KEY)) {
-    serverId = (await db.select().from(schema.servers).where(eq(schema.servers.slug, "open-tag")))[0]?.id ?? null;
+    serverId = (await db.select().from(schema.servers).where(eq(schema.servers.slug, "kith-space")))[0]?.id ?? null;
   } else {
     serverId = (await db.select().from(schema.machines).where(eq(schema.machines.apiKeyHash, hashToken(key))))[0]?.serverId ?? null;
   }

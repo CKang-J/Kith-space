@@ -1,5 +1,5 @@
-// Reads agent workspace (~/.open-tag/agents/<id>/) and exposes file tree / file content via WS-RPC to the server.
-// File tree: returns {root, files:[{name,path,isDirectory,size,modifiedAt}]} — root is the absolute on-disk workspace dir (so the UI shows the real path instead of a hardcoded template that's wrong under a non-default OPEN_TAG_HOME);
+// Reads agent workspace (~/.kith-space/agents/<id>/) and exposes file tree / file content via WS-RPC to the server.
+// File tree: returns {root, files:[{name,path,isDirectory,size,modifiedAt}]} — root is the absolute on-disk workspace dir (so the UI shows the real path instead of a hardcoded template that's wrong under a non-default KITH_SPACE_HOME);
 //            read file: returns {path, content}. Security: path must remain inside the workspace root (prevents ../ escape).
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";

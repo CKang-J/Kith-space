@@ -68,7 +68,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // defers to "loading" until the async bootstrap below resolves it.
   const [authState, setAuthState] = useState<AuthState>(initialAuthState);
   const [serverId, setServerId] = useState("");
-  const [slug, setSlug] = useState("open-tag");
+  const [slug, setSlug] = useState("kith-space");
   const [servers, setServers] = useState<ServerInfo[]>([]);          // all servers the user belongs to (used by server switcher)
   const [capabilities, setCapabilities] = useState<Record<string, boolean>>({}); // capability flags for the current server (used to show/hide UI)
   const [serverAvatar, setServerAvatar] = useState<string | null>(null); // workspace avatar URL (token-signed for sidebar display); null = use first letter
@@ -135,7 +135,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Client-side workspace switch: re-point the active server by slug. The activation effect (keyed on activeId) resets
   // per-workspace state and reconnects the socket. No-op if the target is unknown or already active.
   const switchServer = (targetSlug: string) => { const cur = serversRef.current.find((s) => s.slug === targetSlug); if (cur && cur.id !== sidRef.current) setActiveId(cur.id); };
-  const logout = () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem("open-tag.devuser"); window.location.assign("/login"); }; // clear token + dev user → redirect to login (JWT is short-lived; client-side removal is sufficient)
+  const logout = () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem("kith-space.devuser"); window.location.assign("/login"); }; // clear token + dev user → redirect to login (JWT is short-lived; client-side removal is sufficient)
   const markActionExecuted = async (messageId: string, result?: { kind: string; id: string; name: string }) => { await api("POST", `/api/actions/${messageId}/mark-executed`, { result: result ?? null }); };
   const createTasks = async (channelId: string, titles: string[]) => { const r = await api("POST", `/api/tasks/channel/${channelId}`, { tasks: titles.map((title) => ({ title })) }); return r?.tasks || []; };
   const openDM = async (memberType: string, memberId: string) => { const body = memberType === "user" ? { userId: memberId } : { agentId: memberId }; const r = await api("POST", "/api/channels/dm", body); if (r?.id) { await reload(); sockRef.current?.emit("join:channel", r.id); } return r?.id ?? null; };
@@ -262,7 +262,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Point at the active workspace + clear the previous one's state so a switch starts from a clean slate; the
     // ready=false → workspace skeleton shows while it reloads.
     setReady(false);
-    sidRef.current = cur.id; setServerId(cur.id); setSlug(cur.slug || "open-tag"); setMyRole(cur.role || "member"); setCapabilities(cur.capabilities || {});
+    sidRef.current = cur.id; setServerId(cur.id); setSlug(cur.slug || "kith-space"); setMyRole(cur.role || "member"); setCapabilities(cur.capabilities || {});
     setServerAvatar(cur.avatarUrl ? `${cur.avatarUrl}?token=${encodeURIComponent(tokenRef.current)}` : null);
     setChannels([]); setDms([]); setUnread({}); setAgents([]); setMachines([]); setHumans([]); setTraj([]); setSavedIds(new Set()); setAgentPanelReq(null);
     subscribedRef.current = new Set(); // the previous workspace's view-subscriptions don't carry over

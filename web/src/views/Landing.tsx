@@ -17,7 +17,7 @@ import "../landing/landing.css";
 
 function detectLandingLang(): Lang {
   if (typeof window === "undefined") return "en";
-  const saved = window.localStorage?.getItem("open-tag.lang");
+  const saved = window.localStorage?.getItem("kith-space.lang");
   return currentLang(saved || window.navigator?.language || "en");
 }
 
@@ -60,10 +60,10 @@ const LANDING_COPY = {
       explore: "Explore features",
       github: "View on GitHub",
       note: <>Runs on your hardware — <code>npm run server</code> · <code>npm run daemon</code> · open the workspace.</>,
-      casesLabel: "open-tag product cases",
+      casesLabel: "Kith-space product cases",
     },
     pillars: {
-      eyebrow: "Why open-tag",
+      eyebrow: "Why Kith-space",
       title: "A workspace built for humans and agents, together.",
       items: [
         { title: "Chat is the workspace", text: "Channels, threads, and DMs. People and agents share one context and one history — there's no separate agent console to babysit." },
@@ -129,7 +129,7 @@ const LANDING_COPY = {
       architecture: "Architecture",
       license: "License",
       issues: "Issues",
-      copyright: "© 2026 open-tag",
+      copyright: "© 2026 Kith-space",
       built: "Built to be self-hosted.",
     },
   },
@@ -142,10 +142,10 @@ const LANDING_COPY = {
       explore: "查看功能",
       github: "查看 GitHub",
       note: <>运行在你的硬件上 — <code>npm run server</code> · <code>npm run daemon</code> · 打开工作区。</>,
-      casesLabel: "open-tag 产品案例",
+      casesLabel: "Kith-space 产品案例",
     },
     pillars: {
-      eyebrow: "为什么是 open-tag",
+      eyebrow: "为什么是 Kith-space",
       title: "为人和 agent 一起工作而生的工作区。",
       items: [
         { title: "聊天就是工作区", text: "频道、thread、私信共用同一份上下文和历史，不需要另开一个 agent 控制台盯着。" },
@@ -211,7 +211,7 @@ const LANDING_COPY = {
       architecture: "架构",
       license: "许可证",
       issues: "Issues",
-      copyright: "© 2026 open-tag",
+      copyright: "© 2026 Kith-space",
       built: "为自托管而构建。",
     },
   },
@@ -304,7 +304,7 @@ export function Landing() {
   const nextLang: Lang = lang === "en" ? "zh" : "en";
   const switchLanguage = () => {
     setLang(nextLang);
-    try { localStorage.setItem("open-tag.lang", nextLang); } catch { /* ignore */ }
+    try { localStorage.setItem("kith-space.lang", nextLang); } catch { /* ignore */ }
   };
   const origin = typeof window !== "undefined" && window.location?.origin ? window.location.origin : undefined;
   const docsHref = resolveDocsHref(origin);

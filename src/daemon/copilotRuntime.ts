@@ -36,7 +36,7 @@ export interface CopilotEmit {
   error?: string;
 }
 
-// handleCopilotEvent maps one parsed Copilot JSONL event to open-tag callbacks. The event set is
+// handleCopilotEvent maps one parsed Copilot JSONL event to kith-space callbacks. The event set is
 // verified against GitHub Copilot CLI 1.0.61: note there is NO `session.start` (sessionId arrives
 // only on the final `result`), and model/launch errors are NOT JSON events — they go to stderr +
 // a non-zero exit (handled in CopilotRun, not here).

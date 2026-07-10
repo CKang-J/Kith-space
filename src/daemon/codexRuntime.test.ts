@@ -8,7 +8,7 @@ import path from "node:path";
 import { codexRuntime } from "./codexRuntime.js";
 
 test("missing codex binary reports offline instead of crashing daemon", async () => {
-  const root = mkdtempSync(path.join(tmpdir(), "open-tag-codex-missing-"));
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-codex-missing-"));
   const events: { activity: string; detail?: string }[] = [];
   let exitCode: number | null | undefined;
 

@@ -30,7 +30,7 @@ export interface KimiEmit {
   sessionId?: string;
 }
 
-// handleKimiEvent maps one parsed `kimi -p --output-format stream-json` line to open-tag callbacks.
+// handleKimiEvent maps one parsed `kimi -p --output-format stream-json` line to kith-space callbacks.
 // Kimi emits OpenAI-chat-message envelopes (verified vs 0.19.2): {role:"assistant", content},
 // {role:"assistant", tool_calls:[{function:{name,arguments}}]}, {role:"tool", ...}, and a final
 // {role:"meta", type:"session.resume_hint", session_id} carrying the id for `-r` resume.

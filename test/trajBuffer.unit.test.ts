@@ -60,13 +60,13 @@ test("groupTraj merges consecutive text fragments from the same agent into one r
 test("groupTraj keeps tool calls as their own pill, resuming text as a new sub-item after", () => {
   const groups = groupTraj([
     { name: "codex2", text: "先读一下消息" },
-    { name: "codex2", text: "open-tag message check", tool: true },
+    { name: "codex2", text: "kith-space message check", tool: true },
     { name: "codex2", text: "确认没有别人 claim" },
   ]);
   assert.equal(groups.length, 1);
   assert.deepEqual(groups[0]!.items, [
     { kind: "text", text: "先读一下消息" },
-    { kind: "tool", text: "open-tag message check" },
+    { kind: "tool", text: "kith-space message check" },
     { kind: "text", text: "确认没有别人 claim" },
   ]);
 });

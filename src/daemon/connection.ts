@@ -5,7 +5,7 @@ import { MACHINE_REJECTED_CODE } from "../daemonProtocol.js";
 
 const INITIAL_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 30000;
-const SERVER_STALE_MS = Number(process.env.OPEN_TAG_DAEMON_SERVER_STALE_MS ?? 90_000);
+const SERVER_STALE_MS = Number(process.env.KITH_SPACE_DAEMON_SERVER_STALE_MS ?? 90_000);
 
 // Minimal surface of the `ws` client that Connection depends on, so tests can inject a fake socket.
 export interface WsLike {

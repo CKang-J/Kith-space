@@ -1,17 +1,17 @@
 #!/usr/bin/env node
-// open-tag CLI — agent-side communication layer. runtimes invoke it via their bash tools.
+// kith-space CLI — agent-side communication layer. runtimes invoke it via their bash tools.
 // Auth/routing via env vars injected by daemon at spawn time:
-//   OPEN_TAG_SERVER_URL, OPEN_TAG_AGENT_TOKEN (per-agent token, injected by daemon), OPEN_TAG_AGENT_ID (or --agent-id)
+//   KITH_SPACE_SERVER_URL, KITH_SPACE_AGENT_TOKEN (per-agent token, injected by daemon), KITH_SPACE_AGENT_ID (or --agent-id)
 import { Command } from "commander";
 import { readFile, writeFile, mkdir, appendFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createLogger } from "../log.js";
 
 const log = createLogger("cli");
-const BASE = process.env.OPEN_TAG_SERVER_URL ?? "http://localhost:7777";
-const KEY = process.env.OPEN_TAG_AGENT_TOKEN ?? process.env.OPEN_TAG_MACHINE_KEY ?? process.env.OPEN_TAG_API_KEY ?? "poc-secret-key"; // per-agent token takes priority (slice10)
-const AGENT = process.env.OPEN_TAG_AGENT_ID ?? "";
-const TURN_FILE = process.env.OPEN_TAG_TURN_FILE ?? "";
+const BASE = process.env.KITH_SPACE_SERVER_URL ?? "http://localhost:7777";
+const KEY = process.env.KITH_SPACE_AGENT_TOKEN ?? process.env.KITH_SPACE_MACHINE_KEY ?? process.env.KITH_SPACE_API_KEY ?? "poc-secret-key"; // per-agent token takes priority (slice10)
+const AGENT = process.env.KITH_SPACE_AGENT_ID ?? "";
+const TURN_FILE = process.env.KITH_SPACE_TURN_FILE ?? "";
 
 function headers() {
   return { authorization: `Bearer ${KEY}`, "x-agent-id": AGENT, "content-type": "application/json" };
@@ -54,7 +54,7 @@ async function recordTurnEvent(event: Record<string, unknown>): Promise<void> {
 }
 
 const program = new Command();
-program.name("open-tag").description("open-tag agent CLI").version("0.1.0");
+program.name("kith-space").description("Kith-space agent CLI").version("0.1.0");
 
 const message = program.command("message").description("message send/receive");
 message.command("check").description("non-blocking check for new messages").action(async () => {
@@ -245,7 +245,7 @@ const action = program.command("action").description("prepare human-in-the-loop 
 action.command("prepare").description("prepare an action card (action JSON from stdin; variants: channel:create / agent:create)")
   .requiredOption("--target <ch>", "#channel / dm:@name").action(async (opts) => {
     const raw = (await readStdin()).trim();
-    if (!raw) { console.error("Error: action JSON required on stdin"); console.error('Next action: echo \'{"type":"channel:create","name":"x","description":"…"}\' | open-tag action prepare --target "#general"'); process.exit(1); }
+    if (!raw) { console.error("Error: action JSON required on stdin"); console.error('Next action: echo \'{"type":"channel:create","name":"x","description":"…"}\' | kith-space action prepare --target "#general"'); process.exit(1); }
     let actionObj: unknown;
     try { actionObj = JSON.parse(raw); } catch { console.error("Error: invalid JSON on stdin"); process.exit(1); }
     const d = await api("POST", "/agent-api/action/prepare", { target: opts.target, action: actionObj });

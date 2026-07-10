@@ -7,7 +7,7 @@ import { db, schema } from "../db/index.js";
 function requireEnv(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(
-    `[open-tag] Required env var ${name} is not set.\n` +
+    `[Kith-space] Required env var ${name} is not set.\n` +
     `  Generate one:  openssl rand -hex 32\n` +
     `  Then add it to .env before starting the server.`
   );

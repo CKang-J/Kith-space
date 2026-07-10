@@ -1,6 +1,6 @@
 // listWorkspace returns the real on-disk workspace root, so the web UI can show the path
-// truthfully instead of a hardcoded `~/.open-tag/agents/<id>` template that's wrong whenever
-// OPEN_TAG_HOME is non-default (worktree isolation, custom data dir).
+// truthfully instead of a hardcoded `~/.kith-space/agents/<id>` template that's wrong whenever
+// KITH_SPACE_HOME is non-default (worktree isolation, custom data dir).
 // Run: npx tsx --test --test-force-exit test/workspaceRoot.unit.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 
 // MUST be set before importing workspace.ts — DATA_DIR = agentsDir() is computed at module load.
 const HOME = mkdtempSync(path.join(tmpdir(), "ot-ws-root-"));
-process.env.OPEN_TAG_HOME = HOME;
+process.env.KITH_SPACE_HOME = HOME;
 
 const { listWorkspace } = await import("../src/daemon/workspace.ts");
 

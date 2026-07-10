@@ -1,8 +1,8 @@
-// Hermes runtime: one-shot `hermes chat -q <prompt> -Q --source open-tag` per turn.
+// Hermes runtime: one-shot `hermes chat -q <prompt> -Q --source kith-space` per turn.
 //
-// Hermes owns provider credentials and profile configuration. OpenTag only selects a Hermes profile
-// (temporarily stored in agent.model) and passes the OpenTag system prompt + message into an isolated
-// agent workspace. This keeps secrets in Hermes config, not in the OpenTag database.
+// Hermes owns provider credentials and profile configuration. Kith-space only selects a Hermes profile
+// (temporarily stored in agent.model) and passes the Kith-space system prompt + message into an isolated
+// agent workspace. This keeps secrets in Hermes config, not in the Kith-space database.
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile, unlink } from "node:fs/promises";
@@ -27,18 +27,18 @@ export function hermesProfileRoots(home = homedir(), env: NodeJS.ProcessEnv = pr
 
 export function buildHermesPrompt(message: string, opts: Pick<StartOpts, "cwd" | "systemPrompt">): string {
   return [
-    "[OpenTag runtime context]",
-    `You are running as an OpenTag agent in this isolated workspace: ${opts.cwd}`,
-    "Follow this OpenTag system prompt for collaboration, @mentions, and reporting:",
+    "[Kith-space runtime context]",
+    `You are running as an Kith-space agent in this isolated workspace: ${opts.cwd}`,
+    "Follow this Kith-space system prompt for collaboration, @mentions, and reporting:",
     opts.systemPrompt,
     "",
-    "[OpenTag message]",
+    "[Kith-space message]",
     message,
   ].join("\n");
 }
 
 export function buildHermesArgs(prompt: string, sessionId?: string | null): string[] {
-  const args = ["chat", "-q", prompt, "-Q", "--source", "open-tag"];
+  const args = ["chat", "-q", prompt, "-Q", "--source", "kith-space"];
   if (sessionId) args.push("--resume", sessionId);
   return args;
 }
@@ -90,7 +90,7 @@ function cleanHermesStdout(stdout: string): BridgeDecision {
 export function hermesBridgeDecision(stdout: string, state: TurnState): BridgeDecision {
   if (state.sent) return { ok: false, reason: "already-sent" };
   if (state.held) return { ok: false, reason: "already-held" };
-  if (!state.engaged || !state.target) return { ok: false, reason: "no-open-tag-read" };
+  if (!state.engaged || !state.target) return { ok: false, reason: "no-kith-space-read" };
   if (!/^(#|dm:|thread:)/.test(state.target)) return { ok: false, reason: "invalid-target" };
   const cleaned = cleanHermesStdout(stdout);
   if (!cleaned.ok) return cleaned;
@@ -184,8 +184,8 @@ class HermesRun {
     this.cb.onActivity("working", `hermes/${this.profile}`);
     const prompt = buildHermesPrompt(message, this.opts);
     const args = buildHermesArgs(prompt, this.sessionId);
-    const turnFile = path.join(tmpdir(), `open-tag-hermes-turn-${Date.now()}-${Math.random().toString(36).slice(2)}.jsonl`);
-    const proc = spawn("hermes", args, { cwd: this.opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: { ...this.env, OPEN_TAG_TURN_FILE: turnFile } });
+    const turnFile = path.join(tmpdir(), `kith-space-hermes-turn-${Date.now()}-${Math.random().toString(36).slice(2)}.jsonl`);
+    const proc = spawn("hermes", args, { cwd: this.opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: { ...this.env, KITH_SPACE_TURN_FILE: turnFile } });
     this.proc = proc;
     let stdout = "";
     const errTail: string[] = [];
@@ -264,15 +264,15 @@ class HermesRun {
       return null;
     }
     try {
-      const result = await postHermesBridgeMessage(fetch, this.env.OPEN_TAG_SERVER_URL ?? "", {
-        authorization: `Bearer ${this.env.OPEN_TAG_AGENT_TOKEN ?? ""}`,
-        "x-agent-id": this.env.OPEN_TAG_AGENT_ID ?? "",
+      const result = await postHermesBridgeMessage(fetch, this.env.KITH_SPACE_SERVER_URL ?? "", {
+        authorization: `Bearer ${this.env.KITH_SPACE_AGENT_TOKEN ?? ""}`,
+        "x-agent-id": this.env.KITH_SPACE_AGENT_ID ?? "",
         "content-type": "application/json",
       }, decision.target, decision.content);
       if (!result.ok) {
         if (result.held) {
           this.cb.log.warn("hermes final response freshness-held; draft saved for review", { target: decision.target });
-          if (result.text) this.cb.onTrajectory([{ kind: "status", text: "[open-tag freshness hold]\n" + clip(result.text) }]);
+          if (result.text) this.cb.onTrajectory([{ kind: "status", text: "[kith-space freshness hold]\n" + clip(result.text) }]);
           this.cb.onActivity("error", "hermes reply held for freshness review");
           return false;
         }

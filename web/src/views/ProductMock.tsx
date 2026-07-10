@@ -168,11 +168,11 @@ function currentLang(language?: string): ProductMockLang {
 
 function browserLang(): ProductMockLang {
   if (typeof window === "undefined" || !window.localStorage) return "en";
-  return currentLang(window.localStorage.getItem("open-tag.lang") || "en");
+  return currentLang(window.localStorage.getItem("kith-space.lang") || "en");
 }
 
 function nameSeed(name: string) {
-  return name.toLowerCase().replace(/[^a-z0-9_-]/g, "-") || "open-tag";
+  return name.toLowerCase().replace(/[^a-z0-9_-]/g, "-") || "kith-space";
 }
 
 function InlineMention({ children }: { children: string }) {
@@ -220,7 +220,7 @@ export function ProductMock({ item, threadOpen = true, onToggleThread, compact =
         <span className="lp-browser__dot lp-browser__dot--r" />
         <span className="lp-browser__dot lp-browser__dot--y" />
         <span className="lp-browser__dot lp-browser__dot--g" />
-        <span className="lp-product-url">localhost:7777/s/open-tag/channel</span>
+        <span className="lp-product-url">localhost:7777/s/kith-space/channel</span>
       </div>
       <div className="lp-product-app">
         <aside className="lp-product-rail" aria-hidden="true">
@@ -291,7 +291,7 @@ export function ProductMock({ item, threadOpen = true, onToggleThread, compact =
               <dt>{labels.runtime}</dt><dd>codex</dd>
               <dt>{labels.model}</dt><dd>gpt-5.5</dd>
               <dt>{labels.status}</dt><dd><i /> sleeping</dd>
-              <dt>{labels.workspace}</dt><dd>~/.open-tag/agents/codex</dd>
+              <dt>{labels.workspace}</dt><dd>~/.kith-space/agents/codex</dd>
             </dl>
           </div>
           <div className="lp-product-skill"><strong>develop · global</strong><span>Use when a human hands you a development task...</span></div>

@@ -4,7 +4,7 @@
 set -euo pipefail
 NAME="${1:-}"
 [ -z "$NAME" ] && { echo "Usage: npm run wt:rm -- <name>"; exit 1; }
-WT="../open-tag-$NAME"
+WT="../kith-space-$NAME"
 SAFE="${NAME//[^a-zA-Z0-9]/_}"
 [ -d "$WT" ] || { echo "✗ $WT does not exist"; exit 1; }
 
@@ -21,7 +21,7 @@ fi
 git worktree remove "$WT" --force
 
 # 3) Clean this worktree's isolated data dir + database (ephemeral dev fixtures; derived from NAME, not the now-gone .env).
-rm -rf "$HOME/.open-tag-$SAFE" && echo "  removed data dir ~/.open-tag-$SAFE"
+rm -rf "$HOME/.kith-space-$SAFE" && echo "  removed data dir ~/.kith-space-$SAFE"
 docker compose exec -T postgres dropdb -U opentag "opentag_$SAFE" 2>/dev/null && echo "  dropped db opentag_$SAFE" || echo "  (db opentag_$SAFE not found / already dropped)"
 
 echo "✅ worktree '$NAME' removed (data dir + db cleaned)."

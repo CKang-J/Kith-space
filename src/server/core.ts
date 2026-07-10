@@ -71,7 +71,7 @@ export async function channelMaxSeq(channelId: string): Promise<number> {
 }
 
 /** Add channel members. An AGENT joins "caught up" at the channel watermark (its lastReadSeq starts at the
- *  channel's current max seq), so its first `open-tag message check` surfaces only messages sent AFTER it
+ *  channel's current max seq), so its first `kith-space message check` surfaces only messages sent AFTER it
  *  joined — not the channel's pre-join backlog (which it can still pull on demand via `message read`). Without
  *  this, a fresh member's lastReadSeq=0 makes every prior message "unread", flooding a newly created or newly
  *  invited agent with the whole channel history it never needed. A USER keeps lastReadSeq=0 — the human UI

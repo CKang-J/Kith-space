@@ -115,7 +115,7 @@ const server = http.createServer(async (req, res) => {
   const t0 = Date.now();
   res.on("finish", () => log.debug("req", { method, path: url.pathname, status: res.statusCode, ms: Date.now() - t0 }));
   try {
-    if (url.pathname === "/health") return sendJson(res, 200, { ok: true, service: "open-tag", time: new Date().toISOString() });
+    if (url.pathname === "/health") return sendJson(res, 200, { ok: true, service: "kith-space", time: new Date().toISOString() });
     if (await handleAgentApi(req, res, url, method)) return;
     if (await handleApi(req, res, url, method)) return;
     const isRead = method === "GET" || method === "HEAD";
@@ -144,6 +144,6 @@ reconcileCounters()
   // a fresh server instance has zero daemons connected; they re-mark online on reconnect.
   .then(() => reconcileMachinesOnBoot().catch((e) => log.error("machine reconcile failed (continuing)", { detail: String(e?.message ?? e) })))
   .finally(() => server.listen(PORT, () => {
-    log.info("control plane up", { url: `http://localhost:${PORT}`, logs: "~/.open-tag/logs/" });
+    log.info("control plane up", { url: `http://localhost:${PORT}`, logs: "~/.kith-space/logs/" });
     startMachineSweeper(); // backstop: offline machines whose daemon died without a clean WS close
   }));

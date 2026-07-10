@@ -43,5 +43,5 @@ jobs:
       - name: Build web
         run: npm run build --prefix web
 
-      - name: Build daemon package (@fancyboi999/open-tag-daemon bundle)
+      - name: Build daemon package (@fancyboi999/kith-space-daemon bundle)
         run: npm run pkg:daemon:build

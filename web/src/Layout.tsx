@@ -29,13 +29,13 @@ export function Layout() {
   const [alertAnchor, setAlertAnchor] = useState<{ left: number; bottom: number } | null>(null); // notification popover anchor (fixed pos); null = closed
   const alerts = allAlerts.filter((a) => !dismissed.has(a.id));
   useEffect(() => { if (!alerts.length) setAlertAnchor(null); }, [alerts.length]); // alerts emptied (all dismissed) → drop the anchor so a later new alert doesn't make the popover auto-open without a click
-  const slug = server || "open-tag";
+  const slug = server || "kith-space";
   const isChat = loc.pathname.includes("/channel");
   const go = (key: string) => nav(`/s/${slug}/${key}`);
   const active = (key: string) => loc.pathname.includes("/" + key);
   const totalUnread = Object.values(unread).reduce((a, b) => a + b, 0);
   // Panel drag-to-resize: dragging the divider updates CSS variables (--sb-w sidebar / --traj-w right panel); persisted in localStorage.
-  useEffect(() => { for (const v of ["--sb-w", "--traj-w"]) { const s = localStorage.getItem("open-tag" + v); if (s) document.documentElement.style.setProperty(v, s); } }, []);
+  useEffect(() => { for (const v of ["--sb-w", "--traj-w"]) { const s = localStorage.getItem("kith-space" + v); if (s) document.documentElement.style.setProperty(v, s); } }, []);
   useEffect(() => { document.body.classList.remove("sb-open"); }, [loc.pathname]); // mobile: auto-close drawer on route change (channel select / view switch)
   useEffect(() => { const h = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setShowQS(true); } }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, []); // Cmd/Ctrl+K global quick switcher
   const startResize = (which: "sb" | "traj") => (e: RMouseEvent) => {
@@ -44,7 +44,7 @@ export function Layout() {
     const startX = e.clientX;
     const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue(varName)) || (which === "sb" ? 248 : 320);
     const onMove = (ev: MouseEvent) => { const d = which === "sb" ? ev.clientX - startX : startX - ev.clientX; document.documentElement.style.setProperty(varName, Math.max(180, Math.min(560, cur + d)) + "px"); };
-    const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); localStorage.setItem("open-tag" + varName, getComputedStyle(document.documentElement).getPropertyValue(varName).trim()); };
+    const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); localStorage.setItem("kith-space" + varName, getComputedStyle(document.documentElement).getPropertyValue(varName).trim()); };
     window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
   };
   return (
