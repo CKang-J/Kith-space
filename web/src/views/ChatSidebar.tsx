@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Pin, Bookmark, Check, Eye } from "lucide-react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { mergeWorkspaceSearch } from "../shell/workspaceRoute.ts";
 import { useStore } from "../store.tsx";
 import { Avatar, resolveAvatar } from "../Avatar.tsx";
 import { useEscClose } from "../ConfirmModal.tsx";
@@ -16,17 +17,19 @@ export function channelCreateErrorMsg(t: (key: string) => string, error?: string
 
 // Shared chat sidebar (Saved/Channels/DMs share the same sidebar; persists unchanged when switching between the channel view and the Saved view).
 // Both the Chat view and the Saved view (misc.tsx) render this component so the channel list stays visible when navigating to Saved.
-export function ChatSidebar() {
+export function ChatSidebar({ channelIdOverride, preserveSearch = "" }: { channelIdOverride?: string; preserveSearch?: string } = {}) {
   const { t } = useTranslation();
   const { api, serverId, channels, dms, unread, agents, visibleAgents, slug, savedIds, capabilities, createChannel, openDM, joinChannel, attachmentUrl } = useStore();
   const toast = useToast();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
-  const { channelId } = useParams();
+  const { channelId: routeChannelId } = useParams();
+  const channelId = channelIdOverride ?? routeChannelId;
   const { pathname } = useLocation();
   const nav = useNavigate();
   const [pinned, setPinned] = useState<string[]>([]);
   const [mkChan, setMkChan] = useState(false);
   const [dmPick, setDmPick] = useState(false);
+  const withPreservedSearch = (target: string) => mergeWorkspaceSearch(target, preserveSearch);
   const onSaved = pathname.endsWith("/saved");
   const onShowcase = pathname.endsWith("/showcase");
 
@@ -42,13 +45,13 @@ export function ChatSidebar() {
   useEffect(() => { if (!serverId) return; api("GET", `/api/servers/${serverId}/sidebar-order`).then((p) => setPinned(p?.pinnedChannelIds || [])).catch(() => {}); }, [serverId]);
   const doCreate = async (opts: { name: string; description?: string; visibility?: string; agentIds?: string[]; userIds?: string[] }) => {
     const r = await createChannel(opts);
-    if (r?.id) { setMkChan(false); nav(`/s/${slug}/channel/${r.id}`); }
+    if (r?.id) { setMkChan(false); nav(withPreservedSearch(`/s/${slug}/channel/${r.id}`)); }
     else toast.error(channelCreateErrorMsg(t, r?.error)); // keep the modal open so the user can fix the name and retry
   };
-  const doDM = async (agentId: string) => { const id = await openDM("agent", agentId); setDmPick(false); if (id) nav(`/s/${slug}/channel/${id}`); };
+  const doDM = async (agentId: string) => { const id = await openDM("agent", agentId); setDmPick(false); if (id) nav(withPreservedSearch(`/s/${slug}/channel/${id}`)); };
 
   const chanRow = (c: any) => (
-    <div key={c.id} className={"item chan-row" + (c.id === channelId ? " active" : "")} onClick={() => nav(`/s/${slug}/channel/${c.id}`)}>
+    <div key={c.id} className={"item chan-row" + (c.id === channelId ? " active" : "")} onClick={() => nav(withPreservedSearch(`/s/${slug}/channel/${c.id}`))}>
       <span className="grow"># {c.name}</span>
       <button className={"pinbtn" + (pinned.includes(c.id) ? " on" : "")} title={pinned.includes(c.id) ? t("sidebar.unpinChannel") : t("sidebar.pinChannel")} onClick={(e) => { e.stopPropagation(); togglePin(c.id); }}><Pin size={12} /></button>
       {!!unread[c.id] && <span className="badge">{unread[c.id]}</span>}
@@ -59,7 +62,7 @@ export function ChatSidebar() {
     <aside className="sidebar">
       <div className="sb-scroll">
       <div className="sb-title">{t("nav.channel")}</div>
-      <div className={"item nav-row" + (onSaved ? " active" : "")} onClick={() => nav(`/s/${slug}/saved`)}>
+      <div className={"item nav-row" + (onSaved ? " active" : "")} onClick={() => nav(withPreservedSearch(`/s/${slug}/saved`))}>
         <span className="grow"><Bookmark size={14} style={{ verticalAlign: "-2px" }} /> {t("common.saved")}</span>
         {savedIds.size > 0 && <span className="badge">{savedIds.size}</span>}
       </div>
@@ -67,7 +70,7 @@ export function ChatSidebar() {
           times, then ignored. Kept above Channels/DMs by product call so the two high-traffic sections stay
           adjacent and uninterrupted. */}
       <div className="sec sec-sub">{t("sidebar.showcaseSection")}</div>
-      <div className={"item" + (onShowcase ? " active" : "")} style={{ cursor: "pointer" }} onClick={() => nav(`/s/${slug}/showcase`)}>
+      <div className={"item" + (onShowcase ? " active" : "")} style={{ cursor: "pointer" }} onClick={() => nav(withPreservedSearch(`/s/${slug}/showcase`))}>
         <Eye size={13} style={{ flexShrink: 0, opacity: 0.7 }} /><span className="grow">{t("sidebar.showcaseItem")}</span>
       </div>
       {pinnedChans.length > 0 && <><div className="sec">{t("sidebar.pinnedSection")}</div>{pinnedChans.map(chanRow)}</>}
@@ -84,7 +87,7 @@ export function ChatSidebar() {
       {dms.map((c) => {
         const a = c.peerType === "agent" ? agents.find((x) => x.id === c.peerId) : undefined; // agent DM → show real-time status dot
         return (
-        <button key={c.id} className={"item" + (c.id === channelId ? " active" : "")} onClick={() => nav(`/s/${slug}/channel/${c.id}`)}>
+        <button key={c.id} className={"item" + (c.id === channelId ? " active" : "")} onClick={() => nav(withPreservedSearch(`/s/${slug}/channel/${c.id}`))}>
           <Avatar seed={c.peerDisplayName || c.peerName || c.peerId || c.id} url={avFor(c.peerAvatarUrl)} size={20} /><span className="grow">{c.peerDisplayName || c.peerName || t("sidebar.unknownUser")}</span>
           {a && <span className={"dot " + (a.activity || "offline")} role="img" aria-label={t("members.statusLabel", { status: a.activity || "offline" })} title={a.activityDetail || a.activity || "offline"} />}
           {!!unread[c.id] && <span className="badge">{unread[c.id]}</span>}

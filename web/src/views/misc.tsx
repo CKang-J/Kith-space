@@ -185,11 +185,12 @@ export function Inbox({ embedded = false, onNavigate }: { embedded?: boolean; on
 
 // Runtime name → display label mapping
 const RT_LABEL: Record<string, string> = { claude: "Claude Code", codex: "Codex CLI", opencode: "OpenCode", copilot: "Copilot CLI", cursor: "Cursor CLI", gemini: "Gemini CLI", kimi: "Kimi", hermes: "Hermes" };
-export function Computers() {
+export function Computers({ machineIdOverride, moduleQuerySuffix = "" }: { machineIdOverride?: string; moduleQuerySuffix?: string } = {}) {
   const { machines, agents, slug, api, serverId, reload, attachmentUrl, capabilities, latestDaemonVersion } = useStore();
   const confirm = useConfirm();
   const { t } = useTranslation();
-  const { machineId } = useParams();
+  const { machineId: routeMachineId } = useParams();
+  const machineId = machineIdOverride ?? routeMachineId;
   const nav = useNavigate();
   const [connect, setConnect] = useState(false);
   const [reconnect, setReconnect] = useState<{ id: string; name: string } | null>(null);
@@ -208,7 +209,7 @@ export function Computers() {
     try {
       const r = await api("DELETE", `/api/servers/${serverId}/machines/${cur.id}`);
       if (r?.error) { setDelErr(r.error); return; }
-      await reload(); nav(`/s/${slug}/computer`);
+      await reload(); nav(`/s/${slug}/computer${moduleQuerySuffix}`);
     } finally { setDeleting(false); }
   };
   return (
@@ -218,7 +219,7 @@ export function Computers() {
         <div className="sb-title">{t("misc.computersTitle")}</div>
         <div className="sec">{t("misc.computersMachines")} <span className="cnt">{machines.length}</span>{capabilities.manageMachines && <button className="addbtn" title={t("misc.computersConnectBtn")} onClick={() => setConnect(true)}>+</button>}</div>
         {machines.length ? machines.map((m) => (
-          <button key={m.id} className={"item" + (m.id === cur?.id ? " active" : "")} onClick={() => nav(`/s/${slug}/computer/${m.id}`)}>
+          <button key={m.id} className={"item" + (m.id === cur?.id ? " active" : "")} onClick={() => nav(`/s/${slug}/computer/${m.id}${moduleQuerySuffix}`)}>
             <IconMonitor size={15} /><span className="grow">{m.name || m.hostname}</span><span className={"dot " + (m.status === "online" ? "online" : "")} />
           </button>
         )) : <div className="empty">{t("misc.computersNoMachine")}</div>}
@@ -246,7 +247,7 @@ export function Computers() {
               <div className="rt-list">{(cur.runtimes || []).length ? (cur.runtimes || []).map((r) => <span key={r} className="rt-chip">{RT_LABEL[r] || r}</span>) : <span className="empty">{t("misc.computersNoRuntime")}</span>}</div>
               <div className="sec">{t("misc.computersAgentsSection")} <span className="cnt">{onMachine.length}</span></div>
               {onMachine.length ? onMachine.map((a) => (
-                <button key={a.id} className="item" onClick={() => nav(`/s/${slug}/agent/${a.id}`)}>
+                <button key={a.id} className="item" onClick={() => nav(`/s/${slug}/agent/${a.id}${moduleQuerySuffix}`)}>
                   <Avatar seed={a.name} url={resolveAvatar(a.avatarUrl, attachmentUrl)} size={20} /><span className="grow">{a.displayName || a.name}</span><span className="meta">{a.runtime}</span><span className={"dot " + (a.activity || a.status)} />
                 </button>
               )) : <div className="empty">{t("misc.computersNoAgent")}</div>}
@@ -333,8 +334,9 @@ const SETTINGS: [string, string][] = [
   ["invites", "misc.settingsNavInvites"],
   ["notifications", "misc.settingsNavNotifications"],
 ]; // Machine/Daemon management lives in the Computers view, not duplicated here
-export function Settings() {
-  const { section } = useParams();
+export function Settings({ sectionOverride, moduleQuerySuffix = "" }: { sectionOverride?: string; moduleQuerySuffix?: string } = {}) {
+  const { section: routeSection } = useParams();
+  const section = sectionOverride ?? routeSection;
   const { slug, serverId, api } = useStore();
   const nav = useNavigate();
   const { t } = useTranslation();
@@ -345,7 +347,7 @@ export function Settings() {
       <aside className="sidebar">
         <div className="sb-scroll">
         <div className="sb-title">{t("nav.settings")}</div>
-        <div className="settings-nav">{SETTINGS.map(([k, labelKey]) => <button key={k} className={"item" + (cur === k ? " active" : "")} onClick={() => nav(`/s/${slug}/settings/${k}`)}>{t(labelKey)}</button>)}</div>
+        <div className="settings-nav">{SETTINGS.map(([k, labelKey]) => <button key={k} className={"item" + (cur === k ? " active" : "")} onClick={() => nav(`/s/${slug}/settings/${k}${moduleQuerySuffix}`)}>{t(labelKey)}</button>)}</div>
         </div>
       </aside>
       <main className="content-col">
@@ -456,7 +458,7 @@ const relTime = (iso?: string, tFn?: (k: string, opts?: any) => string) => {
     return tFn("misc.relTimeDays", { count: Math.floor(h / 24) });
   } catch { return ""; }
 };
-export function Saved() {
+export function Saved({ embedded = false }: { embedded?: boolean } = {}) {
   const { slug, listSaved, unsaveMsg } = useStore();
   const nav = useNavigate();
   const { t } = useTranslation();
@@ -484,7 +486,7 @@ export function Saved() {
     : <>{it.channelType === "dm" ? "@" : "#"} {it.channelName ?? "?"}</>;
   return (
     <>
-      <ChatSidebar />
+      {!embedded && <ChatSidebar />}
       <main className="content-col">
         <div className="head"><h1>{t("common.saved")}</h1><small>{loading ? t("misc.savedLoading") : t("misc.savedCount", { count: items.length })}</small></div>
         <div className="inbox-list">

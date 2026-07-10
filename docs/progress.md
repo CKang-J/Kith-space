@@ -7,13 +7,14 @@
 ## 一、现在在哪
 
 - 分支：`feat/p0-foundation`（从 `main`/`master` 切出，尚未合并、尚未推远端）。
-- 阶段：P0–P3 后端已完成并提交；**P4 UI 联调进行中**。第一块“双壳外壳骨架”和第二块“现有组件薄适配接线（含旧侧栏导航入口补全）”已在工作树实现、尚未提交，下一块进行 OpenLoaf 方向的视觉重塑。
+- 阶段：P0–P3 后端已完成并提交；**P4-3 单窗口工作区联调进行中**。此前 P4-1/2/2b 的双壳方向已被用户推翻；单窗口设计规格与原型已提交，生产壳第一版已在工作树实现，等待用户继续视觉复核。
 - 底座已从 open-tag fork 到根目录，四个参考项目在 `reference/`（只读，勿改）。
 
 ## 二、已完成（按提交，最新在上）
 
 | 提交 | 内容 |
 |---|---|
+| `7cc026e docs(ui): 固化单窗口工作区原型与设计规格` | 确认 ChatOnly / Split / ModuleOnly 三态、Dock 行为、OpenLoaf 式面板骨架、Context Snapshot 设计契约与桌面交互原型 |
 | `docs: runtime 调研汇总` | Runtime 对接调研整块（见 `notes/_runtime-research/`）：claude-code / codex / opencode 三份 + `_synthesis-openagents.md` + README 索引 |
 | `feat(tasks): P3` | 任务模块后端加固：事务化、并发保护（claim 条件更新 / assign revision CAS）、状态流转模型、交付/汇报链路、模块化到 `src/server/tasks/` |
 | `docs: 开发命令 + 文档更新规则` | `docs/dev-commands.md`；README/AGENTS/CLAUDE 加命令入口与强制文档更新规则 |
@@ -25,13 +26,17 @@
 | `refactor: 改名` | open-tag → Kith-space 全局改名 |
 | `基线` | open-tag 源码副本 + Kith-space 设计文档 |
 
-约 15 个提交。每一波都经 leader 独立验收（非仅采信子代理），验收协议见第四节。
+当前分支共 23 个提交。每一波都经 leader 独立验收（非仅采信子代理），验收协议见第四节。
 
-当前工作树（未提交）：P4 前两块。第一块新增独立 `web/src/shell/` 壳态与组件层，包含总览三块、空间内三区布局、右栏 dock、拖拽/隐藏与模块提升能力；第二块按薄适配方案接入现有能力：总览从 `store.servers` 渲染空间并以路由切换空间上下文，当前空间收件箱复用嵌入模式 `Inbox`；IconRail 从 `channels/dms/unread` 渲染会话入口，并补齐成员、机器、本空间收件箱、搜索入口；中间区增加 `chat/members/machines/inbox/search` 视图态，复用 `Chat`、`Members`、`Computers`、`Inbox`、`Search` 的现有行为，管理视图仅在渲染层抑制右栏，回到聊天后按用户原有隐藏偏好恢复；右栏任务复用空间级 `TaskBoard`，实时轨迹提取为共享 `LiveTrace`，文件项通过最小 Agent 选择器复用导出的 `WorkspaceTab`。收件箱请求继续由 `store.api` 的 `x-server-id` 限定当前空间；总览“全局收件箱”目前仍复用活动空间数据，尚未实现真正跨空间聚合。日历、画布继续保留 TODO 占位；`web/src/App.tsx` 的新旧壳分流、现有 `Layout` 和 `?legacy=1` 旁路均保留。已通过 `pnpm run typecheck` 与 `pnpm --dir web run build`。
+当前工作树（未提交）：P4-3 单窗口生产壳第一版。`web/src/shell/WorkspaceFrame.tsx` 取代双壳入口；`workspaceLayout.ts` 用纯状态机表达 ChatOnly / Split / ModuleOnly，URL 作为模块选择与 Chat 显隐的唯一事实来源（频道/DM 路径 + `?module=<id>` = Split，再加 `chat=0` = ModuleOnly），`workspaceRoute.ts` 补齐父壳手动渲染时的频道、成员、机器、设置等子路由参数，并确保 Split 内切换会话保留模块；旧模块实体路径仍兼容。`paneConstraints.ts` 集中计算 Chat 25% 响应式下限、模块差异下限和单 Pane 阈值；`shellStore.ts` 保存版本化模块宽度比例并按 Space 持久化最近 Chat 位置，旧像素宽度偏好不再参与布局。Space 切换保留布局和模块但清除临时详情。
+
+ChatOnly 复用 `ChatSidebar` / `Chat` / `LiveTrace` 形成三张白色工作面板；Split 将会话列表与轨迹收为 Chat 内互斥抽屉，频道、布局或 Space 变化时自动关闭。Module Pane 薄适配 Inbox、Tasks、Members、Computers、Settings，Search 由顶部工具组打开。Dock 常驻且当前模块横向展开，模块区与 Chat 间完整 10px 间隙可拖拽；Split 内切换模块保留比例，从 ChatOnly 打开模块、关闭后重开或从 ModuleOnly 恢复 Chat 均重置为 Chat 25%。拖拽曾因模块 `flex: 1` 覆盖显式宽度失效，现已改为固定 `flex-basis`。旧 `OverviewShell`、`SpaceShell`、`IconRail`、`RightDock`、`ChatSlot` 已删除；`?legacy=1` 仍保留旧 `Layout` 回退。Message Context Snapshot 目前只是设计契约，尚未实现服务端持久化。
+
+本轮已通过根 `pnpm run typecheck`、web 生产构建（2565 modules）、布局 / 路由 / 分栏约束纯函数测试 21/21；全量单测最近基线为 368/369，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/`。Chat 下限随后按用户确认从 35% 调整为 25%；本次参数调整按用户要求只做静态验证，不重跑浏览器 QA，上一轮 35% 的浏览器尺寸数据不再作为当前宽度验收结果。
 
 ## 三、接下来怎么推进（顺序 + 依据）
 
-1. **P4 UI 联调（进行中）**：第一块双壳骨架、第二块真实组件/数据接线与旧侧栏导航入口补全已完成；下一块做 OpenLoaf 方向的视觉重塑。继续与用户逐块对齐，不跨块提前实现。
+1. **P4 UI 联调（进行中）**：先完成单窗口生产壳的构建、状态机与浏览器回归，再交回用户 run-and-review；后续继续按截图逐块调整视觉，不自行扩展未确认的高保真细节。
 2. **P5 Electron 桌面壳**：包 daemon+server+web，双击即用；v1 仅 level-one（本机浏览器 localhost）。
 3. **Runtime 契约 v2**（见 `roadmap.md` §2.0，近期高优先但排在 UI 之后）：加 usage/turn-done 回调把 P1 token 护栏升级为真实计量 + 统一 MCP bootstrap 解锁"模块即 MCP 工具"。调研已完成（`notes/_runtime-research/`），建 contract 时照其收敛建议。
 4. **P6 生产力模块**（邮箱/日历/画布，经 MCP）：依赖 Runtime 契约 v2 + 一次安全升级（上不可信内容前必须把 bypassPermissions 换成审批/沙箱，见决策 8/17、roadmap §2.1）。

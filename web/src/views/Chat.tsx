@@ -151,7 +151,7 @@ function ActionCardMsg({ m }: { m: Msg }) {
   );
 }
 
-export function Chat({ embedded = false }: { embedded?: boolean }) {
+export function Chat({ embedded = false, channelIdOverride }: { embedded?: boolean; channelIdOverride?: string }) {
   const { t } = useTranslation();
   const { api, channels, dms, unread, agents, humans, slug, me, myRole, capabilities, reload, onEvent, subscribeChannel, openDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, savedIds, saveMsg, unsaveMsg, agentPanelReq, clearAgentPanelReq } = useStore();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
@@ -160,7 +160,8 @@ export function Chat({ embedded = false }: { embedded?: boolean }) {
   const confirm = useConfirm();
   const [showEdit, setShowEdit] = useState(false);
   const manageServer = myRole === "owner" || myRole === "admin"; // server admins get the full task-status dropdown (matches TaskBoard permission model)
-  const { channelId } = useParams();
+  const { channelId: routeChannelId } = useParams();
+  const channelId = channelIdOverride ?? routeChannelId;
   const nav = useNavigate();
   const [profile, setProfile] = useState<{ type: "agent" | "human"; id: string } | null>(null); // right-column profile overlay: clicking an avatar / name / @mention (agent, human, or yourself) opens it ON TOP of the thread/trajectory ("click X → show X"); closing it reveals the layer underneath
   const [taskMenu, setTaskMenu] = useState<string | null>(null); // task badge status menu: id of the currently open message (clicking the badge changes status, does not open thread)
@@ -218,7 +219,9 @@ export function Chat({ embedded = false }: { embedded?: boolean }) {
     setHasMore(false);
   }
 
-  useEffect(() => { if (!channelId && cur) nav(`/s/${slug}/channel/${cur.id}`, { replace: true }); }, [channelId, cur, slug, nav]);
+  useEffect(() => {
+    if (!routeChannelId && !channelIdOverride && cur) nav(`/s/${slug}/channel/${cur.id}`, { replace: true });
+  }, [routeChannelId, channelIdOverride, cur, slug, nav]);
   const loadCurrentMessages = async () => {
     if (!cur) return;
     const chId = cur.id;

@@ -5,7 +5,7 @@ import { Plus, Check } from "lucide-react";
 import { useStore } from "./store.tsx";
 import { useTranslation } from "react-i18next";
 
-export function ServerSwitcher() {
+export function ServerSwitcher({ targetPathForSlug }: { targetPathForSlug?: (slug: string) => string } = {}) {
   const { t } = useTranslation();
   const nav = useNavigate();
   const { servers, slug, serverAvatar, createServer } = useStore();
@@ -15,7 +15,10 @@ export function ServerSwitcher() {
   const [busy, setBusy] = useState(false);
   const cur = servers.find((s) => s.slug === slug);
   // Client-side navigation (no full-page reload): the URL change drives the workspace switch via the /s/:server route guard.
-  const go = (s: { slug: string }) => { setOpen(false); if (s.slug !== slug) nav(`/s/${s.slug}/channel`); };
+  const go = (s: { slug: string }) => {
+    setOpen(false);
+    if (s.slug !== slug) nav(targetPathForSlug?.(s.slug) ?? `/s/${s.slug}/channel`);
+  };
   const submit = async () => { if (!name.trim() || busy) return; setBusy(true); try { const newSlug = await createServer(name.trim()); if (newSlug) { close(); nav(`/s/${newSlug}/channel`); } } finally { setBusy(false); } };
   const close = () => { setOpen(false); setCreating(false); setName(""); };
   return (

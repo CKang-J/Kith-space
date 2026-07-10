@@ -1,38 +1,51 @@
 import { useSyncExternalStore } from "react";
+import { DEFAULT_MODULE_RATIO, normalizeModuleRatio } from "./paneConstraints.ts";
 
-export type ShellView = "overview" | "space";
-export type MiddleView = "chat" | "members" | "machines" | "inbox" | "search";
-export type DockModule = "tasks" | "calendar" | "files" | "trace" | "canvas";
+const MODULE_RATIO_KEY = "kith-space.workspace.split-ratio.v2";
+const CHAT_LOCATIONS_KEY = "kith-space.workspace.last-chat";
 
-export interface ShellState {
-  view: ShellView;
-  currentSpaceId: string | null;
-  middleView: MiddleView;
-  rightPanelWidth: number;
-  isRightPanelHidden: boolean;
-  activeDockModule: DockModule;
-  promotedModule: DockModule | null;
+export interface StoredChatLocation {
+  path: string;
+  channelId: string | null;
 }
 
-export const RIGHT_PANEL_MIN = 280;
-export const RIGHT_PANEL_MAX = 640;
+export type ShellState = {
+  moduleRatio: number;
+  lastChatPath: string | null;
+  lastChatChannelId: string | null;
+};
 
-const clampRightPanelWidth = (width: number) =>
-  Math.min(RIGHT_PANEL_MAX, Math.max(RIGHT_PANEL_MIN, Math.round(width)));
+const defaultModuleRatio = () => {
+  if (typeof window === "undefined") return DEFAULT_MODULE_RATIO;
+  const stored = Number.parseFloat(window.localStorage.getItem(MODULE_RATIO_KEY) ?? "");
+  return Number.isFinite(stored) ? normalizeModuleRatio(stored) : DEFAULT_MODULE_RATIO;
+};
 
-const defaultRightPanelWidth = () => {
-  if (typeof window === "undefined") return 360;
-  return clampRightPanelWidth(Math.min(480, Math.max(320, window.innerWidth * 0.32)));
+const readChatLocations = (): Record<string, StoredChatLocation> => {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(window.localStorage.getItem(CHAT_LOCATIONS_KEY) ?? "{}") as Record<string, StoredChatLocation>;
+  } catch {
+    return {};
+  }
+};
+
+export const storedChatLocation = (slug: string) => readChatLocations()[slug] ?? null;
+
+const workspaceSlugFromPath = (path: string) => {
+  const encoded = path.match(/^\/s\/([^/]+)/)?.[1];
+  if (!encoded) return null;
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return encoded;
+  }
 };
 
 let state: ShellState = {
-  view: "overview",
-  currentSpaceId: null,
-  middleView: "chat",
-  rightPanelWidth: defaultRightPanelWidth(),
-  isRightPanelHidden: false,
-  activeDockModule: "tasks",
-  promotedModule: null,
+  moduleRatio: defaultModuleRatio(),
+  lastChatPath: null,
+  lastChatChannelId: null,
 };
 
 const listeners = new Set<() => void>();
@@ -47,19 +60,25 @@ const subscribe = (listener: () => void) => {
   return () => listeners.delete(listener);
 };
 
+const setModuleRatio = (ratio: number) => {
+  const moduleRatio = normalizeModuleRatio(ratio);
+  if (typeof window !== "undefined") window.localStorage.setItem(MODULE_RATIO_KEY, String(moduleRatio));
+  update({ moduleRatio });
+};
+
 export const shellActions = {
-  enterSpace: (spaceId: string) => update({ view: "space", currentSpaceId: spaceId, middleView: "chat" }),
-  returnToOverview: () => update({ view: "overview", currentSpaceId: null, middleView: "chat", promotedModule: null }),
-  setMiddleView: (middleView: MiddleView) => {
-    if (state.middleView === middleView && state.promotedModule === null) return;
-    update({ middleView, promotedModule: null });
+  setModuleRatio,
+  resetModuleRatio: () => setModuleRatio(DEFAULT_MODULE_RATIO),
+  rememberChatLocation: (path: string, channelId: string | null) => {
+    const slug = workspaceSlugFromPath(path);
+    if (slug && typeof window !== "undefined") {
+      const locations = readChatLocations();
+      locations[slug] = { path, channelId };
+      window.localStorage.setItem(CHAT_LOCATIONS_KEY, JSON.stringify(locations));
+    }
+    if (state.lastChatPath === path && state.lastChatChannelId === channelId) return;
+    update({ lastChatPath: path, lastChatChannelId: channelId });
   },
-  setRightPanelWidth: (width: number) => update({ rightPanelWidth: clampRightPanelWidth(width) }),
-  setRightPanelHidden: (hidden: boolean) => update({ isRightPanelHidden: hidden }),
-  setActiveDockModule: (activeDockModule: DockModule) => update({ activeDockModule }),
-  promoteModule: (promotedModule: DockModule) =>
-    update({ promotedModule, activeDockModule: promotedModule, isRightPanelHidden: false }),
-  restoreModule: () => update({ promotedModule: null }),
 };
 
 export function useShellStore() {

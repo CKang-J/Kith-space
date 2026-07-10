@@ -94,9 +94,23 @@ thread 汇报与最终交付不另造表，复用 `messages.actionMetadata`：
 
 ### 3.3 UI 桥与天花板
 
-"原生丝滑"由两半构成：MCP 工具设计（工具粒度、参数、返回结构对模型友好）+ UI 桥（工具的副作用实时反映到右侧模块面板，例如任务看板随 `task:updated` 事件刷新）。
+"原生丝滑"由两半构成：MCP 工具设计（工具粒度、参数、返回结构对模型友好）+ UI 桥（工具的副作用实时反映到当前 Module Pane，例如任务看板随 `task:updated` 事件刷新）。
 
 天花板要如实说明：MCP 工具 + 外接 runtime 的操控丝滑度，低于 OpenLoaf 那种 in-app 自研 runtime（后者能把工具调用、流式渲染、审批弹窗编织进同一进程）。这是决策 2 明确接受的取舍——用略低的丝滑度换"不自研 runtime + 可插拔多 runtime"。
+
+### 3.4 单窗口工作区前端边界
+
+P4 的前端壳采用单一 `WorkspaceFrame`，不再维护“空间总览态 / 空间内部态”双壳。职责边界如下：
+
+- `workspaceLayout.ts` 是无 React 依赖的布局状态机，只表达 ChatOnly / Split / ModuleOnly 和 Dock 转移规则。
+- `paneConstraints.ts` 是无 React 依赖的分栏约束边界：Chat 下限为 `max(360px, 可用工作区宽度的 25%)`，模块按内容使用 560px / 640px 下限，并据此判断 Split 是否成立；不再设置固定模块最大宽度。
+- `shellStore.ts` 以 `useSyncExternalStore` 承载可拖拽模块宽度比例与最近 Chat 位置；比例写入版本化浏览器本地偏好，旧像素宽度偏好不再参与布局。
+- URL 是当前模块与 Chat 显隐的唯一事实来源：频道/DM 留在路径中，`?module=<id>` 表示 Split，再加 `chat=0` 表示 ModuleOnly；旧模块实体路径保留为兼容入口。`workspaceRoute.ts` 解析频道/成员/机器/设置等子路由资源参数并合并布局查询参数，保证切换会话、刷新与浏览器前进/后退都可重建同一姿态。
+- `WorkspaceFrame.tsx` 负责把空间路由、响应式阈值和状态机组合成 Pane，不把业务模块逻辑写进壳。
+- `workspaceModules.tsx` 是模块注册边界；Inbox、Tasks、Members、Computers、Settings 和 Search 通过薄适配复用现有视图。
+- `ChatWorkspace.tsx` 负责 Chat 全宽三区与 Split 紧凑抽屉；模块不得直接操控 Chat 内部组件。
+
+Message Context 使用 Kith-space 自己的结构化 Snapshot：发送时固化 Space、会话、当前模块、Context Stack 和 focused item；runtime adapter 再编码为各自需要的文本格式。OpenLoaf 的 `<stack>` 只作为语义参考，不进入核心数据模型。本轮 P4 仅完成壳与状态机，Snapshot 的服务端持久化仍属于 Runtime 契约 v2 的后续工作。
 
 ## 4. 记忆架构：三层文件式记忆
 
@@ -140,7 +154,7 @@ open-tag 已有一套 per-agent 文件记忆，v1 直接复用、不重建：
 
 **关键点**：因为决策 18 已把底座定为 SQLite，而 SQLite 本身就是文件，"聊天历史随文件夹走"不需要改存储格式——把整个工作区的库做成 `<folder>/.kith/workspace.db` 即可。拷走文件夹 = 拷走该 db 文件 = 带走全部聊天/任务/成员。中心库退化成只记 registry。
 
-两个现状事实让这条低成本：open-tag 的 seq 计数器本就按工作区分（`redis.ts` 的 `seq:${serverId}`），每工作区一个库时 seq 天然在各自库内单调、`reconcileCounters` 语义照搬即可；24 个 import `db` 单例的文件查询语句与 schema **完全不变**，只是把"全局 db"换成"当前工作区的 db"。改造范围见 §5.4。总览态（全局 bento 驾驶舱）的跨工作区聚合，从"一个库 WHERE workspaceId"变为"遍历 N 个工作区库各查一遍、应用层合并"（或 SQLite ATTACH）——单真人只有几个工作区，开销可忽略。
+两个现状事实让这条低成本：open-tag 的 seq 计数器本就按工作区分（`redis.ts` 的 `seq:${serverId}`），每工作区一个库时 seq 天然在各自库内单调、`reconcileCounters` 语义照搬即可；24 个 import `db` 单例的文件查询语句与 schema **完全不变**，只是把"全局 db"换成"当前工作区的 db"。改造范围见 §5.4。未来 `scope = all` 的跨工作区聚合要从"一个库 WHERE workspaceId"改为"遍历 N 个工作区库各查一遍、应用层合并"（或 SQLite ATTACH）——单真人只有几个工作区，开销可忽略；v1 不因此提前恢复总览页。
 
 ### 5.1 现状
 

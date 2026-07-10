@@ -76,4 +76,4 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 ## 当前进展
 
-**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-10 概要：P0–P3 后端 + pnpm 迁移 + runtime 对接调研均已完成并提交（分支 `feat/p0-foundation`，约 15 个提交，未合 main / 未推远端）；**下一步是 P4 UI 联调**（需与用户一起对齐后动手）。做到哪、下一步、调度与验收约定、关键技术事实，全部见 `docs/progress.md`。
+**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-10 概要：P0–P3 后端 + pnpm 迁移 + runtime 对接调研均已完成并提交（分支 `feat/p0-foundation`，23 个提交，未合 main / 未推远端）；P4 已推翻旧双壳并进入 **ChatOnly / Split / ModuleOnly 单窗口工作区**生产联调，第一版在工作树等待用户视觉复核。做到哪、下一步、调度与验收约定、关键技术事实，全部见 `docs/progress.md`。

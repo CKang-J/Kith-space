@@ -41,14 +41,15 @@ export function DragDivider({ value, min, max, onChange }: DragDividerProps) {
   const adjustWithKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
-    onChange(value + (event.key === "ArrowLeft" ? 16 : -16));
+    const next = value + (event.key === "ArrowLeft" ? 16 : -16);
+    onChange(Math.min(max, Math.max(min, next)));
   };
 
   return (
     <div
       className="shell-drag-divider"
       role="separator"
-      aria-label="调整右栏宽度"
+      aria-label="调整模块区宽度"
       aria-orientation="vertical"
       aria-valuemin={min}
       aria-valuemax={max}

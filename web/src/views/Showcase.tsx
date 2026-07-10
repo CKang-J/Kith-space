@@ -122,14 +122,14 @@ function ShowcaseThread({ c, onClose }: { c: ShowcaseCase; onClose: () => void }
   );
 }
 
-export function Showcase() {
+export function Showcase({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useTranslation();
   // Index of the case whose thread panel is open (null = closed). Pure local state over static data — no API.
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const openCase = openIdx != null ? CASES[openIdx] : null;
   return (
     <>
-      <ChatSidebar />
+      {!embedded && <ChatSidebar />}
       {/* Flex row: the channel column + (when a pill is clicked) the thread panel. The showcase route is not
           a /channel path, so the app shell never gets has-traj's 4th grid column — this wrapper IS the single
           grid cell and lays its own "main + thread" columns out, so a closed thread leaves no empty strip. */}

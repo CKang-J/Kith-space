@@ -24,11 +24,20 @@ function statusOf(a: { activity?: string | null; status: string }): string {
   return a.activity && a.activity !== "offline" ? a.activity : a.status;
 }
 
-export function Members() {
+interface MembersProps {
+  agentIdOverride?: string;
+  userIdOverride?: string;
+  moduleQuerySuffix?: string;
+  discussionQuerySuffix?: string;
+}
+
+export function Members({ agentIdOverride, userIdOverride, moduleQuerySuffix = "", discussionQuerySuffix = "" }: MembersProps = {}) {
   const { t } = useTranslation();
   const { visibleAgents: agents, humans, machines, slug, capabilities, attachmentUrl } = useStore(); // visibleAgents: showcase demo props are hidden from the roster (they stay in the store for #showcase history)
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
-  const { agentId, userId } = useParams();
+  const { agentId: routeAgentId, userId: routeUserId } = useParams();
+  const agentId = agentIdOverride ?? routeAgentId;
+  const userId = userIdOverride ?? routeUserId;
   const nav = useNavigate();
   const [modal, setModal] = useState(false);
   const [inviteModal, setInviteModal] = useState(false);
@@ -47,7 +56,7 @@ export function Members() {
           <div key={k}>
             <div className="machine"><IconMonitor size={13} /> {k === "_none" ? t("members.unassigned") : mName(k)}</div>
             {byMachine[k].map((a) => (
-              <button key={a.id} className={"item" + (a.id === agentId ? " active" : "")} onClick={() => nav(`/s/${slug}/agent/${a.id}`)}>
+              <button key={a.id} className={"item" + (a.id === agentId ? " active" : "")} onClick={() => nav(`/s/${slug}/agent/${a.id}${moduleQuerySuffix}`)}>
                 <Avatar seed={a.name} url={avFor(a.avatarUrl)} size={20} /><span className="grow">{a.name}</span><span className={"dot " + statusOf(a)} role="img" aria-label={t("members.statusLabel", { status: statusOf(a) })} title={statusOf(a)} />
               </button>
             ))}
@@ -55,14 +64,14 @@ export function Members() {
         ))}
         <div className="sec">{t("common.humans")} <span className="cnt">{humans.length}</span>{capabilities.manageMembers && <button className="addbtn" title={t("members.inviteMember")} onClick={() => setInviteModal(true)}>+</button>}</div>
         {humans.map((u) => (
-          <button key={u.userId} className={"item" + (u.userId === userId ? " active" : "")} onClick={() => nav(`/s/${slug}/human/${u.userId}`)}>
+          <button key={u.userId} className={"item" + (u.userId === userId ? " active" : "")} onClick={() => nav(`/s/${slug}/human/${u.userId}${moduleQuerySuffix}`)}>
             <Avatar seed={u.name} url={avFor(u.avatarUrl)} size={20} /><span className="grow">{u.displayName || u.name}</span>
           </button>
         ))}
         </div>
       </aside>
       <main className="content-col">
-        {userId ? <HumanProfile uid={userId} /> : agentId ? <AgentProfile id={agentId} onDeleted={() => nav(`/s/${slug}/agent`)} /> : <Roster agents={agents} humans={humans} onCreate={() => setModal(true)} canCreate={!!capabilities.manageAgents} />}
+        {userId ? <HumanProfile uid={userId} moduleQuerySuffix={moduleQuerySuffix} discussionQuerySuffix={discussionQuerySuffix} /> : agentId ? <AgentProfile id={agentId} onDeleted={() => nav(`/s/${slug}/agent${moduleQuerySuffix}`)} discussionQuerySuffix={discussionQuerySuffix} /> : <Roster agents={agents} humans={humans} onCreate={() => setModal(true)} canCreate={!!capabilities.manageAgents} moduleQuerySuffix={moduleQuerySuffix} />}
       </main>
       {modal && <CreateAgentModal onClose={() => setModal(false)} />}
       {inviteModal && <InviteHumanModal onClose={() => setInviteModal(false)} />}
@@ -102,7 +111,7 @@ function InviteHumanModal({ onClose }: { onClose: () => void }) {
 
 // Members roster: agents + humans as two labelled sections (mirrors the left sidebar order),
 // every card a navigable entry into that member's profile (agent → /agent/:id, human → /human/:userId).
-function Roster({ agents, humans, onCreate, canCreate }: { agents: any[]; humans: any[]; onCreate: () => void; canCreate?: boolean }) {
+function Roster({ agents, humans, onCreate, canCreate, moduleQuerySuffix = "" }: { agents: any[]; humans: any[]; onCreate: () => void; canCreate?: boolean; moduleQuerySuffix?: string }) {
   const { t } = useTranslation();
   const { attachmentUrl, slug } = useStore();
   const nav = useNavigate();
@@ -117,7 +126,7 @@ function Roster({ agents, humans, onCreate, canCreate }: { agents: any[]; humans
           : <>
             {agents.length > 0 && <div className="sec">{t("common.agents")} <span className="cnt">{agents.length}</span></div>}
             {agents.map((a) => {
-              const to = `/s/${slug}/agent/${a.id}`;
+              const to = `/s/${slug}/agent/${a.id}${moduleQuerySuffix}`;
               return (
                 <div className="card card-link" key={a.id} role="button" tabIndex={0} onClick={() => nav(to)} onKeyDown={(e) => goKey(e, to)}>
                   <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}><Avatar seed={a.name} url={avFor(a.avatarUrl)} size={24} />{a.displayName || a.name} <small className="meta">@{a.name}</small></h3>
@@ -129,7 +138,7 @@ function Roster({ agents, humans, onCreate, canCreate }: { agents: any[]; humans
             })}
             {humans.length > 0 && <div className="sec">{t("common.humans")} <span className="cnt">{humans.length}</span></div>}
             {humans.map((u) => {
-              const to = `/s/${slug}/human/${u.userId}`;
+              const to = `/s/${slug}/human/${u.userId}${moduleQuerySuffix}`;
               return (
                 <div className="card card-link" key={u.userId} role="button" tabIndex={0} onClick={() => nav(to)} onKeyDown={(e) => goKey(e, to)}>
                   <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}><Avatar seed={u.name} url={avFor(u.avatarUrl)} size={24} />{u.displayName || u.name} <small className="meta">@{u.name}</small></h3>
@@ -144,7 +153,7 @@ function Roster({ agents, humans, onCreate, canCreate }: { agents: any[]; humans
   );
 }
 
-export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string; onDeleted: () => void; onClose?: () => void; onMessage?: () => void }) {
+export function AgentProfile({ id, onDeleted, onClose, onMessage, discussionQuerySuffix = "" }: { id: string; onDeleted: () => void; onClose?: () => void; onMessage?: () => void; discussionQuerySuffix?: string }) {
   const { t } = useTranslation();
   const { api, reload, onEvent, capabilities, openDM, slug, uploadAgentAvatar, attachmentUrl } = useStore();
   const confirm = useConfirm();
@@ -185,7 +194,7 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
   const startEdit = () => { setDn(a.displayName || a.name); setDs(a.description || ""); setEdit(true); };
   const saveProfile = async () => { await api("PATCH", "/api/agents/" + id, { displayName: dn.trim() || a.name, description: ds.trim() }); setEdit(false); await refetch(); await reload(); }; // profile tab: editable displayName/description
   const live = statusOf(a);
-  const msgAgent = async () => { const cid = await openDM("agent", id); if (cid) nav(`/s/${slug}/channel/${cid}`); };
+  const msgAgent = async () => { const cid = await openDM("agent", id); if (cid) nav(`/s/${slug}/channel/${cid}${discussionQuerySuffix}`); };
   // Header action bar: Message available to everyone; start/stop/restart/delete gated by manageAgents capability
   const acts = (
     <div className="agent-acts">
@@ -225,7 +234,7 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
         : tab === "activity" ? <ActivityTab id={id} name={a.name} />
         : tab === "permissions" ? <PermissionsTab id={id} />
         : tab === "integrations" ? <AppsTab id={id} />
-        : tab === "dms" ? <DmsTab id={id} name={a.name} />
+        : tab === "dms" ? <DmsTab id={id} name={a.name} discussionQuerySuffix={discussionQuerySuffix} />
         : tab === "reminders" ? <RemindersTab id={id} name={a.name} />
         : (
           <div className="scroll">
@@ -327,13 +336,13 @@ function AppsTab({ id }: { id: string }) {
 }
 
 // DMs tab (derived from channels: direct message threads between this agent and others)
-function DmsTab({ id, name }: { id: string; name: string }) {
+function DmsTab({ id, name, discussionQuerySuffix = "" }: { id: string; name: string; discussionQuerySuffix?: string }) {
   const { t } = useTranslation();
   const { api, slug } = useStore();
   const nav = useNavigate();
   const [dms, setDms] = useState<any[] | null>(null);
   useEffect(() => { (async () => { try { setDms(await api("GET", `/api/agents/${id}/agent-dms`)); } catch { setDms([]); } })(); }, [id]);
-  return <div className="scroll"><div className="sec">{t("members.agentDms")}</div>{!dms?.length ? <div className="empty">{t("members.dmsEmpty", { name })}</div> : dms.map((d) => <button className="item" key={d.id} onClick={() => nav(`/s/${slug}/channel/${d.id}`)}><Avatar seed={d.name} size={22} /><span className="grow">{d.name}</span></button>)}</div>;
+  return <div className="scroll"><div className="sec">{t("members.agentDms")}</div>{!dms?.length ? <div className="empty">{t("members.dmsEmpty", { name })}</div> : dms.map((d) => <button className="item" key={d.id} onClick={() => nav(`/s/${slug}/channel/${d.id}${discussionQuerySuffix}`)}><Avatar seed={d.name} size={22} /><span className="grow">{d.name}</span></button>)}</div>;
 }
 
 // Reminders tab (read-only; agents create reminders via CLI, humans can only view)
@@ -535,7 +544,7 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
 
 // Human member profile (HumanDetailPanel): shows info/role/Created Agents; the member themselves can edit their own description (max 3000 chars).
 // Description is visible to other humans and agents in the server; agents fetch it via `kith-space server info` for collaboration context.
-export function HumanProfile({ uid, onClose, onMessage }: { uid: string; onClose?: () => void; onMessage?: () => void }) {
+export function HumanProfile({ uid, onClose, onMessage, moduleQuerySuffix = "", discussionQuerySuffix = "" }: { uid: string; onClose?: () => void; onMessage?: () => void; moduleQuerySuffix?: string; discussionQuerySuffix?: string }) {
   const { t } = useTranslation();
   const { api, serverId, me, reload, slug, capabilities, openDM, uploadUserAvatar, attachmentUrl } = useStore();
   const confirm = useConfirm();
@@ -550,7 +559,7 @@ export function HumanProfile({ uid, onClose, onMessage }: { uid: string; onClose
   if (!p) return <div className="scroll"><div className="empty">{t("members.loading")}</div></div>;
   const isMe = me?.id === uid;
   const save = async () => { await api("PATCH", "/api/auth/me", { description: ds.trim() }); setEdit(false); await refetch(); await reload(); };
-  const dmHuman = async () => { const cid = await openDM("user", uid); if (cid) nav(`/s/${slug}/channel/${cid}`); };
+  const dmHuman = async () => { const cid = await openDM("user", uid); if (cid) nav(`/s/${slug}/channel/${cid}${discussionQuerySuffix}`); };
   const dmBtn = !isMe ? <button className="joinbtn" onClick={onMessage ?? dmHuman}><MessageCircle size={13} style={{ verticalAlign: "-2px" }} /> {t("members.dm")}</button> : null;
   return (
     <>
@@ -585,14 +594,14 @@ export function HumanProfile({ uid, onClose, onMessage }: { uid: string; onClose
             {capabilities.changeMemberRoles && (
               <div className="kv"><b>{t("members.role")}</b> <Select ariaLabel={t("members.role")} value={p.role} options={[{ value: "owner", label: "owner" }, { value: "admin", label: "admin" }, { value: "member", label: "member" }]} onChange={async (role) => { const r = await api("PATCH", `/api/servers/${serverId}/members/${uid}`, { role }); if (r?.error) { alert(r.error); return; } await refetch(); await reload(); }} /></div>
             )}
-            {capabilities.manageMembers && <button className="joinbtn" style={{ color: "var(--error)", marginTop: 12 }} onClick={async () => { if (!(await confirm({ title: t("members.removeMemberTitle", { name: p.name }), message: t("members.removeMemberMessage"), confirmLabel: t("members.remove"), danger: true }))) return; const r = await api("DELETE", `/api/servers/${serverId}/members/${uid}`); if (r?.error) { alert(r.error); return; } await reload(); if (onClose) onClose(); else nav(`/s/${slug}/agent`); }}>{t("members.removeMember")}</button>}
+            {capabilities.manageMembers && <button className="joinbtn" style={{ color: "var(--error)", marginTop: 12 }} onClick={async () => { if (!(await confirm({ title: t("members.removeMemberTitle", { name: p.name }), message: t("members.removeMemberMessage"), confirmLabel: t("members.remove"), danger: true }))) return; const r = await api("DELETE", `/api/servers/${serverId}/members/${uid}`); if (r?.error) { alert(r.error); return; } await reload(); if (onClose) onClose(); else nav(`/s/${slug}/agent${moduleQuerySuffix}`); }}>{t("members.removeMember")}</button>}
           </div>
         )}
         {p.createdAgents?.length > 0 && (
           <div className="card">
             <h3>Created Agents <small className="meta">· {p.createdAgents.length}</small></h3>
             {p.createdAgents.map((a: any) => (
-              <button key={a.id} className="item" onClick={() => nav(`/s/${slug}/agent/${a.id}`)}>
+              <button key={a.id} className="item" onClick={() => nav(`/s/${slug}/agent/${a.id}${moduleQuerySuffix}`)}>
                 <Avatar seed={a.name} url={resolveAvatar(a.avatarUrl, attachmentUrl)} size={20} /><span className="grow">{a.displayName || a.name}</span><span className={"dot " + a.status} role="img" aria-label={t("members.statusLabel", { status: a.status })} title={a.status} />
               </button>
             ))}
