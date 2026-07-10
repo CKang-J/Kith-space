@@ -14,8 +14,16 @@
 - 涉及跨多文件的探索或结构性问题，优先用 codegraph（若已初始化）或分派子代理并行，别把大量源码灌进主上下文。
 - 关键设计事实要先核实源码再下结论（本项目的决策就是这么定的，引用都带 `文件:行号`）。
 
+## 开发命令
+
+包管理是 **pnpm**（传参不加 `--`：`pnpm test --unit`）。启动/测试/数据库等**完整命令看 `docs/dev-commands.md`**；常用：`pnpm run dev:e2e:up`（一键起全栈）、`pnpm run server`、`pnpm run daemon`、`pnpm run typecheck`。
+
+## 文档更新规则（强制，务必遵守）
+
+代码/命令/架构/决策一旦变更，**必须在同一次改动里同步更新相应文档**，避免旧文档误导：命令改动 → `docs/dev-commands.md` + README；新/翻决策 → `docs/decisions.md`（+ vision/roadmap）；架构/接口/护栏 → `docs/kith-space/architecture-proposal.md`；UI → `ui-direction.md`；术语 → `glossary.md`；进展 → README 状态段。判断标准：只读文档不看聊天，也能得到与代码一致的事实。详见 `AGENTS.md` 同名章节。
+
 ## 提交
 
-中文提交信息、列要点变更、防乱码；只在用户明确要求时提交；先分支不直推主干；改动配套跑 `node:test`。
+中文提交信息、列要点变更、防乱码；只在用户明确要求时提交；先分支不直推主干；改动配套跑测试（`pnpm test --unit` / `--integration`）。
 
 Co-Authored-By 等规范遵循全局约定。

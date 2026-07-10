@@ -8,10 +8,23 @@ Kith 意为"你熟识信任的一圈自己人"——正是这些懂你（有记�
 
 ## 状态
 
-设计阶段完成，尚未开始编码。以 [open-tag](https://github.com/) 为底座（Apache-2.0）二次开发，吸收 OpenLoaf 的界面气质与理念。纯开源，宽松协议。
+开发进行中。以 open-tag 为底座（Apache-2.0）二次开发，吸收 OpenLoaf 的界面气质与理念。纯开源，宽松协议。已完成：改名、数据层迁 SQLite（每工作区独立 db）、编排护栏、三层记忆与角色模板、包管理迁 pnpm。UI 波次进行中。
+
+## 快速开始
+
+包管理器是 **pnpm**。完整命令见 [`docs/dev-commands.md`](./docs/dev-commands.md)。
+
+```bash
+pnpm install
+cp .env.example .env        # 填 JWT_SECRET、DAEMON_BOOTSTRAP_KEY（openssl rand -hex 32）
+pnpm run dev:e2e:up         # 一键起 server + daemon + dev-bot，浏览器开 http://localhost:7777
+```
+
+手动分起：`pnpm run server`（API）、`pnpm run daemon`（承载 agent）、`pnpm --dir web run dev`（前端热更）。测试：`pnpm test --unit` / `pnpm test --integration`。
 
 ## 文档
 
+- 开发命令（启动/测试/数据库）：[`docs/dev-commands.md`](./docs/dev-commands.md)
 - 理念与长远愿景：[`docs/vision.md`](./docs/vision.md)
 - 全部设计决策与推理：[`docs/decisions.md`](./docs/decisions.md)
 - 能力路线图（MVP 与之后）：[`docs/roadmap.md`](./docs/roadmap.md)

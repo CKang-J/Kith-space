@@ -18,6 +18,7 @@ Kith-space 是一个**桌面优先、单人使用的"个人工作生活 OS"**：
   - `product-brief.md` 产品定位；`mvp-spec.md` v1 范围与验收；
   - `architecture-proposal.md` 架构（模块边界 / runtime 接口 / 数据层 / 护栏，含源码行号引用）；
   - `ui-direction.md` 界面信息架构；`migration-plan.md` 从 open-tag fork 的分阶段工程步骤。
+- `docs/dev-commands.md` — **开发命令权威来源**：环境准备、服务启动、测试、数据库、护栏环境变量。跑起项目看这里。
 - `docs/agent-collaboration-project-exploration.md` — 最初对四个源项目的探索报告（背景参考）。
 
 ## 不可动摇的核心原则
@@ -55,8 +56,22 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 - 包管理：**pnpm**（workspace：根 + `web/` + `packages/*`，`pnpm-lock.yaml`）。安装 `pnpm install`。注意 pnpm 的传参约定：脚本参数**直接跟在后面、不加 `--`**——用 `pnpm test --unit` / `pnpm test --integration`，**不要**写 `pnpm test -- --integration`（那样参数不会传到脚本、会跑全量）。（发布 workflow 保留 `npm publish` 以护住 OIDC 免 token 发布。）
 - 数据层：**SQLite**（每工作区一个 `<folder>/.kith/workspace.db` + 中心 registry），非 open-tag 原来的 Postgres+Redis。详见 `architecture-proposal.md §5`。
 - 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。跑测试时把 `KITH_SPACE_HOME` 指向临时目录，零 Postgres/Redis 即可全绿（既有 `publicNavContract` 因缺 `docs-site/` 失败，非回归）。改动配套跑测试再提交。
+- 启动：`pnpm install` → 配 `.env`（`JWT_SECRET`、`DAEMON_BOOTSTRAP_KEY`）→ `pnpm run dev:e2e:up`（一键起 server+daemon+dev-bot）。手动分起：`pnpm run server`、`pnpm run daemon`、`pnpm --dir web run dev`。**完整命令见 `docs/dev-commands.md`**。
 - 提交：中文提交信息，列要点变更；只在用户明确要求时提交；先分支不直推主干。
 - 安全：v1 单人单机接受外接 runtime 的 `bypassPermissions` + 目录隔离，但这是**追踪中的技术债**——一旦上邮箱/浏览器模块或开启跨设备 web 访问，必须先上认证/沙箱/权限重估（见 `decisions.md` 决策 8/17）。
+
+## 文档更新规则（强制）
+
+代码/命令/架构/决策一旦变更，**必须在同一次改动里同步更新相应文档**，不留旧内容误导后来者：
+
+- 改了**启动/测试/构建等命令**或脚本 → 更新 `docs/dev-commands.md`，并检查 `README.md`、本文件里引用的命令是否还准。
+- 做了**新决策**或推翻旧决策 → 记入 `docs/decisions.md`（含推理与被推翻项）；影响长远方向的同步 `docs/vision.md`、`docs/roadmap.md`。
+- 改了**架构/数据模型/接口/护栏** → 更新 `docs/kith-space/architecture-proposal.md`（引用带 `文件:行号`）。
+- 改了 **UI 信息架构** → 更新 `docs/kith-space/ui-direction.md`。
+- 引入**新术语**或术语含义变化 → 更新 `docs/glossary.md`。
+- 阶段进展变化 → 更新 `README.md` 状态段与 `docs/roadmap.md`。
+
+判断标准：任何人（或 AI）只读文档、不看聊天记录，就能得到与代码一致的事实。文档与代码冲突时，先修文档使其准确，再继续。
 
 ## 当前进展（2026-07-09）
 
