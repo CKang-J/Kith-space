@@ -24,8 +24,10 @@ echo "→ schema + bootstrap seed (idempotent)…"
 pnpm run db:push >/dev/null 2>&1 || true
 pnpm run seed    >/dev/null 2>&1 || true
 
-echo "→ building site (served by the server on :$PORT)…"
-pnpm run site:build >/dev/null
+echo "→ building web (served by the server on :$PORT)…"
+# web:build only — site:build also builds docs-site/ (the marketing site), which this repo doesn't include,
+# so site:build would fail under set -e. The dev server only needs web/dist.
+pnpm run web:build >/dev/null
 
 echo "→ starting server (:$PORT)…"
 nohup pnpm exec tsx src/server/index.ts > "$RUN/logs/dev-e2e-server.log" 2>&1 & echo $! > "$RUN/dev-e2e-server.pid"
