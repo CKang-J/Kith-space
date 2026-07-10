@@ -1,10 +1,11 @@
-import { eq, max } from "drizzle-orm";
-import { dbFor, listWorkspaces, schema } from "./db/index.js";
+import { eq, max, sql } from "drizzle-orm";
+import { dbFor, listWorkspaces, schema, type WorkspaceDb } from "./db/index.js";
 
 const seqCounters = new Map<string, number>();
-const taskCounters = new Map<string, Map<string, number>>();
 const aligned = new Set<string>();
 const aligning = new Map<string, Promise<{ seqFixed: number; taskFixed: number }>>();
+
+export type WorkspaceTransaction = Parameters<Parameters<WorkspaceDb["transaction"]>[0]>[0];
 
 /** Pure task-number scope selection: DMs count independently; all other channel types share the workspace counter. */
 export function taskNumberKey(workspaceId: string, channel?: { type: string; id: string } | null): string {
@@ -28,19 +29,22 @@ async function alignWorkspace(workspaceId: string): Promise<{ seqFixed: number; 
       .from(schema.messages)
       .innerJoin(schema.channels, eq(schema.messages.channelId, schema.channels.id))
       .groupBy(schema.messages.channelId, schema.channels.type);
-    const counters = taskCounters.get(workspaceId) ?? new Map<string, number>();
     let taskFixed = 0;
+    const maxima = new Map<string, number>();
     for (const row of rows) {
       const dbMax = Number(row.m ?? 0);
       if (!dbMax) continue;
       const key = taskNumberKey(workspaceId, { type: row.type, id: row.channelId });
-      const current = counters.get(key) ?? 0;
-      if (dbMax > current) {
-        counters.set(key, dbMax);
-        taskFixed++;
-      }
+      maxima.set(key, Math.max(maxima.get(key) ?? 0, dbMax));
     }
-    taskCounters.set(workspaceId, counters);
+    for (const [scopeKey, dbMax] of maxima) {
+      const current = db.select().from(schema.taskNumberCounters).where(eq(schema.taskNumberCounters.scopeKey, scopeKey)).get();
+      if (!current || current.lastNumber < dbMax) taskFixed++;
+      db.insert(schema.taskNumberCounters).values({ scopeKey, lastNumber: dbMax }).onConflictDoUpdate({
+        target: schema.taskNumberCounters.scopeKey,
+        set: { lastNumber: sql`max(${schema.taskNumberCounters.lastNumber}, ${dbMax})` },
+      }).run();
+    }
     aligned.add(workspaceId);
     return { seqFixed, taskFixed };
   })().finally(() => aligning.delete(workspaceId));
@@ -72,17 +76,22 @@ export async function nextSeq(workspaceId: string): Promise<number> {
 /** Monotonic task number, scoped per DM or per workspace. */
 export async function nextTaskNumber(workspaceId: string, channel?: { type: string; id: string } | null): Promise<number> {
   await alignWorkspace(workspaceId);
-  const counters = taskCounters.get(workspaceId) ?? new Map<string, number>();
-  const key = taskNumberKey(workspaceId, channel);
-  const next = (counters.get(key) ?? 0) + 1;
-  counters.set(key, next);
-  taskCounters.set(workspaceId, counters);
+  let next = 0;
+  dbFor(workspaceId).transaction((tx) => { next = allocateTaskNumber(tx, taskNumberKey(workspaceId, channel)); });
   return next;
+}
+
+/** Reserve a task number inside the caller's transaction so counter + task message commit together. */
+export function allocateTaskNumber(tx: WorkspaceTransaction, scopeKey: string): number {
+  const row = tx.insert(schema.taskNumberCounters).values({ scopeKey, lastNumber: 1 }).onConflictDoUpdate({
+    target: schema.taskNumberCounters.scopeKey,
+    set: { lastNumber: sql`${schema.taskNumberCounters.lastNumber} + 1` },
+  }).returning({ value: schema.taskNumberCounters.lastNumber }).get();
+  return row.value;
 }
 
 export function forgetWorkspaceCounters(workspaceId: string): void {
   aligned.delete(workspaceId);
   aligning.delete(workspaceId);
   seqCounters.delete(workspaceId);
-  taskCounters.delete(workspaceId);
 }

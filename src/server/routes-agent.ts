@@ -10,6 +10,8 @@ import { agentHasScope } from "./scopes.js";
 import { parseUpload } from "./attachments.js";
 import { readObject } from "./storage.js";
 import { normalizeTaskExecutionMode } from "./dispatchGuard.js";
+import { getTaskDetails, reportTask, submitTaskDelivery } from "./tasks/taskService.js";
+import { sendTaskOperationError } from "./tasks/taskHttp.js";
 
 // Freshness-hold draft buffer (prevents agent↔agent duplicate replies): when the agent sends
 // and new messages have arrived since last read → save as draft + surface bounded context, do not post immediately.
@@ -25,8 +27,8 @@ function requiredScope(p: string): string | null {
   if (p === "/agent-api/message/react") return "message:send";
   if (p === "/agent-api/server/info") return "server:read";
   if (p === "/agent-api/channel/join") return "channel:join";
-  if (p === "/agent-api/task/list") return "task:read";
-  if (p === "/agent-api/task/claim" || p === "/agent-api/task/update" || p === "/agent-api/task/new" || p === "/agent-api/task/assign") return "task:write";
+  if (p === "/agent-api/task/list" || p === "/agent-api/task/get") return "task:read";
+  if (p === "/agent-api/task/claim" || p === "/agent-api/task/update" || p === "/agent-api/task/new" || p === "/agent-api/task/assign" || p === "/agent-api/task/report" || p === "/agent-api/task/delivery") return "task:write";
   if (p === "/agent-api/search") return "message:read";
   if (p === "/agent-api/attachment/upload") return "attachment:upload";
   if (p === "/agent-api/thread/reply") return "message:send";
@@ -279,8 +281,15 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
   if (p === "/agent-api/task/list" && method === "GET") {
     const tgt = await resolveTarget(serverId, url.searchParams.get("channel") ?? "", agent.id);
     if (!tgt) return (sendErr(res, 404, "channel not found"), true);
-    const tasks = await db.select().from(schema.messages).where(and(eq(schema.messages.channelId, tgt.channelId))).orderBy(asc(schema.messages.taskNumber));
-    return (sendJson(res, 200, { tasks: tasks.filter((m) => m.taskStatus).map((m) => ({ number: m.taskNumber, status: m.taskStatus, executionMode: m.taskExecutionMode, content: m.content, id: m.id, assigneeId: m.taskAssigneeId })) }), true);
+    const tasks = await db.select().from(schema.messages).where(and(eq(schema.messages.channelId, tgt.channelId), isNotNull(schema.messages.taskStatus))).orderBy(asc(schema.messages.taskNumber));
+    return (sendJson(res, 200, { tasks: tasks.map((m) => ({ number: m.taskNumber, status: m.taskStatus, executionMode: m.taskExecutionMode, content: m.content, id: m.id, threadId: m.threadId, parentTaskId: m.taskParentId, assigneeId: m.taskAssigneeId, revision: m.taskRevision })) }), true);
+  }
+  if (p === "/agent-api/task/get" && method === "GET") {
+    const mid = await resolveMessageId(serverId, url.searchParams.get("messageId") ?? url.searchParams.get("id"), agent.id);
+    if (!mid) return (sendErr(res, 404, "task not found"), true);
+    const details = await getTaskDetails(serverId, mid);
+    if (!details) return (sendErr(res, 404, "task not found"), true);
+    return (sendJson(res, 200, details), true);
   }
   if (p === "/agent-api/task/claim" && method === "POST") {
     const b = await readJson(req);
@@ -294,14 +303,16 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     }
     if (!mid) return (sendErr(res, 404, "task not found"), true);
     await ensureTaskForAgent(mid); // claiming a plain message converts it to a task first (so it gets a number), then claims
-    const r = await claimTask(serverId, mid, "agent", agent.id); // Atomic claim: returns null if already taken
-    if (!r) return (sendErr(res, 409, "already claimed", { code: "CLAIM_FAILED" }), true);
+    let r;
+    try { r = await claimTask(serverId, mid, "agent", agent.id, b.expectedRevision); }
+    catch (error) { if (sendTaskOperationError(res, error)) return true; throw error; }
+    if (!r) return (sendErr(res, 404, "task not found"), true);
     // Guide agent to follow up in the task's thread (report in task thread, not the main channel).
     // Use a stable thread:<parentShortId> target so it round-trips across public/private/DM contexts
     // without depending on the caller's view of the parent channel name or DM peer.
     const tm = (await db.select().from(schema.messages).where(eq(schema.messages.id, mid)))[0];
     const threadTarget = tm ? `thread:${mid.slice(0, 8)}` : null;
-    return (sendJson(res, 200, { ok: true, claimed: mid, number: tm?.taskNumber ?? null, threadTarget,
+    return (sendJson(res, 200, { ok: true, claimed: mid, number: tm?.taskNumber ?? null, revision: r.taskRevision, threadTarget,
       followUp: threadTarget ? `Follow up in the task's thread: kith-space message send --target "${threadTarget}"` : null }), true);
   }
   if (p === "/agent-api/task/update" && method === "POST") {
@@ -319,9 +330,11 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     await ensureTaskForAgent(mid); // updating the status of a plain message converts it to a task first (so it gets a number), then sets status
     // Reuse human-side setTaskStatus: done/closed writes completedAt + emits task:updated socket
     // (previously a bare db.update bypassed core → the web kanban did not refresh in real time for agent status changes)
-    const upd = await setTaskStatus(serverId, mid, b.status, { type: "agent", id: agent.id });
+    let upd;
+    try { upd = await setTaskStatus(serverId, mid, b.status, { type: "agent", id: agent.id }, { from: b.from, expectedRevision: b.expectedRevision }); }
+    catch (error) { if (sendTaskOperationError(res, error)) return true; throw error; }
     if (!upd) return (sendErr(res, 404, "task not found"), true);
-    return (sendJson(res, 200, { ok: true, status: upd.taskStatus }), true);
+    return (sendJson(res, 200, { ok: true, status: upd.taskStatus, revision: upd.taskRevision }), true);
   }
   if (p === "/agent-api/task/assign" && method === "POST") {
     const b = await readJson(req);
@@ -347,13 +360,16 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     }
     if (!mid) return (sendErr(res, 404, "task not found"), true);
 
-    const assigned = await assignTask(serverId, mid, targetAgent.id, { type: "agent", id: agent.id });
+    let assigned;
+    try { assigned = await assignTask(serverId, mid, targetAgent.id, { type: "agent", id: agent.id }, b.expectedRevision); }
+    catch (error) { if (sendTaskOperationError(res, error)) return true; throw error; }
     if (!assigned) return (sendErr(res, 404, "task not found"), true);
     const threadTarget = `thread:${assigned.id.slice(0, 8)}`;
     return (sendJson(res, 200, {
       ok: true,
       assigned: assigned.id,
       number: assigned.taskNumber ?? null,
+      revision: assigned.taskRevision,
       to: targetAgent.name,
       threadTarget,
       followUp: threadTarget ? `Follow up in the task's thread: kith-space message send --target "${threadTarget}"` : null,
@@ -369,9 +385,31 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     if (tasks.some((task: { mode: unknown }) => !task.mode)) return (sendErr(res, 400, "executionMode must be autopilot or plan-first"), true);
     const tgt = await resolveTarget(serverId, b.target ?? b.channel ?? "", agent.id);
     if (!tgt) return (sendErr(res, 404, "channel not found"), true);
+    const parentTaskId = b.parentTaskId ? await resolveMessageId(serverId, b.parentTaskId, agent.id) : null;
+    if (b.parentTaskId && !parentTaskId) return (sendErr(res, 404, "parent task not found"), true);
     const created = [];
-    for (const task of tasks) { const m = await createMessage({ serverId, channelId: tgt.channelId, senderType: "agent", senderId: agent.id, senderName: agent.name, content: task.title, asTask: true, taskExecutionMode: task.mode! }); created.push({ id: m.id, number: m.taskNumber, content: m.content, executionMode: m.taskExecutionMode }); }
+    try {
+      for (const task of tasks) { const m = await createMessage({ serverId, channelId: tgt.channelId, senderType: "agent", senderId: agent.id, senderName: agent.name, content: task.title, asTask: true, taskExecutionMode: task.mode!, taskParentId: parentTaskId }); created.push({ id: m.id, number: m.taskNumber, content: m.content, executionMode: m.taskExecutionMode, threadId: m.threadId, parentTaskId: m.taskParentId, revision: m.taskRevision }); }
+    } catch (error) { if (sendTaskOperationError(res, error)) return true; throw error; }
     return (sendJson(res, 200, { ok: true, tasks: created }), true);
+  }
+  if (p === "/agent-api/task/report" && method === "POST") {
+    const b = await readJson(req);
+    const mid = await resolveMessageId(serverId, b.messageId ?? b.taskId, agent.id);
+    if (!mid) return (sendErr(res, 404, "task not found"), true);
+    try {
+      const result = await reportTask({ serverId, taskId: mid, actor: { type: "agent", id: agent.id, name: agent.name }, kind: b.kind, content: String(b.content ?? ""), artifactRefs: b.artifactRefs });
+      return (sendJson(res, 200, { ok: true, taskId: mid, reportMessageId: result.report.id, threadId: result.report.channelId, threadTarget: `thread:${mid.slice(0, 8)}` }), true);
+    } catch (error) { if (sendTaskOperationError(res, error)) return true; throw error; }
+  }
+  if (p === "/agent-api/task/delivery" && method === "POST") {
+    const b = await readJson(req);
+    const mid = await resolveMessageId(serverId, b.messageId ?? b.taskId, agent.id);
+    if (!mid) return (sendErr(res, 404, "task not found"), true);
+    try {
+      const result = await submitTaskDelivery({ serverId, taskId: mid, actor: { type: "agent", id: agent.id, name: agent.name }, expectedRevision: Number(b.expectedRevision), summary: String(b.summary ?? ""), childTaskIds: b.childTaskIds, artifactRefs: b.artifactRefs });
+      return (sendJson(res, 200, { ok: true, taskId: mid, deliveryMessageId: result.delivery.id, status: result.task.taskStatus, revision: result.task.taskRevision, childTaskIds: result.children.map((child) => child.id), reportMessageIds: result.reportMessageIds }), true);
+    } catch (error) { if (sendTaskOperationError(res, error)) return true; throw error; }
   }
   // Thread participation (agent can start/reply to threads, closing the threads loop). parent accepts full id or the 8-character short id from the message header.
   const findParent = async (raw: string, channel: string | null) => {
@@ -477,7 +515,9 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     const b = await readJson(req);
     const mid = await resolveMessageId(serverId, b.messageId, agent.id);
     if (!mid) return (sendErr(res, 404, "message not found"), true);
-    const r = await unclaimTask(serverId, mid, { type: "agent", id: agent.id });
+    let r;
+    try { r = await unclaimTask(serverId, mid, { type: "agent", id: agent.id }, b.expectedRevision); }
+    catch (error) { if (sendTaskOperationError(res, error)) return true; throw error; }
     return (r ? sendJson(res, 200, { ok: true, taskStatus: r.taskStatus }) : sendErr(res, 404, "task not found"), true);
   }
   // attachment view: fetch attachment by id (text returned inline, binary returns metadata)

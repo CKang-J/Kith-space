@@ -142,6 +142,8 @@ export const messages = sqliteTable("messages", {
   taskAssigneeId: text("task_assignee_id"),
   taskClaimedAt: timestamp("task_claimed_at"),
   taskCompletedAt: timestamp("task_completed_at"),
+  taskParentId: text("task_parent_id"),           // nullable self-reference: direct parent task message
+  taskRevision: integer("task_revision").default(0).notNull(), // optimistic concurrency token; 0 for plain messages
   taskExecutionMode: text("task_execution_mode").default("autopilot").notNull(), // autopilot | plan-first (task-only semantics; plain messages keep the harmless default)
   dispatchChainId: text("dispatch_chain_id"),
   dispatchDepth: integer("dispatch_depth"),
@@ -153,7 +155,16 @@ export const messages = sqliteTable("messages", {
   byChannel: index("messages_channel_idx").on(t.channelId, t.seq),
   // IDs are already text in SQLite; keep an ordinary index for short-prefix lookup.
   idTextPrefix: index("messages_id_text_prefix_idx").on(t.id),
+  byTaskParent: index("messages_task_parent_idx").on(t.taskParentId),
 }));
+
+// Persistent task-number allocation. scopeKey is tasknum:<workspaceId> for public/private/thread
+// channels and tasknum:dm:<channelId> for DMs. Keeping the increment in the task transaction avoids
+// allocating a number without committing the corresponding task message/thread.
+export const taskNumberCounters = sqliteTable("task_number_counters", {
+  scopeKey: text("scope_key").primaryKey(),
+  lastNumber: integer("last_number").notNull(),
+});
 
 // ── Dispatch guard (persistent orchestration budgets + emergency stops) ──
 export const dispatchChains = sqliteTable("dispatch_chains", {

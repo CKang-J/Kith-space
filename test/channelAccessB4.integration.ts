@@ -193,7 +193,7 @@ async function main() {
 
   console.log("\n[8] Regression: owner can mutate the private channel's task / action card");
   {
-    const rStatus = await apiCall({ method: "PATCH", path: `/api/tasks/${privTaskOwner}/status`, token: ownerToken, serverId, body: { status: "done" } });
+    const rStatus = await apiCall({ method: "PATCH", path: `/api/tasks/${privTaskOwner}/status`, token: ownerToken, serverId, body: { status: "in_progress" } });
     check("owner status on private-channel task → 200", rStatus.status === 200);
     const rMark = await apiCall({ method: "POST", path: `/api/actions/${privActionOwner}/mark-executed`, token: ownerToken, serverId, body: {} });
     check("owner mark-executed on private-channel action → 200", rMark.status === 200);

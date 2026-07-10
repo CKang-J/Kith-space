@@ -10,7 +10,7 @@
 - 不自研 runtime：agent 全部外接，接口已存在（`daemon/runtime.ts:35` 的 `Runtime` / `RuntimeSession`），v1 只打磨 Claude Code / Codex / opencode 三条。
 - 模块即 MCP 工具：自建模块（v1=任务）包成 MCP server 暴露给外接 agent，"原生丝滑"靠 MCP 工具设计 + UI 桥，天花板略低于 in-app runtime，可接受。
 - 记忆复用现成：open-tag 的文件式 per-agent 记忆（`daemon/memory.ts` + `daemon/prompt.ts`）直接支撑三层记忆的"读=原生文件工具、结构=约定写进 system prompt"，v1 不做写工具。
-- 数据层可确定性迁移：Postgres+Redis → SQLite + 进程内替代。运行时真正依赖 Redis 的只剩两个计数器，迁移是"苦力活"不是未知数。
+- 数据层可确定性迁移：Postgres+Redis → SQLite + 单进程替代。消息 seq 采用启动时从 DB 对齐的进程内计数器；任务号为保证与任务消息同事务提交，已改为工作区 SQLite 内的持久化计数器。
 - 编排靠现成唤醒策略：agent→agent 分派天然成立（`agentWakePolicy.ts:10`），autopilot 为默认，plan-first 为软闸，三护栏（深度/预算/急停）在 server 唤醒环上落点明确。
 
 ## 1. 总体架构：桌面壳 + 三平面
@@ -74,12 +74,23 @@ open-tag 现在的做法是把能力做成 `open-tag` CLI 注入 PATH（`daemon/
 
 ### 3.2 任务模块（v1 唯一自建模块）
 
-任务在 open-tag 里不是独立表，而是 message 上的 task 字段（`db/schema.ts:132` 起：`taskStatus` / `taskNumber` / `taskAssigneeType` / `taskAssigneeId` / `taskClaimedAt` / `taskCompletedAt`）。这让"一条消息转任务、在其 thread 里推进"很自然，已有的服务端算子直接成为 MCP 工具的实现：
+任务继续承载在 message 上，不新增独立任务表。除原有状态、编号、负责人和时间字段外，现增加 nullable `taskParentId`（直接父任务）与整数 `taskRevision`（乐观并发版本）；父子任务必须属于同一频道，避免父任务详情跨频道泄漏子任务内容（`db/schema.ts:145`–`:158`，校验见 `server/tasks/taskRepository.ts:58`）。普通消息 revision 为 0，创建或转换成任务后为 1，每次 claim / assign / unclaim / 状态或 execution-mode 变更递增。
 
-- `convertMessageToTask`（`server/core.ts:598`）
-- `claimTask` / `unclaimTask`（`server/core.ts:658` / `:676`，均带原子 claim 防并发双claim）
-- `assignTask`（`server/core.ts:686`，分派并唤醒被指派 agent）
-- `setTaskStatus`（`server/core.ts:765`，`todo→in_progress→in_review→done|closed`）
+任务写入按职责拆到 `server/tasks/`，没有重写 `server/core.ts`：
+
+- `taskTypes.ts`：五状态、稳定错误码、结构化 report/delivery metadata。
+- `taskPolicy.ts:3`：唯一状态图。允许 `todo→in_progress|closed`、`in_progress→todo|in_review|closed`、`in_review→in_progress|done|closed`、`done→in_progress`、`closed→todo`；同状态重试幂等，其他跳转返回 `INVALID_TRANSITION`。
+- `taskRepository.ts:59` / `:98`：任务创建与消息转换把任务号、task message、父子关系和 owning thread 放在同一个 SQLite 事务中，失败整体回滚；不存在 `taskStatus != null` 但缺 task number/thread 的过渡态。
+- `taskRepository.ts:149` / `:236` / `:287`：claim、assign、状态流转均以 `taskRevision` 和当前状态/负责人做条件更新。claim 只允许未领取的 `todo|in_progress`；并发领取只有一个 winner。assign 的同负责人重试幂等，跨负责人重分派要求调用者是当前 agent 负责人或提交 `expectedRevision`，并发 assign 不会静默覆盖。状态字段更新与 thread 审计消息也在同一事务中提交。
+- `server/core.ts:469` / `:883` / `:965`：core 保留现有事件和 daemon 副作用，只把结构性数据库写委托给任务 repository；数据库提交成功后才广播实时事件或投递 runtime。
+
+REST 与 agent CLI 已暴露 revision 并接受 `expectedRevision` / `from`；冲突返回 HTTP 409 + `CONFLICT`，非法跳转返回 HTTP 409 + `INVALID_TRANSITION`。agent data plane 增加 `task/get`、`task/report`、`task/delivery`（`server/routes-agent.ts:287`、`:396`、`:405`），CLI 对应 `task get/report/deliver`（`cli/index.ts:133`、`:176`、`:180`）。这不是任务 MCP bootstrap；后续 MCP handler 应复用同一任务服务，不能自行写 SQL。
+
+thread 汇报与最终交付不另造表，复用 `messages.actionMetadata`：
+
+- 结构化汇报由 `reportTask` 承担，在任务 owning thread 写 `kind=task-report`，记录 `progress|blocker|question|result` 与 artifact refs，不触发 ambient wake（`server/tasks/taskService.ts:40`）。
+- `submitTaskDelivery` 在一个事务内向父任务所在频道写 `kind=task-delivery` 消息并把父任务从 `in_progress` 转为 `in_review`；metadata 固化父任务 id、直接子任务 ids、来源 thread ids、报告 message ids 与 artifact refs（`server/tasks/taskService.ts:90`）。消息插入或状态更新任一步失败都会整体回滚。
+- `getTaskDetails` 一次返回父任务、直接子任务、父/子 thread 的结构化报告及频道交付消息，leader 和 UI 可从交付回溯到每个来源 thread（`server/tasks/taskService.ts:183`）。
 
 ### 3.3 UI 桥与天花板
 
@@ -141,7 +152,7 @@ open-tag 已有一套 per-agent 文件记忆，v1 直接复用、不重建：
 
 - pub/sub 已经不走 Redis：`realtime.ts:9` 的 `publish` 直接调 socket.io 的 `emitMapped`（单实例直发），`realtime.ts:2` 注释也点明多实例才需要切回 redis-adapter。`redis.ts:70` 的 `publishEvent` 是遗留路径。
 - agent 唤醒不走 Redis long-poll：唤醒通过 daemon control plane 的 WS 定向下发（`server/core.ts` 的 `sendAgentStart` / `sendAgentDeliver` → daemonHub）。`redis.ts:75` 的 `pokeAgent` 未被 server 逻辑实际调用。
-- 真正在跑的 Redis 只有两个 INCR：`nextSeq`（`redis.ts:50`，全局单调 seq，驱动增量 sync）与 `nextTaskNumber`（`redis.ts:65`，任务号，DM 按会话、其余按 server）。
+- 原 Redis 的两个 INCR 均已迁出：`nextSeq` 仍是启动对齐的进程内计数器；`nextTaskNumber` 已落 SQLite 持久计数，DM 按会话、其余按 workspace。
 
 因此 Redis 三件事里，pub/sub 与 wake 已在代码层由 socket.io 直发 + daemon WS 承担，迁移主要是把两个计数器搬进程内。
 
@@ -152,11 +163,11 @@ open-tag 已有一套 per-agent 文件记忆，v1 直接复用、不重建：
 | Redis 职责 | 进程内替代 | 现有承接点 |
 |---|---|---|
 | 全局 seq 计数器 | 内存计数器（启动时 `SELECT max(seq)` 对齐，见 `redis.ts:18` 的 `reconcileCounters` 逻辑照搬） | `nextSeq`（`redis.ts:50`） |
-| 任务号计数器 | 内存计数器（同上按 scope-key 对齐） | `nextTaskNumber`（`redis.ts:65`） |
+| 任务号计数器 | SQLite `task_number_counters`，在调用者事务内原子 `UPSERT + 1` | `counters.ts:77`–`:90`、`db/schema.ts:164` |
 | SSE pub/sub 扇出 | Node `EventEmitter`（实际已由 socket.io 直发承担） | `realtime.ts:9` |
 | agent 唤醒 long-poll | 内存队列（实际已由 daemon WS 承担） | `server/core.ts` daemonHub |
 
-内存计数器要保留 `reconcileCounters`（`redis.ts:18`）的启动对齐语义：进程重启后从 DB max 恢复，避免 seq 回退导致 `/messages/sync` 静默丢消息。
+消息 seq 的内存计数器保留 `reconcileCounters` 的启动对齐语义：进程重启后从 DB max 恢复，避免 seq 回退导致 `/messages/sync` 静默丢消息。任务号迁移会从既有 task max 初始化持久 counter；之后 `allocateTaskNumber` 与 task message/thread 在同一事务提交，回滚不会消耗或悬空任务号（`counters.ts:85`、`server/tasks/taskRepository.ts:58`）。
 
 ### 5.3 schema 方言迁移点
 
@@ -172,7 +183,7 @@ Drizzle 原生支持 SQLite 方言，迁移是确定性替换（决策 18）：
 
 - `db/index.ts`（10 行）：`drizzle-orm/postgres-js` → `drizzle-orm/better-sqlite3`；且从"导出一个全局 db 单例"改为"按 workspaceId 打开/取对应 `<folder>/.kith/workspace.db` 连接"的 `Map<workspaceId, conn>` + `dbFor(workspaceId)`（server 可同时服务多个活动工作区）。另起一个中心 registry 库连接（记工作区路径等）。这是本次数据层改造的核心，工作量中等但有界。
 - 24 个 import `db` 单例的调用点：机械替换为 `dbFor(workspaceId)`，查询与 schema 不动。
-- `redis.ts`（78 行）：删除 `ioredis` 依赖；`nextSeq` / `nextTaskNumber` 改内存 `Map<string,number>` + `reconcileCounters` 启动对齐；`publishEvent` / `pokeAgent` 作为遗留导出可直接移除（无实际调用方）。
+- `counters.ts`：`nextSeq` 使用进程内 `Map` + `reconcileCounters` 启动对齐；任务号改为 `task_number_counters` 持久 UPSERT，并提供可嵌入任务事务的 `allocateTaskNumber`（`counters.ts:77`–`:90`）。
 - `realtime.ts`（14 行）：现已是 socket.io 直发，迁移后维持不变，仅 `nextSeq` 的 re-export 指向新内存实现；多实例扩展的 redis-adapter TODO（`realtime.ts:2`）在单机形态下永久搁置。
 
 云 / 多用户（决策 4 休眠）将来再引回 Postgres——Drizzle 反向换方言同样容易。分阶段步骤见 `migration-plan.md`。
@@ -204,6 +215,8 @@ DM 是唯一例外：`isWakeable` 里 `if (o.channelType === "dm") return true`�
 
 三护栏都不需要改 runtime 或 daemon 协议，只在 server 唤醒环这一个收口处加判断，改动集中、可回滚。
 
+P3 任务加固没有绕开该收口：`assignTask` 完成并发条件更新后，仍通过 `reserveDispatchWake` 再执行 `sendAgentStart` / `sendAgentDeliver`，所以空间急停、任务急停、分派深度和 wake 预算继续生效（`server/core.ts:883`–`:937`）。`task report` 与 `task delivery` 只写本地消息/状态、不启动 runtime，因此不会伪造 guard 消耗；若未来接口增加显式 reviewer 通知，必须同样经过 `reserveDispatchWake`。
+
 ## 7. 安全模型
 
 ### 7.1 v1 现状：bypassPermissions + 目录隔离
@@ -226,4 +239,3 @@ DM 是唯一例外：`isWakeable` 里 `if (o.channelType === "dm") return true`�
 v1 接受 bypassPermissions，但这是**明确记账的债**。升级的硬触发点是：**邮箱 / 浏览器等"摄入不可信外部内容"的模块上线的那一刻**。届时权限模型必须升级为审批路由或沙箱，否则形成 "prompt 注入 → 破坏性 shell" 的攻击链（决策 8）。同一时刻也是 level-two 网络访问（§1.3）解禁的前置条件——两者共享同一次 agent 权限重估。
 
 在那之前，v1 的安全边界严格建立在"单机 + 单用户 + 仅本机可信内容 + 桌面双击运行"这组前提上（决策 4/5/17）。
-

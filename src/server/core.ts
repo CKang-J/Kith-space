@@ -1,10 +1,9 @@
 // Message core: seq assignment, @mention parsing, DB write, SSE broadcast (human), wake delivery (agent), target resolution.
 import { randomUUID } from "node:crypto";
-import { and, eq, ne, desc, gt, inArray, like, or, isNull, isNotNull } from "drizzle-orm";
+import { and, eq, ne, desc, gt, inArray, like, or, isNull, isNotNull, sql } from "drizzle-orm";
 import { dbFor, schema } from "../db/index.js";
 import { createWorkspace } from "../db/workspace.js";
 import { nextSeq, publish } from "./realtime.js";
-import { nextTaskNumber } from "../counters.js";
 import { broadcastToDaemons, daemonCount, isMachineConnected, sendToMachine } from "./daemonHub.js";
 import { agentHasScope } from "./scopes.js";
 import { newKey, hashToken } from "./auth.js";
@@ -12,6 +11,10 @@ import { createLogger } from "../log.js";
 import { canUserReadChannel } from "./channelAccess.js";
 import { canAutoJoinMentionedMembers, isWakeable } from "./agentWakePolicy.js";
 import { SqliteDispatchState, normalizeTaskExecutionMode, type DispatchMessageContext, type TaskExecutionMode, type WakeReservation } from "./dispatchGuard.js";
+import { assignTaskRecord, claimTaskRecord, convertMessageRecord, createTaskRecord, transitionTaskRecord, unclaimTaskRecord } from "./tasks/taskRepository.js";
+import { TASK_STATUSES, TaskOperationError, isTaskStatus, type TaskStatus } from "./tasks/taskTypes.js";
+
+export { TASK_STATUSES } from "./tasks/taskTypes.js";
 
 const log = createLogger("server:core");
 const PORT = Number(process.env.PORT ?? 7777);
@@ -176,6 +179,7 @@ export function serializeMsg(msg: typeof schema.messages.$inferSelect, mentions:
     taskStatus: msg.taskStatus, taskNumber: msg.taskNumber,
     taskAssigneeType: msg.taskAssigneeType, taskAssigneeId: msg.taskAssigneeId,
     taskClaimedAt: msg.taskClaimedAt, taskCompletedAt: msg.taskCompletedAt,
+    taskParentId: msg.taskParentId, taskRevision: msg.taskRevision,
     taskExecutionMode: msg.taskExecutionMode,
     dispatchChainId: msg.dispatchChainId, dispatchDepth: msg.dispatchDepth,
     attachments: atts.map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType, sizeBytes: a.sizeBytes })),
@@ -431,6 +435,7 @@ export async function createMessage(opts: {
   senderType: "user" | "agent" | "system"; senderId: string | null; senderName: string;
   content: string; messageType?: string; threadId?: string | null; asTask?: boolean; attachmentIds?: string[];
   taskExecutionMode?: TaskExecutionMode;
+  taskParentId?: string | null;
   actionMetadata?: unknown; // action-card and other platform action payloads (slice09)
 }) {
   const db = dbFor(opts.serverId);
@@ -438,7 +443,7 @@ export async function createMessage(opts: {
   const seq = await nextSeq(opts.serverId);
   // Channel row fetched once; its type drives task-number scope (per-DM vs per-server), thread auto-follow, mention auto-join, and wake routing below.
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, opts.channelId)))[0];
-  const taskNumber = opts.asTask ? await nextTaskNumber(opts.serverId, ch) : null;
+  if (opts.asTask && !ch) throw new TaskOperationError("NOT_FOUND", "task channel not found");
   const dispatchState = new SqliteDispatchState(opts.serverId);
   const taskMessageId = opts.asTask ? messageId : await taskMessageIdForChannel(opts.serverId, ch);
   const dispatch = await dispatchState.resolveMessageContext({
@@ -448,18 +453,26 @@ export async function createMessage(opts: {
     senderId: opts.senderId,
     taskMessageId,
   });
-  const [msg] = await db.insert(schema.messages).values({
+  const messageValues = {
     id: messageId,
     seq, serverId: opts.serverId, channelId: opts.channelId,
     senderType: opts.senderType, senderId: opts.senderId, senderName: opts.senderName,
     messageType: opts.messageType ?? "chat", content: opts.content,
     actionMetadata: opts.actionMetadata ?? null,
     threadId: opts.threadId ?? null, searchText: opts.content,
-    taskStatus: opts.asTask ? "todo" : null, taskNumber,
+    taskStatus: null, taskNumber: null,
     taskExecutionMode: normalizeTaskExecutionMode(opts.taskExecutionMode) ?? "autopilot",
     dispatchChainId: dispatch.chainId,
     dispatchDepth: dispatch.dispatchDepth,
-  }).returning();
+  } satisfies typeof schema.messages.$inferInsert;
+  const msg = opts.asTask
+    ? createTaskRecord({
+        serverId: opts.serverId,
+        channel: ch!,
+        message: messageValues,
+        parentTaskId: opts.taskParentId,
+      })
+    : (await db.insert(schema.messages).values(messageValues).returning())[0]!;
   await dispatchState.ensureChain({ ...dispatch, rootMessageId: messageId, channelId: opts.channelId });
 
   // auto-follow: reply to thread → sender auto-joins; replying after done clears done and brings thread back to inbox
@@ -471,7 +484,7 @@ export async function createMessage(opts: {
   // Attachments: backfill messageId/channelId onto the attachment uploaded earlier, so it appears in the channel Files list
   let atts: (typeof schema.attachments.$inferSelect)[] = [];
   if (opts.attachmentIds?.length) {
-    await db.update(schema.attachments).set({ messageId: msg!.id, channelId: opts.channelId }).where(inArray(schema.attachments.id, opts.attachmentIds));
+    await db.update(schema.attachments).set({ messageId: msg.id, channelId: opts.channelId }).where(inArray(schema.attachments.id, opts.attachmentIds));
     atts = await db.select().from(schema.attachments).where(inArray(schema.attachments.id, opts.attachmentIds));
   }
 
@@ -490,23 +503,18 @@ export async function createMessage(opts: {
   const mentions = parseMentions(opts.content, members);
   if (mentions.length) {
     await db.insert(schema.messageMentions).values(
-      mentions.map((x) => ({ messageId: msg!.id, mentionType: x.type, mentionId: x.id, mentionName: x.name })),
+      mentions.map((x) => ({ messageId: msg.id, mentionType: x.type, mentionId: x.id, mentionName: x.name })),
     );
   }
   await db.update(schema.channels).set({ lastMessageAt: new Date() }).where(eq(schema.channels.id, opts.channelId));
 
-  // Task creation immediately creates a thread (all tasks have a thread, parentMessageId=task message; created before done)
-  if (opts.asTask) {
-    const th = await getOrCreateThread(opts.serverId, msg!.id);
-    await db.update(schema.messages).set({ threadId: th.id }).where(eq(schema.messages.id, msg!.id));
-    msg!.threadId = th.id;
-  }
+  // Task message + number + owning thread are committed together by createTaskRecord.
   // Human-side realtime
-  await publish(opts.serverId, { type: "message", channelId: opts.channelId, message: { ...serializeMsg(msg!, mentions, atts), channelType: ch?.type ?? null } });
+  await publish(opts.serverId, { type: "message", channelId: opts.channelId, message: { ...serializeMsg(msg, mentions, atts), channelType: ch?.type ?? null } });
   if (opts.asTask) {
-    await publish(opts.serverId, { type: "task", op: "created", task: serializeMsg(msg!, mentions, atts) });
+    await publish(opts.serverId, { type: "task", op: "created", task: serializeMsg(msg, mentions, atts) });
     const actor = (opts.senderType === "user" || opts.senderType === "agent") && opts.senderId ? { type: opts.senderType, id: opts.senderId } : undefined;
-    await sysTaskMsg(opts.serverId, opts.channelId, `${opts.senderName} created task #${taskNumber} "${taskTitle(opts.content)}"`, actor); // audit trail (task system messages)
+    await sysTaskMsg(opts.serverId, opts.channelId, `${opts.senderName} created task #${msg.taskNumber} "${taskTitle(opts.content)}"`, actor); // audit trail (task system messages)
   }
 
   // Agent-side wake: only wake agents @-mentioned (in channel), or agent members in a DM.
@@ -516,7 +524,7 @@ export async function createMessage(opts: {
   const mentionedAgents = new Set(mentions.filter((m) => m.type === "agent").map((m) => m.id));
   // inbox notice uses human-readable target (#name / dm:@sender), not uuid. threads use channel name.
   const targetName = isDm ? `dm:@${opts.senderName}` : `#${ch?.name ?? opts.channelId}`;
-  const msgShort = msg!.id.slice(0, 8);
+  const msgShort = msg.id.slice(0, 8);
   const woken: string[] = [];
   for (const mem of members) {
     if (mem.type !== "agent" || mem.id === opts.senderId) continue;
@@ -530,7 +538,7 @@ export async function createMessage(opts: {
     const reservation = await reserveDispatchWake({
       state: dispatchState,
       dispatch,
-      messageId: msg!.id,
+      messageId: msg.id,
       targetAgentId: mem.id,
       targetAgentName: mem.name,
       fallbackChannelId: opts.channelId,
@@ -543,7 +551,7 @@ export async function createMessage(opts: {
       continue;
     }
     const replyStreamId = agentReplyStreamId(msg!.id, mem.id);
-    await publish(opts.serverId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, triggerMessageId: msg!.id, op: "start" });
+    await publish(opts.serverId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, triggerMessageId: msg.id, op: "start" });
     const startSent = sendAgentStart(opts.serverId, target, mem.id);
     const deliverSent = startSent && sendAgentDeliver(opts.serverId, target, { agentId: mem.id, seq, from: opts.senderName, target: opts.channelId, targetName, msgShort, isTask: !!opts.asTask, message: { content: opts.content }, mentioned, streamId: replyStreamId });
     if (!deliverSent) {
@@ -554,7 +562,7 @@ export async function createMessage(opts: {
     }
     await dispatchState.commitWake(reservation.reservationId, {
       agentId: mem.id,
-      channelId: msg!.threadId ?? opts.channelId,
+      channelId: msg.threadId ?? opts.channelId,
       chainId: dispatch.chainId,
       dispatchDepth: dispatch.dispatchDepth,
     });
@@ -565,7 +573,7 @@ export async function createMessage(opts: {
     mentions: mentions.map((x) => x.name),
     wakeAgents: woken,
   });
-  return msg!;
+  return msg;
 }
 
 /** Target resolution: #name / dm:@name / thread #name:shortid or dm:@name:shortid.
@@ -761,11 +769,22 @@ async function sysTaskMsg(
     dispatchChainId: dispatch?.chainId ?? null,
     dispatchDepth: dispatch?.dispatchDepth ?? null,
   }).returning();
+  await publishTaskSystemMessage(serverId, m!, actor);
+  return m!;
+}
+
+async function publishTaskSystemMessage(
+  serverId: string,
+  message: typeof schema.messages.$inferSelect,
+  actor?: { type: "user" | "agent"; id: string },
+) {
+  const db = dbFor(serverId);
+  const m = message;
+  const channelId = m.channelId;
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, channelId)))[0];
   await db.update(schema.channels).set({ lastMessageAt: new Date() }).where(eq(schema.channels.id, channelId));
   await publish(serverId, { type: "message", channelId, message: { ...serializeMsg(m!, [], []), channelType: ch?.type ?? null } });
   await publishThreadUpdated(serverId, ch, actor?.id ?? null, "system");
-  return m!;
 }
 
 export async function convertMessageToTask(
@@ -774,24 +793,14 @@ export async function convertMessageToTask(
   by?: { type: "user" | "agent"; id: string },
   executionMode: TaskExecutionMode = "autopilot",
 ) {
-  const db = dbFor(serverId);
-  const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, messageId), eq(schema.messages.serverId, serverId))))[0];
-  if (!m) return null;
-  if (m.taskStatus) return m; // already a task, idempotent (fast path)
-  // Atomic claim: only change status when not yet a task (whoever's UPDATE matches taskStatus IS NULL wins);
-  // prevents concurrent double-convert → wasted task numbers + gaps + duplicate task:created events. Loser returns current state.
-  const [claimed] = await db.update(schema.messages).set({ taskStatus: "todo", taskExecutionMode: executionMode, updatedAt: new Date() })
-    .where(and(eq(schema.messages.id, messageId), eq(schema.messages.serverId, serverId), isNull(schema.messages.taskStatus))).returning();
-  if (!claimed) return (await db.select().from(schema.messages).where(eq(schema.messages.id, messageId)))[0] ?? null;
-  // Winner gets a task number scoped to the channel (per-DM for DMs, per-server otherwise) + creates thread (tasks always have a thread)
-  const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, m.channelId)))[0];
-  const taskNumber = await nextTaskNumber(serverId, ch);
-  const th = await getOrCreateThread(serverId, messageId);
-  const [upd] = await db.update(schema.messages).set({ taskNumber, threadId: th.id }).where(eq(schema.messages.id, messageId)).returning();
-  await publish(serverId, { type: "task", op: "created", task: serializeMsg(upd!, await taskMentions(serverId, messageId)) });
+  const result = convertMessageRecord({ serverId, messageId, executionMode });
+  if (!result) return null;
+  if (!result.changed) return result.task;
+  const upd = result.task;
+  await publish(serverId, { type: "task", op: "created", task: serializeMsg(upd, await taskMentions(serverId, messageId)) });
   const an = by ? await actorName(serverId, by.type, by.id) : "Someone";
-  await sysTaskMsg(serverId, upd!.channelId, `${an} converted a message to task #${taskNumber} "${taskTitle(upd!.content)}"`, by);
-  return upd!;
+  await sysTaskMsg(serverId, upd.channelId, `${an} converted a message to task #${upd.taskNumber} "${taskTitle(upd.content)}"`, by);
+  return upd;
 }
 
 /** Claim a task → in_progress + assignee. */
@@ -836,31 +845,21 @@ export async function resolveMessageId(serverId: string, idOrShort: string | und
   return m.id;
 }
 
-export async function claimTask(serverId: string, messageId: string, assigneeType: "user" | "agent", assigneeId: string) {
-  const db = dbFor(serverId);
-  // Atomic claim: conditional UPDATE, succeeds only when the task "has not been claimed by another" (taskAssigneeId is null or already this agent = idempotent).
-  // SQLite serializes writes and re-evaluates this predicate atomically → concurrent claims have one winner; others return 0 rows.
-  // Before the fix this was an unconditional UPDATE: two agents both "succeeded" concurrently and both believed they owned the task → duplicate work.
-  const [upd] = await db.update(schema.messages)
-    .set({ taskStatus: "in_progress", taskAssigneeType: assigneeType, taskAssigneeId: assigneeId, taskClaimedAt: new Date(), updatedAt: new Date() })
-    .where(and(
-      eq(schema.messages.id, messageId),
-      eq(schema.messages.serverId, serverId),
-      isNotNull(schema.messages.taskStatus), // invariant guard: a status mutator only touches an existing task — never promotes a plain message (which would mint a task with no number). Callers convert first.
-      or(isNull(schema.messages.taskAssigneeId), eq(schema.messages.taskAssigneeId, assigneeId)),
-    )).returning();
-  if (!upd) return null; // 0 rows = already claimed by another (or task does not exist) → claim failed, caller should back off
+export async function claimTask(serverId: string, messageId: string, assigneeType: "user" | "agent", assigneeId: string, expectedRevision?: number) {
+  const result = claimTaskRecord({ serverId, messageId, assigneeType, assigneeId, expectedRevision });
+  if (!result) return null;
+  const upd = result.task;
+  if (!result.changed) return upd;
   await emitTaskUpdated(serverId, upd);
   await sysTaskMsg(serverId, upd.channelId, `${await actorName(serverId, assigneeType, assigneeId)} claimed #${upd.taskNumber} "${taskTitle(upd.content)}"`, { type: assigneeType, id: assigneeId });
   return upd;
 }
 
-export async function unclaimTask(serverId: string, messageId: string, by?: { type: "user" | "agent"; id: string }) {
-  const db = dbFor(serverId);
-  const [upd] = await db.update(schema.messages)
-    .set({ taskStatus: "todo", taskAssigneeType: null, taskAssigneeId: null, taskClaimedAt: null, updatedAt: new Date() })
-    .where(and(eq(schema.messages.id, messageId), eq(schema.messages.serverId, serverId), isNotNull(schema.messages.taskStatus))).returning();
-  if (!upd) return null;
+export async function unclaimTask(serverId: string, messageId: string, by?: { type: "user" | "agent"; id: string }, expectedRevision?: number) {
+  const result = unclaimTaskRecord({ serverId, messageId, by, expectedRevision });
+  if (!result) return null;
+  const upd = result.task;
+  if (!result.changed) return upd;
   await emitTaskUpdated(serverId, upd);
   await sysTaskMsg(serverId, upd.channelId, `${by ? await actorName(serverId, by.type, by.id) : "Someone"} released #${upd.taskNumber} "${taskTitle(upd.content)}"`, by);
   return upd;
@@ -871,6 +870,7 @@ export async function assignTask(
   messageId: string,
   assigneeId: string,
   by?: { type: "user" | "agent"; id: string },
+  expectedRevision?: number,
 ) {
   const db = dbFor(serverId);
   const target = (await db.select().from(schema.agents).where(and(
@@ -880,32 +880,10 @@ export async function assignTask(
   )))[0];
   if (!target) return null;
 
-  const cur = (await db.select().from(schema.messages).where(and(
-    eq(schema.messages.id, messageId),
-    eq(schema.messages.serverId, serverId),
-    isNotNull(schema.messages.taskStatus),
-  )))[0];
-  if (!cur) return null;
-
-  const sameAssignee = cur.taskAssigneeType === "agent" && cur.taskAssigneeId === assigneeId;
-  if (sameAssignee) return cur;
-
-  const nextStatus = cur.taskStatus === "todo" ? "in_progress" : cur.taskStatus;
-  const [upd] = await db.update(schema.messages)
-    .set({
-      taskStatus: nextStatus,
-      taskAssigneeType: "agent",
-      taskAssigneeId: assigneeId,
-      taskClaimedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(and(
-      eq(schema.messages.id, messageId),
-      eq(schema.messages.serverId, serverId),
-      isNotNull(schema.messages.taskStatus),
-    ))
-    .returning();
-  if (!upd) return null;
+  const result = assignTaskRecord({ serverId, messageId, assigneeId, by, expectedRevision });
+  if (!result) return null;
+  const upd = result.task;
+  if (!result.changed) return upd;
 
   await emitTaskUpdated(serverId, upd);
   const th = await getOrCreateThread(serverId, upd.id);
@@ -971,12 +949,9 @@ export async function assignTask(
   return upd;
 }
 
-/** Valid task status enum; used by server to reject invalid values with 400. */
-export const TASK_STATUSES = ["todo", "in_progress", "in_review", "done", "closed"] as const;
-
 export async function setTaskExecutionMode(serverId: string, messageId: string, mode: TaskExecutionMode) {
   const db = dbFor(serverId);
-  const [upd] = await db.update(schema.messages).set({ taskExecutionMode: mode, updatedAt: new Date() }).where(and(
+  const [upd] = await db.update(schema.messages).set({ taskExecutionMode: mode, taskRevision: sql`${schema.messages.taskRevision} + 1`, updatedAt: new Date() }).where(and(
     eq(schema.messages.id, messageId),
     eq(schema.messages.serverId, serverId),
     isNotNull(schema.messages.taskStatus),
@@ -987,31 +962,58 @@ export async function setTaskExecutionMode(serverId: string, messageId: string, 
 }
 
 /** Change status (todo|in_progress|in_review|done|closed); done/closed records completedAt; done auto-creates thread. */
-export async function setTaskStatus(serverId: string, messageId: string, status: string, by?: { type: "user" | "agent"; id: string }) {
+export async function setTaskStatus(
+  serverId: string,
+  messageId: string,
+  status: string,
+  by?: { type: "user" | "agent"; id: string },
+  concurrency: { from?: TaskStatus; expectedRevision?: number } = {},
+) {
+  if (!isTaskStatus(status)) throw new TaskOperationError("INVALID_TRANSITION", `invalid task status: ${status}`);
   const db = dbFor(serverId);
-  const finished = status === "done" || status === "closed";
-  // Note: thread is already created at task creation/conversion time (findings §8.1 verified: all tasks have a thread, created before done); no need to create it here
-  const [upd] = await db.update(schema.messages)
-    .set({ taskStatus: status, taskCompletedAt: finished ? new Date() : null, updatedAt: new Date() })
-    .where(and(eq(schema.messages.id, messageId), eq(schema.messages.serverId, serverId), isNotNull(schema.messages.taskStatus))).returning();
-  if (!upd) return null;
-  await emitTaskUpdated(serverId, upd); // task message itself updated (taskStatus) → lands in CHANNEL, updates badge + board in channel (verified: message:updated and task:updated both land in the channel)
-  // "moved" system message for status change → lands in the task's THREAD, not channel (message:new channelId=task.threadId).
-  const actor = by ? await actorName(serverId, by.type, by.id) : "Someone";
-  // Ensure task has a thread (tasks always have a thread; create now for legacy data / not yet created) → moved system message lands in thread
-  const th = await getOrCreateThread(serverId, upd.id);
+  const current = db.select().from(schema.messages).where(and(
+    eq(schema.messages.id, messageId),
+    eq(schema.messages.serverId, serverId),
+    isNotNull(schema.messages.taskStatus),
+  )).get();
+  if (!current) return null;
+  if (current.taskStatus === status) return current;
+  const th = await getOrCreateThread(serverId, current.id);
   const threadCh = th.id;
-  if (!upd.threadId) { await db.update(schema.messages).set({ threadId: threadCh }).where(eq(schema.messages.id, upd.id)); upd.threadId = threadCh; }
+  if (!current.threadId) await db.update(schema.messages).set({ threadId: threadCh }).where(eq(schema.messages.id, current.id));
+  const actor = by ? await actorName(serverId, by.type, by.id) : "Someone";
   const label = STATUS_LABEL[status] ?? status;
   const emoji = STATUS_EMOJI[status] ? STATUS_EMOJI[status] + " " : ""; // confirmed for in_progress/in_review; others pending confirmation, no guessing
-  const action = await prepareTaskActionDispatch(serverId, upd.id, threadCh, by);
-  const sysMsg = await sysTaskMsg(
+  const content = `${emoji}${actor} moved #${current.taskNumber} "${taskTitle(current.content)}" to ${label}`;
+  const action = await prepareTaskActionDispatch(serverId, current.id, threadCh, by);
+  const auditSeq = await nextSeq(serverId);
+  const result = transitionTaskRecord({
     serverId,
-    threadCh,
-    `${emoji}${actor} moved #${upd.taskNumber} "${taskTitle(upd.content)}" to ${label}`,
-    by,
-    { ...action.dispatch, messageId: action.messageId },
-  );
+    messageId,
+    to: status,
+    ...concurrency,
+    audit: {
+      id: action.messageId,
+      seq: auditSeq,
+      serverId,
+      channelId: threadCh,
+      senderType: "system",
+      senderId: by?.id ?? null,
+      senderName: "system",
+      messageType: "system",
+      content,
+      searchText: content,
+      dispatchChainId: action.dispatch.chainId,
+      dispatchDepth: action.dispatch.dispatchDepth,
+    },
+  });
+  if (!result) return null;
+  const upd = result.task;
+  if (!result.changed) return upd;
+  await emitTaskUpdated(serverId, upd); // task message itself updated (taskStatus) → lands in CHANNEL, updates badge + board in channel (verified: message:updated and task:updated both land in the channel)
+  upd.threadId = threadCh;
+  const sysMsg = result.audit!;
+  await publishTaskSystemMessage(serverId, sysMsg, by);
   // Wake the assigned agent (only when changed by someone else). Verified: human changes status → assignee agent fires agent:activity working detail="Message received".
   if (upd.taskAssigneeType === "agent" && upd.taskAssigneeId && by?.id !== upd.taskAssigneeId) {
     await db.insert(schema.channelMembers).values({ channelId: threadCh, memberType: "agent", memberId: upd.taskAssigneeId }).onConflictDoNothing(); // ensure assignee is a thread member, otherwise message check cannot see this system message
@@ -1054,7 +1056,7 @@ export async function setTaskStatus(serverId: string, messageId: string, status:
 export async function deleteTask(serverId: string, messageId: string) {
   const db = dbFor(serverId);
   const [upd] = await db.update(schema.messages)
-    .set({ taskStatus: null, taskNumber: null, taskAssigneeType: null, taskAssigneeId: null, taskClaimedAt: null, taskCompletedAt: null, updatedAt: new Date() })
+    .set({ taskStatus: null, taskNumber: null, taskAssigneeType: null, taskAssigneeId: null, taskClaimedAt: null, taskCompletedAt: null, taskParentId: null, taskRevision: 0, updatedAt: new Date() })
     .where(and(eq(schema.messages.id, messageId), eq(schema.messages.serverId, serverId), isNotNull(schema.messages.taskStatus))).returning();
   if (!upd) return null;
   await publish(serverId, { type: "task", op: "deleted", channelId: upd.channelId, taskId: upd.id });

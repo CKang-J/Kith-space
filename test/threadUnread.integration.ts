@@ -196,6 +196,7 @@ async function main() {
     asTask: true,
   });
   if (!task.threadId) throw new Error("task thread was not created");
+  await setTaskStatus(serverId, task.id, "in_progress", { type: "user", id: viewerId });
   await markThreadRead(task.threadId);
   await setTaskStatus(serverId, task.id, "in_review", { type: "user", id: viewerId });
   {

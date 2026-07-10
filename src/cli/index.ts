@@ -128,39 +128,62 @@ const task = program.command("task").description("tasks");
 task.command("list").requiredOption("--channel <channel>").action(async (opts) => {
   const d = await api("GET", `/agent-api/task/list?channel=${encodeURIComponent(opts.channel)}`);
   if (!d.tasks?.length) return console.log("No tasks.");
-  for (const t of d.tasks) console.log(`  task #${t.number ?? "-"} [${t.status}] ${t.content}  (${String(t.id).slice(0, 8)})`);
+  for (const t of d.tasks) console.log(`  task #${t.number ?? "-"} [${t.status}] rev=${t.revision ?? 0} ${t.content}  (${String(t.id).slice(0, 8)})${t.parentTaskId ? ` parent=${String(t.parentTaskId).slice(0, 8)}` : ""}`);
+});
+task.command("get").description("show a task with its children, thread reports, and deliveries").requiredOption("--message-id <id>").action(async (opts) => {
+  const d = await api("GET", `/agent-api/task/get?messageId=${encodeURIComponent(opts.messageId)}`);
+  console.log(`Task #${d.task?.taskNumber ?? "?"} [${d.task?.taskStatus}] rev=${d.task?.taskRevision ?? 0}: ${d.task?.content ?? ""}`);
+  for (const child of d.children ?? []) console.log(`  child #${child.taskNumber ?? "?"} [${child.taskStatus}] ${child.content} (${String(child.id).slice(0, 8)})`);
+  for (const report of d.reports ?? []) console.log(`  report ${String(report.id).slice(0, 8)} @${report.senderName}: ${report.content}`);
+  for (const delivery of d.deliveries ?? []) console.log(`  delivery ${String(delivery.id).slice(0, 8)}: ${delivery.content}`);
 });
 task.command("claim").description("claim a task (--message-id short/full id, or --channel #ch --number N by task number)")
-  .option("--message-id <id>").option("--channel <ch>", "#name / dm:@name (used with --number)").option("--number <n>", "task number #N")
+  .option("--message-id <id>").option("--channel <ch>", "#name / dm:@name (used with --number)").option("--number <n>", "task number #N").option("--revision <n>", "expected task revision")
   .action(async (opts) => {
-    const body = opts.number != null ? { channel: opts.channel, number: Number(opts.number) } : { messageId: opts.messageId };
+    const body: Record<string, unknown> = opts.number != null ? { channel: opts.channel, number: Number(opts.number) } : { messageId: opts.messageId };
+    if (opts.revision != null) body.expectedRevision = Number(opts.revision);
     const d = await api("POST", "/agent-api/task/claim", body);
-    console.log(`Claimed #${d.number ?? "?"} (${String(d.claimed).slice(0, 8)})`);
+    console.log(`Claimed #${d.number ?? "?"} rev=${d.revision ?? "?"} (${String(d.claimed).slice(0, 8)})`);
     if (d.followUp) console.log(d.followUp); // guidance: report progress in the task thread
   });
 task.command("update").description("update task status (--message-id, or --channel #ch --number N)")
   .option("--message-id <id>").option("--channel <ch>", "#name / dm:@name (used with --number)").option("--number <n>", "task number #N")
+  .option("--from <status>", "expected current status").option("--revision <n>", "expected task revision")
   .requiredOption("--status <status>", "todo|in_progress|in_review|done|closed").action(async (opts) => {
     const body: Record<string, unknown> = { status: opts.status };
     if (opts.number != null) { body.channel = opts.channel; body.number = Number(opts.number); } else body.messageId = opts.messageId;
-    await api("POST", "/agent-api/task/update", body);
-    console.log(`Updated -> ${opts.status}`);
+    if (opts.from) body.from = opts.from;
+    if (opts.revision != null) body.expectedRevision = Number(opts.revision);
+    const d = await api("POST", "/agent-api/task/update", body);
+    console.log(`Updated -> ${opts.status} (rev=${d.revision ?? "?"})`);
   });
 task.command("assign").description("hand off a task to another agent (--message-id, or --channel #ch --number N)")
-  .option("--message-id <id>").option("--channel <ch>", "#name / dm:@name (used with --number)").option("--number <n>", "task number #N")
+  .option("--message-id <id>").option("--channel <ch>", "#name / dm:@name (used with --number)").option("--number <n>", "task number #N").option("--revision <n>", "expected task revision")
   .requiredOption("--to <agent>", "@agent handle").action(async (opts) => {
     const body: Record<string, unknown> = { to: opts.to };
     if (opts.number != null) { body.channel = opts.channel; body.number = Number(opts.number); } else body.messageId = opts.messageId;
+    if (opts.revision != null) body.expectedRevision = Number(opts.revision);
     const d = await api("POST", "/agent-api/task/assign", body);
-    console.log(`Assigned task #${d.number ?? "?"} -> @${d.to}`);
+    console.log(`Assigned task #${d.number ?? "?"} rev=${d.revision ?? "?"} -> @${d.to}`);
     if (d.followUp) console.log(d.followUp);
   });
-const taskCreate = async (opts: { channel: string; title: string; mode?: string }) => {
-  const d = await api("POST", "/agent-api/task/new", { target: opts.channel, title: opts.title, executionMode: opts.mode });
+const taskCreate = async (opts: { channel: string; title: string; mode?: string; parent?: string }) => {
+  const d = await api("POST", "/agent-api/task/new", { target: opts.channel, title: opts.title, executionMode: opts.mode, parentTaskId: opts.parent });
   for (const t of d.tasks ?? []) console.log(`Created task #${t.number ?? "-"} ${String(t.id).slice(0, 8)}: ${t.content}`);
 };
-task.command("new").description("create a new task (delegate work)").requiredOption("--channel <channel>", "#name / dm:@name").requiredOption("--title <title>").option("--mode <mode>", "autopilot|plan-first").action(taskCreate);
-task.command("create").description("create a new task (alias for task new)").requiredOption("--channel <channel>").requiredOption("--title <title>").option("--mode <mode>", "autopilot|plan-first").action(taskCreate);
+task.command("new").description("create a new task (delegate work)").requiredOption("--channel <channel>", "#name / dm:@name").requiredOption("--title <title>").option("--mode <mode>", "autopilot|plan-first").option("--parent <taskId>", "direct parent task id").action(taskCreate);
+task.command("create").description("create a new task (alias for task new)").requiredOption("--channel <channel>").requiredOption("--title <title>").option("--mode <mode>", "autopilot|plan-first").option("--parent <taskId>", "direct parent task id").action(taskCreate);
+task.command("report").description("post a structured report in the task thread").requiredOption("--message-id <id>").requiredOption("--kind <kind>", "progress|blocker|question|result").requiredOption("--content <text>").action(async (opts) => {
+  const d = await api("POST", "/agent-api/task/report", { messageId: opts.messageId, kind: opts.kind, content: opts.content });
+  console.log(`Reported in ${d.threadTarget} (msg ${String(d.reportMessageId).slice(0, 8)})`);
+});
+task.command("deliver").description("publish a linked delivery summary to the task channel and move it to in_review")
+  .requiredOption("--message-id <id>").requiredOption("--revision <n>", "expected task revision").requiredOption("--summary <text>")
+  .option("--children <ids>", "direct child task ids, comma-separated").action(async (opts) => {
+    const childTaskIds = opts.children ? String(opts.children).split(",").map((id: string) => id.trim()).filter(Boolean) : [];
+    const d = await api("POST", "/agent-api/task/delivery", { messageId: opts.messageId, expectedRevision: Number(opts.revision), summary: opts.summary, childTaskIds });
+    console.log(`Delivered (msg ${String(d.deliveryMessageId).slice(0, 8)}, status=${d.status}, rev=${d.revision})`);
+  });
 
 const searchAction = async (opts: { query: string }) => {
   const d = await api("GET", `/agent-api/search?q=${encodeURIComponent(opts.query)}`);
@@ -202,8 +225,8 @@ channel.command("leave").description("leave a channel you have joined").required
   await api("POST", "/agent-api/channel/leave", { target: opts.target });
   console.log(`Left ${opts.target}`);
 });
-task.command("unclaim").description("release your claim on a task").requiredOption("--message-id <id>").action(async (opts) => {
-  const d = await api("POST", "/agent-api/task/unclaim", { messageId: opts.messageId });
+task.command("unclaim").description("release your claim on a task").requiredOption("--message-id <id>").option("--revision <n>", "expected task revision").action(async (opts) => {
+  const d = await api("POST", "/agent-api/task/unclaim", { messageId: opts.messageId, expectedRevision: opts.revision == null ? undefined : Number(opts.revision) });
   console.log(`Unclaimed -> ${d.taskStatus}`);
 });
 attachment.command("view").description("download an attachment to the local workspace (saves to disk — inspect with your own tools: images via visual read, text via cat/Read); text content is also printed inline")
