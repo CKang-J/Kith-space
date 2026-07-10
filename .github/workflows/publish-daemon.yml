@@ -20,20 +20,26 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
+          cache: "pnpm"
 
       - name: Upgrade npm (Trusted Publishing needs npm >= 11.5.1)
         run: npm install -g npm@latest
 
-      - name: Install root deps
-        run: npm ci
+      - name: Install workspace deps
+        run: pnpm install --frozen-lockfile
 
       - name: Build daemon bundle
-        run: npm run pkg:daemon:build
+        run: pnpm run pkg:daemon:build
 
       - name: Publish to npm (OIDC trusted publishing — no token)
         run: npm publish --access public

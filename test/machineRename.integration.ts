@@ -3,7 +3,7 @@
 //   BEFORE: no PATCH route → falls through to 404 → [1] FAILS (RED)
 //   AFTER : owner rename persists (200) [1]; cross-tenant id → 404 [2]; member (no cap) → 403 [3];
 //           empty name → 400 [4]; oversize name → 400 [5]
-// Requires infra up (npm run infra) + worktree .env. Run: npx tsx test/machineRename.integration.ts
+// Requires infra up (pnpm run infra) + worktree .env. Run: pnpm exec tsx test/machineRename.integration.ts
 import "../src/env.js";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";

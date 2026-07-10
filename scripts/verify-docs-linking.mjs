@@ -13,11 +13,11 @@ const docsPage = read("docs-site/src/pages/index.astro");
 const docsVerify = read("docs-site/scripts/verify-onepage.mjs");
 const dockerfile = read("Dockerfile");
 
-if (packageJson.scripts["site:build"] !== "npm run web:build && npm run docs:build") {
+if (packageJson.scripts["site:build"] !== "pnpm run web:build && pnpm run docs:build") {
   fail("package.json must expose one site:build command for web + docs.");
 }
 
-if (packageJson.scripts["docs:build"] !== "npm --prefix docs-site run build") {
+if (packageJson.scripts["docs:build"] !== "pnpm --dir docs-site run build") {
   fail("package.json must expose docs:build.");
 }
 
@@ -33,7 +33,7 @@ if (landing.includes('<a href={GITHUB_URL} target="_blank" rel="noreferrer">Docs
   fail("landing Docs links must not point to GitHub.");
 }
 
-for (const required of ["docs-site/package.json", "docs-site/package-lock.json", "/app/docs-site/dist", "npm run site:build"]) {
+for (const required of ["docs-site/package.json", "pnpm-lock.yaml", "/app/docs-site/dist", "pnpm run site:build"]) {
   if (!dockerfile.includes(required)) fail(`Dockerfile must build and ship docs-site: missing ${required}`);
 }
 

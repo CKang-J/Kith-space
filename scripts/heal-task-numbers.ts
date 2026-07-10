@@ -10,8 +10,8 @@
 // reconciled to each workspace DB maximum first, so a freshly-assigned number never collides with an existing one.
 //
 // Run (reads KITH_SPACE_HOME from the env, like the server):
-//   npx tsx scripts/heal-task-numbers.ts
-//   ENV_FILE=.env.prod npx tsx scripts/heal-task-numbers.ts   # against a prod env file
+//   pnpm exec tsx scripts/heal-task-numbers.ts
+//   ENV_FILE=.env.prod pnpm exec tsx scripts/heal-task-numbers.ts   # against a prod env file
 import { and, asc, eq, isNull, isNotNull } from "drizzle-orm";
 import { allWorkspaceDbs, closeAllDatabases, schema } from "../src/db/index.js";
 import { nextTaskNumber, reconcileCounters } from "../src/counters.js";

@@ -59,7 +59,7 @@ const LANDING_COPY = {
       sub: "An open, self-hostable workspace where people and AI agents collaborate as colleagues — in channels, threads, and DMs. Agents are persistent, keep their own memory, and run on machines you control.",
       explore: "Explore features",
       github: "View on GitHub",
-      note: <>Runs on your hardware — <code>npm run server</code> · <code>npm run daemon</code> · open the workspace.</>,
+      note: <>Runs on your hardware — <code>pnpm run server</code> · <code>pnpm run daemon</code> · open the workspace.</>,
       casesLabel: "Kith-space product cases",
     },
     pillars: {
@@ -141,7 +141,7 @@ const LANDING_COPY = {
       sub: "一个开放、可自托管的工作区：人和 AI agents 像队友一样在频道、thread 和私信里协作。agents 持久存在，保留自己的记忆，并运行在你控制的机器上。",
       explore: "查看功能",
       github: "查看 GitHub",
-      note: <>运行在你的硬件上 — <code>npm run server</code> · <code>npm run daemon</code> · 打开工作区。</>,
+      note: <>运行在你的硬件上 — <code>pnpm run server</code> · <code>pnpm run daemon</code> · 打开工作区。</>,
       casesLabel: "Kith-space 产品案例",
     },
     pillars: {

@@ -7,24 +7,20 @@
 FROM node:22-slim AS build
 WORKDIR /app
 ENV NODE_ENV=development
-# Root deps first (server runs via tsx and applies checked-in SQLite migrations at runtime).
-COPY package.json package-lock.json ./
-RUN npm ci
-# Web/docs deps, then build.
-COPY web/package.json web/package-lock.json ./web/
-RUN npm --prefix web ci
-COPY docs-site/package.json docs-site/package-lock.json ./docs-site/
-RUN npm --prefix docs-site ci
+RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
+# Copy all workspace manifests before the single frozen install.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY web/package.json ./web/
+COPY packages/daemon/package.json ./packages/daemon/
+COPY docs-site/package.json ./docs-site/
+RUN pnpm install --frozen-lockfile
 COPY . .
-RUN npm run site:build
+RUN pnpm run site:build
 
 # ---- runtime stage: source + root node_modules + built client/docs, run with tsx ----
 FROM node:22-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-# The entrypoint's npx invocations print "npm notice: new major version available" to stderr on start,
-# which log collectors (e.g. Railway) surface at error level — noise that pollutes @level:error queries.
-ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/web/dist ./web/dist
 COPY --from=build /app/docs-site/dist ./docs-site/dist

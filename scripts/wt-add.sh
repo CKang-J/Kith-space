@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Create an isolated dev worktree: own branch + ports + local SQLite home + .env, with deps installed and DB seeded.
 # Lets you develop several features in parallel without port/database collisions.
-# Usage: npm run wt:add -- <name>     (e.g. npm run wt:add -- msg-edit)
+# Usage: pnpm run wt:add -- <name>     (e.g. pnpm run wt:add -- msg-edit)
 set -euo pipefail
 NAME="${1:-}"
-[ -z "$NAME" ] && { echo "Usage: npm run wt:add -- <name>  (e.g. msg-edit)"; exit 1; }
+[ -z "$NAME" ] && { echo "Usage: pnpm run wt:add -- <name>  (e.g. msg-edit)"; exit 1; }
 SAFE="${NAME//[^a-zA-Z0-9]/_}"
 WT="../kith-space-$NAME"
 [ -e "$WT" ] && { echo "✗ $WT already exists"; exit 1; }
@@ -36,15 +36,15 @@ ALLOW_DEV_LOGIN=true
 EOF
 
 echo "→ Installing deps + seeding the workspace DB (please wait)…"
-( cd "$WT" && npm install --silent && ( cd web && npm install --silent ) && npm run seed )
+( cd "$WT" && pnpm install --silent && pnpm run seed )
 
 cat <<EOF
 
 ✅ worktree '$NAME' ready (branch feature/$NAME)
    cd $WT
-   npm run server            # backend on $SPORT (reads this .env)
-   npm run daemon            # daemon auto-connects to $SPORT
-   (cd web && npm run dev)   # frontend on $VPORT, proxies → $SPORT
+   pnpm run server            # backend on $SPORT (reads this .env)
+   pnpm run daemon            # daemon auto-connects to $SPORT
+   pnpm --dir web run dev     # frontend on $VPORT, proxies → $SPORT
    open http://localhost:$VPORT
-⚠️ To remove, run from the main repo: npm run wt:rm -- $NAME
+⚠️ To remove, run from the main repo: pnpm run wt:rm -- $NAME
 EOF

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.33.2",
   "description": "Desktop-first, local-first workspace where people collaborate with a team of persistent AI agents across channels, tasks, and memory.",
   "license": "Apache-2.0",
   "author": "fancyboi999",
@@ -33,9 +34,9 @@
     "seed:dev": "tsx src/db/seed-dev.ts",
     "server": "tsx watch src/server/index.ts",
     "start": "tsx src/server/index.ts",
-    "web:build": "npm --prefix web run build",
-    "docs:build": "npm --prefix docs-site run build",
-    "site:build": "npm run web:build && npm run docs:build",
+    "web:build": "pnpm --dir web run build",
+    "docs:build": "pnpm --dir docs-site run build",
+    "site:build": "pnpm run web:build && pnpm run docs:build",
     "stop": "pkill -f 'src/server/index.ts'; pkill -f 'src/daemon/index.ts'; pkill -f 'bin/vite'; true",
     "start:prod": "ENV_FILE=.env.prod tsx src/server/index.ts",
     "daemon:prod": "set -a && . ./.env.prod && set +a && ENV_FILE=.env.prod tsx src/daemon/index.ts --api-key \"$DAEMON_BOOTSTRAP_KEY\"",
@@ -77,10 +78,5 @@
   },
   "optionalDependencies": {
     "@aws-sdk/client-s3": "^3.1078.0"
-  },
-  "overrides": {
-    "@esbuild-kit/core-utils": {
-      "esbuild": "^0.25.0"
-    }
   }
 }

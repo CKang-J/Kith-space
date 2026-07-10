@@ -2,7 +2,7 @@
 # Bring up the kith-space production control plane in the background.
 # Stops ONLY the old server listener (daemons connected to the port are left alive → they just
 # reconnect to the restarted server), rebuilds web/docs, starts the server, then starts the kith-space prod
-# daemon only if one isn't already running. Usage: npm run prod:up
+# daemon only if one isn't already running. Usage: pnpm run prod:up
 set -euo pipefail
 [ -f .env.prod ] || { echo "✗ no .env.prod in $(pwd) — run from the prod checkout"; exit 1; }
 PORT=$(grep -E "^PORT=" .env.prod | head -1 | cut -d= -f2- || true); PORT="${PORT:-7788}"
@@ -13,10 +13,10 @@ lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null || true
 sleep 1
 
 echo "→ building site (web/dist + docs-site/dist are served by the server)…"
-npm run site:build >/dev/null
+pnpm run site:build >/dev/null
 
 echo "→ starting server on :$PORT (background)…"
-nohup npm run start:prod > "$LOGDIR/prod-server.out" 2>&1 &
+nohup pnpm run start:prod > "$LOGDIR/prod-server.out" 2>&1 &
 for i in $(seq 1 40); do curl -sf "http://127.0.0.1:$PORT/health" >/dev/null 2>&1 && break; sleep 1; done
 curl -sf "http://127.0.0.1:$PORT/health" >/dev/null 2>&1 || { echo "✗ server did not become healthy — see $LOGDIR/prod-server.out"; exit 1; }
 echo "  server healthy ✓"
@@ -25,7 +25,7 @@ if pgrep -f "ENV_FILE=.env.prod tsx src/daemon/index.ts" >/dev/null 2>&1; then
   echo "→ kith-space prod daemon already running — it reconnects to the restarted server (no restart needed)."
 else
   echo "→ starting kith-space prod daemon (background)…"
-  nohup npm run daemon:prod > "$LOGDIR/prod-daemon.out" 2>&1 &
+  nohup pnpm run daemon:prod > "$LOGDIR/prod-daemon.out" 2>&1 &
 fi
 
 cat <<EOF

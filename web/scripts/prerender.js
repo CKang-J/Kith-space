@@ -1,7 +1,7 @@
 // Post-build prerender: SSR-renders the landing page (/) and injects the HTML
 // into dist/index.html so crawlers receive body text without executing JS.
 //
-// Run automatically after `vite build` via the npm `build` script.
+// Run automatically after `vite build` via the package `build` script.
 // Uses Vite's SSR build API so CSS imports are stripped without errors.
 import { build } from "vite";
 import react from "@vitejs/plugin-react";

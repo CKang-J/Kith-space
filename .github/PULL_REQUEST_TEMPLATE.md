@@ -27,7 +27,7 @@ For daemon / agent-runtime changes:
   - dev:e2e:up output + browser/curl confirmation
 
 For docs-only changes:
-  - npm run typecheck (must pass) -->
+  - pnpm run typecheck (must pass) -->
 
 ```
 # paste evidence here
@@ -48,8 +48,8 @@ why the corresponding doc was not changed.
 
 ## Verification bar
 
-- [ ] `npm run typecheck` passes
-- [ ] Unit/integration tests pass (`npx tsx --test --test-force-exit test/*.unit.test.ts`)
+- [ ] `pnpm run typecheck` passes
+- [ ] Unit/integration tests pass (`pnpm exec tsx --test --test-force-exit test/*.unit.test.ts`)
 - [ ] Real-run evidence posted above (curl / screenshot / CLI output)
 - [ ] Fail-loud: I've listed below what was **not** verified in this PR
 

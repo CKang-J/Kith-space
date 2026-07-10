@@ -34,7 +34,7 @@ export async function readObject(key: string): Promise<Buffer> {
   return readFile(path.join(LOCAL_DIR, key));
 }
 
-// ── S3-compatible driver (disabled by default; enable by running `npm i @aws-sdk/client-s3` and setting KITH_SPACE_S3_ENDPOINT/BUCKET/KEY/SECRET, optional KITH_SPACE_S3_REGION) ──
+// ── S3-compatible driver (disabled by default; enable by running `pnpm add @aws-sdk/client-s3` and setting KITH_SPACE_S3_ENDPOINT/BUCKET/KEY/SECRET, optional KITH_SPACE_S3_REGION) ──
 export interface S3Config { endpoint: string; region: string; bucket: string; key: string; secret: string }
 
 /** Validate + read S3 env on each call (mirrors paths.ts: honors lazily-loaded env, stays testable). Fail loud on missing config. */
@@ -53,7 +53,7 @@ export function s3Config(): S3Config {
 }
 
 async function s3client(cfg: S3Config): Promise<any> {
-  const mod = await import("@aws-sdk/client-s3" as string).catch(() => { throw new Error("S3 driver requires @aws-sdk/client-s3: npm i @aws-sdk/client-s3"); });
+  const mod = await import("@aws-sdk/client-s3" as string).catch(() => { throw new Error("S3 driver requires @aws-sdk/client-s3: pnpm add @aws-sdk/client-s3"); });
   return new mod.S3Client({
     endpoint: cfg.endpoint, region: cfg.region,
     forcePathStyle: true, // required for MinIO/Garage

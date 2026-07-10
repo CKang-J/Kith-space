@@ -23,7 +23,7 @@ body:
       label: Steps to reproduce
       description: Minimal steps to reliably trigger the bug.
       placeholder: |
-        1. Start the server with `npm run server`
+        1. Start the server with `pnpm run server`
         2. ...
         3. See error
     validations:

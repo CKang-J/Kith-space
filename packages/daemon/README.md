@@ -21,7 +21,7 @@ npx @fancyboi999/kith-space-daemon --server-url https://your-kith-space-server -
 Or install it once and run the binary directly:
 
 ```bash
-npm install -g @fancyboi999/kith-space-daemon
+pnpm add --global @fancyboi999/kith-space-daemon
 kith-space-daemon --server-url https://your-kith-space-server --api-key sk_machine_xxxxxxxx
 ```
 

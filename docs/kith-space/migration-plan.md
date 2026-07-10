@@ -27,13 +27,13 @@
   - 工作区根植文件夹（决策 19）：`servers` 加 `rootPath`；创建向导支持"选文件夹或默认 `~/Kith-space/<名>/`"；agent 配置与记忆落 `<folder>/.kith/`（明文），消息/任务/成员落 `<folder>/.kith/workspace.db`。整个文件夹自包含可移植（拷文件夹=带走含聊天的完整工作区）。
   - `src/redis.ts`（77 行）：核实后，Redis 实际只有一处在用——两个单调 INCR 计数器（`nextSeq` + `nextTaskNumber`）加启动时 `reconcileCounters`。其 pub/sub（`publishEvent`）与 agent wake（`pokeAgent`）导出均无调用点、是死代码：人类端实时已走 socket.io 单实例直发（`realtime.ts` `publish()` → `emitMapped`），agent 唤醒走 daemon WS。因此迁移很小：把两个计数器搬进程内、整体删除 `redis.ts`；`src/server/realtime.ts`（13 行）几乎不动（仅改 `nextSeq` 导入来源）。
   - `docker-compose.yml`、`drizzle.config.ts`、`.env` 相关基础设施配置随之简化。
-- 跑通测试：open-tag 用内置 `node:test` 运行器（`src/**/*.test.ts` 与 `test/**`，无第三方框架依赖）。补一条 `test` npm script 汇总运行，确保迁移后既有单测与集成测全绿。
+- 跑通测试：open-tag 用内置 `node:test` 运行器（`src/**/*.test.ts` 与 `test/**`，无第三方框架依赖）。补一条 `pnpm test` 命令汇总运行，确保迁移后既有单测与集成测全绿。
 
 验证标准：
 
-- 单机 `npm start` + daemon 起得来，Web 能打开，无 Postgres/Redis 依赖。
+- 单机 `pnpm start` + daemon 起得来，Web 能打开，无 Postgres/Redis 依赖。
 - 既有 `node:test` 用例（含 `agentWakePolicy`、`agentStartGuard`、`daemonHub` 等）全部通过。
-- `npm run typecheck`（server + web 双 tsconfig）无错。
+- `pnpm run typecheck`（server + web 双 tsconfig）无错。
 - 冒烟：建空间、发消息、SSE 实时刷新、seq 单调递增均正常。
 
 ### P1　协作闭环 MVP

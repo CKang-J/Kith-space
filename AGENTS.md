@@ -52,8 +52,9 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 ## 开发约定
 
 - 技术栈：TypeScript / Node（server + daemon）、React + Vite（web）、Drizzle ORM。
+- 包管理：**pnpm**（workspace：根 + `web/` + `packages/*`，`pnpm-lock.yaml`）。安装 `pnpm install`。注意 pnpm 的传参约定：脚本参数**直接跟在后面、不加 `--`**——用 `pnpm test --unit` / `pnpm test --integration`，**不要**写 `pnpm test -- --integration`（那样参数不会传到脚本、会跑全量）。（发布 workflow 保留 `npm publish` 以护住 OIDC 免 token 发布。）
 - 数据层：**SQLite**（每工作区一个 `<folder>/.kith/workspace.db` + 中心 registry），非 open-tag 原来的 Postgres+Redis。详见 `architecture-proposal.md §5`。
-- 测试：open-tag 用内置 `node:test`（`src/**/*.test.ts`、`test/**`），改动配套跑测试再提交。
+- 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。跑测试时把 `KITH_SPACE_HOME` 指向临时目录，零 Postgres/Redis 即可全绿（既有 `publicNavContract` 因缺 `docs-site/` 失败，非回归）。改动配套跑测试再提交。
 - 提交：中文提交信息，列要点变更；只在用户明确要求时提交；先分支不直推主干。
 - 安全：v1 单人单机接受外接 runtime 的 `bypassPermissions` + 目录隔离，但这是**追踪中的技术债**——一旦上邮箱/浏览器模块或开启跨设备 web 访问，必须先上认证/沙箱/权限重估（见 `decisions.md` 决策 8/17）。
 

@@ -6,7 +6,7 @@
 //       consistent with this repo's other ownership pre-checks — see docs/authorization.md)
 //   [4] bogus/nonexistent machineId → 404 "machine not found"
 //   [5] valid, same-tenant machineId → 200, agent row persists with that machineId
-// Requires infra up (npm run infra) + worktree .env. Run: npx tsx test/agentCreateRequiresMachine.integration.ts
+// Requires infra up (pnpm run infra) + worktree .env. Run: pnpm exec tsx test/agentCreateRequiresMachine.integration.ts
 import "../src/env.js";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";

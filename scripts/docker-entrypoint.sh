@@ -4,7 +4,7 @@
 set -e
 
 echo "[entrypoint] seeding bootstrap data (idempotent — skips if the workspace already exists)..."
-npx tsx src/db/seed.ts
+./node_modules/.bin/tsx src/db/seed.ts
 
 echo "[entrypoint] starting control plane on :${PORT:-7788} ..."
-exec npx tsx src/server/index.ts
+exec ./node_modules/.bin/tsx src/server/index.ts
