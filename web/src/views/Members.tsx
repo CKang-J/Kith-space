@@ -388,7 +388,7 @@ function ActivityTab({ id, name }: { id: string; name: string }) {
 
 // Agent workspace file tree (GET /api/agents/:id/workspace-files for full tree + /workspace-files/read for file content)
 // .md files: Preview (rendered markdown, default) / Raw (monospace source) toggle. Other files: monospace source only.
-function WorkspaceTab({ id }: { id: string }) {
+export function WorkspaceTab({ id }: { id: string }) {
   const { t } = useTranslation();
   const { api } = useStore();
   const [files, setFiles] = useState<any[]>([]);

@@ -1,18 +1,17 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, Fragment, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, Fragment, type CSSProperties, type ReactNode } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useStore, type Msg, type Att } from "../store.tsx";
 import { fmtDateTime, isSameLocalDay, fmtDateDivider } from "../format";
 import { PAGE_SIZE, appendWithCap, nextScrollState } from "../lib/msgPaging";
-import { groupTraj } from "../trajBuffer";
 import { AGENT_REPLY_PREVIEW_TYPE, AGENT_REPLY_STREAM_TICK_MS, absorbPersistedAgentMessagePreview, applyAgentReplyPreview, dropAgentReplyPreviewsForMessage, hasStreamingAgentReplyPreview, renderKeyForMessage, tickAgentReplyPreviews, type AgentReplyEvent, type AgentReplyPreviewMsg } from "../lib/agentReplyPreview";
 import { MessageContent } from "../messageRender.tsx";
 import { nextThreadMeta } from "../threadUnread";
 import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Link2, Clipboard, Bookmark, CheckSquare, Circle, Play, Eye, Ban, ArrowDown, BellOff, Lock, Globe, Archive, Trash2 } from "lucide-react";
 // Task badge per message row: icon changes with task status; color tokens from DESIGN.md (see .task-pill.st-* styles)
 const TASK_ICON: Record<string, typeof Circle> = { todo: Circle, in_progress: Play, in_review: Eye, done: CheckCircle2, closed: Ban };
-import { IconWrench, IconFile, IconExternalLink, IconDownload } from "../icons.tsx";
+import { IconFile, IconExternalLink, IconDownload } from "../icons.tsx";
 import { Avatar, resolveAvatar } from "../Avatar.tsx";
 import { Lightbox } from "../Lightbox.tsx";
 import { TaskBoard, ynOptions, ST_LABEL } from "../TaskBoard.tsx";
@@ -22,6 +21,7 @@ import { AgentProfile, HumanProfile, CreateAgentModal } from "./Members.tsx";
 import { ChatSidebar, CreateChannelModal, channelCreateErrorMsg } from "./ChatSidebar.tsx";
 import { ConnectComputerWizard } from "./ConnectComputerWizard.tsx";
 import { Composer } from "./Composer.tsx";
+import { LiveTrace } from "./LiveTrace.tsx";
 import { useConfirm, useEscClose } from "../ConfirmModal.tsx";
 import { useToast } from "../toast.tsx";
 
@@ -151,15 +151,12 @@ function ActionCardMsg({ m }: { m: Msg }) {
   );
 }
 
-export function Chat() {
+export function Chat({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation();
-  const { api, channels, dms, unread, agents, humans, traj, slug, me, myRole, capabilities, reload, onEvent, subscribeChannel, openDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, savedIds, saveMsg, unsaveMsg, agentPanelReq, clearAgentPanelReq } = useStore();
+  const { api, channels, dms, unread, agents, humans, slug, me, myRole, capabilities, reload, onEvent, subscribeChannel, openDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, savedIds, saveMsg, unsaveMsg, agentPanelReq, clearAgentPanelReq } = useStore();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
   // A message's sender avatar: look the sender up in the loaded agents/humans lists (carry avatarUrl) — no message-schema change needed.
   const senderAvatar = (m: Msg) => avFor(m.senderType === "agent" ? agents.find((a) => a.id === m.senderId)?.avatarUrl : humans.find((h) => h.userId === m.senderId)?.avatarUrl);
-  // Agent Live Trace panel: group raw streamed fragments into one message-bar-like block per agent/turn
-  // (avatar + running text), instead of one <div> per fragment — see trajBuffer.ts groupTraj.
-  const trajGroups = useMemo(() => groupTraj(traj), [traj]);
   const confirm = useConfirm();
   const [showEdit, setShowEdit] = useState(false);
   const manageServer = myRole === "owner" || myRole === "admin"; // server admins get the full task-status dropdown (matches TaskBoard permission model)
@@ -398,7 +395,7 @@ export function Chat() {
 
   return (
     <>
-      <ChatSidebar />
+      {!embedded && <ChatSidebar />}
       <main className="content-col">
         <div className="head chat-head">
           <h1>{isDm ? "@ " + (cur?.name || "") : cur?.type === "showcase" ? <><Eye size={16} style={{ verticalAlign: "-3px", opacity: 0.7 }} /> {cur?.name || "…"}</> : "# " + (cur?.name || "…")}</h1>
@@ -539,27 +536,7 @@ export function Chat() {
           </aside>
         : thread
         ? <ThreadPanel channelId={thread.channelId} parent={thread.parent} onClose={() => setThread(null)} onOpenProfile={(type, id) => setProfile({ type, id })} />
-        : <aside className="traj-col">
-              <h2>{t("chat.agentLiveTrace")}</h2>
-              {trajGroups.length === 0
-                ? <div className="hint">{t("chat.agentTraceHint")}</div>
-                : trajGroups.map((g, i) => {
-                    const gAgent = agents.find((a) => (a.displayName || a.name) === g.name);
-                    const isTail = i === trajGroups.length - 1;
-                    const isLive = isTail && (gAgent?.activity === "working" || gAgent?.activity === "thinking");
-                    return (
-                      <div className="traj-grp" key={i}>
-                        <span className="traj-av"><Avatar seed={g.name || "agent"} url={avFor(gAgent?.avatarUrl)} size={26} /></span>
-                        <div className="traj-body">
-                          {g.name ? <div className="traj-head">@{g.name}</div> : null}
-                          {g.items.map((it, j) => it.kind === "tool"
-                            ? <div className="traj-tool" key={j}><IconWrench size={12} />{it.text}</div>
-                            : <div className="traj-text" key={j}>{it.text}{isLive && j === g.items.length - 1 ? <span className="traj-cursor" /> : null}</div>)}
-                        </div>
-                      </div>
-                    );
-                  })}
-      </aside>}
+        : !embedded && <aside className="traj-col"><LiveTrace /></aside>}
       <ConnectComputerWizard mode="onboard" />
       {showMembers && cur && <ChannelMembersModal channelId={cur.id} channelName={cur.name} onClose={() => setShowMembers(false)} />}
       {showEdit && cur && <EditChannelModal channel={cur} onClose={() => setShowEdit(false)} onDone={async () => { setShowEdit(false); await reload(); }} onDeleted={() => { setShowEdit(false); reload(); nav(`/s/${slug}/channel`); }} />}

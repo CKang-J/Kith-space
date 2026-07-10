@@ -28,10 +28,15 @@
 .shell-icon-rail button,.shell-icon-rail a{display:inline-flex;width:38px;height:38px;align-items:center;justify-content:center;border:1px solid transparent;border-radius:10px;background:transparent;color:#6f6b63;cursor:pointer;text-decoration:none}
 .shell-icon-rail button:hover,.shell-icon-rail a:hover,.shell-icon-rail button.is-active{border-color:#d5d2cb;background:#fff;color:#282722}
 .shell-icon-rail .shell-icon-rail__brand{margin-bottom:10px;background:#292824;color:#fff;font-family:var(--serif);font-size:18px}
-.shell-icon-rail__group{display:flex;flex-direction:column;gap:7px}
+.shell-icon-rail__group{display:flex;min-height:0;flex-direction:column;gap:7px;overflow-y:auto;scrollbar-width:none}
+.shell-icon-rail__group::-webkit-scrollbar{display:none}
+.shell-icon-rail__group button{position:relative;flex:none}
+.shell-rail-unread{position:absolute;top:-3px;right:-4px;display:inline-flex;min-width:16px;height:16px;align-items:center;justify-content:center;padding:0 4px;border:2px solid #ebeae7;border-radius:999px;background:#4d4a44;color:#fff;font-size:9px;line-height:1}
 .shell-icon-rail__spacer{flex:1}
 .shell-space__workspace{position:relative;display:flex;min-width:0;flex:1}
-.shell-chat-slot{display:flex;min-width:360px;flex:1;flex-direction:column;background:#fff}
+.shell-chat-slot{display:flex;min-width:360px;min-height:0;flex:1;overflow:hidden;background:#fff}
+.shell-chat-slot>main.content-col{min-width:0;height:auto;flex:1}
+.shell-chat-slot>.thread-panel,.shell-chat-slot>.traj-col.profile-mode{width:min(320px,45%);flex:none}
 .shell-chat-slot>header,.shell-right-dock>header{display:flex;height:66px;flex:none;align-items:center;justify-content:space-between;gap:14px;padding:0 20px;border-bottom:1px solid #e5e3de}
 .shell-chat-slot h2,.shell-right-dock h2{font-size:17px}
 .shell-chat-slot__channel{color:#858178;font-size:12px}
@@ -49,7 +54,16 @@
 .shell-right-dock{display:flex;min-width:280px;max-width:640px;flex:none;flex-direction:column;background:#f8f8f6}
 .shell-right-dock__actions{display:flex;gap:6px}
 .shell-right-dock__actions button{width:30px;height:30px;background:transparent}
-.shell-right-dock__content{display:flex;min-height:0;flex:1;align-items:center;justify-content:center;padding:24px}
+.shell-right-dock__content{display:flex;min-height:0;flex:1;align-items:center;justify-content:center;padding:24px;overflow:hidden}
+.shell-right-dock__content--tasks,.shell-right-dock__content--files,.shell-right-dock__content--trace{align-items:stretch;justify-content:stretch;padding:0}
+.shell-right-dock__content>.board-scroll,.shell-promoted-module>.board-scroll{width:100%;min-width:0;padding:16px}
+.shell-live-trace{width:100%;overflow:auto;padding:18px}
+.shell-agent-files{display:flex;width:100%;min-width:0;min-height:0;flex:1;flex-direction:column}
+.shell-agent-files>label{display:flex;flex:none;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #dfddd7;color:#6f6b63;font-size:12px}
+.shell-agent-files select{min-width:0;flex:1;padding:6px 8px;border:1px solid #d8d5ce;border-radius:7px;background:#fff;color:#34322d;font:inherit}
+.shell-agent-files>.ws{flex-direction:column}
+.shell-agent-files .ws-tree{width:auto;max-height:48%;flex:1}
+.shell-agent-files .ws-view{flex:1}
 .shell-module-placeholder strong{margin-top:12px;color:#3b3934;font-size:16px;font-weight:550}
 .shell-module-placeholder>span{margin-top:12px;padding:5px 8px;border:1px solid #dad7d0;border-radius:7px;color:#777269;font-size:12px}
 .shell-dock{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;padding:8px;border-top:1px solid #dfddd7;background:#fff}
@@ -62,10 +76,15 @@
 .shell-promoted-module h1{font-size:18px}
 .shell-promoted-module>header button{display:flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid #d8d5ce;border-radius:9px;background:#fff;color:#565249;cursor:pointer}
 .shell-module-placeholder--promoted{max-width:520px;flex:1;align-self:center;justify-content:center;padding:30px}
+.shell-promoted-module>.shell-agent-files,.shell-promoted-module>.shell-live-trace{flex:1;min-height:0}
 .shell-chat-slot--compact{min-width:0;border-left:1px solid #dedbd5}
-.shell-chat-slot--compact .shell-chat-slot__channel{display:none}
-.shell-chat-slot--compact .shell-chat-slot__body{padding:16px}
-.shell-chat-slot--compact .shell-composer{margin:0 12px 12px;padding-left:10px}
-.shell-chat-slot--compact .shell-composer>div span,.shell-chat-slot--compact .shell-composer button:first-of-type{display:none}
+.shell-chat-slot--compact .chat-head{padding-left:14px;padding-right:14px}
+.shell-chat-slot--compact .chat-head>small,.shell-chat-slot--compact .chat-head>.head-status,.shell-chat-slot--compact .chtabs,.shell-chat-slot--compact .chat-head>.joinbtn{display:none}
+.shell-chat-slot--compact main.content-col>.scroll{padding-left:12px;padding-right:12px}
+.shell-chat-slot--compact .composer{margin-left:12px;margin-right:12px}
+.inbox-embedded{height:auto;min-height:0;background:transparent}
+.inbox-embedded .inbox-list{min-height:0;padding:4px 0 0}
+.inbox-embedded .inbox-row{padding:10px 2px}
+.inbox-embedded .ib-preview{max-width:180px}
 @media(max-width:980px){.shell-bento{grid-template-columns:1fr}.shell-bento__panel{min-height:240px}.shell-overview{padding:22px}.shell-right-dock{max-width:46vw}.shell-space--promoted{grid-template-columns:52px minmax(0,1fr) 250px}.shell-icon-rail{width:52px;flex-basis:52px}}
 @media(prefers-reduced-motion:reduce){.shell-icon-rail button,.shell-dock button{transition:none}}

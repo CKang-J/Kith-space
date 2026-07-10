@@ -7,7 +7,7 @@
 ## 一、现在在哪
 
 - 分支：`feat/p0-foundation`（从 `main`/`master` 切出，尚未合并、尚未推远端）。
-- 阶段：P0–P3 后端已完成并提交；**P4 UI 联调进行中**。第一块“双壳外壳骨架”已在工作树实现、尚未提交，下一块接入真实数据与现有组件。
+- 阶段：P0–P3 后端已完成并提交；**P4 UI 联调进行中**。第一块“双壳外壳骨架”和第二块“现有组件薄适配接线”已在工作树实现、尚未提交，下一块进行 OpenLoaf 方向的视觉重塑。
 - 底座已从 open-tag fork 到根目录，四个参考项目在 `reference/`（只读，勿改）。
 
 ## 二、已完成（按提交，最新在上）
@@ -27,11 +27,11 @@
 
 约 15 个提交。每一波都经 leader 独立验收（非仅采信子代理），验收协议见第四节。
 
-当前工作树（未提交）：P4 第一块双壳骨架。新增独立 `web/src/shell/` 壳态与组件层，包含总览三块占位、空间内三区布局、右栏 dock、拖拽/隐藏与模块提升能力；`web/src/App.tsx` 负责新旧壳分流，现有 `Layout` 与嵌套路由通过 `?legacy=1` 旁路保留。已通过 `pnpm run typecheck` 与 `pnpm --dir web run build`。
+当前工作树（未提交）：P4 前两块。第一块新增独立 `web/src/shell/` 壳态与组件层，包含总览三块、空间内三区布局、右栏 dock、拖拽/隐藏与模块提升能力；第二块按薄适配方案接入现有能力：总览从 `store.servers` 渲染空间并以路由切换空间上下文，当前空间收件箱复用嵌入模式 `Inbox`；IconRail 从 `channels/dms/unread` 渲染会话入口；C 位复用嵌入模式 `Chat`；右栏任务复用空间级 `TaskBoard`，实时轨迹提取为共享 `LiveTrace`，文件项通过最小 Agent 选择器复用导出的 `WorkspaceTab`。日历、画布继续保留 TODO 占位；`web/src/App.tsx` 的新旧壳分流、现有 `Layout` / `activeView` 和 `?legacy=1` 旁路均保留。已通过 `pnpm run typecheck` 与 `pnpm --dir web run build`。
 
 ## 三、接下来怎么推进（顺序 + 依据）
 
-1. **P4 UI 联调（进行中）**：第一块双壳骨架已完成，下一块把现有群聊、任务等真实组件与数据接入对应槽位；第三块再做 OpenLoaf 方向的视觉重塑。继续与用户逐块对齐，不跨块提前实现。
+1. **P4 UI 联调（进行中）**：第一块双壳骨架、第二块真实组件与数据接线已完成；下一块做 OpenLoaf 方向的视觉重塑。继续与用户逐块对齐，不跨块提前实现。
 2. **P5 Electron 桌面壳**：包 daemon+server+web，双击即用；v1 仅 level-one（本机浏览器 localhost）。
 3. **Runtime 契约 v2**（见 `roadmap.md` §2.0，近期高优先但排在 UI 之后）：加 usage/turn-done 回调把 P1 token 护栏升级为真实计量 + 统一 MCP bootstrap 解锁"模块即 MCP 工具"。调研已完成（`notes/_runtime-research/`），建 contract 时照其收敛建议。
 4. **P6 生产力模块**（邮箱/日历/画布，经 MCP）：依赖 Runtime 契约 v2 + 一次安全升级（上不可信内容前必须把 bypassPermissions 换成审批/沙箱，见决策 8/17、roadmap §2.1）。

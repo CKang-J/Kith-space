@@ -2,7 +2,7 @@ import { Minimize2, PanelRightOpen } from "lucide-react";
 import { ChatSlot } from "./ChatSlot.tsx";
 import { DragDivider } from "./DragDivider.tsx";
 import { IconRail } from "./IconRail.tsx";
-import { ModulePlaceholder, getDockModule, RightDock } from "./RightDock.tsx";
+import { DockModuleContent, getDockModule, RightDock } from "./RightDock.tsx";
 import { RIGHT_PANEL_MAX, RIGHT_PANEL_MIN, shellActions, useShellStore } from "./shellStore.ts";
 
 interface SpaceShellProps {
@@ -25,7 +25,7 @@ export function SpaceShell({ legacyHref }: SpaceShellProps) {
             </div>
             <button type="button" onClick={shellActions.restoreModule}><Minimize2 size={17} />恢复三区布局</button>
           </header>
-          <ModulePlaceholder moduleId={promotedModule} promoted />
+          <DockModuleContent moduleId={promotedModule} promoted />
         </section>
         <ChatSlot compact />
       </main>

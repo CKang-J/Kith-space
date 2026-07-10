@@ -70,7 +70,7 @@ function KindGlyph({ type }: { type: string }) {
   return <>{type === "dm" ? "@" : "#"}</>;
 }
 
-export function Inbox() {
+export function Inbox({ embedded = false, onNavigate }: { embedded?: boolean; onNavigate?: () => void }) {
   const { api, slug, markRead, onEvent } = useStore();
   const nav = useNavigate();
   const { t } = useTranslation();
@@ -111,6 +111,7 @@ export function Inbox() {
 
   const open = (it: InboxItem) => {
     if (it.unreadCount > 0) markRead(it.channelId);
+    onNavigate?.();
     // Thread entry → navigate to parent channel and open the thread panel; non-thread unread → jump to first unread message; otherwise navigate to channel
     if (it.kind === "thread" && it.parentChannelId && it.parentMessageId) nav(`/s/${slug}/channel/${it.parentChannelId}?thread=${it.parentMessageId}`);
     else if (it.firstUnreadMessageId) nav(`/s/${slug}/channel/${it.channelId}?msg=${it.firstUnreadMessageId}`);
@@ -118,6 +119,7 @@ export function Inbox() {
   };
   // Jump straight to the @-mention: highlight that message via ?msg=; a thread mention opens the parent thread panel.
   const openMention = (m: MentionItem) => {
+    onNavigate?.();
     if (m.channelType === "thread" && m.parentChannelId && m.parentMessageId) nav(`/s/${slug}/channel/${m.parentChannelId}?thread=${m.parentMessageId}`);
     else nav(`/s/${slug}/channel/${m.channelId}?msg=${m.messageId}`);
   };
@@ -130,7 +132,7 @@ export function Inbox() {
 
   return (
     <>
-      <aside className="sidebar">
+      {!embedded && <aside className="sidebar">
         <div className="sb-scroll">
         <div className="sb-title">{t("misc.inboxTitle")}</div>
         <div className="sec">{t("misc.inboxFilter")}</div>
@@ -140,9 +142,9 @@ export function Inbox() {
           </button>
         ))}
         </div>
-      </aside>
-      <main className="content-col">
-        <div className="head"><h1>{t("misc.inboxTitle")}</h1><small>{loading ? t("misc.inboxLoading") : t("misc.inboxSummary", { count: listCount, filter: curFilterLabel })}</small></div>
+      </aside>}
+      <main className={`content-col${embedded ? " inbox-embedded" : ""}`}>
+        {!embedded && <div className="head"><h1>{t("misc.inboxTitle")}</h1><small>{loading ? t("misc.inboxLoading") : t("misc.inboxSummary", { count: listCount, filter: curFilterLabel })}</small></div>}
         <div className="inbox-list">
           {!loading && isEmpty && (
             <PaneEmpty icon={<IconInbox size={30} />} title={filter === "all" ? t("misc.inboxEmptyAll") : t("misc.inboxEmptyFilter", { filter: curFilterLabel })} />

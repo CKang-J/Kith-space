@@ -1,16 +1,22 @@
 import { ArrowRight, Inbox, ListTodo, Settings2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useStore } from "../store.tsx";
+import { Inbox as InboxView } from "../views/misc.tsx";
 import { shellActions } from "./shellStore.ts";
 
 interface OverviewShellProps {
   legacyHref: string;
 }
 
-const spaces = [
-  { id: "product-space", name: "产品协作空间", note: "多 agent 协作占位" },
-  { id: "personal-space", name: "个人中枢", note: "个人工作流占位" },
-];
-
 export function OverviewShell({ legacyHref }: OverviewShellProps) {
+  const { serverId, servers } = useStore();
+  const navigate = useNavigate();
+  const activeServer = servers.find((server) => server.id === serverId);
+  const enterSpace = (space: (typeof servers)[number]) => {
+    shellActions.enterSpace(space.id);
+    navigate(`/s/${space.slug}/channel`);
+  };
+
   return (
     <main className="shell-overview">
       <header className="shell-overview__header">
@@ -31,14 +37,14 @@ export function OverviewShell({ legacyHref }: OverviewShellProps) {
               <span>我的空间</span>
               <p>选择一个空间进入协作内壳</p>
             </div>
-            <span className="shell-bento__count">2</span>
+            <span className="shell-bento__count">{servers.length}</span>
           </div>
           <div className="shell-space-list">
-            {spaces.map((space) => (
-              <button key={space.id} type="button" onClick={() => shellActions.enterSpace(space.id)}>
+            {servers.map((space) => (
+              <button key={space.id} type="button" onClick={() => enterSpace(space)}>
                 <span>
                   <strong>{space.name}</strong>
-                  <small>{space.note}</small>
+                  <small>{space.slug}</small>
                 </span>
                 <ArrowRight size={17} />
               </button>
@@ -50,15 +56,11 @@ export function OverviewShell({ legacyHref }: OverviewShellProps) {
           <div className="shell-bento__heading">
             <div>
               <span>全局收件箱</span>
-              <p>跨空间消息聚合占位</p>
+              <p>{activeServer ? `${activeServer.name} 的近期消息` : "当前空间的近期消息"}</p>
             </div>
             <Inbox size={19} />
           </div>
-          <ul className="shell-placeholder-list">
-            <li><span>@我的消息</span><small>3 条占位</small></li>
-            <li><span>任务更新</span><small>1 条占位</small></li>
-            <li><span>Agent 汇报</span><small>稍后接入</small></li>
-          </ul>
+          <InboxView embedded onNavigate={() => activeServer && shellActions.enterSpace(activeServer.id)} />
         </section>
 
         <section className="shell-bento__panel">
