@@ -1,6 +1,7 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
 import type { ServerCtx } from "./ctx.js";
 import { and, desc, eq, isNull } from "drizzle-orm";
+import { ROLE_TEMPLATES, resolveRoleDescription } from "../../agents/roleTemplates.js";
 import { dbFor, schema } from "../../db/index.js";
 import { requireCap } from "../capabilities.js";
 import { DESC_TOO_LONG, INVALID_AGENT_NAME, addChannelMembers, descTooLong, invalidAgentName, resetAgent, startAgent, stopAgent, syncAgentProfile } from "../core.js";
@@ -12,6 +13,9 @@ import { readJson, sendErr, sendJson } from "../util.js";
 export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
   const { req, res, url, method, p, userId, serverId } = ctx;
   const db = dbFor(serverId);
+  if (p === "/api/agent-role-templates" && method === "GET") {
+    return (sendJson(res, 200, ROLE_TEMPLATES), true);
+  }
   if (p === "/api/agents" && method === "GET") {
     const machineId = url.searchParams.get("machineId"); // computer page filters by machine
     let agents = await db.select().from(schema.agents).where(and(eq(schema.agents.serverId, serverId), isNull(schema.agents.deletedAt)));
@@ -26,7 +30,10 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
     const b = await readJson(req);
     if (!b.name) return (sendErr(res, 400, "name required"), true);
     if (invalidAgentName(b.name)) return (sendErr(res, 400, INVALID_AGENT_NAME), true);
-    if (descTooLong(b.description)) return (sendErr(res, 400, DESC_TOO_LONG), true);
+    let description: string | null;
+    try { description = resolveRoleDescription(b.description, b.roleTemplate); }
+    catch (error) { return (sendErr(res, 400, (error as Error).message), true); }
+    if (descTooLong(description)) return (sendErr(res, 400, DESC_TOO_LONG), true);
     // A new agent must be created bound to a machine — an unbound (machineId=null) agent can only run via the
     // legacy broadcastToDaemons fallback (any daemon connected to the server may pick it up), which is a
     // one-way door (no rebind API yet, see tech-debt I77) and non-deterministic once >1 machine is connected.
@@ -40,7 +47,7 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
     // race-proof (no SELECT-then-INSERT gap): a duplicate live name inserts no row → friendly 409. Soft-deleted
     // names are excluded by the index predicate, so a deleted agent's name can be reused.
     const [agent] = await db.insert(schema.agents).values({
-      serverId, name: b.name, displayName: b.displayName || b.name, description: b.description ?? null,
+      serverId, name: b.name, displayName: b.displayName || b.name, description,
       model: b.model || null, runtime: b.runtime || "claude", machineId: b.machineId,
       runtimeConfig: { provider: b.provider ?? "default", model: b.model ?? null, reasoningEffort: b.reasoning ?? null, mode: b.fastMode ? "fast" : "default" },
       envVars: b.envVars ?? {}, executionMode: b.fastMode ? "fast" : "auto", creatorType: "user", creatorId: userId,

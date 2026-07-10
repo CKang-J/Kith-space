@@ -6,7 +6,7 @@ import path from "node:path";
 import { AgentManager, type AgentConfig } from "./agentManager.js";
 import type { Runtime, RuntimeCallbacks, StartOpts } from "./runtime.js";
 
-const baseConfig = (agentId: string): AgentConfig => ({
+const baseConfig = (agentId: string, workspaceRoot: string): AgentConfig => ({
   agentId,
   name: "agent",
   displayName: "Agent",
@@ -15,6 +15,7 @@ const baseConfig = (agentId: string): AgentConfig => ({
   model: "default",
   serverUrl: "http://localhost:7777",
   serverId: "server-1",
+  workspaceRoot,
   agentToken: "test-token",
 });
 
@@ -36,7 +37,7 @@ test("deliver received during async start is flushed to runtime session", async 
       deliverDebounceMs: 0,
       runtimeResolver: () => fakeRuntime,
     });
-    const start = mgr.start("agent-1", baseConfig("agent-1"));
+    const start = mgr.start("agent-1", baseConfig("agent-1", path.join(root, "workspace")));
     mgr.deliver("agent-1", "User", "dm:agent-1", true, { targetName: "dm:Agent", msgShort: "m1" });
     await start;
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -72,7 +73,7 @@ test("one-shot runtime start with pending delivery uses wake nudge without a sec
       oneShotDeliverDebounceMs: 0,
       runtimeResolver: () => fakeRuntime,
     });
-    const config = { ...baseConfig("agent-2"), runtime: "one-shot-test", sessionId: "existing-session" };
+    const config = { ...baseConfig("agent-2", path.join(root, "workspace")), runtime: "one-shot-test", sessionId: "existing-session" };
     const start = mgr.start("agent-2", config);
     mgr.deliver("agent-2", "User", "dm:agent-2", true, { targetName: "dm:Agent", msgShort: "m2" });
     await start;
@@ -106,8 +107,8 @@ test("concurrent starts for the same agent are idempotent", async () => {
       runtimeResolver: () => fakeRuntime,
     });
     await Promise.all([
-      mgr.start("agent-2", baseConfig("agent-2")),
-      mgr.start("agent-2", baseConfig("agent-2")),
+      mgr.start("agent-2", baseConfig("agent-2", path.join(root, "workspace"))),
+      mgr.start("agent-2", baseConfig("agent-2", path.join(root, "workspace"))),
     ]);
 
     assert.equal(startCount, 1);

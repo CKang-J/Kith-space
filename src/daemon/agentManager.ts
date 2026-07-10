@@ -4,6 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { buildSystemPrompt, STARTUP_NUDGE, RESUME_NUDGE, ONE_SHOT_WAKE_NUDGE, inboxNotice } from "./prompt.js";
 import { seedMemory, applyProfileToMemory } from "./memory.js";
+import { ensureSharedMemoryLayers, resolveMemoryLayerPaths } from "./memoryLayers.js";
 import { ensureKithSpaceBin } from "./kithSpaceBin.js";
 import { getRuntime } from "./runtimes.js";
 import type { Runtime, RuntimeSession, RuntimeCallbacks } from "./runtime.js";
@@ -19,7 +20,7 @@ const PENDING_DELIVER_TTL_MS = Number(process.env.KITH_SPACE_PENDING_DELIVER_TTL
 export interface AgentConfig {
   name: string; displayName: string; description?: string | null;
   model?: string; runtime?: string; runtimeConfig?: Record<string, unknown> | null; sessionId?: string;
-  serverUrl: string; serverId: string; agentId: string; agentToken?: string; // per-agent token (slice10); re-sent start for a running agent may omit it (daemon ignores)
+  serverUrl: string; serverId: string; workspaceRoot: string; agentId: string; agentToken?: string; // per-agent token (slice10); re-sent start for a running agent may omit it (daemon ignores)
 }
 interface DeliverBuf { count: number; from: string; target: string; targetName: string; firstShort: string; latestShort: string; isTask: boolean; mentioned: boolean; targets: Set<string>; timer: ReturnType<typeof setTimeout>; streamId?: string; }
 export interface DeliverMeta { targetName?: string; msgShort?: string; isTask?: boolean; streamId?: string; }
@@ -155,6 +156,8 @@ export class AgentManager {
 
     const dir = path.join(this.dataDir, agentId);
     await mkdir(path.join(dir, "notes"), { recursive: true });
+    const memory = resolveMemoryLayerPaths(config.workspaceRoot, dir);
+    await ensureSharedMemoryLayers(memory);
     const mem = path.join(dir, "MEMORY.md");
     try { await access(mem); } catch {
       await writeFile(mem, seedMemory(config.displayName || config.name, config.description));
@@ -162,7 +165,7 @@ export class AgentManager {
 
     const systemPrompt = buildSystemPrompt({
       name: config.name, displayName: config.displayName, description: config.description,
-      agentId, serverId: config.serverId, hostname: os.hostname(), os: `${os.platform()} ${os.arch()}`, workspace: dir,
+      agentId, serverId: config.serverId, hostname: os.hostname(), os: `${os.platform()} ${os.arch()}`, workspace: dir, memory,
     });
     const env: NodeJS.ProcessEnv = {
       ...process.env, FORCE_COLOR: "0",

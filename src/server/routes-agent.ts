@@ -1,6 +1,7 @@
 // Agent-side REST: /agent-api/*  (Bearer per-agent token sk_agent_* + x-agent-id; NOT a machine/bootstrap key — see docs/authorization.md §1)
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { and, eq, ne, gt, lt, inArray, asc, desc, like, isNull, isNotNull } from "drizzle-orm";
+import { resolveRoleDescription } from "../agents/roleTemplates.js";
 import { dbFor, schema } from "../db/index.js";
 import { sendJson, sendErr, readJson, bearer, agentIdHeader } from "./util.js";
 import { resolveAgent } from "./auth.js";
@@ -169,9 +170,15 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     if (!String(action.name ?? "").trim()) return (sendErr(res, 400, "action.name required", { code: "BAD_ACTION" }), true);
     const tgt = await resolveTarget(serverId, String(b.target ?? ""), agent.id);
     if (!tgt) return (sendErr(res, 404, "target not found", { code: "TARGET_FAILED" }), true);
-    const norm = ty === "channel:create"
-      ? { type: ty, name: String(action.name).trim().replace(/^#/, ""), description: action.description ?? null, visibility: action.visibility === "private" ? "private" : "public", initialHumans: Array.isArray(action.initialHumans) ? action.initialHumans : [], initialAgents: Array.isArray(action.initialAgents) ? action.initialAgents : [] }
-      : { type: ty, name: String(action.name).trim().replace(/^@/, ""), description: action.description ?? null, requiredComputer: action.requiredComputer ?? null, suggestedComputer: action.suggestedComputer ?? null };
+    let norm;
+    if (ty === "channel:create") {
+      norm = { type: ty, name: String(action.name).trim().replace(/^#/, ""), description: action.description ?? null, visibility: action.visibility === "private" ? "private" : "public", initialHumans: Array.isArray(action.initialHumans) ? action.initialHumans : [], initialAgents: Array.isArray(action.initialAgents) ? action.initialAgents : [] };
+    } else {
+      let description: string | null;
+      try { description = resolveRoleDescription(action.description, action.roleTemplate); }
+      catch (error) { return (sendErr(res, 400, (error as Error).message, { code: "BAD_ACTION" }), true); }
+      norm = { type: ty, name: String(action.name).trim().replace(/^@/, ""), description, roleTemplate: action.roleTemplate ?? "blank", requiredComputer: action.requiredComputer ?? null, suggestedComputer: action.suggestedComputer ?? null };
+    }
     const actionMetadata = { kind: "action-card", state: "prepared", action: norm, executedAt: null, executedByUserId: null, executedByUserName: null, result: null };
     const msg = await createMessage({ serverId, channelId: tgt.channelId, senderType: "agent", senderId: agent.id, senderName: agent.name, content: "", messageType: "action", threadId: tgt.threadId, actionMetadata });
     return (sendJson(res, 200, { ok: true, id: msg.id, seq: msg.seq, target: b.target, action: norm }), true);

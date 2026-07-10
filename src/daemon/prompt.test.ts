@@ -11,6 +11,11 @@ test("system prompt teaches the plan-first confirmation protocol and orchestrati
     hostname: "test-host",
     os: "test-os",
     workspace: "test-workspace",
+    memory: {
+      user: { root: "/memory/user", indexFile: "/memory/user/MEMORY.md", notesDir: "/memory/user/notes" },
+      space: { root: "/memory/space", indexFile: "/memory/space/MEMORY.md", notesDir: "/memory/space/notes" },
+      agent: { root: "/memory/agent", indexFile: "/memory/agent/MEMORY.md", notesDir: "/memory/agent/notes" },
+    },
   });
   assert.match(prompt, /mode=autopilot/);
   assert.match(prompt, /mode=plan-first/);
@@ -19,4 +24,11 @@ test("system prompt teaches the plan-first confirmation protocol and orchestrati
   assert.match(prompt, /do not run `task assign`/);
   assert.match(prompt, /delegated agents to @mention you when reporting/);
   assert.match(prompt, /soft guard/);
+  const user = prompt.indexOf("/memory/user/MEMORY.md");
+  const space = prompt.indexOf("/memory/space/MEMORY.md");
+  const agent = prompt.indexOf("/memory/agent/MEMORY.md");
+  assert.ok(user >= 0 && user < space && space < agent, "memory read guidance is user → space → agent");
+  assert.match(prompt, /one durable topic per file/);
+  assert.match(prompt, /update that layer's `MEMORY\.md` index in the same operation/);
+  assert.match(prompt, /no memory read\/write MCP tool/);
 });

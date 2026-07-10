@@ -5,7 +5,7 @@
 //   [3] cross-tenant machineId (belongs to a different server) → 404 "machine not found" (existence-hiding,
 //       consistent with this repo's other ownership pre-checks — see docs/authorization.md)
 //   [4] bogus/nonexistent machineId → 404 "machine not found"
-//   [5] valid, same-tenant machineId → 200, agent row persists with that machineId
+//   [5] valid, same-tenant machineId → 200, full identity persists and the role template fills description
 // Requires infra up (pnpm run infra) + worktree .env. Run: pnpm exec tsx test/agentCreateRequiresMachine.integration.ts
 import "../src/env.js";
 import { EventEmitter } from "node:events";
@@ -13,6 +13,7 @@ import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { eq } from "drizzle-orm";
 import { integrationDatabase } from "./helpers/workspace.ts";
+import { resolveRoleDescription } from "../src/agents/roleTemplates.ts";
 import { signUser, hashToken, newKey } from "../src/server/auth.ts";
 import { handleApi } from "../src/server/routes-api/index.ts";
 
@@ -112,8 +113,14 @@ async function main() {
   console.log(`     → status=${r4.status} body=${JSON.stringify(r4.body)}`);
   check("404 returned", r4.status === 404);
 
-  console.log("\n[5] valid same-tenant machineId → 200, persisted");
-  const r5 = await apiCall({ method: "POST", path: "/api/agents", token: ownerToken, serverId, body: { name: `a5_${ts}`, machineId: ownMachineId } });
+  console.log("\n[5] valid same-tenant machineId + identity + role template → 200, persisted");
+  const r5 = await apiCall({
+    method: "POST",
+    path: "/api/agents",
+    token: ownerToken,
+    serverId,
+    body: { name: `a5_${ts}`, displayName: "Research Partner", machineId: ownMachineId, runtime: "codex", model: "test-model", roleTemplate: "research" },
+  });
   console.log(`     → status=${r5.status} body=${JSON.stringify(r5.body)}`);
   check("200 returned", r5.status === 200);
   check("response carries the created agent id", !!r5.body?.id);
@@ -121,6 +128,9 @@ async function main() {
     createdAgentIds.push(r5.body.id);
     const row = (await db.select().from(schema.agents).where(eq(schema.agents.id, r5.body.id)))[0];
     check("DB row has machineId set", row?.machineId === ownMachineId, `machineId=${row?.machineId}`);
+    check("DB row preserves display identity", row?.displayName === "Research Partner", `displayName=${row?.displayName}`);
+    check("DB row preserves runtime/model", row?.runtime === "codex" && row?.model === "test-model", `runtime=${row?.runtime} model=${row?.model}`);
+    check("role template fills the responsibility", row?.description === resolveRoleDescription(undefined, "research"));
   }
 
   // Confirm none of the rejected attempts [1]-[4] actually created a row (no name collision leakage either).

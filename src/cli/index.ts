@@ -5,6 +5,7 @@
 import { Command } from "commander";
 import { readFile, writeFile, mkdir, appendFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { ROLE_TEMPLATES } from "../agents/roleTemplates.js";
 import { createLogger } from "../log.js";
 
 const log = createLogger("cli");
@@ -55,6 +56,11 @@ async function recordTurnEvent(event: Record<string, unknown>): Promise<void> {
 
 const program = new Command();
 program.name("kith-space").description("Kith-space agent CLI").version("0.1.0");
+
+const roleTemplate = program.command("role-template").description("optional role starting points for agent:create actions");
+roleTemplate.command("list").description("list role template ids and their editable starting prompts").action(() => {
+  for (const template of ROLE_TEMPLATES) console.log(`${template.id}\t${template.label}${template.description ? `\t${template.description}` : ""}`);
+});
 
 const message = program.command("message").description("message send/receive");
 message.command("check").description("non-blocking check for new messages").action(async () => {
@@ -240,7 +246,8 @@ reminder.command("list").description("list your reminders").action(async () => {
 reminder.command("cancel").description("cancel a reminder").requiredOption("--id <id>").action(async (opts) => { await api("POST", "/agent-api/reminder/cancel", { id: opts.id }); console.log(`Cancelled ${opts.id}`); });
 reminder.command("snooze").description("postpone a reminder").requiredOption("--id <id>").requiredOption("--in <seconds>").action(async (opts) => { await api("POST", "/agent-api/reminder/snooze", { id: opts.id, in: opts.in }); console.log(`Snoozed ${opts.id}`); });
 
-// action prepare: B-mode quick-commit. Agents lack channel:create/agent:create scope; to create a channel/agent they post a "proposal card" that a human clicks to execute under their own identity. Action JSON is read from stdin.
+// action prepare: B-mode quick-commit. agent:create accepts optional roleTemplate; an explicit description wins.
+// Agents still lack channel:create/agent:create scope, so the card needs a human click and executes under the human's identity.
 const action = program.command("action").description("prepare human-in-the-loop action cards (human commit)");
 action.command("prepare").description("prepare an action card (action JSON from stdin; variants: channel:create / agent:create)")
   .requiredOption("--target <ch>", "#channel / dm:@name").action(async (opts) => {

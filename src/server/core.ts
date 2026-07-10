@@ -409,6 +409,8 @@ export async function agentConfig(serverId: string, agentId: string) {
   // mint branch below would re-set `agentTokenHash` on a deleted row, reverting the clear done on delete (C4).
   const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, agentId), isNull(schema.agents.deletedAt))))[0];
   if (!a) return null;
+  const workspace = (await db.select({ rootPath: schema.servers.rootPath }).from(schema.servers).where(eq(schema.servers.id, a.serverId)))[0];
+  if (!workspace) return null;
   // Per-agent independent token (sk_agent_* prefix, slice10):
   // cache hit → reuse; first time → mint + store hash + cache raw; agent already running (cache lost after server restart but agent still running) → do not re-mint or send new token (daemon ignores agent:start for running agents, agent continues using old token, server verifies via DB hash) → zero desync.
   let token = agentRawTokens.get(a.id);
@@ -420,7 +422,7 @@ export async function agentConfig(serverId: string, agentId: string) {
   return {
     name: a.name, displayName: a.displayName, description: a.description,
     model: a.model, runtime: a.runtime, runtimeConfig: a.runtimeConfig, sessionId: a.sessionId ?? undefined,
-    serverUrl: SELF_URL, serverId: a.serverId, agentId: a.id, agentToken: token,
+    serverUrl: SELF_URL, serverId: a.serverId, workspaceRoot: workspace.rootPath, agentId: a.id, agentToken: token,
   };
 }
 
