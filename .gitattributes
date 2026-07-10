@@ -1,0 +1,7 @@
+# Shell scripts MUST use LF — bash (incl. Git Bash on Windows) fails to parse
+# CRLF-terminated scripts ("set: pipefail: invalid option name" etc.).
+# Without this, core.autocrlf can rewrite them to CRLF on checkout and break dev.
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Keep other line endings as-is (Node/TS/JSON/MD tolerate CRLF); only scripts are load-bearing.
