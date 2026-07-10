@@ -5,7 +5,7 @@ import { StoreProvider, useStore } from "./store.tsx";
 import { WorkspaceSkeleton } from "./views/Skeleton.tsx";
 import { ConfirmProvider } from "./ConfirmModal.tsx";
 import { ToastProvider } from "./toast.tsx";
-import { Layout } from "./Layout.tsx";
+import { App } from "./App.tsx";
 import { Chat } from "./views/Chat.tsx";
 import { Showcase } from "./views/Showcase.tsx";
 import { Members } from "./views/Members.tsx";
@@ -56,7 +56,7 @@ function WorkspaceRoute() {
     const pathname = loc.pathname.replace(/^\/s\/[^/]+/, `/s/${slug}`);
     return <Navigate to={`${pathname}${loc.search}${loc.hash}`} replace />;
   }
-  return <Layout />;
+  return <App />;
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
