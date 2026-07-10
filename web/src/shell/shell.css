@@ -31,10 +31,13 @@
 .shell-icon-rail__group{display:flex;min-height:0;flex-direction:column;gap:7px;overflow-y:auto;scrollbar-width:none}
 .shell-icon-rail__group::-webkit-scrollbar{display:none}
 .shell-icon-rail__group button{position:relative;flex:none}
+.shell-icon-rail__tools{display:flex;flex:none;flex-direction:column;gap:7px;padding-top:7px;border-top:1px solid #d8d5cf}
+.shell-icon-rail__tools button{position:relative}
 .shell-rail-unread{position:absolute;top:-3px;right:-4px;display:inline-flex;min-width:16px;height:16px;align-items:center;justify-content:center;padding:0 4px;border:2px solid #ebeae7;border-radius:999px;background:#4d4a44;color:#fff;font-size:9px;line-height:1}
 .shell-icon-rail__spacer{flex:1}
 .shell-space__workspace{position:relative;display:flex;min-width:0;flex:1}
 .shell-chat-slot{display:flex;min-width:360px;min-height:0;flex:1;overflow:hidden;background:#fff}
+.shell-chat-slot>.sidebar{width:var(--sb-w,248px);flex:0 0 var(--sb-w,248px)}
 .shell-chat-slot>main.content-col{min-width:0;height:auto;flex:1}
 .shell-chat-slot>.thread-panel,.shell-chat-slot>.traj-col.profile-mode{width:min(320px,45%);flex:none}
 .shell-chat-slot>header,.shell-right-dock>header{display:flex;height:66px;flex:none;align-items:center;justify-content:space-between;gap:14px;padding:0 20px;border-bottom:1px solid #e5e3de}

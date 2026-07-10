@@ -10,7 +10,8 @@ interface SpaceShellProps {
 }
 
 export function SpaceShell({ legacyHref }: SpaceShellProps) {
-  const { currentSpaceId, rightPanelWidth, isRightPanelHidden, promotedModule } = useShellStore();
+  const { currentSpaceId, middleView, rightPanelWidth, isRightPanelHidden, promotedModule } = useShellStore();
+  const isRightPanelSuppressed = middleView !== "chat";
 
   if (promotedModule) {
     const module = getDockModule(promotedModule);
@@ -37,7 +38,7 @@ export function SpaceShell({ legacyHref }: SpaceShellProps) {
       <IconRail legacyHref={legacyHref} />
       <div className="shell-space__workspace">
         <ChatSlot />
-        {!isRightPanelHidden && (
+        {!isRightPanelSuppressed && !isRightPanelHidden && (
           <>
             <DragDivider
               value={rightPanelWidth}
@@ -48,7 +49,7 @@ export function SpaceShell({ legacyHref }: SpaceShellProps) {
             <RightDock width={rightPanelWidth} />
           </>
         )}
-        {isRightPanelHidden && (
+        {!isRightPanelSuppressed && isRightPanelHidden && (
           <button className="shell-show-right" type="button" onClick={() => shellActions.setRightPanelHidden(false)}>
             <PanelRightOpen size={17} />显示右栏
           </button>

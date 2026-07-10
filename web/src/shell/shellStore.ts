@@ -1,11 +1,13 @@
 import { useSyncExternalStore } from "react";
 
 export type ShellView = "overview" | "space";
+export type MiddleView = "chat" | "members" | "machines" | "inbox" | "search";
 export type DockModule = "tasks" | "calendar" | "files" | "trace" | "canvas";
 
 export interface ShellState {
   view: ShellView;
   currentSpaceId: string | null;
+  middleView: MiddleView;
   rightPanelWidth: number;
   isRightPanelHidden: boolean;
   activeDockModule: DockModule;
@@ -26,6 +28,7 @@ const defaultRightPanelWidth = () => {
 let state: ShellState = {
   view: "overview",
   currentSpaceId: null,
+  middleView: "chat",
   rightPanelWidth: defaultRightPanelWidth(),
   isRightPanelHidden: false,
   activeDockModule: "tasks",
@@ -45,8 +48,12 @@ const subscribe = (listener: () => void) => {
 };
 
 export const shellActions = {
-  enterSpace: (spaceId: string) => update({ view: "space", currentSpaceId: spaceId }),
-  returnToOverview: () => update({ view: "overview", currentSpaceId: null, promotedModule: null }),
+  enterSpace: (spaceId: string) => update({ view: "space", currentSpaceId: spaceId, middleView: "chat" }),
+  returnToOverview: () => update({ view: "overview", currentSpaceId: null, middleView: "chat", promotedModule: null }),
+  setMiddleView: (middleView: MiddleView) => {
+    if (state.middleView === middleView && state.promotedModule === null) return;
+    update({ middleView, promotedModule: null });
+  },
   setRightPanelWidth: (width: number) => update({ rightPanelWidth: clampRightPanelWidth(width) }),
   setRightPanelHidden: (hidden: boolean) => update({ isRightPanelHidden: hidden }),
   setActiveDockModule: (activeDockModule: DockModule) => update({ activeDockModule }),
