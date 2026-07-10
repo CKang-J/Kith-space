@@ -1,0 +1,3820 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kith-space · 单窗口工作区流程线框图</title>
+<style>
+  :root {
+    --ink: #33373d;        /* 主文字：近黑但偏柔 */
+    --line: #b7bcc2;        /* 图标/中性线条 */
+    --line-soft: #ededf0;   /* 分割线：极浅 */
+    --hairline: #e6e7ea;    /* 卡片发丝边 */
+    --fill: #f6f7f8;        /* 浅填充（图标底、输入框） */
+    --fill-2: #eef0f2;      /* 次级填充（己方气泡） */
+    --bg: #f3f4f6;          /* 页面背景：干净冷白灰 */
+    --muted: #9aa0a6;       /* 次要文字 */
+    --white: #ffffff;
+
+    /* 标注操作层专用（仅用于工具栏/图钉/弹窗这套覆盖 UI，不参与线框本身） */
+    --anno-danger: #e2553d;        /* 删除/危险态：低饱和砖红 */
+    --anno-danger-soft: #fbeae6;   /* 危险态浅底 */
+    --anno-shadow: 0 1px 2px rgba(33,37,41,0.04), 0 8px 24px rgba(33,37,41,0.08), 0 24px 48px rgba(33,37,41,0.06);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "PingFang SC", "Helvetica Neue", "Microsoft YaHei", system-ui, sans-serif;
+    background:
+      radial-gradient(circle at 50% 0%, #ffffff 0%, var(--bg) 60%);
+    background-attachment: fixed;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    padding: 0;
+  }
+
+  /* 缩放舞台：包住 .canvas，负责居中 + 撑出滚动尺寸。
+     其 width/height 由 JS 设为「画布原始尺寸 × 缩放比」，body 滚动条据此跟随缩放后的视觉大小。 */
+  .zoom-stage {
+    margin: 0 auto;
+    position: relative;
+  }
+
+  /* 画布容器：宽度由内容决定。绝对定位脱离文档流，尺寸不再污染 .zoom-stage；
+     transform-origin 左上角，缩放从 (0,0) 发生，便于光标定位缩放的数学计算。 */
+  .canvas {
+    width: max-content;
+    padding: 40px 48px 90px;
+    position: absolute;   /* 作为页面间连线 overlay(.link-overlay) 的定位上下文；并脱流交给 .zoom-stage 量尺寸 */
+    top: 0; left: 0;
+    transform-origin: 0 0;
+  }
+
+  .page-header {
+    margin: 0 0 56px;
+    text-align: center;
+  }
+  .page-header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .page-header p {
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 0.3px;
+  }
+  /* 可编辑标题：保持上下块级结构；高亮背景仅包裹文字（fit-content + 居中） */
+  .page-header [contenteditable] {
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    margin-left: auto; margin-right: auto;
+    border-radius: 6px;
+    padding: 2px 8px;
+    cursor: text;
+    transition: background .15s, box-shadow .15s;
+    outline: none;
+  }
+  /* 副标题与标题间距保留（h1 自带 margin-top:14px 在 p 上） */
+  .page-header [contenteditable]:hover { background: rgba(0,0,0,0.035); }
+  .page-header [contenteditable]:focus {
+    background: var(--white);
+    box-shadow: 0 0 0 1.5px var(--ink);
+  }
+  /* 内容为空时显示占位提示，避免编辑框塌缩成看不见 */
+  .page-header [contenteditable]:empty::before {
+    content: attr(data-placeholder);
+    color: var(--line);
+  }
+
+  /* ===== 网格流程：页面卡片按「行,列」坐标摆放 =====
+     —— 用 CSS Grid 取代旧的 flex 横排。每个 .stage 用 data-cell="行,列" 声明位置
+        （JS 启动时转成 grid-row/grid-column）。新增页面只占一个空格子、其它页纹丝不动，
+        从根上解决「加一页就整行重排」的错乱。所有页面间连线由 JS(drawLinks) 按真实坐标绘制。 */
+  .flow {
+    display: grid;
+    grid-auto-flow: row;
+    grid-auto-columns: 375px;       /* 列宽 = 页面宽，固定 */
+    grid-auto-rows: max-content;    /* 行高由该行最高页决定，参差自然、不拉伸不裁切 */
+    column-gap: 180px;              /* 列间距：留足让连线比其上的说明文字更长，避免文字盖满整条线 */
+    row-gap: 132px;                 /* 行间距：给绕行折线离开页面后更宽的走线通道（配合布线器 MARGIN） */
+    justify-content: start;
+    align-items: start;             /* 同行各页顶端对齐，沿用旧观感 */
+    position: relative;             /* 作为连线 overlay 的定位上下文 */
+  }
+
+  .stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .stage-label {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 1.5px;
+    font-weight: 500;
+  }
+
+  /* ===== 页面间连线（统一「边」模型）=====
+     声明式的一条边：给两端页面 .screen 加 id，再放一个
+       <div class="link" data-from="源id" data-to="目标id" data-tag="说明"
+            data-side="auto|right|left|top|bottom" data-dash="1"></div>
+     由 JS(drawLinks) 画进 .canvas 级 SVG overlay：
+       · 同行相邻两页 → 一条水平直箭头（保留主流程清爽横排观感）；
+       · 其余（跨行/跨列/汇聚/返回）→ 障碍物正交布线器自动绕开页面找最短折线。
+     旧的 .xlink 作为别名保留，确保历史文件不炸。 */
+  .link, .xlink { display: none; }   /* 占位声明，本身不渲染 */
+  .link-overlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    overflow: visible;
+    z-index: 3;               /* 浮在页面之上、低于标注图钉(50) */
+  }
+  .link-overlay path { stroke: var(--line); stroke-width: 1; fill: none; }
+  /* 虚线变体：用 data-dash 触发，区分“次要/跨区/返回”类跳转 */
+  .link-overlay path.dashed { stroke-dasharray: 4 4; }
+  .link-tag {
+    position: absolute;
+    font-size: 11px;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+    color: var(--muted);
+    background: var(--bg);    /* 给文字垫一层页面底色，压住其下穿过的连线，保证可读 */
+    padding: 0 4px;
+    pointer-events: none;
+    z-index: 4;
+    transform: translate(-50%, -50%);   /* 锚到折线中点 */
+  }
+
+  /* ===== 简洁页面卡片（无手机壳 / 无状态栏） ===== */
+  /* 采用 iOS 标准逻辑宽度 375pt，比例对齐 iPhone（375×812）。
+     高度用 min-height：内容少时维持标准 812 高，内容多时整页向下延长、完整展示（原型无需半遮挡滚动） */
+  .screen {
+    width: 375px;
+    min-height: 812px;
+    background: var(--white);
+    border: 1px solid var(--hairline);
+    border-radius: 30px;
+    overflow: hidden;        /* 仅护住圆角；高度由 min-height 决定，内容多时整体长高、不裁切 */
+    position: relative;      /* 浮层(.sheet-mask)与标注图钉的定位上下文 */
+    display: flex;
+    flex-direction: column;
+    box-shadow:
+      0 1px 2px rgba(33, 37, 41, 0.04),
+      0 8px 24px rgba(33, 37, 41, 0.06),
+      0 24px 48px rgba(33, 37, 41, 0.05);
+  }
+
+  /* 顶部导航：标题 Headline 17pt */
+  .navbar {
+    height: 56px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--line-soft);
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  .navbar .nav-btn {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink);
+    background: transparent;
+  }
+  .navbar .nav-btn.ghost { border: none; background: none; }
+  .navbar .title { flex: 1; text-align: center; }
+
+  .body { flex: 1; }
+
+  /* ===== 通用 list 项 ===== */
+  .list-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .list-item:last-child { border-bottom: none; }
+  .list-item .ic {
+    width: 44px; height: 44px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    background: var(--fill);
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .list-item .txt { flex: 1; min-width: 0; }
+  .list-item .txt .t1 { font-size: 17px; font-weight: 600; color: var(--ink); letter-spacing: 0.2px; line-height: 1.3; }
+  .list-item .txt .t2 { font-size: 15px; color: var(--muted); margin-top: 3px; line-height: 1.35; }
+  .list-item .chev { color: var(--line); display: flex; flex-shrink: 0; }
+
+  .section-cap {
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    padding: 22px 20px 10px;
+  }
+
+  /* ===== 对话页 ===== */
+  .chat-hero {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 28px 0 24px;
+    border-bottom: 1px solid var(--line-soft);
+    background: var(--white);
+  }
+  .chat-hero .avatar {
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    background: var(--fill);
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .chat-hero .name { font-size: 17px; font-weight: 600; letter-spacing: 0.2px; }
+  .chat-hero .sub { font-size: 13px; color: var(--muted); }
+
+  /* 位置权限提示条 */
+  .perm-tip {
+    flex-shrink: 0;
+    margin: 16px 16px 4px;
+    border-radius: 14px;
+    background: var(--fill);
+    padding: 13px 15px;
+    display: flex;
+    align-items: center;
+    gap: 13px;
+  }
+  .perm-tip .pic {
+    width: 36px; height: 36px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--white);
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .perm-tip .ptxt { flex: 1; min-width: 0; }
+  .perm-tip .ptxt .pt1 { font-size: 15px; font-weight: 600; color: var(--ink); }
+  .perm-tip .ptxt .pt2 { font-size: 13px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+  .perm-tip .pbtn {
+    flex-shrink: 0;
+    font-size: 14px;
+    color: var(--white);
+    background: var(--ink);
+    border-radius: 16px;
+    padding: 7px 15px;
+  }
+
+  .chat-stream {
+    flex: 1;
+    padding: 18px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .bubble {
+    max-width: 78%;
+    font-size: 17px;
+    line-height: 1.45;
+    padding: 11px 15px;
+    border-radius: 20px;
+  }
+  .bubble.in {
+    align-self: flex-start;
+    background: var(--fill);
+    color: var(--ink);
+    border-bottom-left-radius: 5px;
+  }
+  .bubble.out {
+    align-self: flex-end;
+    background: var(--ink);
+    color: var(--white);
+    border-bottom-right-radius: 5px;
+  }
+  .bubble.out .who { color: rgba(255,255,255,0.55); }
+  .bubble .who {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .chat-input {
+    flex-shrink: 0;
+    height: 60px;
+    border-top: 1px solid var(--line-soft);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 14px;
+  }
+  .chat-input .field {
+    flex: 1;
+    height: 40px;
+    border-radius: 20px;
+    background: var(--fill);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    font-size: 15px;
+    color: var(--muted);
+  }
+  .chat-input .send {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: var(--white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .chat-input .send [data-lucide] { color: var(--white); }
+
+  /* ===== 设置项（开关 / 危险项，仅静态展示） ===== */
+  .switch {
+    width: 51px; height: 31px;
+    border-radius: 16px;
+    background: var(--line-soft);
+    position: relative;
+    flex-shrink: 0;
+    transition: background .2s;
+  }
+  .switch .knob {
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 27px; height: 27px;
+    border-radius: 50%;
+    background: var(--white);
+    box-shadow: 0 1px 3px rgba(33,37,41,0.2);
+    transition: left .2s;
+  }
+  .switch.on { background: var(--ink); }
+  .switch.on .knob { left: 22px; }
+
+  /* ===== 统计页 ===== */
+  .stat-scroll { flex: 1; }
+
+  /* 顶部数字摘要 */
+  .stat-summary {
+    display: flex;
+    padding: 24px 12px 20px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .stat-summary .stat {
+    flex: 1;
+    text-align: center;
+    position: relative;
+  }
+  .stat-summary .stat + .stat::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 50%;
+    transform: translateY(-50%);
+    width: 1px; height: 30px;
+    background: var(--line-soft);
+  }
+  .stat-summary .stat .num {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: 0.5px;
+    line-height: 1;
+  }
+  .stat-summary .stat .num small {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    margin-left: 2px;
+  }
+  .stat-summary .stat .lbl {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 7px;
+    letter-spacing: 0.3px;
+  }
+
+  /* 探索进度 */
+  .stat-progress { padding: 20px 20px 6px; }
+  .stat-progress .pg-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 11px;
+  }
+  .stat-progress .pg-head .pg-title { font-size: 15px; font-weight: 600; color: var(--ink); }
+  .stat-progress .pg-head .pg-meta { font-size: 13px; color: var(--muted); }
+  .stat-progress .pg-track {
+    height: 10px;
+    border-radius: 5px;
+    background: var(--fill);
+    overflow: hidden;
+  }
+  .stat-progress .pg-fill {
+    height: 100%;
+    border-radius: 5px;
+    background: var(--ink);
+  }
+
+  /* 柱状图 */
+  .chart-block { padding: 22px 20px 18px; }
+  .chart-block .ch-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 18px;
+  }
+  .bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    height: 200px;
+  }
+  .bar-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+  }
+  .bar-col .bar-track {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 7px;
+  }
+  .bar-col .bar-cap { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .bar-col .bar {
+    width: 70%;
+    max-width: 30px;
+    border-radius: 7px 7px 0 0;
+    background: var(--fill-2);
+  }
+  .bar-col.hot .bar { background: var(--ink); }
+  .bar-col .bar-lbl {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 9px;
+    letter-spacing: 0.2px;
+  }
+
+  /* ============================================================
+     扩展组件库（新增——只复用上面已有的 9 个颜色变量与 HIG 字号档，
+     绝不改动任何锁定值。覆盖主流 App 的高频形态：Tab Bar / 卡片 /
+     搜索栏 / 宫格 / 横滑 / 商品卡 / Feed / 表单 / 时间线 / 空状态 等）
+     ============================================================ */
+
+  /* ===== A. 框架 chrome ===== */
+
+  /* A1. 底部 Tab Bar：贴 .screen 底部，4–5 个 .tab，.active 用墨色 */
+  .tabbar {
+    flex-shrink: 0;
+    display: flex;
+    border-top: 1px solid var(--line-soft);
+    background: var(--white);
+    padding: 8px 6px 10px;
+  }
+  .tabbar .tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    color: var(--muted);
+  }
+  .tabbar .tab .tlabel { font-size: 11px; letter-spacing: 0.2px; }
+  .tabbar .tab [data-lucide] { width: 24px; height: 24px; color: var(--muted); }
+  .tabbar .tab.active { color: var(--ink); }
+  .tabbar .tab.active [data-lucide] { color: var(--ink); }
+
+  /* A2. 搜索栏：圆角浅底 + 左侧放大镜 + 占位文字 */
+  .searchbar {
+    margin: 12px 16px;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--fill);
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 14px;
+  }
+  .searchbar [data-lucide] { width: 18px; height: 18px; color: var(--muted); flex-shrink: 0; }
+  .searchbar .sph { font-size: 15px; color: var(--muted); }
+
+  /* A3. 分段控制器（iOS segmented control） */
+  .segment {
+    margin: 12px 16px;
+    display: flex;
+    background: var(--fill);
+    border-radius: 10px;
+    padding: 3px;
+    gap: 3px;
+  }
+  .segment .seg {
+    flex: 1;
+    text-align: center;
+    font-size: 14px;
+    color: var(--muted);
+    padding: 7px 0;
+    border-radius: 8px;
+  }
+  .segment .seg.active {
+    background: var(--white);
+    color: var(--ink);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(33,37,41,0.1);
+  }
+
+  /* A4. 底部 CTA 操作栏：贴底、一到两个大按钮 */
+  .cta-bar {
+    flex-shrink: 0;
+    border-top: 1px solid var(--line-soft);
+    background: var(--white);
+    padding: 12px 16px 16px;
+    display: flex;
+    align-items: center;   /* 横排时按钮等高居中，避免被拉伸变形 */
+    gap: 10px;
+  }
+  /* A4-1. 纵向 CTA：按钮各占一行、上下堆叠（两个并排会太挤、或主次分明时用）。
+     列方向 + stretch 让每个 .btn 通栏等宽；.btn 的 min-height 保证不被压矮。 */
+  .cta-bar.stack {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  /* A4-2. 辅助小字：放在按钮上方或下方的一行弱化说明 / 次要文字链接，整组仍纵向协调。
+     用在「一个主按钮 + 一行小字」这种底部结构里，小字不抢视觉、与按钮间距匀称。 */
+  .cta-hint {
+    flex-shrink: 0;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--muted);
+    letter-spacing: 0.2px;
+  }
+  .cta-hint .link { color: var(--ink); font-weight: 600; }   /* 小字里的可点文字（如「去登录」） */
+
+  /* ===== 通用按钮（CTA / 卡片内 / 表单皆可用） ===== */
+  /* min-height + flex-shrink:0：按钮高度恒为 48，绝不被父级 flex 压扁。
+     （关键：放进纵向 flex 容器时，单写 height 会被当作可收缩的 flex-basis 压矮——
+      故必须用 min-height 兜底，这是「底部按钮被压成矮条」的根治。） */
+  .btn {
+    flex: 1;
+    height: 48px;
+    min-height: 48px;
+    flex-shrink: 0;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  .btn [data-lucide] { width: 18px; height: 18px; }
+  .btn.primary { background: var(--ink); color: var(--white); }
+  .btn.primary [data-lucide] { color: var(--white); }
+  .btn.ghost { background: var(--fill); color: var(--ink); }
+  .btn.outline { background: var(--white); color: var(--ink); border: 1px solid var(--hairline); }
+  /* 小尺寸按钮（卡片内 / 行内用） */
+  .btn.sm { height: 36px; min-height: 36px; border-radius: 10px; font-size: 14px; flex: 0 0 auto; padding: 0 16px; }
+
+  /* ===== B. 内容容器 ===== */
+
+  /* B1. 通用卡片 */
+  .card {
+    margin: 12px 16px;
+    background: var(--white);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .card .card-hd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .card .card-hd .ct { font-size: 15px; font-weight: 600; color: var(--ink); }
+  .card .card-hd .cmore { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 2px; }
+  .card .card-hd .cmore [data-lucide] { width: 15px; height: 15px; color: var(--line); }
+  .card .card-bd { padding: 14px 16px; }
+  /* 卡片内若直接放 .list-item，去掉左右额外内距让分隔线通栏 */
+  .card .list-item { padding-left: 16px; padding-right: 16px; }
+
+  /* B2. 功能宫格（九宫格入口） */
+  .grid {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 8px 8px 4px;
+  }
+  .grid .grid-item {
+    width: 25%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 4px;
+  }
+  .grid .grid-item .gic {
+    width: 48px; height: 48px;
+    border-radius: 14px;
+    background: var(--fill);
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .grid .grid-item .gic [data-lucide] { width: 24px; height: 24px; }
+  .grid .grid-item .glabel { font-size: 12px; color: var(--ink); letter-spacing: 0.2px; text-align: center; }
+
+  /* B3. 横向滚动卡片 */
+  .hscroll {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding: 4px 16px 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .hscroll .hcard {
+    flex: 0 0 auto;
+    width: 140px;
+  }
+  .hscroll .hcard .htitle { font-size: 15px; font-weight: 600; color: var(--ink); margin-top: 8px; line-height: 1.3; }
+  .hscroll .hcard .hsub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  /* B4. Banner / 轮播占位 */
+  .banner {
+    margin: 12px 16px;
+    height: 140px;
+    border-radius: 14px;
+    background: var(--fill);
+    color: var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .banner [data-lucide] { width: 32px; height: 32px; color: var(--line); }
+  .banner .dots {
+    position: absolute;
+    bottom: 12px; left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+  }
+  .banner .dots i {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--line);
+    display: block;
+  }
+  .banner .dots i.on { background: var(--ink); width: 16px; border-radius: 3px; }
+
+  /* ===== C. 媒体 / 列表变体 ===== */
+
+  /* C0. 通用缩略图占位（卡片 / 媒体 / 商品复用） */
+  .thumb {
+    background: var(--fill);
+    color: var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .thumb [data-lucide] { width: 24px; height: 24px; color: var(--line); }
+
+  /* C1. 媒体列表项：左缩略图 + 右文案 */
+  .media-item {
+    display: flex;
+    gap: 13px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .media-item:last-child { border-bottom: none; }
+  .media-item .thumb { width: 72px; height: 72px; flex-shrink: 0; }
+  .media-item .mtxt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .media-item .mtxt .m1 { font-size: 17px; font-weight: 600; color: var(--ink); line-height: 1.3; }
+  .media-item .mtxt .m2 { font-size: 15px; color: var(--muted); margin-top: 3px; line-height: 1.35; }
+  .media-item .mtxt .m3 { font-size: 12px; color: var(--line); margin-top: auto; padding-top: 6px; letter-spacing: 0.2px; }
+
+  /* ===== D. 电商：商品卡网格 ===== */
+  .product-grid {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 12px;
+  }
+  .product-grid .product {
+    width: calc(50% - 6px);
+    background: var(--white);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .product .thumb { width: 100%; height: 150px; border-radius: 0; }
+  .product .pinfo { padding: 10px 12px 12px; }
+  /* 标题恒占两行高度（单行也预留第二行的空间），保证同排卡片的价格行与加购钮始终水平对齐——
+     单行/双行混排不再错位。超过两行截断。 */
+  .product .pname {
+    font-size: 15px;
+    color: var(--ink);
+    line-height: 1.35;
+    height: 2.7em;             /* = 2 行（line-height 1.35 × 2） */
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .product .prow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+  }
+  .product .price { font-size: 17px; font-weight: 600; color: var(--ink); }
+  .product .price small { font-size: 12px; font-weight: 500; margin-right: 1px; }
+  .product .add {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: var(--white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .product .add [data-lucide] { width: 16px; height: 16px; color: var(--white); }
+
+  /* ===== E. 社交 / Feed ===== */
+  .feed-item {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .feed-item:last-child { border-bottom: none; }
+  .feed-item .fhead { display: flex; align-items: center; gap: 10px; }
+  .feed-item .fhead .fname { font-size: 15px; font-weight: 600; color: var(--ink); }
+  .feed-item .fhead .ftime { font-size: 12px; color: var(--muted); margin-top: 1px; }
+  .feed-item .ftext { font-size: 15px; color: var(--ink); line-height: 1.5; margin-top: 11px; }
+  .feed-item .fmedia { width: 100%; height: 180px; margin-top: 11px; }
+  .feed-item .facts {
+    display: flex;
+    gap: 28px;
+    margin-top: 13px;
+  }
+  .feed-item .facts .fact {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .feed-item .facts .fact [data-lucide] { width: 18px; height: 18px; color: var(--muted); }
+
+  /* 评论行 */
+  .comment {
+    display: flex;
+    gap: 10px;
+    padding: 12px 20px;
+  }
+  .comment .ctext { flex: 1; min-width: 0; }
+  .comment .ctext .cname { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .comment .ctext .cbody { font-size: 15px; color: var(--ink); line-height: 1.45; margin-top: 2px; }
+
+  /* 小头像（Feed / 评论 / 列表通用） */
+  .avatar-sm {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--fill);
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .avatar-sm [data-lucide] { width: 20px; height: 20px; }
+
+  /* ===== F. 表单 / 小部件 / 状态 ===== */
+
+  /* F1. 表单输入（静态展示，含已填 / 占位两态） */
+  .form-field { padding: 8px 20px; }
+  .form-field .flabel { font-size: 13px; color: var(--muted); letter-spacing: 0.2px; margin-bottom: 7px; }
+  .form-field .finput {
+    min-height: 44px;
+    border-radius: 10px;
+    background: var(--fill);
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    font-size: 15px;
+    color: var(--ink);
+  }
+  .form-field .finput.ph { color: var(--line); }      /* 占位态 */
+  .form-field .finput.area { min-height: 88px; align-items: flex-start; }
+
+  /* F2. 标签 / 筛选胶囊 */
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 16px;
+  }
+  .chips .chip {
+    font-size: 13px;
+    color: var(--ink);
+    background: var(--fill);
+    border-radius: 16px;
+    padding: 7px 14px;
+    letter-spacing: 0.2px;
+  }
+  .chips .chip.active { background: var(--ink); color: var(--white); }
+
+  /* F3. 空状态 */
+  .empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 60px 40px;
+    gap: 6px;
+  }
+  .empty .eic {
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    background: var(--fill);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+  }
+  .empty .eic [data-lucide] { width: 32px; height: 32px; color: var(--line); }
+  .empty .e1 { font-size: 17px; font-weight: 600; color: var(--ink); }
+  .empty .e2 { font-size: 14px; color: var(--muted); line-height: 1.5; }
+
+  /* F4. 步骤 / 时间线（订单进度、流程节点） */
+  .timeline { padding: 14px 20px; }
+  .timeline .tl-item {
+    display: flex;
+    gap: 14px;
+    position: relative;
+    padding-bottom: 22px;
+  }
+  .timeline .tl-item:last-child { padding-bottom: 0; }
+  /* 圆点 + 贯穿竖线 */
+  .timeline .tl-item .tl-dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--line);
+    background: var(--white);
+    flex-shrink: 0;
+    margin-top: 2px;
+    z-index: 1;
+  }
+  .timeline .tl-item.done .tl-dot { background: var(--ink); border-color: var(--ink); }
+  .timeline .tl-item:not(:last-child)::before {
+    content: "";
+    position: absolute;
+    left: 6px; top: 16px;
+    width: 2px; bottom: 0;
+    background: var(--line-soft);
+  }
+  .timeline .tl-item .tl-txt { flex: 1; min-width: 0; }
+  .timeline .tl-item .tl-1 { font-size: 15px; font-weight: 600; color: var(--ink); line-height: 1.3; }
+  .timeline .tl-item .tl-2 { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  /* F5. 星级评分 */
+  .rating { display: inline-flex; align-items: center; gap: 2px; }
+  .rating [data-lucide] { width: 15px; height: 15px; color: var(--ink); fill: var(--ink); }
+  .rating [data-lucide].off { color: var(--line); fill: none; }
+  .rating .rnum { font-size: 13px; color: var(--muted); margin-left: 5px; }
+
+  /* 价格强调（详情页大价格） */
+  .price-lg { font-size: 28px; font-weight: 700; color: var(--ink); letter-spacing: 0.5px; }
+  .price-lg small { font-size: 15px; font-weight: 500; margin-right: 2px; }
+
+  /* ===== G. 地图（线框风：浅网格底 + 定位针 + 可选路线/卡片）===== */
+  .map {
+    position: relative;
+    width: 100%;
+    height: 240px;
+    background: var(--fill);
+    /* 隐约街道网格：两组发丝线交叉，纯 CSS，无图片依赖 */
+    background-image:
+      linear-gradient(var(--line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+    background-size: 32px 32px;
+    overflow: hidden;
+  }
+  /* 一条斜穿的“主干道”，让地图不那么空 */
+  .map .road {
+    position: absolute;
+    left: -10%; top: 60%;
+    width: 130%; height: 6px;
+    background: var(--hairline);
+    transform: rotate(-18deg);
+  }
+  .map .road.v {
+    left: 38%; top: -10%;
+    width: 6px; height: 130%;
+    transform: rotate(-18deg);
+  }
+  /* 居中定位针：圆头 + 尖尾（与标注图钉同款几何，但更大、墨色） */
+  .map .pin {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 30px; height: 30px;
+    transform: translate(-50%, -100%);
+    background: var(--ink);
+    border: 3px solid var(--white);
+    border-radius: 50% 50% 50% 3px;
+    rotate: -45deg;   /* 尖角朝下，指向地点（逆时针 90°）*/
+    box-shadow: 0 4px 10px rgba(33,37,41,0.28);
+  }
+  .map .pin::after {     /* 针中心白点 */
+    content: "";
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 8px; height: 8px;
+    background: var(--white);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+  /* 浮在地图底部的信息卡（如“距你 1.2km”） */
+  .map .map-card {
+    position: absolute;
+    left: 12px; right: 12px; bottom: 12px;
+    background: var(--white);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    box-shadow: var(--anno-shadow);
+    padding: 11px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .map .map-card .mc-ic {
+    width: 38px; height: 38px;
+    flex-shrink: 0;
+    border-radius: 10px;
+    background: var(--fill);
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .map .map-card .mc-ic [data-lucide] { width: 20px; height: 20px; }
+  .map .map-card .mc-tx { flex: 1; min-width: 0; }
+  .map .map-card .mc-1 { font-size: 15px; font-weight: 600; color: var(--ink); }
+  .map .map-card .mc-2 { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  /* ===== H. 折线图（内联 SVG，html2canvas 可正常截图）===== */
+  /* 结构：.linechart > svg(viewBox 0 0 300 160) + .ln-labels。
+     折线 path 用 --ink，面积填充用极淡灰，网格线 --line-soft。坐标由作者按数据填写。 */
+  .linechart { padding: 4px 4px 0; }
+  .linechart svg { display: block; width: 100%; height: auto; }
+  .linechart .ln-grid { stroke: var(--line-soft); stroke-width: 1; }
+  .linechart .ln-area { fill: var(--fill-2); opacity: 0.6; }
+  .linechart .ln-path { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .linechart .ln-dot { fill: var(--white); stroke: var(--ink); stroke-width: 2; }
+  .linechart .ln-labels {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 6px 0;
+  }
+  .linechart .ln-labels span { font-size: 12px; color: var(--muted); }
+
+  /* ===== I. 圆环 / 占比图（内联 SVG）===== */
+  /* 用 stroke-dasharray 画环。中心可放百分比数字。配图例 .donut-legend。 */
+  .donut-wrap { display: flex; align-items: center; gap: 20px; padding: 6px 4px; }
+  .donut { position: relative; width: 120px; height: 120px; flex-shrink: 0; }
+  .donut svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .donut .d-track { fill: none; stroke: var(--fill-2); stroke-width: 14; }
+  .donut .d-seg { fill: none; stroke: var(--ink); stroke-width: 14; stroke-linecap: round; }
+  .donut .d-seg.soft { stroke: var(--line); }
+  .donut .d-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .donut .d-center .d-num { font-size: 24px; font-weight: 700; color: var(--ink); line-height: 1; }
+  .donut .d-center .d-lbl { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .donut-legend { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  .donut-legend .lg-row { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--ink); }
+  .donut-legend .lg-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; background: var(--ink); }
+  .donut-legend .lg-dot.soft { background: var(--line); }
+  .donut-legend .lg-dot.faint { background: var(--fill-2); }
+  .donut-legend .lg-val { margin-left: auto; color: var(--muted); }
+
+  /* ===== J. 浮层 / 覆盖层（弹窗 / 半屏弹层 / 操作菜单 / Toast）=====
+     全部相对单个 .screen 绝对定位（.screen 已 position:relative + overflow:hidden），
+     表示「这一页弹出了浮层」，并被手机屏圆角自然裁切。只复用既有 9 个颜色变量与 HIG 字号。
+     遮罩底用 --ink 的低透明度，与标注遮罩同款，不引入新色。
+     ⚠ 浮层作为 .screen 的子节点放在内容之后；它脱离文档流，不影响页面原有高度。 */
+
+  /* J0. 遮罩底：铺满所在 .screen，承托其内的浮层。
+     .center 居中放 .dialog；.bottom 贴底放 .sheet / .action-sheet。 */
+  .sheet-mask {
+    position: absolute;
+    inset: 0;
+    background: rgba(33, 37, 41, 0.32);
+    z-index: 40;
+    display: flex;
+    overflow: hidden;
+  }
+  .sheet-mask.center { align-items: center; justify-content: center; padding: 0 28px; }
+  .sheet-mask.bottom { align-items: flex-end; }
+
+  /* J1. 居中对话框 .dialog：确认 / 删除 / 提示。可选顶部图标圈。 */
+  .dialog {
+    width: 100%;
+    background: var(--white);
+    border-radius: 18px;
+    padding: 22px 20px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    box-shadow: 0 12px 32px rgba(33,37,41,0.18);
+  }
+  .dialog .dlg-ic {
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    background: var(--fill);
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+  }
+  .dialog .dlg-ic [data-lucide] { width: 26px; height: 26px; }
+  .dialog .dlg-ic.danger { background: var(--anno-danger-soft); }
+  .dialog .dlg-ic.danger [data-lucide] { color: var(--anno-danger); }
+  .dialog .dlg-title { font-size: 17px; font-weight: 600; color: var(--ink); letter-spacing: 0.2px; }
+  .dialog .dlg-text { font-size: 14px; color: var(--muted); line-height: 1.5; margin-top: 8px; }
+  /* 按钮组：默认上下堆叠（主操作在上）；加 .row 变左右并排 */
+  .dialog .dlg-actions {
+    width: 100%;
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+  .dialog .dlg-actions.row { flex-direction: row; }
+  /* 对话框里的危险确认按钮（复用 .btn 的尺寸） */
+  .dialog .btn.danger { background: var(--anno-danger); color: var(--white); }
+
+  /* J2. 底部半屏弹层 .sheet：选规格 / 筛选 / 详情。顶部抓手 + 标题，内容随意。 */
+  .sheet {
+    width: 100%;
+    background: var(--white);
+    border-radius: 22px 22px 0 0;
+    padding-bottom: 8px;
+    max-height: 78%;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 -8px 28px rgba(33,37,41,0.14);
+  }
+  .sheet .sheet-grip {
+    width: 38px; height: 5px;
+    border-radius: 3px;
+    background: var(--line-soft);
+    margin: 10px auto 4px;
+    flex-shrink: 0;
+  }
+  .sheet .sheet-hd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 20px 14px;
+    border-bottom: 1px solid var(--line-soft);
+    flex-shrink: 0;
+  }
+  .sheet .sheet-hd .sh-title { font-size: 17px; font-weight: 600; color: var(--ink); letter-spacing: 0.2px; }
+  .sheet .sheet-hd .sh-close {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--fill);
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .sheet .sheet-hd .sh-close [data-lucide] { width: 16px; height: 16px; }
+  /* 弹层主体：放任意组件（.form-field / .chips / .list-item / .product-grid …） */
+  .sheet .sheet-bd { padding: 6px 0 4px; }
+  /* 弹层贴底操作区（如「确定」）；与 .cta-bar 同款留白 */
+  .sheet .sheet-foot { padding: 12px 16px 16px; flex-shrink: 0; display: flex; gap: 10px; }
+
+  /* J3. iOS 操作菜单 .action-sheet：成组操作项 + 独立「取消」组。 */
+  .action-sheet {
+    width: 100%;
+    padding: 0 8px 8px;
+  }
+  .action-sheet .as-group {
+    background: var(--white);
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  /* 顶部可选说明条 */
+  .action-sheet .as-cap {
+    text-align: center;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.4;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .action-sheet .as-item {
+    text-align: center;
+    font-size: 17px;
+    color: var(--ink);
+    padding: 15px 12px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .action-sheet .as-item:last-child { border-bottom: none; }
+  .action-sheet .as-item.danger { color: var(--anno-danger); }
+  .action-sheet .as-item.strong { font-weight: 600; }
+  /* 独立「取消」组：墨色加粗，与上面拉开间距 */
+  .action-sheet .as-cancel {
+    background: var(--white);
+    border-radius: 14px;
+    text-align: center;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--ink);
+    padding: 15px 12px;
+  }
+
+  /* J4. Toast 轻提示：屏内浮一条短反馈，不带遮罩。.top 顶部 / 默认居中偏下。 */
+  .toast {
+    position: absolute;
+    left: 50%;
+    bottom: 64px;
+    transform: translateX(-50%);
+    z-index: 45;
+    max-width: 80%;
+    background: rgba(33, 37, 41, 0.92);
+    color: var(--white);
+    font-size: 14px;
+    line-height: 1.4;
+    border-radius: 12px;
+    padding: 11px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 6px 18px rgba(33,37,41,0.22);
+    white-space: nowrap;
+  }
+  .toast.top { top: 72px; bottom: auto; }
+  .toast [data-lucide] { width: 17px; height: 17px; color: var(--white); flex-shrink: 0; }
+
+  /* 布局模式：可拖动页面卡片重排网格位置 */
+  body.layout-on .stage { cursor: grab; }
+  body.layout-on .stage * { cursor: grab; }
+  /* 布局模式给画布外圈多留一圈空地，方便把边缘页往外拖出新格（配合拖到边缘自动滚动） */
+  .canvas { transition: padding .18s ease; }
+  body.layout-on .canvas { padding: 320px 360px; }
+  .stage.dragging {
+    cursor: grabbing;
+    z-index: 100;
+    opacity: 0.85;
+  }
+  .stage.dragging, .stage.dragging * { cursor: grabbing !important; }
+
+  /* ===================== 标注系统（操作层 UI）=====================
+     与线框同一套设计语言：发丝边 + 柔和层叠投影 + 大圆角 + 毛玻璃，
+     按钮走极简 ghost 风格。仅美化外观，功能与脚本逻辑不变。
+     （配色与投影变量见 :root 末尾的 --anno-* 一组） */
+  .anno-toolbar {
+    position: fixed;
+    top: 18px; right: 18px;
+    z-index: 9999;
+    display: flex;
+    gap: 2px;
+    background: rgba(255,255,255,0.82);
+    -webkit-backdrop-filter: saturate(180%) blur(16px);
+    backdrop-filter: saturate(180%) blur(16px);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    padding: 6px;
+    box-shadow: var(--anno-shadow);
+    font-size: 12px;
+    align-items: center;
+  }
+  .anno-toolbar button {
+    font: inherit;
+    font-weight: 500;
+    border: none;
+    background: transparent;
+    color: var(--ink);
+    border-radius: 9px;
+    padding: 7px 12px;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .anno-toolbar button:hover { background: var(--fill); }
+  .anno-toolbar button:active { background: var(--fill-2); }
+  /* 标注模式开关：主按钮，开启时实心墨色 */
+  .anno-toolbar button.primary.active {
+    background: var(--ink);
+    color: var(--white);
+    box-shadow: 0 1px 3px rgba(33,37,41,0.18);
+  }
+  .anno-toolbar button.primary.active:hover { background: #2a2e33; }
+  /* 清空：危险操作，hover 显红 */
+  .anno-toolbar button.danger:hover { background: var(--anno-danger-soft); color: var(--anno-danger); }
+  /* 计数：与按钮之间用发丝竖线分隔 */
+  .anno-toolbar .count {
+    font-size: 11px;
+    color: var(--muted);
+    padding: 0 10px 0 8px;
+    margin-right: 2px;
+    border-right: 1px solid var(--hairline);
+    white-space: nowrap;
+  }
+
+  /* ===== 帮助按钮 + 下拉浮层（工具栏最前） ===== */
+  .help-wrap { position: relative; display: flex; align-items: center; }
+  /* 圆形 ? 钮：与工具栏同语言，开启态实心墨色 */
+  .anno-toolbar button.help-btn {
+    width: 28px; height: 28px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--hairline);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .anno-toolbar button.help-btn:hover { background: var(--fill); color: var(--ink); }
+  .anno-toolbar button.help-btn.active { background: var(--ink); color: var(--white); border-color: var(--ink); }
+  /* hover 小提示：定位在按钮下方，纯文本 */
+  .help-hint {
+    position: absolute;
+    top: 38px; left: 0;
+    z-index: 10001;
+    background: var(--ink);
+    color: var(--white);
+    font-size: 11px;
+    line-height: 1.4;
+    border-radius: 8px;
+    padding: 6px 10px;
+    white-space: nowrap;
+    box-shadow: var(--anno-shadow);
+    opacity: 0;
+    transform: translateY(-3px);
+    pointer-events: none;
+    transition: opacity .15s, transform .15s;
+  }
+  .help-wrap:hover .help-hint { opacity: 1; transform: translateY(0); }
+  .help-btn.active + .help-hint { opacity: 0 !important; }   /* 浮层打开时不再显示 hover 提示 */
+
+  /* 下拉浮层：从按钮下方展开的帮助说明卡片 */
+  .help-pop {
+    position: absolute;
+    top: 42px; left: 0;
+    z-index: 10001;
+    width: 320px;
+    background: var(--white);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    padding: 16px 18px 18px;
+    box-shadow: var(--anno-shadow);
+    display: none;
+    animation: annoPopIn .14s ease-out;
+    cursor: default;
+  }
+  .help-pop.show { display: block; }
+  .help-pop h4 { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 4px; letter-spacing: 0.2px; }
+  .help-pop .help-lead { font-size: 12px; color: var(--muted); line-height: 1.5; margin-bottom: 14px; }
+  .help-pop .help-sec { padding: 11px 0; border-top: 1px solid var(--line-soft); }
+  .help-pop .help-sec:first-of-type { border-top: none; padding-top: 2px; }
+  .help-pop .help-sec .hs-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 5px;
+  }
+  .help-pop .help-sec .hs-title .hs-tag {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    background: var(--fill);
+    border-radius: 6px;
+    padding: 1px 7px;
+  }
+  .help-pop .help-sec .hs-body { font-size: 12px; color: var(--ink); line-height: 1.55; }
+  .help-pop .help-sec .hs-body b { font-weight: 600; }
+  .help-pop .help-sec .hs-why { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 4px; }
+
+  /* 缩放控件组：左侧用发丝竖线与标注按钮分隔；±按钮做成等宽方钮，百分比可点（=复位 100%） */
+  .anno-toolbar .zoom-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-left: 6px;
+    margin-left: 4px;
+    border-left: 1px solid var(--hairline);
+  }
+  .anno-toolbar .zoom-group button.zbtn {
+    padding: 7px 0;
+    width: 30px;
+    text-align: center;
+    font-size: 15px;
+    line-height: 1;
+  }
+  .anno-toolbar .zoom-group .zpct {
+    font: inherit;
+    font-weight: 500;
+    color: var(--ink);
+    background: transparent;
+    border: none;
+    border-radius: 9px;
+    padding: 7px 8px;
+    min-width: 46px;
+    text-align: center;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .anno-toolbar .zoom-group .zpct:hover { background: var(--fill); }
+
+  /* 进入标注模式时，给可点击区域加十字光标 */
+  body.anno-on .screen { cursor: crosshair; }
+
+  /* 按住空格 = 类 Figma 抓手平移画布（用 !important 覆盖标注模式的十字光标） */
+  body.space-pan, body.space-pan * { cursor: grab !important; }
+  body.space-panning, body.space-panning * { cursor: grabbing !important; }
+
+  /* 图钉 */
+  .anno-pin {
+    position: absolute;
+    width: 24px; height: 24px;
+    transform: translate(-50%, -50%);
+    background: var(--ink);
+    color: var(--white);
+    border: 2px solid var(--white);
+    border-radius: 50% 50% 50% 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    z-index: 50;
+    box-shadow: 0 2px 6px rgba(33,37,41,0.28), 0 1px 2px rgba(33,37,41,0.2);
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .anno-pin:hover {
+    transform: translate(-50%, -50%) scale(1.12);
+    box-shadow: 0 4px 12px rgba(33,37,41,0.34), 0 1px 3px rgba(33,37,41,0.24);
+  }
+
+  /* 注释气泡：挂在 body 上、绝对定位（用文档坐标），不再被页面卡片的 overflow 裁切 */
+  .anno-pop {
+    position: absolute;
+    width: 232px;
+    background: var(--white);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    padding: 13px;
+    z-index: 9998;           /* 高于图钉(50)与页面，仅低于导出弹层(10000) */
+    box-shadow: var(--anno-shadow);
+    animation: annoPopIn .14s ease-out;
+  }
+  @keyframes annoPopIn {
+    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .anno-pop .meta {
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    line-height: 1.4;
+    letter-spacing: 0.2px;
+  }
+  .anno-pop textarea {
+    width: 100%;
+    height: 66px;
+    resize: none;
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--ink);
+    background: var(--fill);
+    border: 1px solid transparent;
+    border-radius: 9px;
+    padding: 9px 10px;
+    outline: none;
+    transition: background .15s, box-shadow .15s, border-color .15s;
+  }
+  .anno-pop textarea::placeholder { color: var(--line); }
+  .anno-pop textarea:focus {
+    background: var(--white);
+    border-color: var(--hairline);
+    box-shadow: 0 0 0 3px rgba(51,55,61,0.08);
+  }
+  .anno-pop .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+  }
+  .anno-pop .row button {
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    background: var(--fill);
+    color: var(--ink);
+    border-radius: 9px;
+    padding: 7px 16px;
+    cursor: pointer;
+    transition: background .15s, box-shadow .15s, color .15s;
+  }
+  .anno-pop .row button.save {
+    background: var(--ink);
+    color: var(--white);
+    box-shadow: 0 1px 3px rgba(33,37,41,0.18);
+  }
+  .anno-pop .row button.save:hover { background: #2a2e33; }
+  /* 删除：克制的红色文字按钮，带图标，hover 才铺浅底 */
+  .anno-pop .row button.del {
+    background: transparent;
+    color: var(--anno-danger);
+    padding: 7px 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .anno-pop .row button.del:hover { background: var(--anno-danger-soft); }
+  .anno-pop .row button.del [data-lucide] { width: 14px; height: 14px; color: var(--anno-danger); }
+
+  /* 导出弹层 */
+  .anno-modal-mask {
+    position: fixed; inset: 0;
+    background: rgba(33,37,41,0.28);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+    z-index: 10000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .anno-modal-mask.show { display: flex; animation: annoMaskIn .18s ease-out; }
+  @keyframes annoMaskIn { from { opacity: 0; } to { opacity: 1; } }
+  .anno-modal {
+    width: 520px;
+    max-width: 90vw;
+    background: var(--white);
+    border: 1px solid var(--hairline);
+    border-radius: 18px;
+    padding: 22px;
+    box-shadow: 0 12px 32px rgba(33,37,41,0.18), 0 32px 64px rgba(33,37,41,0.12);
+    animation: annoModalIn .2s cubic-bezier(0.16,1,0.3,1);
+  }
+  @keyframes annoModalIn {
+    from { opacity: 0; transform: translateY(8px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .anno-modal h3 { font-size: 16px; font-weight: 600; margin-bottom: 5px; letter-spacing: 0.2px; }
+  .anno-modal p { font-size: 12px; color: var(--muted); margin-bottom: 14px; line-height: 1.5; }
+  .anno-modal textarea {
+    width: 100%;
+    height: 220px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--ink);
+    background: var(--fill);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    padding: 12px 14px;
+    resize: vertical;
+    outline: none;
+    transition: box-shadow .15s, background .15s;
+  }
+  .anno-modal textarea:focus { background: var(--white); box-shadow: 0 0 0 3px rgba(51,55,61,0.08); }
+  .anno-modal .actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .anno-modal .actions button {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    background: var(--fill);
+    color: var(--ink);
+    border-radius: 10px;
+    padding: 9px 18px;
+    cursor: pointer;
+    transition: background .15s, box-shadow .15s;
+  }
+  .anno-modal .actions button:hover { background: var(--fill-2); }
+  .anno-modal .actions button.primary {
+    background: var(--ink);
+    color: var(--white);
+    box-shadow: 0 1px 3px rgba(33,37,41,0.18);
+  }
+  .anno-modal .actions button.primary:hover { background: #2a2e33; }
+
+  /* ===================== 图标急救安全网 =====================
+     默认隐藏；仅当 Lucide CDN 加载失败（图标空白）时，由脚本加 body.icons-broken 才显示。
+     ⚠ 这套 UI 本身绝不依赖任何图标库：问号用纯字符 "?" + CSS 绘制，
+       提示与弹窗用纯文本——否则图标坏掉时连求助入口都会是空白，兜底失效。 */
+  .icon-sos { display: none; }
+  body.icons-broken .icon-sos { display: block; }
+  .icon-sos-btn {
+    position: fixed;
+    right: 20px; bottom: 20px;
+    z-index: 9990;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--white);
+    border: 1px solid var(--hairline);
+    box-shadow: var(--anno-shadow);
+    color: var(--muted);
+    font-size: 18px;
+    font-weight: 600;
+    font-family: "PingFang SC", system-ui, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: color .15s, border-color .15s, transform .12s;
+  }
+  .icon-sos-btn:hover { color: var(--ink); border-color: var(--line); transform: scale(1.06); }
+  /* hover 提示气泡：定位在问号上方，纯文本 */
+  .icon-sos-tip {
+    position: fixed;
+    right: 20px; bottom: 64px;
+    z-index: 9990;
+    max-width: 230px;
+    background: var(--ink);
+    color: var(--white);
+    font-size: 12px;
+    line-height: 1.5;
+    border-radius: 10px;
+    padding: 9px 12px;
+    box-shadow: var(--anno-shadow);
+    opacity: 0;
+    transform: translateY(4px);
+    pointer-events: none;
+    transition: opacity .15s, transform .15s;
+  }
+  .icon-sos-btn:hover + .icon-sos-tip { opacity: 1; transform: translateY(0); }
+
+  /* ===================== Lucide 图标统一尺寸/描边 ===================== */
+  [data-lucide] { stroke-width: 1.75; color: var(--ink); display: inline-block; vertical-align: middle; }
+  .list-item .ic [data-lucide] { width: 24px; height: 24px; }
+  .navbar .nav-btn [data-lucide] { width: 20px; height: 20px; }
+  .list-item .chev [data-lucide] { width: 20px; height: 20px; color: var(--line); }
+  .chat-hero .avatar [data-lucide] { width: 36px; height: 36px; }
+  .perm-tip .pic [data-lucide] { width: 18px; height: 18px; }
+  .chat-input .send [data-lucide] { width: 18px; height: 18px; }
+  /* 扩展组件的图标尺寸大多已在各自规则里就近声明；这里只兜底未覆盖到的情形 */
+</style>
+</head>
+<body>
+
+  <div class="zoom-stage">
+  <div class="canvas">
+
+  <div class="page-header">
+    <h1 id="docTitle" contenteditable="true" spellcheck="false" data-placeholder="点击编辑标题…" title="点击编辑标题">Kith-space · 单窗口工作区流程线框图</h1>
+    <p id="docSubtitle" contenteditable="true" spellcheck="false" data-placeholder="点击编辑副标题…" title="点击编辑副标题">桌面端八个关键状态，连线标注 Dock、抽屉与 msg-context 的流转</p>
+  </div>
+
+  <div class="flow">
+
+    <style>
+      .flow {
+        grid-auto-columns: 1280px;
+        column-gap: 220px;
+        row-gap: 180px;
+      }
+      .flow .stage { width: 1280px; }
+      .flow .screen.desktop-screen {
+        width: 1280px;
+        min-height: 800px;
+        height: 800px;
+        border-radius: 18px;
+        color: var(--ink);
+        font-size: 14px;
+        letter-spacing: 0;
+      }
+      .desktop-screen i { width: 17px; height: 17px; stroke-width: 1.75; }
+      .wf-topbar {
+        height: 48px;
+        flex: 0 0 48px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+        border-bottom: 1px solid var(--line-soft);
+        background: var(--white);
+        position: relative;
+        z-index: 30;
+      }
+      .wf-space {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 170px;
+        height: 32px;
+        padding: 0 10px;
+        border: 1px solid var(--hairline);
+        border-radius: 9px;
+        background: var(--white);
+        font-weight: 600;
+      }
+      .wf-space small { color: var(--muted); font-weight: 400; }
+      .wf-crumb { color: var(--muted); font-size: 13px; }
+      .wf-top-spacer { flex: 1; }
+      .wf-tool {
+        width: 32px;
+        height: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 9px;
+        color: var(--ink);
+        background: var(--fill);
+      }
+      .wf-state {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 26px;
+        padding: 0 9px;
+        border: 1px solid var(--hairline);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 12px;
+        background: var(--white);
+      }
+      .wf-body {
+        flex: 1;
+        min-height: 0;
+        position: relative;
+        overflow: hidden;
+        background: var(--white);
+      }
+      .wf-chat-grid {
+        height: 100%;
+        display: grid;
+        grid-template-columns: 250px minmax(0, 1fr) 280px;
+      }
+      .wf-sidebar,
+      .wf-trace {
+        min-width: 0;
+        background: var(--fill);
+        display: flex;
+        flex-direction: column;
+      }
+      .wf-sidebar { border-right: 1px solid var(--line-soft); }
+      .wf-trace { border-left: 1px solid var(--line-soft); }
+      .wf-pane-head {
+        height: 54px;
+        flex: 0 0 54px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 14px;
+        border-bottom: 1px solid var(--line-soft);
+        font-weight: 600;
+      }
+      .wf-pane-head .wf-grow { flex: 1; }
+      .wf-head-action {
+        width: 28px;
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--hairline);
+        border-radius: 8px;
+        background: var(--white);
+      }
+      .wf-section {
+        padding: 14px 14px 6px;
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: .6px;
+      }
+      .wf-conversation {
+        height: 42px;
+        margin: 2px 8px;
+        padding: 0 9px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        border-radius: 9px;
+        color: var(--ink);
+      }
+      .wf-conversation.active {
+        background: var(--white);
+        border: 1px solid var(--hairline);
+      }
+      .wf-conversation .wf-label { flex: 1; min-width: 0; }
+      .wf-unread {
+        min-width: 18px;
+        height: 18px;
+        padding: 0 5px;
+        border-radius: 999px;
+        background: var(--ink);
+        color: var(--white);
+        font-size: 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .wf-avatar {
+        width: 30px;
+        height: 30px;
+        flex: 0 0 30px;
+        border-radius: 9px;
+        background: var(--fill-2);
+        border: 1px solid var(--hairline);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .wf-chat-main,
+      .wf-compact-chat {
+        min-width: 0;
+        min-height: 0;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        background: var(--white);
+      }
+      .wf-chat-head {
+        height: 54px;
+        flex: 0 0 54px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .wf-chat-title { font-weight: 600; }
+      .wf-chat-sub { color: var(--muted); font-size: 12px; }
+      .wf-chat-head .wf-grow { flex: 1; }
+      .wf-messages {
+        flex: 1;
+        min-height: 0;
+        padding: 18px 22px;
+        overflow: hidden;
+        background: var(--white);
+      }
+      .wf-msg-row {
+        display: grid;
+        grid-template-columns: 30px minmax(0, 1fr);
+        gap: 9px;
+        max-width: 680px;
+        margin: 0 0 15px;
+      }
+      .wf-msg-row.me {
+        display: flex;
+        justify-content: flex-end;
+        max-width: none;
+      }
+      .wf-msg {
+        max-width: 560px;
+        padding: 10px 12px;
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        line-height: 1.45;
+        background: var(--white);
+      }
+      .wf-msg-row.me .wf-msg {
+        color: var(--white);
+        background: var(--ink);
+        border-color: var(--ink);
+      }
+      .wf-msg-name {
+        margin-bottom: 3px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .wf-msg-row.me .wf-msg-name { color: var(--line-soft); }
+      .wf-composer {
+        flex: 0 0 auto;
+        margin: 0 22px 18px;
+        padding: 10px 12px;
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        background: var(--white);
+      }
+      .wf-chat-grid .wf-composer { margin-bottom: 72px; }
+      .wf-composer-input {
+        min-height: 28px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .wf-composer-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .wf-send {
+        margin-left: auto;
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--white);
+        background: var(--ink);
+      }
+      .wf-trace-list { padding: 14px; }
+      .wf-trace-item {
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr);
+        gap: 9px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .wf-trace-item strong { display: block; font-size: 12px; }
+      .wf-trace-item p { margin: 3px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+      .wf-dock {
+        position: absolute;
+        left: 50%;
+        bottom: 14px;
+        transform: translateX(-50%);
+        z-index: 24;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        height: 50px;
+        padding: 5px;
+        border: 1px solid var(--hairline);
+        border-radius: 15px;
+        background: var(--white);
+        box-shadow: 0 8px 24px rgba(33, 37, 41, .08);
+      }
+      .wf-dock-item {
+        width: 66px;
+        height: 38px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        border-radius: 10px;
+        color: var(--muted);
+        font-size: 10px;
+        position: relative;
+      }
+      .wf-dock-item.active {
+        color: var(--ink);
+        background: var(--fill);
+      }
+      .wf-dock-item .wf-badge {
+        position: absolute;
+        top: 1px;
+        right: 8px;
+        min-width: 15px;
+        height: 15px;
+        padding: 0 4px;
+        border-radius: 999px;
+        color: var(--white);
+        background: var(--ink);
+        font-size: 9px;
+        line-height: 15px;
+        text-align: center;
+      }
+      .wf-space-menu {
+        position: absolute;
+        top: 42px;
+        left: 14px;
+        z-index: 60;
+        width: 310px;
+        padding: 8px;
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        background: var(--white);
+        box-shadow: 0 16px 40px rgba(33, 37, 41, .12);
+      }
+      .wf-menu-caption {
+        padding: 7px 9px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .wf-space-row {
+        min-height: 46px;
+        padding: 8px 9px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-radius: 9px;
+      }
+      .wf-space-row.active { background: var(--fill); }
+      .wf-space-row .wf-grow { flex: 1; }
+      .wf-space-row small { display: block; color: var(--muted); margin-top: 2px; }
+      .wf-menu-sep { height: 1px; margin: 5px 0; background: var(--line-soft); }
+      .wf-split {
+        height: 100%;
+        display: grid;
+        grid-template-columns: minmax(360px, 40%) 5px minmax(560px, 1fr);
+      }
+      .wf-divider {
+        position: relative;
+        background: var(--line-soft);
+      }
+      .wf-divider::after {
+        content: "";
+        position: absolute;
+        width: 3px;
+        height: 44px;
+        left: 1px;
+        top: calc(50% - 22px);
+        border-radius: 999px;
+        background: var(--line);
+      }
+      .wf-compact-chat .wf-chat-head { padding: 0 12px; }
+      .wf-module {
+        min-width: 0;
+        min-height: 0;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        background: var(--white);
+      }
+      .wf-module-head {
+        height: 54px;
+        flex: 0 0 54px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .wf-module-title { font-size: 16px; font-weight: 600; }
+      .wf-module-scope { color: var(--muted); font-size: 12px; }
+      .wf-module-head .wf-grow { flex: 1; }
+      .wf-view-toggle {
+        display: inline-flex;
+        gap: 2px;
+        padding: 3px;
+        border-radius: 9px;
+        background: var(--fill);
+      }
+      .wf-view-toggle span {
+        padding: 5px 9px;
+        border-radius: 7px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .wf-view-toggle span.active { background: var(--white); color: var(--ink); }
+      .wf-board {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        padding: 14px 14px 78px;
+        background: var(--fill);
+      }
+      .wf-task-col {
+        min-width: 0;
+        padding: 10px;
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        background: var(--white);
+      }
+      .wf-task-col-head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 2px 2px 9px;
+        font-weight: 600;
+      }
+      .wf-task-col-head span:last-child { margin-left: auto; color: var(--muted); font-size: 11px; }
+      .wf-task {
+        margin-top: 8px;
+        padding: 10px;
+        border: 1px solid var(--hairline);
+        border-radius: 10px;
+        background: var(--white);
+      }
+      .wf-task.selected { border-color: var(--ink); }
+      .wf-task strong { display: block; font-size: 12px; line-height: 1.4; }
+      .wf-task p { margin: 5px 0 8px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+      .wf-task-meta {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .wf-discuss {
+        margin-top: 8px;
+        padding-top: 7px;
+        border-top: 1px solid var(--line-soft);
+        color: var(--ink);
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .wf-drawer-shade {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        background: var(--fill);
+        opacity: .82;
+      }
+      .wf-drawer {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        z-index: 11;
+        width: 330px;
+        display: flex;
+        flex-direction: column;
+        background: var(--white);
+      }
+      .wf-drawer.left { left: 0; border-right: 1px solid var(--hairline); }
+      .wf-drawer.right { right: 0; border-left: 1px solid var(--hairline); }
+      .wf-context-strip {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 8px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--line-soft);
+        color: var(--muted);
+        font-size: 10px;
+        overflow: hidden;
+      }
+      .wf-context-chip {
+        max-width: 120px;
+        height: 24px;
+        padding: 0 7px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        border: 1px solid var(--hairline);
+        border-radius: 7px;
+        color: var(--ink);
+        background: var(--fill);
+        white-space: nowrap;
+      }
+      .wf-context-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 7px;
+        padding: 4px 7px;
+        border: 1px solid var(--hairline);
+        border-radius: 7px;
+        color: var(--ink);
+        background: var(--white);
+        font-size: 10px;
+      }
+      .wf-context-card {
+        width: 360px;
+        margin-top: 7px;
+        padding: 9px;
+        border: 1px solid var(--hairline);
+        border-radius: 10px;
+        color: var(--ink);
+        background: var(--white);
+      }
+      .wf-context-card h4 { margin: 0 0 7px; font-size: 11px; }
+      .wf-context-row {
+        display: grid;
+        grid-template-columns: 72px minmax(0, 1fr);
+        gap: 8px;
+        padding: 5px 0;
+        border-top: 1px solid var(--line-soft);
+        font-size: 10px;
+      }
+      .wf-context-row span:first-child { color: var(--muted); }
+      .wf-note {
+        position: absolute;
+        right: 14px;
+        top: 12px;
+        z-index: 22;
+        padding: 6px 9px;
+        border: 1px solid var(--hairline);
+        border-radius: 8px;
+        color: var(--muted);
+        background: var(--white);
+        font-size: 11px;
+      }
+      /* Kith-space panel tokens, translated from OpenLoaf's observed layout language. */
+      .flow .screen.desktop-screen {
+        --ks-window-bg: #f5f5f5;
+        --ks-panel-bg: #ffffff;
+        --ks-border: #e0e0e0;
+        --ks-panel-radius: 12px;
+        --ks-panel-gap: 10px;
+        --ks-control-bg: #fafafa;
+        --ks-control-active: #f5f5f5;
+        --ks-toolbar-shadow: 0 4px 16px rgba(0, 0, 0, .08);
+        --ks-float-shadow: 0 8px 24px rgba(0, 0, 0, .10);
+        --ks-dock-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+        background: var(--ks-window-bg);
+        border-color: var(--ks-border);
+        border-radius: var(--ks-panel-radius);
+        box-shadow: none;
+      }
+      .wf-topbar {
+        height: 40px;
+        flex-basis: 40px;
+        gap: 8px;
+        padding: 0 8px;
+        background: transparent;
+        border-bottom: 0;
+      }
+      .wf-body {
+        padding: 0 8px 8px;
+        background: var(--ks-window-bg);
+      }
+      .wf-chat-grid { gap: var(--ks-panel-gap); }
+      .wf-sidebar,
+      .wf-chat-main,
+      .wf-trace,
+      .wf-compact-chat,
+      .wf-module {
+        background: var(--ks-panel-bg);
+        border: 0;
+        border-radius: var(--ks-panel-radius);
+        box-shadow: none;
+        overflow: hidden;
+      }
+      .wf-sidebar,
+      .wf-trace { border: 0; }
+      .wf-split {
+        grid-template-columns: minmax(360px, 40%) var(--ks-panel-gap) minmax(560px, 1fr);
+      }
+      .wf-divider {
+        background: transparent;
+        cursor: col-resize;
+      }
+      .wf-divider::after {
+        left: 3px;
+        top: calc(50% - 12px);
+        width: 4px;
+        height: 24px;
+        background: var(--ks-border);
+        opacity: 0;
+        transition: opacity .15s ease;
+      }
+      .wf-divider:hover::after { opacity: 1; }
+      .wf-board { background: var(--ks-panel-bg); }
+      .wf-drawer-shade {
+        inset: 0;
+        border-radius: var(--ks-panel-radius);
+      }
+      .wf-drawer {
+        top: 8px;
+        bottom: 8px;
+        border: 1px solid var(--ks-border);
+        border-radius: var(--ks-panel-radius);
+        overflow: hidden;
+        box-shadow: var(--ks-float-shadow);
+      }
+      .wf-drawer.left {
+        left: 8px;
+        border: 1px solid var(--ks-border);
+      }
+      .wf-drawer.right {
+        right: 8px;
+        border: 1px solid var(--ks-border);
+      }
+      .wf-space-menu {
+        border-color: var(--ks-border);
+        border-radius: var(--ks-panel-radius);
+        box-shadow: var(--ks-float-shadow);
+      }
+      .wf-tools {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        padding: 3px;
+        border: 1px solid var(--ks-border);
+        border-radius: var(--ks-panel-radius);
+        background: var(--ks-panel-bg);
+        box-shadow: var(--ks-toolbar-shadow);
+      }
+      .wf-tools .wf-tool {
+        width: 30px;
+        height: 30px;
+        background: transparent;
+      }
+      .wf-dock {
+        width: auto;
+        height: 55px;
+        gap: 4px;
+        padding: 8px 12px;
+        box-sizing: border-box;
+        border-color: var(--ks-border);
+        border-radius: var(--ks-panel-radius);
+        background: var(--ks-panel-bg);
+        box-shadow: var(--ks-dock-shadow);
+      }
+      .wf-dock-item {
+        width: 41px;
+        height: 39px;
+        flex-shrink: 0;
+        flex-direction: row;
+        gap: 8px;
+        border-radius: var(--ks-panel-radius);
+        background: var(--ks-control-bg);
+        transition: width .18s ease, background .18s ease;
+      }
+      .wf-dock-item i { width: 18px; height: 18px; }
+      .wf-dock-item > span:not(.wf-badge) { display: none; }
+      .wf-dock-item.active { background: var(--ks-control-active); }
+      .wf-dock-item.active:has(> i:not([data-lucide="message-circle"])) {
+        width: 122px;
+        padding: 0 14px;
+      }
+      .wf-dock-item.active:has(> i:not([data-lucide="message-circle"])) > span:not(.wf-badge) {
+        display: inline;
+        white-space: nowrap;
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .wf-dock-item .wf-badge {
+        top: -3px;
+        right: -3px;
+      }
+    </style>
+
+    <div class="stage" data-cell="1,1">
+      <div class="stage-label">01 Chat 全宽</div>
+      <div class="screen desktop-screen" id="wf-chat-full">
+        <div class="wf-topbar">
+          <div class="wf-space"><span>K</span><span>Kith-space</span><i data-lucide="chevron-down"></i></div>
+          <div class="wf-crumb"># all</div>
+          <span class="wf-state">ChatOnly</span>
+          <div class="wf-top-spacer"></div>
+          <div class="wf-tools">
+            <div class="wf-tool"><i data-lucide="search"></i></div>
+            <div class="wf-tool"><i data-lucide="bell"></i></div>
+            <div class="wf-tool"><i data-lucide="more-horizontal"></i></div>
+          </div>
+        </div>
+        <div class="wf-body">
+          <div class="wf-chat-grid">
+            <aside class="wf-sidebar">
+              <div class="wf-pane-head"><span>会话</span><span class="wf-grow"></span><span class="wf-head-action"><i data-lucide="plus"></i></span></div>
+              <div class="wf-section">Channels</div>
+              <div class="wf-conversation active"><i data-lucide="message-circle"></i><span class="wf-label">all</span><span class="wf-unread">3</span></div>
+              <div class="wf-conversation"><i data-lucide="message-circle"></i><span class="wf-label">product</span></div>
+              <div class="wf-conversation"><i data-lucide="message-circle"></i><span class="wf-label">research</span><span class="wf-unread">1</span></div>
+              <div class="wf-section">Direct Messages</div>
+              <div class="wf-conversation"><span class="wf-avatar">L</span><span class="wf-label">Leader</span></div>
+              <div class="wf-conversation"><span class="wf-avatar">D</span><span class="wf-label">Developer</span></div>
+              <div class="wf-conversation"><span class="wf-avatar">T</span><span class="wf-label">Tester</span></div>
+            </aside>
+            <main class="wf-chat-main">
+              <div class="wf-chat-head">
+                <span class="wf-chat-title"># all</span>
+                <span class="wf-chat-sub">所有成员的协作频道</span>
+                <span class="wf-grow"></span>
+                <span class="wf-head-action"><i data-lucide="users"></i></span>
+              </div>
+              <div class="wf-messages">
+                <div class="wf-msg-row">
+                  <span class="wf-avatar">L</span>
+                  <div class="wf-msg"><div class="wf-msg-name">Leader</div>我已经整理了 P4 的界面问题。建议先确定单窗口状态机，再拆给 Developer 和 Tester。</div>
+                </div>
+                <div class="wf-msg-row me">
+                  <div class="wf-msg"><div class="wf-msg-name">我</div>先打开任务板看看当前进度，之后再确认界面架构。</div>
+                </div>
+                <div class="wf-msg-row">
+                  <span class="wf-avatar">D</span>
+                  <div class="wf-msg"><div class="wf-msg-name">Developer</div>收到。我会保留现有 Chat 行为，只替换外围壳和面板协调逻辑。</div>
+                </div>
+              </div>
+              <div class="wf-composer">
+                <div class="wf-composer-input">发送消息，@ 提及 agent 或附加当前界面上下文</div>
+                <div class="wf-composer-actions">
+                  <span class="wf-head-action"><i data-lucide="image"></i></span>
+                  <span class="wf-head-action"><i data-lucide="plus"></i></span>
+                  <span class="wf-send"><i data-lucide="arrow-up"></i></span>
+                </div>
+              </div>
+            </main>
+            <aside class="wf-trace">
+              <div class="wf-pane-head"><span>实时轨迹</span><span class="wf-grow"></span><span class="wf-head-action"><i data-lucide="clock"></i></span></div>
+              <div class="wf-trace-list">
+                <div class="wf-trace-item"><span class="wf-avatar">L</span><div><strong>Leader 正在规划</strong><p>读取当前任务与前端壳结构，准备拆分工作。</p></div></div>
+                <div class="wf-trace-item"><span class="wf-avatar">D</span><div><strong>Developer 等待任务</strong><p>已加载当前 Space 的代码上下文。</p></div></div>
+                <div class="wf-trace-item"><span class="wf-avatar">T</span><div><strong>Tester 空闲</strong><p>等待新的验收任务。</p></div></div>
+              </div>
+            </aside>
+          </div>
+          <div class="wf-dock">
+            <div class="wf-dock-item active"><i data-lucide="message-circle"></i><span>Chat</span></div>
+            <div class="wf-dock-item"><i data-lucide="inbox"></i><span>Inbox</span><span class="wf-badge">4</span></div>
+            <div class="wf-dock-item"><i data-lucide="list"></i><span>Tasks</span><span class="wf-badge">3</span></div>
+            <div class="wf-dock-item"><i data-lucide="users"></i><span>Members</span></div>
+            <div class="wf-dock-item"><i data-lucide="monitor"></i><span>Computers</span></div>
+            <div class="wf-dock-item"><i data-lucide="settings"></i><span>Settings</span></div>
+          </div>
+          <div class="wf-note">三张工作卡片之间的缝隙可拖动调整</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage" data-cell="2,1">
+      <div class="stage-label">02 Space 切换菜单</div>
+      <div class="screen desktop-screen" id="wf-space-menu">
+        <div class="wf-topbar">
+          <div class="wf-space"><span>K</span><span>Kith-space</span><i data-lucide="chevron-down"></i></div>
+          <div class="wf-crumb"># all</div>
+          <span class="wf-state">当前 Space</span>
+          <div class="wf-top-spacer"></div>
+          <div class="wf-tools">
+            <div class="wf-tool"><i data-lucide="search"></i></div>
+            <div class="wf-tool"><i data-lucide="bell"></i></div>
+          </div>
+        </div>
+        <div class="wf-space-menu">
+          <div class="wf-menu-caption">切换 Space</div>
+          <div class="wf-space-row active">
+            <span class="wf-avatar">K</span>
+            <div class="wf-grow"><strong>Kith-space</strong><small>当前 Space · # all</small></div>
+            <i data-lucide="check"></i>
+          </div>
+          <div class="wf-space-row">
+            <span class="wf-avatar">P</span>
+            <div class="wf-grow"><strong>Personal Lab</strong><small>上次打开 # notes</small></div>
+          </div>
+          <div class="wf-menu-sep"></div>
+          <div class="wf-space-row"><i data-lucide="plus"></i><div class="wf-grow"><strong>新建 Space</strong><small>创建新的本地协作空间</small></div></div>
+          <div class="wf-space-row"><i data-lucide="settings"></i><div class="wf-grow"><strong>管理 Spaces</strong><small>路径、名称与连接设置</small></div></div>
+        </div>
+        <div class="wf-body">
+          <div class="wf-chat-grid">
+            <aside class="wf-sidebar">
+              <div class="wf-pane-head"><span>会话</span><span class="wf-grow"></span><span class="wf-head-action"><i data-lucide="plus"></i></span></div>
+              <div class="wf-section">Channels</div>
+              <div class="wf-conversation active"><i data-lucide="message-circle"></i><span class="wf-label">all</span><span class="wf-unread">3</span></div>
+              <div class="wf-conversation"><i data-lucide="message-circle"></i><span class="wf-label">product</span></div>
+              <div class="wf-section">Direct Messages</div>
+              <div class="wf-conversation"><span class="wf-avatar">L</span><span class="wf-label">Leader</span></div>
+              <div class="wf-conversation"><span class="wf-avatar">D</span><span class="wf-label">Developer</span></div>
+            </aside>
+            <main class="wf-chat-main">
+              <div class="wf-chat-head"><span class="wf-chat-title"># all</span><span class="wf-chat-sub">切换 Space 时保留工作姿态，清空旧上下文</span></div>
+              <div class="wf-messages">
+                <div class="wf-msg-row"><span class="wf-avatar">L</span><div class="wf-msg"><div class="wf-msg-name">Leader</div>Space 切换只改变数据作用域，不会打开独立总览页。</div></div>
+              </div>
+              <div class="wf-composer"><div class="wf-composer-input">发送消息</div><div class="wf-composer-actions"><span class="wf-send"><i data-lucide="arrow-up"></i></span></div></div>
+            </main>
+            <aside class="wf-trace">
+              <div class="wf-pane-head"><span>实时轨迹</span></div>
+              <div class="wf-trace-list"><div class="wf-trace-item"><span class="wf-avatar">L</span><div><strong>当前 Space</strong><p>Kith-space</p></div></div></div>
+            </aside>
+          </div>
+          <div class="wf-dock">
+            <div class="wf-dock-item active"><i data-lucide="message-circle"></i><span>Chat</span></div>
+            <div class="wf-dock-item"><i data-lucide="inbox"></i><span>Inbox</span></div>
+            <div class="wf-dock-item"><i data-lucide="list"></i><span>Tasks</span></div>
+            <div class="wf-dock-item"><i data-lucide="users"></i><span>Members</span></div>
+            <div class="wf-dock-item"><i data-lucide="monitor"></i><span>Computers</span></div>
+            <div class="wf-dock-item"><i data-lucide="settings"></i><span>Settings</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage" data-cell="1,2">
+      <div class="stage-label">03 Chat 与 Tasks 分屏</div>
+      <div class="screen desktop-screen" id="wf-tasks-split">
+        <div class="wf-topbar">
+          <div class="wf-space"><span>K</span><span>Kith-space</span><i data-lucide="chevron-down"></i></div>
+          <div class="wf-crumb"># all</div>
+          <span class="wf-state">Split · 40 / 60</span>
+          <div class="wf-top-spacer"></div>
+          <div class="wf-tools">
+            <div class="wf-tool"><i data-lucide="search"></i></div>
+            <div class="wf-tool"><i data-lucide="more-horizontal"></i></div>
+          </div>
+        </div>
+        <div class="wf-body">
+          <div class="wf-split">
+            <section class="wf-compact-chat">
+              <div class="wf-chat-head">
+                <span class="wf-head-action"><i data-lucide="list"></i></span>
+                <span class="wf-chat-title"># all</span>
+                <span class="wf-grow"></span>
+                <span class="wf-head-action"><i data-lucide="clock"></i></span>
+              </div>
+              <div class="wf-messages">
+                <div class="wf-msg-row"><span class="wf-avatar">L</span><div class="wf-msg"><div class="wf-msg-name">Leader</div>Tasks 已在右侧打开。会话列表和轨迹现在通过抽屉访问。</div></div>
+                <div class="wf-msg-row me"><div class="wf-msg"><div class="wf-msg-name">我</div>先看一下 P4 相关任务。</div></div>
+              </div>
+              <div class="wf-composer"><div class="wf-composer-input">发送消息</div><div class="wf-composer-actions"><span class="wf-head-action"><i data-lucide="plus"></i></span><span class="wf-send"><i data-lucide="arrow-up"></i></span></div></div>
+            </section>
+            <div class="wf-divider"></div>
+            <section class="wf-module">
+              <div class="wf-module-head">
+                <div><div class="wf-module-title">Tasks</div><div class="wf-module-scope">当前 Space · Kith-space</div></div>
+                <span class="wf-grow"></span>
+                <div class="wf-view-toggle"><span class="active">看板</span><span>列表</span></div>
+                <span class="wf-head-action"><i data-lucide="plus"></i></span>
+              </div>
+              <div class="wf-board">
+                <div class="wf-task-col">
+                  <div class="wf-task-col-head"><span>待办</span><span>2</span></div>
+                  <div class="wf-task"><strong>#42 单窗口工作区原型</strong><p>确认 Dock、Pane 与上下文流程。</p><div class="wf-task-meta"><span>Leader</span><span>P4</span></div></div>
+                  <div class="wf-task"><strong>#45 Context Snapshot 契约</strong><p>定义 runtime 无关的消息上下文。</p><div class="wf-task-meta"><span>Developer</span></div></div>
+                </div>
+                <div class="wf-task-col">
+                  <div class="wf-task-col-head"><span>进行中</span><span>1</span></div>
+                  <div class="wf-task"><strong>#39 P4-2b 导航验收</strong><p>核对旧入口与当前数据接线。</p><div class="wf-task-meta"><span>Tester</span><span>今天</span></div></div>
+                </div>
+                <div class="wf-task-col">
+                  <div class="wf-task-col-head"><span>已完成</span><span>2</span></div>
+                  <div class="wf-task"><strong>#31 双壳骨架</strong><p>已被新的单窗口方向取代。</p><div class="wf-task-meta"><span>完成</span></div></div>
+                  <div class="wf-task"><strong>#36 真实组件接线</strong><p>保留组件行为供新壳复用。</p><div class="wf-task-meta"><span>完成</span></div></div>
+                </div>
+              </div>
+              <div class="wf-dock">
+                <div class="wf-dock-item active"><i data-lucide="message-circle"></i><span>Chat</span></div>
+                <div class="wf-dock-item"><i data-lucide="inbox"></i><span>Inbox</span></div>
+                <div class="wf-dock-item active"><i data-lucide="list"></i><span>Tasks</span><span class="wf-badge">3</span></div>
+                <div class="wf-dock-item"><i data-lucide="users"></i><span>Members</span></div>
+                <div class="wf-dock-item"><i data-lucide="monitor"></i><span>Computers</span></div>
+                <div class="wf-dock-item"><i data-lucide="settings"></i><span>Settings</span></div>
+              </div>
+            </section>
+          </div>
+          <div class="wf-note">拖动中间分隔线调整宽度</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage" data-cell="2,2">
+      <div class="stage-label">04 分屏中的会话抽屉</div>
+      <div class="screen desktop-screen" id="wf-conversation-drawer">
+        <div class="wf-topbar">
+          <div class="wf-space"><span>K</span><span>Kith-space</span><i data-lucide="chevron-down"></i></div>
+          <div class="wf-crumb"># all</div><span class="wf-state">Chat 抽屉</span><div class="wf-top-spacer"></div>
+          <div class="wf-tools"><div class="wf-tool"><i data-lucide="search"></i></div></div>
+        </div>
+        <div class="wf-body">
+          <div class="wf-split">
+            <section class="wf-compact-chat">
+              <div class="wf-chat-head"><span class="wf-head-action"><i data-lucide="list"></i></span><span class="wf-chat-title"># all</span><span class="wf-grow"></span><span class="wf-head-action"><i data-lucide="clock"></i></span></div>
+              <div class="wf-messages"><div class="wf-msg-row"><span class="wf-avatar">L</span><div class="wf-msg">抽屉只覆盖 Chat，不改变 Tasks 宽度。</div></div></div>
+              <div class="wf-composer"><div class="wf-composer-input">发送消息</div><div class="wf-composer-actions"><span class="wf-send"><i data-lucide="arrow-up"></i></span></div></div>
+              <div class="wf-drawer-shade"></div>
+              <aside class="wf-drawer left">
+                <div class="wf-pane-head"><span>会话</span><span class="wf-grow"></span><span class="wf-head-action"><i data-lucide="x"></i></span></div>
+                <div class="wf-section">Channels</div>
+                <div class="wf-conversation active"><i data-lucide="message-circle"></i><span class="wf-label">all</span><span class="wf-unread">3</span></div>
+                <div class="wf-conversation"><i data-lucide="message-circle"></i><span class="wf-label">product</span></div>
+                <div class="wf-conversation"><i data-lucide="message-circle"></i><span class="wf-label">research</span><span class="wf-unread">1</span></div>
+                <div class="wf-section">Direct Messages</div>
+                <div class="wf-conversation"><span class="wf-avatar">L</span><span class="wf-label">Leader</span></div>
+                <div class="wf-conversation"><span class="wf-avatar">D</span><span class="wf-label">Developer</span></div>
+                <div class="wf-conversation"><span class="wf-avatar">T</span><span class="wf-label">Tester</span></div>
+              </aside>
+            </section>
+            <div class="wf-divider"></div>
+            <section class="wf-module">
+              <div class="wf-module-head"><div><div class="wf-module-title">Tasks</div><div class="wf-module-scope">当前 Space · Kith-space</div></div></div>
+              <div class="wf-board">
+                <div class="wf-task-col"><div class="wf-task-col-head"><span>待办</span><span>2</span></div><div class="wf-task"><strong>#42 单窗口工作区原型</strong><p>抽屉不挤压模块。</p></div></div>
+                <div class="wf-task-col"><div class="wf-task-col-head"><span>进行中</span><span>1</span></div><div class="wf-task"><strong>#39 导航验收</strong><p>等待反馈。</p></div></div>
+                <div class="wf-task-col"><div class="wf-task-col-head"><span>已完成</span><span>2</span></div></div>
+              </div>
+              <div class="wf-dock">
+                <div class="wf-dock-item active"><i data-lucide="message-circle"></i><span>Chat</span></div>
+                <div class="wf-dock-item"><i data-lucide="inbox"></i><span>Inbox</span></div>
+                <div class="wf-dock-item active"><i data-lucide="list"></i><span>Tasks</span></div>
+                <div class="wf-dock-item"><i data-lucide="users"></i><span>Members</span></div>
+                <div class="wf-dock-item"><i data-lucide="monitor"></i><span>Computers</span></div>
+                <div class="wf-dock-item"><i data-lucide="settings"></i><span>Settings</span></div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage" data-cell="2,3">
+      <div class="stage-label">05 分屏中的实时轨迹抽屉</div>
+      <div class="screen desktop-screen" id="wf-trace-drawer">
+        <div class="wf-topbar">
+          <div class="wf-space"><span>K</span><span>Kith-space</span><i data-lucide="chevron-down"></i></div>
+          <div class="wf-crumb"># all</div><span class="wf-state">轨迹抽屉</span><div class="wf-top-spacer"></div>
+          <div class="wf-tools"><div class="wf-tool"><i data-lucide="search"></i></div></div>
+        </div>
+        <div class="wf-body">
+          <div class="wf-split">
+            <section class="wf-compact-chat">
+              <div class="wf-chat-head"><span class="wf-head-action"><i data-lucide="list"></i></span><span class="wf-chat-title"># all</span><span class="wf-grow"></span><span class="wf-head-action"><i data-lucide="clock"></i></span></div>
+              <div class="wf-messages"><div class="wf-msg-row"><span class="wf-avatar">L</span><div class="wf-msg">查看轨迹时，Tasks 仍保持原宽度。</div></div></div>
+              <div class="wf-composer"><div class="wf-composer-input">发送消息</div><div class="wf-composer-actions"><span class="wf-send"><i data-lucide="arrow-up"></i></span></div></div>
+              <div class="wf-drawer-shade"></div>
+              <aside class="wf-drawer right">
+                <div class="wf-pane-head"><span>实时轨迹</span><span class="wf-grow"></span><span class="wf-head-action"><i data-lucide="x"></i></span></div>
+                <div class="wf-trace-list">
+                  <div class="wf-trace-item"><span class="wf-avatar">L</span><div><strong>Leader 正在拆解</strong><p>将界面架构任务拆为状态机、上下文与模块注册。</p></div></div>
+                  <div class="wf-trace-item"><span class="wf-avatar">D</span><div><strong>Developer 正在读取</strong><p>检查 Chat、Composer 和 TaskBoard 的复用边界。</p></div></div>
+                  <div class="wf-trace-item"><span class="wf-avatar">T</span><div><strong>Tester 等待</strong><p>准备验证三种 Pane 状态。</p></div></div>
+                </div>
+              </aside>
+            </section>
+            <div class="wf-divider"></div>
+            <section class="wf-module">
+              <div class="wf-module-head"><div><div class="wf-module-title">Tasks</div><div class="wf-module-scope">当前 Space · Kith-space</div></div></div>
+              <div class="wf-board">
+                <div class="wf-task-col"><div class="wf-task-col-head"><span>待办</span><span>2</span></div><div class="wf-task"><strong>#42 单窗口工作区原型</strong><p>轨迹抽屉只覆盖 Chat。</p></div></div>
+                <div class="wf-task-col"><div class="wf-task-col-head"><span>进行中</span><span>1</span></div><div class="wf-task"><strong>#39 导航验收</strong><p>等待反馈。</p></div></div>
+                <div class="wf-task-col"><div class="wf-task-col-head"><span>已完成</span><span>2</span></div></div>
+              </div>
+              <div class="wf-dock">
+                <div class="wf-dock-item active"><i data-lucide="message-circle"></i><span>Chat</span></div>
+                <div class="wf-dock-item"><i data-lucide="inbox"></i><span>Inbox</span></div>
+                <div class="wf-dock-item active"><i data-lucide="list"></i><span>Tasks</span></div>
+                <div class="wf-dock-item"><i data-lucide="users"></i><span>Members</span></div>
+                <div class="wf-dock-item"><i data-lucide="monitor"></i><span>Computers</span></div>
+                <div class="wf-dock-item"><i data-lucide="settings"></i><span>Settings</span></div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage" data-cell="1,3">
+      <div class="stage-label">06 Tasks 全宽</div>
+      <div class="screen desktop-screen" id="wf-module-only">
+        <div class="wf-topbar">
+          <div class="wf-space"><span>K</span><span>Kith-space</span><i data-lucide="chevron-down"></i></div>
+          <div class="wf-crumb">Tasks</div>
+          <span class="wf-state">ModuleOnly</span>
+          <div class="wf-top-spacer"></div>
+          <div class="wf-tools">
+            <div class="wf-tool"><i data-lucide="search"></i></div>
+            <div class="wf-tool"><i data-lucide="more-horizontal"></i></div>
+          </div>
+        </div>
+        <div class="wf-body">
+          <section class="wf-module" style="height:100%">
+            <div class="wf-module-head">
+              <div><div class="wf-module-title">Tasks</div><div class="wf-module-scope">当前 Space · Kith-space</div></div>
+              <span class="wf-grow"></span>
+              <div class="wf-view-toggle"><span class="active">看板</span><span>列表</span></div>
+              <span class="wf-head-action"><i data-lucide="plus"></i></span>
+            </div>
+            <div class="wf-board">
+              <div class="wf-task-col">
+                <div class="wf-task-col-head"><span>待办</span><span>2</span></div>
+                <div class="wf-task selected"><strong>#42 单窗口工作区原型</strong><p>完善 Dock、抽屉与 msg-context 页面流程。</p><div class="wf-task-meta"><span>Leader</span><span>P4</span></div><div class="wf-discuss">在 Chat 中讨论</div></div>
+                <div class="wf-task"><strong>#45 Context Snapshot 契约</strong><p>定义 runtime 无关的上下文快照。</p></div>
+              </div>
+              <div class="wf-task-col">
+                <div class="wf-task-col-head"><span>进行中</span><span>1</span></div>
+                <div class="wf-task"><strong>#39 P4-2b 导航验收</strong><p>核对旧入口与真实数据接线。</p><div class="wf-task-meta"><span>Tester</span><span>今天</span></div></div>
+              </div>
+              <div class="wf-task-col">
+                <div class="wf-task-col-head"><span>已完成</span><span>2</span></div>
+                <div class="wf-task"><strong>#31 双壳骨架</strong><p>历史实现，等待新壳替换。</p></div>
+                <div class="wf-task"><strong>#36 真实组件接线</strong><p>现有行为可继续复用。</p></div>
+              </div>
+            </div>
+            <div class="wf-dock">
+              <div class="wf-dock-item"><i data-lucide="message-circle"></i><span>Chat</span></div>
+              <div class="wf-dock-item"><i data-lucide="inbox"></i><span>Inbox</span></div>
+              <div class="wf-dock-item active"><i data-lucide="list"></i><span>Tasks</span><span class="wf-badge">3</span></div>
+              <div class="wf-dock-item"><i data-lucide="users"></i><span>Members</span></div>
+              <div class="wf-dock-item"><i data-lucide="monitor"></i><span>Computers</span></div>
+              <div class="wf-dock-item"><i data-lucide="settings"></i><span>Settings</span></div>
+            </div>
+          </section>
+          <div class="wf-note">点击 Chat 恢复分屏；再次点击 Tasks 返回 Chat 全宽</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage" data-cell="1,4">
+      <div class="stage-label">07 任务附加到 Chat 上下文</div>
+      <div class="screen desktop-screen" id="wf-context-draft">
+        <div class="wf-topbar">
+          <div class="wf-space"><span>K</span><span>Kith-space</span><i data-lucide="chevron-down"></i></div>
+          <div class="wf-crumb"># all</div><span class="wf-state">Split · Focused Item</span><div class="wf-top-spacer"></div>
+          <div class="wf-tools"><div class="wf-tool"><i data-lucide="search"></i></div></div>
+        </div>
+        <div class="wf-body">
+          <div class="wf-split">
+            <section class="wf-compact-chat">
+              <div class="wf-chat-head"><span class="wf-head-action"><i data-lucide="list"></i></span><span class="wf-chat-title"># all</span><span class="wf-grow"></span><span class="wf-head-action"><i data-lucide="clock"></i></span></div>
+              <div class="wf-messages">
+                <div class="wf-msg-row"><span class="wf-avatar">L</span><div class="wf-msg"><div class="wf-msg-name">Leader</div>任务 #42 已作为当前讨论焦点。发送时会保存此刻的界面快照。</div></div>
+              </div>
+              <div class="wf-composer">
+                <div class="wf-context-strip">
+                  <span>当前界面</span>
+                  <span class="wf-context-chip"><i data-lucide="list"></i>Tasks</span>
+                  <span class="wf-context-chip">#42 原型</span>
+                  <span class="wf-context-chip"><i data-lucide="file"></i>README.md</span>
+                  <span>+2</span>
+                </div>
+                <div class="wf-composer-input">请基于当前任务和已打开文件，整理下一步实现计划。</div>
+                <div class="wf-composer-actions"><span class="wf-head-action"><i data-lucide="plus"></i></span><span class="wf-send"><i data-lucide="arrow-up"></i></span></div>
+              </div>
+            </section>
+            <div class="wf-divider"></div>
+            <section class="wf-module">
+              <div class="wf-module-head"><div><div class="wf-module-title">Tasks</div><div class="wf-module-scope">当前 Space · Kith-space</div></div><span class="wf-grow"></span><span class="wf-state">Focused #42</span></div>
+              <div class="wf-board">
+                <div class="wf-task-col"><div class="wf-task-col-head"><span>待办</span><span>2</span></div><div class="wf-task selected"><strong>#42 单窗口工作区原型</strong><p>当前 focused item。</p><div class="wf-task-meta"><span>Leader</span><span>P4</span></div><div class="wf-discuss">已附加到 Chat</div></div></div>
+                <div class="wf-task-col"><div class="wf-task-col-head"><span>进行中</span><span>1</span></div><div class="wf-task"><strong>#39 导航验收</strong><p>等待反馈。</p></div></div>
+                <div class="wf-task-col"><div class="wf-task-col-head"><span>已完成</span><span>2</span></div></div>
+              </div>
+              <div class="wf-dock">
+                <div class="wf-dock-item active"><i data-lucide="message-circle"></i><span>Chat</span></div>
+                <div class="wf-dock-item"><i data-lucide="inbox"></i><span>Inbox</span></div>
+                <div class="wf-dock-item active"><i data-lucide="list"></i><span>Tasks</span></div>
+                <div class="wf-dock-item"><i data-lucide="users"></i><span>Members</span></div>
+                <div class="wf-dock-item"><i data-lucide="monitor"></i><span>Computers</span></div>
+                <div class="wf-dock-item"><i data-lucide="settings"></i><span>Settings</span></div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage" data-cell="1,5">
+      <div class="stage-label">08 已发送的 msg-context</div>
+      <div class="screen desktop-screen" id="wf-context-sent">
+        <div class="wf-topbar">
+          <div class="wf-space"><span>K</span><span>Kith-space</span><i data-lucide="chevron-down"></i></div>
+          <div class="wf-crumb"># all</div><span class="wf-state">Immutable Snapshot</span><div class="wf-top-spacer"></div>
+          <div class="wf-tools"><div class="wf-tool"><i data-lucide="search"></i></div></div>
+        </div>
+        <div class="wf-body">
+          <div class="wf-split">
+            <section class="wf-compact-chat">
+              <div class="wf-chat-head"><span class="wf-head-action"><i data-lucide="list"></i></span><span class="wf-chat-title"># all</span><span class="wf-grow"></span><span class="wf-head-action"><i data-lucide="clock"></i></span></div>
+              <div class="wf-messages">
+                <div class="wf-msg-row me">
+                  <div>
+                    <div class="wf-msg"><div class="wf-msg-name">我</div>请基于当前任务和已打开文件，整理下一步实现计划。</div>
+                    <div class="wf-context-badge"><i data-lucide="tag"></i>msg-context · Tasks / #42 / README.md · 已展开</div>
+                    <div class="wf-context-card">
+                      <h4>发送时界面快照</h4>
+                      <div class="wf-context-row"><span>Space</span><strong>Kith-space</strong></div>
+                      <div class="wf-context-row"><span>Module</span><strong>Tasks</strong></div>
+                      <div class="wf-context-row"><span>Stack</span><strong>#42 单窗口工作区原型<br>README.md<br>ui-direction.md</strong></div>
+                      <div class="wf-context-row"><span>Focused</span><strong>Task #42</strong></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="wf-composer"><div class="wf-composer-input">继续发送消息</div><div class="wf-composer-actions"><span class="wf-send"><i data-lucide="arrow-up"></i></span></div></div>
+            </section>
+            <div class="wf-divider"></div>
+            <section class="wf-module">
+              <div class="wf-module-head"><div><div class="wf-module-title">Tasks</div><div class="wf-module-scope">当前 Space · Kith-space</div></div><span class="wf-grow"></span><span class="wf-state">当前界面可继续变化</span></div>
+              <div class="wf-board">
+                <div class="wf-task-col"><div class="wf-task-col-head"><span>待办</span><span>2</span></div><div class="wf-task selected"><strong>#42 单窗口工作区原型</strong><p>消息中的 Snapshot 已固化，不随当前界面变化。</p></div></div>
+                <div class="wf-task-col"><div class="wf-task-col-head"><span>进行中</span><span>1</span></div><div class="wf-task"><strong>#39 导航验收</strong><p>等待反馈。</p></div></div>
+                <div class="wf-task-col"><div class="wf-task-col-head"><span>已完成</span><span>2</span></div></div>
+              </div>
+              <div class="wf-dock">
+                <div class="wf-dock-item active"><i data-lucide="message-circle"></i><span>Chat</span></div>
+                <div class="wf-dock-item"><i data-lucide="inbox"></i><span>Inbox</span></div>
+                <div class="wf-dock-item active"><i data-lucide="list"></i><span>Tasks</span></div>
+                <div class="wf-dock-item"><i data-lucide="users"></i><span>Members</span></div>
+                <div class="wf-dock-item"><i data-lucide="monitor"></i><span>Computers</span></div>
+                <div class="wf-dock-item"><i data-lucide="settings"></i><span>Settings</span></div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="link" data-from="wf-chat-full" data-to="wf-tasks-split" data-tag="点击 Dock「Tasks」"></div>
+    <div class="link" data-from="wf-tasks-split" data-to="wf-module-only" data-tag="点击 Dock「Chat」隐藏 Chat"></div>
+    <div class="link" data-from="wf-module-only" data-to="wf-context-draft" data-tag="任务 #42「在 Chat 中讨论」"></div>
+    <div class="link" data-from="wf-context-draft" data-to="wf-context-sent" data-tag="发送消息并固化 Snapshot"></div>
+    <div class="link" data-from="wf-chat-full" data-to="wf-space-menu" data-tag="点击当前 Space" data-dash="1"></div>
+    <div class="link" data-from="wf-tasks-split" data-to="wf-conversation-drawer" data-tag="点击「会话」" data-dash="1"></div>
+    <div class="link" data-from="wf-tasks-split" data-to="wf-trace-drawer" data-tag="点击「轨迹」" data-dash="1"></div>
+
+  </div>
+
+  </div><!-- /.canvas -->
+  </div><!-- /.zoom-stage -->
+
+  <!-- ===================== 标注系统 UI ===================== -->
+  <div class="anno-toolbar">
+    <span class="help-wrap">
+      <button id="helpBtn" class="help-btn" title="查看帮助" aria-label="查看帮助">?</button>
+      <span class="help-hint">查看帮助</span>
+      <div class="help-pop" id="helpPop">
+        <h4>这张图怎么用？</h4>
+        <p class="help-lead">每个桌面窗口框是一个关键状态，框之间的连线表示点击什么后界面如何变化。下面两个模式帮你调整和反馈。</p>
+        <div class="help-sec">
+          <div class="hs-title">⊞ 布局模式 <span class="hs-tag">调整页面位置</span></div>
+          <div class="hs-body">开启后<b>直接拖动桌面状态框</b>换到别的格子，连线会自动重画；拖到已有页面的格子等于两页交换。摆好后点<b>「导出布局」</b>，把位置信息粘回对话框，我据此固化。</div>
+          <div class="hs-why">解决：页面太多排乱了、想换顺序、连线交叉看不清——不用再用文字描述往哪挪，拖一下就行。</div>
+        </div>
+        <div class="help-sec">
+          <div class="hs-title">✎ 标注模式 <span class="hs-tag">写修改意见</span></div>
+          <div class="hs-body">开启后<b>点击任意页面</b>落一个图钉、写下想改/想加的想法（留空自动删除）。写完点<b>「导出标注」</b>，把内容粘回对话框，我按标注逐条改。</div>
+          <div class="hs-why">解决：想要的修改散落在好几页上、口头说不清具体位置——直接点在页面上写，定位准、不漏项。</div>
+        </div>
+      </div>
+    </span>
+    <button id="layoutToggle" class="primary">⊞ 布局模式：关</button>
+    <button id="layoutExport">导出布局</button>
+    <span class="count"><span id="annoCount">0</span> 条标注</span>
+    <button id="annoToggle" class="primary">✎ 标注模式：关</button>
+    <button id="annoExport">导出标注</button>
+    <button id="annoShot">下载截图</button>
+    <button id="annoClear" class="danger">清空</button>
+    <span class="zoom-group">
+      <button class="zbtn" id="zoomOut" title="缩小（Ctrl/⌘ + 滚轮 / 触控板捏合）">−</button>
+      <button class="zpct" id="zoomPct" title="点击复位 100%">100%</button>
+      <button class="zbtn" id="zoomIn" title="放大（Ctrl/⌘ + 滚轮 / 触控板捏合）">＋</button>
+      <button id="zoomFit" title="缩小到整张流程图铺满窗口宽度">适应屏幕</button>
+    </span>
+  </div>
+
+  <div class="anno-modal-mask" id="annoMask">
+    <div class="anno-modal">
+      <h3 id="annoModalTitle">导出标注</h3>
+      <p>已自动复制到剪贴板。把下面内容粘贴到对话框发给我即可。</p>
+      <textarea id="annoOut" readonly></textarea>
+      <div class="actions">
+        <button id="annoCopy">再次复制</button>
+        <button class="primary" id="annoClose">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 图标急救入口：默认隐藏，仅当图标库加载失败时由脚本显示（问号用纯字符，不依赖图标库） -->
+  <div class="icon-sos">
+    <div class="icon-sos-btn" id="iconSosBtn" title="图标没显示出来？">?</div>
+    <div class="icon-sos-tip">图标没显示出来？点这里复制一段话，发给 AI 即可修复</div>
+  </div>
+
+<script>
+(function () {
+  // 每个原型文件用独立的存储命名空间，避免不同页面之间串数据（标注 / 标题缓存）
+  const NS = 'prototype:' + (location.pathname.split('/').pop() || 'index');
+  const KEY = NS + ':annotations';
+  let annoMode = false;
+  let pins = load();
+
+  const body = document.body;
+  const toggleBtn = document.getElementById('annoToggle');
+  const countEl = document.getElementById('annoCount');
+
+  // ---------- 持久化 ----------
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+    catch (e) { return []; }
+  }
+  function save() {
+    localStorage.setItem(KEY, JSON.stringify(pins));
+    countEl.textContent = pins.length;
+  }
+
+  // ---------- 识别点击位置所属的页面 & 锚点 ----------
+  function describeTarget(el, screen) {
+    // 页面名：取该 .screen 所在 .stage 的标签
+    const stage = screen.closest('.stage');
+    const pageName = stage ? stage.querySelector('.stage-label').textContent.trim() : '页面';
+
+    // 锚点：向上找最近的有意义元素，取其主标题/文本
+    let anchor = '';
+    const item = el.closest('.list-item');
+    const bubble = el.closest('.bubble');
+    const hero = el.closest('.chat-hero');
+    const nav = el.closest('.navbar');
+    const input = el.closest('.chat-input');
+    // 扩展组件容器
+    const tab = el.closest('.tabbar .tab');
+    const product = el.closest('.product');
+    const feed = el.closest('.feed-item');
+    const gridItem = el.closest('.grid-item');
+    const mediaItem = el.closest('.media-item');
+    const search = el.closest('.searchbar');
+    const cta = el.closest('.cta-bar');
+    const card = el.closest('.card');
+
+    if (item) {
+      const t = item.querySelector('.t1');
+      anchor = t ? t.textContent.trim() : '列表项';
+    } else if (bubble) {
+      anchor = '对话气泡:' + bubble.textContent.replace(/\s+/g, ' ').trim().slice(0, 14) + '…';
+    } else if (hero) {
+      anchor = '头部头像区';
+    } else if (nav) {
+      const title = nav.querySelector('.title');
+      anchor = '导航栏' + (el.classList.contains('nav-btn') ? '按钮' : (title ? '·' + title.textContent.trim() : ''));
+    } else if (input) {
+      anchor = '输入栏';
+    } else if (tab) {
+      const lb = tab.querySelector('.tlabel');
+      anchor = '底部Tab:' + (lb ? lb.textContent.trim() : '');
+    } else if (product) {
+      const n = product.querySelector('.pname');
+      anchor = '商品:' + (n ? n.textContent.trim().slice(0, 12) : '');
+    } else if (feed) {
+      const n = feed.querySelector('.fname');
+      anchor = 'Feed动态' + (n ? '·' + n.textContent.trim() : '');
+    } else if (gridItem) {
+      const lb = gridItem.querySelector('.glabel');
+      anchor = '宫格入口:' + (lb ? lb.textContent.trim() : '');
+    } else if (mediaItem) {
+      const m = mediaItem.querySelector('.m1');
+      anchor = m ? m.textContent.trim() : '媒体列表项';
+    } else if (search) {
+      anchor = '搜索栏';
+    } else if (cta) {
+      const b = el.closest('.btn');
+      anchor = '底部操作:' + (b ? b.textContent.trim() : 'CTA');
+    } else if (el.classList.contains('section-cap')) {
+      anchor = '分组标题:' + el.textContent.trim();
+    } else if (card) {
+      const ct = card.querySelector('.ct');
+      anchor = '卡片' + (ct ? '·' + ct.textContent.trim() : '');
+    } else {
+      anchor = '页面空白处';
+    }
+    return { pageName, anchor };
+  }
+
+  // ---------- 渲染所有图钉 ----------
+  function renderAll() {
+    document.querySelectorAll('.anno-pin, .anno-pop').forEach(n => n.remove());
+    pins.forEach((p, i) => {
+      const screen = document.querySelectorAll('.screen')[p.screenIndex];
+      if (!screen) return;
+      // 确保 screen 是定位上下文
+      if (getComputedStyle(screen).position === 'static') screen.style.position = 'relative';
+      const pin = document.createElement('div');
+      pin.className = 'anno-pin';
+      pin.dataset.index = i;
+      pin.textContent = i + 1;
+      pin.style.left = p.xPct + '%';
+      pin.style.top = p.yPct + '%';
+      pin.title = p.anchor;
+      pin.addEventListener('click', (e) => { e.stopPropagation(); openPop(pin, i); });
+      screen.appendChild(pin);
+    });
+  }
+
+  // 提交当前打开的气泡：写回内容；若内容为空则连同图钉一起删除（空标注不保留）
+  // 返回 true 表示确实有气泡被处理
+  function commitOpenPop() {
+    const pop = document.querySelector('.anno-pop');
+    if (!pop) return false;
+    const idx = +pop.dataset.index;
+    const ta = pop.querySelector('textarea');
+    const val = ta ? ta.value.trim() : '';
+    pop.remove();
+    if (pins[idx] !== undefined) {
+      if (val === '') {
+        // 空内容 —— 移除这条标注
+        pins.splice(idx, 1);
+        save();
+        renderAll();
+      } else {
+        pins[idx].note = val;
+        save();
+      }
+    }
+    return true;
+  }
+
+  // 把弹窗定位到图钉附近（文档坐标）；超出视口右/下边缘时翻转，保证完整可见
+  function positionPop(pop, pin) {
+    const pr = pin.getBoundingClientRect();
+    const sx = window.scrollX, sy = window.scrollY;
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    const gap = 10;
+    // 默认放在图钉下方、水平居中对齐图钉中心
+    let left = pr.left + sx + pr.width / 2 - pw / 2;
+    let top = pr.bottom + sy + gap;
+    // 右/左溢出修正
+    const maxLeft = sx + document.documentElement.clientWidth - pw - 8;
+    if (left > maxLeft) left = maxLeft;
+    if (left < sx + 8) left = sx + 8;
+    // 下方放不下则翻到上方
+    if (pr.bottom + gap + ph > document.documentElement.clientHeight) {
+      top = pr.top + sy - ph - gap;
+    }
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+  }
+
+  // ---------- 打开注释气泡 ----------
+  function openPop(pin, index) {
+    document.querySelectorAll('.anno-pop').forEach(n => n.remove());
+    const p = pins[index];
+    const pop = document.createElement('div');
+    pop.className = 'anno-pop';
+    pop.dataset.index = index;
+    pop.innerHTML =
+      '<div class="meta">#' + (index + 1) + ' · ' + p.pageName + ' / ' + p.anchor + '</div>' +
+      '<textarea placeholder="写下你的修改 / 新增想法…（留空将自动删除此标注）"></textarea>' +
+      '<div class="row"><button class="del"><i data-lucide="trash-2"></i>删除</button><button class="save">保存</button></div>';
+    // 挂到 body，脱离页面卡片的 overflow 裁切
+    document.body.appendChild(pop);
+    positionPop(pop, pin);
+    if (window.lucide) lucide.createIcons({ nodes: [pop.querySelector('[data-lucide]')] });
+    const ta = pop.querySelector('textarea');
+    ta.value = p.note || '';
+    ta.focus();
+    pop.addEventListener('click', e => e.stopPropagation());
+    pop.querySelector('.save').addEventListener('click', (e) => {
+      e.stopPropagation();
+      commitOpenPop();
+    });
+    pop.querySelector('.del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      pop.remove();
+      pins.splice(index, 1);
+      save();
+      renderAll();
+    });
+  }
+
+  // ---------- 点击页面新增图钉 ----------
+  function onScreenClick(e) {
+    if (!annoMode) return;
+    if (layoutMode) return;             // 布局模式下页面用于拖拽，不落图钉
+    if (spaceDown || panning) return;   // 空格抓手平移时不落图钉
+
+    // 点在已有图钉或正在编辑的气泡内 —— 交给它们自己处理，不新增
+    if (e.target.closest('.anno-pin') || e.target.closest('.anno-pop')) return;
+
+    // 若当前有气泡正在编辑：这次点击只用于“保存并收起”，不新增图钉
+    if (commitOpenPop()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
+    const screen = e.target.closest('.screen');
+    if (!screen) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const screens = Array.from(document.querySelectorAll('.screen'));
+    const rect = screen.getBoundingClientRect();
+    const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+    const yPct = ((e.clientY - rect.top) / rect.height) * 100;
+    const { pageName, anchor } = describeTarget(e.target, screen);
+
+    pins.push({
+      screenIndex: screens.indexOf(screen),
+      pageName, anchor,
+      xPct: +xPct.toFixed(2),
+      yPct: +yPct.toFixed(2),
+      note: ''
+    });
+    save();
+    renderAll();
+    // 自动打开刚新增那一条的输入框（按 data-index 精确定位，不靠 DOM 顺序）
+    const newIdx = pins.length - 1;
+    const newPin = document.querySelector('.anno-pin[data-index="' + newIdx + '"]');
+    if (newPin) openPop(newPin, newIdx);
+  }
+
+  // ---------- 工具栏 ----------
+  toggleBtn.addEventListener('click', () => {
+    annoMode = !annoMode;
+    if (annoMode && layoutMode) setLayoutMode(false);   // 与布局模式互斥
+    body.classList.toggle('anno-on', annoMode);
+    toggleBtn.classList.toggle('active', annoMode);
+    toggleBtn.textContent = annoMode ? '✎ 标注模式：开' : '✎ 标注模式：关';
+  });
+
+  document.addEventListener('click', onScreenClick, true);
+
+  // ---------- 帮助浮层：点击 ? 钮展开/收起，点击别处收起 ----------
+  const helpBtn = document.getElementById('helpBtn');
+  const helpPop = document.getElementById('helpPop');
+  if (helpBtn && helpPop) {
+    helpBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = helpPop.classList.toggle('show');
+      helpBtn.classList.toggle('active', open);
+    });
+    helpPop.addEventListener('click', (e) => e.stopPropagation());
+    document.addEventListener('click', () => {
+      if (helpPop.classList.contains('show')) {
+        helpPop.classList.remove('show');
+        helpBtn.classList.remove('active');
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && helpPop.classList.contains('show')) {
+        helpPop.classList.remove('show');
+        helpBtn.classList.remove('active');
+      }
+    });
+  }
+
+  // ---------- 导出 ----------
+  const mask = document.getElementById('annoMask');
+  const out = document.getElementById('annoOut');
+
+  function buildExport() {
+    if (!pins.length) return '（暂无标注）';
+    const fileName = location.pathname.split('/').pop() || '原型文件';
+    let s = '我在原型页面上做了如下标注，请据此更新 ' + fileName + '：\n\n';
+    pins.forEach((p, i) => {
+      s += '[#' + (i + 1) + '] 页面：' + p.pageName +
+           ' | 锚点：' + p.anchor +
+           ' | 位置：' + p.xPct + '%,' + p.yPct + '%\n' +
+           '     想法：' + (p.note || '（未填写）') + '\n';
+    });
+    return s;
+  }
+
+  const modalTitle = document.getElementById('annoModalTitle');
+  function showExportModal(title, text) {
+    if (modalTitle) modalTitle.textContent = title;
+    out.value = text;
+    mask.classList.add('show');
+    if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+  }
+
+  document.getElementById('annoExport').addEventListener('click', () => {
+    showExportModal('导出标注', buildExport());
+  });
+  document.getElementById('layoutExport').addEventListener('click', () => {
+    showExportModal('导出布局', buildLayoutExport());
+  });
+  document.getElementById('annoCopy').addEventListener('click', () => {
+    out.select();
+    if (navigator.clipboard) navigator.clipboard.writeText(out.value).catch(() => {});
+    else document.execCommand('copy');
+  });
+  document.getElementById('annoClose').addEventListener('click', () => mask.classList.remove('show'));
+  mask.addEventListener('click', (e) => { if (e.target === mask) mask.classList.remove('show'); });
+
+  document.getElementById('annoClear').addEventListener('click', () => {
+    if (confirm('清空所有标注？')) { pins = []; save(); renderAll(); }
+  });
+
+  // ---------- 下载整页截图 ----------
+  // 截图目标是 .canvas（它的尺寸 = 全部页面的真实宽高），而非 document.body
+  // （body 宽度受视口限制，横向溢出的页面会被裁掉，导致只下载到一部分）
+  const shotBtn = document.getElementById('annoShot');
+  shotBtn.addEventListener('click', async () => {
+    if (!window.html2canvas) { alert('截图库尚未加载完成，请稍候重试'); return; }
+    const toolbar = document.querySelector('.anno-toolbar');
+    const target = document.querySelector('.canvas') || document.body;
+    const prevText = shotBtn.textContent;
+    shotBtn.textContent = '生成中…';
+    shotBtn.disabled = true;
+    toolbar.style.visibility = 'hidden';   // 不要把工具栏拍进去
+    // 记录并临时清除滚动，避免 html2canvas 因滚动偏移裁切内容
+    const sx = window.scrollX, sy = window.scrollY;
+    window.scrollTo(0, 0);
+    // 背景还原：页面背景的径向渐变定义在 body 上，而截图目标是 .canvas（自身无背景），
+    // 且 body 的 backgroundColor 计算值是透明（渐变属 background-image）。
+    // 截图前临时把同款渐变铺到 .canvas 上，截完恢复，保证下载图与网页观感一致。
+    const prevBg = target.style.background;
+    target.style.background = 'radial-gradient(circle at 50% 0%, #ffffff 0%, var(--bg) 60%)';
+    // 截图前临时取消缩放，保证导出永远是 1:1 全分辨率（html2canvas 对 transform 支持不稳）
+    const prevTransform = target.style.transform;
+    target.style.transform = 'none';
+    try {
+      // 用目标的完整尺寸（含溢出视口的部分）
+      const fullW = Math.ceil(target.scrollWidth);
+      const fullH = Math.ceil(target.scrollHeight);
+      const canvas = await html2canvas(target, {
+        backgroundColor: '#f3f4f6',        // 渐变兜底色（= --bg），html2canvas 渲染渐变失败时也不至于透明/黑
+        scale: 2,                          // 2x 高清
+        useCORS: true,
+        width: fullW,
+        height: fullH,
+        windowWidth: fullW,
+        windowHeight: fullH,
+        scrollX: 0,
+        scrollY: 0
+      });
+      const link = document.createElement('a');
+      const titleEl = document.getElementById('docTitle');
+      const fname = (titleEl ? titleEl.textContent.trim() : '原型线框图').replace(/[\\/:*?"<>|]/g, '');
+      link.download = (fname || '原型线框图') + '.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (err) {
+      console.error(err);
+      alert('截图失败：' + err.message);
+    } finally {
+      target.style.background = prevBg;    // 恢复 .canvas 原背景
+      target.style.transform = prevTransform;   // 恢复缩放
+      window.scrollTo(sx, sy);
+      toolbar.style.visibility = '';
+      shotBtn.textContent = prevText;
+      shotBtn.disabled = false;
+    }
+  });
+
+  // ---------- 可编辑标题 / 副标题（点击编辑，失焦保存，刷新恢复） ----------
+  const TITLE_KEY = NS + ':doc-title';
+  const SUB_KEY = NS + ':doc-subtitle';
+  function bindEditable(el, storeKey) {
+    if (!el) return;
+    // 恢复已保存内容（允许为空：保存过空串也照样应用）
+    const saved = localStorage.getItem(storeKey);
+    if (saved !== null) el.textContent = saved;
+    // 失焦保存（允许全空，可全部删除）
+    el.addEventListener('blur', () => {
+      localStorage.setItem(storeKey, el.textContent.trim());
+    });
+    // 回车 = 完成编辑（不换行）
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+    });
+  }
+  bindEditable(document.getElementById('docTitle'), TITLE_KEY);
+  bindEditable(document.getElementById('docSubtitle'), SUB_KEY);
+
+  // ---------- 页面间连线 drawLinks：统一「边」模型 ----------
+  // 收集所有 <div class="link"|"xlink" data-from data-to data-tag data-side data-dash>，
+  // 给每条边画进 .canvas 级 SVG overlay：
+  //   · 同行相邻两页（行相等 + 列相邻 + to 在右）→ 一条水平直箭头（保留主流程清爽横排）；
+  //   · 其余（跨行/跨列/汇聚/返回）→ 障碍物正交布线器自动绕开页面找最短折线。
+  // 坐标全部相对 .canvas 本地坐标系（.canvas 已 position:relative）。
+  // 多条边指向同一目标天然汇聚，分走不同端口、互不重叠。
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function drawLinks() {
+    const canvas = document.querySelector('.canvas');
+    if (!canvas) return;
+    const defs = Array.from(document.querySelectorAll('.link, .xlink'));
+    // overlay 与 tag 容器：复用或新建
+    let overlay = canvas.querySelector(':scope > .link-overlay');
+    if (!overlay) {
+      overlay = document.createElementNS(SVGNS, 'svg');
+      overlay.setAttribute('class', 'link-overlay');
+      canvas.appendChild(overlay);
+    }
+    overlay.style.visibility = '';   // 拖拽时曾临时隐藏 overlay，重画时务必恢复可见
+    canvas.querySelectorAll(':scope > .link-tag').forEach(n => n.remove());
+    while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
+    if (!defs.length) return;
+
+    const cb = canvas.getBoundingClientRect();
+    overlay.setAttribute('viewBox', `0 0 ${cb.width} ${cb.height}`);
+    overlay.setAttribute('width', cb.width);
+    overlay.setAttribute('height', cb.height);
+
+    const GAP = 8, ARROW = 6;
+    // 某元素相对 canvas 的矩形
+    const rectOf = (el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left - cb.left, y: r.top - cb.top, w: r.width, h: r.height,
+               cx: r.left - cb.left + r.width / 2, cy: r.top - cb.top + r.height / 2 };
+    };
+    const addPath = (d, dashed) => {
+      const p = document.createElementNS(SVGNS, 'path');
+      p.setAttribute('d', d);
+      p.setAttribute('stroke-linecap', 'round');
+      p.setAttribute('stroke-linejoin', 'round');
+      if (dashed) p.setAttribute('class', 'dashed');
+      overlay.appendChild(p);
+      return p;
+    };
+    const addTag = (x, y, text) => {
+      const tag = document.createElement('div');
+      tag.className = 'link-tag';
+      tag.textContent = text;
+      tag.style.left = x + 'px';
+      tag.style.top = y + 'px';
+      canvas.appendChild(tag);
+    };
+
+    // 读某个 .stage 的网格坐标 [行,列]（data-cell="行,列"）；无则返回 null
+    const cellOf = (el) => {
+      const stage = el.closest('.stage');
+      if (!stage) return null;
+      const dc = stage.getAttribute('data-cell');
+      if (!dc) return null;
+      const m = dc.split(',').map(s => parseInt(s.trim(), 10));
+      return (m.length === 2 && !isNaN(m[0]) && !isNaN(m[1])) ? { row: m[0], col: m[1] } : null;
+    };
+
+    // ===== 障碍物正交布线器（A* / Dijkstra）=====
+    // 把每个页面当成「障碍矩形」（向外扩 MARGIN 留白），连线只在页面之间的空隙里走正交折线。
+    // 源页与目标页各开「上/下/左/右」四个端口，由最短路算法自动挑「路程短 + 拐弯少 + 不压页」的
+    // 进出方向与路径——这正是「按目标四个方向盘点哪个最近、且保证不压页」。任意布局（规整网格 /
+    // 嵌套分支的不规则摆放）都不会压页；多条汇聚到同一页的线天然走不同端口与通道，互不重叠。
+    const MARGIN = 40;     // 障碍外扩留白：绕行折线与页面之间至少留这么宽（也是走线通道的半宽依据）
+                           // —— 调大让「跨多页绕行」的线离页面更远、不贴边，整体更协调
+    const TURN = 60;       // 每个直角拐弯的惩罚（与像素同量纲）——越大越偏好笔直、少弯折
+    const EPS = 0.5;
+    const screens = Array.from(canvas.querySelectorAll('.screen')).map(rectOf);
+    const obstacles = screens.map(s => ({ x1: s.x - MARGIN, y1: s.y - MARGIN, x2: s.x + s.w + MARGIN, y2: s.y + s.h + MARGIN }));
+    const idxOf = (r) => screens.findIndex(s => s.x === r.x && s.y === r.y);
+
+    // 一条正交线段是否穿过某障碍「内部」（边界相切不算，故相邻通道可贴边走）
+    function segHitsAny(ax, ay, bx, by, skipIdx) {
+      for (let i = 0; i < obstacles.length; i++) {
+        if (i === skipIdx) continue;
+        const o = obstacles[i];
+        if (ax === bx) {                       // 垂直段
+          if (ax > o.x1 + EPS && ax < o.x2 - EPS) {
+            const lo = Math.min(ay, by), hi = Math.max(ay, by);
+            if (lo < o.y2 - EPS && hi > o.y1 + EPS) return true;
+          }
+        } else {                               // 水平段
+          if (ay > o.y1 + EPS && ay < o.y2 - EPS) {
+            const lo = Math.min(ax, bx), hi = Math.max(ax, bx);
+            if (lo < o.x2 - EPS && hi > o.x1 + EPS) return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    // 给一个页面矩形生成四个端口：anchor=贴页边(箭头落点)，px/py=外扩留白外缘(进网格的点)，
+    // dir=离开/进入页面的轴向，arrow=从该端口进入页面时箭头指向。
+    function portsOf(r) {
+      return [
+        { side:'l', ax:r.x - GAP,        ay:r.cy, px:r.x - MARGIN,        py:r.cy, dir:'h', arrow:'r' },
+        { side:'r', ax:r.x + r.w + GAP,  ay:r.cy, px:r.x + r.w + MARGIN,  py:r.cy, dir:'h', arrow:'l' },
+        { side:'t', ax:r.cx, ay:r.y - GAP,         px:r.cx, py:r.y - MARGIN,         dir:'v', arrow:'d' },
+        { side:'b', ax:r.cx, ay:r.y + r.h + GAP,   px:r.cx, py:r.y + r.h + MARGIN,   dir:'v', arrow:'u' },
+      ];
+    }
+
+    defs.forEach(def => {
+      const from = document.getElementById(def.dataset.from || '');
+      const to = document.getElementById(def.dataset.to || '');
+      if (!from || !to) return;
+      const a = rectOf(from), b = rectOf(to);
+      const dashed = def.dataset.dash === '1';
+      const ai = idxOf(a), bi = idxOf(b);
+      const side = def.dataset.side || 'auto';
+
+      // ===== 特例：同行相邻两页 → 一条水平直箭头（保留主流程清爽横排）=====
+      // 命中条件：两端都有网格坐标、同一行、列相邻(差 1)、目标在源右侧、且中间无障碍。
+      // 仅在 data-side=auto（默认）时启用——显式指定进入边的留给布线器。
+      if (side === 'auto') {
+        const ca = cellOf(from), cb2 = cellOf(to);
+        if (ca && cb2 && ca.row === cb2.row && cb2.col - ca.col === 1) {
+          const y = a.cy;                       // 用源页纵向中点
+          const x1 = a.x + a.w + GAP;           // 离开源右缘
+          const x2 = b.x - GAP;                 // 抵达目标左缘前
+          // 中间是否有「除源/目标外」的页面挡路（源/目标自身的 MARGIN 区不算）
+          let blocked = false;
+          for (let i = 0; i < obstacles.length; i++) {
+            if (i === ai || i === bi) continue;
+            const o = obstacles[i];
+            if (y > o.y1 + EPS && y < o.y2 - EPS && x1 < o.x2 - EPS && x2 > o.x1 + EPS) { blocked = true; break; }
+          }
+          if (x2 - x1 > ARROW && !blocked) {
+            addPath(`M ${x1} ${y} H ${x2}`, dashed);
+            // 只画线、不画箭头；说明文字压在线中点上（tag 自带 --bg 底色遮住其下的线）
+            if (def.dataset.tag) addTag((x1 + x2) / 2, y, def.dataset.tag);
+            return;   // 这条边画完，跳过布线器
+          }
+        }
+      }
+
+      let srcPorts = portsOf(a);
+      let dstPorts = portsOf(b);
+      // data-side 显式约束目标进入边（auto 时四向全开，由算法自选）
+      if (side !== 'auto') {
+        const map = { left:'l', right:'r', top:'t', bottom:'b' };
+        if (map[side]) dstPorts = dstPorts.filter(p => p.side === map[side]);
+      }
+
+      // 候选正交网格线 = 所有障碍的四条边 + 本条两端端口的坐标（端点必落在格点上）
+      const xsS = new Set(), ysS = new Set();
+      obstacles.forEach(o => { xsS.add(o.x1); xsS.add(o.x2); ysS.add(o.y1); ysS.add(o.y2); });
+      srcPorts.concat(dstPorts).forEach(p => { xsS.add(p.px); ysS.add(p.py); });
+      const xs = Array.from(xsS).sort((u,v)=>u-v);
+      const ys = Array.from(ysS).sort((u,v)=>u-v);
+      const xi = new Map(xs.map((v,i)=>[v,i])), yi = new Map(ys.map((v,i)=>[v,i]));
+      const nx = xs.length, ny = ys.length;
+      const nodeId = (i,j) => i*ny + j;
+      const stateKey = (id,dir) => id + ':' + dir;
+
+      // Dijkstra（带拐弯惩罚）：多源（源页可用端口）→ 多目标（目标页端口任一）。
+      const g = new Map();        // stateKey -> 最小代价
+      const prev = new Map();     // stateKey -> 前驱 stateKey（起点无）
+      const startPort = new Map();// 起点 stateKey -> 源端口
+      const goalNode = new Map(); // 目标端口落点 nodeId -> 目标端口
+      dstPorts.forEach(p => { if (xi.has(p.px) && yi.has(p.py)) goalNode.set(nodeId(xi.get(p.px), yi.get(p.py)), p); });
+
+      const open = [];
+      srcPorts.forEach(p => {
+        if (!xi.has(p.px) || !yi.has(p.py)) return;
+        if (segHitsAny(p.ax, p.ay, p.px, p.py, ai)) return;   // 源 stub 不能压别的页
+        const id = nodeId(xi.get(p.px), yi.get(p.py));
+        const k = stateKey(id, p.dir);
+        g.set(k, 0); startPort.set(k, p);
+        open.push({ id, dir:p.dir, cost:0 });
+      });
+
+      let goalK = null, goalPort = null;
+      while (open.length) {
+        let bi2 = 0;
+        for (let t = 1; t < open.length; t++) if (open[t].cost < open[bi2].cost) bi2 = t;
+        const cur = open.splice(bi2, 1)[0];
+        const ck = stateKey(cur.id, cur.dir);
+        if (cur.cost > (g.get(ck) ?? Infinity)) continue;
+        if (goalNode.has(cur.id)) { goalK = ck; goalPort = goalNode.get(cur.id); break; }
+        const ci = Math.floor(cur.id / ny), cj = cur.id % ny;
+        const cx0 = xs[ci], cy0 = ys[cj];
+        const nb = [];
+        if (ci > 0) nb.push([ci-1, cj, 'h']);
+        if (ci < nx-1) nb.push([ci+1, cj, 'h']);
+        if (cj > 0) nb.push([ci, cj-1, 'v']);
+        if (cj < ny-1) nb.push([ci, cj+1, 'v']);
+        for (const [ni, nj, ndir] of nb) {
+          const nxc = xs[ni], nyc = ys[nj];
+          if (segHitsAny(cx0, cy0, nxc, nyc, -1)) continue;
+          const cost = cur.cost + Math.abs(nxc-cx0) + Math.abs(nyc-cy0) + (ndir !== cur.dir ? TURN : 0);
+          const nid = nodeId(ni, nj);
+          const nk = stateKey(nid, ndir);
+          if (cost < (g.get(nk) ?? Infinity)) {
+            g.set(nk, cost); prev.set(nk, ck);
+            open.push({ id:nid, dir:ndir, cost });
+          }
+        }
+      }
+
+      // 重建路径点列；失败则退化为「源左缘→中点→目标左缘」简单折线（极少触发）
+      let pts = [];
+      if (goalK) {
+        let k = goalK, usedSrc = null;
+        while (k) {
+          const id = +k.split(':')[0];
+          pts.push([xs[Math.floor(id/ny)], ys[id % ny]]);
+          if (!prev.has(k)) { usedSrc = startPort.get(k); break; }
+          k = prev.get(k);
+        }
+        pts.reverse();
+        pts.unshift([usedSrc.ax, usedSrc.ay]);   // 源 anchor 起笔
+        pts.push([goalPort.ax, goalPort.ay]);    // 目标 anchor 收笔
+      } else {
+        const mx = Math.min(a.x, b.x) - 30;
+        pts = [[a.x - GAP, a.cy], [mx, a.cy], [mx, b.cy], [b.x - GAP, b.cy]];
+        goalPort = { arrow:'r' };
+      }
+
+      // 去掉共线冗余点（连续三点同行或同列时删中间），折线更干净
+      const clean = [pts[0]];
+      for (let t = 1; t < pts.length - 1; t++) {
+        const [px,py] = clean[clean.length-1], [cx2,cy2] = pts[t], [nx2,ny2] = pts[t+1];
+        const colinear = (px === cx2 && cx2 === nx2) || (py === cy2 && cy2 === ny2);
+        if (!colinear) clean.push(pts[t]);
+      }
+      clean.push(pts[pts.length-1]);
+
+      // 绘制：只画线、不画箭头
+      let d = `M ${clean[0][0]} ${clean[0][1]}`;
+      for (let t = 1; t < clean.length; t++) d += ` L ${clean[t][0]} ${clean[t][1]}`;
+      addPath(d, dashed);
+
+      // 标注：压在「最长的那段」中点上（tag 自带 --bg 底色遮住其下的线，保证可读）
+      if (def.dataset.tag) {
+        const end = clean[clean.length-1];
+        let best = 0, bx = end[0], by = end[1];
+        for (let t = 1; t < clean.length; t++) {
+          const len = Math.abs(clean[t][0]-clean[t-1][0]) + Math.abs(clean[t][1]-clean[t-1][1]);
+          if (len > best) { best = len; bx = (clean[t][0]+clean[t-1][0])/2; by = (clean[t][1]+clean[t-1][1])/2; }
+        }
+        addTag(bx, by, def.dataset.tag);
+      }
+    });
+  }
+
+  // ---------- 画布缩放 ----------
+  // 机制：缩放用 CSS transform: scale(Z) 作用在 .canvas 上；.zoom-stage 的尺寸 = 画布原始尺寸 × Z，
+  // 让 body 滚动条跟随缩放后的视觉大小。连线(drawLinks)用 getBoundingClientRect 实测像素，
+  // 若在缩放态下测量，写入 SVG/tag 的像素会被 transform 二次缩放而错位——故 redrawConnectors 总是
+  // 先把 transform 设回 none、在 1:1 坐标系下绘制、再恢复 scale(Z)，连线随整体均匀缩放，永不错位。
+  const stage = document.querySelector('.zoom-stage');
+  const canvas = document.querySelector('.canvas');
+  const Z_MIN = 0.25, Z_MAX = 2, Z_STEP = 1.2;
+  let Z = 1;
+  const zoomPctEl = document.getElementById('zoomPct');
+  const clampZ = (z) => Math.min(Z_MAX, Math.max(Z_MIN, z));
+
+  // 在 1:1 坐标系下重画连线，再恢复当前缩放
+  function redrawConnectors() {
+    if (canvas) canvas.style.transform = 'none';
+    drawLinks();
+    if (canvas) canvas.style.transform = 'scale(' + Z + ')';
+  }
+
+  // 应用当前 Z：设 transform、按未缩放布局尺寸×Z 撑出 stage、刷新百分比、重画连线
+  function applyZoom() {
+    if (!canvas || !stage) return;
+    // offsetWidth/Height 取未缩放的布局尺寸（transform 不影响 offset 尺寸）
+    const w = canvas.offsetWidth, h = canvas.offsetHeight;
+    canvas.style.transform = 'scale(' + Z + ')';
+    stage.style.width = (w * Z) + 'px';
+    stage.style.height = (h * Z) + 'px';
+    if (zoomPctEl) zoomPctEl.textContent = Math.round(Z * 100) + '%';
+    redrawConnectors();
+  }
+
+  // 以某个视口点(cx,cy)为锚缩放：调整滚动，使该点下的内容保持不动
+  function zoomTo(newZ, cx, cy) {
+    newZ = clampZ(newZ);
+    if (newZ === Z) return;
+    if (cx == null) { cx = window.innerWidth / 2; cy = window.innerHeight / 2; }
+    const ratio = newZ / Z;
+    // stage 在文档中的左上角（缩放前）
+    const sr = stage.getBoundingClientRect();
+    const originX = sr.left + window.scrollX;
+    const originY = sr.top + window.scrollY;
+    // 锚点在 stage 内的文档坐标
+    const px = window.scrollX + cx - originX;
+    const py = window.scrollY + cy - originY;
+    Z = newZ;
+    applyZoom();
+    // 缩放后让同一内容点回到光标下
+    const ns = stage.getBoundingClientRect();
+    const nOriginX = ns.left + window.scrollX;
+    const nOriginY = ns.top + window.scrollY;
+    window.scrollTo(nOriginX + px * ratio - cx, nOriginY + py * ratio - cy);
+  }
+
+  // 适应屏幕：缩到整张流程图铺满窗口宽度（不放大，只在过宽时缩小）
+  function zoomFit() {
+    if (!canvas) return;
+    const w = canvas.offsetWidth || 1;
+    Z = clampZ(Math.min(1, (window.innerWidth - 32) / w));
+    applyZoom();
+    window.scrollTo(0, 0);
+  }
+
+  document.getElementById('zoomIn').addEventListener('click', () => zoomTo(Z * Z_STEP));
+  document.getElementById('zoomOut').addEventListener('click', () => zoomTo(Z / Z_STEP));
+  document.getElementById('zoomPct').addEventListener('click', () => zoomTo(1));
+  document.getElementById('zoomFit').addEventListener('click', zoomFit);
+
+  // Ctrl/⌘ + 滚轮缩放；Mac 触控板双指捏合在浏览器中同样是带 ctrlKey 的 wheel 事件，天然覆盖。
+  // 系数越大越跟手：触控板捏合(deltaY 小)用更高灵敏度，鼠标滚轮(deltaY 大、常为整十)适当压一压避免一格跳太多。
+  window.addEventListener('wheel', (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    // |deltaY|<50 视为触控板捏合，给高灵敏度；否则按鼠标滚轮处理，钳住单次步进上限手感更稳
+    const fine = Math.abs(e.deltaY) < 50;
+    const k = fine ? 0.012 : 0.0028;
+    let d = e.deltaY;
+    if (!fine) d = Math.max(-120, Math.min(120, d));   // 限制鼠标滚轮单格跳变
+    zoomTo(Z * Math.exp(-d * k), e.clientX, e.clientY);
+  }, { passive: false });
+
+  // ---------- 类 Figma：按住空格拖动画布查看 ----------
+  // 空格按下进入「抓手」态（grab 光标、临时屏蔽页面点击）；按下鼠标后拖动 = 反向滚动视口。
+  let spaceDown = false, panning = false, panX = 0, panY = 0;
+  // 编辑标题/写标注时不抢空格（光标在输入框里要能正常打空格）
+  const inEditable = (el) => !!(el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)));
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || inEditable(e.target)) return;
+    // 每次空格 keydown 都 preventDefault —— 长按时浏览器会 auto-repeat 持续触发 keydown，
+    // 若只在首次拦截，后续重复事件会让「空格=翻页下滚」的默认行为生效，与拖拽打架。
+    e.preventDefault();
+    if (spaceDown) return;                     // 状态只初始化一次
+    spaceDown = true;
+    document.body.classList.add('space-pan');
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.code !== 'Space') return;
+    spaceDown = false; panning = false;
+    document.body.classList.remove('space-pan', 'space-panning');
+  });
+  window.addEventListener('mousedown', (e) => {
+    if (!spaceDown) return;
+    panning = true; panX = e.clientX; panY = e.clientY;
+    e.preventDefault();
+    document.body.classList.add('space-panning');
+  }, true);                                   // 捕获阶段，抢在页面点击/标注落点之前
+  window.addEventListener('mousemove', (e) => {
+    if (!panning) return;
+    window.scrollBy(panX - e.clientX, panY - e.clientY);
+    panX = e.clientX; panY = e.clientY;
+  });
+  window.addEventListener('mouseup', () => {
+    if (!panning) return;
+    panning = false;
+    document.body.classList.remove('space-panning');
+  }, true);
+  // 失焦时复位，避免「按着空格切走再回来」卡在抓手态
+  window.addEventListener('blur', () => {
+    spaceDown = false; panning = false;
+    document.body.classList.remove('space-pan', 'space-panning');
+    // 拖拽中途失焦（如 alt-tab 切走）：停掉自动滚动、复位被拖的页并重画，避免连线一直藏着
+    if (dragStage) {
+      if (autoScrollRAF) { cancelAnimationFrame(autoScrollRAF); autoScrollRAF = 0; }
+      dragStage.style.transform = '';
+      dragStage.classList.remove('dragging');
+      dragStage = null;
+      redrawConnectors();
+    }
+  });
+
+  // ---------- 布局模式：拖动页面卡片重排网格坐标 ----------
+  // 机制：每个 .stage 用 data-cell="行,列" 声明位置，JS 转成 grid-row/grid-column。
+  // 拖动时用 transform 跟手（不改 grid、不触发 reflow），松手时算落点格 → 交换/落位 → 重画连线。
+  let layoutMode = false;
+  let dragStage = null, dragStartX = 0, dragStartY = 0, dragMoved = false;
+
+  // 解析 / 写入某个 .stage 的网格坐标
+  function getCell(stage) {
+    const dc = stage.getAttribute('data-cell');
+    if (!dc) return null;
+    const m = dc.split(',').map(s => parseInt(s.trim(), 10));
+    return (m.length === 2 && !isNaN(m[0]) && !isNaN(m[1])) ? { row: m[0], col: m[1] } : null;
+  }
+  function setCell(stage, row, col) {
+    stage.setAttribute('data-cell', row + ',' + col);
+    stage.style.gridRow = row;
+    stage.style.gridColumn = col;
+  }
+
+  // 启动布局：把已有 data-cell 同步成 inline grid；给漏写坐标的页面顺序补空格（不与已占用冲突）
+  function layoutInit() {
+    const stages = Array.from(document.querySelectorAll('.flow > .stage'));
+    const occupied = new Set();
+    const need = [];
+    stages.forEach(st => {
+      const c = getCell(st);
+      if (c) { setCell(st, c.row, c.col); occupied.add(c.row + ',' + c.col); }
+      else need.push(st);
+    });
+    // 补格：第 1 行从左往右扫空格放置（退化成一行横排，互不重叠）
+    let row = 1, col = 1;
+    need.forEach(st => {
+      while (occupied.has(row + ',' + col)) col++;
+      setCell(st, row, col);
+      occupied.add(row + ',' + col);
+      col++;
+    });
+  }
+
+  // 落点 → 最近网格坐标。
+  // 关键：不再吸附「已占用的行列带」（那样空出来的内侧格落不进去、只能跟相邻页交换）。
+  // 改为「拿一个已知页当锚点 + 固定步距，把落点连续映射成格号再四舍五入」——
+  // 空的内侧格、外侧新格、已占用格（=交换）都用同一套线性公式，任意横移/纵移都成立。
+  function dropCell(clientX, clientY) {
+    const stages = Array.from(document.querySelectorAll('.flow > .stage'));
+    // 步距：列 = 列宽 + column-gap，行 = 行高估值 + row-gap（均为 1:1 布局值，乘 Z 得屏幕像素）
+    const colPitch = (375 + 180) * Z;
+    const rowPitch = (812 + 132) * Z;
+    // 锚点：任取一个非拖拽页，记下它的格号与屏幕中心；据此把落点反推成格号
+    let anchor = null;
+    for (const st of stages) {
+      if (st === dragStage) continue;
+      const c = getCell(st); if (!c) continue;
+      const r = st.getBoundingClientRect();
+      anchor = { row: c.row, col: c.col, cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+      break;
+    }
+    if (!anchor) return { row: 1, col: 1 };
+    return {
+      row: Math.max(1, anchor.row + Math.round((clientY - anchor.cy) / rowPitch)),
+      col: Math.max(1, anchor.col + Math.round((clientX - anchor.cx) / colPitch))
+    };
+  }
+
+  function setLayoutMode(on) {
+    layoutMode = on;
+    if (on && annoMode) {   // 与标注互斥
+      annoMode = false;
+      body.classList.remove('anno-on');
+      toggleBtn.classList.remove('active');
+      toggleBtn.textContent = '✎ 标注模式：关';
+    }
+    body.classList.toggle('layout-on', layoutMode);
+    layoutBtn.classList.toggle('active', layoutMode);
+    layoutBtn.textContent = layoutMode ? '⊞ 布局模式：开' : '⊞ 布局模式：关';
+    // 留白随模式切换（有 .18s 过渡）：立即重算一次撑出滚动尺寸，过渡结束再画一次对齐连线
+    applyZoom();
+    setTimeout(applyZoom, 200);
+  }
+  const layoutBtn = document.getElementById('layoutToggle');
+  layoutBtn.addEventListener('click', () => setLayoutMode(!layoutMode));
+
+  // 拖拽：捕获阶段抢在标注落点之前；优先级 空格平移 > 布局拖拽
+  // dragStartX/Y 记的是「文档坐标」(clientX + scrollX)，这样自动滚动改变 scroll 时，
+  // 即便光标不动，文档坐标也在变，页面 transform 会持续跟手、不脱手。
+  let lastClientX = 0, lastClientY = 0, autoScrollRAF = 0;
+  function updateDragTransform() {
+    if (!dragStage) return;
+    const dx = (lastClientX + window.scrollX) - dragStartX;
+    const dy = (lastClientY + window.scrollY) - dragStartY;
+    // 元素在 scale(Z) 内，视觉位移 (dx,dy) 对应未缩放平移 (dx/Z,dy/Z)
+    dragStage.style.transform = 'translate(' + (dx / Z) + 'px,' + (dy / Z) + 'px)';
+  }
+  // 拖到视口边缘时自动滚动画布，把页面引出画面外（无需「蹭」到边缘极限）
+  function autoScrollTick() {
+    autoScrollRAF = 0;
+    if (!dragStage || !dragMoved) return;
+    const EDGE = 60, MAX = 26;   // 触发带宽 / 单帧最大滚动量
+    const ramp = (dist) => Math.ceil(MAX * (1 - Math.max(0, dist) / EDGE));
+    let sx = 0, sy = 0;
+    if (lastClientX < EDGE) sx = -ramp(lastClientX);
+    else if (lastClientX > window.innerWidth - EDGE) sx = ramp(window.innerWidth - lastClientX);
+    if (lastClientY < EDGE) sy = -ramp(lastClientY);
+    else if (lastClientY > window.innerHeight - EDGE) sy = ramp(window.innerHeight - lastClientY);
+    if (sx || sy) {
+      window.scrollBy(sx, sy);
+      updateDragTransform();   // 画布滚了，重算 transform 让页面跟住光标
+      autoScrollRAF = requestAnimationFrame(autoScrollTick);
+    }
+  }
+  function maybeAutoScroll() {
+    if (!autoScrollRAF) autoScrollRAF = requestAnimationFrame(autoScrollTick);
+  }
+  window.addEventListener('mousedown', (e) => {
+    if (!layoutMode || spaceDown) return;
+    const st = e.target.closest('.flow > .stage');
+    if (!st) return;
+    dragStage = st;
+    dragStartX = e.clientX + window.scrollX; dragStartY = e.clientY + window.scrollY;
+    lastClientX = e.clientX; lastClientY = e.clientY; dragMoved = false;
+    e.preventDefault();
+  }, true);
+  window.addEventListener('mousemove', (e) => {
+    if (!dragStage) return;
+    lastClientX = e.clientX; lastClientY = e.clientY;
+    const dx = (e.clientX + window.scrollX) - dragStartX, dy = (e.clientY + window.scrollY) - dragStartY;
+    if (!dragMoved && Math.abs(dx) + Math.abs(dy) < 4) return;   // 抖动阈值
+    if (!dragMoved) {
+      dragMoved = true;
+      dragStage.classList.add('dragging');
+      const ov = canvas && canvas.querySelector(':scope > .link-overlay');
+      if (ov) ov.style.visibility = 'hidden';
+      canvas.querySelectorAll(':scope > .link-tag').forEach(n => n.style.visibility = 'hidden');
+    }
+    updateDragTransform();
+    maybeAutoScroll();
+  });
+  window.addEventListener('mouseup', (e) => {
+    if (!dragStage) return;
+    if (autoScrollRAF) { cancelAnimationFrame(autoScrollRAF); autoScrollRAF = 0; }
+    const st = dragStage; dragStage = null;
+    st.style.transform = '';
+    st.classList.remove('dragging');
+    if (dragMoved) {
+      const from = getCell(st);
+      const target = dropCell(e.clientX, e.clientY);
+      // 目标格被别的页占用 → 两页交换；否则直接落位
+      const occupant = Array.from(document.querySelectorAll('.flow > .stage')).find(o => {
+        if (o === st) return false;
+        const c = getCell(o); return c && c.row === target.row && c.col === target.col;
+      });
+      if (occupant && from) setCell(occupant, from.row, from.col);
+      setCell(st, target.row, target.col);
+      applyZoom();   // 重算 stage 尺寸 + 重画连线（内部恢复 overlay 可见）
+    }
+    e.stopPropagation();
+  }, true);
+
+  // 导出布局：把各页面 id + data-cell 整理成可贴回 AI 的文本（复用导出弹窗）
+  function buildLayoutExport() {
+    const stages = Array.from(document.querySelectorAll('.flow > .stage'));
+    if (!stages.length) return '（暂无页面）';
+    const fileName = location.pathname.split('/').pop() || '原型文件';
+    let s = '我在浏览器里调整了页面布局，请据此更新 ' + fileName + ' 中各 .stage 的 data-cell：\n\n';
+    stages.forEach(st => {
+      const screen = st.querySelector('.screen');
+      const id = screen ? (screen.id || '(无id)') : '(无screen)';
+      const label = st.querySelector('.stage-label');
+      const name = label ? label.textContent.trim() : '';
+      const c = getCell(st);
+      s += '[' + id + '] ' + name + ' → data-cell="' + (c ? c.row + ',' + c.col : '?') + '"\n';
+    });
+    s += '\n（未列出的页面坐标不变；请把每个 .stage 的 data-cell 改成上面对应的值）';
+    return s;
+  }
+
+  // 布局稳定后绘制；窗口缩放、字体/图标加载后重绘（缩放态下也会经 applyZoom 重算 stage 尺寸 + 连线）
+  function scheduleRedraw() { requestAnimationFrame(() => requestAnimationFrame(() => applyZoom())); }
+  window.addEventListener('resize', scheduleRedraw);
+  window.addEventListener('load', scheduleRedraw);
+
+  // ---------- 图标急救：检测图标库是否加载失败，失败则浮现求助入口 ----------
+  // 原理：Lucide 成功时会把 <i data-lucide> 全部替换成 <svg>；若失败，<i> 会残留，
+  // 或 window.lucide 根本不存在。任一成立即判定“图标坏了”，显示右下角问号。
+  function checkIconsBroken() {
+    const leftover = document.querySelector('.screen i[data-lucide]');   // 仍残留未渲染的占位
+    const broken = !window.lucide || !!leftover;
+    document.body.classList.toggle('icons-broken', broken);
+    return broken;
+  }
+  // 加载后给 CDN 一点渲染时间，再判定（多次复查，覆盖慢网下姗姗来迟的情况）
+  window.addEventListener('load', () => {
+    checkIconsBroken();
+    setTimeout(checkIconsBroken, 1200);
+    setTimeout(checkIconsBroken, 4000);
+  });
+
+  // 点击问号：复制一段口语化修复指令到剪贴板
+  const SOS_TEXT =
+    '我这个原型页面的图标没有正常显示出来（它们依赖的在线图标库没加载出来）。' +
+    '请把这个 HTML 文件里的图标改成内联 SVG 的方式：找到所有带 data-lucide="名字" 的元素，' +
+    '用对应的 Lucide 官方 SVG 把它们替换掉，并删除 lucide 的 CDN <script> 和 createIcons() 调用。' +
+    '改完之后请保证它仍然是一个可以离线打开的单文件 HTML，图标永远不会再加载失败。';
+  const sosBtn = document.getElementById('iconSosBtn');
+  if (sosBtn) {
+    sosBtn.addEventListener('click', () => {
+      const done = () => {
+        const prev = sosBtn.textContent;
+        sosBtn.textContent = '✓';
+        sosBtn.style.color = 'var(--ink)';
+        setTimeout(() => { sosBtn.textContent = prev; sosBtn.style.color = ''; }, 1600);
+        alert('已复制一段修复说明到剪贴板，粘贴到与 AI 的对话框发送即可，AI 会把图标改成内联、永久修复。');
+      };
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(SOS_TEXT).then(done).catch(() => { window.prompt('请手动复制下面这段话发给 AI：', SOS_TEXT); });
+      } else {
+        window.prompt('请手动复制下面这段话发给 AI：', SOS_TEXT);
+      }
+    });
+  }
+
+  // ---------- 初始化 ----------
+  save();
+  renderAll();
+  layoutInit();         // 把 data-cell 同步成 inline grid；漏写坐标的页面自动补空格
+  applyZoom();          // 同步设好 stage 尺寸，避免绝对定位的 canvas 让 stage 首帧塌缩
+  scheduleRedraw();
+})();
+</script>
+
+<!-- 截图库 -->
+<script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+<!-- Lucide 图标库 -->
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script>
+  // 将所有 data-lucide 占位符渲染为 SVG 图标
+  if (window.lucide) lucide.createIcons();
+  // 图标渲染后通知重绘分支连线（尺寸可能微变）
+  window.dispatchEvent(new Event('resize'));
+</script>
+
+</body>
+</html>
