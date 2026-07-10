@@ -142,6 +142,9 @@ export const messages = sqliteTable("messages", {
   taskAssigneeId: text("task_assignee_id"),
   taskClaimedAt: timestamp("task_claimed_at"),
   taskCompletedAt: timestamp("task_completed_at"),
+  taskExecutionMode: text("task_execution_mode").default("autopilot").notNull(), // autopilot | plan-first (task-only semantics; plain messages keep the harmless default)
+  dispatchChainId: text("dispatch_chain_id"),
+  dispatchDepth: integer("dispatch_depth"),
   searchText: text("search_text"),                // source text for full-text search (GIN to_tsvector index to be added later)
   createdAt: timestamp("created_at").default(now).notNull(),
   updatedAt: timestamp("updated_at").default(now).notNull(),
@@ -151,6 +154,62 @@ export const messages = sqliteTable("messages", {
   // IDs are already text in SQLite; keep an ordinary index for short-prefix lookup.
   idTextPrefix: index("messages_id_text_prefix_idx").on(t.id),
 }));
+
+// ── Dispatch guard (persistent orchestration budgets + emergency stops) ──
+export const dispatchChains = sqliteTable("dispatch_chains", {
+  id: text("id").primaryKey(),
+  serverId: text("server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  rootMessageId: text("root_message_id").notNull(),
+  taskMessageId: text("task_message_id"),
+  channelId: text("channel_id").notNull(),
+  wakeCount: integer("wake_count").default(0).notNull(),
+  maxDepthSeen: integer("max_depth_seen").default(0).notNull(),
+  lastRejectionCode: text("last_rejection_code"),
+  lastRejectionReason: text("last_rejection_reason"),
+  lastRejectedAt: timestamp("last_rejected_at"),
+  lastRejectedMessageId: text("last_rejected_message_id"),
+  lastRejectedAgentId: text("last_rejected_agent_id"),
+  createdAt: timestamp("created_at").default(now).notNull(),
+  updatedAt: timestamp("updated_at").default(now).notNull(),
+}, (t) => ({
+  byServer: index("dispatch_chains_server_idx").on(t.serverId),
+  byTask: index("dispatch_chains_task_idx").on(t.taskMessageId),
+}));
+
+export const dispatchContexts = sqliteTable("dispatch_contexts", {
+  serverId: text("server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  agentId: text("agent_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  chainId: text("chain_id").notNull().references(() => dispatchChains.id, { onDelete: "cascade" }),
+  dispatchDepth: integer("dispatch_depth").notNull(),
+  updatedAt: timestamp("updated_at").default(now).notNull(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.serverId, t.agentId, t.channelId] }),
+  byChain: index("dispatch_contexts_chain_idx").on(t.chainId),
+}));
+
+export const dispatchWakes = sqliteTable("dispatch_wakes", {
+  id: id("id").primaryKey(),
+  serverId: text("server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  chainId: text("chain_id").notNull().references(() => dispatchChains.id, { onDelete: "cascade" }),
+  messageId: text("message_id").notNull(),
+  targetAgentId: text("target_agent_id").notNull(),
+  dispatchDepth: integer("dispatch_depth").notNull(),
+  status: text("status").default("reserved").notNull(), // reserved | success; failed reservations are removed
+  createdAt: timestamp("created_at").default(now).notNull(),
+}, (t) => ({
+  byChain: index("dispatch_wakes_chain_idx").on(t.chainId),
+  byAgent: index("dispatch_wakes_agent_idx").on(t.targetAgentId),
+}));
+
+export const dispatchStops = sqliteTable("dispatch_stops", {
+  serverId: text("server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  scopeType: text("scope_type").notNull(), // space | task
+  scopeId: text("scope_id").notNull(),     // server id | task message id
+  reason: text("reason"),
+  stoppedAt: timestamp("stopped_at").default(now).notNull(),
+  updatedAt: timestamp("updated_at").default(now).notNull(),
+}, (t) => ({ pk: primaryKey({ columns: [t.serverId, t.scopeType, t.scopeId] }) }));
 
 // @mentions: separate table for efficient "messages that mention me = inbox" queries + frontend highlighting
 export const messageMentions = sqliteTable("message_mentions", {

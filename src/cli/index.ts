@@ -149,12 +149,12 @@ task.command("assign").description("hand off a task to another agent (--message-
     console.log(`Assigned task #${d.number ?? "?"} -> @${d.to}`);
     if (d.followUp) console.log(d.followUp);
   });
-const taskCreate = async (opts: { channel: string; title: string }) => {
-  const d = await api("POST", "/agent-api/task/new", { target: opts.channel, title: opts.title });
+const taskCreate = async (opts: { channel: string; title: string; mode?: string }) => {
+  const d = await api("POST", "/agent-api/task/new", { target: opts.channel, title: opts.title, executionMode: opts.mode });
   for (const t of d.tasks ?? []) console.log(`Created task #${t.number ?? "-"} ${String(t.id).slice(0, 8)}: ${t.content}`);
 };
-task.command("new").description("create a new task (delegate work)").requiredOption("--channel <channel>", "#name / dm:@name").requiredOption("--title <title>").action(taskCreate);
-task.command("create").description("create a new task (alias for task new)").requiredOption("--channel <channel>").requiredOption("--title <title>").action(taskCreate);
+task.command("new").description("create a new task (delegate work)").requiredOption("--channel <channel>", "#name / dm:@name").requiredOption("--title <title>").option("--mode <mode>", "autopilot|plan-first").action(taskCreate);
+task.command("create").description("create a new task (alias for task new)").requiredOption("--channel <channel>").requiredOption("--title <title>").option("--mode <mode>", "autopilot|plan-first").action(taskCreate);
 
 const searchAction = async (opts: { query: string }) => {
   const d = await api("GET", `/agent-api/search?q=${encodeURIComponent(opts.query)}`);

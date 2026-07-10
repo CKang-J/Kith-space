@@ -27,6 +27,7 @@ import { handleReminders } from "./reminders.js";
 import { handleChannels } from "./channels.js";
 import { handleMessages } from "./messages.js";
 import { handleTasks } from "./tasks.js";
+import { handleDispatch } from "./dispatch.js";
 
 export async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, method: string): Promise<boolean> {
   const p = url.pathname;
@@ -59,6 +60,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (await handleMessages(sctx)) return true;
   if (await handleAttachments(sctx)) return true;
   if (await handleServersServerScope(sctx)) return true;
+  if (await handleDispatch(sctx)) return true;
   if (await handleTasks(sctx)) return true;
 
   return (sendErr(res, 404, "not found"), true);

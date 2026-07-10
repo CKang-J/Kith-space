@@ -8,6 +8,7 @@ import { createMessage, resolveTarget, channelMembers, addChannelMembers, addRea
 import { agentHasScope } from "./scopes.js";
 import { parseUpload } from "./attachments.js";
 import { readObject } from "./storage.js";
+import { normalizeTaskExecutionMode } from "./dispatchGuard.js";
 
 // Freshness-hold draft buffer (prevents agent↔agent duplicate replies): when the agent sends
 // and new messages have arrived since last read → save as draft + surface bounded context, do not post immediately.
@@ -75,7 +76,7 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 const localTime = (d: Date | string | null | undefined) => { const t = d instanceof Date ? d : new Date(d ?? Date.now()); return `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(t.getDate())} ${pad2(t.getHours())}:${pad2(t.getMinutes())}:${pad2(t.getSeconds())}`; };
 // Message rendering: header + task suffix [task #N status=] + attachment suffix
 export const fmt = (m: typeof schema.messages.$inferSelect, target: string, atts: { filename: string; id: string }[] = []) => {
-  const taskSuffix = m.taskStatus ? ` [task #${m.taskNumber} status=${m.taskStatus}]` : "";
+  const taskSuffix = m.taskStatus ? ` [task #${m.taskNumber} status=${m.taskStatus} mode=${m.taskExecutionMode}]` : "";
   const attSuffix = atts.length ? ` [${atts.length} attachment${atts.length > 1 ? "s" : ""}: ${atts.map((a) => `${a.filename} (id:${a.id})`).join(", ")} — use kith-space attachment view to download]` : "";
   const type = m.senderType === "user" ? "human" : m.senderType; // message header uses "human" for human senders, not "user"
   // A thread-anchor message (m.threadId set = the thread it owns) is rendered as #chan:<this message's id>
@@ -272,7 +273,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     const tgt = await resolveTarget(serverId, url.searchParams.get("channel") ?? "", agent.id);
     if (!tgt) return (sendErr(res, 404, "channel not found"), true);
     const tasks = await db.select().from(schema.messages).where(and(eq(schema.messages.channelId, tgt.channelId))).orderBy(asc(schema.messages.taskNumber));
-    return (sendJson(res, 200, { tasks: tasks.filter((m) => m.taskStatus).map((m) => ({ number: m.taskNumber, status: m.taskStatus, content: m.content, id: m.id, assigneeId: m.taskAssigneeId })) }), true);
+    return (sendJson(res, 200, { tasks: tasks.filter((m) => m.taskStatus).map((m) => ({ number: m.taskNumber, status: m.taskStatus, executionMode: m.taskExecutionMode, content: m.content, id: m.id, assigneeId: m.taskAssigneeId })) }), true);
   }
   if (p === "/agent-api/task/claim" && method === "POST") {
     const b = await readJson(req);
@@ -354,12 +355,15 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
   // Create new task (agent delegates work to a channel/other agent): reuses createMessage(asTask). Batch {tasks:[{title}]} or single --title
   if (p === "/agent-api/task/new" && method === "POST") {
     const b = await readJson(req);
-    const titles = (Array.isArray(b.tasks) ? b.tasks : (b.title ? [{ title: b.title }] : [])).map((t: any) => String(t?.title ?? "").trim()).filter(Boolean);
-    if (!titles.length) return (sendErr(res, 400, "title required"), true);
+    const tasks = (Array.isArray(b.tasks) ? b.tasks : (b.title ? [{ title: b.title, executionMode: b.executionMode }] : []))
+      .map((t: any) => ({ title: String(t?.title ?? "").trim(), mode: normalizeTaskExecutionMode(t?.executionMode ?? b.executionMode) }))
+      .filter((task: { title: string }) => !!task.title);
+    if (!tasks.length) return (sendErr(res, 400, "title required"), true);
+    if (tasks.some((task: { mode: unknown }) => !task.mode)) return (sendErr(res, 400, "executionMode must be autopilot or plan-first"), true);
     const tgt = await resolveTarget(serverId, b.target ?? b.channel ?? "", agent.id);
     if (!tgt) return (sendErr(res, 404, "channel not found"), true);
     const created = [];
-    for (const title of titles) { const m = await createMessage({ serverId, channelId: tgt.channelId, senderType: "agent", senderId: agent.id, senderName: agent.name, content: title, asTask: true }); created.push({ id: m.id, number: m.taskNumber, content: m.content }); }
+    for (const task of tasks) { const m = await createMessage({ serverId, channelId: tgt.channelId, senderType: "agent", senderId: agent.id, senderName: agent.name, content: task.title, asTask: true, taskExecutionMode: task.mode! }); created.push({ id: m.id, number: m.taskNumber, content: m.content, executionMode: m.taskExecutionMode }); }
     return (sendJson(res, 200, { ok: true, tasks: created }), true);
   }
   // Thread participation (agent can start/reply to threads, closing the threads loop). parent accepts full id or the 8-character short id from the message header.
@@ -530,5 +534,5 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
 }
 
 function serialize(m: typeof schema.messages.$inferSelect) {
-  return { id: m.id, seq: m.seq, channelId: m.channelId, senderType: m.senderType, senderName: m.senderName, content: m.content, taskStatus: m.taskStatus, createdAt: m.createdAt };
+  return { id: m.id, seq: m.seq, channelId: m.channelId, senderType: m.senderType, senderName: m.senderName, content: m.content, taskStatus: m.taskStatus, taskExecutionMode: m.taskExecutionMode, dispatchChainId: m.dispatchChainId, dispatchDepth: m.dispatchDepth, createdAt: m.createdAt };
 }

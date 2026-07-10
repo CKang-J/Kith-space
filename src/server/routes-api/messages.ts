@@ -8,6 +8,7 @@ import { publish } from "../realtime.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { attachMentions, userChannels } from "./shared.js";
 import { canUserReadChannel } from "../channelAccess.js";
+import { normalizeTaskExecutionMode } from "../dispatchGuard.js";
 
 export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
   const { req, res, url, method, p, userId, serverId } = ctx;
@@ -120,7 +121,9 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
     if (!b.channelId || (!b.content && !hasAtt)) return (sendErr(res, 400, "channelId + content (or attachmentIds) required"), true);
     if (!(await canUserReadChannel(serverId, b.channelId, userId))) return (sendErr(res, 403, "forbidden"), true); // invariant 3: non-members must not write to private/DM channels
     const u = (await db.select().from(schema.users).where(eq(schema.users.id, userId)))[0];
-    const msg = await createMessage({ serverId, channelId: b.channelId, senderType: "user", senderId: userId, senderName: u!.name, content: b.content || "", asTask: !!b.asTask, attachmentIds: hasAtt ? b.attachmentIds : undefined });
+    const mode = normalizeTaskExecutionMode(b.taskExecutionMode ?? b.executionMode);
+    if (b.asTask && !mode) return (sendErr(res, 400, "executionMode must be autopilot or plan-first"), true);
+    const msg = await createMessage({ serverId, channelId: b.channelId, senderType: "user", senderId: userId, senderName: u!.name, content: b.content || "", asTask: !!b.asTask, taskExecutionMode: mode ?? undefined, attachmentIds: hasAtt ? b.attachmentIds : undefined });
     return (sendJson(res, 200, { ok: true, id: msg.id, seq: msg.seq }), true);
   }
   // Emoji reactions: POST to add / DELETE to remove, same path body {emoji}; both broadcast message:updated (full message including reactions[])

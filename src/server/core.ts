@@ -1,4 +1,5 @@
 // Message core: seq assignment, @mention parsing, DB write, SSE broadcast (human), wake delivery (agent), target resolution.
+import { randomUUID } from "node:crypto";
 import { and, eq, ne, desc, gt, inArray, like, or, isNull, isNotNull } from "drizzle-orm";
 import { dbFor, schema } from "../db/index.js";
 import { createWorkspace } from "../db/workspace.js";
@@ -10,6 +11,7 @@ import { newKey, hashToken } from "./auth.js";
 import { createLogger } from "../log.js";
 import { canUserReadChannel } from "./channelAccess.js";
 import { canAutoJoinMentionedMembers, isWakeable } from "./agentWakePolicy.js";
+import { SqliteDispatchState, normalizeTaskExecutionMode, type DispatchMessageContext, type TaskExecutionMode, type WakeReservation } from "./dispatchGuard.js";
 
 const log = createLogger("server:core");
 const PORT = Number(process.env.PORT ?? 7777);
@@ -174,6 +176,8 @@ export function serializeMsg(msg: typeof schema.messages.$inferSelect, mentions:
     taskStatus: msg.taskStatus, taskNumber: msg.taskNumber,
     taskAssigneeType: msg.taskAssigneeType, taskAssigneeId: msg.taskAssigneeId,
     taskClaimedAt: msg.taskClaimedAt, taskCompletedAt: msg.taskCompletedAt,
+    taskExecutionMode: msg.taskExecutionMode,
+    dispatchChainId: msg.dispatchChainId, dispatchDepth: msg.dispatchDepth,
     attachments: atts.map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType, sizeBytes: a.sizeBytes })),
     mentions: mentions.map((x) => ({ type: x.type, id: x.id, name: x.name })),
     reactions,
@@ -183,6 +187,75 @@ export function serializeMsg(msg: typeof schema.messages.$inferSelect, mentions:
 
 export function agentReplyStreamId(messageId: string, agentId: string): string {
   return `${messageId}:${agentId}`;
+}
+
+type AllowedWakeReservation = Extract<WakeReservation, { allowed: true }>;
+type BlockedWakeReservation = Extract<WakeReservation, { allowed: false }>;
+
+async function taskMessageIdForChannel(
+  serverId: string,
+  ch: typeof schema.channels.$inferSelect | undefined,
+): Promise<string | null> {
+  if (ch?.type !== "thread" || !ch.parentMessageId) return null;
+  const db = dbFor(serverId);
+  const parent = db.select({ id: schema.messages.id, taskStatus: schema.messages.taskStatus })
+    .from(schema.messages).where(and(eq(schema.messages.id, ch.parentMessageId), eq(schema.messages.serverId, serverId))).get();
+  return parent?.taskStatus ? parent.id : null;
+}
+
+export async function reportDispatchRejection(o: {
+  state: SqliteDispatchState;
+  dispatch: DispatchMessageContext;
+  messageId: string;
+  targetAgentId: string;
+  targetAgentName: string;
+  fallbackChannelId: string;
+  rejection: BlockedWakeReservation;
+}): Promise<void> {
+  const reservation = o.rejection;
+  log.warn("dispatch rejected", {
+    code: reservation.code,
+    reason: reservation.reason,
+    chainId: o.dispatch.chainId,
+    taskMessageId: o.dispatch.taskMessageId,
+    messageId: o.messageId,
+    targetAgentId: o.targetAgentId,
+    dispatchDepth: o.dispatch.dispatchDepth,
+    wakeCount: reservation.wakeCount,
+    maxDepth: o.state.limits.maxDepth,
+    maxWakes: o.state.limits.maxWakes,
+  });
+  let noticeChannelId = o.fallbackChannelId;
+  if (o.dispatch.taskMessageId) {
+    const task = dbFor(o.state.serverId).select({ threadId: schema.messages.threadId }).from(schema.messages)
+      .where(eq(schema.messages.id, o.dispatch.taskMessageId)).get();
+    noticeChannelId = task?.threadId ?? noticeChannelId;
+  }
+  await sysTaskMsg(
+    o.state.serverId,
+    noticeChannelId,
+    `Dispatch guard blocked wake for @${o.targetAgentName}: ${reservation.reason} [${reservation.code}]`,
+    undefined,
+    o.dispatch,
+  );
+}
+
+async function reserveDispatchWake(o: {
+  state: SqliteDispatchState;
+  dispatch: DispatchMessageContext;
+  messageId: string;
+  targetAgentId: string;
+  targetAgentName: string;
+  fallbackChannelId: string;
+}): Promise<AllowedWakeReservation | null> {
+  const reservation = await o.state.reserveWake({
+    ...o.dispatch,
+    messageId: o.messageId,
+    targetAgentId: o.targetAgentId,
+  });
+  if (reservation.allowed) return reservation;
+  await reportDispatchRejection({ ...o, rejection: reservation });
+  return null;
 }
 
 async function publishThreadUpdated(
@@ -355,21 +428,37 @@ export async function createMessage(opts: {
   serverId: string; channelId: string;
   senderType: "user" | "agent" | "system"; senderId: string | null; senderName: string;
   content: string; messageType?: string; threadId?: string | null; asTask?: boolean; attachmentIds?: string[];
+  taskExecutionMode?: TaskExecutionMode;
   actionMetadata?: unknown; // action-card and other platform action payloads (slice09)
 }) {
   const db = dbFor(opts.serverId);
+  const messageId = randomUUID();
   const seq = await nextSeq(opts.serverId);
   // Channel row fetched once; its type drives task-number scope (per-DM vs per-server), thread auto-follow, mention auto-join, and wake routing below.
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, opts.channelId)))[0];
   const taskNumber = opts.asTask ? await nextTaskNumber(opts.serverId, ch) : null;
+  const dispatchState = new SqliteDispatchState(opts.serverId);
+  const taskMessageId = opts.asTask ? messageId : await taskMessageIdForChannel(opts.serverId, ch);
+  const dispatch = await dispatchState.resolveMessageContext({
+    messageId,
+    channelId: opts.channelId,
+    senderType: opts.senderType,
+    senderId: opts.senderId,
+    taskMessageId,
+  });
   const [msg] = await db.insert(schema.messages).values({
+    id: messageId,
     seq, serverId: opts.serverId, channelId: opts.channelId,
     senderType: opts.senderType, senderId: opts.senderId, senderName: opts.senderName,
     messageType: opts.messageType ?? "chat", content: opts.content,
     actionMetadata: opts.actionMetadata ?? null,
     threadId: opts.threadId ?? null, searchText: opts.content,
     taskStatus: opts.asTask ? "todo" : null, taskNumber,
+    taskExecutionMode: normalizeTaskExecutionMode(opts.taskExecutionMode) ?? "autopilot",
+    dispatchChainId: dispatch.chainId,
+    dispatchDepth: dispatch.dispatchDepth,
   }).returning();
+  await dispatchState.ensureChain({ ...dispatch, rootMessageId: messageId, channelId: opts.channelId });
 
   // auto-follow: reply to thread → sender auto-joins; replying after done clears done and brings thread back to inbox
   if (opts.senderId && opts.senderType !== "system" && ch?.type === "thread") {
@@ -436,8 +525,18 @@ export async function createMessage(opts: {
       const a0 = (await db.select({ scopes: schema.agents.scopes }).from(schema.agents).where(eq(schema.agents.id, mem.id)))[0];
       if (!isWakeable({ channelType: ch?.type ?? "channel", mentioned, hasInboxScope: agentHasScope(a0?.scopes, "inbox:receive"), senderType: opts.senderType })) continue;
     }
+    const reservation = await reserveDispatchWake({
+      state: dispatchState,
+      dispatch,
+      messageId: msg!.id,
+      targetAgentId: mem.id,
+      targetAgentName: mem.name,
+      fallbackChannelId: opts.channelId,
+    });
+    if (!reservation) continue;
     const target = await agentStartTarget(opts.serverId, mem.id);
     if (!target.ok) {
+      await dispatchState.releaseWake(reservation.reservationId);
       if (target.reason !== "agent not found") await markAgentUnavailable(opts.serverId, mem.id, target.reason);
       continue;
     }
@@ -446,10 +545,17 @@ export async function createMessage(opts: {
     const startSent = sendAgentStart(opts.serverId, target, mem.id);
     const deliverSent = startSent && sendAgentDeliver(opts.serverId, target, { agentId: mem.id, seq, from: opts.senderName, target: opts.channelId, targetName, msgShort, isTask: !!opts.asTask, message: { content: opts.content }, mentioned, streamId: replyStreamId });
     if (!deliverSent) {
+      await dispatchState.releaseWake(reservation.reservationId);
       await publish(opts.serverId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, op: "error", text: "machine offline" });
       await markAgentUnavailable(opts.serverId, mem.id, "machine offline");
       continue;
     }
+    await dispatchState.commitWake(reservation.reservationId, {
+      agentId: mem.id,
+      channelId: msg!.threadId ?? opts.channelId,
+      chainId: dispatch.chainId,
+      dispatchDepth: dispatch.dispatchDepth,
+    });
     woken.push(mem.name + (mentioned ? "(@)" : ""));
   }
   log.info("message created", {
@@ -608,11 +714,51 @@ async function actorName(serverId: string, type: "user" | "agent", id: string): 
   if (type === "agent") { const a = (await db.select().from(schema.agents).where(eq(schema.agents.id, id)))[0]; return a?.displayName || a?.name || "agent"; }
   const u = (await db.select().from(schema.users).where(eq(schema.users.id, id)))[0]; return u?.displayName || u?.name || "someone";
 }
+type DispatchAuditContext = DispatchMessageContext & { messageId?: string };
+
+async function prepareTaskActionDispatch(
+  serverId: string,
+  taskMessageId: string,
+  channelId: string,
+  by?: { type: "user" | "agent"; id: string },
+) {
+  const messageId = randomUUID();
+  const state = new SqliteDispatchState(serverId);
+  const dispatch = await state.resolveMessageContext({
+    messageId,
+    channelId,
+    senderType: by?.type ?? "system",
+    senderId: by?.id ?? null,
+    taskMessageId,
+  });
+  await state.ensureChain({ ...dispatch, rootMessageId: messageId, channelId });
+  return { messageId, state, dispatch };
+}
+
 // Lightweight system message: only insert + publish message, no wake/no task creation (otherwise every status change wakes all agents = noise)
-async function sysTaskMsg(serverId: string, channelId: string, content: string, actor?: { type: "user" | "agent"; id: string }) {
+async function sysTaskMsg(
+  serverId: string,
+  channelId: string,
+  content: string,
+  actor?: { type: "user" | "agent"; id: string },
+  dispatch?: DispatchAuditContext,
+) {
   const db = dbFor(serverId);
   const seq = await nextSeq(serverId);
-  const [m] = await db.insert(schema.messages).values({ seq, serverId, channelId, senderType: "system", senderId: actor?.id ?? null, senderName: "system", messageType: "system", content, searchText: content }).returning();
+  const [m] = await db.insert(schema.messages).values({
+    ...(dispatch?.messageId ? { id: dispatch.messageId } : {}),
+    seq,
+    serverId,
+    channelId,
+    senderType: "system",
+    senderId: actor?.id ?? null,
+    senderName: "system",
+    messageType: "system",
+    content,
+    searchText: content,
+    dispatchChainId: dispatch?.chainId ?? null,
+    dispatchDepth: dispatch?.dispatchDepth ?? null,
+  }).returning();
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, channelId)))[0];
   await db.update(schema.channels).set({ lastMessageAt: new Date() }).where(eq(schema.channels.id, channelId));
   await publish(serverId, { type: "message", channelId, message: { ...serializeMsg(m!, [], []), channelType: ch?.type ?? null } });
@@ -620,14 +766,19 @@ async function sysTaskMsg(serverId: string, channelId: string, content: string, 
   return m!;
 }
 
-export async function convertMessageToTask(serverId: string, messageId: string, by?: { type: "user" | "agent"; id: string }) {
+export async function convertMessageToTask(
+  serverId: string,
+  messageId: string,
+  by?: { type: "user" | "agent"; id: string },
+  executionMode: TaskExecutionMode = "autopilot",
+) {
   const db = dbFor(serverId);
   const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, messageId), eq(schema.messages.serverId, serverId))))[0];
   if (!m) return null;
   if (m.taskStatus) return m; // already a task, idempotent (fast path)
   // Atomic claim: only change status when not yet a task (whoever's UPDATE matches taskStatus IS NULL wins);
   // prevents concurrent double-convert → wasted task numbers + gaps + duplicate task:created events. Loser returns current state.
-  const [claimed] = await db.update(schema.messages).set({ taskStatus: "todo", updatedAt: new Date() })
+  const [claimed] = await db.update(schema.messages).set({ taskStatus: "todo", taskExecutionMode: executionMode, updatedAt: new Date() })
     .where(and(eq(schema.messages.id, messageId), eq(schema.messages.serverId, serverId), isNull(schema.messages.taskStatus))).returning();
   if (!claimed) return (await db.select().from(schema.messages).where(eq(schema.messages.id, messageId)))[0] ?? null;
   // Winner gets a task number scoped to the channel (per-DM for DMs, per-server otherwise) + creates thread (tasks always have a thread)
@@ -765,8 +916,24 @@ export async function assignTask(
 
   const actor = by ? await actorName(serverId, by.type, by.id) : "Someone";
   const assigneeName = target.displayName || target.name;
-  const sysMsg = await sysTaskMsg(serverId, threadCh, `${actor} assigned #${upd.taskNumber} "${taskTitle(upd.content)}" to ${assigneeName}`, by);
+  const action = await prepareTaskActionDispatch(serverId, upd.id, threadCh, by);
+  const sysMsg = await sysTaskMsg(
+    serverId,
+    threadCh,
+    `${actor} assigned #${upd.taskNumber} "${taskTitle(upd.content)}" to ${assigneeName}`,
+    by,
+    { ...action.dispatch, messageId: action.messageId },
+  );
 
+  const reservation = await reserveDispatchWake({
+    state: action.state,
+    dispatch: action.dispatch,
+    messageId: sysMsg.id,
+    targetAgentId: assigneeId,
+    targetAgentName: target.name,
+    fallbackChannelId: threadCh,
+  });
+  if (!reservation) return upd;
   const startTarget = await agentStartTarget(serverId, assigneeId);
   if (startTarget.ok) {
     const startSent = sendAgentStart(serverId, startTarget, assigneeId);
@@ -781,9 +948,22 @@ export async function assignTask(
       message: { content: `#${upd.taskNumber} assigned to you` },
       mentioned: true,
     });
-    if (!deliverSent) await markAgentUnavailable(serverId, assigneeId, "machine offline");
+    if (!deliverSent) {
+      await action.state.releaseWake(reservation.reservationId);
+      await markAgentUnavailable(serverId, assigneeId, "machine offline");
+    } else {
+      await action.state.commitWake(reservation.reservationId, {
+        agentId: assigneeId,
+        channelId: threadCh,
+        chainId: action.dispatch.chainId,
+        dispatchDepth: action.dispatch.dispatchDepth,
+      });
+    }
   } else if (startTarget.reason !== "agent not found") {
+    await action.state.releaseWake(reservation.reservationId);
     await markAgentUnavailable(serverId, assigneeId, startTarget.reason);
+  } else {
+    await action.state.releaseWake(reservation.reservationId);
   }
 
   return upd;
@@ -791,6 +971,18 @@ export async function assignTask(
 
 /** Valid task status enum; used by server to reject invalid values with 400. */
 export const TASK_STATUSES = ["todo", "in_progress", "in_review", "done", "closed"] as const;
+
+export async function setTaskExecutionMode(serverId: string, messageId: string, mode: TaskExecutionMode) {
+  const db = dbFor(serverId);
+  const [upd] = await db.update(schema.messages).set({ taskExecutionMode: mode, updatedAt: new Date() }).where(and(
+    eq(schema.messages.id, messageId),
+    eq(schema.messages.serverId, serverId),
+    isNotNull(schema.messages.taskStatus),
+  )).returning();
+  if (!upd) return null;
+  await emitTaskUpdated(serverId, upd);
+  return upd;
+}
 
 /** Change status (todo|in_progress|in_review|done|closed); done/closed records completedAt; done auto-creates thread. */
 export async function setTaskStatus(serverId: string, messageId: string, status: string, by?: { type: "user" | "agent"; id: string }) {
@@ -810,17 +1002,47 @@ export async function setTaskStatus(serverId: string, messageId: string, status:
   if (!upd.threadId) { await db.update(schema.messages).set({ threadId: threadCh }).where(eq(schema.messages.id, upd.id)); upd.threadId = threadCh; }
   const label = STATUS_LABEL[status] ?? status;
   const emoji = STATUS_EMOJI[status] ? STATUS_EMOJI[status] + " " : ""; // confirmed for in_progress/in_review; others pending confirmation, no guessing
-  const sysMsg = await sysTaskMsg(serverId, threadCh, `${emoji}${actor} moved #${upd.taskNumber} "${taskTitle(upd.content)}" to ${label}`, by);
+  const action = await prepareTaskActionDispatch(serverId, upd.id, threadCh, by);
+  const sysMsg = await sysTaskMsg(
+    serverId,
+    threadCh,
+    `${emoji}${actor} moved #${upd.taskNumber} "${taskTitle(upd.content)}" to ${label}`,
+    by,
+    { ...action.dispatch, messageId: action.messageId },
+  );
   // Wake the assigned agent (only when changed by someone else). Verified: human changes status → assignee agent fires agent:activity working detail="Message received".
   if (upd.taskAssigneeType === "agent" && upd.taskAssigneeId && by?.id !== upd.taskAssigneeId) {
     await db.insert(schema.channelMembers).values({ channelId: threadCh, memberType: "agent", memberId: upd.taskAssigneeId }).onConflictDoNothing(); // ensure assignee is a thread member, otherwise message check cannot see this system message
+    const assignee = db.select({ name: schema.agents.name }).from(schema.agents).where(eq(schema.agents.id, upd.taskAssigneeId)).get();
+    const reservation = await reserveDispatchWake({
+      state: action.state,
+      dispatch: action.dispatch,
+      messageId: sysMsg.id,
+      targetAgentId: upd.taskAssigneeId,
+      targetAgentName: assignee?.name ?? upd.taskAssigneeId,
+      fallbackChannelId: threadCh,
+    });
+    if (!reservation) return upd;
     const target = await agentStartTarget(serverId, upd.taskAssigneeId);
     if (target.ok) {
       const startSent = sendAgentStart(serverId, target, upd.taskAssigneeId);
       const deliverSent = startSent && sendAgentDeliver(serverId, target, { type: "agent:deliver", agentId: upd.taskAssigneeId, seq: sysMsg.seq, from: actor, target: threadCh, targetName: `task #${upd.taskNumber}`, msgShort: sysMsg.id.slice(0, 8), isTask: true, message: { content: `#${upd.taskNumber} → ${label}` }, mentioned: true });
-      if (!deliverSent) await markAgentUnavailable(serverId, upd.taskAssigneeId, "machine offline");
+      if (!deliverSent) {
+        await action.state.releaseWake(reservation.reservationId);
+        await markAgentUnavailable(serverId, upd.taskAssigneeId, "machine offline");
+      } else {
+        await action.state.commitWake(reservation.reservationId, {
+          agentId: upd.taskAssigneeId,
+          channelId: threadCh,
+          chainId: action.dispatch.chainId,
+          dispatchDepth: action.dispatch.dispatchDepth,
+        });
+      }
     } else if (target.reason !== "agent not found") {
+      await action.state.releaseWake(reservation.reservationId);
       await markAgentUnavailable(serverId, upd.taskAssigneeId, target.reason);
+    } else {
+      await action.state.releaseWake(reservation.reservationId);
     }
   }
   return upd;

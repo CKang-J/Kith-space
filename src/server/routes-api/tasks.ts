@@ -2,7 +2,8 @@
 import type { ServerCtx } from "./ctx.js";
 import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { dbFor, schema } from "../../db/index.js";
-import { TASK_STATUSES, claimTask, convertMessageToTask, createMessage, deleteTask, setTaskStatus, unclaimTask } from "../core.js";
+import { TASK_STATUSES, claimTask, convertMessageToTask, createMessage, deleteTask, setTaskExecutionMode, setTaskStatus, unclaimTask } from "../core.js";
+import { normalizeTaskExecutionMode } from "../dispatchGuard.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { attachMentions } from "./shared.js";
 import { canUserReadChannel } from "../channelAccess.js";
@@ -22,11 +23,16 @@ export async function handleTasks(ctx: ServerCtx): Promise<boolean> {
   if (tch && method === "POST") { // New Task: bulk create tasks, body { tasks: [{ title }] }
     if (!(await canUserReadChannel(serverId, tch[1]!, userId))) return (sendErr(res, 403, "forbidden"), true); // invariant 3: non-members must not create tasks in private/DM channels
     const b = await readJson(req);
-    const titles = (Array.isArray(b.tasks) ? b.tasks : []).map((t: any) => String(t?.title ?? "").trim()).filter(Boolean);
-    if (!titles.length) return (sendErr(res, 400, "tasks[].title required"), true);
+    const inputs = Array.isArray(b.tasks) ? b.tasks : [];
+    const tasks = inputs.map((t: any) => ({
+      title: String(t?.title ?? "").trim(),
+      mode: normalizeTaskExecutionMode(t?.executionMode ?? b.executionMode),
+    })).filter((task: { title: string }) => !!task.title);
+    if (!tasks.length) return (sendErr(res, 400, "tasks[].title required"), true);
+    if (tasks.some((task: { mode: unknown }) => !task.mode)) return (sendErr(res, 400, "executionMode must be autopilot or plan-first"), true);
     const u = (await db.select().from(schema.users).where(eq(schema.users.id, userId)))[0];
     const created: (typeof schema.messages.$inferSelect)[] = [];
-    for (const title of titles) created.push(await createMessage({ serverId, channelId: tch[1]!, senderType: "user", senderId: userId, senderName: u!.name, content: title, asTask: true }));
+    for (const task of tasks) created.push(await createMessage({ serverId, channelId: tch[1]!, senderType: "user", senderId: userId, senderName: u!.name, content: task.title, asTask: true, taskExecutionMode: task.mode! }));
     return (sendJson(res, 200, { tasks: await attachMentions(serverId, created) }), true);
   }
   if (p === "/api/tasks/server" && method === "GET") {
@@ -49,8 +55,20 @@ export async function handleTasks(ctx: ServerCtx): Promise<boolean> {
     const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, b.messageId), eq(schema.messages.serverId, serverId))))[0];
     if (!m) return (sendErr(res, 404, "message not found"), true);
     if (!(await canUserReadChannel(serverId, m.channelId, userId))) return (sendErr(res, 404, "message not found"), true); // invariant 3 (IDOR-B4): non-members can't promote a private/DM channel's message
-    const t = await convertMessageToTask(serverId, b.messageId, { type: "user", id: userId });
+    const mode = normalizeTaskExecutionMode(b.executionMode);
+    if (!mode) return (sendErr(res, 400, "executionMode must be autopilot or plan-first"), true);
+    const t = await convertMessageToTask(serverId, b.messageId, { type: "user", id: userId }, mode);
     return (t ? sendJson(res, 200, { ok: true, id: t.id, taskNumber: t.taskNumber }) : sendErr(res, 404, "message not found"), true);
+  }
+  const tmode = /^\/api\/tasks\/([^/]+)\/mode$/.exec(p);
+  if (tmode && method === "PATCH") {
+    const task = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, tmode[1]!), eq(schema.messages.serverId, serverId), isNotNull(schema.messages.taskStatus))))[0];
+    if (!task || !(await canUserReadChannel(serverId, task.channelId, userId))) return (sendErr(res, 404, "task not found"), true);
+    const body = await readJson(req).catch(() => ({}));
+    const mode = normalizeTaskExecutionMode(body.executionMode ?? body.mode);
+    if (!mode) return (sendErr(res, 400, "executionMode must be autopilot or plan-first"), true);
+    const updated = await setTaskExecutionMode(serverId, task.id, mode);
+    return (updated ? sendJson(res, 200, { ok: true, executionMode: updated.taskExecutionMode }) : sendErr(res, 404, "task not found"), true);
   }
   const tact = /^\/api\/tasks\/([^/]+)\/(claim|unclaim|status)$/.exec(p);
   if (tact && method === "PATCH") { // claim/unclaim/status are all PATCH
