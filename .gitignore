@@ -7,7 +7,6 @@ web/dist/
 *.log
 logs/
 .DS_Store
-drizzle/
 .claude/settings.local.json
 
 # personal / machine-local dev context — never published
@@ -20,3 +19,10 @@ _vendor/
 
 # screenshots / browser-verification captures — local only
 .shots/
+
+# SQLite runtime data — workspace/registry databases are user data, never in the repo.
+# (drizzle/ migrations ARE tracked — they are the schema source of truth.)
+*.db
+*.db-shm
+*.db-wal
+.kith/

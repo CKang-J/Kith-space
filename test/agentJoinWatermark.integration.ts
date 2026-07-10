@@ -1,6 +1,6 @@
 // Real end-to-end verification that an agent joining a channel with pre-existing history starts "caught up"
 // at the channel watermark, instead of inheriting lastReadSeq=0 (which floods its first `message check` with
-// every pre-join message). Requires infra up (pg :5433, redis :6380). Run: npx tsx test/agentJoinWatermark.integration.ts
+// every pre-join message). Runs against isolated SQLite; no external services required.
 //
 // Covers two join paths:
 //   A) @-mention auto-join (createMessage path) — watermark MUST exclude the triggering @ message, so the agent
@@ -10,13 +10,15 @@
 // Also asserts forward delivery is intact (a message sent AFTER join is still counted unread) and that a USER
 // joining is unaffected (lastReadSeq stays 0 — human UI unread behaviour unchanged).
 import { and, eq, gt, ne, desc, or, isNull } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { createMessage, addChannelMembers } from "../src/server/core.ts";
 
 const ts = Date.now();
 const owner = `owner_${ts}`, ghostA = `ghostA_${ts}`, botB = `botB_${ts}`, userC = `userC_${ts}`;
 
-let serverId = "", ownerId = "", ghostAId = "", botBId = "", userCId = "";
+const fixture = integrationDatabase("agent-join-watermark");
+const { db, schema, rootPath } = fixture;
+let serverId = fixture.serverId, ownerId = "", ghostAId = "", botBId = "", userCId = "";
 let chA = "", chB = "";
 let failures = 0;
 const check = (label: string, cond: boolean, detail = "") => { console.log(`  ${cond ? "✔" : "✗ FAIL"} ${label}${detail ? `  — ${detail}` : ""}`); if (!cond) failures++; };
@@ -43,7 +45,7 @@ async function setup() {
   ownerId = u1!.id;
   const [u3] = await db.insert(schema.users).values({ name: userC, displayName: "UserC", email: `${userC}@t.local` }).returning();
   userCId = u3!.id;
-  const [srv] = await db.insert(schema.servers).values({ name: "T", slug: `t-${ts}`, ownerId }).returning();
+  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "T", slug: `t-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
   await db.insert(schema.serverMembers).values([
     { serverId, userId: ownerId, role: "owner" },
@@ -95,7 +97,7 @@ async function run() {
   check("[A] post-join message is still delivered (unread now 2)", unreadA2 === 2, `unread=${unreadA2} (expected 2)`);
 
   // ── B) direct add via addChannelMembers: zero pre-join backlog unread, watermark == channel max seq.
-  await addChannelMembers(chB, [{ type: "agent", id: botBId }]);
+  await addChannelMembers(serverId, chB, [{ type: "agent", id: botBId }]);
   const mB = await memberRow(chB, "agent", botBId);
   check("[B] direct-added agent is a member of channel B", !!mB);
   check("[B] watermark == channel max seq at join (lastReadSeq == preMax)", !!mB && mB.lastReadSeq === preMaxB, `lastReadSeq=${mB?.lastReadSeq} preMax=${preMaxB}`);
@@ -106,7 +108,7 @@ async function run() {
   check("[B] post-join message is delivered (unread now 1)", unreadB2 === 1, `unread=${unreadB2} (expected 1)`);
 
   // ── C) a USER added via the same helper keeps lastReadSeq=0 (human UI unread behaviour unchanged).
-  await addChannelMembers(chB, [{ type: "user", id: userCId }]);
+  await addChannelMembers(serverId, chB, [{ type: "user", id: userCId }]);
   const mC = await memberRow(chB, "user", userCId);
   check("[C] user added via helper keeps lastReadSeq=0 (history visible as unread in UI)", !!mC && mC.lastReadSeq === 0, `lastReadSeq=${mC?.lastReadSeq} (expected 0)`);
 

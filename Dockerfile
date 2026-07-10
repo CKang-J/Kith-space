@@ -7,7 +7,7 @@
 FROM node:22-slim AS build
 WORKDIR /app
 ENV NODE_ENV=development
-# Root deps first (server runs via tsx and pushes schema via drizzle-kit at runtime, so full deps are needed).
+# Root deps first (server runs via tsx and applies checked-in SQLite migrations at runtime).
 COPY package.json package-lock.json ./
 RUN npm ci
 # Web/docs deps, then build.
@@ -29,6 +29,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/web/dist ./web/dist
 COPY --from=build /app/docs-site/dist ./docs-site/dist
 COPY --from=build /app/src ./src
+COPY --from=build /app/drizzle ./drizzle
 # daemon package.json: read at runtime for latestDaemonVersion (system-alert "outdated daemon" check); only the manifest is needed.
 COPY --from=build /app/packages/daemon/package.json ./packages/daemon/package.json
 COPY --from=build /app/drizzle.config.ts ./drizzle.config.ts

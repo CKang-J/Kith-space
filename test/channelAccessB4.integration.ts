@@ -25,12 +25,14 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { eq } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { handleApi } from "../src/server/routes-api/index.ts";
 import { signUser } from "../src/server/auth.ts";
 
 const ts = Date.now();
-let serverId = "";
+const fixture = integrationDatabase("channel-access-b4");
+const { db, schema, rootPath } = fixture;
+let serverId = fixture.serverId;
 let ownerId = "", nonMemberId = "";
 let publicChId = "", privateChId = "";
 let ownerToken = "", nonMemberToken = "";
@@ -98,7 +100,7 @@ async function setup() {
   const [u2] = await db.insert(schema.users).values({ name: `nonmem_b4_${ts}`, displayName: "NonMember", email: `nb4_${ts}@t.local` }).returning();
   ownerId = u1!.id; nonMemberId = u2!.id;
 
-  const [srv] = await db.insert(schema.servers).values({ name: "TB4", slug: `tb4-${ts}`, ownerId }).returning();
+  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "TB4", slug: `tb4-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
   await db.insert(schema.serverMembers).values([
     { serverId, userId: ownerId, role: "owner" },

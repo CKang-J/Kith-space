@@ -1,7 +1,7 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
 import type { ServerCtx } from "./ctx.js";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { db, schema } from "../../db/index.js";
+import { dbFor, schema } from "../../db/index.js";
 import { requireCap } from "../capabilities.js";
 import { DESC_TOO_LONG, INVALID_AGENT_NAME, addChannelMembers, descTooLong, invalidAgentName, resetAgent, startAgent, stopAgent, syncAgentProfile } from "../core.js";
 import { requestDaemon } from "../daemonHub.js";
@@ -11,6 +11,7 @@ import { readJson, sendErr, sendJson } from "../util.js";
 
 export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
   const { req, res, url, method, p, userId, serverId } = ctx;
+  const db = dbFor(serverId);
   if (p === "/api/agents" && method === "GET") {
     const machineId = url.searchParams.get("machineId"); // computer page filters by machine
     let agents = await db.select().from(schema.agents).where(and(eq(schema.agents.serverId, serverId), isNull(schema.agents.deletedAt)));
@@ -43,12 +44,12 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
       model: b.model || null, runtime: b.runtime || "claude", machineId: b.machineId,
       runtimeConfig: { provider: b.provider ?? "default", model: b.model ?? null, reasoningEffort: b.reasoning ?? null, mode: b.fastMode ? "fast" : "default" },
       envVars: b.envVars ?? {}, executionMode: b.fastMode ? "fast" : "auto", creatorType: "user", creatorId: userId,
-    }).onConflictDoNothing({ target: [schema.agents.serverId, schema.agents.name], where: isNull(schema.agents.deletedAt) }).returning();
+    }).onConflictDoNothing().returning();
     if (!agent) return (sendErr(res, 409, `an agent named "${b.name}" already exists`), true);
     const all = (await db.select().from(schema.channels).where(and(eq(schema.channels.serverId, serverId), eq(schema.channels.name, "all"))))[0];
     // Join #all at the channel watermark, NOT lastReadSeq=0 — a newly created agent must not have its first
     // `message check` flooded with the channel's entire pre-existing history (it only needs messages from now on).
-    if (all) await addChannelMembers(all.id, [{ type: "agent", id: agent!.id }]);
+    if (all) await addChannelMembers(serverId, all.id, [{ type: "agent", id: agent!.id }]);
     await publish(serverId, { type: "agent:created", agent: { id: agent!.id, name: agent!.name, displayName: agent!.displayName, description: agent!.description, status: agent!.status, activity: agent!.activity, model: agent!.model, runtime: agent!.runtime, machineId: agent!.machineId } });
     // Start immediately on create: the client only POSTs /agents (no separate start call); the "start after create" logic lives in the backend. If no daemon is online startAgent returns ok:false and does not block creation. A successful startAgent calls publishAgentState to push status to active.
     const started = await startAgent(serverId, agent!.id);

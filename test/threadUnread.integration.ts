@@ -10,15 +10,16 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { and, desc, eq } from "drizzle-orm";
-import { db, schema, sql } from "../src/db/index.ts";
-import { pub, redis, sub } from "../src/redis.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { createMessage, getOrCreateThread, setTaskStatus } from "../src/server/core.ts";
 import { handleApi } from "../src/server/routes-api/index.ts";
 import { signUser } from "../src/server/auth.ts";
 
 const ts = Date.now();
 let failures = 0;
-let serverId = "";
+const fixture = integrationDatabase("thread-unread");
+const { db, schema, rootPath } = fixture;
+let serverId = fixture.serverId;
 let ownerId = "";
 let viewerId = "";
 let channelId = "";
@@ -104,7 +105,7 @@ async function setup() {
   ownerId = owner!.id;
   viewerId = viewer!.id;
 
-  const [srv] = await db.insert(schema.servers).values({ name: "Thread Unread", slug: `thread-unread-${ts}`, ownerId }).returning();
+  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "Thread Unread", slug: `thread-unread-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
   await db.insert(schema.serverMembers).values([
     { serverId, userId: ownerId, role: "owner" },
@@ -236,15 +237,11 @@ async function main() {
   }
 
   await cleanup();
-  await Promise.all([redis.quit(), pub.quit(), sub.quit()]);
-  await sql.end();
   if (failures) process.exit(1);
 }
 
 main().catch(async (e) => {
   console.error(e);
   if (serverId) await cleanup().catch(() => {});
-  await Promise.all([redis.quit(), pub.quit(), sub.quit()]).catch(() => {});
-  await sql.end().catch(() => {});
   process.exit(1);
 });

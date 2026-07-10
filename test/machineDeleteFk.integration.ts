@@ -10,20 +10,22 @@
 //   AFTER  fix: soft-deleted agent scenario returns 200  → [1] check PASSES (GREEN)
 //   REGRESSION: live-agent scenario still returns 409    → [2] check is always GREEN
 //
-// Requires infra up: `npm run infra` (pg :5433, redis :6380).
+// Runs against an isolated SQLite workspace; no external services required.
 // Run from the worktree root: npx tsx test/machineDeleteFk.integration.ts
-import "../src/env.js"; // load .env before any DB/auth/redis import
+import "../src/env.js"; // load .env before auth imports
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { handleApi } from "../src/server/routes-api/index.ts";
 import { signUser } from "../src/server/auth.ts";
 import { hashToken, newKey } from "../src/server/auth.ts";
 
 const ts = Date.now();
-let serverId = "";
+const fixture = integrationDatabase("machine-delete-fk");
+const { db, schema, rootPath } = fixture;
+let serverId = fixture.serverId;
 let ownerId = "";
 let ownerToken = "";
 let failures = 0;
@@ -154,9 +156,11 @@ async function setup() {
   ownerId = u!.id;
 
   const [srv] = await db.insert(schema.servers).values({
+    id: serverId,
     name: "T-mdfk",
     slug: `t-mdfk-${ts}`,
     ownerId,
+    rootPath,
   }).returning();
   serverId = srv!.id;
 

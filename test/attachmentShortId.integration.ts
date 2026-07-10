@@ -25,13 +25,15 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { eq } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { handleAgentApi } from "../src/server/routes-agent.ts";
 import { hashToken } from "../src/server/auth.ts";
 import { saveObject } from "../src/server/storage.ts";
 
 const ts = Date.now();
-let serverId = "", ownerId = "";
+const fixture = integrationDatabase("attachment-short-id");
+const { db, schema, rootPath } = fixture;
+let serverId = fixture.serverId, ownerId = "";
 let channelId = "", attachmentId = "";
 let uploaderId = "", viewerId = "", outsiderId = "";
 const viewerToken = `sk_agent_test_viewer_${ts}`;
@@ -82,7 +84,7 @@ async function view(id: string, opts: { token: string; agentId: string }): Promi
 async function setup() {
   const [u] = await db.insert(schema.users).values({ name: `owner_att_${ts}`, displayName: "Owner", email: `att_${ts}@t.local` }).returning();
   ownerId = u!.id;
-  const [srv] = await db.insert(schema.servers).values({ name: "TATT", slug: `tatt-${ts}`, ownerId }).returning();
+  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "TATT", slug: `tatt-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
   await db.insert(schema.serverMembers).values({ serverId, userId: ownerId, role: "owner" });
 

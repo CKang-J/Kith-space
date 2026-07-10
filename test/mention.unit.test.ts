@@ -1,6 +1,6 @@
 // Unit tests for Slack-style mention auto-join decision logic (pure; no DB writes).
 // Run: npx tsx --test --test-force-exit test/mention.unit.test.ts
-// Importing core.ts opens a Redis connection (redis://localhost:6380) at module load; the functions
+// The mention helpers are pure; importing core.ts does not open an external service connection.
 // under test never touch it, and --test-force-exit tears the connection down when the tests finish.
 // core.ts → auth.ts: auth.ts now requires these env vars at load time (fail-fast, no weak defaults).
 // Static imports are hoisted, so we must use a dynamic import and set env vars before it.

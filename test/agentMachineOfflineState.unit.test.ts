@@ -12,12 +12,12 @@ test("daemon close immediately reconciles agents on that machine to offline", ()
   assert.match(wsSrc, /import \{ markMachineAgentsOffline \} from "\.\/machineLiveness\.js";/);
   assert.match(
     wsSrc,
-    /await publish\(serverId!, \{ type: "machine", online: false, machineId \}\);[\s\S]*?await markMachineAgentsOffline\(machineId\)/,
+    /await publish\(serverId!, \{ type: "machine", online: false, machineId \}\);[\s\S]*?await markMachineAgentsOffline\(serverId!, machineId\)/,
     "clean daemon close should publish machine offline and then force its agents offline",
   );
   assert.match(
     livenessSrc,
-    /export async function markMachineAgentsOffline\(machineId: string\): Promise<number>/,
+    /export async function markMachineAgentsOffline\(serverId: string, machineId: string\): Promise<number>/,
     "machine-offline agent reconciliation should be a named reusable helper",
   );
   assert.match(
@@ -56,7 +56,7 @@ test("startAgent refuses a disconnected target machine before marking the agent 
   );
   assert.match(
     coreSrc,
-    /const cfg = await agentConfig\(agentId\);/,
+    /const cfg = await agentConfig\(serverId, agentId\);/,
     "offline machines should be rejected before minting or sending an agent token",
   );
   assert.match(

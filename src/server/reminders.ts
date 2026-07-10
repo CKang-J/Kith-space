@@ -1,7 +1,7 @@
 // Reminder scheduler (reminders are author-owned, persistent, observable, re-schedulable wake signals).
 // A tick scans due reminders → posts a system reminder in the anchor channel (@author → @mention wakes the author agent) → marks one-shot done / reschedules recurring.
 import { and, eq, lte } from "drizzle-orm";
-import { db, schema } from "../db/index.js";
+import { allWorkspaceDbs, dbFor, schema } from "../db/index.js";
 import { createMessage } from "./core.js";
 import { createLogger } from "../log.js";
 
@@ -19,11 +19,14 @@ export function startReminderScheduler(): void {
 }
 
 async function tick(): Promise<void> {
-  const due = await db.select().from(schema.reminders).where(and(eq(schema.reminders.status, "scheduled"), lte(schema.reminders.remindAt, new Date())));
-  for (const r of due) await fire(r).catch((e) => log.warn("fire failed", { id: r.id, detail: String(e?.message ?? e) }));
+  for (const { db } of allWorkspaceDbs()) {
+    const due = await db.select().from(schema.reminders).where(and(eq(schema.reminders.status, "scheduled"), lte(schema.reminders.remindAt, new Date())));
+    for (const r of due) await fire(r).catch((e) => log.warn("fire failed", { id: r.id, detail: String(e?.message ?? e) }));
+  }
 }
 
 async function fire(r: typeof schema.reminders.$inferSelect): Promise<void> {
+  const db = dbFor(r.serverId);
   const now = new Date();
   const sec = r.recurrence ? Number(r.recurrence) : 0;
   // Atomic claim: grab reminders that are "due and still scheduled" in one shot (recurring → push to next, stays scheduled; one-shot → mark fired).

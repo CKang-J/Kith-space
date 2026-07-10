@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
-import { and, eq, isNull } from "drizzle-orm";
-import { db, schema } from "../db/index.js";
+import { findAgentById } from "../db/lookup.js";
 
 /** Require an env var or abort startup with a clear message. Never falls back to a weak default. */
 function requireEnv(name: string): string {
@@ -80,7 +79,8 @@ export async function resolveAgent(token: string | null, agentId: string | null)
   if (!token || !agentId) return null;
   // Reject soft-deleted agents: a deleted row keeps its id but must not authenticate (its token is cleared on
   // delete too — defense in depth). Without this, a deleted agent's still-running process keeps full access.
-  const agent = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, agentId), isNull(schema.agents.deletedAt))))[0];
+  const agent = (await findAgentById(agentId))?.value;
+  if (agent?.deletedAt) return null;
   if (!agent || !agent.agentTokenHash) return null;
   if (safeEqual(hashToken(token), agent.agentTokenHash)) return agent;
   return null;

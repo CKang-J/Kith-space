@@ -1,8 +1,9 @@
 // Message core: seq assignment, @mention parsing, DB write, SSE broadcast (human), wake delivery (agent), target resolution.
-import { and, eq, ne, desc, gt, inArray, like, sql, or, isNull, isNotNull } from "drizzle-orm";
-import { db, schema } from "../db/index.js";
+import { and, eq, ne, desc, gt, inArray, like, or, isNull, isNotNull } from "drizzle-orm";
+import { dbFor, schema } from "../db/index.js";
+import { createWorkspace } from "../db/workspace.js";
 import { nextSeq, publish } from "./realtime.js";
-import { nextTaskNumber } from "../redis.js";
+import { nextTaskNumber } from "../counters.js";
 import { broadcastToDaemons, daemonCount, isMachineConnected, sendToMachine } from "./daemonHub.js";
 import { agentHasScope } from "./scopes.js";
 import { newKey, hashToken } from "./auth.js";
@@ -36,18 +37,20 @@ export const AGENT_NAME_RE = /^[A-Za-z][A-Za-z0-9_-]*$/;
 export const INVALID_AGENT_NAME = `Agent name must be 1-${MAX_AGENT_NAME} characters, start with a letter, and contain only letters, numbers, hyphens, and underscores`;
 export const invalidAgentName = (s: unknown): boolean => typeof s !== "string" || s.length > MAX_AGENT_NAME || !AGENT_NAME_RE.test(s);
 
-/** Create a workspace (server/community): create server + creator as owner + default #all channel + add owner to channel. Shared by dev-login / POST /api/servers / seed. */
-export async function createServer(name: string, slug: string, ownerId: string) {
-  const [srv] = await db.insert(schema.servers).values({ name, slug, ownerId, plan: "free" }).returning();
-  await db.insert(schema.serverMembers).values({ serverId: srv!.id, userId: ownerId, role: "owner" });
-  const [all] = await db.insert(schema.channels).values({ serverId: srv!.id, name: "all", description: "General channel for all members", type: "channel" }).returning();
-  await db.insert(schema.channelMembers).values({ channelId: all!.id, memberType: "user", memberId: ownerId }).onConflictDoNothing();
-  return srv!;
+/** Create one folder-rooted workspace DB, then seed its owner and default #all channel. */
+export async function createServer(
+  name: string,
+  slug: string,
+  ownerId: string,
+  options: { rootPath?: string; owner?: typeof schema.users.$inferInsert } = {},
+) {
+  return createWorkspace(name, slug, ownerId, options);
 }
 
 export interface Member { type: "user" | "agent"; id: string; name: string; displayName: string; }
 
-export async function channelMembers(channelId: string): Promise<Member[]> {
+export async function channelMembers(serverId: string, channelId: string): Promise<Member[]> {
+  const db = dbFor(serverId);
   const rows = await db.select().from(schema.channelMembers).where(eq(schema.channelMembers.channelId, channelId));
   const out: Member[] = [];
   for (const r of rows) {
@@ -62,9 +65,10 @@ export async function channelMembers(channelId: string): Promise<Member[]> {
   return out;
 }
 
-/** Highest message seq currently in a channel (0 if empty). seq is globally monotonic (Redis INCR), so this is
+/** Highest message seq currently in a channel (0 if empty). seq is monotonic within the workspace, so this is
  *  the channel's read "watermark" at this instant — any message that arrives later has a strictly higher seq. */
-export async function channelMaxSeq(channelId: string): Promise<number> {
+export async function channelMaxSeq(serverId: string, channelId: string): Promise<number> {
+  const db = dbFor(serverId);
   const [r] = await db.select({ seq: schema.messages.seq }).from(schema.messages)
     .where(eq(schema.messages.channelId, channelId)).orderBy(desc(schema.messages.seq)).limit(1);
   return r?.seq ?? 0;
@@ -79,9 +83,10 @@ export async function channelMaxSeq(channelId: string): Promise<number> {
  *  the agent watermark (the @-mention path passes triggeringSeq-1 so the triggering message stays unread);
  *  `watermark` is a no-op for an all-user batch (users are always pinned to 0). Idempotent via
  *  onConflictDoNothing: re-adding an existing member never rewinds or fast-forwards a real read cursor. */
-export async function addChannelMembers(channelId: string, members: { type: "user" | "agent"; id: string }[], opts?: { watermark?: number }): Promise<void> {
+export async function addChannelMembers(serverId: string, channelId: string, members: { type: "user" | "agent"; id: string }[], opts?: { watermark?: number }): Promise<void> {
   if (!members.length) return;
-  const wm = members.some((m) => m.type === "agent") ? (opts?.watermark ?? await channelMaxSeq(channelId)) : 0;
+  const db = dbFor(serverId);
+  const wm = members.some((m) => m.type === "agent") ? (opts?.watermark ?? await channelMaxSeq(serverId, channelId)) : 0;
   await db.insert(schema.channelMembers)
     .values(members.map((m) => ({ channelId, memberType: m.type, memberId: m.id, lastReadSeq: m.type === "agent" ? wm : 0 })))
     .onConflictDoNothing();
@@ -103,6 +108,7 @@ export function parseMentions(content: string, members: Member[]) {
  *  Basis for Slack-style mention auto-join — only names that resolve here may be pulled into a channel
  *  (a human in the users table who isn't a member of this server, or another server's agent, is excluded). */
 export async function workspaceMembers(serverId: string): Promise<Member[]> {
+  const db = dbFor(serverId);
   const out: Member[] = [];
   // Exclude system-seeded showcase demo agents (creatorType="system"): they are display-only props for the
   // read-only #showcase channel, NOT @-reachable members. This pool feeds @-mention auto-join in public
@@ -133,6 +139,7 @@ export function membersToAutoJoin(content: string, workspace: Member[], current:
  *  A top-level public `channel` reaches the workspace; `private`/`dm` reach only their current members, so an
  *  @ to a non-member there stays a no-op (unchanged behaviour). */
 async function mentionAutoJoinPool(serverId: string, ch: typeof schema.channels.$inferSelect): Promise<Member[]> {
+  const db = dbFor(serverId);
   let target = ch;
   if (ch.type === "thread" && ch.parentMessageId) {
     const parent = (await db.select().from(schema.messages).where(eq(schema.messages.id, ch.parentMessageId)))[0];
@@ -142,7 +149,7 @@ async function mentionAutoJoinPool(serverId: string, ch: typeof schema.channels.
     // no-op for @-ing a non-member (the pre-fix behaviour), but log it so a silently-dropped @ is debuggable.
     else log.warn("thread parent channel unresolved; @-mention reach falls back to thread members", { channelId: ch.id, parentMessageId: ch.parentMessageId });
   }
-  return target.type === "channel" ? await workspaceMembers(serverId) : await channelMembers(target.id);
+  return target.type === "channel" ? await workspaceMembers(serverId) : await channelMembers(serverId, target.id);
 }
 
 /** Add @-mentioned non-members to a channel, drawn from `pool` (its @-reach — see mentionAutoJoinPool); returns
@@ -152,7 +159,7 @@ async function autoJoinMentioned(serverId: string, channelId: string, content: s
   if (!toAdd.length) return [];
   // watermark = triggeringSeq-1: the @ message that pulled them in stays unread (the agent must see the @), but
   // the channel's prior backlog is marked read so an auto-joined agent isn't flooded with history on first check.
-  await addChannelMembers(channelId, toAdd.map((m) => ({ type: m.type, id: m.id })), { watermark });
+  await addChannelMembers(serverId, channelId, toAdd.map((m) => ({ type: m.type, id: m.id })), { watermark });
   await publish(serverId, { type: "channel:members-updated", channelId });
   return toAdd;
 }
@@ -185,6 +192,7 @@ async function publishThreadUpdated(
   senderType: "user" | "agent" | "system",
 ) {
   if (ch?.type !== "thread" || !ch.parentMessageId) return;
+  const db = dbFor(serverId);
   const replies = await db.select({ id: schema.messages.id }).from(schema.messages).where(eq(schema.messages.channelId, ch.id));
   const parts = await db.select().from(schema.channelMembers).where(eq(schema.channelMembers.channelId, ch.id));
   const parent = (await db.select({ channelId: schema.messages.channelId }).from(schema.messages).where(eq(schema.messages.id, ch.parentMessageId)))[0];
@@ -201,9 +209,10 @@ async function publishThreadUpdated(
 }
 
 /** Aggregate message reactions into grouped shape: one entry per emoji {emoji,count,reactorIds,reactorNames}. */
-export async function aggregateReactions(messageIds: string[]): Promise<Map<string, ReactionAgg[]>> {
+export async function aggregateReactions(serverId: string, messageIds: string[]): Promise<Map<string, ReactionAgg[]>> {
   const out = new Map<string, ReactionAgg[]>();
   if (!messageIds.length) return out;
+  const db = dbFor(serverId);
   const rows = await db.select().from(schema.reactions).where(inArray(schema.reactions.messageId, messageIds));
   if (!rows.length) return out;
   const uIds = [...new Set(rows.filter((r) => r.memberType === "user").map((r) => r.memberId))];
@@ -223,26 +232,29 @@ export async function aggregateReactions(messageIds: string[]): Promise<Map<stri
   return out;
 }
 
-async function serializeMessageById(messageId: string) {
+async function serializeMessageById(serverId: string, messageId: string) {
+  const db = dbFor(serverId);
   const msg = (await db.select().from(schema.messages).where(eq(schema.messages.id, messageId)))[0];
   if (!msg) return null;
   const mts = await db.select().from(schema.messageMentions).where(eq(schema.messageMentions.messageId, messageId));
   const mentions: Member[] = mts.map((x) => ({ type: x.mentionType as "user" | "agent", id: x.mentionId, name: x.mentionName, displayName: x.mentionName }));
   const atts = await db.select().from(schema.attachments).where(eq(schema.attachments.messageId, messageId));
-  const reactions = (await aggregateReactions([messageId])).get(messageId) ?? [];
+  const reactions = (await aggregateReactions(serverId, [messageId])).get(messageId) ?? [];
   return serializeMsg(msg, mentions, atts, reactions);
 }
 
 /** Add reaction (add-or-noop): unique index deduplication, broadcast message:updated. */
 export async function addReaction(serverId: string, messageId: string, memberType: "user" | "agent", memberId: string, emoji: string) {
+  const db = dbFor(serverId);
   await db.insert(schema.reactions).values({ messageId, memberType, memberId, emoji }).onConflictDoNothing();
-  const m = await serializeMessageById(messageId);
+  const m = await serializeMessageById(serverId, messageId);
   if (m) await publish(serverId, { type: "message:updated", message: m });
   return m;
 }
 export async function removeReaction(serverId: string, messageId: string, memberType: "user" | "agent", memberId: string, emoji: string) {
+  const db = dbFor(serverId);
   await db.delete(schema.reactions).where(and(eq(schema.reactions.messageId, messageId), eq(schema.reactions.memberType, memberType), eq(schema.reactions.memberId, memberId), eq(schema.reactions.emoji, emoji)));
-  const m = await serializeMessageById(messageId);
+  const m = await serializeMessageById(serverId, messageId);
   if (m) await publish(serverId, { type: "message:updated", message: m });
   return m;
 }
@@ -250,9 +262,11 @@ export async function removeReaction(serverId: string, messageId: string, member
 // ── Saved messages / bookmarks (/channels/saved) ──
 // Private bookmarks: deduplicated per member (unique index), no broadcast. save is idempotent (onConflictDoNothing).
 export async function saveMessage(serverId: string, messageId: string, memberType: "user" | "agent", memberId: string) {
+  const db = dbFor(serverId);
   await db.insert(schema.savedMessages).values({ serverId, messageId, memberType, memberId }).onConflictDoNothing();
 }
 export async function unsaveMessage(serverId: string, messageId: string, memberType: "user" | "agent", memberId: string) {
+  const db = dbFor(serverId);
   await db.delete(schema.savedMessages).where(and(
     eq(schema.savedMessages.serverId, serverId), eq(schema.savedMessages.messageId, messageId),
     eq(schema.savedMessages.memberType, memberType), eq(schema.savedMessages.memberId, memberId)));
@@ -260,6 +274,7 @@ export async function unsaveMessage(serverId: string, messageId: string, memberT
 /** Bulk check which messageIds have been saved by this member (POST /channels/saved/check → {savedIds[]}). */
 export async function checkSaved(serverId: string, memberType: "user" | "agent", memberId: string, messageIds: string[]): Promise<string[]> {
   if (!messageIds.length) return [];
+  const db = dbFor(serverId);
   const rows = await db.select({ messageId: schema.savedMessages.messageId }).from(schema.savedMessages).where(and(
     eq(schema.savedMessages.serverId, serverId), eq(schema.savedMessages.memberType, memberType),
     eq(schema.savedMessages.memberId, memberId), inArray(schema.savedMessages.messageId, messageIds)));
@@ -269,6 +284,7 @@ export async function checkSaved(serverId: string, memberType: "user" | "agent",
  * envelope {saved[], hasMore}; item is flat, uses messageId, inlines channel + thread parent context; no savedAt/attachments/reactions.
  * Ordered by savedAt (saved row createdAt) descending, limit+offset pagination (limit+1 probe for hasMore). */
 export async function listSaved(serverId: string, memberType: "user" | "agent", memberId: string, limit: number, offset: number) {
+  const db = dbFor(serverId);
   const rows = await db.select().from(schema.savedMessages).where(and(
     eq(schema.savedMessages.serverId, serverId), eq(schema.savedMessages.memberType, memberType),
     eq(schema.savedMessages.memberId, memberId))).orderBy(desc(schema.savedMessages.createdAt)).limit(limit + 1).offset(offset);
@@ -314,7 +330,8 @@ export async function listSaved(serverId: string, memberType: "user" | "agent", 
   return { saved, hasMore };
 }
 
-export async function agentConfig(agentId: string) {
+export async function agentConfig(serverId: string, agentId: string) {
+  const db = dbFor(serverId);
   // Skip soft-deleted agents (treated as non-existent → null, which every caller already handles): otherwise the
   // mint branch below would re-set `agentTokenHash` on a deleted row, reverting the clear done on delete (C4).
   const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, agentId), isNull(schema.agents.deletedAt))))[0];
@@ -340,6 +357,7 @@ export async function createMessage(opts: {
   content: string; messageType?: string; threadId?: string | null; asTask?: boolean; attachmentIds?: string[];
   actionMetadata?: unknown; // action-card and other platform action payloads (slice09)
 }) {
+  const db = dbFor(opts.serverId);
   const seq = await nextSeq(opts.serverId);
   // Channel row fetched once; its type drives task-number scope (per-DM vs per-server), thread auto-follow, mention auto-join, and wake routing below.
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, opts.channelId)))[0];
@@ -366,7 +384,7 @@ export async function createMessage(opts: {
     atts = await db.select().from(schema.attachments).where(inArray(schema.attachments.id, opts.attachmentIds));
   }
 
-  let members = await channelMembers(opts.channelId);
+  let members = await channelMembers(opts.serverId, opts.channelId);
   // Human-authored Slack-style mention auto-join: @-mentioning someone who isn't in this channel yet pulls them in, so the
   // mention is recorded + delivered (wake / inbox) instead of being silently dropped. A thread inherits its
   // parent channel's @-reach (mentionAutoJoinPool — the same parent-channel inheritance canReadChannel uses),
@@ -450,6 +468,7 @@ export async function createMessage(opts: {
 // plane too (docs/authorization.md invariant 4). resolveTarget / resolveMessageId / findParent all gate on this,
 // so every channel-touching /agent-api/* endpoint inherits the boundary at once.
 export async function canAgentReadChannel(serverId: string, channelId: string, agentId: string): Promise<boolean> {
+  const db = dbFor(serverId);
   const member = (await db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.channelId, channelId), eq(schema.channelMembers.memberType, "agent"), eq(schema.channelMembers.memberId, agentId))))[0];
   if (member) return true;
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, channelId)))[0];
@@ -463,13 +482,14 @@ export async function canAgentReadChannel(serverId: string, channelId: string, a
 }
 
 export async function resolveTarget(serverId: string, target: string, selfAgentId: string): Promise<{ channelId: string; threadId: string | null } | null> {
+  const db = dbFor(serverId);
   let t = target.trim();
   if (t.startsWith("thread:")) {
     const short = t.slice("thread:".length).trim();
     if (!/^[0-9a-f]{6,}$/i.test(short)) return null;
     const parent = (await db.select().from(schema.messages).where(and(
       eq(schema.messages.serverId, serverId),
-      like(sql`${schema.messages.id}::text`, short.toLowerCase() + "%"),
+      like(schema.messages.id, short.toLowerCase() + "%"),
     )))[0];
     if (!parent || parent.senderType === "system") return null;
     const existing = (await db.select().from(schema.channels).where(and(
@@ -515,7 +535,7 @@ export async function resolveTarget(serverId: string, target: string, selfAgentI
     if (!(await canAgentReadChannel(serverId, baseChannelId, selfAgentId))) return null;
     return { channelId: baseChannelId, threadId: null };
   }
-  const parent = (await db.select().from(schema.messages).where(and(eq(schema.messages.serverId, serverId), eq(schema.messages.channelId, baseChannelId), like(sql`${schema.messages.id}::text`, threadShort.toLowerCase() + "%"))))[0];
+  const parent = (await db.select().from(schema.messages).where(and(eq(schema.messages.serverId, serverId), eq(schema.messages.channelId, baseChannelId), like(schema.messages.id, threadShort.toLowerCase() + "%"))))[0];
   // System messages ("X created task / claimed / moved …") are not real conversation anchors and have no
   // "open thread" affordance in the UI — threading onto one buries the reply where no one can reach it.
   // Reject so the caller surfaces a clear error instead of silently creating an unreachable thread.
@@ -535,6 +555,7 @@ export async function resolveTarget(serverId: string, target: string, selfAgentI
 }
 
 export async function getOrCreateDM(serverId: string, aId: string, aType: string, bId: string, bType: string): Promise<string> {
+  const db = dbFor(serverId);
   // Simplified: DM channel name = dm:<sorted ids>
   const key = "dm:" + [aId, bId].sort().join(":");
   const existing = (await db.select().from(schema.channels).where(and(eq(schema.channels.serverId, serverId), eq(schema.channels.name, key))))[0];
@@ -551,6 +572,7 @@ export async function getOrCreateDM(serverId: string, aId: string, aType: string
 
 /** Find/create thread channel (thread = channel with type=thread, carrying parentMessageId). Idempotent. creator added as member = auto follow. */
 export async function getOrCreateThread(serverId: string, parentMessageId: string, creator?: { type: "user" | "agent"; id: string }) {
+  const db = dbFor(serverId);
   let thread = (await db.select().from(schema.channels).where(and(eq(schema.channels.serverId, serverId), eq(schema.channels.type, "thread"), eq(schema.channels.parentMessageId, parentMessageId))))[0];
   if (!thread) {
     // Atomic create: partitioned unique index (serverId, parentMessageId WHERE type=thread) ensures only one row under concurrency; losing insert returns empty → re-select.
@@ -566,12 +588,13 @@ export async function getOrCreateThread(serverId: string, parentMessageId: strin
 }
 
 // ── Tasks (message-as-task): convert / claim / unclaim / status, all emit task:updated ──────
-async function taskMentions(messageId: string): Promise<Member[]> {
+async function taskMentions(serverId: string, messageId: string): Promise<Member[]> {
+  const db = dbFor(serverId);
   const mts = await db.select().from(schema.messageMentions).where(eq(schema.messageMentions.messageId, messageId));
   return mts.map((x) => ({ type: x.mentionType as "user" | "agent", id: x.mentionId, name: x.mentionName, displayName: x.mentionName }));
 }
 async function emitTaskUpdated(serverId: string, msg: typeof schema.messages.$inferSelect): Promise<void> {
-  await publish(serverId, { type: "task", op: "updated", task: serializeMsg(msg, await taskMentions(msg.id)) });
+  await publish(serverId, { type: "task", op: "updated", task: serializeMsg(msg, await taskMentions(serverId, msg.id)) });
 }
 
 /** Mark an existing message as a task (open + assign taskNumber). */
@@ -580,12 +603,14 @@ const taskTitle = (s: string) => { const t = ((s || "").split("\n")[0] ?? "").tr
 // Task status system message copy (Title-Case + status emoji prefix). Emojis confirmed for in_progress 🔄 / in_review 👁; todo/done/closed pending confirmation, no guessing.
 const STATUS_LABEL: Record<string, string> = { todo: "Todo", in_progress: "In Progress", in_review: "In Review", done: "Done", closed: "Closed" };
 const STATUS_EMOJI: Record<string, string> = { in_progress: "🔄", in_review: "👁" };
-async function actorName(type: "user" | "agent", id: string): Promise<string> {
+async function actorName(serverId: string, type: "user" | "agent", id: string): Promise<string> {
+  const db = dbFor(serverId);
   if (type === "agent") { const a = (await db.select().from(schema.agents).where(eq(schema.agents.id, id)))[0]; return a?.displayName || a?.name || "agent"; }
   const u = (await db.select().from(schema.users).where(eq(schema.users.id, id)))[0]; return u?.displayName || u?.name || "someone";
 }
 // Lightweight system message: only insert + publish message, no wake/no task creation (otherwise every status change wakes all agents = noise)
 async function sysTaskMsg(serverId: string, channelId: string, content: string, actor?: { type: "user" | "agent"; id: string }) {
+  const db = dbFor(serverId);
   const seq = await nextSeq(serverId);
   const [m] = await db.insert(schema.messages).values({ seq, serverId, channelId, senderType: "system", senderId: actor?.id ?? null, senderName: "system", messageType: "system", content, searchText: content }).returning();
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, channelId)))[0];
@@ -596,6 +621,7 @@ async function sysTaskMsg(serverId: string, channelId: string, content: string, 
 }
 
 export async function convertMessageToTask(serverId: string, messageId: string, by?: { type: "user" | "agent"; id: string }) {
+  const db = dbFor(serverId);
   const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, messageId), eq(schema.messages.serverId, serverId))))[0];
   if (!m) return null;
   if (m.taskStatus) return m; // already a task, idempotent (fast path)
@@ -609,8 +635,8 @@ export async function convertMessageToTask(serverId: string, messageId: string, 
   const taskNumber = await nextTaskNumber(serverId, ch);
   const th = await getOrCreateThread(serverId, messageId);
   const [upd] = await db.update(schema.messages).set({ taskNumber, threadId: th.id }).where(eq(schema.messages.id, messageId)).returning();
-  await publish(serverId, { type: "task", op: "created", task: serializeMsg(upd!, await taskMentions(messageId)) });
-  const an = by ? await actorName(by.type, by.id) : "Someone";
+  await publish(serverId, { type: "task", op: "created", task: serializeMsg(upd!, await taskMentions(serverId, messageId)) });
+  const an = by ? await actorName(serverId, by.type, by.id) : "Someone";
   await sysTaskMsg(serverId, upd!.channelId, `${an} converted a message to task #${taskNumber} "${taskTitle(upd!.content)}"`, by);
   return upd!;
 }
@@ -631,13 +657,14 @@ export async function resolveIdOrPrefix(
   serverId: string,
   idOrShort: string | undefined | null,
 ): Promise<string | null> {
+  const db = dbFor(serverId);
   const s = (idOrShort ?? "").trim().toLowerCase();
   if (!s) return null;
   let r: { id: string } | undefined;
   if (UUID_RE.test(s)) {
     r = (await db.select({ id: table.id }).from(table).where(and(eq(table.id, s), eq(table.serverId, serverId))))[0];
   } else if (/^[0-9a-f]{6,}$/.test(s)) {
-    r = (await db.select({ id: table.id }).from(table).where(and(like(sql`${table.id}::text`, s + "%"), eq(table.serverId, serverId))).limit(1))[0];
+    r = (await db.select({ id: table.id }).from(table).where(and(like(table.id, s + "%"), eq(table.serverId, serverId))).limit(1))[0];
   }
   return r?.id ?? null;
 }
@@ -645,6 +672,7 @@ export async function resolveIdOrPrefix(
 // (/agent-api/*): without it the channel ACL is skipped, so an agent could resolve a message in a channel it
 // cannot access. The optional default exists only for non-agent internal callers (there are none today).
 export async function resolveMessageId(serverId: string, idOrShort: string | undefined | null, agentId?: string): Promise<string | null> {
+  const db = dbFor(serverId);
   const id = await resolveIdOrPrefix(schema.messages, serverId, idOrShort);
   if (!id) return null;
   const m = (await db.select({ id: schema.messages.id, channelId: schema.messages.channelId }).from(schema.messages).where(eq(schema.messages.id, id)))[0];
@@ -656,8 +684,9 @@ export async function resolveMessageId(serverId: string, idOrShort: string | und
 }
 
 export async function claimTask(serverId: string, messageId: string, assigneeType: "user" | "agent", assigneeId: string) {
+  const db = dbFor(serverId);
   // Atomic claim: conditional UPDATE, succeeds only when the task "has not been claimed by another" (taskAssigneeId is null or already this agent = idempotent).
-  // Postgres UPDATE...WHERE acquires a row lock before re-evaluating the predicate → concurrent claims for the same task: only one wins, others get 0 rows → return null (claim failed).
+  // SQLite serializes writes and re-evaluates this predicate atomically → concurrent claims have one winner; others return 0 rows.
   // Before the fix this was an unconditional UPDATE: two agents both "succeeded" concurrently and both believed they owned the task → duplicate work.
   const [upd] = await db.update(schema.messages)
     .set({ taskStatus: "in_progress", taskAssigneeType: assigneeType, taskAssigneeId: assigneeId, taskClaimedAt: new Date(), updatedAt: new Date() })
@@ -669,17 +698,18 @@ export async function claimTask(serverId: string, messageId: string, assigneeTyp
     )).returning();
   if (!upd) return null; // 0 rows = already claimed by another (or task does not exist) → claim failed, caller should back off
   await emitTaskUpdated(serverId, upd);
-  await sysTaskMsg(serverId, upd.channelId, `${await actorName(assigneeType, assigneeId)} claimed #${upd.taskNumber} "${taskTitle(upd.content)}"`, { type: assigneeType, id: assigneeId });
+  await sysTaskMsg(serverId, upd.channelId, `${await actorName(serverId, assigneeType, assigneeId)} claimed #${upd.taskNumber} "${taskTitle(upd.content)}"`, { type: assigneeType, id: assigneeId });
   return upd;
 }
 
 export async function unclaimTask(serverId: string, messageId: string, by?: { type: "user" | "agent"; id: string }) {
+  const db = dbFor(serverId);
   const [upd] = await db.update(schema.messages)
     .set({ taskStatus: "todo", taskAssigneeType: null, taskAssigneeId: null, taskClaimedAt: null, updatedAt: new Date() })
     .where(and(eq(schema.messages.id, messageId), eq(schema.messages.serverId, serverId), isNotNull(schema.messages.taskStatus))).returning();
   if (!upd) return null;
   await emitTaskUpdated(serverId, upd);
-  await sysTaskMsg(serverId, upd.channelId, `${by ? await actorName(by.type, by.id) : "Someone"} released #${upd.taskNumber} "${taskTitle(upd.content)}"`, by);
+  await sysTaskMsg(serverId, upd.channelId, `${by ? await actorName(serverId, by.type, by.id) : "Someone"} released #${upd.taskNumber} "${taskTitle(upd.content)}"`, by);
   return upd;
 }
 
@@ -689,6 +719,7 @@ export async function assignTask(
   assigneeId: string,
   by?: { type: "user" | "agent"; id: string },
 ) {
+  const db = dbFor(serverId);
   const target = (await db.select().from(schema.agents).where(and(
     eq(schema.agents.id, assigneeId),
     eq(schema.agents.serverId, serverId),
@@ -732,7 +763,7 @@ export async function assignTask(
   }
   await db.insert(schema.channelMembers).values({ channelId: threadCh, memberType: "agent", memberId: assigneeId }).onConflictDoNothing();
 
-  const actor = by ? await actorName(by.type, by.id) : "Someone";
+  const actor = by ? await actorName(serverId, by.type, by.id) : "Someone";
   const assigneeName = target.displayName || target.name;
   const sysMsg = await sysTaskMsg(serverId, threadCh, `${actor} assigned #${upd.taskNumber} "${taskTitle(upd.content)}" to ${assigneeName}`, by);
 
@@ -763,6 +794,7 @@ export const TASK_STATUSES = ["todo", "in_progress", "in_review", "done", "close
 
 /** Change status (todo|in_progress|in_review|done|closed); done/closed records completedAt; done auto-creates thread. */
 export async function setTaskStatus(serverId: string, messageId: string, status: string, by?: { type: "user" | "agent"; id: string }) {
+  const db = dbFor(serverId);
   const finished = status === "done" || status === "closed";
   // Note: thread is already created at task creation/conversion time (findings §8.1 verified: all tasks have a thread, created before done); no need to create it here
   const [upd] = await db.update(schema.messages)
@@ -771,7 +803,7 @@ export async function setTaskStatus(serverId: string, messageId: string, status:
   if (!upd) return null;
   await emitTaskUpdated(serverId, upd); // task message itself updated (taskStatus) → lands in CHANNEL, updates badge + board in channel (verified: message:updated and task:updated both land in the channel)
   // "moved" system message for status change → lands in the task's THREAD, not channel (message:new channelId=task.threadId).
-  const actor = by ? await actorName(by.type, by.id) : "Someone";
+  const actor = by ? await actorName(serverId, by.type, by.id) : "Someone";
   // Ensure task has a thread (tasks always have a thread; create now for legacy data / not yet created) → moved system message lands in thread
   const th = await getOrCreateThread(serverId, upd.id);
   const threadCh = th.id;
@@ -796,6 +828,7 @@ export async function setTaskStatus(serverId: string, messageId: string, status:
 
 /** Delete task: revert to regular message — clear task fields, source message retained; emit task:deleted. */
 export async function deleteTask(serverId: string, messageId: string) {
+  const db = dbFor(serverId);
   const [upd] = await db.update(schema.messages)
     .set({ taskStatus: null, taskNumber: null, taskAssigneeType: null, taskAssigneeId: null, taskClaimedAt: null, taskCompletedAt: null, updatedAt: new Date() })
     .where(and(eq(schema.messages.id, messageId), eq(schema.messages.serverId, serverId), isNotNull(schema.messages.taskStatus))).returning();
@@ -806,10 +839,12 @@ export async function deleteTask(serverId: string, messageId: string) {
 
 // ── Agent lifecycle: start/stop/reset (target bound machine + update status + emit socket events) ──
 async function publishAgentState(serverId: string, agentId: string, detail = ""): Promise<void> {
+  const db = dbFor(serverId);
   const a = (await db.select().from(schema.agents).where(eq(schema.agents.id, agentId)))[0];
   if (a) await publish(serverId, { type: "agent", id: a.id, name: a.name, status: a.status, activity: a.activity, detail });
 }
 async function markAgentUnavailable(serverId: string, agentId: string, reason: string): Promise<void> {
+  const db = dbFor(serverId);
   await db.update(schema.agents).set({ status: "inactive", activity: "offline" }).where(and(eq(schema.agents.id, agentId), eq(schema.agents.serverId, serverId)));
   await publishAgentState(serverId, agentId, reason);
   log.warn("agent unavailable", { agentId, reason });
@@ -840,6 +875,7 @@ function sendAgentControl(serverId: string, target: AgentControlTarget, msg: Rec
 }
 
 async function agentStartTarget(serverId: string, agentId: string): Promise<AgentStartTarget | { ok: false; reason: string }> {
+  const db = dbFor(serverId);
   const a = (await db.select({
     machineId: schema.agents.machineId,
     runtime: schema.agents.runtime,
@@ -851,7 +887,7 @@ async function agentStartTarget(serverId: string, agentId: string): Promise<Agen
   if (!a) return { ok: false, reason: "agent not found" };
   if (!a.machineId) {
     if (daemonCount(serverId) === 0) return { ok: false, reason: "no daemon online" };
-    const cfg = await agentConfig(agentId);
+    const cfg = await agentConfig(serverId, agentId);
     if (!cfg) return { ok: false, reason: "agent not found" };
     return { ok: true, machineId: null, cfg };
   }
@@ -859,11 +895,12 @@ async function agentStartTarget(serverId: string, agentId: string): Promise<Agen
   const runtime = a.runtime ?? "claude";
   const runtimes = Array.isArray(a.machineRuntimes) ? a.machineRuntimes : [];
   if (!runtimes.includes(runtime)) return { ok: false, reason: `runtime unavailable: ${runtime}` };
-  const cfg = await agentConfig(agentId);
+  const cfg = await agentConfig(serverId, agentId);
   if (!cfg) return { ok: false, reason: "agent not found" };
   return { ok: true, machineId: a.machineId, cfg };
 }
 async function agentControlTarget(serverId: string, agentId: string): Promise<AgentControlTarget | { ok: false; reason: string }> {
+  const db = dbFor(serverId);
   const a = (await db.select({
     machineId: schema.agents.machineId,
     machineStatus: schema.machines.status,
@@ -880,6 +917,7 @@ async function agentControlTarget(serverId: string, agentId: string): Promise<Ag
 }
 /** Start an agent (requires local daemon to be online). */
 export async function startAgent(serverId: string, agentId: string): Promise<{ ok: boolean; reason?: string }> {
+  const db = dbFor(serverId);
   const target = await agentStartTarget(serverId, agentId);
   if (!target.ok) {
     if (target.reason !== "agent not found") await markAgentUnavailable(serverId, agentId, target.reason);
@@ -894,6 +932,7 @@ export async function startAgent(serverId: string, agentId: string): Promise<{ o
   return { ok: true };
 }
 export async function stopAgent(serverId: string, agentId: string): Promise<boolean> {
+  const db = dbFor(serverId);
   const target = await agentControlTarget(serverId, agentId);
   if (target.ok) {
     if (!sendAgentControl(serverId, target, { type: "agent:stop", agentId })) log.warn("agent stop target unavailable", { agentId, reason: "machine offline" });
@@ -905,6 +944,7 @@ export async function stopAgent(serverId: string, agentId: string): Promise<bool
   return true;
 }
 export async function resetAgent(serverId: string, agentId: string, wipeWorkspace = false, clearMemory = false): Promise<boolean> {
+  const db = dbFor(serverId);
   const target = await agentControlTarget(serverId, agentId);
   if (target.ok) {
     if (!sendAgentControl(serverId, target, { type: "agent:reset", agentId, wipeWorkspace, clearMemory })) log.warn("agent reset target unavailable", { agentId, reason: "machine offline" });

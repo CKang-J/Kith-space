@@ -1,7 +1,7 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
 import type { ServerCtx } from "./ctx.js";
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
-import { db, schema } from "../../db/index.js";
+import { dbFor, schema } from "../../db/index.js";
 import { requireCap } from "../capabilities.js";
 import { addChannelMembers, getOrCreateDM, getOrCreateThread } from "../core.js";
 import { publish } from "../realtime.js";
@@ -11,15 +11,17 @@ import { userChannels } from "./shared.js";
 
 const notSentBy = (userId: string) => or(isNull(schema.messages.senderId), ne(schema.messages.senderId, userId));
 
-async function unreadRowsForMember(member: typeof schema.channelMembers.$inferSelect, userId: string) {
+async function unreadRowsForMember(serverId: string, member: typeof schema.channelMembers.$inferSelect, userId: string) {
   if (member.threadDoneAt) return [];
+  const db = dbFor(serverId);
   return db.select({ id: schema.messages.id, seq: schema.messages.seq }).from(schema.messages)
     .where(and(eq(schema.messages.channelId, member.channelId), gt(schema.messages.seq, member.lastReadSeq), notSentBy(userId)))
     .orderBy(asc(schema.messages.seq));
 }
 
-async function parentChannelIdForThread(thread: typeof schema.channels.$inferSelect): Promise<string | null> {
+async function parentChannelIdForThread(serverId: string, thread: typeof schema.channels.$inferSelect): Promise<string | null> {
   if (thread.type !== "thread" || !thread.parentMessageId) return thread.id;
+  const db = dbFor(serverId);
   const parent = (await db.select({ channelId: schema.messages.channelId }).from(schema.messages).where(eq(schema.messages.id, thread.parentMessageId)))[0];
   return parent?.channelId ?? null;
 }
@@ -28,7 +30,8 @@ async function parentChannelIdForThread(thread: typeof schema.channels.$inferSel
 // every followed (not-done) thread under it — each thread's unread is rolled onto its parent channel id. Read
 // cursors clear each source independently (read the channel → channel-own portion; open the thread → that
 // thread's portion). Single source of truth shared by GET /channels/unread and POST /:id/read.
-async function unreadMapForUser(userId: string): Promise<Record<string, number>> {
+async function unreadMapForUser(serverId: string, userId: string): Promise<Record<string, number>> {
+  const db = dbFor(serverId);
   const myMems = await db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, userId)));
   const map: Record<string, number> = {};
   const chs = myMems.length ? await db.select().from(schema.channels).where(inArray(schema.channels.id, myMems.map((m) => m.channelId))) : [];
@@ -40,7 +43,7 @@ async function unreadMapForUser(userId: string): Promise<Record<string, number>>
     const [r] = await db.select({ n: count() }).from(schema.messages).where(and(eq(schema.messages.channelId, m.channelId), gt(schema.messages.seq, m.lastReadSeq), notSentBy(userId)));
     const n = Number(r?.n ?? 0);
     if (n <= 0) continue;
-    const targetId = ch.type === "thread" ? await parentChannelIdForThread(ch) : ch.id;
+    const targetId = ch.type === "thread" ? await parentChannelIdForThread(serverId, ch) : ch.id;
     if (targetId) map[targetId] = (map[targetId] ?? 0) + n;
   }
   return map;
@@ -48,6 +51,7 @@ async function unreadMapForUser(userId: string): Promise<Record<string, number>>
 
 export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
   const { req, res, url, method, p, userId, serverId } = ctx;
+  const db = dbFor(serverId);
   // ── Threads: a thread is a channel with type=thread (and a parentMessageId); there is no separate /api/threads endpoint ──
   if (p === "/api/channels/threads/followed" && method === "GET") {
     const cms = await db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, userId)));
@@ -60,7 +64,7 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
       const replies = await db.select({ seq: schema.messages.seq, createdAt: schema.messages.createdAt }).from(schema.messages).where(eq(schema.messages.channelId, th.id)).orderBy(asc(schema.messages.seq));
       const parent = th.parentMessageId ? (await db.select().from(schema.messages).where(eq(schema.messages.id, th.parentMessageId)))[0] : null;
       const pch = parent ? (await db.select().from(schema.channels).where(eq(schema.channels.id, parent.channelId)))[0] : null;
-      const unread = myCm ? await unreadRowsForMember(myCm, userId) : [];
+      const unread = myCm ? await unreadRowsForMember(serverId, myCm, userId) : [];
       out.push({ threadChannelId: th.id, parentMessageId: th.parentMessageId, parentChannelId: parent?.channelId ?? null, parentChannelName: pch?.name ?? null, parentPreview: (parent?.content ?? "").slice(0, 80), replyCount: replies.length, unreadCount: unread.length, lastReplyAt: replies.length ? replies[replies.length - 1]!.createdAt : null });
     }
     return (sendJson(res, 200, { threads: out }), true);
@@ -105,7 +109,7 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
     for (const th of threads) {
       const replies = await db.select({ seq: schema.messages.seq, createdAt: schema.messages.createdAt }).from(schema.messages).where(eq(schema.messages.channelId, th.id)).orderBy(asc(schema.messages.seq));
       const myCm = (await db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.channelId, th.id), eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, userId))))[0];
-      const unread = myCm ? await unreadRowsForMember(myCm, userId) : [];
+      const unread = myCm ? await unreadRowsForMember(serverId, myCm, userId) : [];
       map[th.parentMessageId!] = { threadChannelId: th.id, replyCount: replies.length, unreadCount: unread.length, lastReplyAt: replies.length ? replies[replies.length - 1]!.createdAt : null };
     }
     return (sendJson(res, 200, map), true);
@@ -141,7 +145,7 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
     return (sendJson(res, 200, out), true);
   }
   if (p === "/api/channels/unread" && method === "GET") {
-    return (sendJson(res, 200, await unreadMapForUser(userId)), true);
+    return (sendJson(res, 200, await unreadMapForUser(serverId, userId)), true);
   }
   // Unified inbox (GET /api/channels/inbox?filter=all|unread|mentions): aggregates all channels/DMs/threads the user has joined, with last message + unread count + mentions. User-side equivalent of the agent's inbox-notice.
   if (p === "/api/channels/inbox" && method === "GET") {
@@ -235,7 +239,7 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
     if (!mid) return (sendErr(res, 400, "agentId or userId required"), true);
     // An agent invited into an existing channel joins at its watermark (no pre-join backlog flood on first
     // `message check`); a user keeps lastReadSeq=0 so the UI still shows channel history as unread. See addChannelMembers.
-    await addChannelMembers(cmem[1]!, [{ type: mt, id: mid }]);
+    await addChannelMembers(serverId, cmem[1]!, [{ type: mt, id: mid }]);
     await publish(serverId, { type: "channel:members-updated", channelId: cmem[1]! }); // realtime: membership change → all clients refresh member/channel list and new member joins the room (G-E)
     return (sendJson(res, 200, { ok: true }), true);
   }
@@ -292,7 +296,7 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
     // Channel is brand-new (no messages yet → watermark is 0), but route through the same helper so every
     // agent membership insert shares one watermark-aware path instead of a raw insert that could drift.
     // Pass watermark:0 explicitly (it IS 0 on an empty channel) to skip a pointless channelMaxSeq roundtrip.
-    await addChannelMembers(ch!.id, rows.map((r) => ({ type: r.memberType, id: r.memberId })), { watermark: 0 });
+    await addChannelMembers(serverId, ch!.id, rows.map((r) => ({ type: r.memberType, id: r.memberId })), { watermark: 0 });
     return (sendJson(res, 200, { id: ch!.id, name: ch!.name, type: ch!.type }), true);
   }
   if (p === "/api/channels/dm" && method === "POST") {
@@ -362,8 +366,8 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
       // Return the authoritative remaining badge for the affected sidebar channel (a thread read rolls onto its
       // parent) so the client renders an honest count instead of blindly zeroing it — which made already-read
       // channels "resurrect" as unread once a followed thread still held unopened replies.
-      const parentId = ch.type === "thread" ? await parentChannelIdForThread(ch) : chId!;
-      const remaining = parentId ? ((await unreadMapForUser(userId))[parentId] ?? 0) : 0;
+      const parentId = ch.type === "thread" ? await parentChannelIdForThread(serverId, ch) : chId!;
+      const remaining = parentId ? ((await unreadMapForUser(serverId, userId))[parentId] ?? 0) : 0;
       return (sendJson(res, 200, { ok: true, channelId: parentId, unread: remaining }), true);
     }
     return (sendJson(res, 200, { ok: true }), true);

@@ -9,7 +9,7 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { eq } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { signUser, hashToken, newKey } from "../src/server/auth.ts";
 import { handleApi } from "../src/server/routes-api/index.ts";
 
@@ -38,12 +38,17 @@ async function apiCall(o: { method: string; path: string; token: string; serverI
   return { status: getStatus(), body: parsed as any };
 }
 
-let serverId = "", ownerId = "", ownerToken = "", memberId = "", memberToken = "";
-let otherServerId = "", otherMachineId = "";
+const fixture = integrationDatabase("machine-rename");
+const otherFixture = integrationDatabase("machine-rename-other");
+const { db, schema, rootPath } = fixture;
+const otherDb = otherFixture.db;
+let serverId = fixture.serverId, ownerId = "", ownerToken = "", memberId = "", memberToken = "";
+let otherServerId = otherFixture.serverId, otherMachineId = "";
 
 async function insertMachine(sid: string, uid: string, name: string) {
+  const targetDb = sid === otherServerId ? otherDb : db;
   const key = newKey("sk_machine_");
-  const [m] = await db.insert(schema.machines).values({ serverId: sid, userId: uid, name, apiKeyHash: hashToken(key), apiKeyPrefix: key.slice(0, 14), status: "offline", isComputer: false }).returning();
+  const [m] = await targetDb.insert(schema.machines).values({ serverId: sid, userId: uid, name, apiKeyHash: hashToken(key), apiKeyPrefix: key.slice(0, 14), status: "offline", isComputer: false }).returning();
   return m!;
 }
 async function setup() {
@@ -51,23 +56,26 @@ async function setup() {
   ownerId = owner!.id; ownerToken = signUser(ownerId);
   const [member] = await db.insert(schema.users).values({ name: `mem_mr_${ts}`, displayName: "Member", email: `mem_mr_${ts}@t.local` }).returning();
   memberId = member!.id; memberToken = signUser(memberId);
-  const [srv] = await db.insert(schema.servers).values({ name: "T-mr", slug: `t-mr-${ts}`, ownerId }).returning();
+  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "T-mr", slug: `t-mr-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
   await db.insert(schema.serverMembers).values({ serverId, userId: ownerId, role: "owner" });
   await db.insert(schema.serverMembers).values({ serverId, userId: memberId, role: "member" });
   // A second server owned by the same user, to prove tenant isolation on machineId.
-  const [srv2] = await db.insert(schema.servers).values({ name: "T-mr2", slug: `t-mr2-${ts}`, ownerId }).returning();
+  await otherDb.insert(schema.users).values(owner!);
+  const [srv2] = await otherDb.insert(schema.servers).values({ id: otherServerId, name: "T-mr2", slug: `t-mr2-${ts}`, ownerId, rootPath: otherFixture.rootPath }).returning();
   otherServerId = srv2!.id;
-  await db.insert(schema.serverMembers).values({ serverId: otherServerId, userId: ownerId, role: "owner" });
+  await otherDb.insert(schema.serverMembers).values({ serverId: otherServerId, userId: ownerId, role: "owner" });
   const om = await insertMachine(otherServerId, ownerId, `other_${ts}`);
   otherMachineId = om.id;
 }
 async function cleanup() {
-  for (const sid of [serverId, otherServerId]) {
-    await db.delete(schema.machines).where(eq(schema.machines.serverId, sid));
-    await db.delete(schema.serverMembers).where(eq(schema.serverMembers.serverId, sid));
-    await db.delete(schema.servers).where(eq(schema.servers.id, sid));
-  }
+  await db.delete(schema.machines).where(eq(schema.machines.serverId, serverId));
+  await db.delete(schema.serverMembers).where(eq(schema.serverMembers.serverId, serverId));
+  await db.delete(schema.servers).where(eq(schema.servers.id, serverId));
+  await otherDb.delete(schema.machines).where(eq(schema.machines.serverId, otherServerId));
+  await otherDb.delete(schema.serverMembers).where(eq(schema.serverMembers.serverId, otherServerId));
+  await otherDb.delete(schema.servers).where(eq(schema.servers.id, otherServerId));
+  await otherDb.delete(schema.users).where(eq(schema.users.id, ownerId));
   await db.delete(schema.users).where(eq(schema.users.id, ownerId));
   await db.delete(schema.users).where(eq(schema.users.id, memberId));
 }
@@ -88,7 +96,7 @@ async function main() {
   const r2 = await apiCall({ method: "PATCH", path: `/api/servers/${serverId}/machines/${otherMachineId}`, token: ownerToken, serverId, body: { name: "Hijack" } });
   console.log(`     → status=${r2.status}`);
   check("foreign machine id rejected with 404", r2.status === 404);
-  const oth = await db.select().from(schema.machines).where(eq(schema.machines.id, otherMachineId));
+  const oth = await otherDb.select().from(schema.machines).where(eq(schema.machines.id, otherMachineId));
   check("foreign machine name unchanged", oth[0]?.name === `other_${ts}`);
 
   console.log("\n[3] member (no manageMachines) → 403");

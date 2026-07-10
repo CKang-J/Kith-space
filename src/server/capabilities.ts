@@ -1,7 +1,7 @@
 // Workspace member role → capability mapping.
 // Separate from agent scopes.ts: scopes = agent data-plane abilities; capabilities = a human's admin permissions in a given server.
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "../db/index.js";
+import { dbFor, schema } from "../db/index.js";
 
 export type Role = "owner" | "admin" | "member";
 export type Capability =
@@ -28,6 +28,7 @@ export const can = (role: string | null | undefined, cap: Capability): boolean =
 
 /** Look up a user's role in a server (non-member = null). */
 export async function memberRole(serverId: string, userId: string): Promise<Role | null> {
+  const db = dbFor(serverId);
   const m = (await db.select().from(schema.serverMembers).where(and(eq(schema.serverMembers.serverId, serverId), eq(schema.serverMembers.userId, userId))))[0];
   return (m?.role as Role) ?? null;
 }

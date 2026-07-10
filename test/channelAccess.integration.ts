@@ -5,19 +5,21 @@
 //   - BEFORE fix: non-member gets 200+data  → checks FAIL (proves the bug on main)
 //   - AFTER fix : non-member gets 403       → checks PASS
 //
-// Requires infra up: `npm run infra` (pg :5433, redis :6380).
+// Runs against an isolated SQLite workspace; no external services required.
 // Run from the worktree root: npx tsx test/channelAccess.integration.ts
-import "../src/env.js"; // load .env before any DB/auth/redis import
+import "../src/env.js"; // load .env before auth imports
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { handleApi } from "../src/server/routes-api/index.ts";
 import { signUser } from "../src/server/auth.ts";
 
 const ts = Date.now();
-let serverId = "";
+const fixture = integrationDatabase("channel-access");
+const { db, schema, rootPath } = fixture;
+let serverId = fixture.serverId;
 let ownerId = "", nonMemberId = "";
 let publicChId = "", privateChId = "", dmChId = "";
 let ownerToken = "", nonMemberToken = "";
@@ -102,7 +104,7 @@ async function setup() {
   const [u2] = await db.insert(schema.users).values({ name: `nonmem_${ts}`, displayName: "NonMember", email: `n_${ts}@t.local` }).returning();
   ownerId = u1!.id; nonMemberId = u2!.id;
 
-  const [srv] = await db.insert(schema.servers).values({ name: "T", slug: `t-${ts}`, ownerId }).returning();
+  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "T", slug: `t-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
   await db.insert(schema.serverMembers).values([
     { serverId, userId: ownerId, role: "owner" },

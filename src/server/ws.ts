@@ -2,7 +2,7 @@
 import { WebSocketServer, type WebSocket } from "ws";
 import type { Server } from "node:http";
 import { and, desc, eq, notInArray } from "drizzle-orm";
-import { db, schema } from "../db/index.js";
+import { allWorkspaceDbs, dbFor, schema } from "../db/index.js";
 import { BOOTSTRAP_KEY, hashToken, safeEqual } from "./auth.js";
 import { registerDaemon, unregisterDaemon, resolveDaemonRequest, registerMachineConn, unregisterMachineConn, isCurrentMachineConn } from "./daemonHub.js";
 import { publish } from "./realtime.js";
@@ -27,10 +27,11 @@ export function attachWs(server: Server): void {
 async function onDaemon(ws: WebSocket, key: string): Promise<void> {
   let serverId: string | null = null;
   let machineId: string | null = null;
-  if (safeEqual(key, BOOTSTRAP_KEY)) {
-    serverId = (await db.select().from(schema.servers).where(eq(schema.servers.slug, "kith-space")))[0]?.id ?? null;
-  } else {
-    serverId = (await db.select().from(schema.machines).where(eq(schema.machines.apiKeyHash, hashToken(key))))[0]?.serverId ?? null;
+  for (const candidate of allWorkspaceDbs()) {
+    const found = safeEqual(key, BOOTSTRAP_KEY)
+      ? (await candidate.db.select().from(schema.servers).where(eq(schema.servers.slug, "kith-space")))[0]
+      : (await candidate.db.select().from(schema.machines).where(eq(schema.machines.apiKeyHash, hashToken(key))))[0];
+    if (found) { serverId = candidate.workspace.id; break; }
   }
   if (!serverId) {
     // A missing sk_machine_* row is a permanent rejection (key deleted or never existed) → signal the daemon
@@ -40,6 +41,7 @@ async function onDaemon(ws: WebSocket, key: string): Promise<void> {
     else ws.close();
     return;
   }
+  const db = dbFor(serverId);
   registerDaemon(ws, serverId); // register by serverId → broadcastToDaemons only reaches this server's daemons (multi-tenant isolation, routed by connection)
   log.info("daemon connected", { serverId });
   const ping = setInterval(() => { try { ws.send(JSON.stringify({ type: "ping" })); } catch { /* */ } }, 30000);
@@ -78,7 +80,7 @@ async function onDaemon(ws: WebSocket, key: string): Promise<void> {
     if (machineId && wasCurrent) {
       await db.update(schema.machines).set({ status: "offline" }).where(eq(schema.machines.id, machineId)).catch(() => {});
       await publish(serverId!, { type: "machine", online: false, machineId });
-      await markMachineAgentsOffline(machineId).catch((e: any) => log.error("agent offline reconcile failed", { machineId, detail: String(e?.message ?? e) }));
+      await markMachineAgentsOffline(serverId!, machineId).catch((e: any) => log.error("agent offline reconcile failed", { machineId, detail: String(e?.message ?? e) }));
     }
     log.info("daemon disconnected", { serverId, machineId });
   });
@@ -86,6 +88,7 @@ async function onDaemon(ws: WebSocket, key: string): Promise<void> {
 }
 
 async function onReady(serverId: string, key: string, msg: any): Promise<string> {
+  const db = dbFor(serverId);
   const hostname = msg.hostname ?? "unknown";
   // "Connect a machine": the machine key pre-creates a row, claimed by apiKeyHash (keeps the user-chosen machine name).
   // The bootstrap key is shared by multiple machines, so apiKeyHash collides → prefer claiming by the daemon's persisted stable machineId (persisted via ready:ack),
@@ -135,6 +138,7 @@ async function onReady(serverId: string, key: string, msg: any): Promise<string>
 
 async function onAgentUpdate(serverId: string, msg: any): Promise<void> {
   if (!msg.agentId) return;
+  const db = dbFor(serverId);
   const patch: Record<string, unknown> = {};
   if (msg.type === "agent:status") patch.status = msg.status;
   if (msg.type === "agent:activity") patch.activity = msg.activity;
@@ -151,7 +155,8 @@ async function onAgentUpdate(serverId: string, msg: any): Promise<void> {
 export const ACTIVITY_LOG_CAP = 500;
 
 // Delete all but the newest ACTIVITY_LOG_CAP rows (by ts) for one agent. Uses the (agentId, ts) index.
-export async function pruneAgentActivityLog(agentId: string): Promise<void> {
+export async function pruneAgentActivityLog(serverId: string, agentId: string): Promise<void> {
+  const db = dbFor(serverId);
   const keep = db.select({ id: schema.agentActivityLog.id }).from(schema.agentActivityLog)
     .where(eq(schema.agentActivityLog.agentId, agentId)).orderBy(desc(schema.agentActivityLog.ts)).limit(ACTIVITY_LOG_CAP);
   await db.delete(schema.agentActivityLog).where(and(eq(schema.agentActivityLog.agentId, agentId), notInArray(schema.agentActivityLog.id, keep)));
@@ -159,6 +164,7 @@ export async function pruneAgentActivityLog(agentId: string): Promise<void> {
 
 // Persist activity to the DB (daemon-pushed status/trajectory entries → agent_activity_log, feeds the activity facet history + timeline)
 export async function logActivity(serverId: string, agentId: string, e: any): Promise<void> {
+  const db = dbFor(serverId);
   const kind = e.kind === "tool" ? "tool_start" : (e.kind || (e.toolName ? "tool_start" : "text"));
   try {
     await db.insert(schema.agentActivityLog).values({
@@ -166,6 +172,6 @@ export async function logActivity(serverId: string, agentId: string, e: any): Pr
       activity: e.activity ?? null, detail: e.detail ?? null, text: e.text ?? null,
       toolName: e.toolName ?? null, toolInput: e.toolInput ?? null,
     });
-    await pruneAgentActivityLog(agentId); // keep the table bounded per agent (newest ACTIVITY_LOG_CAP)
+    await pruneAgentActivityLog(serverId, agentId); // keep the table bounded per agent (newest ACTIVITY_LOG_CAP)
   } catch { /* logging failure must not block */ }
 }

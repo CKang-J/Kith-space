@@ -12,7 +12,7 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { eq } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { signUser, hashToken, newKey } from "../src/server/auth.ts";
 import { handleApi } from "../src/server/routes-api/index.ts";
 
@@ -41,19 +41,24 @@ async function apiCall(o: { method: string; path: string; token: string; serverI
   return { status: getStatus(), body: parsed as any };
 }
 
-let serverId = "", ownerId = "", ownerToken = "";
-let otherServerId = "", ownMachineId = "", otherMachineId = "";
+const fixture = integrationDatabase("agent-create-requires-machine");
+const otherFixture = integrationDatabase("agent-create-requires-machine-other");
+const { db, schema, rootPath } = fixture;
+const otherDb = otherFixture.db;
+let serverId = fixture.serverId, ownerId = "", ownerToken = "";
+let otherServerId = otherFixture.serverId, ownMachineId = "", otherMachineId = "";
 const createdAgentIds: string[] = [];
 
 async function insertMachine(sid: string, uid: string, name: string) {
+  const targetDb = sid === otherServerId ? otherDb : db;
   const key = newKey("sk_machine_");
-  const [m] = await db.insert(schema.machines).values({ serverId: sid, userId: uid, name, apiKeyHash: hashToken(key), apiKeyPrefix: key.slice(0, 14), status: "offline", isComputer: false }).returning();
+  const [m] = await targetDb.insert(schema.machines).values({ serverId: sid, userId: uid, name, apiKeyHash: hashToken(key), apiKeyPrefix: key.slice(0, 14), status: "offline", isComputer: false }).returning();
   return m!;
 }
 async function setup() {
   const [owner] = await db.insert(schema.users).values({ name: `own_acrm_${ts}`, displayName: "Owner", email: `own_acrm_${ts}@t.local` }).returning();
   ownerId = owner!.id; ownerToken = signUser(ownerId);
-  const [srv] = await db.insert(schema.servers).values({ name: "T-acrm", slug: `t-acrm-${ts}`, ownerId }).returning();
+  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "T-acrm", slug: `t-acrm-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
   await db.insert(schema.serverMembers).values({ serverId, userId: ownerId, role: "owner" });
   const [all] = await db.insert(schema.channels).values({ serverId, name: "all", type: "channel" }).returning();
@@ -61,21 +66,24 @@ async function setup() {
   const om = await insertMachine(serverId, ownerId, `own_${ts}`);
   ownMachineId = om.id;
   // A second server owned by the same user, to prove tenant isolation on machineId.
-  const [srv2] = await db.insert(schema.servers).values({ name: "T-acrm2", slug: `t-acrm2-${ts}`, ownerId }).returning();
+  await otherDb.insert(schema.users).values(owner!);
+  const [srv2] = await otherDb.insert(schema.servers).values({ id: otherServerId, name: "T-acrm2", slug: `t-acrm2-${ts}`, ownerId, rootPath: otherFixture.rootPath }).returning();
   otherServerId = srv2!.id;
-  await db.insert(schema.serverMembers).values({ serverId: otherServerId, userId: ownerId, role: "owner" });
+  await otherDb.insert(schema.serverMembers).values({ serverId: otherServerId, userId: ownerId, role: "owner" });
   const other = await insertMachine(otherServerId, ownerId, `other_${ts}`);
   otherMachineId = other.id;
 }
 async function cleanup() {
   for (const id of createdAgentIds) await db.delete(schema.channelMembers).where(eq(schema.channelMembers.memberId, id)).catch(() => {});
-  for (const sid of [serverId, otherServerId]) {
-    await db.delete(schema.agents).where(eq(schema.agents.serverId, sid));
-    await db.delete(schema.machines).where(eq(schema.machines.serverId, sid));
-    await db.delete(schema.channels).where(eq(schema.channels.serverId, sid));
-    await db.delete(schema.serverMembers).where(eq(schema.serverMembers.serverId, sid));
-    await db.delete(schema.servers).where(eq(schema.servers.id, sid));
-  }
+  await db.delete(schema.agents).where(eq(schema.agents.serverId, serverId));
+  await db.delete(schema.machines).where(eq(schema.machines.serverId, serverId));
+  await db.delete(schema.channels).where(eq(schema.channels.serverId, serverId));
+  await db.delete(schema.serverMembers).where(eq(schema.serverMembers.serverId, serverId));
+  await db.delete(schema.servers).where(eq(schema.servers.id, serverId));
+  await otherDb.delete(schema.machines).where(eq(schema.machines.serverId, otherServerId));
+  await otherDb.delete(schema.serverMembers).where(eq(schema.serverMembers.serverId, otherServerId));
+  await otherDb.delete(schema.servers).where(eq(schema.servers.id, otherServerId));
+  await otherDb.delete(schema.users).where(eq(schema.users.id, ownerId));
   await db.delete(schema.users).where(eq(schema.users.id, ownerId));
 }
 

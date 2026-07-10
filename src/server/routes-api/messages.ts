@@ -1,7 +1,7 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
 import type { ServerCtx } from "./ctx.js";
-import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt } from "drizzle-orm";
-import { db, schema } from "../../db/index.js";
+import { and, asc, desc, eq, gt, like, inArray, isNull, lt } from "drizzle-orm";
+import { dbFor, schema } from "../../db/index.js";
 import { addReaction, checkSaved, createMessage, listSaved, removeReaction, saveMessage, unsaveMessage } from "../core.js";
 import { parseMsgPageParams } from "../messagePage.js";
 import { publish } from "../realtime.js";
@@ -11,6 +11,7 @@ import { canUserReadChannel } from "../channelAccess.js";
 
 export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
   const { req, res, url, method, p, userId, serverId } = ctx;
+  const db = dbFor(serverId);
   if (p === "/api/mentions" && method === "GET") {
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 30), 100);
     const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
@@ -93,7 +94,7 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
     const chIds = mems.map((m) => m.channelId);
     if (!chIds.length) return (sendJson(res, 200, { hasMore: false, results: [] }), true);
     const rows = await db.select().from(schema.messages)
-      .where(and(eq(schema.messages.serverId, serverId), inArray(schema.messages.channelId, chIds), ilike(schema.messages.content, `%${q}%`)))
+      .where(and(eq(schema.messages.serverId, serverId), inArray(schema.messages.channelId, chIds), like(schema.messages.content, `%${q}%`)))
       .orderBy(desc(schema.messages.seq)).limit(limit + 1).offset(offset);
     const hasMore = rows.length > limit;
     const chs = await db.select().from(schema.channels).where(inArray(schema.channels.id, chIds));
@@ -111,7 +112,7 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
     const rows = await db.select().from(schema.messages).where(and(...conds)).orderBy(desc(schema.messages.seq)).limit(limit + 1); // +1 sentinel row: detect a further page without the exact-page-boundary false positive (mirrors the search/mentions routes)
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
-    return (sendJson(res, 200, { messages: (await attachMentions(page.reverse())), hasMore }), true);
+    return (sendJson(res, 200, { messages: (await attachMentions(serverId, page.reverse())), hasMore }), true);
   }
   if (p === "/api/messages" && method === "POST") {
     const b = await readJson(req);
@@ -149,7 +150,7 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
     const u = (await db.select().from(schema.users).where(eq(schema.users.id, userId)))[0];
     const updated = { ...meta, state: "executed", executedAt: new Date().toISOString(), executedByUserId: userId, executedByUserName: u?.displayName || u?.name || "someone", result: b.result ?? null };
     await db.update(schema.messages).set({ actionMetadata: updated, updatedAt: new Date() }).where(eq(schema.messages.id, m.id));
-    const [serialized] = await attachMentions([{ ...m, actionMetadata: updated }]);
+    const [serialized] = await attachMentions(serverId, [{ ...m, actionMetadata: updated }]);
     await publish(serverId, { type: "message:updated", message: serialized });
     return (sendJson(res, 200, { ok: true }), true);
   }
@@ -159,7 +160,7 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
     const chIds = chs.filter((c) => joined.has(c.id)).map((c) => c.id);
     if (!chIds.length) return (sendJson(res, 200, { messages: [], maxSeq: since }), true);
     const msgs = await db.select().from(schema.messages).where(and(eq(schema.messages.serverId, serverId), gt(schema.messages.seq, since), inArray(schema.messages.channelId, chIds))).orderBy(asc(schema.messages.seq)).limit(500);
-    const withM = await attachMentions(msgs);
+    const withM = await attachMentions(serverId, msgs);
     return (sendJson(res, 200, { messages: withM, maxSeq: msgs.length ? msgs[msgs.length - 1]!.seq : since }), true);
   }
   // Single message by id (serialized like the channel feed). Lets the client open a thread panel whose parent
@@ -170,7 +171,7 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
     const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, cone[1]!), eq(schema.messages.serverId, serverId))))[0];
     if (!m) return (sendErr(res, 404, "message not found"), true);
     if (!(await canUserReadChannel(serverId, m.channelId, userId))) return (sendErr(res, 404, "message not found"), true); // non-members of private/DM channels are refused (don't leak existence)
-    const [serialized] = await attachMentions([m]);
+    const [serialized] = await attachMentions(serverId, [m]);
     return (sendJson(res, 200, { message: serialized }), true);
   }
   return false;

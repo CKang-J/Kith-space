@@ -1,8 +1,8 @@
-// Unit tests for task-number scope-key selection (no Redis round-trip; pure key derivation).
+// Unit tests for task-number scope-key selection (pure key derivation).
 // Run: npx tsx --test --test-force-exit test/taskNumber.unit.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { taskNumberKey } from "../src/redis.ts";
+import { taskNumberKey } from "../src/counters.ts";
 
 test("non-DM channels all share the per-server counter", () => {
   assert.equal(taskNumberKey("srv1", { type: "channel", id: "c1" }), "tasknum:srv1");

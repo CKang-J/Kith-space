@@ -1,11 +1,12 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
 import type { ServerCtx } from "./ctx.js";
 import { asc, eq } from "drizzle-orm";
-import { db, schema } from "../../db/index.js";
+import { dbFor, schema } from "../../db/index.js";
 import { sendJson } from "../util.js";
 
 export async function handleReminders(ctx: ServerCtx): Promise<boolean> {
   const { res, url, method, p, serverId } = ctx;
+  const db = dbFor(serverId);
   if (p === "/api/reminders" && method === "GET") {
     const ownerAgentId = url.searchParams.get("ownerAgentId") || url.searchParams.get("agentId");
     const status = url.searchParams.get("status"); // scheduled = not yet fired

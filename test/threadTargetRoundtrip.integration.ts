@@ -4,30 +4,31 @@
 // the suffix as a PARENT MESSAGE id prefix — a thread channel id never matches a message id → null →
 // the agent reusing the shown target got "404 channel not found", so thread replies silently misfired.
 // Fix: fmt() emits `:<m.id8>` (the anchor message id = the thread's parent) so the round-trip resolves.
-// Requires infra up: `npm run infra` + `npm run db:push`. Run against an ISOLATED db, never the live one:
-//   DATABASE_URL=postgres://opentag:opentag@localhost:5433/opentag_test npx tsx test/threadTargetRoundtrip.integration.ts
+// Runs against an isolated SQLite workspace; no external services required.
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { createMessage, resolveTarget } from "../src/server/core.ts";
 import { addressableTarget, fmt } from "../src/server/routes-agent.ts";
 
 const ts = Date.now();
 const chName = `tr-${ts}`;
-let serverId = "", ownerId = "", agentId = "", channelId = "";
+const fixture = integrationDatabase("thread-target-roundtrip");
+const { db, schema, rootPath } = fixture;
+let serverId = fixture.serverId, ownerId = "", agentId = "", channelId = "";
 let failures = 0;
 const check = (label: string, cond: boolean) => { console.log(`  ${cond ? "✔" : "✗ FAIL"} ${label}`); if (!cond) failures++; };
 
 const targetOf = async (messageId: string): Promise<string> => {
   const row = (await db.select().from(schema.messages).where(eq(schema.messages.id, messageId)))[0]!;
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, row.channelId)))[0]!;
-  const header = fmt(row, await addressableTarget(ch, agentId));
+  const header = fmt(row, await addressableTarget(serverId, ch, agentId));
   return header.match(/\[target=(\S+)/)![1]!; // the exact string an agent is told to reuse
 };
 
 async function setup() {
   const [u] = await db.insert(schema.users).values({ name: `owner_${ts}`, displayName: "Owner", email: `o_${ts}@t.local` }).returning();
   ownerId = u!.id;
-  const [srv] = await db.insert(schema.servers).values({ name: "T", slug: `t-${ts}`, ownerId }).returning();
+  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "T", slug: `t-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
   await db.insert(schema.serverMembers).values({ serverId, userId: ownerId, role: "owner" });
   const [ag] = await db.insert(schema.agents).values({ serverId, name: `agent_${ts}`, displayName: "Agent" }).returning();

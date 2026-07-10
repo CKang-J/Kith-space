@@ -1,7 +1,8 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
 import type { UserCtx, ServerCtx } from "./ctx.js";
 import { and, count, eq, gt, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
-import { db, schema } from "../../db/index.js";
+import { allWorkspaceDbs, dbFor, renameWorkspace, schema } from "../../db/index.js";
+import { findServerBySlug } from "../../db/lookup.js";
 import { hashToken, newKey } from "../auth.js";
 import { can, capabilitiesFor, requireCap } from "../capabilities.js";
 import { createServer } from "../core.js";
@@ -18,10 +19,14 @@ const LATEST_DAEMON_VERSION: string = (() => { try { return String(createRequire
 export async function handleServersUserScope(ctx: UserCtx): Promise<boolean> {
   const { req, res, method, p, userId } = ctx;
   if (p === "/api/servers" && method === "GET") {
-    const mems = await db.select().from(schema.serverMembers).where(eq(schema.serverMembers.userId, userId));
-    const ids = mems.map((m) => m.serverId);
-    const servers = ids.length ? await db.select().from(schema.servers).where(inArray(schema.servers.id, ids)) : [];
-    return (sendJson(res, 200, servers.map((s) => { const role = mems.find((m) => m.serverId === s.id)?.role; return { id: s.id, name: s.name, slug: s.slug, avatarUrl: s.avatarUrl, role, capabilities: capabilitiesFor(role) }; })), true);
+    const out: Record<string, unknown>[] = [];
+    for (const { db } of allWorkspaceDbs()) {
+      const mem = (await db.select().from(schema.serverMembers).where(eq(schema.serverMembers.userId, userId)))[0];
+      if (!mem) continue;
+      const server = (await db.select().from(schema.servers).where(eq(schema.servers.id, mem.serverId)))[0];
+      if (server) out.push({ id: server.id, name: server.name, slug: server.slug, avatarUrl: server.avatarUrl, role: mem.role, capabilities: capabilitiesFor(mem.role) });
+    }
+    return (sendJson(res, 200, out), true);
   }
   // Create workspace (community). No x-server-id needed: the server does not exist yet; creator becomes owner.
   if (p === "/api/servers" && method === "POST") {
@@ -30,31 +35,38 @@ export async function handleServersUserScope(ctx: UserCtx): Promise<boolean> {
     if (!name) return (sendErr(res, 400, "name required"), true);
     const base = String(b.slug ?? name).trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "community";
     let slug = base; // slug must be unique: append -N suffix on collision
-    for (let n = 2; (await db.select().from(schema.servers).where(eq(schema.servers.slug, slug)))[0]; n++) slug = `${base}-${n}`;
-    const srv = await createServer(name, slug, userId);
+    for (let n = 2; await findServerBySlug(slug); n++) slug = `${base}-${n}`;
+    const rootPath = typeof b.rootPath === "string" && b.rootPath.trim() ? b.rootPath.trim() : undefined;
+    const srv = await createServer(name, slug, userId, { rootPath });
     // Return role + capabilities (creator is owner) so the client can optimistically activate the new workspace
     // without a re-fetch — mirrors the GET /api/servers shape. Enables instant client-side nav (no full-page reload).
     return (sendJson(res, 200, { id: srv.id, name: srv.name, slug: srv.slug, role: "owner", capabilities: capabilitiesFor("owner") }), true);
   }
   // Cross-server unread aggregation: server switcher badge. No x-server-id; placed before the :id regex to avoid being consumed by it.
   if (p === "/api/servers/unread-summary" && method === "GET") {
-    const mems = await db.select().from(schema.serverMembers).where(eq(schema.serverMembers.userId, userId));
-    const myCms = await db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, userId)));
     const perServer: Record<string, number> = {};
-    if (myCms.length) {
-      const chs = await db.select({ id: schema.channels.id, serverId: schema.channels.serverId, type: schema.channels.type, deletedAt: schema.channels.deletedAt }).from(schema.channels).where(inArray(schema.channels.id, myCms.map((c) => c.channelId)));
-      const chById = new Map(chs.filter((c) => !c.deletedAt).map((c) => [c.id, c]));
-      for (const cm of myCms) {
-        const ch = chById.get(cm.channelId); if (!ch) continue;
-        if (ch.type === "thread" && cm.threadDoneAt) continue;
-        const [r] = await db.select({ n: count() }).from(schema.messages).where(and(eq(schema.messages.channelId, cm.channelId), gt(schema.messages.seq, cm.lastReadSeq), or(isNull(schema.messages.senderId), ne(schema.messages.senderId, userId))));
-        perServer[ch.serverId] = (perServer[ch.serverId] ?? 0) + Number(r?.n ?? 0);
+    const memberIds: string[] = [];
+    for (const { db } of allWorkspaceDbs()) {
+      const mems = await db.select().from(schema.serverMembers).where(eq(schema.serverMembers.userId, userId));
+      memberIds.push(...mems.map((m) => m.serverId));
+      const myCms = await db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, userId)));
+      if (myCms.length) {
+        const chs = await db.select({ id: schema.channels.id, serverId: schema.channels.serverId, type: schema.channels.type, deletedAt: schema.channels.deletedAt }).from(schema.channels).where(inArray(schema.channels.id, myCms.map((c) => c.channelId)));
+        const chById = new Map(chs.filter((c) => !c.deletedAt).map((c) => [c.id, c]));
+        for (const cm of myCms) {
+          const ch = chById.get(cm.channelId); if (!ch) continue;
+          if (ch.type === "thread" && cm.threadDoneAt) continue;
+          const [r] = await db.select({ n: count() }).from(schema.messages).where(and(eq(schema.messages.channelId, cm.channelId), gt(schema.messages.seq, cm.lastReadSeq), or(isNull(schema.messages.senderId), ne(schema.messages.senderId, userId))));
+          perServer[ch.serverId] = (perServer[ch.serverId] ?? 0) + Number(r?.n ?? 0);
+        }
       }
     }
-    return (sendJson(res, 200, mems.map((m) => ({ serverId: m.serverId, unreadCount: perServer[m.serverId] ?? 0 }))), true);
+    return (sendJson(res, 200, memberIds.map((serverId) => ({ serverId, unreadCount: perServer[serverId] ?? 0 }))), true);
   }
   const srv = /^\/api\/servers\/([^/]+)$/.exec(p);
   if (srv && (method === "GET" || method === "PATCH")) {
+    const db = (() => { try { return dbFor(srv[1]!); } catch { return null; } })();
+    if (!db) return (sendErr(res, 404, "not found"), true);
     const mem = (await db.select().from(schema.serverMembers).where(and(eq(schema.serverMembers.serverId, srv[1]!), eq(schema.serverMembers.userId, userId))))[0];
     if (!mem) return (sendErr(res, 403, "not a member"), true);
     if (method === "PATCH") {
@@ -63,6 +75,7 @@ export async function handleServersUserScope(ctx: UserCtx): Promise<boolean> {
       if (b.name !== undefined) patch.name = b.name;
       if (b.slug !== undefined) patch.slug = String(b.slug).trim().toLowerCase().replace(/\s+/g, "-");
       if (Object.keys(patch).length) await db.update(schema.servers).set(patch).where(eq(schema.servers.id, srv[1]!));
+      if (typeof patch.name === "string") renameWorkspace(srv[1]!, patch.name);
     }
     const s = (await db.select().from(schema.servers).where(eq(schema.servers.id, srv[1]!)))[0];
     return (s ? sendJson(res, 200, { id: s.id, name: s.name, slug: s.slug, plan: s.plan, role: mem.role, createdAt: s.createdAt }) : sendErr(res, 404, "not found"), true);
@@ -72,6 +85,7 @@ export async function handleServersUserScope(ctx: UserCtx): Promise<boolean> {
 
 export async function handleServersServerScope(ctx: ServerCtx): Promise<boolean> {
   const { req, res, method, p, userId, serverId } = ctx;
+  const db = dbFor(serverId);
   const rm = /^\/api\/servers\/[^/]+\/machines\/([^/]+)\/runtime-models\/([^/]+)$/.exec(p);
   if (rm && method === "GET") {
     const machineId = rm[1]!, runtime = rm[2]!;
@@ -276,16 +290,16 @@ export async function handleServersServerScope(ctx: ServerCtx): Promise<boolean>
     const m = (await db.select().from(schema.machines).where(and(eq(schema.machines.id, mid), eq(schema.machines.serverId, serverId))))[0];
     if (!m) return (sendErr(res, 404, "machine not found"), true);
     let liveAgentCount = 0;
-    await db.transaction(async (tx) => {
+    db.transaction((tx) => {
       // Re-check inside the transaction to reduce TOCTOU exposure: an agent bound between the
       // outer machine-exists check and here will be caught by this SELECT in most cases.
-      const onIt = await tx.select().from(schema.agents).where(and(eq(schema.agents.serverId, serverId), eq(schema.agents.machineId, mid), isNull(schema.agents.deletedAt)));
+      const onIt = tx.select().from(schema.agents).where(and(eq(schema.agents.serverId, serverId), eq(schema.agents.machineId, mid), isNull(schema.agents.deletedAt))).all();
       if (onIt.length) { liveAgentCount = onIt.length; return; }
       // At this point only soft-deleted agent rows (if any) still reference this machine.
       // Null out their machineId to release the FK before the DELETE. The `isNotNull` predicate
       // is defensive (the SELECT above confirmed zero live agents) but makes the intent explicit.
-      await tx.update(schema.agents).set({ machineId: null }).where(and(eq(schema.agents.serverId, serverId), eq(schema.agents.machineId, mid), isNotNull(schema.agents.deletedAt)));
-      await tx.delete(schema.machines).where(eq(schema.machines.id, mid));
+      tx.update(schema.agents).set({ machineId: null }).where(and(eq(schema.agents.serverId, serverId), eq(schema.agents.machineId, mid), isNotNull(schema.agents.deletedAt))).run();
+      tx.delete(schema.machines).where(eq(schema.machines.id, mid)).run();
     });
     if (liveAgentCount) return (sendErr(res, 409, `This machine still has ${liveAgentCount} agent(s) attached. Please remove them before deleting the machine.`, { agentCount: liveAgentCount }), true);
     await publish(serverId, { type: "machine", online: false, machineId: mid, removed: true });

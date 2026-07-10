@@ -26,8 +26,7 @@
     "open-source"
   ],
   "scripts": {
-    "infra": "docker compose up -d",
-    "infra:down": "docker compose down",
+    "test": "node scripts/run-tests.mjs",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "seed": "tsx src/db/seed.ts",
@@ -40,7 +39,6 @@
     "stop": "pkill -f 'src/server/index.ts'; pkill -f 'src/daemon/index.ts'; pkill -f 'bin/vite'; true",
     "start:prod": "ENV_FILE=.env.prod tsx src/server/index.ts",
     "daemon:prod": "set -a && . ./.env.prod && set +a && ENV_FILE=.env.prod tsx src/daemon/index.ts --api-key \"$DAEMON_BOOTSTRAP_KEY\"",
-    "db:push:prod": "set -a && . ./.env.prod && set +a && drizzle-kit push",
     "seed:prod": "ENV_FILE=.env.prod tsx src/db/seed.ts",
     "stop:prod": "lsof -ti tcp:7788 -sTCP:LISTEN | xargs kill 2>/dev/null; true",
     "prod:up": "bash scripts/prod-up.sh",
@@ -56,18 +54,18 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.11.1",
     "busboy": "^1.6.0",
     "commander": "^12.1.0",
     "drizzle-orm": "^0.45.2",
     "helmet": "^8.2.0",
-    "ioredis": "^5.4.0",
     "jsonwebtoken": "^9.0.2",
-    "postgres": "^3.4.5",
     "socket.io": "^4.8.3",
     "ws": "^8.21.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/busboy": "^1.5.4",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.0.0",

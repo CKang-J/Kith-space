@@ -12,7 +12,7 @@
 // DM/@ wake unconditionally; ambient (non-@) wakes only with the inbox:receive scope. The two stay in sync
 // through agentWakePolicy — see docs/superpowers/specs/2026-06-25-agent-reachability-design.md §5.4.
 import { and, eq, gt, ne, or, isNull, desc } from "drizzle-orm";
-import { db, schema } from "../db/index.js";
+import { dbFor, schema } from "../db/index.js";
 import { agentHasScope } from "./scopes.js";
 import { sendToMachine } from "./daemonHub.js";
 import { agentConfig } from "./core.js";
@@ -32,7 +32,8 @@ interface Backlog { count: number; from: string; targetName: string; }
 
 /** Does this agent have a wakeable backlog (unread messages that would have woken it)? Returns a small
  *  summary used to build the soft-offline inbox notice, or null when there is nothing wakeable. */
-async function computeBacklog(agentId: string, scopes: Parameters<typeof agentHasScope>[0]): Promise<Backlog | null> {
+async function computeBacklog(serverId: string, agentId: string, scopes: Parameters<typeof agentHasScope>[0]): Promise<Backlog | null> {
+  const db = dbFor(serverId);
   const hasInbox = agentHasScope(scopes, "inbox:receive");
   const memberships = await db.select({
     channelId: schema.channelMembers.channelId,
@@ -89,6 +90,7 @@ export async function catchUpAgentsOnMachine(serverId: string, machineId: string
   const now = Date.now();
   if (now - (lastRun.get(machineId) ?? 0) < COOLDOWN_MS) { log.debug("catch-up skipped (cooldown)", { machineId }); return; }
   lastRun.set(machineId, now);
+  const db = dbFor(serverId);
 
   const machine = (await db.select({ runtimes: schema.machines.runtimes }).from(schema.machines).where(and(
     eq(schema.machines.id, machineId),
@@ -103,7 +105,7 @@ export async function catchUpAgentsOnMachine(serverId: string, machineId: string
   let woke = 0;
   for (const a of list) {
     let backlog: Backlog | null = null;
-    try { backlog = await computeBacklog(a.id, a.scopes); }
+    try { backlog = await computeBacklog(serverId, a.id, a.scopes); }
     catch (e: any) { log.warn("backlog scan failed", { agentId: a.id, detail: String(e?.message ?? e) }); continue; }
     if (!backlog) continue;
     if (!availableRuntimes.has(a.runtime)) {
@@ -112,7 +114,7 @@ export async function catchUpAgentsOnMachine(serverId: string, machineId: string
     }
     if (!runningIds.includes(a.id)) {
       // hard offline (process dead): start with resume; the startup nudge self-checks the inbox and pulls the missed messages
-      const cfg = await agentConfig(a.id);
+      const cfg = await agentConfig(serverId, a.id);
       if (cfg && sendToMachine(machineId, { type: "agent:start", agentId: a.id, config: cfg })) woke++;
     } else {
       // soft offline (WS dropped, process alive): agent:start is a no-op for a running agent (agentManager.ts),

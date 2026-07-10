@@ -15,14 +15,16 @@
 //   BEFORE fix: A1 (sleeping on a down machine) stays "sleeping" → [A1] check FAILS (RED)
 //   AFTER  fix: A1 becomes "inactive"/"offline"               → [A1] check PASSES (GREEN)
 //
-// Requires infra up: `npm run infra` (pg :5433, redis :6380) + `npm run db:push`.
+// Runs against an isolated SQLite workspace; no external services required.
 // Run from the worktree root: npx tsx test/machineOfflineAgents.integration.ts
-import "../src/env.js"; // load .env before any DB/redis import
+import "../src/env.js"; // load .env before auth imports
 import { eq } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { reconcileOfflineMachineAgents } from "../src/server/machineLiveness.ts";
 
 const ts = Date.now();
+const fixture = integrationDatabase("machine-offline-agents");
+const { db, schema, rootPath } = fixture;
 const STALE_MS = 90_000;
 let failures = 0;
 const check = (label: string, cond: boolean) => { console.log(`  ${cond ? "✔" : "✗ FAIL"} ${label}`); if (!cond) failures++; };
@@ -36,7 +38,7 @@ const ids = {
 async function seed() {
   const [u] = await db.insert(schema.users).values({ name: `owner_${ts}`, displayName: "Owner", email: `owner_${ts}@t.dev` }).returning();
   ids.user = u!.id;
-  const [s] = await db.insert(schema.servers).values({ name: "T", slug: `t_${ts}`, ownerId: u!.id }).returning();
+  const [s] = await db.insert(schema.servers).values({ id: fixture.serverId, name: "T", slug: `t_${ts}`, ownerId: u!.id, rootPath }).returning();
   ids.server = s!.id;
 
   const mk = async (name: string, status: string, heartbeatAgoMs: number) => {

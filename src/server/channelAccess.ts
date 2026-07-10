@@ -3,7 +3,7 @@
 // The socket.io room-join check is canReadChannel in socketio.ts (private; not exported).
 // All three follow the same logic: channel member OR public channel OR thread of a readable parent.
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "../db/index.js";
+import { dbFor, schema } from "../db/index.js";
 
 /**
  * May this human user read (and write to) this channel?
@@ -23,6 +23,7 @@ export async function canUserReadChannel(
   channelId: string,
   userId: string,
 ): Promise<boolean> {
+  const db = dbFor(serverId);
   const member = (
     await db
       .select()

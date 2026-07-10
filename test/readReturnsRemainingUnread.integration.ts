@@ -12,15 +12,16 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { and, desc, eq } from "drizzle-orm";
-import { db, schema, sql } from "../src/db/index.ts";
-import { pub, redis, sub } from "../src/redis.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { createMessage, getOrCreateThread } from "../src/server/core.ts";
 import { handleApi } from "../src/server/routes-api/index.ts";
 import { signUser } from "../src/server/auth.ts";
 
 const ts = Date.now();
 let failures = 0;
-let serverId = "", ownerId = "", viewerId = "", channelId = "", viewerToken = "";
+const fixture = integrationDatabase("read-remaining-unread");
+const { db, schema, rootPath } = fixture;
+let serverId = fixture.serverId, ownerId = "", viewerId = "", channelId = "", viewerToken = "";
 
 const check = (label: string, cond: boolean) => { console.log(`  ${cond ? "✔" : "✗ FAIL"} ${label}`); if (!cond) failures++; };
 
@@ -55,7 +56,7 @@ async function setup() {
   const [owner] = await db.insert(schema.users).values({ name: `o_${ts}`, displayName: "Owner", email: `o_${ts}@t.local` }).returning();
   const [viewer] = await db.insert(schema.users).values({ name: `v_${ts}`, displayName: "Viewer", email: `v_${ts}@t.local` }).returning();
   ownerId = owner!.id; viewerId = viewer!.id;
-  const [srv] = await db.insert(schema.servers).values({ name: "ReadRemaining", slug: `read-remaining-${ts}`, ownerId }).returning();
+  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "ReadRemaining", slug: `read-remaining-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
   await db.insert(schema.serverMembers).values([{ serverId, userId: ownerId, role: "owner" }, { serverId, userId: viewerId, role: "member" }]);
   const [ch] = await db.insert(schema.channels).values({ serverId, name: `general-${ts}`, type: "channel" }).returning();
@@ -116,9 +117,7 @@ async function main() {
   }
 
   await cleanup();
-  await Promise.all([redis.quit(), pub.quit(), sub.quit()]);
-  await sql.end();
   if (failures) { console.log(`\n${failures} check(s) failed`); process.exit(1); }
   console.log("\nall checks passed");
 }
-main().catch(async (e) => { console.error(e); if (serverId) await cleanup().catch(() => {}); await Promise.all([redis.quit(), pub.quit(), sub.quit()]).catch(() => {}); await sql.end().catch(() => {}); process.exit(1); });
+main().catch(async (e) => { console.error(e); if (serverId) await cleanup().catch(() => {}); process.exit(1); });

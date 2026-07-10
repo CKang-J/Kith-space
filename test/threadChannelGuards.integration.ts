@@ -1,19 +1,21 @@
 // Bug I36: thread channels slip past guards in routes-agent.ts (server/info) and routes-api/channels.ts
 // (PATCH / join / leave / archive). These tests FAIL on origin/main and PASS after the fix.
 //
-// Requires infra up: `npm run infra` (pg :5433, redis :6380).
+// Runs against an isolated SQLite workspace; no external services required.
 // Run: npx tsx test/threadChannelGuards.integration.ts
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { createMessage, getOrCreateThread } from "../src/server/core.ts";
 import { handleChannels } from "../src/server/routes-api/channels.ts";
 import { handleAgentApi } from "../src/server/routes-agent.ts";
 
 const ts = Date.now();
-let serverId = "", ownerId = "";
+const fixture = integrationDatabase("thread-channel-guards");
+const { db, schema, rootPath } = fixture;
+let serverId = fixture.serverId, ownerId = "";
 let agentId = "";
 const agentToken = `sk_agent_test_${ts}`; // raw token — hash stored in DB
 const hashToken = (t: string) => createHash("sha256").update(t).digest("hex");
@@ -73,7 +75,7 @@ async function setup() {
     .values({ name: `owner_${ts}`, displayName: "Owner", email: `o_${ts}@t.local` }).returning();
   ownerId = u!.id;
   const [srv] = await db.insert(schema.servers)
-    .values({ name: "T", slug: `tg-${ts}`, ownerId }).returning();
+    .values({ id: serverId, name: "T", slug: `tg-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
   await db.insert(schema.serverMembers).values({ serverId, userId: ownerId, role: "owner" });
   const [ag] = await db.insert(schema.agents)

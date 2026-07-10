@@ -12,6 +12,8 @@ test("defaults to ~/.kith-space when KITH_SPACE_HOME is unset", () => {
   delete process.env.KITH_SPACE_UPLOAD_DIR;
   const home = path.join(os.homedir(), ".kith-space");
   assert.equal(p.kithSpaceHome(), home);
+  assert.equal(p.registryDbFile(), path.join(home, "registry.db"));
+  assert.equal(p.defaultWorkspacesDir(), path.join(os.homedir(), "Kith-space"));
   assert.equal(p.agentsDir(), path.join(home, "agents"));
   assert.equal(p.binDir(), path.join(home, "bin"));
   assert.equal(p.machineIdFile(), path.join(home, "machine-id"));
@@ -23,11 +25,13 @@ test("KITH_SPACE_HOME relocates every derived dir", () => {
   process.env.KITH_SPACE_HOME = "/tmp/ot-wtX";
   delete process.env.KITH_SPACE_LOG_DIR;
   delete process.env.KITH_SPACE_UPLOAD_DIR;
-  assert.equal(p.agentsDir(), "/tmp/ot-wtX/agents");
-  assert.equal(p.binDir(), "/tmp/ot-wtX/bin");
-  assert.equal(p.machineIdFile(), "/tmp/ot-wtX/machine-id");
-  assert.equal(p.logsDir(), "/tmp/ot-wtX/logs");
-  assert.equal(p.uploadsDir(), "/tmp/ot-wtX/uploads");
+  assert.equal(p.agentsDir(), path.join("/tmp/ot-wtX", "agents"));
+  assert.equal(p.registryDbFile(), path.join("/tmp/ot-wtX", "registry.db"));
+  assert.equal(p.defaultWorkspaceRoot("demo"), path.join("/tmp/ot-wtX", "workspaces", "demo"));
+  assert.equal(p.binDir(), path.join("/tmp/ot-wtX", "bin"));
+  assert.equal(p.machineIdFile(), path.join("/tmp/ot-wtX", "machine-id"));
+  assert.equal(p.logsDir(), path.join("/tmp/ot-wtX", "logs"));
+  assert.equal(p.uploadsDir(), path.join("/tmp/ot-wtX", "uploads"));
 });
 
 test("KITH_SPACE_LOG_DIR / KITH_SPACE_UPLOAD_DIR overrides still win", () => {

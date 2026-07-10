@@ -3,21 +3,23 @@
 // used to silently create a thread hanging off it. System messages render with no "open thread" affordance,
 // so the reply became UNREACHABLE in the UI (delivered + persisted, but invisible). resolveTarget now returns
 // null for a system parent so the caller (/agent-api/message/send) surfaces TARGET_FAILED instead of burying it.
-// Requires infra up: `npm run infra` (pg :5433, redis :6380). Run: npx tsx test/threadTarget.integration.ts
+// Runs against an isolated SQLite workspace; no external services required.
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { createMessage, resolveTarget } from "../src/server/core.ts";
 
 const ts = Date.now();
 const chName = `tt-${ts}`;
-let serverId = "", ownerId = "", agentId = "";
+const fixture = integrationDatabase("thread-target");
+const { db, schema, rootPath } = fixture;
+let serverId = fixture.serverId, ownerId = "", agentId = "";
 let failures = 0;
 const check = (label: string, cond: boolean) => { console.log(`  ${cond ? "✔" : "✗ FAIL"} ${label}`); if (!cond) failures++; };
 
 async function setup() {
   const [u] = await db.insert(schema.users).values({ name: `owner_${ts}`, displayName: "Owner", email: `o_${ts}@t.local` }).returning();
   ownerId = u!.id;
-  const [srv] = await db.insert(schema.servers).values({ name: "T", slug: `t-${ts}`, ownerId }).returning();
+  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "T", slug: `t-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
   await db.insert(schema.serverMembers).values({ serverId, userId: ownerId, role: "owner" });
   const [ag] = await db.insert(schema.agents).values({ serverId, name: `agent_${ts}`, displayName: "Agent" }).returning();

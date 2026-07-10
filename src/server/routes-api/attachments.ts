@@ -1,7 +1,8 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
 import type { BaseCtx, ServerCtx } from "./ctx.js";
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "../../db/index.js";
+import { dbFor, schema } from "../../db/index.js";
+import { findAttachmentById, updateUserCopies } from "../../db/lookup.js";
 import { parseUpload } from "../attachments.js";
 import { verifyUser } from "../auth.js";
 import { can, requireCap } from "../capabilities.js";
@@ -96,8 +97,10 @@ export async function handlePublicAttachmentGet(ctx: BaseCtx): Promise<boolean> 
   if (adl && adl[1] !== "upload" && method === "GET") {
     const uid = verifyUser(url.searchParams.get("token") ?? bearer(req));
     if (!uid) return (sendErr(res, 401, "unauthorized"), true);
-    const a = (await db.select().from(schema.attachments).where(eq(schema.attachments.id, adl[1]!)))[0];
+    const found = await findAttachmentById(adl[1]!);
+    const a = found?.value;
     if (!a) return (sendErr(res, 404, "attachment not found"), true);
+    const db = found.db;
     // Channel/server access gate — invariant 3: non-members of private/DM channels must not
     // access their attachments via direct UUID (IDOR-B3). Use 404 (not 403) to avoid leaking
     // whether the attachment exists at all.
@@ -124,6 +127,7 @@ export async function handlePublicAttachmentGet(ctx: BaseCtx): Promise<boolean> 
 
 export async function handleAttachments(ctx: ServerCtx): Promise<boolean> {
   const { req, res, method, p, userId, serverId } = ctx;
+  const db = dbFor(serverId);
   if (p === "/api/attachments/upload" && method === "POST") {
     const { fields, files } = await parseUpload(req);
     const out: any[] = [];
@@ -155,7 +159,7 @@ export async function handleAttachments(ctx: ServerCtx): Promise<boolean> {
     if (!(f.mimeType || "").startsWith("image/")) return (sendErr(res, 400, "avatar must be an image"), true);
     const [att] = await db.insert(schema.attachments).values({ serverId, channelId: null, uploaderType: "user", uploaderId: userId, filename: f.filename, mimeType: f.mimeType, sizeBytes: f.size, storageKey: f.storageKey }).returning();
     const avatarUrl = `/api/attachments/${att!.id}`;
-    await db.update(schema.users).set({ avatarUrl }).where(eq(schema.users.id, userId));
+    await updateUserCopies(userId, { avatarUrl });
     return (sendJson(res, 200, { avatarUrl }), true);
   }
   // Workspace avatar upload: owner/admin uploads image → stored as attachment → servers.avatarUrl

@@ -5,6 +5,12 @@ import os from "node:os";
 import path from "node:path";
 
 export const kithSpaceHome = (): string => process.env.KITH_SPACE_HOME ?? path.join(os.homedir(), ".kith-space");
+export const registryDbFile = (): string => path.join(kithSpaceHome(), "registry.db");
+export const defaultWorkspacesDir = (): string => process.env.KITH_SPACE_HOME
+  ? path.join(kithSpaceHome(), "workspaces")
+  : path.join(os.homedir(), "Kith-space");
+export const defaultWorkspaceRoot = (slug: string): string => path.join(defaultWorkspacesDir(), slug);
+export const workspaceDbFile = (rootPath: string): string => path.join(rootPath, ".kith", "workspace.db");
 export const agentsDir = (): string => path.join(kithSpaceHome(), "agents");
 export const binDir = (): string => path.join(kithSpaceHome(), "bin");
 export const machineIdFile = (): string => path.join(kithSpaceHome(), "machine-id");

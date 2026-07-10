@@ -1,21 +1,23 @@
 // Integration test for /agent-api/task/assign.
 // Verifies agent-side task handoff works by message id and by channel + task number.
-// Requires infra up: `npm run infra` (pg :5433, redis :6380). Run: npx tsx test/taskAssignAgent.integration.ts
+// Runs against an isolated SQLite workspace; no external services required.
 import "../src/env.ts";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { handleAgentApi } from "../src/server/routes-agent.ts";
-import { agentConfig, createMessage, createServer, convertMessageToTask } from "../src/server/core.ts";
+import { agentConfig, createMessage, convertMessageToTask } from "../src/server/core.ts";
 
 const ts = Date.now();
 let failures = 0;
 const check = (label: string, cond: boolean) => { console.log(`  ${cond ? "✔" : "✗ FAIL"} ${label}`); if (!cond) failures++; };
 
+const fixture = integrationDatabase("task-assign-agent");
+const { db, schema, rootPath } = fixture;
 let ownerId = "";
-let serverId = "";
+let serverId = fixture.serverId;
 let channelId = "";
 let channelName = "";
 let privateChannelId = "";
@@ -69,9 +71,10 @@ async function setup() {
   }).returning();
   ownerId = owner!.id;
 
-  const srv = await createServer(`task-assign-agent-${ts}`, `task-assign-agent-${ts}`, ownerId);
-  serverId = srv.id;
-  const ch = (await db.select().from(schema.channels).where(and(eq(schema.channels.serverId, serverId), eq(schema.channels.name, "all"))))[0]!;
+  await db.insert(schema.servers).values({ id: serverId, name: `task-assign-agent-${ts}`, slug: `task-assign-agent-${ts}`, ownerId, rootPath });
+  await db.insert(schema.serverMembers).values({ serverId, userId: ownerId, role: "owner" });
+  const [ch] = await db.insert(schema.channels).values({ serverId, name: "all", type: "channel" }).returning();
+  await db.insert(schema.channelMembers).values({ channelId: ch!.id, memberType: "user", memberId: ownerId });
   channelId = ch.id;
   channelName = ch.name;
   const [priv] = await db.insert(schema.channels).values({ serverId, name: `priv_${ts}`, type: "private" }).returning();
@@ -113,7 +116,7 @@ async function setup() {
     { channelId: dmChannelId, memberType: "agent", memberId: assignerId },
   ]).onConflictDoNothing();
 
-  const cfg = await agentConfig(assignerId);
+  const cfg = await agentConfig(serverId, assignerId);
   if (!cfg?.agentToken) throw new Error("assigner token was not minted");
   assignerToken = cfg.agentToken;
   const fresh = (await db.select().from(schema.agents).where(eq(schema.agents.id, assignerId)))[0]!;
@@ -154,7 +157,7 @@ async function main() {
   const privTask = await convertMessageToTask(serverId, privMsg.id, { type: "user", id: ownerId });
   const privAssign = await call("/agent-api/task/assign", assignerToken, assignerId, { messageId: privTask!.id, to: `assignee_${ts}` });
   check("private assign returns 200", privAssign.status === 200);
-  const assigneeCfg = await agentConfig(assigneeId);
+  const assigneeCfg = await agentConfig(serverId, assigneeId);
   if (!assigneeCfg?.agentToken) throw new Error("assignee token was not minted");
   const privReadReq = Object.assign(Readable.from([] as Buffer[]), {
     method: "GET",

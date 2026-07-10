@@ -14,7 +14,7 @@
 //   POST /api/channels/:id/threads  by owner         → 200
 //   GET  /api/channels/:id/threads  public channel   → 200 for any server member
 //
-// Requires infra up: `npm run infra` (pg :5433, redis :6380).
+// Runs against an isolated SQLite workspace; no external services required.
 // Run: npx tsx test/channelAccessB3.integration.ts
 import "../src/env.js";
 import { EventEmitter } from "node:events";
@@ -23,13 +23,15 @@ import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { handleApi } from "../src/server/routes-api/index.ts";
 import { signUser } from "../src/server/auth.ts";
 import { uploadsDir } from "../src/paths.ts";
 
 const ts = Date.now();
-let serverId = "";
+const fixture = integrationDatabase("channel-access-b3");
+const { db, schema, rootPath } = fixture;
+let serverId = fixture.serverId;
 let ownerId = "", nonMemberId = "";
 let publicChId = "", privateChId = "";
 let ownerToken = "", nonMemberToken = "";
@@ -114,7 +116,7 @@ async function setup() {
   const [u2] = await db.insert(schema.users).values({ name: `nonmem_b3_${ts}`, displayName: "NonMember", email: `nb3_${ts}@t.local` }).returning();
   ownerId = u1!.id; nonMemberId = u2!.id;
 
-  const [srv] = await db.insert(schema.servers).values({ name: "TB3", slug: `tb3-${ts}`, ownerId }).returning();
+  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "TB3", slug: `tb3-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
   await db.insert(schema.serverMembers).values([
     { serverId, userId: ownerId, role: "owner" },

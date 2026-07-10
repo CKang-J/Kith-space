@@ -1,27 +1,22 @@
-// DEV-ONLY fixture: ensure a runnable claude/sonnet agent ("dev-bot") exists in the kith-space
-// workspace + #all, for local human↔agent E2E. Idempotent. Never run on production paths.
 import "../env.js";
-import { db, schema, sql } from "./index.js";
 import { and, eq } from "drizzle-orm";
+import { closeAllDatabases, schema } from "./index.js";
+import { findServerBySlug } from "./lookup.js";
 
 async function main() {
-  const { servers, agents, channels, channelMembers } = schema;
-  const [server] = await db.select().from(servers).where(eq(servers.slug, "kith-space"));
-  if (!server) { console.error("[seed:dev] no 'kith-space' workspace — run `npm run seed` first"); await sql.end(); process.exit(1); }
-
-  const existing = await db.select().from(agents).where(and(eq(agents.serverId, server.id), eq(agents.name, "dev-bot")));
-  if (existing.length && !existing[0]!.deletedAt) { console.log("[seed:dev] dev-bot already exists, skipping"); await sql.end(); return; }
-
-  const [bot] = await db.insert(agents).values({
+  const found = await findServerBySlug("kith-space");
+  if (!found) throw new Error("[seed:dev] no 'kith-space' workspace — run `npm run seed` first");
+  const { db, value: server } = found;
+  const existing = await db.select().from(schema.agents).where(and(eq(schema.agents.serverId, server.id), eq(schema.agents.name, "dev-bot")));
+  if (existing.length && !existing[0]!.deletedAt) { console.log("[seed:dev] dev-bot already exists, skipping"); return; }
+  const [bot] = await db.insert(schema.agents).values({
     serverId: server.id, name: "dev-bot", displayName: "Dev Bot",
     description: "Local dev E2E agent — claude/sonnet. Created by `npm run seed:dev`.",
     model: "sonnet", runtime: "claude",
   }).returning();
-
-  const [all] = await db.select().from(channels).where(and(eq(channels.serverId, server.id), eq(channels.name, "all")));
-  if (all) await db.insert(channelMembers).values({ channelId: all.id, memberType: "agent", memberId: bot!.id }).onConflictDoNothing();
-
+  const [all] = await db.select().from(schema.channels).where(and(eq(schema.channels.serverId, server.id), eq(schema.channels.name, "all")));
+  if (all) await db.insert(schema.channelMembers).values({ channelId: all.id, memberType: "agent", memberId: bot!.id }).onConflictDoNothing();
   console.log(`[seed:dev] created dev-bot (${bot!.id}) in #all`);
-  await sql.end();
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+
+main().catch((e) => { console.error(e); process.exitCode = 1; }).finally(closeAllDatabases);

@@ -7,7 +7,7 @@
 // reconcileMachinesOnBoot fixes (1); the heartbeat sweeper fixes (2). Single-instance only (the
 // in-memory daemonHub is the connection authority; one server process owns all daemons).
 import { and, eq, lt, ne } from "drizzle-orm";
-import { db, schema } from "../db/index.js";
+import { allWorkspaceDbs, dbFor, schema } from "../db/index.js";
 import { publish } from "./realtime.js";
 import { createLogger } from "../log.js";
 
@@ -20,16 +20,21 @@ const STALE_MS = Number(process.env.KITH_SPACE_MACHINE_STALE_MS ?? 90_000);  // 
  *  show a stale online; daemons re-mark themselves online via onReady when they reconnect (seconds).
  *  Runs before the server starts listening, so it never races a freshly-connected daemon. */
 export async function reconcileMachinesOnBoot(): Promise<number> {
-  const flipped = await db.update(schema.machines).set({ status: "offline" })
-    .where(eq(schema.machines.status, "online")).returning({ id: schema.machines.id });
-  if (flipped.length) log.info("boot: machines marked offline pending daemon reconnect", { count: flipped.length });
-  return flipped.length;
+  let count = 0;
+  for (const { db } of allWorkspaceDbs()) {
+    const flipped = await db.update(schema.machines).set({ status: "offline" })
+      .where(eq(schema.machines.status, "online")).returning({ id: schema.machines.id });
+    count += flipped.length;
+  }
+  if (count) log.info("boot: machines marked offline pending daemon reconnect", { count });
+  return count;
 }
 
 /** A known-current daemon connection closed, so the machine cannot currently run any agent.
  *  Unlike the stale sweeper, this path is immediate because a close from the current ws is authoritative.
  *  Keep sessionId intact; the next wake/reconnect can still resume. */
-export async function markMachineAgentsOffline(machineId: string): Promise<number> {
+export async function markMachineAgentsOffline(serverId: string, machineId: string): Promise<number> {
+  const db = dbFor(serverId);
   const rows = await db
     .select({ id: schema.agents.id, name: schema.agents.name, serverId: schema.agents.serverId })
     .from(schema.agents)
@@ -50,21 +55,25 @@ export async function markMachineAgentsOffline(machineId: string): Promise<numbe
  *  idle sleep), which the old active-only filter skipped — that is the bug this covers: a sleeping agent on a
  *  downed machine used to stay "sleeping" forever instead of showing offline. Returns the number flipped. */
 export async function reconcileOfflineMachineAgents(cutoff: Date): Promise<number> {
-  const rows = await db
-    .select({ id: schema.agents.id, name: schema.agents.name, serverId: schema.machines.serverId })
-    .from(schema.agents)
-    .innerJoin(schema.machines, eq(schema.agents.machineId, schema.machines.id))
-    .where(and(
-      eq(schema.machines.status, "offline"),
-      lt(schema.machines.lastHeartbeat, cutoff),
-      ne(schema.agents.status, "inactive"),
-    ));
-  for (const a of rows) {
-    await db.update(schema.agents).set({ status: "inactive", activity: "offline" }).where(eq(schema.agents.id, a.id));
-    await publish(a.serverId, { type: "agent", id: a.id, name: a.name, status: "inactive", activity: "offline" });
+  let count = 0;
+  for (const { db } of allWorkspaceDbs()) {
+    const rows = await db
+      .select({ id: schema.agents.id, name: schema.agents.name, serverId: schema.machines.serverId })
+      .from(schema.agents)
+      .innerJoin(schema.machines, eq(schema.agents.machineId, schema.machines.id))
+      .where(and(
+        eq(schema.machines.status, "offline"),
+        lt(schema.machines.lastHeartbeat, cutoff),
+        ne(schema.agents.status, "inactive"),
+      ));
+    for (const a of rows) {
+      await db.update(schema.agents).set({ status: "inactive", activity: "offline" }).where(eq(schema.agents.id, a.id));
+      await publish(a.serverId, { type: "agent", id: a.id, name: a.name, status: "inactive", activity: "offline" });
+    }
+    count += rows.length;
   }
-  if (rows.length) log.info("sweeper: offline-machine agents → inactive", { count: rows.length });
-  return rows.length;
+  if (count) log.info("sweeper: offline-machine agents → inactive", { count });
+  return count;
 }
 
 /** Backstop for daemons that died without a clean WS close: if a machine's lastHeartbeat is older than
@@ -76,12 +85,14 @@ export function startMachineSweeper(): ReturnType<typeof setInterval> {
   const timer = setInterval(async () => {
     try {
       const cutoff = new Date(Date.now() - STALE_MS);
-      const stale = await db.select().from(schema.machines)
-        .where(and(eq(schema.machines.status, "online"), lt(schema.machines.lastHeartbeat, cutoff)));
-      for (const m of stale) {
-        await db.update(schema.machines).set({ status: "offline" }).where(eq(schema.machines.id, m.id));
-        await publish(m.serverId, { type: "machine", online: false, machineId: m.id });
-        log.info("sweeper: stale machine → offline", { machineId: m.id });
+      for (const { db } of allWorkspaceDbs()) {
+        const stale = await db.select().from(schema.machines)
+          .where(and(eq(schema.machines.status, "online"), lt(schema.machines.lastHeartbeat, cutoff)));
+        for (const m of stale) {
+          await db.update(schema.machines).set({ status: "offline" }).where(eq(schema.machines.id, m.id));
+          await publish(m.serverId, { type: "machine", online: false, machineId: m.id });
+          log.info("sweeper: stale machine → offline", { machineId: m.id });
+        }
       }
       await reconcileOfflineMachineAgents(cutoff);
     } catch (e: any) { log.error("sweeper error", { detail: String(e?.message ?? e) }); }

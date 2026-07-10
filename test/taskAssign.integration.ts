@@ -1,18 +1,20 @@
 // Real DB integration for task handoff.
 // Verifies assignTask updates assignee, preserves/advances status correctly,
 // records the handoff in the task thread, and adds the assignee to that thread.
-// Requires infra up: `npm run infra` (pg :5433, redis :6380). Run: npx tsx test/taskAssign.integration.ts
+// Runs against an isolated SQLite workspace; no external services required.
 import "../src/env.ts";
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
-import { assignTask, claimTask, convertMessageToTask, createMessage, createServer, setTaskStatus } from "../src/server/core.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
+import { assignTask, claimTask, convertMessageToTask, createMessage, setTaskStatus } from "../src/server/core.ts";
 
 const ts = Date.now();
 let failures = 0;
 const check = (label: string, cond: boolean) => { console.log(`  ${cond ? "✔" : "✗ FAIL"} ${label}`); if (!cond) failures++; };
 
+const fixture = integrationDatabase("task-assign");
+const { db, schema, rootPath } = fixture;
 let ownerId = "";
-let serverId = "";
+let serverId = fixture.serverId;
 let channelId = "";
 let srcAgentId = "";
 let dstAgentId = "";
@@ -26,9 +28,11 @@ async function setup() {
   }).returning();
   ownerId = owner!.id;
 
-  const srv = await createServer(`task-assign-${ts}`, `task-assign-${ts}`, ownerId);
-  serverId = srv.id;
-  channelId = (await db.select().from(schema.channels).where(and(eq(schema.channels.serverId, serverId), eq(schema.channels.name, "all"))))[0]!.id;
+  await db.insert(schema.servers).values({ id: serverId, name: `task-assign-${ts}`, slug: `task-assign-${ts}`, ownerId, rootPath });
+  await db.insert(schema.serverMembers).values({ serverId, userId: ownerId, role: "owner" });
+  const [all] = await db.insert(schema.channels).values({ serverId, name: "all", type: "channel" }).returning();
+  channelId = all!.id;
+  await db.insert(schema.channelMembers).values({ channelId, memberType: "user", memberId: ownerId });
 
   const [src] = await db.insert(schema.agents).values({
     serverId,

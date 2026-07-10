@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Safely remove a worktree: stop its dev stack, git worktree remove, then clean its DB + data dir.
+# Safely remove a worktree: stop its dev stack, git worktree remove, then clean its isolated SQLite data dir.
 # Usage: npm run wt:rm -- <name>
 set -euo pipefail
 NAME="${1:-}"
@@ -20,9 +20,8 @@ fi
 # 2) Remove the worktree (--force: it has untracked .env/node_modules).
 git worktree remove "$WT" --force
 
-# 3) Clean this worktree's isolated data dir + database (ephemeral dev fixtures; derived from NAME, not the now-gone .env).
+# 3) Clean this worktree's isolated data dir (registry + workspace SQLite files; derived from NAME, not the now-gone .env).
 rm -rf "$HOME/.kith-space-$SAFE" && echo "  removed data dir ~/.kith-space-$SAFE"
-docker compose exec -T postgres dropdb -U opentag "opentag_$SAFE" 2>/dev/null && echo "  dropped db opentag_$SAFE" || echo "  (db opentag_$SAFE not found / already dropped)"
 
-echo "✅ worktree '$NAME' removed (data dir + db cleaned)."
+echo "✅ worktree '$NAME' removed (SQLite data dir cleaned)."
 echo "   Branch feature/$NAME kept — remove with: git branch -D feature/$NAME"

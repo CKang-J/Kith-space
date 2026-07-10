@@ -1,7 +1,7 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
 import type { ServerCtx } from "./ctx.js";
 import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
-import { db, schema } from "../../db/index.js";
+import { dbFor, schema } from "../../db/index.js";
 import { TASK_STATUSES, claimTask, convertMessageToTask, createMessage, deleteTask, setTaskStatus, unclaimTask } from "../core.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { attachMentions } from "./shared.js";
@@ -9,6 +9,7 @@ import { canUserReadChannel } from "../channelAccess.js";
 
 export async function handleTasks(ctx: ServerCtx): Promise<boolean> {
   const { req, res, method, p, userId, serverId } = ctx;
+  const db = dbFor(serverId);
   // ---- Tasks (messages as tasks) ----
   const tch = /^\/api\/tasks\/channel\/([^/]+)$/.exec(p);
   if (tch && method === "GET") {
@@ -16,7 +17,7 @@ export async function handleTasks(ctx: ServerCtx): Promise<boolean> {
     const rows = await db.select().from(schema.messages)
       .where(and(eq(schema.messages.channelId, tch[1]!), isNotNull(schema.messages.taskStatus)))
       .orderBy(asc(schema.messages.taskNumber));
-    return (sendJson(res, 200, { tasks: await attachMentions(rows) }), true);
+    return (sendJson(res, 200, { tasks: await attachMentions(serverId, rows) }), true);
   }
   if (tch && method === "POST") { // New Task: bulk create tasks, body { tasks: [{ title }] }
     if (!(await canUserReadChannel(serverId, tch[1]!, userId))) return (sendErr(res, 403, "forbidden"), true); // invariant 3: non-members must not create tasks in private/DM channels
@@ -26,7 +27,7 @@ export async function handleTasks(ctx: ServerCtx): Promise<boolean> {
     const u = (await db.select().from(schema.users).where(eq(schema.users.id, userId)))[0];
     const created: (typeof schema.messages.$inferSelect)[] = [];
     for (const title of titles) created.push(await createMessage({ serverId, channelId: tch[1]!, senderType: "user", senderId: userId, senderName: u!.name, content: title, asTask: true }));
-    return (sendJson(res, 200, { tasks: await attachMentions(created) }), true);
+    return (sendJson(res, 200, { tasks: await attachMentions(serverId, created) }), true);
   }
   if (p === "/api/tasks/server" && method === "GET") {
     // Invariant 3: only surface tasks from channels the user may read — their own memberships + all public channels.
@@ -40,7 +41,7 @@ export async function handleTasks(ctx: ServerCtx): Promise<boolean> {
     const rows = await db.select().from(schema.messages)
       .where(and(eq(schema.messages.serverId, serverId), isNotNull(schema.messages.taskStatus), inArray(schema.messages.channelId, accessibleIds)))
       .orderBy(asc(schema.messages.taskNumber));
-    return (sendJson(res, 200, { tasks: await attachMentions(rows) }), true);
+    return (sendJson(res, 200, { tasks: await attachMentions(serverId, rows) }), true);
   }
   if (p === "/api/tasks/convert-message" && method === "POST") {
     const b = await readJson(req);

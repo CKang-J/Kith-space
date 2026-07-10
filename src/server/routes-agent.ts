@@ -1,7 +1,7 @@
 // Agent-side REST: /agent-api/*  (Bearer per-agent token sk_agent_* + x-agent-id; NOT a machine/bootstrap key — see docs/authorization.md §1)
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { and, eq, ne, gt, lt, inArray, asc, desc, ilike, like, sql, isNull, isNotNull } from "drizzle-orm";
-import { db, schema } from "../db/index.js";
+import { and, eq, ne, gt, lt, inArray, asc, desc, like, isNull, isNotNull } from "drizzle-orm";
+import { dbFor, schema } from "../db/index.js";
 import { sendJson, sendErr, readJson, bearer, agentIdHeader } from "./util.js";
 import { resolveAgent } from "./auth.js";
 import { createMessage, resolveTarget, channelMembers, addChannelMembers, addReaction, removeReaction, getOrCreateThread, unclaimTask, claimTask, setTaskStatus, convertMessageToTask, TASK_STATUSES, resolveMessageId, canAgentReadChannel, descTooLong, DESC_TOO_LONG, assignTask, resolveIdOrPrefix } from "./core.js";
@@ -41,12 +41,14 @@ function requiredScope(p: string): string | null {
   return null;
 }
 
-async function agentChannels(agentId: string) {
+async function agentChannels(serverId: string, agentId: string) {
+  const db = dbFor(serverId);
   return db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.memberType, "agent"), eq(schema.channelMembers.memberId, agentId)));
 }
 
 /** Human-readable addressable target: channel → #name; DM → dm:@peer; thread → <parentChannelTarget>:parentMessageShortId. Agent uses this to reply back to the same location. */
-export async function addressableTarget(ch: typeof schema.channels.$inferSelect, selfAgentId: string): Promise<string> {
+export async function addressableTarget(serverId: string, ch: typeof schema.channels.$inferSelect, selfAgentId: string): Promise<string> {
+  const db = dbFor(serverId);
   // Thread channel: render as #parentChannel:shortid (or dm:@peer:shortid) so the agent can reuse it with message send --target
   if (ch.type === "thread" && ch.parentMessageId) {
     // Stable across public/private/DM and across different agent viewpoints: a new assignee may only be
@@ -90,6 +92,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
   const agent = await resolveAgent(bearer(req), agentIdHeader(req));
   if (!agent) return (sendErr(res, 401, "unauthorized (need Bearer sk_agent_* token + x-agent-id header)"), true);
   const serverId = agent.serverId;
+  const db = dbFor(serverId);
 
   // Scope enforcement: in custom mode, missing scope → 403 (in default mode effectiveScopes returns all, passes through)
   const need = requiredScope(p);
@@ -97,7 +100,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
 
   // Poll for new messages (non-blocking): messages in agent's channels with seq > lastReadSeq, then advance lastReadSeq
   if (p === "/agent-api/message/check" && method === "GET") {
-    const cms = await agentChannels(agent.id);
+    const cms = await agentChannels(serverId, agent.id);
     const out: any[] = [];
     for (const cm of cms) {
       const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, cm.channelId)))[0];
@@ -105,7 +108,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
       const msgs = await db.select().from(schema.messages).where(and(eq(schema.messages.channelId, cm.channelId), gt(schema.messages.seq, cm.lastReadSeq))).orderBy(asc(schema.messages.seq)).limit(100);
       const fresh = msgs.filter((m) => m.senderId !== agent.id);
       if (fresh.length) {
-        const target = await addressableTarget(ch, agent.id);
+        const target = await addressableTarget(serverId, ch, agent.id);
         // Batch-load attachments → append attachment suffix to message header
         const atts = await db.select().from(schema.attachments).where(inArray(schema.attachments.messageId, fresh.map((m) => m.id)));
         const byMsg = new Map<string, { filename: string; id: string }[]>();
@@ -146,7 +149,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
       drafts.set(draftKey, { content: b.content || "", attachmentIds: atts });
       await db.update(schema.channelMembers).set({ lastReadSeq: newer[newer.length - 1]!.seq }).where(and(eq(schema.channelMembers.channelId, tgt.channelId), eq(schema.channelMembers.memberType, "agent"), eq(schema.channelMembers.memberId, agent.id))); // Mark this batch as read → next send won't hold again unless further new messages arrive
       const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, tgt.channelId)))[0]!;
-      const tname = await addressableTarget(ch, agent.id);
+      const tname = await addressableTarget(serverId, ch, agent.id);
       const history = newer.map((m) => fmt(m, tname)).join("\n");
       const n = newer.length, pl = n > 1 ? "s" : "";
       const text = `Freshness hold: showing latest ${n} of ${n} newer message${pl}.\nYour message has been saved as a draft. Review the bounded context shown here, then choose one path.\n\n## Message History for ${tname} (${n} message${pl})\n\n${history}\n\nTo update the draft, send revised content normally:\n  kith-space message send --target "${b.target}" <<'MSG'\n  revised message\n  MSG\nTo send the current draft unchanged:\n  kith-space message send --send-draft --target "${b.target}"`;
@@ -199,7 +202,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     const tgt = await resolveTarget(serverId, target, agent.id);
     if (!tgt) return (sendErr(res, 404, "channel not found"), true);
     const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, tgt.channelId)))[0];
-    const tstr = ch ? await addressableTarget(ch, agent.id) : target;
+    const tstr = ch ? await addressableTarget(serverId, ch, agent.id) : target;
     // Anchor (--before/--after/--around): value = message id (short or full) or numeric seq; no anchor = latest limit messages
     const anchorParam = url.searchParams.get("around") ?? url.searchParams.get("before") ?? url.searchParams.get("after");
     const cid = eq(schema.messages.channelId, tgt.channelId);
@@ -226,7 +229,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
 
   if (p === "/agent-api/server/info" && method === "GET") {
     const chs = await db.select().from(schema.channels).where(eq(schema.channels.serverId, serverId));
-    const joined = new Set((await agentChannels(agent.id)).map((c) => c.channelId));
+    const joined = new Set((await agentChannels(serverId, agent.id)).map((c) => c.channelId));
     // Exclude system-seeded showcase demo props (creatorType="system") from the agent-facing teammate roster,
     // mirroring the human plane's visibleAgents: they aren't reachable (workspaceMembers excludes them from
     // @-mention/wake for every sender), so listing them would just tempt an agent into a no-op @-mention.
@@ -253,7 +256,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     if (ch.type !== "channel") return (sendErr(res, 403, "this channel is invite-only — an admin or member must add the agent"), true);
     // Join at the channel watermark so a self-joining agent's next `message check` sees only new messages, not
     // the channel's pre-join backlog (it can pull history on demand via `message read`).
-    await addChannelMembers(ch.id, [{ type: "agent", id: agent.id }]);
+    await addChannelMembers(serverId, ch.id, [{ type: "agent", id: agent.id }]);
     return (sendJson(res, 200, { ok: true, joined: name }), true);
   }
 
@@ -363,7 +366,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
   const findParent = async (raw: string, channel: string | null) => {
     const v = (raw || "").trim(); if (!v) return null;
     const tgt = channel ? await resolveTarget(serverId, channel, agent.id) : null;
-    const idCond = v.length >= 32 ? eq(schema.messages.id, v) : like(sql`${schema.messages.id}::text`, v + "%");
+    const idCond = v.length >= 32 ? eq(schema.messages.id, v) : like(schema.messages.id, v + "%");
     const conds = [eq(schema.messages.serverId, serverId), idCond, ...(tgt ? [eq(schema.messages.channelId, tgt.channelId)] : [])];
     const parent = (await db.select().from(schema.messages).where(and(...conds)))[0] ?? null;
     // Agent ACL: a bare parent short id (no channel given) skips resolveTarget, so gate on the found parent's
@@ -393,10 +396,10 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
   if (p === "/agent-api/search" && method === "GET") {
     const q = (url.searchParams.get("q") || url.searchParams.get("query") || "").trim();
     if (!q) return (sendErr(res, 400, "q required"), true);
-    const joined = (await agentChannels(agent.id)).map((c) => c.channelId);
+    const joined = (await agentChannels(serverId, agent.id)).map((c) => c.channelId);
     if (!joined.length) return (sendJson(res, 200, { results: [] }), true);
     const rows = await db.select().from(schema.messages)
-      .where(and(eq(schema.messages.serverId, serverId), inArray(schema.messages.channelId, joined), ilike(schema.messages.content, `%${q}%`)))
+      .where(and(eq(schema.messages.serverId, serverId), inArray(schema.messages.channelId, joined), like(schema.messages.content, `%${q}%`)))
       .orderBy(desc(schema.messages.seq)).limit(20);
     return (sendJson(res, 200, { results: rows.map((m) => ({ id: m.id, channelId: m.channelId, senderType: m.senderType, senderName: m.senderName, content: m.content, createdAt: m.createdAt })) }), true);
   }
@@ -427,19 +430,19 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
   if (p === "/agent-api/message/resolve" && method === "GET") {
     const raw = (url.searchParams.get("id") || "").trim();
     if (!raw) return (sendErr(res, 400, "id required"), true);
-    const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.serverId, serverId), raw.length >= 32 ? eq(schema.messages.id, raw) : like(sql`${schema.messages.id}::text`, raw.toLowerCase() + "%"))))[0];
+    const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.serverId, serverId), raw.length >= 32 ? eq(schema.messages.id, raw) : like(schema.messages.id, raw.toLowerCase() + "%"))))[0];
     if (!m) return (sendErr(res, 404, "message not found", { code: "RESOLVE_FAILED" }), true);
     // Agent ACL: resolve has its own message lookup (not resolveMessageId), so gate the resolved message's
     // channel here too — otherwise it leaks any message's content by (short) id (C7).
     if (!(await canAgentReadChannel(serverId, m.channelId, agent.id))) return (sendErr(res, 404, "message not found", { code: "RESOLVE_FAILED" }), true);
     const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, m.channelId)))[0];
-    return (sendJson(res, 200, { ...serialize(m), text: fmt(m, ch ? await addressableTarget(ch, agent.id) : m.channelId) }), true);
+    return (sendJson(res, 200, { ...serialize(m), text: fmt(m, ch ? await addressableTarget(serverId, ch, agent.id) : m.channelId) }), true);
   }
   // channel members
   if (p === "/agent-api/channel/members" && method === "GET") {
     const tgt = await resolveTarget(serverId, url.searchParams.get("channel") ?? "", agent.id);
     if (!tgt) return (sendErr(res, 404, "channel not found"), true);
-    const mems = await channelMembers(tgt.channelId);
+    const mems = await channelMembers(serverId, tgt.channelId);
     return (sendJson(res, 200, { members: mems.map((m) => ({ type: m.type, name: m.name, displayName: m.displayName })) }), true);
   }
   // channel leave (only affects own membership)

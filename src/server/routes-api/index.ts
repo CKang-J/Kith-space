@@ -15,7 +15,7 @@
 //      earlier-dispatched module's guard for the same path+method.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "../../db/index.js";
+import { dbFor, schema, touchWorkspace } from "../../db/index.js";
 import { sendErr, bearer, serverIdHeader } from "../util.js";
 import { verifyUser } from "../auth.js";
 import type { BaseCtx, UserCtx, ServerCtx } from "./ctx.js";
@@ -47,8 +47,10 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   // ---- gate 2: require a server context + membership ----
   const serverId = serverIdHeader(req);
   if (!serverId) return (sendErr(res, 400, "x-server-id header required"), true);
+  const db = dbFor(serverId);
   const member = (await db.select().from(schema.serverMembers).where(and(eq(schema.serverMembers.serverId, serverId), eq(schema.serverMembers.userId, userId))))[0];
   if (!member) return (sendErr(res, 403, "not a member of this server"), true);
+  touchWorkspace(serverId);
   const sctx: ServerCtx = { ...user, serverId };
 
   if (await handleAgents(sctx)) return true;

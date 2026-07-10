@@ -5,7 +5,7 @@
 import { Server as IOServer, type Socket } from "socket.io";
 import type { Server } from "node:http";
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "../db/index.js";
+import { dbFor, schema } from "../db/index.js";
 import { verifyUser } from "./auth.js";
 import { createLogger } from "../log.js";
 
@@ -35,6 +35,7 @@ export function attachSocketIO(server: Server): void {
     const uid = verifyUser(auth.token ?? null);
     const serverId = auth.serverId;
     if (!uid || !serverId) { socket.disconnect(true); return; }
+    const db = dbFor(serverId);
     const mem = (await db.select().from(schema.serverMembers)
       .where(and(eq(schema.serverMembers.serverId, serverId), eq(schema.serverMembers.userId, uid))))[0];
     if (!mem) { socket.disconnect(true); return; }
@@ -62,6 +63,7 @@ export function attachSocketIO(server: Server): void {
 // channel in the user's server, OR a thread whose parent channel is readable. Private/DM channels the user is not a
 // member of are refused → content stays isolated. The socket already verified server membership at connect time.
 async function canReadChannel(uid: string, serverId: string, channelId: string): Promise<boolean> {
+  const db = dbFor(serverId);
   const member = (await db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.channelId, channelId), eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, uid))))[0];
   if (member) return true;
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, channelId)))[0];

@@ -11,7 +11,7 @@ import { attachWs } from "./ws.js";
 import { attachSocketIO } from "./socketio.js";
 import { initRealtime } from "./realtime.js";
 import { startReminderScheduler } from "./reminders.js";
-import { reconcileCounters } from "../redis.js";
+import { reconcileCounters } from "../counters.js";
 import { reconcileMachinesOnBoot, startMachineSweeper } from "./machineLiveness.js";
 import { sendJson, sendErr } from "./util.js";
 import { createLogger } from "../log.js";
@@ -135,8 +135,8 @@ attachSocketIO(server); // human-side realtime (socket.io, /socket.io/)
 attachWs(server);       // daemon control plane (raw ws, /daemon/connect)
 startReminderScheduler(); // reminder scheduler: fires at due time, wakes the author
 
-// Durability guard: before accepting traffic, advance Redis seq/tasknum counters to match the current Postgres maximum.
-// Prevents seq collisions and silent message drops in /messages/sync if Redis loses data (flush/instance swap/eviction) and INCR restarts from a lower value.
+// Durability guard: before accepting traffic, align in-memory seq/task counters to each workspace DB maximum.
+// Prevents seq rollback and silent message drops after a process restart.
 reconcileCounters()
   .then((r) => log.info("counters reconciled", r))
   .catch((e) => log.error("counter reconcile failed (continuing)", { detail: String(e?.message ?? e) }))

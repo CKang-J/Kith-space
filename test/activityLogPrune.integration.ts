@@ -2,15 +2,16 @@
 // continuously, so logActivity prunes to the newest ACTIVITY_LOG_CAP rows per agent on every insert —
 // otherwise the table grows unbounded (see docs/tech-debt-tracker.md). Verifies the cap holds, the
 // OLDEST rows are the ones dropped, and pruning is scoped to a single agent.
-// Requires infra up: `npm run infra` (pg :5433, redis :6380) + `npm run db:push`.
+// Runs against an isolated SQLite workspace; no external services required.
 // Run: npx tsx test/activityLogPrune.integration.ts
-// (Use an isolated DB, e.g. DATABASE_URL=postgres://opentag:opentag@localhost:5433/opentag_test — never the live DB.)
 import { eq } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { pruneAgentActivityLog, logActivity, ACTIVITY_LOG_CAP } from "../src/server/ws.ts";
 
 const ts = Date.now();
-let serverId = "", ownerId = "", agentId = "", otherAgentId = "";
+const fixture = integrationDatabase("activity-log-prune");
+const { db, schema, rootPath } = fixture;
+let serverId = fixture.serverId, ownerId = "", agentId = "", otherAgentId = "";
 let failures = 0;
 const check = (label: string, cond: boolean) => { console.log(`  ${cond ? "✔" : "✗ FAIL"} ${label}`); if (!cond) failures++; };
 
@@ -25,7 +26,7 @@ const tsRangeFor = async (aid: string) => {
 async function setup() {
   const [u] = await db.insert(schema.users).values({ name: `owner_${ts}`, displayName: "Owner", email: `o_${ts}@t.local` }).returning();
   ownerId = u!.id;
-  const [srv] = await db.insert(schema.servers).values({ name: "T", slug: `t-${ts}`, ownerId }).returning();
+  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "T", slug: `t-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
   const [ag] = await db.insert(schema.agents).values({ serverId, name: `agent_${ts}`, displayName: "Agent" }).returning();
   agentId = ag!.id;
@@ -51,7 +52,7 @@ async function main() {
     Array.from({ length: OVER }, (_, i) => ({ serverId, agentId, ts: base + i, kind: "text" as const, text: `e${i}` }))
   );
   check(`inserted ${OVER} rows`, (await countFor(agentId)) === OVER);
-  await pruneAgentActivityLog(agentId);
+  await pruneAgentActivityLog(serverId, agentId);
   check(`row count capped at ${ACTIVITY_LOG_CAP}`, (await countFor(agentId)) === ACTIVITY_LOG_CAP);
   const r = await tsRangeFor(agentId);
   check("oldest 10 rows were the ones dropped (min ts = base+10)", r.min === base + 10);
@@ -65,7 +66,7 @@ async function main() {
   await db.insert(schema.agentActivityLog).values(
     Array.from({ length: 20 }, (_, i) => ({ serverId, agentId: otherAgentId, ts: base + i, kind: "text" as const, text: `o${i}` }))
   );
-  await pruneAgentActivityLog(agentId); // prune agent A again
+  await pruneAgentActivityLog(serverId, agentId); // prune agent A again
   check("other agent's 20 rows untouched by A's prune", (await countFor(otherAgentId)) === 20);
 }
 

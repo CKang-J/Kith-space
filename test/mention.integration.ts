@@ -1,14 +1,16 @@
-// Real end-to-end verification of Slack-style mention auto-join against the running Postgres + Redis.
-// Requires infra up: `npm run infra` (pg :5433, redis :6380). Run: npx tsx test/mention.integration.ts
+// Real end-to-end verification of Slack-style mention auto-join against an isolated SQLite workspace.
+// No external services required. Run: npx tsx test/mention.integration.ts
 // Creates a fully isolated workspace, exercises the actual createMessage() path, asserts, then cleans up.
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "../src/db/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 import { createMessage, getOrCreateThread } from "../src/server/core.ts";
 
 const ts = Date.now();
 const owner = `owner_${ts}`, bob = `bob_${ts}`, ghost = `ghost_${ts}`;
 
-let serverId = "", ownerId = "", bobId = "", ghostId = "";
+const fixture = integrationDatabase("mention");
+const { db, schema, rootPath } = fixture;
+let serverId = fixture.serverId, ownerId = "", bobId = "", ghostId = "";
 let pubCh = "", privCh = "", dmCh = "";
 let failures = 0;
 const check = (label: string, cond: boolean) => { console.log(`  ${cond ? "✔" : "✗ FAIL"} ${label}`); if (!cond) failures++; };
@@ -26,7 +28,7 @@ async function setup() {
   const [u1] = await db.insert(schema.users).values({ name: owner, displayName: "Owner", email: `${owner}@t.local` }).returning();
   const [u2] = await db.insert(schema.users).values({ name: bob, displayName: "Bob", email: `${bob}@t.local` }).returning();
   ownerId = u1!.id; bobId = u2!.id;
-  const [srv] = await db.insert(schema.servers).values({ name: "T", slug: `t-${ts}`, ownerId }).returning();
+  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "T", slug: `t-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
   await db.insert(schema.serverMembers).values([
     { serverId, userId: ownerId, role: "owner" },
