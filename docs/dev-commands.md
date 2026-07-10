@@ -24,11 +24,13 @@ cp .env.example .env              # 创建本地环境配置
 
 ## 2. 数据库
 
+**不需要单独 `db:push`**：每个工作区 db 在连接时自动迁移（`src/db/index.ts` 的 `migrate()`），`pnpm run seed` 打开工作区时就建好了 schema。分段起时**先 `seed` 即可**。
+
 ```bash
-pnpm run db:push                  # 把 Drizzle schema 应用到 SQLite（幂等）
-pnpm run seed                     # 写入引导种子（默认空间等，幂等）
+pnpm run seed                     # 建 kith-space 工作区并自动迁移 schema（幂等）；daemon 靠 slug=kith-space 找到它
 pnpm run seed:dev                 # 追加开发用 dev-bot agent
-pnpm run db:studio                # Drizzle Studio 可视化查库
+pnpm run db:push                  # 可选/遗留：仅把 schema 推到一个 scratch db（./.kith-space-dev.db），供 drizzle-kit 迭代/studio 用，非应用运行所需
+pnpm run db:studio                # 可选：Drizzle Studio 查那个 scratch db
 ```
 
 数据层是 SQLite + 每工作区独立 db，无需 Postgres/Redis。详见 `docs/kith-space/architecture-proposal.md §5`。
