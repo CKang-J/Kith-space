@@ -10,8 +10,9 @@ Kith-space 是一个**桌面优先、单人使用的"个人工作生活 OS"**：
 
 动手前请按需读。**这些文档是权威，本 README/记忆若与之冲突，以文档为准。**
 
+- `docs/progress.md` — **当前进度与续接指南**：做到哪、下一步、leader 调度与验收约定、易丢失的关键技术事实。**新会话/新模型接手先读这个。**
 - `docs/vision.md` — 北极星：完整理念 + **超越 MVP 的长远愿景**。理解"为什么"从这里开始。
-- `docs/decisions.md` — 全部 19 条决策 + 推理 + 权衡 + **被推翻/修正的决策**演化脉络。理解"凭什么这样定"看这里。
+- `docs/decisions.md` — 全部决策（20 条）+ 推理 + 权衡 + **被推翻/修正的决策**演化脉络。理解"凭什么这样定"看这里。
 - `docs/roadmap.md` — 产品能力分期：MVP 做什么、之后做什么、为何延后（延后 ≠ 放弃）。
 - `docs/glossary.md` — 术语正典，防口径漂移。术语拿不准查这里。
 - `docs/kith-space/` — 5 份专项设计文档：
@@ -73,8 +74,6 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 判断标准：任何人（或 AI）只读文档、不看聊天记录，就能得到与代码一致的事实。文档与代码冲突时，先修文档使其准确，再继续。
 
-## 当前进展（2026-07-09）
+## 当前进展
 
-- 设计阶段完成：19 条决策锁定、项目名定为 **Kith-space**、5 份专项设计文档 + 4 份纲领文档（vision/decisions/roadmap/glossary）齐备。
-- **待办的物理搭建**（因编辑器占用文件句柄未完成，需关闭 VS Code / Codex 后执行）：把四个原项目移入 `reference/`；用 `git archive` 从 `reference/open-tag` 导出干净源码（排除 node_modules/.git）复制到根目录；保留 LICENSE/NOTICE。`reference/` 目录已建好。
-- 下一步开发从 **P0** 起（fork 改名 + 数据层迁移 SQLite + 工作区文件夹化），见 `migration-plan.md`。
+**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-10 概要：P0–P3 后端 + pnpm 迁移 + runtime 对接调研均已完成并提交（分支 `feat/p0-foundation`，约 15 个提交，未合 main / 未推远端）；**下一步是 P4 UI 联调**（需与用户一起对齐后动手）。做到哪、下一步、调度与验收约定、关键技术事实，全部见 `docs/progress.md`。

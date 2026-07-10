@@ -34,6 +34,19 @@ Kith-space 是一个"愿景的分期兑现"：长期目标是成为一个人的�
 
 以下各阶段按价值主题划分，非严格串行——彼此依赖不同，可按前置条件成熟度择机推进。每阶段给出：价值 / 能力 / 前置依赖 / 为何现在不做。
 
+### 2.0 Runtime 契约 v2（近期高优先，多项能力的前置）
+
+**价值**：把外接 runtime 的接入契约从 v1 的"够用"升级为"可计量、可扩展"，一举解锁两件被 v1 记为缺口/延后的事——真实 token 计量，与"模块即 MCP 工具"。它不属于 v1 核心链路（v1 闭环走 @mention 唤醒 + task assign + 文件式记忆，不经 MCP），但它是 2.1 生产力模块、2.2 记忆增强、2.5 编排成熟化的共同前置。
+
+**能力**：
+- **公共 Runtime 契约加 usage / turn-done**：新增结构化 `onTurnCompleted`（或等价）回调，至少含 runtime、session id、turn/result 终态、input/output/cache/reasoning tokens、model usage、估算 cost。据此把 P1 的 token 护栏从"成功唤醒次数"代理指标升级为**真实 token 计量**。
+- **统一 MCP bootstrap**：在 `StartOpts` 增加结构化的 MCP server 描述（server 名 / transport / command/args/env 或 endpoint / required / tool allowlist），由各 adapter 翻译为本 runtime 的原生配置，把 Kith-space 自建模块（任务/记忆等）作为 MCP 工具暴露给外接 agent。
+- 顺带修两个已知终态问题：Codex init/no-thread 失败要 teardown 并产生明确 exit；opencode error event + 退出码双通道判终态（新版模型错误 exit 1）。
+
+**前置依赖**：三条 runtime 的对接调研（**已完成**，见 `notes/_runtime-research/`）。调研已证实三家 CLI 都提供完整 token usage（Claude `result`、Codex app-server、opencode `step_finish`），且两个参考项目（open-tag / openagents）都未解析——缺口在我们的契约，不在 CLI。MCP 注入三家各有干净入口（Claude `--mcp-config`、Codex session-only `-c mcp_servers.*`、opencode `OPENCODE_CONFIG_CONTENT`），亦无统一层可抄。
+
+**为何现在不做（相对 UI 而言）**：v1 要证明的核心命题（人 + 一队 agent 在频道协作的手感）不依赖 MCP，且 MCP bootstrap 尚有多项"未证实"点需对着真实 CLI 现场验；宜在有了可观察 agent 的 UI、跑过活的验证之后再建，降低返工。落地细节与源码引用见 `notes/_runtime-research/`（含 `_synthesis-openagents.md` 的收敛建议）；契约字段最终定稿时同步更新 `kith-space/architecture-proposal.md` 的 runtime 层与护栏两节。
+
 ### 2.1 生产力模块扩展
 
 **价值**：让 agent 从"操控任务与记忆"扩展到操控你日常真正在用的生产力工具，向"个人工作生活 OS"迈出实质一步。

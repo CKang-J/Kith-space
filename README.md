@@ -24,6 +24,7 @@ pnpm run dev:e2e:up         # 一键起 server + daemon + dev-bot，浏览器开
 
 ## 文档
 
+- 当前进度与续接指南（新会话先读）：[`docs/progress.md`](./docs/progress.md)
 - 开发命令（启动/测试/数据库）：[`docs/dev-commands.md`](./docs/dev-commands.md)
 - 理念与长远愿景：[`docs/vision.md`](./docs/vision.md)
 - 全部设计决策与推理：[`docs/decisions.md`](./docs/decisions.md)
