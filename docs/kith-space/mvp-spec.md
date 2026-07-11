@@ -1,74 +1,82 @@
-# Kith-space MVP 规格与验收标准
+# Kith-space v1 规格与验收标准
 
-本文定义 Kith-space 第一版（v1）的功能范围、明确不做的边界、核心用户故事、逐条验收标准与安全姿态。事实依据为 grilling-decisions.md 的 18 条锁定决策，与探索报告冲突时以锁定决策为准。架构实现细节详见 architecture-proposal.md，界面细节详见 ui-direction.md，从 open-tag fork 的改造步骤详见 migration-plan.md。
+本文定义个人 AgentOS 路线下的 v1。架构见 `architecture-proposal.md`，UI 见 `ui-direction.md`，实施顺序见 `migration-plan.md`，完整转向共识见 `../superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`。
 
-## 1. v1 边界一句话
+## 1. v1 一句话
 
-单真人、单机、桌面为主：一个人在自己的电脑上，和一支有身份/职责/记忆的本机 agent 团队在协作空间里干活。
+Windows Desktop 上，一个 Human 在多个本地 Space 中与本机 agent 协作；可按需向本机或受信任局域网桌面浏览器开放同一产品界面。
 
-## 2. v1 范围清单（要做）
+## 2. v1 范围
 
-v1 是一条薄纵切，目标是证明"有身份和记忆的外接 agent，在频道里通过模块协作、交付任务，感觉是好的"。以下模块除任务外均为复用，不从零造。
+- 首次启动创建唯一 Human：名称必填，邮箱和描述选填；自动创建 `Home` Space。
+- 多个本地 Space：每个 Space 根植文件夹，使用独立 `<space>/.kith/workspace.db`。
+- 频道、Human-Agent DM、thread、@agent 和 agent 频道成员关系。
+- agent 身份、职责、三层记忆、Claude Code/Codex/opencode 适配器。
+- 任务生命周期、autopilot/plan-first 与分派深度、唤醒预算、急停护栏。
+- ChatOnly / Split / ModuleOnly 单窗口工作区，Dock 为 `Chat | Inbox | Tasks | Agents | Settings`。
+- Electron Desktop 监督 Core Service 和唯一 Local Runtime Worker，支持托盘和可选系统自启动。
+- Web 模式：关闭（默认）、仅本机、局域网；访问 Token、持久授权会话、轮换和撤销。
+- 本地磁盘文件/附件，不依赖 Postgres、Redis、S3、Docker 或用户 `.env`。
 
-- 协作空间：频道、群聊、私聊、thread，直接复用 open-tag 的既有协作模型（channel/DM/thread/mention/wake），重做视觉层。Chat 是单窗口工作区的默认主页；频道与 DM 都在 Chat 中打开。详见 ui-direction.md。
-- 任务模块：v1 唯一真正从零打磨的模块。承载任务的创建、拆解、分派、领取、状态流转、thread 内汇报与交付汇总。
-- 记忆：复用 open-tag 的文件式 per-agent 记忆，叠加 OpenLoaf 的"一事一文件 + 自动维护 MEMORY.md 索引"结构约定（经系统提示词强制，不是工具）。三层：用户级 / 空间级 / agent 级。读 = 原生文件工具，空间级为 agent 可写、用户策展。写记忆的 MCP 工具 v1 延后，agent 先用原生文件操作写入。
-- 外接 runtime：不自研 runtime。通过适配器连接本机 Claude Code / Codex / opencode 三条强路径，其余 adapter v1 隐藏或标 beta。
-- 工作区根植文件夹、自包含可移植（决策 19）：创建空间时可选一个本地文件夹，或在默认路径 `~/Kith-space/<名>/` 下生成（一文件夹一工作区）。agent 阵容配置与记忆落 `<folder>/.kith/`（明文），群聊 / 任务 / 成员落该工作区独立的 `<folder>/.kith/workspace.db`。中心库退化为轻量 registry。拷走文件夹 = 带走含聊天历史的完整工作区。此项与 P0 的 SQLite 迁移合并做，详见 architecture-proposal.md §5.0。
-- autopilot 编排 + 三护栏：编排自主性为按任务开关，autopilot（自动拆解分派唤醒）与 plan-first（先出计划）都支持，默认 autopilot。plan-first v1 以角色提示词软门实现，硬门延后。因默认 autopilot，三护栏为 v1 强制项（见 §7）。
-- 单窗口工作区 + Dock：ChatOnly、Chat + 模块 Split、ModuleOnly 三态；底部 Dock 统一打开模块与控制 Chat 显隐，分屏宽度可拖拽。所有模块当前只显示当前 Space 数据。详见 ui-direction.md。
-- agent 实时轨迹：Chat 全宽时作为独立伴随面板，Split 时收进 Chat 内的轨迹抽屉，与默认 autopilot 配套提供执行透明度。
+## 3. 明确不做
 
-## 3. v1 明确不做（延后）
-
-- 邮箱 / 日历 / 画布模块（邮箱是 OAuth/IMAP 深坑，画布对流畅度敏感）。
-- 跨设备 / 局域网 / 公网 web 访问（level-two）。v1 只有 level-one：本机浏览器访问 localhost。跨设备按钮在架构上预留，v1 灰置或缺省。
-- 多真人协作（open-tag 多用户机制保留但休眠）。
-- 多设备（open-tag 多机制保留但不移除，v1 只跑单机）。
-- 写记忆的 MCP 工具（v1 用原生文件写，后续若自由写变乱再提升为 memory_save 工具）。
-- 云同步 / 多租户 SaaS hardening。
+- 多真人、邀请、登录账户、密码、RBAC、Human-Human DM。
+- Computers/Machines、远程 daemon、多 agent 主机。
+- 公网部署、云同步、SaaS、独立 Web 发行、移动 Web、PWA、push。
+- 邮箱、日历、画布和正式跨 Space 聚合；这些能力在本机化基础稳定后分阶段进入。
+- v1 HTTPS LAN；当前 HTTP LAN 必须显示受信任私网和禁止公网暴露警告。
 
 ## 4. 核心用户故事
 
-端到端主链路，编号如下。每条对应 §5 的一条验收标准。
-
-1. 用户创建一个协作空间。
-2. 用户连接本机（daemon onboarding），空间获得可承载 agent 的运行宿主。
-3. 用户创建带职责与 runtime 的 agent：例如 leader（Claude Code）、dev（Codex）、tester（opencode），各自有独立职责提示词、独立记忆与独立工作目录。
-4. 用户在频道内 @leader 提出一项需求。
-5. 在 autopilot 默认下，leader 自动把需求拆解为子任务并分派给 dev 与 tester（分派动作在频道/任务模块可见）。
-6. dev 与 tester 各自在任务 thread 中领取、推进并汇报进度。
-7. leader 汇总 dev/tester 的产出，向用户交付最终结果。
-8. 用户通过 Chat 的实时轨迹面板或紧凑轨迹抽屉查看各 agent 的实时执行轨迹，并查看其工作目录产出与记忆。
+1. 用户首次打开 Desktop，填写本地 Human 资料并进入自动创建的 `Home`。
+2. 用户把另一个本地文件夹注册为 Space，并可在 Space 之间切换。
+3. 用户在当前 Space 创建带职责和 runtime 的 agent，并在频道 @leader 提需求。
+4. leader 拆解并分派任务，其他 agent 在 thread 推进，leader 汇总交付。
+5. 用户通过 Chat、任务模块和实时轨迹观察、调整或急停执行。
+6. 用户打开 Tasks，能切换“全部任务”和当前频道任务作用域。
+7. 用户按需打开仅本机或 LAN 浏览器入口，首次输入 Token 后使用完整产品能力。
+8. 用户关闭主窗口后应用进入托盘继续运行；显式退出停止所有内部进程。
 
 ## 5. 验收标准
 
-逐条对应 §4 用户故事，均为可验证判定，非"能用即可"。
+### 5.1 初始化与数据
 
-1. 创建空间：用户新建空间时可选一个现有本地文件夹或采用默认 `~/Kith-space/<名>/`；创建后该文件夹下生成 `.kith/`（含 agent 配置、记忆、`workspace.db`）。创建或切换后直接进入该 Space 的 Chat 工作面；顶部 Space 入口可再次切换。可验证可移植性：把文件夹拷到另一路径/机器后再打开，agent 阵容、记忆与群聊历史完整保留。
-2. 连接本机：完成 daemon onboarding 后，空间显示本机为已连接宿主；断开后状态如实回落为未连接，agent 无法启动。
-3. 创建 agent：用户能创建至少 3 个 agent，分别绑定 Claude Code / Codex / opencode 三种 runtime；每个 agent 可填写职责提示词（可留空或用起步模板），并在磁盘上拥有互不重叠的独立工作目录与独立记忆文件。三者可同时存在于同一空间且身份区分正确。
-4. @提需求：用户在频道 @leader 发消息后，leader 被唤醒并在同一频道产生响应；未被 @ 的成员不被该消息唤醒（符合 wake/loop 守卫）。
-5. 自动拆解分派：autopilot 下，leader 无需用户逐步确认即可创建子任务并分派给 dev/tester；每一次分派都在频道或任务模块留下可见记录；被分派的 agent 须已是频道成员方能被唤醒。分派深度受 §7 上限约束。
-6. thread 汇报：dev 与 tester 能在各自任务 thread 中领取任务、更新状态并发布汇报；任务状态流转（如 待办→进行中→完成）在任务模块如实反映。
-7. 汇总交付：leader 能读取 dev/tester 的 thread 汇报与产出，在频道向用户发布一份汇总交付；用户可从该消息回溯到各子任务与来源 thread。
-8. 查看轨迹与产出：用户能在 Chat 全宽的实时轨迹面板或 Split 的轨迹抽屉看到各 agent 的执行轨迹（近实时更新），并能打开对应 agent 的工作目录文件与记忆文件进行查看。急停后轨迹显示任务已停止。
+- 全新应用数据目录启动时只出现本地资料初始化，不出现注册、登录或邀请。
+- Human 名称为空不能继续；邮箱和描述可留空。
+- 初始化完成后存在唯一 Human 和 `Home` Space；重启保持资料和最近 Space。
+- 新 Space 选择本地文件夹后生成 `.kith/workspace.db`；中央 `app.db` 不承载 Space 消息和任务。
+- 本次开发期 schema 可破坏性重置，不要求兼容旧 `.kith` 数据。
 
-## 6. v1 安全姿态
+### 5.2 agent 协作
 
-v1 在单真人 / 单机前提下，明确接受一处已知债务，并锁定其升级触发点。
+- 同一 Space 可创建并区分至少三个 agent，分别使用 Claude Code、Codex、opencode。
+- @agent 只唤醒符合频道成员与 wake policy 的本机 agent。
+- leader 可创建、分派和汇总子任务；任务状态与 thread 汇报一致。
+- 分派深度、唤醒预算和急停均有可重复触发的测试。
+- 每个 agent 的职责与记忆重启后保持，工作目录边界不互相覆盖。
 
-- 外接 runtime 走 bypassPermissions：open-tag 当前以 `--dangerously-skip-permissions --permission-mode bypassPermissions` 启动 Claude Code 类 runtime，等于对本机的完全非受限访问。v1 接受这一点。
-- 隔离手段：每个 agent 绑定独立工作目录，以工作目录范围划分作为 v1 的隔离边界（cwd 级隔离，非安全沙箱）。
-- 我方模块工具权限：按风险分级。可逆 / 本地操作自动放行（v1 的记忆与任务基本全自动）；不可逆 / 外部副作用操作（发邮件、删除、日历邀约等）需审批——这些操作在 v1 范围外，规则先行锁定。
-- 升级触发点（绑定，强制）：一旦上邮箱 / 浏览器模块（引入不可信内容摄取，构成提示词注入→破坏性 shell 的攻击链），或开启跨设备访问（level-two，打破单机安全前提），必须先完成认证 + 沙箱/权限模型重估，才能发布。该债务被显式跟踪，不得随功能悄然带过。
+### 5.3 工作区 UI
 
-## 7. 三护栏定义
+- 根路径在未初始化时进入 Human 初始化，已初始化时进入最近 Space或 `Home`。
+- Dock 只有 Chat、Inbox、Tasks、Agents、Settings；没有 Members、Computers 或旧 Layout 回退。
+- ChatOnly、Split、ModuleOnly 三态均可达；Chat 和 Module 不会同时隐藏。
+- Split 可拖拽，默认 Chat 占 25%，窄窗按面板最小宽度退化为单 Pane。
+- Agents 只展示当前 Space agent；Human 资料位于全局 Settings。
 
-因 v1 默认 autopilot，agent 可自动拆解、分派、唤醒 agent，编排具备自我扩散的可能，以下三护栏为 v1 强制项，缺一不可：
+### 5.4 Desktop 与浏览器访问
 
-- 分派深度上限：限制任务被逐层再拆分/再分派的最大深度，防止 agent→agent 无限派生任务链。达到上限即拒绝继续下派。
-- 每任务 token 预算：为每个任务设定 token 消耗上限，超出即中止该任务分支，防止单任务失控烧钱与无休止循环。
-- 一键急停：用户可随时一键停止空间内所有 agent 的执行。因为默认是 autopilot、动作会自动连锁发生，用户必须有一个随时夺回控制权的确定手段，故急停是强制而非可选。
+- `pnpm run desktop:dev` 一次启动完整开发宿主；正式 Desktop 自动管理内部进程。
+- Web 默认关闭；仅本机模式不接受 LAN 连接；LAN 模式显式启用且显示 HTTP 风险提示。
+- 默认端口 7777，可在 Desktop 修改；冲突时给出明确错误和修复入口。
+- 所有浏览器首次访问必须输入 Token；Token 不在 URL、日志或明文数据库出现。
+- 授权会话使用 HttpOnly、SameSite=Strict cookie；轮换 Token 或撤销全部会话后立即失效。
+- 浏览器不能查看/修改 Token、监听、端口、进程、托盘或系统自启动设置。
+- 关闭窗口默认进入托盘，显式退出清理全部子进程；关闭即退出选项有效。
 
-三护栏与 Chat 实时轨迹（§2）配套：轨迹提供可见性，护栏提供可控性，二者共同支撑"默认自动、但始终可见可停"的 autopilot 姿态。
+## 6. 安全姿态
+
+- 浏览器 Token 只保护浏览器入口，不与 Local Runtime Worker 内部凭据复用。
+- Desktop 每次启动生成内部临时凭据，普通用户不配置 daemon API key。
+- 唯一 Human 拥有全部本地 Space 权限，但 Space 作用域、路径隔离、CSRF/会话和 runtime 权限校验仍是安全边界。
+- 当前外接 runtime 的高权限是显式技术债。邮箱、浏览器等不可信内容模块上线前，必须先完成 HTTPS 与审批/沙箱权限升级。
+- LAN v1 只适用于受信任私网，不支持端口转发或公网暴露。

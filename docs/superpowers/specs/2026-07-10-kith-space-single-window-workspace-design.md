@@ -1,5 +1,7 @@
 # Kith-space 单窗口工作区前端架构设计
 
+> 2026-07-11 路线修正：本文的单窗口、三态、Dock 交互和面板视觉继续有效；产品模块与宿主边界以 `2026-07-11-personal-agent-os-local-pivot-design.md` 为准。`Members` 已改为 `Agents`，`Computers` 删除，旧 `Layout` 不再保留。
+
 - 日期：2026-07-10
 - 状态：设计与线框已确认，生产壳第一版联调中
 - 阶段：P4 前端信息架构纠偏与桌面线框原型
@@ -16,7 +18,7 @@ Kith-space 不再继续当前“空间总览壳 + 空间内部壳”的双壳方
 - 移除空间总览页及其 bento 驾驶舱定位。
 - 不再使用空间内部左侧 `IconRail` 作为主要导航。
 - 不再把功能模块限定为当前 `RightDock` 的窄右栏形态。
-- 不再让 Members、Computers、Inbox、Search 临时替换 Chat 中间主视图。
+- 不再让 Agents、Inbox、Search 临时替换 Chat 中间主视图。
 
 保留并强化以下产品原则：
 
@@ -125,7 +127,7 @@ ModuleOnly = Chat 隐藏，Module 可见
 
 ### 5.1 当前阶段
 
-- Chat、Inbox、Tasks、Members、Computers、Settings 默认只显示当前 Space 数据。
+- Chat、Inbox、Tasks、Agents、Settings 默认只显示当前 Space 数据。
 - 当前模块的上下文必须携带明确的 Space ID。
 - 切换 Space 时，整个 Chat 和模块数据源一起切换。
 
@@ -173,7 +175,7 @@ Composer + msg-context
 - 抽屉只覆盖 Chat Pane，不挤压或遮挡 Module Pane。
 - 两个抽屉互斥。
 - 选择频道或 DM 后，会话抽屉自动关闭。
-- Thread、成员详情和 agent profile 都属于 Chat 内部临时层，不占用 Module Pane。
+- Thread 和 agent profile 都属于 Chat 内部临时层，不占用 Module Pane。
 - Chat 被隐藏时，所有 Chat 临时层一并关闭。
 - 关闭模块回到 ChatOnly 后，恢复打开模块前的会话列表与轨迹显隐偏好。
 
@@ -182,7 +184,7 @@ Composer + msg-context
 ### 7.1 第一阶段 Dock
 
 ```text
-Chat | Inbox | Tasks | Members | Computers | Settings
+Chat | Inbox | Tasks | Agents | Settings
 ```
 
 - Chat 可见时 Chat 按钮激活。
@@ -221,7 +223,7 @@ Chat | Inbox | Tasks | Members | Computers | Settings
 ### 8.1 两层上下文
 
 - 模块级上下文自动感知：打开 Tasks 后，Chat 自动知道当前界面处于当前 Space 的 Tasks。
-- 对象级上下文显式聚焦：任务、文件、成员等只有点击“在 Chat 中讨论”后才成为 focused item。
+- 对象级上下文显式聚焦：任务、文件、agent 等只有点击“在 Chat 中讨论”后才成为 focused item。
 
 ### 8.2 “在 Chat 中讨论”
 
@@ -329,7 +331,7 @@ Composer 上方展示紧凑标签，例如：
 - `web/src/views/Chat.tsx` 的频道、DM、Thread、附件、@mention 和 Composer 行为。
 - `web/src/views/ChatSidebar.tsx` 的会话列表能力。
 - `web/src/views/LiveTrace.tsx` 的实时轨迹能力。
-- `web/src/TaskBoard.tsx`、Members、Computers、Inbox、Settings 的现有业务能力。
+- `web/src/TaskBoard.tsx`、Agents、Inbox、Settings 的现有业务能力。
 
 ### 12.2 被取代的 P4 壳
 
@@ -409,7 +411,7 @@ Space 菜单、会话抽屉和实时轨迹抽屉作为主流程分支状态。
 - Dock 不覆盖 Composer 或模块底部内容。
 - 至少验证 1440 × 900、1280 × 800、1024 × 768 和不足双栏宽度的状态。
 - 频道、DM、@mention、附件、Thread、Profile 和实时轨迹能力不得退化。
-- Inbox、Tasks、Members、Computers、Settings 可通过统一模块入口接入。
+- Inbox、Tasks、Agents、Settings 可通过统一模块入口接入。
 
 ## 15. 后续但不阻塞本原型的事项
 

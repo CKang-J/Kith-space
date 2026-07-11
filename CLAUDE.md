@@ -4,9 +4,9 @@
 
 ## 最重要的三件事
 
-1. **权威在文档，不在记忆。** 动手前读 `docs/vision.md`（理念与长远）、`docs/decisions.md`（19 条决策 + 推理 + 演化）、`docs/roadmap.md`（分期）、相关的 `docs/kith-space/*.md`（专项设计）。这些冲突时以文档为准。
-2. **理念不止 MVP。** 我们锁定的决策目前落在 MVP，但用户的构想覆盖 MVP 之外（邮箱/日历/画布、多真人、多设备、成熟人机团队协作等）。做任何改动都要对齐 `docs/vision.md` 的长远方向，别把产品做窄。
-3. **守住核心原则**（详见 AGENTS.md）：harness 优先、角色通用、不做场景专用硬流程；不自研 runtime、模块经 MCP 暴露；local-first 桌面优先；宽松协议、不拷 OpenLoaf(AGPL) 代码；外科手术式最小改动。
+1. **权威在文档，不在记忆。** 先读 `docs/progress.md` 和 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，再读 vision、decisions、roadmap 与相关专项设计。冲突时以最新权威规格和决策为准。
+2. **本机个人 AgentOS 是永久边界。** 一个安装实例只有一个 Human、一个本机 Local Runtime Worker和多个本地 Space。多真人、多机器、服务器部署、公网托管、云同步和独立 Web 发行已经取消，不是“以后再做”。浏览器只是 Desktop 可选开放的本机/LAN 入口。
+3. **守住核心原则**（详见 AGENTS.md）：harness 优先、角色通用、不做场景专用硬流程；不自研 runtime、模块经 MCP 暴露；local-first、Desktop-first、单 Human/单本机；宽松协议、不拷 OpenLoaf(AGPL) 代码；外科手术式最小改动。
 
 ## 协作与工具
 
@@ -16,7 +16,7 @@
 
 ## 开发命令
 
-包管理是 **pnpm**（传参不加 `--`：`pnpm test --unit`）。启动/测试/数据库等**完整命令看 `docs/dev-commands.md`**；常用：`pnpm run dev:e2e:up`（一键起全栈）、`pnpm run server`、`pnpm run daemon`、`pnpm run typecheck`。
+包管理是 **pnpm**（传参不加 `--`：`pnpm test --unit`）。启动/测试/数据库等**完整命令看 `docs/dev-commands.md`**。当前代码仍处于 `.env` + 分进程过渡期；目标是 Desktop 设置和内部临时凭据，不要把过渡方式误写成长期产品要求。
 
 ## 文档更新规则（强制，务必遵守）
 

@@ -4,6 +4,8 @@
 
 包管理器是 **pnpm**（不是 npm）。pnpm 传参不加 `--`：用 `pnpm test --unit`，不要写 `pnpm test -- --integration`。
 
+> 过渡说明：以下命令准确描述 2026-07-11 的当前代码，因此仍包含 `.env`、JWT 和 daemon bootstrap key。个人 AgentOS 目标态由 Electron Desktop 管理 app.db 设置与内部临时凭据，普通用户不维护 `.env`；A4 将新增 `pnpm run desktop:dev`。在对应代码落地前，不得把计划中的命令写成已经可用。
+
 ## 1. 首次准备
 
 ```bash
@@ -11,14 +13,14 @@ pnpm install                      # 安装依赖（workspace：根 + web/ + pack
 cp .env.example .env              # 创建本地环境配置
 ```
 
-必填环境变量（`.env`，缺了 server 起不来）：
+当前过渡实现的必填环境变量（`.env`，缺了 Core Service 起不来）：
 
 - `JWT_SECRET` — 人类会话 token 签名密钥。生成：`openssl rand -hex 32`
 - `DAEMON_BOOTSTRAP_KEY` — daemon↔server 握手预共享密钥。生成：`openssl rand -hex 32`
 - `PORT` — 服务端口，默认 `7777`
 - `KITH_SPACE_HOME` — 工作区/日志/上传根目录，默认 `~/.kith-space`（registry.db 在此，各工作区库在 `<rootPath>/.kith/workspace.db`）
 
-本地便利项（仅开发）：`ALLOW_DEV_LOGIN=true` 可用 用户名→JWT 快捷登录（有网络访问权的人都能签发，勿在生产开启）。
+本地便利项（仅过渡开发）：`ALLOW_DEV_LOGIN=true` 可用用户名签发 JWT。账户/JWT/dev login 将在 A2/A3 删除，不得用于新的浏览器 Token 设计。
 
 > daemon 与 server 的密钥必须一致。手动起 daemon 时，`pnpm run daemon` 内置的 `--api-key` 是 `poc-secret-key`；因此本地要么把 `.env` 的 `DAEMON_BOOTSTRAP_KEY=poc-secret-key`，要么手动用匹配的 key 起 daemon（见 §3）。用 `pnpm run dev:e2e:up`（§4）则会自动读 `.env` 的 key，无需对齐。
 
@@ -37,7 +39,7 @@ pnpm run db:studio                # 可选：Drizzle Studio 查那个 scratch db
 
 ## 3. 手动起各服务（三个进程，分别开终端）
 
-Kith-space 本地由三部分组成：server（API + 提供已构建的 web）、daemon（承载 agent）、web（开发时的 Vite 热更；不开发前端时可省，server 会提供 `web/dist`）。
+当前过渡开发由三部分组成：server/Core Service（API + 提供已构建 web）、daemon/未来 Local Runtime Worker（承载 agent）、web（开发时的 Vite 热更；不开发前端时可省）。这些分进程命令会作为内部调试入口保留。
 
 ```bash
 # 终端 A — server（API + WS），热更监听
@@ -95,7 +97,10 @@ pnpm run cli -- <args>            # 运行 CLI（如 pnpm run cli role-template 
 
 急停等运行时控制走 `/api/tasks/:id/dispatch/*` 与 `/api/servers/:id/dispatch/*`，详见 `docs/kith-space/architecture-proposal.md §6`。
 
-## 8. 生产（参考，v1 非重点）
+## 8. 待删除的继承命令
 
-`pnpm run start:prod` / `daemon:prod` / `seed:prod` / `prod:up` / `prod:down`（读 `.env.prod`）。发布 workflow 保留 `npm publish` 以护住 OIDC 免 token 发布。
+`start:prod`、`daemon:prod`、`seed:prod`、`prod:up`、`prod:down`、`.env.prod`、公共 server/daemon 包和 OIDC 发布 workflow 是 open-tag 服务器发行遗留。它们在 A6 删除，不属于 Kith-space 正式产品路线；正式发行物只有 Desktop 安装包。
 
+## 9. 目标 Desktop 开发入口（尚未实现）
+
+A4 完成后新增 `pnpm run desktop:dev`，统一启动 Core Service、Local Runtime Worker、Vite 和 Electron，并使用临时内部凭据。该命令当前不可用；实现时必须同步更新本节、README、AGENTS 和 package scripts。

@@ -1,5 +1,7 @@
 # Kith-space 响应式分屏宽度设计
 
+> 2026-07-11 路线修正：分栏算法继续有效；模块清单以个人 AgentOS 规格为准。`Members` 改为 `Agents`，`Computers` 删除。
+
 - 日期：2026-07-11
 - 状态：已实现并通过静态验证；25% 调整按用户要求未重跑浏览器 QA
 - 范围：P4-3 单窗口工作区的 Split 宽度约束与拖拽持久化
@@ -51,8 +53,7 @@ chatMin = max(360px, workspaceWidth × 25%)
 | 模块 | 最小宽度 | 原因 |
 |---|---:|---|
 | Inbox | 640px | 筛选侧栏 + 消息内容区 |
-| Members | 640px | roster / profile 双区内容 |
-| Computers | 640px | 机器列表 + 详情区 |
+| Agents | 640px | agent roster / profile 双区内容 |
 | Settings | 640px | 设置导航 + 表单内容 |
 | Tasks | 560px | 看板 / 列表与筛选控件 |
 | Search | 560px | 搜索输入与结果列表 |

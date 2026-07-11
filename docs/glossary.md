@@ -2,7 +2,7 @@
 
 本文固定 Kith-space 的关键术语，给出准确、稳定的口径，防止未来文档与代码互相漂移。每条只给一句定义、必要时与相近概念的区分、以及它落在架构的哪一层。理念、决策、阶段、界面等展开内容各有专文（见 `docs/kith-space/` 五份设计文档），本文只做定义，需要展开处引用它们。
 
-术语按主题分组。事实以 `grilling-decisions.md` 的 18 条锁定决策为准，与其他材料冲突时以锁定决策为准。
+术语按主题分组。事实以 `decisions.md` 的当前结论和 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md` 为准。
 
 ---
 
@@ -10,6 +10,9 @@
 
 **Kith-space**
 : 一个人与一支有身份、职责、记忆的 agent 团队共处的本地协作空间。Kith 是旧词，指"你信任的一圈熟人"，对应 agent 是持续共事的团队成员而非一次性问答工具；-space 兼指人与 agent 真实共处的空间，与开发者对 namespace / workspace 的语感。长期定位是"个人的工作生活操作系统"。
+
+**个人 AgentOS**
+: Kith-space 的长期产品定位：一个 Human 在一台物理电脑上，与本机 agent 跨多个本地 Space 工作。多真人、远程 agent 主机、服务器部署和云端产品不属于该定义。
 
 **harness engineering（harness 优先）**
 : 把设计重心放在"搭好 agent 做事的环境"（工具、上下文、记忆、协作协议）而非"替 agent 决定怎么做事"。三条原则：harness 优先、角色通用、不做场景专用硬流程。取舍是接受略低的开箱即用完成度，换更高的通用性与生命力。
@@ -21,8 +24,11 @@
 
 ## 工作区与协作结构
 
+**Human**
+: 一个 Kith-space 安装实例中唯一的真人使用者。名称必填，邮箱和描述选填；这是给 agent 使用的本地资料，不是账户、登录身份、成员或权限角色。
+
 **工作区 / Space（空间）**
-: 一个根植于本地文件夹、自包含、可移植的协作单元，装着自己的配置、agent 阵容、群聊与任务；一个文件夹对应一个工作区（1:1）。在代码底座里就是 open-tag 的 `server`，概念上约等于 OpenLoaf 的 project。拷走文件夹即带走含聊天历史的完整工作区。
+: 一个根植于本地文件夹、自包含、可移植的协作单元，装着自己的 agent 队伍、频道、消息、任务和记忆；一个文件夹对应一个 Space。open-tag 的 `server/serverId` 是待迁移的底座术语，目标代码统一为 `space/spaceId`。
 
 **频道**
 : 工作区内的多方对话空间，人与多个 agent 在此对话、@唤醒、派活、汇报。是空间内部态的 C 位（见"群聊 C 位"）。
@@ -31,7 +37,7 @@
 : 特指频道里"人 + 多个 agent"的多方对话形态，是产品心脏；与"频道"基本同指，"群聊"强调多 agent 协作这一属性。
 
 **私聊 / DM**
-: 一对一会话，在左侧导航里与频道并列、点开时在中心区打开（与打开频道一样），不进右栏。唤醒规则上 DM 无条件唤醒对方 agent（是唤醒策略的唯一例外）。
+: Human 与单个 agent 的一对一会话，在会话列表里与频道并列。产品不支持 Human-Human DM；唤醒规则上 Human-Agent DM 无条件唤醒目标 agent。
 
 **thread**
 : 挂在某条消息（常是一个任务）下的子对话线，任务的领取、推进、汇报在其 thread 内发生。
@@ -51,6 +57,9 @@
 
 **Runtime 适配器**
 : 把某个 runtime CLI 接入统一 `Runtime` 接口的适配层，负责启动进程、驱动一轮对话、解析其输出、回吐 session/活动/轨迹。新增一个 runtime = 实现一个 `Runtime` 对象并注册。注册表已带 8 条，v1 只把三条做稳。
+
+**Local Runtime Worker**
+: Desktop 自动管理的唯一内部 daemon 进程，负责启动和驱动本机 runtime。它是进程隔离边界，不是 Machine/Computer，不支持远程注册或多主机调度。
 
 ---
 
@@ -108,10 +117,10 @@
 : 模块可见、Chat 暂时隐藏的专注状态。点击 Dock 的 Chat 可恢复 Split。
 
 **Module Pane**
-: Inbox、Tasks、Members、Computers、Settings 等功能模块的第二工作面。一次只打开一个模块，可与 Chat 分屏或独占窗口；当前阶段全部服从当前 Space。
+: Inbox、Tasks、Agents、Settings 等功能模块的第二工作面。一次只打开一个模块，可与 Chat 分屏或独占窗口；当前阶段全部服从当前 Space。
 
 **Dock**
-: 当前主要工作面板底部的统一控制器。第一阶段为 Chat、Inbox、Tasks、Members、Computers、Settings；当前模块横向展开，Chat 始终只显示图标。它同时负责模块切换与 Chat 显隐，不再隶属于旧右栏。
+: 当前主要工作面板底部的统一控制器，固定为 Chat、Inbox、Tasks、Agents、Settings；当前模块横向展开，Chat 始终只显示图标。它同时负责模块切换与 Chat 显隐。
 
 **agent 实时轨迹**
 : 近实时展示 agent 执行动作的透明度窗口。ChatOnly 时是 Chat 右侧独立面板，Split 时收进 Chat 内的轨迹抽屉，不是业务模块 Dock 项。
@@ -127,19 +136,28 @@
 ## 宿主形态与数据层
 
 **Electron 桌面壳**
-: 宿主形态——Electron 主进程托管本机 server + daemon + web 三个进程并开一个指向 localhost 的窗口，双击即用。因 open-tag 本就是 server+web 两件套，桌面壳几乎免费。
+: 唯一正式宿主与发行形态。Electron 主进程监督 Core Service 和 Local Runtime Worker、创建受控 UI 窗口，并管理端口、托盘、关闭行为与系统自启动。
 
-**level-one / level-two（web 访问）**
-: level-one = 本机浏览器访问 localhost，零成本，是 v1 唯一支持的 web 访问。level-two = 跨设备/局域网/公网访问，会打破单机安全前提并与 agent 全权冲突，必须与鉴权 + agent 权限重估一起上线，v1 架构上预留、置灰或缺席。
+**Core Service**
+: Desktop 管理的本机单实例 HTTP/socket.io/业务服务。名称只描述技术进程，不是公开部署的 server 产品，也不等于 Space。
+
+**Web 模式**
+: Desktop 设置中的浏览器入口策略：关闭（默认）、仅本机、局域网。浏览器访问依附 Desktop 生命周期，不形成独立 Web 产品；LAN v1 仅限受信任私网的 HTTP。
+
+**访问 Token**
+: 普通浏览器首次进入 Kith-space 时验证的共享访问秘密。服务端只保存哈希，验证后建立可撤销的持久浏览器会话；它与 Desktop 信任、Worker 内部凭据和 agent session token 相互独立。
 
 **每工作区独立 SQLite 文件**
-: 每个工作区把自己的消息/任务/频道/成员存进 `<folder>/.kith/workspace.db`；因 SQLite 本身是文件，聊天历史随文件夹走无需改存储格式。
+: 每个 Space 把自己的消息、任务、频道、agent 和 agent membership 存进 `<folder>/.kith/workspace.db`；Human 资料和 Desktop 设置不随 Space 复制。
 
 **`.kith/`**
 : 工作区文件夹下承载其全部状态的目录：`workspace.db`（结构化数据）、`agents/`（agent 阵容配置，明文）、`memory/`（空间级 + agent 级记忆，一事一文件）。
 
-**中心 registry**
-: 应用数据目录里的一个轻量库，只记"有哪些工作区、路径、上次打开"。工作区的实质数据都在各自 `.kith/` 里，故中心库退化为索引。
+**app.db**
+: 应用数据目录中的中央 SQLite 库，保存唯一 Human、Desktop/Web 设置、访问 Token 哈希、浏览器会话、Space registry 和最近打开记录；不保存 Space 消息或任务。
+
+**Machine / Computer / serverId（退役术语）**
+: open-tag 遗留的多主机和工作区领域命名。Machine/Computer 产品概念删除；产品 `server/serverId` 改为 `space/spaceId`。HTTP 技术进程统一称 Core Service。
 
 **进程内替代 Redis**
 : 单机单进程下用内存计数器 / EventEmitter 取代 Redis。核实后 Redis 运行时只余两个单调计数器（seq、任务号），pub/sub 与 agent 唤醒已分别由 socket.io 直发和 daemon WS 承担，故 `redis.ts` 可整体删除。

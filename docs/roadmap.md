@@ -1,133 +1,123 @@
 # Kith-space 产品路线图
 
-Kith-space 是一个"愿景的分期兑现"：长期目标是成为一个人的工作生活操作系统，而 MVP 只是第一期——先把最能证明命题的那一薄层做实，其余能力按价值和依赖分批兑现。本文从**产品能力演进**视角，讲清各阶段在做什么、什么被延后、为何延后、延后的东西未来长成什么样。
+> 路线基线：2026-07-11 个人 AgentOS 本机化转向。完整边界见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，当前工程状态见 `docs/progress.md`。
 
-本文与 `docs/kith-space/migration-plan.md` 视角不同、不重复：migration-plan 是**工程改造步骤**视角，讲从 open-tag fork 出发"怎么改、按什么顺序改"（P0→P6 的地基与代码路径）；本文是**产品能力阶段**视角，讲用户价值维度上"先给什么、后给什么、为什么"。二者可对照阅读：本文的能力阶段大致映射到 migration-plan 的工程阶段，但切分依据是用户价值而非改造成本。产品理念详见 `vision.md`，决策推理详见 `grilling-decisions.md`，术语详见 `glossary.md`，本文引用即可、不复述。
+## 1. 产品终点与永久边界
 
-贯穿全程的一条判断标准：**延后 ≠ 放弃**。下面每一项"现在不做"的能力，底座里要么保留了休眠机制、要么预留了架构位置，等前置依赖成熟即可兑现。
+Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Human 和本机 agent 在多个本地 Space 中协作。正式产品只有 Desktop 安装包；浏览器入口依附 Desktop 生命周期，可选择关闭、仅本机或受信任局域网访问。
 
-## 1. MVP（v1）阶段：证明手感
+以下方向已经取消，不再作为“以后再做”：
 
-**价值主张**：单真人、单机、桌面为主——一个人在自己的电脑上，和一支有身份、有职责、有记忆的本机 agent 团队，在协作空间里一起干活。
+- 多真人、邀请、团队账号、Human membership 和 RBAC。
+- 多 agent 主机、远程 daemon、机器加入和跨电脑运行。
+- 公网部署、SaaS、云同步、云数据库和独立 Web 发行。
+- 移动 Web、PWA、push、Docker 部署和公共 server/daemon 包。
 
-### 能力清单
+仍在长期路线中的能力包括：本机跨 Space 聚合、邮箱、日历、画布、记忆增强、编排成熟化、HTTPS 与 runtime 权限升级、macOS/Linux 发行。
 
-| 能力 | v1 形态 |
-|---|---|
-| 协作空间 | 复用 open-tag 的频道 / 群聊 / 私聊 / thread / mention / wake，重做视觉层。频道与 DM 都在单窗口 Chat 工作面打开 |
-| 任务模块 | v1 唯一从零打磨的模块：创建、拆解、分派、领取、状态流转、thread 汇报、交付汇总 |
-| 文件式三层记忆 | 用户级 / 空间级 / agent 级；读 = 原生文件工具；结构遵循"一事一文件 + MEMORY.md 索引"约定（系统提示词强制，非工具）；空间级 agent 可写、用户策展 |
-| 外接 runtime（三条强路径） | 不自研 runtime，经适配器连本机 Claude Code / Codex / opencode；其余 adapter 隐藏或标 beta |
-| autopilot 编排 + 三护栏 | 编排自主性为按任务开关，默认 autopilot（自动拆解分派唤醒）；plan-first 以角色提示词软门实现。三护栏强制：分派深度上限、每任务 token 预算、一键急停 |
-| 单窗口工作区 + Dock | ChatOnly / Split / ModuleOnly 三态；底部 Dock 控制模块与 Chat 显隐，分屏可拖拽，窄窗退化为单 Pane |
-| 实时轨迹 | Chat 全宽时为独立伴随面板，Split 时为 Chat 内抽屉；与 autopilot 配套提供执行透明度 |
-| 工作区根植文件夹、可移植 | 一文件夹一工作区；配置与记忆落 `<folder>/.kith/`（明文），聊天 / 任务 / 成员落该工作区独立的 `workspace.db`；拷走文件夹 = 带走完整工作区 |
-| 桌面壳 + 本机 web | Electron 包裹 daemon + server + web；v1 仅 level-one：本机浏览器访问 localhost |
+## 2. 已完成基础
 
-### v1 要证明的核心命题
+- P0：SQLite 与每 Space `<root>/.kith/workspace.db`，中央 registry。
+- P1：派发深度、唤醒预算与急停护栏。
+- P2：三层记忆与通用角色模板。
+- P3：任务领域与 HTTP 接口。
+- P4：单窗口 ChatOnly / Split / ModuleOnly 工作区、可拖拽面板、常驻 Dock、任务范围侧栏。
+- Runtime 调研：Claude Code、Codex、opencode 适配边界与 Runtime 契约 v2 草案。
 
-> 有身份、有记忆的外接 agent，隔着 MCP 在频道里操控我的模块、并能自主协作交付，手感是成立的。
+P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运行方式，再回到视觉收尾。
 
-这条命题一旦被验证，后续所有扩展都只是在同一套 harness 上叠加模块与规模，而非推倒重来。因此 v1 刻意做薄——只保留能支撑这句话的最小能力集，把一切不影响这个判断的能力都推后。
+## 3. 当前路线：个人 AgentOS 本机化
 
-## 2. MVP 之后的阶段
+### P-A1 权威文档收敛
 
-以下各阶段按价值主题划分，非严格串行——彼此依赖不同，可按前置条件成熟度择机推进。每阶段给出：价值 / 能力 / 前置依赖 / 为何现在不做。
+把 vision、decisions、roadmap、产品规格、架构、UI、术语、进度和命令口径统一到本机个人 AgentOS。历史研究可保留，但必须标注其多用户/多设备内容不代表产品路线。
 
-### 2.0 Runtime 契约 v2（近期高优先，多项能力的前置）
+验收：核心文档不再把多真人、多机器、公网或云端描述为未来目标；新增本机化权威规格；后续阶段与删除范围明确。
 
-**价值**：把外接 runtime 的接入契约从 v1 的"够用"升级为"可计量、可扩展"，一举解锁两件被 v1 记为缺口/延后的事——真实 token 计量，与"模块即 MCP 工具"。它不属于 v1 核心链路（v1 闭环走 @mention 唤醒 + task assign + 文件式记忆，不经 MCP），但它是 2.1 生产力模块、2.2 记忆增强、2.5 编排成熟化的共同前置。
+### P-A2 本地领域与数据模型
 
-**能力**：
-- **公共 Runtime 契约加 usage / turn-done**：新增结构化 `onTurnCompleted`（或等价）回调，至少含 runtime、session id、turn/result 终态、input/output/cache/reasoning tokens、model usage、估算 cost。据此把 P1 的 token 护栏从"成功唤醒次数"代理指标升级为**真实 token 计量**。
-- **统一 MCP bootstrap**：在 `StartOpts` 增加结构化的 MCP server 描述（server 名 / transport / command/args/env 或 endpoint / required / tool allowlist），由各 adapter 翻译为本 runtime 的原生配置，把 Kith-space 自建模块（任务/记忆等）作为 MCP 工具暴露给外接 agent。
-- 顺带修两个已知终态问题：Codex init/no-thread 失败要 teardown 并产生明确 exit；opencode error event + 退出码双通道判终态（新版模型错误 exit 1）。
+- 把中央 registry 扩展并更名为 `app.db`。
+- 实现唯一 Human 和首次资料初始化；自动创建 `Home` Space。
+- 把产品领域中的 `server/serverId` 收敛为 `space/spaceId`，保留 `/s/:slug` URL。
+- 保留 Space 内 agent membership，删除 Human membership、邀请、RBAC 和 Human-Human DM。
+- 删除 Machine/Computer、远程 daemon 注册和多主机调度；内部 daemon 收敛为唯一 Local Runtime Worker。
+- 删除 S3/对象存储，附件只走本地磁盘。
 
-**前置依赖**：三条 runtime 的对接调研（**已完成**，见 `notes/_runtime-research/`）。调研已证实三家 CLI 都提供完整 token usage（Claude `result`、Codex app-server、opencode `step_finish`），且两个参考项目（open-tag / openagents）都未解析——缺口在我们的契约，不在 CLI。MCP 注入三家各有干净入口（Claude `--mcp-config`、Codex session-only `-c mcp_servers.*`、opencode `OPENCODE_CONFIG_CONTENT`），亦无统一层可抄。
+允许破坏性重置当前开发数据，不做旧 `.kith` 数据迁移。
 
-**为何现在不做（相对 UI 而言）**：v1 要证明的核心命题（人 + 一队 agent 在频道协作的手感）不依赖 MCP，且 MCP bootstrap 尚有多项"未证实"点需对着真实 CLI 现场验；宜在有了可观察 agent 的 UI、跑过活的验证之后再建，降低返工。落地细节与源码引用见 `notes/_runtime-research/`（含 `_synthesis-openagents.md` 的收敛建议）；契约字段最终定稿时同步更新 `kith-space/architecture-proposal.md` 的 runtime 层与护栏两节。
+验收：全新目录可初始化一个 Human、`Home` 和多个文件夹 Space；无需登录、邀请、机器注册、Postgres、Redis 或对象存储。
 
-### 2.1 生产力模块扩展
+### P-A3 浏览器访问安全边界
 
-**价值**：让 agent 从"操控任务与记忆"扩展到操控你日常真正在用的生产力工具，向"个人工作生活 OS"迈出实质一步。
+- 实现“关闭/仅本机/局域网”三种模式，默认关闭。
+- 实现访问 Token、哈希存储、首次验证、HttpOnly 持久会话、轮换和全量撤销。
+- Electron 内嵌 UI 使用受控信任通道，浏览器 Token 与内部进程凭据分离。
+- Desktop 每次启动生成临时内部凭据，普通用户不配置 daemon key。
+- LAN v1 只做 HTTP，并显示私网限定和禁止公网暴露的警告。
 
-**能力**：邮箱、日历、画布三个模块，全部经 MCP 供 agent 原生操控并纳入工作区 Dock。其中画布是宽度饥渴模块，可与 Chat 分屏，也可进入 ModuleOnly 独占工作面；这是 v1 三态信息架构预留的能力位。
+验收：未授权浏览器不能读取或操作数据；Token 不进入 URL、日志或明文数据库；Web 模式和会话撤销可验证。
 
-**前置依赖**：单窗口 Module Pane、Dock 与 Message Context Snapshot 契约；**以及一次安全升级**——上邮箱与浏览器意味着引入不可信外部内容，构成"提示词注入 → 破坏性 shell"的攻击链，与 v1 接受的 bypassPermissions 现状直接冲突。因此该阶段的发布硬绑定：权限模型必须先升级为审批路由或沙箱，才能让引入不可信内容的模块上线。
+### P-A4 Electron Desktop 宿主
 
-**为何现在不做**：邮箱是 OAuth / IMAP 工程深坑，画布对流畅度敏感，二者都不影响 v1 核心命题的判定；更关键的是它们触发的安全升级本身是一块独立且必须严肃对待的工作，不宜与 v1 的手感验证混做。
+- 增加 `pnpm run desktop:dev`，统一启动 Core Service、Local Runtime Worker、Vite 和 Electron。
+- 实现子进程监督、稳定端口与冲突处理。
+- 默认关闭窗口进入托盘；显式退出停止全部；提供关闭即退出设置。
+- 提供默认关闭的系统自启动，启用后托盘启动。
+- Desktop Settings 管理 Web 模式、端口、Token、托盘和自启动。
 
-### 2.2 记忆增强
+验收：Windows 上一次命令启动完整开发宿主；正式形态不要求用户 `.env`；托盘和退出生命周期符合规格。
 
-**价值**：当 agent 用原生文件操作自由写记忆开始变乱时，给它一个受约束、可观测的写入通道，提升记忆质量与一致性。
+### P-A5 UI 与入口清理
 
-**能力**：写记忆的 MCP 工具 `memory_save`，把"写"从原生文件操作提升为一等工具（读在 v1 已是原生文件工具，此处只补写）。
+- 首次启动收集 Human 名称、可选邮箱和描述，然后进入 `Home`。
+- Dock 固定为 `Chat | Inbox | Tasks | Agents | Settings`。
+- `Members` 改为当前 Space 的 `Agents`；Human 资料进入全局 Settings；删除 `Computers`。
+- 删除 landing、登录、注册、邀请、PWA 和 `?legacy=1`/旧 `Layout`。
+- 浏览器隐藏 Token、端口、监听、进程和系统自启动等 Desktop 专属设置。
 
-**前置依赖**：v1 三层记忆的读路径与"一事一文件 + MEMORY.md 索引"结构约定已运行一段时间，积累出"自由写是否会乱"的真实反馈。
+验收：所有入口都服务一个 Human 与本机 agent；浏览器和 Desktop 复用工作区 UI，但权限边界不同。
 
-**为何现在不做**：v1 有意先用原生文件写观察其够不够用——若不乱就不必造工具（简洁优先）；只有当自由写确实产生混乱，`memory_save` 的价值才成立。这是一个由证据触发、而非预先排定的升级。
+### P-A6 继承资产清理与总审计
 
-### 2.3 多真人协作
+- 删除 Dockerfile、compose、entrypoint、环境样例和远程部署文档。
+- 删除公共 server/daemon npm 发布、独立安装器和 OIDC 发布 workflow。
+- 删除残余 JWT 账户认证、Machine、多用户、S3、PWA 和旧领域术语。
+- 保留仓库内部的分进程开发命令与少量测试覆盖环境变量。
+- 完成 typecheck、单元、集成、web build、Electron 冒烟和文档口径审计。
 
-**价值**：从"一个人 + 一支 agent 团队"扩展到"多个真人 + 各自的 agent"，让协作空间容纳真实的人际协同。
+验收：Windows Desktop 是唯一正式发行路径，仓库没有仍可启用的旧产品路线。
 
-**能力**：唤醒 open-tag 底座中休眠的多用户机制；引入 open-tag 原生的 @提及多用户唤醒；补齐多真人带来的权限与冲突处理（谁能改什么、并发编辑与状态冲突的收敛）。
+## 4. 本机化基础完成后的能力路线
 
-**前置依赖**：单真人形态的协作模型稳定；权限模型成型（与 2.1 的安全升级同源）。
+### 4.1 Runtime 契约 v2
 
-**为何现在不做**：个人 OS 本质是单用户的，v1 聚焦单真人才能把核心命题打透；多用户机制在底座里保留休眠，不删除，随时可唤醒。
+统一 Claude Code、Codex、opencode 的生命周期、usage 回调、取消、完成事件和 MCP bootstrap。它是模块、记忆写入和可靠编排的共同前置。
 
-### 2.4 多设备 agent 加入 + 跨设备 / 公网 web 访问
+### 4.2 生产力模块
 
-**价值**：让 agent 跑在不止一台机器上，并让你从任意设备（局域网 / 公网浏览器）接入自己的空间——真正的"随处可用"。
+按任务、日历、画布、邮箱顺序扩展 MCP 模块。画布强调 Chat 与可视对象联动；邮箱和浏览器类能力必须等待 HTTPS 与 runtime 权限升级。
 
-**能力**：唤醒 open-tag 休眠的多机机制，让 agent 从多设备加入同一空间；开启 level-two 访问（跨设备 / 局域网 / 公网），v1 灰置或缺省的"跨设备"入口在此点亮。
+### 4.3 记忆与上下文
 
-**前置依赖（强制、绑定）**：必须同时配上**认证**与**agent 权限重估**。开启 level-two 会打破 v1 的单机安全前提，并与 bypassPermissions 现状正面冲突——二者绑定，缺一即破坏安全边界，必须先解。
+实现结构化 `memory_save`、检索和衰减策略；实现 `MessageContextSnapshot`，让消息携带当前 Space、模块、打开对象和 focused item 的结构化快照。
 
-**为何现在不做**：v1 的单机 + localhost 已零成本满足"在浏览器里用"；跨设备的价值真实但代价是一整套认证与权限重估，不能悄然带过。架构上入口已预留，等安全升级到位再点亮。
+### 4.4 本机跨 Space 聚合
 
-### 2.5 编排成熟化
+在真实 `scope = current | all` 数据契约上提供跨 Space Inbox、Tasks、Calendar 和信息流。聚合遍历本机 Space 数据库，不引入云端或多用户语义。
 
-**价值**：让默认的 autopilot 从"可用"走向"可信托付更重的任务"，在自动与可控之间给出更细的档位。
+### 4.5 编排成熟化
 
-**能力**：plan-first 硬闸（从 v1 的角色提示词软门升级为流程级硬门，真正卡住"未确认不执行"）；更强的 leader → 团队自治（更成熟的多层分派、汇总与自我协调）。
+完善 leader 拆解、依赖图、预算、计划审批、暂停/恢复、恢复策略与交付汇总。继续坚持 harness 优先，不把开发或其他具体场景写成硬流程。
 
-**前置依赖**：v1 三护栏（分派深度上限、每任务 token 预算、一键急停）在真实任务中经受住检验，积累出对 autopilot 边界的实感。
+### 4.6 平台扩展
 
-**为何现在不做**：v1 先用软门 + 三护栏验证"默认自动、始终可见可停"的姿态是否成立；硬闸是更重的控制机制，宜在软门跑够、边界清晰后再上，避免过早束死编排的灵活性。
+Windows v1 稳定后支持 macOS 和 Linux。系统托盘、自启动、文件选择和进程管理优先使用跨平台 Electron/Node API。
 
-### 2.6 云同步 / 数据层反向引回 Postgres
+## 5. 贯穿各阶段的原则
 
-**价值**：为多真人、多租户、跨设备持久化提供云端数据底座，支撑上述几项规模化能力。
-
-**能力**：数据层从每工作区独立 SQLite 反向切回 Postgres（Drizzle 换方言，方向容易）；引入云同步。
-
-**前置依赖**：多真人（2.3）与多设备（2.4）产生真实的云化需求。
-
-**为何现在不做**：v1 的单用户 / 单机 / 桌面双击形态用 SQLite（一文件即一工作区，天然可移植）最贴合；Postgres 的价值只在云化 / 多用户场景才显现。Drizzle 的方言抽象已为这次反向切换留好活口，方向上是容易的。
-
-### 2.7 更远：探索性方向
-
-**价值**：把 Kith-space 从"自带模块的协作空间"推向"可被生态扩展的平台"。
-
-**能力**：插件 / 技能市场（第三方模块与角色技能的分发）、共享浏览器等（参考 openagents 与 OpenLoaf 的模块思路）。
-
-**前置依赖**：模块层与 MCP 工具层的边界稳定、安全模型成熟。
-
-**为何现在不做**：标为**探索性**——方向尚未收敛，规格另议；在核心命题与安全模型未稳固前引入生态扩展会放大不确定性。此处仅记录方向，不承诺形态。
-
-## 3. 长期北极星回指
-
-所有阶段最终都指向同一个北极星：**Kith-space 长成一个人的工作生活操作系统**。产品有两条线——主线 B（个人工作生活 OS：agent 操作邮箱 / 日历 / 任务 / 研究 / 写作）与辅线 A（通用角色的分工协作，如 leader / dev / tester）。长期而言 **B 的权重高于 A**：辅线 A 是主线 B 的一种能力表现，而非并列目标。
-
-具体到形态：v1 先把单窗口 Chat + Module 工作手感做实，不提供数据不真实的薄总览页。随各阶段模块与 `scope = all` 聚合能力成熟，再长出完整的**个人 OS 门面**——它可以是全局窗口或可组合驾驶舱，但必须建立在真实的跨 Space 收件箱、任务与日历数据之上。长期形态的完整描述详见 `vision.md`。
-
-## 4. 贯穿各阶段的原则
-
-无论走到哪一阶段，以下原则不变（理念全文见 `vision.md`）：
-
-- **harness 优先**：投入精力设计工具层、记忆结构、上下文供给与协作协议，把环境搭好，让通用 agent 自己把事做好，而非替 agent 决定怎么做事。
-- **角色通用**：agent 默认空白，靠职责提示词获得身份、靠记忆积累经验；只提供通用角色框架与几个可选起点模板，不生产场景专用 agent。
-- **不做场景专用硬流程**：不把"开发流水线""客服工单"这类特定流程硬编码进产品；用什么工具、按什么顺序推进，交给 agent 依当前目标自主决策。
-- **延后 = 不是放弃**：每一项被推后的能力，底座里都保留了休眠机制或预留了架构位置，等前置依赖成熟即可兑现。分期是节奏，不是取舍。
+- harness 优先、角色通用、不做场景专用硬流程。
+- 不自研 runtime，模块经 MCP 暴露。
+- local-first、Desktop-first、一个 Human、一台本机。
+- 外科手术式改动，每阶段独立验证和提交。
+- OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
+- 文档与代码同一阶段同步；当前实现和目标态必须明确区分。

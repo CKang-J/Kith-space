@@ -1,5 +1,7 @@
 # 任务模块 MCP 接口草案
 
+> 2026-07-11 术语修正：目标 MCP 上下文使用 `spaceId`。下文引用上游/当前 schema 时出现的 `serverId` 只是待 A2 清理的过渡字段。
+
 > 状态：Wave 2 实施草案（2026-07-10）  
 > 事实来源：`reference/open-tag/` 只读上游源码；目标约束来自 `docs/decisions.md` 与 `docs/kith-space/architecture-proposal.md`。  
 > 本文把“已核实现状”和“建议接口”分开；接口名、参数与权限分级均为 Kith-space 草案，不代表 open-tag 已实现。
@@ -10,7 +12,7 @@
 2. Wave 2 不应让 MCP handler 直接写数据库。应把现有 `createMessage` / `convertMessageToTask` / `claimTask` / `assignTask` / `setTaskStatus` 收口成任务应用服务，REST、CLI、MCP 和 UI 共用同一套事务、权限、事件与审计语义。
 3. v1 最小工具面建议为七个写工具：`task_create`、`task_decompose`、`task_assign`、`task_claim`、`task_transition`、`task_report`、`task_submit_delivery`。读取可先复用 `task_list` / `task_get` 两个无副作用工具，否则模型无法稳定取得 canonical task id 和最新版本。
 4. “改任务数据”和“唤醒另一个 agent”不是同一风险。创建、领取、自身状态更新属于本地可逆写；分派、拆解扩张、通知和提交交付会触发 agent runtime、消耗预算，应进入编排护栏。
-5. MCP 连接上下文必须提供 `workspaceId/serverId`、调用者 `agentId` 和授权 scopes；这些身份字段不能由模型作为工具参数传入。工具只接收资源 id 和业务输入。
+5. MCP 连接上下文必须提供 `spaceId`、调用者 `agentId` 和授权 scopes；这些身份字段不能由模型作为工具参数传入。工具只接收资源 id 和业务输入。
 
 ## 2. 已核实：open-tag 的任务承载模型
 
@@ -87,7 +89,7 @@ thread 读写则分别需要 `message:read` / `message:send`（`reference/open-t
 
 ### 4.1 身份与资源引用
 
-- MCP session 注入：`workspaceId/serverId`、`actorType="agent"`、`actorId`、scopes、调用 trace id。
+- MCP session 注入：`spaceId`、`actorType="agent"`、`actorId`、scopes、调用 trace id。
 - 工具参数不得出现可伪造的 `actorId`、`senderName` 或跨 workspace 的 server id。
 - 写工具以完整 `taskId` 为 canonical 引用。为人类交互兼容，可接受 `{ channelId, taskNumber }`，解析后必须返回完整 id。
 - 不建议 MCP 工具接受短 id；短前缀适合 CLI 展示，但不适合机器协议中的唯一标识。

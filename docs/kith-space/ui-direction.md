@@ -1,8 +1,8 @@
 # Kith-space UI 方向
 
-本文是 Kith-space 当前 UI 信息架构与视觉语言的权威说明。完整交互契约见 `docs/superpowers/specs/2026-07-10-kith-space-single-window-workspace-design.md`，可交互线框见 `docs/prototypes/kith-space-single-window-flow.html`。
+本文是 Kith-space 当前 UI 信息架构与视觉语言的权威说明。单窗口交互契约见 `docs/superpowers/specs/2026-07-10-kith-space-single-window-workspace-design.md`，个人 AgentOS 宿主与产品边界见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，可交互线框见 `docs/prototypes/kith-space-single-window-flow.html`。
 
-结论前置：Kith-space 当前采用**单窗口工作区**。应用直接进入当前 Space，Chat 是默认主页与基础工作面，底部 Dock 常驻；功能模块打开后，界面只在 Chat 全宽、Chat + 模块分屏、模块全宽三种形态间切换。此前的“空间总览壳 + 空间内部壳”双壳方向已经被本设计取代。
+结论前置：Kith-space 采用**单窗口工作区**。首次启动先初始化唯一 Human，随后直接进入 `Home` 或最近 Space；Chat 是默认主页与基础工作面，底部 Dock 常驻；功能模块打开后，界面只在 Chat 全宽、Chat + 模块分屏、模块全宽三种形态间切换。此前的“空间总览壳 + 空间内部壳”与旧 `Layout` 回退已经被本设计取代，后续实现将彻底删除。
 
 ---
 
@@ -35,7 +35,7 @@
 └────────────────────────────────────────────────────────────┘
 ```
 
-- 启动后进入当前或上次使用的 Space，不先经过独立总览页。
+- 未初始化时进入本地 Human 资料页；初始化后进入上次使用的 Space，没有记录时进入自动创建的 `Home`，不经过独立总览页。
 - Space 名称承担切换与管理入口。
 - Search 位于顶部工具组，通过按钮和 `Cmd/Ctrl + K` 进入，不占 Dock 槽位。
 - 同时最多显示一个 Chat Pane 和一个 Module Pane。
@@ -44,7 +44,7 @@
 - 宽度不足以容纳双栏时不强行压缩，临时退化为单 Pane；窗口变宽后恢复此前的双栏意图。
 - 拖拽偏好保存为工作区宽度比例而非像素。Split 内切换模块保留该比例；从 ChatOnly 打开模块、关闭模块后重新打开，或从 ModuleOnly 恢复 Chat 时，均回到 Chat 25% 的默认下限。
 
-当前 Space 的频道或 DM 继续由路径表达；打开模块时在同一会话 URL 上增加 `?module=<id>`，ModuleOnly 再增加 `chat=0`。因此一个 URL 可以同时表达“频道 A + Tasks + Split”，在紧凑会话抽屉切频道不会关闭模块。旧模块实体路径仍作为兼容深链入口。浏览器刷新、前进和后退都以 URL 为准恢复三态；会话/轨迹抽屉等短暂界面状态不进入 URL。`?legacy=1` 暂时保留旧 `Layout` 作为验收回退入口。
+当前 Space 的频道或 Human-Agent DM 继续由路径表达；打开模块时在同一会话 URL 上增加 `?module=<id>`，ModuleOnly 再增加 `chat=0`。因此一个 URL 可以同时表达“频道 A + Tasks + Split”，在紧凑会话抽屉切频道不会关闭模块。迁移期旧模块实体路径可作为兼容深链入口，A5 完成后只保留规范 Space 路由。浏览器刷新、前进和后退都以 URL 为准恢复三态；会话/轨迹抽屉等短暂界面状态不进入 URL。`?legacy=1` 与旧 `Layout` 不再属于目标态，必须删除。
 
 ---
 
@@ -70,7 +70,7 @@ ModuleOnly = Chat 隐藏，Module 可见
 
 ### 3.2 Dock
 
-第一阶段 Dock 为：`Chat | Inbox | Tasks | Members | Computers | Settings`。
+Dock 固定为：`Chat | Inbox | Tasks | Agents | Settings`。
 
 - Dock 始终属于当前主要工作面板：ChatOnly 在 Chat 底部，Split 和 ModuleOnly 在模块底部。
 - Chat 按钮始终只显示图标，用激活底色表达 Chat 是否可见，不因激活而展开。
@@ -80,7 +80,7 @@ ModuleOnly = Chat 隐藏，Module 可见
 - 未激活项用 `#fafafa`，激活项用 `#f5f5f5`，不使用高饱和强调色。
 - Dock 所在面板预留底部空间，不覆盖 Composer 或模块内容。
 
-Calendar、Canvas 等真实能力成熟后插入模块区；当前不展示无功能的空入口。
+Agents 只显示当前 Space 的 agent 队伍；唯一 Human 的资料位于全局 Settings。Calendar、Canvas 等真实能力成熟后插入模块区；当前不展示无功能的空入口。
 
 ---
 
@@ -94,7 +94,7 @@ ChatOnly 由三张独立白色工作面板组成：
 会话列表 | 当前会话与 Composer | 实时轨迹
 ```
 
-- 会话列表包含 Channels 与 Direct Messages，保留未读、置顶、新建和切换行为。
+- 会话列表包含 Channels 与 Human-Agent Direct Messages，保留未读、置顶、新建和切换行为；不提供 Human-Human DM。
 - 中间复用现有 `Chat`、Composer、Thread、附件和 @mention 能力。
 - 实时轨迹继续展示 agent 的执行过程。
 - 三区之间使用与整个工作区一致的有色间隙与圆角面板语言。
@@ -111,14 +111,14 @@ Composer
 
 - 会话抽屉从 Chat 左侧覆盖打开，轨迹抽屉从 Chat 右侧覆盖打开。
 - 抽屉只覆盖 Chat Pane，不挤压或遮挡 Module Pane，并且两者互斥。
-- Thread、成员详情和 agent profile 属于 Chat 内部临时层，不占用 Module Pane。
+- Thread 和 agent profile 属于 Chat 内部临时层，不占用 Module Pane。
 - Chat 被隐藏时，Chat 的临时层随之卸载；恢复后回到当前会话。
 
 ---
 
 ## 5. 模块工作面与作用域
 
-- 当前模块包括 Inbox、Tasks、Members、Computers、Settings；Search 由顶部入口打开。
+- 当前模块包括 Inbox、Tasks、Agents、Settings；Search 由顶部入口打开。Computers/Machines 不再是产品模块。
 - 一次只显示一个 Module Pane，切换 Dock 项直接替换模块。
 - 当前阶段所有模块只读取当前 Space 数据；切换 Space 时 Chat 与模块数据源一起切换。
 - Tasks 保留旧布局的范围侧栏，可在当前 Space 的全部任务与指定频道任务之间切换；切换范围不得改变当前 Split / ModuleOnly 姿态。
@@ -135,7 +135,7 @@ Composer
 布局先建立两层上下文语义，数据契约将在 Runtime 契约 v2 阶段正式落地：
 
 - **模块级自动感知**：打开 Tasks 后，Chat 知道当前 Space 正在展示 Tasks。
-- **对象级显式聚焦**：任务、文件、成员等只有通过“在 Chat 中讨论”才成为 focused item。
+- **对象级显式聚焦**：任务、文件、agent 等只有通过“在 Chat 中讨论”才成为 focused item。
 
 每条消息发送时应固化一个结构化 `MessageContextSnapshot`，包含 Space、会话、当前模块、Context Stack 和 focused item。UI 与服务端保存 Kith-space 自己的结构，不把 OpenLoaf 的 `<stack>` XML 硬编码进核心模型；不同 runtime 适配器再按需要编码为 XML、JSON 或提示文本。
 
@@ -145,18 +145,28 @@ Composer
 
 ## 7. 当前实现边界
 
+当前生产壳仍处于本机化转向的过渡期：代码中可能暂时存在 Members、Computers、旧深链与 `?legacy=1`。它们是 A5 的删除清单，不是可继续扩展的兼容承诺。
+
 单窗口壳按职责拆在 `web/src/shell/`：
 
 - `WorkspaceFrame.tsx`：路由同步、响应式 Pane 编排与拖拽边界。
 - `workspaceLayout.ts`：无 React 依赖的三态状态机。
 - `paneConstraints.ts`：集中计算 Chat 响应式下限、各模块下限、单 Pane 阈值和比例到像素的夹取结果。
 - `shellStore.ts`：`useSyncExternalStore` 保存版本化模块宽度比例，并按 Space 持久化最近 Chat 位置；模块与 Chat 显隐由 URL 表达，避免双重状态源。
-- `workspaceRoute.ts`：解析父壳拿不到的频道/成员/机器/设置子路由参数，并把 URL 映射回三态。
+- `workspaceRoute.ts`：解析父壳拿不到的频道/agent/设置子路由参数，并把 URL 映射回三态；机器路由将在 A5 删除。
 - `ChatWorkspace.tsx`：全宽三区与紧凑抽屉形态。
 - `ModuleWorkspace.tsx`：现有业务视图薄适配。
 - `WorkspaceDock.tsx` / `WorkspaceTopBar.tsx`：Dock 与顶部工具组。
 - `workspaceModules.tsx`：模块注册、路由和图标元数据。
 
-复用 `Chat.tsx`、`ChatSidebar.tsx`、`LiveTrace.tsx`、`TaskBoard.tsx`、Members、Computers、Inbox、Settings 等现有能力，不整块重写大文件。旧 `OverviewShell`、`SpaceShell`、`IconRail`、`RightDock` 和 `ChatSlot` 已被新壳取代。
+复用 `Chat.tsx`、`ChatSidebar.tsx`、`LiveTrace.tsx`、`TaskBoard.tsx`、Inbox、Settings 与现有 agent 列表能力，不整块重写大文件。Members 视图将收敛为 Agents，Computers 与旧 `Layout` 删除。旧 `OverviewShell`、`SpaceShell`、`IconRail`、`RightDock` 和 `ChatSlot` 已被新壳取代。
+
+## 8. 初始化与 Settings 边界
+
+- 首次启动页只收集 Human 名称、可选邮箱和描述，文案不得使用“注册”“账户”或“加入团队”。
+- 初始化完成后自动进入 `Home`；Human 资料可以在全局 Settings 修改。
+- Desktop Settings 额外包含 Web 模式、端口、访问 Token、撤销浏览器会话、托盘关闭行为和系统自启动。
+- 普通浏览器不显示也不能调用上述 Desktop 专属设置；浏览器只显示可安全远程操作的产品设置。
+- LAN 模式首次开启必须展示 HTTP 未加密、只限受信任私网、禁止端口转发/公网暴露的明确提示。
 
 一句话：**Chat 是基础工作面，模块是可并行、可独占的第二工作面，Dock 是两者之间唯一稳定的布局控制器。**

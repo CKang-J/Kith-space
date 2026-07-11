@@ -2,7 +2,7 @@
 
 ## 前言
 
-这份文档记录 Kith-space 在一次 `/grill-me`（逐决策盘问）会话中敲定的全部 19 条决策。会话发生在 2026-07-09，目的是把用户一个还比较模糊的想法——"人和一支有记忆的 agent 团队共处的协作空间"——逐条盘问、逐条收敛，变成一个可以动工的项目。
+这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。当前结论以每条决策中的最新修正和决策 21 为准。
 
 盘问的方式是一次给一个决策、每次给一个明确建议，让用户在 either/or 之间做取舍。会话过程中有几条决策被推翻或修正过（底座、runtime、Redis 的真实用途、聊天历史随文件夹走的成本），这些演化本身是理解项目为什么长成现在这样的关键，因此单列一节保留。
 
@@ -17,8 +17,8 @@
 | 1 | 产品核心 | B（个人工作生活 OS）为主线，A（AI 开发团队分工）也要，长期偏重 B |
 | 2 | Runtime 形态 | 不自研 runtime，agent 全外接，自建模块以 MCP 工具暴露 |
 | 3 | 代码底座 | open-tag（Apache-2.0），OpenLoaf 降为设计参考 |
-| 4 | 用户数 | v1 单真人，多用户机制休眠保留 |
-| 5 | 机器数 | v1 单机，多机机制保留不删 |
+| 4 | 用户数 | 一个安装实例永久只有一个 Human，删除多用户机制 |
+| 5 | 机器数 | agent 永久只在本机唯一 Local Runtime Worker 上执行 |
 | 6 | v1 范围 | 薄纵切：协作空间 + 记忆 + 任务两个模块 |
 | 7 | 编排自主性 | 按任务开关，默认 autopilot，plan-first 为软闸，三护栏强制 |
 | 8 | 工具权限 | 两轴：模块工具按风险分级；外接 runtime 沿用 bypass，记账为债 |
@@ -27,12 +27,14 @@
 | 11 | UI 投入 | 信息架构现在定死，视觉学 OpenLoaf，豁免"去 AI 味"清单 |
 | 12 | 壳形态 | 单窗口工作区；启动直接进入当前 Space，旧双壳被推翻 |
 | 13 | Chat 地位 | Chat 是默认基础工作面；仅在模块已打开时可收起 |
-| 14 | Dock 与模块 | 底部 Dock 常驻，模块是可伸缩的第二工作面 |
+| 14 | Dock 与模块 | `Chat | Inbox | Tasks | Agents | Settings`，删除 Computers |
 | 15 | 布局能力 | ChatOnly / Split / ModuleOnly 三态，可拖拽分隔 |
 | 16 | 跨 Space 视角 | v1 移除薄总览页；未来聚合/双窗口仅预留接口 |
-| 17 | 宿主形态 | 桌面为主（Electron）+ 可选本机 web，跨设备延后 |
+| 17 | 宿主形态 | Desktop 是唯一正式宿主，可选本机/LAN 浏览器入口 |
 | 18 | 数据层 | 迁移到 SQLite + 进程内替代 Redis |
 | 19 | 工作区 | 根植文件夹、每工作区独立 db、自包含可移植 |
+| 20 | 包管理 | 仓库统一从 npm 迁移到 pnpm |
+| 21 | 个人 AgentOS 本机化 | 删除服务器部署、多真人、多机器、账户体系和云端路线 |
 
 ---
 
@@ -76,27 +78,23 @@
 
 ---
 
-## 决策 4：v1 单真人，多用户机制休眠保留
+## 决策 4：一个安装实例永久只有一个 Human
 
-**结论**：v1 只服务单个真人。open-tag 底座的多用户能力保留但休眠，留待将来。
+**当前结论（2026-07-11 推翻）**：一个安装实例只有一个全局 Human，并对全部本地 Space 拥有完整权限。首次启动只填写名称（必填）、邮箱和描述（选填），这是给 agent 使用的本地资料，不是账户注册。删除邀请、登录、密码、owner/admin/member、Human membership、Human-Human DM 和 RBAC。
 
-**背景**：个人工作生活 OS（决策 1 的主线）本质是单用户产品；但底座 open-tag 带有多用户模型。需要决定 v1 是用还是删。
+**原决定**：v1 单真人，但保留 open-tag 多用户能力，等待未来云化/多真人。
 
-**选项与选择**：单真人 v1（选中）/ 一开始就做多真人。选单真人。
-
-**推理与权衡**：主线是"我的 OS"，单用户是自然形态，砍掉多用户的复杂度让 v1 聚焦。选择"休眠保留"而非"删除"，是为 P6 的云化/多真人留活口——删了将来要重建，留着几乎零成本。代价是 v1 的安全边界建立在单用户前提上（与决策 5/17 一起构成 bypassPermissions 可接受的基础）。
+**推理与权衡**：多用户不是“免费保留”。它持续渗透 schema、API、导航、认证和权限判断，并让个人 AgentOS 的领域模型含混。产品定位已经排除团队协作，因此现在删除比长期背负双重语义更低成本。Agent 的频道成员关系仍保留，只承担上下文与唤醒语义。
 
 ---
 
-## 决策 5：v1 单机，多机机制保留不删
+## 决策 5：agent 永久只在本机唯一 Local Runtime Worker 上执行
 
-**结论**：v1 所有 agent 跑在用户自己的机器上。open-tag 的多机机制保留，不移除。
+**当前结论（2026-07-11 推翻）**：全部 agent 只在本台物理电脑上执行。Desktop 自动管理一个独立的 Local Runtime Worker 进程；删除 Machine/Computer 产品概念、远程 daemon 注册、机器连接向导和多主机调度。
 
-**背景**：open-tag 有 server↔daemon 的多机制（daemon 可跑在不同机器上）。v1 是否需要多机？
+**原决定**：v1 使用单机，但保留 open-tag 多机机制以备未来跨设备 agent 加入。
 
-**选项与选择**：单机 v1（选中）/ 保留多机能力上线。选单机。
-
-**推理与权衡**：单机是 v1 安全前提的一部分——agent 用 bypassPermissions 全权访问本机（决策 8），只有在"单机 + 单用户 + 仅本机可信内容"下才可接受。多机机制保留不删的理由同决策 4：为将来留活口，删除是净损失。代价是跨设备访问（level-two）必须与鉴权 + agent 权限重估捆绑上线（决策 17），v1 不碰。
+**推理与权衡**：独立进程仍有 runtime 隔离和崩溃边界价值，但“可连接的机器”没有产品价值。将进程边界与多设备领域模型拆开后，既保留可靠性，也清除用户不需要的机器管理复杂度。Desktop 每次启动生成内部临时凭据，用户不配置 daemon API key。
 
 ---
 
@@ -134,7 +132,7 @@
 
 **选项与选择**：模块工具——全放行 / 全审批 / 按风险分级（选中）。runtime 权限——v1 就上审批路由/沙箱 / 沿用现状记为债（选中后者）。
 
-**推理与权衡**：模块工具按风险分级是常识取舍：可逆的自动放行保丝滑，不可逆的要审批防误伤（这些不可逆操作 v1 多在范围外，规则先锁定）。runtime 全权是更重的取舍——v1 接受 bypassPermissions 是因为单机+单用户+仅本机可信内容的前提下风险可控，且能保住外接 runtime 的操作丝滑。但代价被明确记账：**升级的硬触发点是邮箱/浏览器等"摄入不可信外部内容"的模块上线的那一刻**——届时形成"prompt 注入 → 破坏性 shell"的攻击链，权限模型必须升级为审批路由或沙箱。这也是 level-two 网络访问（决策 17）解禁的同一前置条件。
+**推理与权衡**：模块工具按风险分级是常识取舍：可逆的自动放行保丝滑，不可逆的要审批防误伤（这些不可逆操作 v1 多在范围外，规则先锁定）。runtime 全权是更重的取舍——当前接受 bypassPermissions 是因为单机 + 单 Human + 仅本机可信内容的前提下风险可控，且能保住外接 runtime 的操作丝滑。但代价被明确记账：**升级的硬触发点是邮箱/浏览器等“摄入不可信外部内容”的模块上线之前**，届时必须先用审批路由或沙箱切断“prompt 注入到破坏性 shell”的攻击链。LAN 浏览器入口已由决策 17/21 限定为显式启用的受信任私网 HTTP + Token，它不能替代该 runtime 权限升级。
 
 **已核实源码事实**：open-tag 以 `--dangerously-skip-permissions --permission-mode bypassPermissions` 启动 Claude Code（`daemon/claudeRuntime.ts:31`–`:33` 的 `buildClaudeArgs`），即对本机不受限访问。v1 缓解仅两层：目录隔离（每 agent 独立 cwd，约定 `~/.open-tag/agents/<id>`，`db/schema.ts:61`，是进程 cwd 级隔离而非安全沙箱）、工具能力裁剪（同一 argv 禁用 plan/cron/ask 类工具，`daemon/claudeRuntime.ts:33` 的 `--disallowed-tools`，但不限制文件/shell）。
 
@@ -204,7 +202,7 @@
 
 ## 决策 14：底部 Dock 是工作姿态与模块切换的统一控制器
 
-**当前结论（2026-07-10 修正）**：Dock 常驻于当前主要工作面板底部，第一阶段为 `Chat | Inbox | Tasks | Members | Computers | Settings`。Search 移到顶部入口。一次只打开一个模块；当前模块从纯图标横向展开并显示名称，Chat 始终只显示图标。
+**当前结论（2026-07-11 修正）**：Dock 常驻于当前主要工作面板底部，为 `Chat | Inbox | Tasks | Agents | Settings`。`Members` 收敛为当前 Space 的 `Agents`，`Computers` 删除，唯一 Human 的资料移入全局 Settings。Search 位于顶部入口。一次只打开一个模块；当前模块从纯图标横向展开并显示名称，Chat 始终只显示图标。
 
 **原决定**：Dock 曾被限定为“窄右栏容器自身的底部导航”，实时轨迹也曾作为右栏模块之一。新方向取消固定窄右栏：模块是可伸缩、可全宽的第二工作面；实时轨迹回到 Chat 工作面的伴随区域，在紧凑态以抽屉出现。
 
@@ -236,17 +234,17 @@
 
 ---
 
-## 决策 17：宿主形态是桌面为主（Electron）+ 可选本机 web，跨设备延后
+## 决策 17：Desktop 是唯一正式宿主，可选开放本机/LAN 浏览器入口
 
-**结论**：宿主形态 = 桌面为主 + 可选 web 访问（Electron 包住 daemon + server + web，像 OpenLoaf）。选 Electron 而非 Tauri。**v1 只做 level-one**（本机浏览器访问 localhost，零成本）。**level-two（跨设备/局域网/公网）延后**，按钮架构上预留、v1 灰置或缺席。
+**当前结论（2026-07-11 推翻并细化）**：Electron Desktop 是唯一正式宿主和发行物，自动管理 Core Service、Local Runtime Worker 与 React UI。浏览器访问不是独立 Web 产品，而是 Desktop 运行期间对同一 Core Service 的可选入口。模式为“关闭（默认）/仅本机/局域网”，默认稳定端口 7777，可由 Desktop 修改。
 
-**背景**：产品跑在哪里？纯桌面应用、纯 web、还是两者兼有？用户希望"也能在浏览器里用"。
+**访问安全**：所有浏览器首次访问都输入访问 Token，Electron 内嵌界面免输。服务端只存 Token 哈希；持久会话使用 HttpOnly、SameSite=Strict cookie。Desktop 可轮换 Token或撤销全部会话。局域网浏览器具有完整产品能力，但 v1 只支持 HTTP 和桌面级浏览器；首次开启必须警告仅限受信任私网、不得端口转发或公网暴露。
 
-**选项与选择**：桌面壳形态——Electron（选中）/ Tauri。web 访问——只本机 level-one（v1 选中）/ 直接开跨设备 level-two（延后）。
+**Desktop 生命周期**：关闭窗口默认隐藏到托盘，服务和 agent 继续运行；显式退出才停止全部进程。可选改为关闭即退出。系统自启动默认关闭，启用后以托盘方式启动。
 
-**推理与权衡**："双形态"几乎免费，因为 open-tag 本就是 server + web 两件套，Electron 只做进程托管与打包，web plane 本就是跑在 server 上的独立 SPA。选 Electron 而非 Tauri：TS 原生、成熟、与 OpenLoaf 对齐。v1 的"浏览器里也能用"= 用户自己开浏览器访问 localhost，零额外工作。level-two 延后是硬约束：一旦开启就击穿单机安全前提（决策 4/5），并与 agent 的 bypassPermissions 全权（决策 8）正面冲突，因此**必须与鉴权 + agent 权限重估一起上线**。代价是 v1 无法跨设备访问，但换来 v1 安全边界的完整自洽。
+**推理与权衡**：共享 UI/API 避免维护两个产品；Desktop 监督内部进程，消除普通用户的服务配置负担。LAN 入口满足同一局域网内的临时访问需求，但不改变单 Human、本机 agent 和本地数据边界。HTTP 是明确安全债；HTTPS 与 runtime 权限升级是邮箱、浏览器等高风险模块上线前的硬前置。
 
-**已核实源码事实**：Electron 主进程只做三件事——拉起本地 server、拉起本地 daemon、开指向 `localhost:7777` 的窗口（默认 PORT 见 `server/core.ts:14`）。三进程在 open-tag 里已独立存在：server（`server/index.ts`）、daemon（`daemon/`）、web（`web/src/`）。既有 daemon 打包链路 `scripts/build-daemon-pkg.mjs` 已能产出自包含 ESM bundle。
+**原决定**：Electron + 本机 localhost Web，跨设备/LAN/公网作为统一的 level-two 延后。新决定只接纳依附 Desktop 的受控 LAN 浏览器入口，永久排除公网托管、独立 Web 发行和远程 agent 主机。
 
 ---
 
@@ -258,7 +256,7 @@
 
 **选项与选择**：保留 Postgres+Redis / 迁移到 SQLite + 进程内替代（option B，选中）。选 SQLite。
 
-**推理与权衡**：SQLite 契合单用户/单机/桌面双击 + Electron 打包——一个文件、零外部服务依赖。迁移一度被描述为 Redis"做三件事"（seq 计数、SSE pub/sub、agent 唤醒 long-poll）都要替代；更深核实后修正为**只有两个计数器在跑**，pub/sub 与 wake 是死代码（零调用点），人类端实时早已走 socket.io 单实例直发、agent 唤醒早已走 daemon WS。所以迁移主要是把两个计数器搬进程内、整体删掉 `redis.ts`。schema 迁移是确定性苦力活（Drizzle 原生支持 SQLite 方言），不是未知数。代价：schema 方言逐处替换 + 计数器进程内化要保留启动对齐语义（否则 seq 回退会让增量 sync 静默丢消息）。云/多用户（决策 4 休眠）将来再引回 Postgres——Drizzle 反向换方言同样容易。
+**推理与权衡**：SQLite 契合单用户/单机/桌面双击 + Electron 打包——一个文件、零外部服务依赖。迁移一度被描述为 Redis"做三件事"（seq 计数、SSE pub/sub、agent 唤醒 long-poll）都要替代；更深核实后修正为**只有两个计数器在跑**，pub/sub 与 wake 是死代码（零调用点），人类端实时早已走 socket.io 单实例直发、agent 唤醒早已走 daemon WS。所以迁移主要是把两个计数器搬进程内、整体删掉 `redis.ts`。schema 迁移是确定性苦力活（Drizzle 原生支持 SQLite 方言），不是未知数。代价：schema 方言逐处替换 + 计数器进程内化要保留启动对齐语义（否则 seq 回退会让增量 sync 静默丢消息）。产品不再规划因云/多用户反向迁回 Postgres。
 
 **已核实源码事实**：现状——DB 用 `drizzle-orm/postgres-js`（`db/index.ts:2`），schema 标准 PG 方言 259 行（8 jsonb / 57 uuid / 29 timestamp）。Redis 顶部注释声明三类用途（`redis.ts:1`），但：pub/sub 已不走 Redis（`realtime.ts:9` 的 `publish` 直调 socket.io `emitMapped`，`redis.ts:70` 的 `publishEvent` 是遗留路径）；agent 唤醒不走 Redis long-poll（走 daemon WS 定向下发，`redis.ts:75` 的 `pokeAgent` 无实际调用方）；真正在跑的只有 `nextSeq`（`redis.ts:50`）与 `nextTaskNumber`（`redis.ts:65`）两个 INCR + `reconcileCounters`（`redis.ts:18`）。迁移点：`db/index.ts` 换 `better-sqlite3` 驱动；`db/schema.ts:4` 的 `pgTable→sqliteTable`、8 处 jsonb→`text({mode:"json"})`、uuid→text、29 处 timestamp→`integer({mode:"timestamp_ms"})`；`redis.ts`（78 行）计数器改内存 Map、pub/sub 与 wake 导出直接移除；`realtime.ts`（14 行）几乎不动，仅改 `nextSeq` 导入来源。
 
@@ -266,15 +264,37 @@
 
 ## 决策 19：工作区根植文件夹、每工作区独立 db、自包含可移植
 
-**结论**：工作区根植于一个本地文件夹、自包含、可移植（option C，升级为"每工作区独立 SQLite 文件"），v1 范围。创建工作区 = 选一个本地文件夹（或在默认 `~/Kith-space/<名>/` 下生成），每个工作区保留自己的配置 + agent + 群聊。一个文件夹对应一个工作区（1:1，像 OpenLoaf 的 project）。
+**结论**：Space 根植于一个本地文件夹、自包含、可移植（option C，升级为"每 Space 独立 SQLite 文件"）。创建 Space = 选择本地文件夹（或创建默认 `Home`），每个 Space 保留自己的频道、消息、任务、agent 和记忆。一个文件夹对应一个 Space。中央库扩展并更名为 `app.db`，保存唯一 Human、Desktop/Web 设置、访问 Token 哈希、浏览器会话、Space registry 与最近打开记录。
 
 **背景**：这是一条**在 SQLite 决策下被重新评估成本**的决策（演化详见后文专节）。工作区数据怎么存、能不能随文件夹搬走？openagents 用中心存储，OpenLoaf 用文件夹根植（`<proj>/.openloaf/`，可移植）。
 
 **选项与选择**：中心库存全部 / 文件夹根植可移植（option C，选中，并升级为每工作区独立 db 文件）。选文件夹根植。
 
-**推理与权衡**："聊天历史随文件夹走"一度被判为大改——但那是在 Postgres 语境下（消息都在一个中心 PG 库里）。在 SQLite 决策（决策 18）下这个判断被修正：**SQLite 本身就是文件**，所以把整个工作区的库做成 `<folder>/.kith/workspace.db` 即可，不需要改存储格式。拆分原则是——人可读、本就该落文件、需要随工作区走的进文件夹（agent 配置 + 空间层/agent 层记忆，明文）；需要高效查询/增量 sync/高频并发写的进该工作区自己的 db（消息/任务/频道/成员）。中心库退化为轻量 registry（有哪些工作区、路径、上次打开）。结果：拷走文件夹 = 拷走 db 文件 = 带走全部聊天/任务/成员。**真实成本有界、中等**（趁 P0 数据迁移一起做，避免做两遍）：`db/index.ts` 从全局单例改为 `Map<workspaceId, conn>` + `dbFor(workspaceId)`；24 个调用点机械替换（查询/schema 不变）；总览态跨工作区聚合从"一库 WHERE"变为"遍历 N 个工作区库"（或 SQLite ATTACH），单真人只有几个工作区、开销可忽略。
+**推理与权衡**："聊天历史随文件夹走"一度被判为大改——但那是在 Postgres 语境下（消息都在一个中心 PG 库里）。在 SQLite 决策（决策 18）下这个判断被修正：**SQLite 本身就是文件**，所以把整个 Space 的库做成 `<folder>/.kith/workspace.db` 即可，不需要改存储格式。拆分原则是：需要随 Space 走的 agent 配置与记忆进入文件夹；需要高效查询和高频写入的消息、任务、频道与 agent 进入该 Space 自己的 db；安装实例级数据进入 `app.db`。结果是复制 Space 文件夹即可带走 Space 内容，而 Human 资料和宿主设置不会被错误复制。
 
 **已核实源码事实**：两个现状事实让这条低成本——open-tag 的 seq 计数器本就按工作区分（`redis.ts` 的 `seq:${serverId}`），每工作区一库时 seq 天然在各自库内单调、`reconcileCounters` 语义照搬即可；24 个 import `db` 单例的文件查询语句与 schema 完全不变，只是把"全局 db"换成"当前工作区的 db"。
+
+---
+
+## 决策 20：仓库统一使用 pnpm
+
+**结论**：根目录、web 与 packages workspace 统一使用 pnpm 和 `pnpm-lock.yaml`。脚本参数直接传递，例如 `pnpm test --unit`，不写额外的 `--`。普通开发命令不再使用 npm；当前遗留的 `npm publish` 只属于 A6 待删除的公共包发布 workflow。
+
+**推理与权衡**：pnpm 的 workspace 与确定性依赖布局更适合当前多包仓库，也避免 npm/pnpm 双锁文件漂移。迁移已经完成，后续文档、脚本和 CI 必须保持一致。
+
+---
+
+## 决策 21：产品路线收敛为本机个人 AgentOS
+
+**结论（2026-07-11）**：Kith-space 的长期边界是一个 Human、一台物理电脑、多个本地 Space 和一组本机 agent。Windows 是 v1 正式平台，macOS/Linux 后续支持。正式发行只有 Desktop 安装包；可选浏览器入口依附 Desktop 生命周期。删除服务器部署、多真人、多机器、账户体系、云同步、对象存储、PWA 和独立 Web 发行路线。
+
+**领域收敛**：产品术语统一为 `Space`；schema、API 和类型中的 `server/serverId` 分阶段改为 `space/spaceId`，URL `/s/:slug` 保留。对外删除 `machine/machineId`，内部 daemon 称为 Local Runtime Worker。`Members` 改为 `Agents`，Human 资料位于 Settings，Dock 固定为 `Chat | Inbox | Tasks | Agents | Settings`。
+
+**数据与配置**：允许破坏性重置当前开发数据，不编写旧 `.kith` 迁移。正式产品不要求 `.env`；端口、Web 模式、访问 Token、托盘和自启动由 Desktop 设置管理。文件与附件只存本地磁盘，未来备份采用显式导出/导入。
+
+**删除不是延后**：多真人、远程 agent 主机、公网托管、SaaS、云数据库、移动 Web、PWA 和推送是永久非目标。邮箱、日历、画布、跨 Space 聚合、HTTPS 安全升级及 macOS/Linux 发行才是延后能力。
+
+**实施方式**：先同步权威文档，再依次完成本地领域与 `app.db`、浏览器访问安全、Electron 宿主、UI/入口清理和继承资产总审计。每阶段独立验证、独立提交。完整规格见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`。
 
 ---
 
@@ -317,7 +337,7 @@ SQLite 决策（决策 18）落定后这个成本被**修正**：SQLite 本身�
 - **项目名**：已定 **Kith-space**。Kith = 你信任的一圈熟人（对应 agent 作为有身份/记忆的团队成员这一核心），-space = 人与 agent 共处的空间 + 开发者对 namespace/workspace 的语感。可用性已核查：npm 无 `kith-space` 包（registry 返回 404）、GitHub 无同名项目，仅存在拼写近似的 `kitspace`（无 h，电子元件分享站）需留意混淆风险。
 - **dock 具体图标集**：右栏底部 dock 切换哪些模块的结构已定（决策 14），但具体图标集属便宜改、UI 收尾项，暂不锁定。
 - **起步角色模板内容**：模板的机制已定（空白职责 + 少量可选起点，决策 10），但模板具体写什么内容留待后填，随时可微调。
-- **跨设备访问的认证方案**：level-two（跨设备/局域网/公网）及其配套的鉴权 + agent 权限重估/沙箱，明确**延后**（决策 8/17）。它必须与安全升级捆绑上线，不在 v1 范围，方案细节留白。
+- **HTTPS 与 runtime 权限升级细节**：v1 的 LAN 浏览器入口只做 HTTP + 访问 Token，并明确限于受信任私网。HTTPS 和更细权限是邮箱、浏览器等高风险模块上线前的硬前置，具体实现将在对应阶段单独设计。
 
 ---
 

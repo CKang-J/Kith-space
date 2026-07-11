@@ -27,7 +27,7 @@
 
 ## 对 Kith-space 的可用点（供后续 wave，非 v1 必做）
 
-- **`--auto`（auto-approve 未被 deny 的权限）**：比现在硬编码的 `--dangerously-skip-permissions` 更细的选择。做安全升级（决策 8 的触发点：上邮箱/浏览器或开跨设备访问）时，可用 `--auto` + agent 配置里对危险工具设 `deny/ask`，替代"一刀切跳过"。
+- **`--auto`（auto-approve 未被 deny 的权限）**：比现在硬编码的 `--dangerously-skip-permissions` 更细的选择。做安全升级（决策 8/21 的触发点：上线邮箱、浏览器等会摄入不可信内容的模块）时，可用 `--auto` + agent 配置里对危险工具设 `deny/ask`，替代"一刀切跳过"。
 - **`opencode serve` + `run --attach http://localhost:PORT`**：现适配器每轮都新 spawn `opencode run`（冷启动开销，见 `runtime-adapters-current-state.md` §5.1）。将来可跑一个常驻 server、每轮 attach，降延迟。`OPENCODE_SERVER_PASSWORD` 可加鉴权。
 - **session 延续**：`--session <id>` / `--continue` / `--fork`。现适配器已用 `--session`；`--fork` 将来可支持"从某会话分叉"。
 - **`--format json`**（已用）解析事件流；`--thinking` 可显示思考块。
