@@ -10,24 +10,20 @@ import { Chat } from "./views/Chat.tsx";
 import { Showcase } from "./views/Showcase.tsx";
 import { Agents } from "./views/Members.tsx";
 import { Tasks, Search, Settings, Inbox, Saved } from "./views/misc.tsx";
-import { Landing } from "./views/Landing.tsx";
-import { Features } from "./views/Features.tsx";
+import { AccessTokenGate } from "./views/AccessTokenGate.tsx";
 import { homeRoute } from "./routing.ts";
 import { SPACE_ROUTE_PATTERN } from "./shell/workspaceRoute.ts";
 import "./i18n";
 import "./styles.css";
 
-// Public home ("/"). The marketing Landing is for anonymous visitors only; a user who has — or is
-// still resolving — a session must never see it. While the bootstrap runs we show the workspace
-// skeleton (NOT the marketing page, and NOT a blank screen), then send an authed user to their
-// workspace. Same "wait for bootstrap before deciding" gate as RootRedirect/WorkspaceRoute, so
-// every route is consistent and there is no flash of the wrong screen on refresh/deep-link.
+// Home waits for the HttpOnly Cookie session bootstrap. Anonymous browser clients see the Access
+// Token gate; authenticated clients go straight to their Space without flashing the gate.
 function PublicHome() {
   const { slug, ready, authState } = useStore();
   switch (homeRoute({ authState, ready })) {
     case "redirect": return <Navigate to={`/s/${slug}/channel`} replace />;
     case "skeleton": return <WorkspaceSkeleton chat />; // bootstrap → we'll land on /channel, so render the 4-col chat skeleton now (shift-free)
-    default: return <Landing />;
+    default: return <AccessTokenGate />;
   }
 }
 
@@ -51,7 +47,7 @@ function WorkspaceRoute() {
   // URL → store: a known-but-not-active slug (Space switcher, deep link, browser back/forward) drives a client-side switch.
   useEffect(() => { if (ready && authState === "authed" && known && routeSlug !== activeSlug) switchSpace(routeSlug!); }, [ready, authState, known, routeSlug, activeSlug, switchSpace]);
   if (!ready || (known && routeSlug !== activeSlug)) return <WorkspaceSkeleton />; // bootstrap or a switch in flight → skeleton (do NOT bounce the URL while slug catches up)
-  if (authState !== "authed") return <Navigate to="/" replace />; // A3 replaces the temporary JWT gate with access-token sessions
+  if (authState !== "authed") return <Navigate to="/" replace />;
   if (routeSlug !== activeSlug) { // unknown / stale slug → canonicalize to the active Space
     const pathname = loc.pathname.replace(/^\/s\/[^/]+/, `/s/${activeSlug}`);
     return <Navigate to={`${pathname}${loc.search}${loc.hash}`} replace />;
@@ -67,7 +63,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<PublicHome />} />
-          <Route path="/features" element={<Features />} />
           <Route path={SPACE_ROUTE_PATTERN} element={<WorkspaceRoute />}>
             <Route index element={<Navigate to="channel" replace />} />
             <Route path="inbox" element={<Inbox />} />

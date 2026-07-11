@@ -47,7 +47,8 @@ interface AppConnection {
 
 let connection: AppConnection | undefined;
 
-function appDatabase(): Database.Database {
+/** Internal app-data connection shared by installation-level persistence adapters. */
+export function appDataConnection(): Database.Database {
   const dbPath = path.resolve(appDbFile());
   if (connection?.dbPath === dbPath) return connection.sqlite;
   connection?.sqlite.close();
@@ -74,6 +75,24 @@ function appDatabase(): Database.Database {
       root_path TEXT NOT NULL UNIQUE,
       last_opened_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS browser_access_settings (
+      singleton_key INTEGER PRIMARY KEY NOT NULL CHECK (singleton_key = 1),
+      mode TEXT NOT NULL DEFAULT 'off' CHECK (mode IN ('off', 'local', 'lan')),
+      port INTEGER NOT NULL DEFAULT 7777 CHECK (port BETWEEN 1 AND 65535),
+      access_token_hash TEXT,
+      token_revision INTEGER NOT NULL DEFAULT 0 CHECK (token_revision >= 0)
+    );
+    CREATE TABLE IF NOT EXISTS browser_sessions (
+      token_hash TEXT PRIMARY KEY NOT NULL CHECK (length(token_hash) = 64),
+      token_revision INTEGER NOT NULL CHECK (token_revision > 0),
+      created_at INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS browser_sessions_revision_idx
+      ON browser_sessions (token_revision);
+    INSERT OR IGNORE INTO browser_access_settings (
+      singleton_key, mode, port, access_token_hash, token_revision
+    ) VALUES (1, 'off', 7777, NULL, 0);
   `);
   connection = { sqlite, dbPath };
   return sqlite;
@@ -125,7 +144,7 @@ function mapHuman(row: HumanRow): HumanProfile {
 }
 
 export function getHumanProfile(): HumanProfile | undefined {
-  const row = appDatabase().prepare(`
+  const row = appDataConnection().prepare(`
     SELECT id, name, email, description, created_at, updated_at
     FROM human_profile WHERE singleton_key = 1
   `).get() as HumanRow | undefined;
@@ -150,7 +169,7 @@ export function initializeHumanProfile(input: {
     createdAt: now,
     updatedAt: now,
   };
-  appDatabase().prepare(`
+  appDataConnection().prepare(`
     INSERT INTO human_profile (singleton_key, id, name, email, description, created_at, updated_at)
     VALUES (1, @id, @name, @email, @description, @createdAt, @updatedAt)
   `).run(values);
@@ -170,7 +189,7 @@ export function updateHumanProfile(input: {
     description: input.description === undefined ? current.description : normalizeDescription(input.description),
     updatedAt: Date.now(),
   };
-  appDatabase().prepare(`
+  appDataConnection().prepare(`
     UPDATE human_profile
     SET name = @name, email = @email, description = @description, updated_at = @updatedAt
     WHERE singleton_key = 1
@@ -191,21 +210,21 @@ function mapSpace(row: SpaceRow): SpaceRecord {
 }
 
 export function getSpaceRecord(spaceId: string): SpaceRecord | undefined {
-  const row = appDatabase().prepare(`
+  const row = appDataConnection().prepare(`
     SELECT id, name, slug, root_path, last_opened_at FROM spaces WHERE id = ?
   `).get(spaceId) as SpaceRow | undefined;
   return row ? mapSpace(row) : undefined;
 }
 
 export function getSpaceRecordBySlug(slug: string): SpaceRecord | undefined {
-  const row = appDatabase().prepare(`
+  const row = appDataConnection().prepare(`
     SELECT id, name, slug, root_path, last_opened_at FROM spaces WHERE slug = ?
   `).get(slug) as SpaceRow | undefined;
   return row ? mapSpace(row) : undefined;
 }
 
 export function listSpaceRecords(): SpaceRecord[] {
-  const rows = appDatabase().prepare(`
+  const rows = appDataConnection().prepare(`
     SELECT id, name, slug, root_path, last_opened_at FROM spaces ORDER BY last_opened_at DESC
   `).all() as SpaceRow[];
   return rows.map(mapSpace);
@@ -220,7 +239,7 @@ export function registerSpace(record: {
 }): SpaceRecord {
   const rootPath = path.resolve(record.rootPath);
   const lastOpenedAt = record.lastOpenedAt ?? new Date();
-  appDatabase().prepare(`
+  appDataConnection().prepare(`
     INSERT INTO spaces (id, name, slug, root_path, last_opened_at)
     VALUES (@id, @name, @slug, @rootPath, @lastOpenedAt)
     ON CONFLICT(id) DO UPDATE SET
@@ -233,15 +252,15 @@ export function registerSpace(record: {
 }
 
 export function touchSpace(spaceId: string): void {
-  appDatabase().prepare("UPDATE spaces SET last_opened_at = ? WHERE id = ?").run(Date.now(), spaceId);
+  appDataConnection().prepare("UPDATE spaces SET last_opened_at = ? WHERE id = ?").run(Date.now(), spaceId);
 }
 
 export function renameSpace(spaceId: string, name: string): void {
-  appDatabase().prepare("UPDATE spaces SET name = ?, last_opened_at = ? WHERE id = ?").run(name, Date.now(), spaceId);
+  appDataConnection().prepare("UPDATE spaces SET name = ?, last_opened_at = ? WHERE id = ?").run(name, Date.now(), spaceId);
 }
 
 export function unregisterSpace(spaceId: string): void {
-  appDatabase().prepare("DELETE FROM spaces WHERE id = ?").run(spaceId);
+  appDataConnection().prepare("DELETE FROM spaces WHERE id = ?").run(spaceId);
 }
 
 export function closeAppDatabase(): void {

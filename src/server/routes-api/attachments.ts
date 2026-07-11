@@ -1,14 +1,12 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
-import type { BaseCtx, SpaceCtx } from "./ctx.js";
+import type { HumanCtx, SpaceCtx } from "./ctx.js";
 import { and, eq } from "drizzle-orm";
 import { dbForSpace, schema } from "../../db/index.js";
 import { findAttachmentById } from "../../db/lookup.js";
 import { parseUpload } from "../attachments.js";
-import { verifyUser } from "../auth.js";
-import { localHumanForSubject } from "../../human/humanAuthority.js";
 import { canHumanReadChannel } from "../channelAccess.js";
 import { readObject } from "../storage.js";
-import { bearer, sendErr, sendJson } from "../util.js";
+import { sendErr, sendJson } from "../util.js";
 
 /**
  * MIME types safe for inline display with no additional restrictions.
@@ -90,15 +88,11 @@ export function safeDownloadHeaders(storedMime: string, filename: string): Recor
   };
 }
 
-export async function handlePublicAttachmentGet(ctx: BaseCtx): Promise<boolean> {
-  const { req, res, url, method, p } = ctx;
-  // Attachment download/preview: browsers cannot set headers for anchor/img tags, so the token is passed as a query param (same approach as SSE). Placed before the auth check.
+export async function handleHumanAttachmentGet(ctx: HumanCtx): Promise<boolean> {
+  const { res, method, p } = ctx;
+  // Attachment download/preview uses the already-authorized Desktop or browser Cookie request.
   const adl = /^\/api\/attachments\/([^/]+?)(\/preview)?$/.exec(p);
   if (adl && adl[1] !== "upload" && method === "GET") {
-    const subjectId = verifyUser(url.searchParams.get("token") ?? bearer(req));
-    if (!subjectId) return (sendErr(res, 401, "unauthorized"), true);
-    const human = localHumanForSubject(subjectId);
-    if (!human) return (sendErr(res, 403, "not the local Human"), true);
     const found = await findAttachmentById(adl[1]!);
     const a = found?.value;
     if (!a) return (sendErr(res, 404, "attachment not found"), true);

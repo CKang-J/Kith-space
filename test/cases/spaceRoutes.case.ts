@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { getSpaceRecordBySlug, listSpaceRecords } from "../../src/app-data/appDatabase.ts";
+import { getSpaceRecordBySlug } from "../../src/app-data/appDatabase.ts";
 import { closeAllDatabases, dbForSpace, schema } from "../../src/db/index.ts";
 import { ensurePersonalApp } from "../../src/db/personalApp.ts";
-import { signUser, verifyUser } from "../../src/server/auth.ts";
 import { handleApi } from "../../src/server/routes-api/index.ts";
 import { handleSpacesHumanScope } from "../../src/server/routes-api/spaces.ts";
 
@@ -24,6 +23,7 @@ function responseCapture(): { response: CapturedResponse; res: any } {
 function jsonRequest(body?: unknown): any {
   const req = Readable.from(body === undefined ? [] : [JSON.stringify(body)]) as any;
   req.headers = {};
+  req.socket = { remoteAddress: "127.0.0.1" };
   return req;
 }
 
@@ -84,42 +84,56 @@ try {
   );
   assert.ok(unread.body.every((item: any) => item.unreadCount === 0));
 
-  const token = signUser(human.id);
   const scopedRequest = jsonRequest();
-  scopedRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+  scopedRequest.headers = {
+    "x-kith-desktop-token": process.env.KITH_SPACE_DESKTOP_TOKEN!,
+    "x-space-id": home.id,
+  };
   const scopedCapture = responseCapture();
   await handleApi(scopedRequest, scopedCapture.res, new URL("http://localhost/api/channels"), "GET");
   assert.equal(scopedCapture.response.status, 200);
 
   for (const path of ["/api/agents"]) {
     const scopedRequest = jsonRequest();
-    scopedRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+    scopedRequest.headers = {
+      "x-kith-desktop-token": process.env.KITH_SPACE_DESKTOP_TOKEN!,
+      "x-space-id": home.id,
+    };
     const scopedCapture = responseCapture();
     await handleApi(scopedRequest, scopedCapture.res, new URL(`http://localhost${path}`), "GET");
     assert.equal(scopedCapture.response.status, 200, path);
   }
 
   const modelsRequest = jsonRequest();
-  modelsRequest.headers = { authorization: `Bearer ${token}` };
+  modelsRequest.headers = { "x-kith-desktop-token": process.env.KITH_SPACE_DESKTOP_TOKEN! };
   const modelsCapture = responseCapture();
   await handleApi(modelsRequest, modelsCapture.res, new URL("http://localhost/api/local-runtime/models/claude"), "GET");
   assert.equal(modelsCapture.response.status, 200);
 
   const retiredMachinesRequest = jsonRequest();
-  retiredMachinesRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+  retiredMachinesRequest.headers = {
+    "x-kith-desktop-token": process.env.KITH_SPACE_DESKTOP_TOKEN!,
+    "x-space-id": home.id,
+  };
   const retiredMachinesCapture = responseCapture();
   const retiredMachinesPath = `/api/spaces/${home.id}/machines`;
   await handleApi(retiredMachinesRequest, retiredMachinesCapture.res, new URL(`http://localhost${retiredMachinesPath}`), "GET");
   assert.equal(retiredMachinesCapture.response.status, 404);
 
   const channelRequest = jsonRequest({ name: "human-authority" });
-  channelRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+  channelRequest.headers = {
+    "x-kith-desktop-token": process.env.KITH_SPACE_DESKTOP_TOKEN!,
+    "x-space-id": home.id,
+  };
   const channelCapture = responseCapture();
   await handleApi(channelRequest, channelCapture.res, new URL("http://localhost/api/channels"), "POST");
   assert.equal(channelCapture.response.status, 200);
 
   const sidebarPutRequest = jsonRequest({ pinnedChannelIds: [channelCapture.response.body.id] });
-  sidebarPutRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+  sidebarPutRequest.headers = {
+    "x-kith-desktop-token": process.env.KITH_SPACE_DESKTOP_TOKEN!,
+    "x-space-id": home.id,
+  };
   const sidebarPutCapture = responseCapture();
   const sidebarPath = `/api/spaces/${home.id}/sidebar-order`;
   await handleApi(sidebarPutRequest, sidebarPutCapture.res, new URL(`http://localhost${sidebarPath}`), "PUT");
@@ -127,32 +141,32 @@ try {
   assert.deepEqual(sidebarPutCapture.response.body.pinnedChannelIds, [channelCapture.response.body.id]);
 
   const sidebarGetRequest = jsonRequest();
-  sidebarGetRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+  sidebarGetRequest.headers = {
+    "x-kith-desktop-token": process.env.KITH_SPACE_DESKTOP_TOKEN!,
+    "x-space-id": home.id,
+  };
   const sidebarGetCapture = responseCapture();
   await handleApi(sidebarGetRequest, sidebarGetCapture.res, new URL(`http://localhost${sidebarPath}`), "GET");
   assert.equal(sidebarGetCapture.response.status, 200);
   assert.deepEqual(sidebarGetCapture.response.body.pinnedChannelIds, [channelCapture.response.body.id]);
 
   const foreignTokenRequest = jsonRequest();
-  foreignTokenRequest.headers = { authorization: `Bearer ${signUser("not-the-local-human")}`, "x-space-id": home.id };
+  foreignTokenRequest.headers = {
+    "x-kith-desktop-token": "incorrect-desktop-token",
+    "x-space-id": home.id,
+  };
   const foreignTokenCapture = responseCapture();
   await handleApi(foreignTokenRequest, foreignTokenCapture.res, new URL("http://localhost/api/channels"), "GET");
-  assert.equal(foreignTokenCapture.response.status, 403);
+  assert.equal(foreignTokenCapture.response.status, 401);
 
-  const previousDevLogin = process.env.ALLOW_DEV_LOGIN;
-  process.env.ALLOW_DEV_LOGIN = "true";
-  try {
-    const spacesBeforeDevLogin = listSpaceRecords().length;
-    const devLoginRequest = jsonRequest({ name: "another-person" });
-    const devLoginCapture = responseCapture();
-    await handleApi(devLoginRequest, devLoginCapture.res, new URL("http://localhost/api/auth/dev-login"), "POST");
-    assert.equal(devLoginCapture.response.status, 200);
-    assert.equal(verifyUser(devLoginCapture.response.body.token), human.id);
-    assert.equal(listSpaceRecords().length, spacesBeforeDevLogin);
-  } finally {
-    if (previousDevLogin === undefined) delete process.env.ALLOW_DEV_LOGIN;
-    else process.env.ALLOW_DEV_LOGIN = previousDevLogin;
-  }
+  const devLoginRequest = jsonRequest({ name: "another-person" });
+  devLoginRequest.headers = {
+    "x-kith-desktop-token": process.env.KITH_SPACE_DESKTOP_TOKEN!,
+    "x-space-id": home.id,
+  };
+  const devLoginCapture = responseCapture();
+  await handleApi(devLoginRequest, devLoginCapture.res, new URL("http://localhost/api/auth/dev-login"), "POST");
+  assert.equal(devLoginCapture.response.status, 404);
 
   for (const retired of [
     ["POST", "/api/auth/register"],
@@ -165,7 +179,10 @@ try {
     ["GET", `/api/spaces/${home.id}/notification-settings`],
   ] as const) {
     const retiredRequest = jsonRequest({});
-    retiredRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+    retiredRequest.headers = {
+      "x-kith-desktop-token": process.env.KITH_SPACE_DESKTOP_TOKEN!,
+      "x-space-id": home.id,
+    };
     const retiredCapture = responseCapture();
     const url = new URL(`http://localhost${retired[1]}`);
     await handleApi(retiredRequest, retiredCapture.res, url, retired[0]);
@@ -173,7 +190,10 @@ try {
   }
 
   const legacyPatchRequest = jsonRequest({ name: "Renamed Home", slug: "renamed-home" });
-  legacyPatchRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+  legacyPatchRequest.headers = {
+    "x-kith-desktop-token": process.env.KITH_SPACE_DESKTOP_TOKEN!,
+    "x-space-id": home.id,
+  };
   const legacyPatchCapture = responseCapture();
   const legacyPatchPath = `/api/servers/${home.id}`;
   await handleApi(legacyPatchRequest, legacyPatchCapture.res, new URL(`http://localhost${legacyPatchPath}`), "PATCH");
@@ -181,14 +201,20 @@ try {
   assert.equal(getSpaceRecordBySlug("renamed-home"), undefined);
 
   const legacyHeaderRequest = jsonRequest();
-  legacyHeaderRequest.headers = { authorization: `Bearer ${token}`, "x-server-id": home.id };
+  legacyHeaderRequest.headers = {
+    "x-kith-desktop-token": process.env.KITH_SPACE_DESKTOP_TOKEN!,
+    "x-server-id": home.id,
+  };
   const legacyHeaderCapture = responseCapture();
   await handleApi(legacyHeaderRequest, legacyHeaderCapture.res, new URL("http://localhost/api/channels"), "GET");
   assert.equal(legacyHeaderCapture.response.status, 400);
   assert.match(legacyHeaderCapture.response.body.error, /x-space-id header required/);
 
   const pathMismatchRequest = jsonRequest();
-  pathMismatchRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+  pathMismatchRequest.headers = {
+    "x-kith-desktop-token": process.env.KITH_SPACE_DESKTOP_TOKEN!,
+    "x-space-id": home.id,
+  };
   const pathMismatchCapture = responseCapture();
   const mismatchPath = `/api/spaces/${created.body.id}/machines`;
   await handleApi(pathMismatchRequest, pathMismatchCapture.res, new URL(`http://localhost${mismatchPath}`), "GET");
@@ -196,7 +222,10 @@ try {
   assert.match(pathMismatchCapture.response.body.error, /path Space/);
 
   const unknownSpaceRequest = jsonRequest();
-  unknownSpaceRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": "missing-space" };
+  unknownSpaceRequest.headers = {
+    "x-kith-desktop-token": process.env.KITH_SPACE_DESKTOP_TOKEN!,
+    "x-space-id": "missing-space",
+  };
   const unknownSpaceCapture = responseCapture();
   await handleApi(unknownSpaceRequest, unknownSpaceCapture.res, new URL("http://localhost/api/channels"), "GET");
   assert.equal(unknownSpaceCapture.response.status, 404);

@@ -1,4 +1,4 @@
-// User-facing REST: /api/*  (Bearer JWT + x-space-id)
+// Human-facing REST: /api/* (Desktop trust or browser session + x-space-id)
 //
 // Thin dispatcher. It owns ONLY the three auth gates and the dispatch order; the actual route
 // logic lives in the per-domain handlers in this directory. Each gate widens the context
@@ -15,12 +15,13 @@
 //      earlier-dispatched module's guard for the same path+method.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { spaceRecord, touchSpace } from "../../db/index.js";
-import { localHumanForSubject } from "../../human/humanAuthority.js";
-import { sendErr, bearer, spaceIdHeader } from "../util.js";
-import { verifyUser } from "../auth.js";
+import { sendErr, spaceIdHeader } from "../util.js";
+import { browserMutationAllowed } from "../browserSessionHttp.js";
+import { authenticateHumanRequest } from "../humanRequestAuth.js";
 import type { BaseCtx, HumanCtx, SpaceCtx } from "./ctx.js";
-import { handlePublicAuth, handleAuthedAuth } from "./auth.js";
-import { handlePublicAttachmentGet, handleAttachments } from "./attachments.js";
+import { handleAuthedAuth } from "./auth.js";
+import { handleHumanAttachmentGet, handleAttachments } from "./attachments.js";
+import { handleAuthenticatedBrowserAuth, handleDesktopBrowserAccess, handlePublicBrowserAuth } from "./browserAccess.js";
 import { handleSpacesHumanScope } from "./spaces.js";
 import { handleLocalRuntimeHumanScope } from "./localRuntime.js";
 import { handleSpacePreferences } from "./spacePreferences.js";
@@ -37,16 +38,19 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   const base: BaseCtx = { req, res, url, method, p };
 
   // ---- gate 0: public / self-authenticating ----
-  if (await handlePublicAuth(base)) return true;
-  if (await handlePublicAttachmentGet(base)) return true;
+  if (await handleDesktopBrowserAccess(base)) return true;
+  if (await handlePublicBrowserAuth(base)) return true;
 
-  // ---- gate 1: require a logged-in user ----
-  const subjectId = verifyUser(bearer(req));
-  if (!subjectId) return (sendErr(res, 401, "unauthorized"), true);
-  const human = localHumanForSubject(subjectId);
-  if (!human) return (sendErr(res, 403, "not the local Human"), true);
-  const humanId = human.id;
+  // ---- gate 1: require Desktop trust or a persistent browser session ----
+  const auth = authenticateHumanRequest(req);
+  if (!auth) return (sendErr(res, 401, "browser authorization required"), true);
+  if (auth.kind === "browser" && !browserMutationAllowed(req, auth.mode)) {
+    return (sendErr(res, 403, "origin or CSRF check failed"), true);
+  }
+  const humanId = auth.humanId;
   const humanCtx: HumanCtx = { ...base, humanId };
+  if (await handleAuthenticatedBrowserAuth(base, auth)) return true;
+  if (await handleHumanAttachmentGet(humanCtx)) return true;
   if (await handleAuthedAuth(humanCtx)) return true;
   if (await handleLocalRuntimeHumanScope(humanCtx)) return true;
   if (await handleSpacesHumanScope(humanCtx)) return true;

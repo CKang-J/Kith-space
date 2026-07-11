@@ -530,7 +530,7 @@ export function Features() {
   const cases = copy.cases.items;
   const [activeId, setActiveId] = useState(cases[0]!.id);
   const active = useMemo(() => cases.find((c) => c.id === activeId) ?? cases[0]!, [activeId, cases]);
-  const enterWorkspace = () => navigate(me ? `/s/${slug}/channel` : "/?as=you");
+  const enterWorkspace = () => navigate(me ? `/s/${slug}/channel` : "/");
   const nextLang: Lang = lang === "en" ? "zh" : "en";
   const switchLanguage = () => {
     void i18n.changeLanguage(nextLang);

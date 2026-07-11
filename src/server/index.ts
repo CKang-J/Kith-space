@@ -16,6 +16,11 @@ import { isWorkerConnected } from "../local-runtime/workerHub.js";
 import { sendJson, sendErr } from "./util.js";
 import { createLogger } from "../log.js";
 import { shouldServeAppShell } from "./staticRoutes.js";
+import { BrowserAccessPolicy } from "../browser-access/index.js";
+import { assertInternalCredentialsConfigured, isDesktopTrustedRequest } from "../local-runtime/internalCredentials.js";
+import { browserOriginAllowed, requestPeerIsLoopback } from "./browserSessionHttp.js";
+
+assertInternalCredentialsConfigured();
 
 // ── Security headers (helmet) ────────────────────────────────────────────────
 // CSP, COEP, and CORP are disabled here: the Vite-built frontend uses inline
@@ -36,34 +41,36 @@ const redirect = (res: import("node:http").ServerResponse, location: string): vo
   res.end();
 };
 
-// ── CORS origin whitelist ─────────────────────────────────────────────────────
-// Reads ALLOWED_ORIGIN (comma-separated list of allowed origins, e.g. "https://app.example.com").
-// Dev fallback (ALLOWED_ORIGIN unset): any localhost / 127.0.0.1 origin is permitted so Vite HMR
-// and direct curl still work. Production deployments must set ALLOWED_ORIGIN explicitly.
-const _allowedOrigins: Set<string> | null = (() => {
-  const v = process.env.ALLOWED_ORIGIN?.trim();
-  if (!v) return null; // null = dev mode, use localhost fallback
-  return new Set(v.split(",").map(s => s.trim()).filter(Boolean));
-})();
-
-/** Returns the ACAO value to echo back, or null if the origin is not allowed. */
-function corsOriginHeader(reqOrigin: string | undefined): string | null {
-  if (!reqOrigin) return null; // no Origin header → same-origin or non-browser → no ACAO needed
-  if (!_allowedOrigins) {
-    // Dev mode: allow any localhost / 127.0.0.1 origin (any port)
-    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(reqOrigin) ? reqOrigin : null;
-  }
-  return _allowedOrigins.has(reqOrigin) ? reqOrigin : null;
+const accessPolicy = new BrowserAccessPolicy();
+const listenerPolicy = accessPolicy.getListenerPolicy();
+const devPort = process.env.PORT === undefined ? null : Number(process.env.PORT);
+if (devPort !== null && (!Number.isInteger(devPort) || devPort < 1 || devPort > 65535)) {
+  throw new Error("PORT must be an integer from 1 to 65535");
 }
-
-const PORT = Number(process.env.PORT ?? 7777);
-const HOST = "127.0.0.1";
+// Core always needs a private listener for Desktop/Worker. `browserEnabled=false` closes only the ordinary
+// browser product entrance; it does not remove the Desktop's loopback transport.
+const PORT = devPort ?? listenerPolicy.port;
+const HOST = listenerPolicy.host;
 const WEBDIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist");
 const DOCSDIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../docs-site/dist");
 const log = createLogger("server");
 initRealtime();
 
 const CTYPE: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2", ".map": "application/json", ".webmanifest": "application/manifest+json" };
+
+function corsOriginHeader(req: http.IncomingMessage): string | null {
+  const origin = req.headers.origin;
+  if (!origin) return null;
+  if (isDesktopTrustedRequest(req)) return origin;
+  return browserOriginAllowed(req, accessPolicy.getSettings().mode, true) ? origin : null;
+}
+
+function canServeProductShell(req: http.IncomingMessage): boolean {
+  if (isDesktopTrustedRequest(req)) return true;
+  const settings = accessPolicy.getSettings();
+  return settings.mode !== "off" && browserOriginAllowed(req, settings.mode);
+}
+
 async function serveStatic(res: import("node:http").ServerResponse, pathname: string): Promise<boolean> {
   const rel = pathname === "/" ? "/index.html" : pathname;
   let file = path.join(WEBDIST, rel);
@@ -101,14 +108,18 @@ async function serveDocsAsset(res: import("node:http").ServerResponse, pathname:
 
 const server = http.createServer(async (req, res) => {
   await applyHelmet(req, res);
-  const allowedOrigin = corsOriginHeader(req.headers.origin);
+  const allowedOrigin = corsOriginHeader(req);
   if (allowedOrigin) {
     res.setHeader("access-control-allow-origin", allowedOrigin);
+    res.setHeader("access-control-allow-credentials", "true");
     res.setHeader("vary", "Origin");
   }
-  res.setHeader("access-control-allow-headers", "authorization,content-type,x-space-id,x-agent-id");
+  res.setHeader("access-control-allow-headers", "authorization,content-type,x-space-id,x-agent-id,x-kith-csrf");
   res.setHeader("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS");
-  if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
+  if (req.method === "OPTIONS") {
+    if (req.headers.origin && !allowedOrigin) return sendErr(res, 403, "origin not allowed");
+    res.writeHead(204); return res.end();
+  }
 
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   if (url.pathname.startsWith("/socket.io/")) return; // pass-through: handled by socket.io's own request listener (polling/handshake)
@@ -116,10 +127,14 @@ const server = http.createServer(async (req, res) => {
   const t0 = Date.now();
   res.on("finish", () => log.debug("req", { method, path: url.pathname, status: res.statusCode, ms: Date.now() - t0 }));
   try {
-    if (url.pathname === "/health") return sendJson(res, 200, { ok: true, service: "kith-space", workerConnected: isWorkerConnected(), time: new Date().toISOString() });
+    if (url.pathname === "/health") {
+      if (!requestPeerIsLoopback(req) && !isDesktopTrustedRequest(req)) return sendErr(res, 404, "not found");
+      return sendJson(res, 200, { ok: true, service: "kith-space", workerConnected: isWorkerConnected(), time: new Date().toISOString() });
+    }
     if (await handleAgentApi(req, res, url, method)) return;
     if (await handleApi(req, res, url, method)) return;
     const isRead = method === "GET" || method === "HEAD";
+    if (isRead && !canServeProductShell(req)) return sendErr(res, 403, "browser access is disabled");
     if (isRead && url.pathname === "/docs") return redirect(res, "/docs/");
     if (isRead && url.pathname.startsWith("/docs/") && await serveDocs(res, url.pathname, method === "GET")) return;
     if (isRead && url.pathname.startsWith("/_astro/") && await serveDocsAsset(res, url.pathname, method === "GET")) return;
@@ -142,5 +157,5 @@ reconcileCounters()
   .then((r) => log.info("counters reconciled", r))
   .catch((e) => log.error("counter reconcile failed (continuing)", { detail: String(e?.message ?? e) }))
   .finally(() => server.listen(PORT, HOST, () => {
-    log.info("control plane up", { url: `http://${HOST}:${PORT}`, health: `http://${HOST}:${PORT}/health`, logs: "~/.kith-space/logs/" });
+    log.info("control plane up", { url: `http://${HOST}:${PORT}`, browserMode: accessPolicy.getSettings().mode, health: `http://${HOST}:${PORT}/health`, logs: "~/.kith-space/logs/" });
   }));

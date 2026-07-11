@@ -33,11 +33,11 @@ function jsonRequest(body?: unknown): any {
 test("/api/auth/me reads and updates the canonical app.db Human profile", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "kith-human-route-"));
   const previousHome = process.env.KITH_SPACE_HOME;
-  const previousJwt = process.env.JWT_SECRET;
-  const previousDaemonKey = process.env.DAEMON_BOOTSTRAP_KEY;
+  const previousDesktopToken = process.env.KITH_SPACE_DESKTOP_TOKEN;
+  const previousWorkerToken = process.env.KITH_SPACE_WORKER_TOKEN;
   process.env.KITH_SPACE_HOME = path.join(root, "app-home");
-  process.env.JWT_SECRET = "human-route-jwt-secret-for-tests";
-  process.env.DAEMON_BOOTSTRAP_KEY = "human-route-daemon-secret-for-tests";
+  process.env.KITH_SPACE_DESKTOP_TOKEN = "human-route-desktop-token-for-tests";
+  process.env.KITH_SPACE_WORKER_TOKEN = "human-route-worker-token-for-tests";
   try {
     const { human } = await ensurePersonalApp({ name: "Ada", homeRootPath: path.join(root, "home-space") });
     const { handleAuthedAuth } = await import("../src/server/routes-api/auth.ts");
@@ -86,10 +86,10 @@ test("/api/auth/me reads and updates the canonical app.db Human profile", async 
     closeAllDatabases();
     if (previousHome === undefined) delete process.env.KITH_SPACE_HOME;
     else process.env.KITH_SPACE_HOME = previousHome;
-    if (previousJwt === undefined) delete process.env.JWT_SECRET;
-    else process.env.JWT_SECRET = previousJwt;
-    if (previousDaemonKey === undefined) delete process.env.DAEMON_BOOTSTRAP_KEY;
-    else process.env.DAEMON_BOOTSTRAP_KEY = previousDaemonKey;
+    if (previousDesktopToken === undefined) delete process.env.KITH_SPACE_DESKTOP_TOKEN;
+    else process.env.KITH_SPACE_DESKTOP_TOKEN = previousDesktopToken;
+    if (previousWorkerToken === undefined) delete process.env.KITH_SPACE_WORKER_TOKEN;
+    else process.env.KITH_SPACE_WORKER_TOKEN = previousWorkerToken;
     rmSync(root, { recursive: true, force: true });
   }
 });

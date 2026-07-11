@@ -2,6 +2,7 @@
 import WebSocket from "ws";
 import { createLogger } from "../log.js";
 import { WORKER_REJECTED_CODE, WORKER_REPLACED_CODE } from "../daemonProtocol.js";
+import { WORKER_TOKEN_HEADER } from "../local-runtime/internalCredentials.js";
 
 const INITIAL_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 30000;
@@ -14,6 +15,8 @@ export interface WsLike {
   close(code?: number, reason?: string): void;
   readyState: number;
 }
+
+type WsConnectOptions = { headers: Record<string, string> };
 
 export class Connection {
   private ws: WsLike | null = null;
@@ -30,7 +33,7 @@ export class Connection {
     private key: string,
     private onMsg: (m: any) => void,
     private onOpen: () => void,
-    private mkWs: (url: string) => WsLike = (u) => new WebSocket(u),
+    private mkWs: (url: string, options: WsConnectOptions) => WsLike = (u, options) => new WebSocket(u, options),
   ) {}
 
   connect(): void { this.should = true; this.doConnect(); }
@@ -44,12 +47,12 @@ export class Connection {
 
   private doConnect(): void {
     if (!this.should) return;
-    const wsUrl = this.url.replace(/^http/, "ws") + `/daemon/connect?key=${encodeURIComponent(this.key)}`;
+    const wsUrl = this.url.replace(/^http/, "ws") + "/daemon/connect";
     this.log.info("connecting", { url: this.url });
     if (this.watchdog) { clearTimeout(this.watchdog); this.watchdog = null; }
     this.accepted = false;
     this.lastServerFrameAt = 0;
-    this.ws = this.mkWs(wsUrl);
+    this.ws = this.mkWs(wsUrl, { headers: { [WORKER_TOKEN_HEADER]: this.key } });
     // NB: do NOT reset the backoff on `open`. A rejected key also briefly opens before the server closes it;
     // resetting here would pin the backoff at 1s and turn a permanent rejection into a once-a-second storm.
     this.ws.on("open", () => { this.log.info("connected"); this.onOpen(); });
@@ -80,7 +83,7 @@ export class Connection {
         // exactly what to do, instead of looping silently every second.
         this.delay = MAX_BACKOFF_MS;
         this.log.error(
-          "server rejected the local runtime worker bootstrap key. Ensure DAEMON_BOOTSTRAP_KEY matches the server, then restart the worker.",
+          "server rejected the local runtime worker token. Ensure KITH_SPACE_WORKER_TOKEN matches the Core Service, then restart the worker.",
           { code, reason: reason?.toString?.() ?? String(reason ?? "") },
         );
       } else {

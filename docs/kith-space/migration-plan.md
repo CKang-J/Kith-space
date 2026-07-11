@@ -44,19 +44,23 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 模块边界建议：`src/app-data/` 负责 app.db；`src/spaces/` 负责 Space registry/生命周期；`src/human/` 负责唯一 Human；`src/local-runtime/` 负责 Desktop 与 worker 内部协议。实际命名在落地前按现有结构核对，不为目录整齐而搬动无关文件。
 
-验证：A2 最终通过 typecheck、web build（2563 modules）和完整 integration；unit 367 项中 366 项通过，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。fresh/legacy baseline、唯一 Worker 与跨 Space 路由、Worker loopback-only、Machine/旧 Space 契约不可达、Human 状态、任务/消息以及 Space 隔离附件均有覆盖。A3 前继续保持 Core Service loopback-only，并由 `dev:e2e:up` 等待 `/health.workerConnected`。
+验证：A2 最终通过 typecheck、web build（2563 modules）和完整 integration；unit 367 项中 366 项通过，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。fresh/legacy baseline、唯一 Worker 与跨 Space 路由、Worker loopback-only、Machine/旧 Space 契约不可达、Human 状态、任务/消息以及 Space 隔离附件均有覆盖。
 
 ### A3 浏览器访问安全边界
 
-改动边界：
+当前进度：A3 已完成。浏览器入口不再复用 Human JWT 或开发登录，Desktop/Worker/浏览器三类凭据已彻底分离。
 
-- `BrowserAccessPolicy` 只表达关闭/本机/LAN 与监听决策。
-- `AccessTokenService` 负责生成、哈希、轮换和验证。
-- `BrowserSessionService` 负责持久授权、撤销、cookie 与 CSRF。
-- `DesktopTrustBridge` 只识别 Electron 内嵌请求，不向普通浏览器暴露万能凭据。
-- `InternalProcessCredentials` 每次启动生成，只用于 Core Service 与 Local Runtime Worker。
+已落地边界：
 
-验证：策略单测、token/session 集成测试、监听地址测试、日志泄露扫描和 LAN 风险文案。
+- `BrowserAccessPolicy` 只表达 off/local/lan 与监听决策：off 只留 Desktop/Worker 私有 loopback 传输，local 绑定 `127.0.0.1`，lan 绑定 `0.0.0.0`。
+- `AccessTokenService` 负责 16-256 字符自定义 Token、留空时的 32 字节自动生成、scrypt 哈希、revision 轮换与验证。
+- `BrowserSessionService` 只负责持久授权、触碰和撤销；`browserSessionHttp` 集中管理 HttpOnly/Strict Cookie、Origin/CSRF 和公开 Token 验证限速。
+- Desktop 专用 `/api/desktop/browser-access` 管理面只认 `x-kith-desktop-token`，对浏览器统一 404；浏览器只能用 Cookie 会话访问产品 API。
+- `generateInternalProcessCredentials` 可生成独立 Desktop/Worker 凭据；当前分进程开发从 `KITH_SPACE_DESKTOP_TOKEN`/`KITH_SPACE_WORKER_TOKEN` 注入，Worker 用 `/daemon/connect` 的私有 `x-kith-worker-token` header 握手，不把凭据放入 URL；A4 再由 Desktop 每次启动调用。
+- 前端以 Cookie 会话探测和 Access Token Gate 代替 Human Bearer/localStorage JWT、dev-login、`?as=` 和 URL token。Socket 握手只携带 `spaceId`。
+- LAN 浏览器拥有完整产品能力，v1 仅 HTTP 且只限受信任私网，明确禁止端口转发或公网暴露。
+
+验证：typecheck 通过，web build 通过（2559 modules），integration 全量通过，unit 除既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro` 外全部通过。策略、Token 密码学、Cookie/CSRF/Origin/限速、Desktop/Worker 内部凭据、Token 验证到会话/产品 API/退出/撤销/轮换失效、前端 Token Gate 与旧 JWT/URL token 活跃路径均有行为或契约覆盖。
 
 ### A4 Electron Desktop 宿主
 
@@ -85,7 +89,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 - A1 先于任何代码改动，避免继续沿旧路线设计。
 - A2 先于 A3/A4/A5；Token、Desktop 和 UI 都依赖唯一 Human、app.db 与 Space 领域。
-- A3 先于 LAN 正式开放；不能先绑定 `0.0.0.0` 再补鉴权。
+- A3 已在 LAN 绑定前建立 Token/会话/Origin/CSRF 安全门；后续不得绕过该门直接暴露新路由。
 - A4 先于删除用户 `.env` 和手工 daemon key；Desktop 必须先接管配置与内部凭据。
 - A5 在领域/API 稳定后做，避免 UI 同时适配两套命名。
 - A6 最后执行，但每个前置阶段都要清理自己产生的孤立引用。

@@ -23,13 +23,18 @@ test("active Core Service paths use the installation-local worker instead of Mac
   assert.doesNotMatch(catchup, /schema\.machines|schema\.agents\.machineId|sendToMachine/);
 });
 
-test("server is loopback-only until LAN token auth is implemented", () => {
+test("browser access policy owns the Core listener while the runtime worker remains installation-local", () => {
   const server = read("../src/server/index.ts");
   const workerSocket = read("../src/server/ws.ts");
-  assert.match(server, /const HOST = "127\.0\.0\.1"/);
+  assert.match(server, /new BrowserAccessPolicy\(\)/);
+  assert.match(server, /const listenerPolicy = accessPolicy\.getListenerPolicy\(\)/);
+  assert.match(server, /const HOST = listenerPolicy\.host/);
   assert.match(server, /server\.listen\(PORT, HOST/);
   assert.match(server, /workerConnected: isWorkerConnected\(\)/);
   assert.doesNotMatch(server, /reconcileMachinesOnBoot|startMachineSweeper/);
+  assert.match(workerSocket, /req\.headers\[WORKER_TOKEN_HEADER\]/);
+  assert.match(workerSocket, /isLoopbackAddress\(req\.socket\.remoteAddress\)/);
+  assert.doesNotMatch(workerSocket, /searchParams\.get\("key"\)/);
   assert.match(workerSocket, /agent\.status === "sleeping" \|\| agent\.activity === "sleeping"/);
   assert.match(workerSocket, /eq\(schema\.agents\.status, "active"\)/);
 });

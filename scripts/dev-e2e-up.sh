@@ -6,9 +6,12 @@ set -euo pipefail
 
 val() { grep -E "^$1=" .env | head -1 | cut -d= -f2-; }
 PORT=$(val PORT)
-KEY=$(val DAEMON_BOOTSTRAP_KEY)
+DESKTOP_TOKEN=$(val KITH_SPACE_DESKTOP_TOKEN)
+WORKER_TOKEN=$(val KITH_SPACE_WORKER_TOKEN)
 HOME_DIR=$(val KITH_SPACE_HOME | sed "s|^\$HOME|$HOME|; s|^~|$HOME|")
-: "${PORT:?PORT missing in .env}" "${KEY:?DAEMON_BOOTSTRAP_KEY missing in .env}"
+: "${PORT:?PORT missing in .env}" \
+  "${DESKTOP_TOKEN:?KITH_SPACE_DESKTOP_TOKEN missing in .env}" \
+  "${WORKER_TOKEN:?KITH_SPACE_WORKER_TOKEN missing in .env}"
 RUN="${HOME_DIR:-$HOME/.kith-space}"
 
 command -v claude >/dev/null 2>&1 || { echo "claude CLI not found on PATH; install and authenticate it before dev:e2e"; exit 1; }
@@ -23,6 +26,11 @@ echo "schema + bootstrap seed (idempotent)"
 pnpm run db:push >/dev/null 2>&1 || true
 pnpm run seed >/dev/null 2>&1 || true
 
+echo "configuring local browser access"
+ACCESS_TOKEN=$(pnpm --silent run browser-access:dev local --port "$PORT" --rotate-token)
+: "${ACCESS_TOKEN:?browser access command did not return a token}"
+echo "  Access Token: $ACCESS_TOKEN"
+
 echo "building web"
 pnpm run web:build >/dev/null
 
@@ -32,7 +40,7 @@ for i in $(seq 1 30); do curl -sf "http://127.0.0.1:$PORT/health" >/dev/null 2>&
 curl -sf "http://127.0.0.1:$PORT/health" >/dev/null 2>&1 || { echo "server did not become healthy; see $RUN/logs/dev-e2e-server.log"; exit 1; }
 
 echo "starting local runtime worker"
-nohup pnpm exec tsx src/daemon/index.ts --api-key "$KEY" > "$RUN/logs/dev-e2e-daemon.log" 2>&1 & echo $! > "$RUN/dev-e2e-daemon.pid"
+nohup pnpm exec tsx src/daemon/index.ts > "$RUN/logs/dev-e2e-daemon.log" 2>&1 & echo $! > "$RUN/dev-e2e-daemon.pid"
 for i in $(seq 1 30); do curl -sf "http://127.0.0.1:$PORT/health" 2>/dev/null | grep -q '"workerConnected":true' && break; sleep 1; done
 curl -sf "http://127.0.0.1:$PORT/health" 2>/dev/null | grep -q '"workerConnected":true' || { echo "local runtime worker did not connect; see $RUN/logs/dev-e2e-daemon.log"; exit 1; }
 
@@ -43,7 +51,8 @@ cat <<EOF
 
 dev E2E up (worktree-isolated)
   data dir : $RUN
-  login    : http://127.0.0.1:$PORT/?as=you
+  app      : http://127.0.0.1:$PORT/
+  login    : enter the Access Token printed above
   agent    : @dev-bot (claude/sonnet) in #all
   logs     : $RUN/logs/dev-e2e-{server,daemon}.log
   stop     : pnpm run dev:e2e:down

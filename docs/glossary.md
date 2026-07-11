@@ -150,10 +150,16 @@
 : Desktop 管理的本机单实例 HTTP/socket.io/业务服务。名称只描述技术进程，不是公开部署的 server 产品，也不等于 Space。
 
 **Web 模式**
-: Desktop 设置中的浏览器入口策略：关闭（默认）、仅本机、局域网。浏览器访问依附 Desktop 生命周期，不形成独立 Web 产品；LAN v1 仅限受信任私网的 HTTP。A3 尚未落地前，Core Service 强制 loopback-only，不能从 LAN 访问。
+: Desktop 设置中的浏览器入口策略：关闭（默认）、仅本机、局域网。关闭时 Core Service 仍保留 Desktop/Worker 的私有 loopback 传输，但不提供普通浏览器壳；仅本机绑定 `127.0.0.1`，局域网绑定 `0.0.0.0`。浏览器入口依附 Desktop 生命周期，不形成独立 Web 产品；LAN v1 仅限受信任私网的 HTTP。
 
 **访问 Token**
-: 普通浏览器首次进入 Kith-space 时验证的共享访问秘密。服务端只保存哈希，验证后建立可撤销的持久浏览器会话；它与 Desktop 信任、Worker 内部凭据和 agent session token 相互独立。
+: 普通浏览器首次进入 Kith-space 时验证的共享访问秘密。用户可设 16-256 字符，留空时自动生成 32 字节值；app.db 只保存 scrypt 哈希和 revision。它与 Desktop 信任、Worker 内部凭据和 agent session token 相互独立，不进入 URL、日志或明文数据库。
+
+**浏览器授权会话**
+: Access Token 验证成功后创建的持久会话。原始随机 session token 只存在 HttpOnly、SameSite=Strict Cookie，app.db 只存 SHA-256 哈希；写请求另做 Origin 与 CSRF 校验。会话持续到浏览器数据清除、退出、Desktop 全量撤销或 Access Token 轮换。
+
+**内部进程凭据**
+: Desktop 信任凭据和 Local Runtime Worker 控制凭据的统称。两者彼此独立，也不与浏览器 Access Token 或 agent session token 复用。A4 将由 Desktop 在每次启动生成；当前分进程开发临时使用 `KITH_SPACE_DESKTOP_TOKEN` 和 `KITH_SPACE_WORKER_TOKEN` 注入。
 
 **每工作区独立 SQLite 文件**
 : 每个 Space 把自己的 `spaces` 元数据、消息、任务、频道、agent、agent membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前是单一 19 表 baseline，所有领域外键使用 `space_id`；Human 资料和 Desktop 设置不随 Space 复制。

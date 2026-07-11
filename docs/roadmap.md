@@ -51,19 +51,22 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 
 验收：全新目录可初始化一个 Human、`Home` 和多个文件夹 Space；无需登录、邀请、机器注册、Postgres、Redis 或对象存储。
 
-当前安全过渡：A3 前 Core Service 固定监听 `127.0.0.1`，健康检查用 `workerConnected` 表示唯一 Worker 是否 ready；不得把尚无 Token 保护的服务绑定到 LAN。
-
 ### P-A3 浏览器访问安全边界
 
-- 实现“关闭/仅本机/局域网”三种模式，默认关闭。
-- 实现访问 Token、哈希存储、首次验证、HttpOnly 持久会话、轮换和全量撤销。
-- Electron 内嵌 UI 使用受控信任通道，浏览器 Token 与内部进程凭据分离。
-- Desktop 每次启动生成临时内部凭据，普通用户不配置 daemon key。
-- LAN v1 只做 HTTP，并显示私网限定和禁止公网暴露的警告。
+状态：已完成。
+
+- Web 模式已落地为关闭（默认）/仅本机/局域网；仅本机绑定 `127.0.0.1`，LAN 绑定 `0.0.0.0`。关闭模式保留 Desktop/Worker 的私有 loopback 传输，但不提供普通浏览器壳。
+- 访问 Token 可设 16-256 字符，留空自动生成 32 字节高强度值；app.db 只存 scrypt 哈希与 revision。
+- 验证成功后建立持久 HttpOnly、SameSite=Strict Cookie 会话，写请求同时校验 Origin 与 CSRF；可单会话退出、Desktop 全量撤销，Token 轮换使全部旧会话失效。
+- Desktop 信任、Worker 控制面和浏览器 Token 凭据已分离；分进程开发暂由环境注入两个独立内部凭据，A4 由 Desktop 每次启动生成。
+- Human JWT、dev-login、`?as=`、Bearer 和 URL token 传递已从活跃路径删除。
+- LAN v1 只做 HTTP 且拥有完整产品能力；只限受信任私网，禁止端口转发或公网暴露。
 
 验收：未授权浏览器不能读取或操作数据；Token 不进入 URL、日志或明文数据库；Web 模式和会话撤销可验证。
 
 ### P-A4 Electron Desktop 宿主
+
+状态：下一阶段。
 
 - 增加 `pnpm run desktop:dev`，统一启动 Core Service、Local Runtime Worker、Vite 和 Electron。
 - 实现子进程监督、稳定端口与冲突处理。
@@ -87,7 +90,7 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 
 - 删除 Dockerfile、compose、entrypoint、环境样例和远程部署文档。
 - 删除公共 server/daemon npm 发布、独立安装器和 OIDC 发布 workflow。
-- 删除残余 JWT 账户认证、Machine/多用户历史术语、PWA 和其他旧领域资产。
+- 审计 Human JWT/dev-login 等 A3 退役路径保持不可达，并删除 Machine/多用户历史术语、PWA 和其他旧领域资产。
 - 保留仓库内部的分进程开发命令与少量测试覆盖环境变量。
 - 完成 typecheck、单元、集成、web build、Electron 冒烟和文档口径审计。
 

@@ -238,7 +238,9 @@
 
 **当前结论（2026-07-11 推翻并细化）**：Electron Desktop 是唯一正式宿主和发行物，自动管理 Core Service、Local Runtime Worker 与 React UI。浏览器访问不是独立 Web 产品，而是 Desktop 运行期间对同一 Core Service 的可选入口。模式为“关闭（默认）/仅本机/局域网”，默认稳定端口 7777，可由 Desktop 修改。
 
-**访问安全**：所有浏览器首次访问都输入访问 Token，Electron 内嵌界面免输。服务端只存 Token 哈希；持久会话使用 HttpOnly、SameSite=Strict cookie。Desktop 可轮换 Token或撤销全部会话。局域网浏览器具有完整产品能力，但 v1 只支持 HTTP 和桌面级浏览器；首次开启必须警告仅限受信任私网、不得端口转发或公网暴露。
+**访问安全**：所有浏览器首次访问都输入访问 Token，Electron 内嵌界面免输。Token 可自定义 16-256 字符，留空自动生成 32 字节；app.db 只存 scrypt 哈希与 revision。持久会话的原始随机值只进 HttpOnly、SameSite=Strict Cookie，DB 只存 SHA-256 哈希；写请求同时做 Origin 和 CSRF 校验。Desktop 可轮换 Token 或撤销全部会话，轮换通过 revision 立即使全部旧会话失效。局域网浏览器具有完整产品能力，但 v1 只支持 HTTP 和桌面级浏览器；首次开启必须警告仅限受信任私网、不得端口转发或公网暴露。
+
+**凭据隔离**：浏览器 Access Token、Desktop 私有信任、Local Runtime Worker 控制凭据和 agent session token 四者互不复用。A3 已删除 Human JWT、dev-login、`?as=`、Bearer/localStorage 会话和 URL token；Desktop 管理 API 对普通浏览器返回 404。A4 Electron 将在每次启动为 Desktop/Worker 生成两个独立内部凭据；A4 前的分进程开发仅从环境变量注入这两个凭据。
 
 **Desktop 生命周期**：关闭窗口默认隐藏到托盘，服务和 agent 继续运行；显式退出才停止全部进程。可选改为关闭即退出。系统自启动默认关闭，启用后以托盘方式启动。
 

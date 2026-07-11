@@ -18,8 +18,8 @@ test("task persistence rollback, concurrency, transitions, and delivery linkage"
     env: {
       ...process.env,
       KITH_SPACE_HOME: home,
-      JWT_SECRET: process.env.JWT_SECRET ?? "kith-space-task-module-jwt",
-      DAEMON_BOOTSTRAP_KEY: process.env.DAEMON_BOOTSTRAP_KEY ?? "kith-space-task-module-daemon",
+      KITH_SPACE_DESKTOP_TOKEN: process.env.KITH_SPACE_DESKTOP_TOKEN ?? "kith-space-task-module-desktop",
+      KITH_SPACE_WORKER_TOKEN: process.env.KITH_SPACE_WORKER_TOKEN ?? "kith-space-task-module-worker",
     },
   });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);

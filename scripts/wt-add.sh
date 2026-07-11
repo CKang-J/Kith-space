@@ -23,16 +23,15 @@ git worktree add "$WT" -b "feature/$NAME" "$BASE"
 
 # Generate random secrets for each worktree — never reuse the weak defaults
 # (the server now fails fast on startup if these are missing or empty).
-WT_JWT_SECRET=$(openssl rand -hex 32)
-WT_BOOTSTRAP_KEY=$(openssl rand -hex 32)
+WT_DESKTOP_TOKEN=$(openssl rand -hex 32)
+WT_WORKER_TOKEN=$(openssl rand -hex 32)
 
 cat > "$WT/.env" <<EOF
 PORT=$SPORT
 VITE_PORT=$VPORT
-JWT_SECRET=$WT_JWT_SECRET
-DAEMON_BOOTSTRAP_KEY=$WT_BOOTSTRAP_KEY
+KITH_SPACE_DESKTOP_TOKEN=$WT_DESKTOP_TOKEN
+KITH_SPACE_WORKER_TOKEN=$WT_WORKER_TOKEN
 KITH_SPACE_HOME=$HOME/.kith-space-$SAFE
-ALLOW_DEV_LOGIN=true
 EOF
 
 echo "→ Installing deps + seeding the workspace DB (please wait)…"

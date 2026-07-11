@@ -299,7 +299,7 @@ export function Landing() {
   const { me, slug } = useStore();
   const navigate = useNavigate();
   const [lang, setLang] = useState<Lang>(() => detectLandingLang());
-  const enterWorkspace = () => navigate(me ? `/s/${slug}/channel` : "/?as=you");
+  const enterWorkspace = () => navigate(me ? `/s/${slug}/channel` : "/");
   const copy = LANDING_COPY[lang];
   const nextLang: Lang = lang === "en" ? "zh" : "en";
   const switchLanguage = () => {

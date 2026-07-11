@@ -1,5 +1,5 @@
-// Post-build prerender: SSR-renders the landing page (/) and injects the HTML
-// into dist/index.html so crawlers receive body text without executing JS.
+// Post-build prerender: inject the same loading shell shown while the browser checks its
+// HttpOnly session Cookie. This prevents the retired public Landing from flashing before React.
 //
 // Run automatically after `vite build` via the package `build` script.
 // Uses Vite's SSR build API so CSS imports are stripped without errors.
@@ -30,12 +30,12 @@ await build({
   logLevel: "warn",
 });
 
-// 2. Import the SSR entry and render the landing page to an HTML string.
+// 2. Import the SSR entry and render the bootstrap shell to an HTML string.
 //    pathToFileURL converts the absolute path to a file:// URL, which is
 //    required for dynamic import() in Node.js ESM.
 const entryPath = join(ssrOutDir, "entry-server.js");
-const { renderLanding } = await import(pathToFileURL(entryPath).href);
-const appHtml = renderLanding();
+const { renderBootstrapShell } = await import(pathToFileURL(entryPath).href);
+const appHtml = renderBootstrapShell();
 
 // 3. Patch dist/index.html — replace the empty root div with prerendered HTML.
 const template = readFileSync(join(distDir, "index.html"), "utf-8");
@@ -48,4 +48,4 @@ writeFileSync(join(distDir, "index.html"), html);
 // 4. Remove the temporary SSR bundle — it is not needed at runtime.
 rmSync(ssrOutDir, { recursive: true, force: true });
 
-console.log("prerender: landing page HTML injected into dist/index.html");
+console.log("prerender: browser-session bootstrap shell injected into dist/index.html");

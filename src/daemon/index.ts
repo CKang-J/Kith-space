@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 // Kith-space local runtime worker: one installation-level connection that hosts local CLI agents.
-// Usage: kith-space-daemon --api-key <DAEMON_BOOTSTRAP_KEY>
 import "../env.js"; // must be first: loads project root .env (does not override shell env vars like OPENAI_API_KEY)
 import { Connection } from "./connection.js";
 import { AgentManager } from "./agentManager.js";
@@ -8,30 +7,18 @@ import { listWorkspace, readWorkspaceFile, listSkills } from "./workspace.js";
 import { detectRuntimes } from "./runtimes.js";
 import { listModels } from "./listModels.js";
 import { createLogger } from "../log.js";
+import { workerBootstrapToken } from "../local-runtime/internalCredentials.js";
 
 const log = createLogger("daemon");
-const args = process.argv.slice(2);
-let apiKey = "";
-for (let i = 0; i < args.length; i++) {
-  if (args[i] === "--api-key" && args[i + 1]) { apiKey = args[++i]!; continue; }
-  console.error(`Unknown or incomplete option: ${args[i]}`);
-  process.exit(1);
-}
 // The installation-level Worker and Core Service always share one physical computer.
 // PORT remains configurable for parallel worktrees, but the host is never remotely configurable.
 const serverUrl = `http://127.0.0.1:${process.env.PORT ?? 7777}`;
-// A3/A4 replace this development bootstrap secret with an internal short-lived credential.
-if (!apiKey) apiKey = process.env.DAEMON_BOOTSTRAP_KEY ?? "";
-if (!apiKey) {
-  console.error("Usage: kith-space-daemon --api-key <DAEMON_BOOTSTRAP_KEY>");
-  console.error("   or: DAEMON_BOOTSTRAP_KEY=<key> kith-space-daemon");
-  process.exit(1);
-}
+const workerToken = workerBootstrapToken();
 
 let conn: Connection;
 const mgr = new AgentManager((m) => conn.send(m));
 
-conn = new Connection(serverUrl, apiKey, (msg) => {
+conn = new Connection(serverUrl, workerToken, (msg) => {
   if (msg.type !== "ping") log.debug("recv", { type: msg.type, agentId: msg.agentId });
   switch (msg.type) {
     case "ready:ack": break;

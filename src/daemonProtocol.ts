@@ -1,7 +1,7 @@
 // Shared local worker/server WebSocket control-plane constants. Imported by both sides so the
 // transport contract cannot drift.
 
-// RFC 6455 private close code for a bad development bootstrap key. Retrying an unchanged key
+// RFC 6455 private close code for a bad internal Worker token. Retrying an unchanged token
 // cannot succeed, so the worker client backs off to its cap and reports the cause.
 export const WORKER_REJECTED_CODE = 4001;
 

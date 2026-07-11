@@ -14,8 +14,8 @@ test("canonical /api/spaces uses app.db for list, create, update, and unread sum
       cwd: path.resolve(fileURLToPath(new URL("..", import.meta.url))),
       env: {
         ...process.env,
-        JWT_SECRET: "kith-space-route-case-jwt-secret",
-        DAEMON_BOOTSTRAP_KEY: "kith-space-route-case-daemon-key",
+        KITH_SPACE_DESKTOP_TOKEN: "kith-space-route-case-desktop-token",
+        KITH_SPACE_WORKER_TOKEN: "kith-space-route-case-worker-token",
         KITH_SPACE_HOME: path.join(root, "app-home"),
         KITH_SPACE_ROUTE_CASE_ROOT: root,
       },

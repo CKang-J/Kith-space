@@ -1,21 +1,7 @@
-import type { BaseCtx, HumanCtx } from "./ctx.js";
+import type { HumanCtx } from "./ctx.js";
 import { AppDataError, getHumanProfile, updateHumanProfile } from "../../app-data/appDatabase.js";
-import { devLoginEnabled, signUser } from "../auth.js";
 import { DESC_TOO_LONG, descTooLong } from "../core.js";
 import { readJson, sendErr, sendJson } from "../util.js";
-
-/** Temporary local-development JWT bootstrap. A3 replaces this transport. */
-export async function handlePublicAuth(ctx: BaseCtx): Promise<boolean> {
-  const { res, method, p } = ctx;
-  if (p !== "/api/auth/dev-login" || method !== "POST") return false;
-  if (!devLoginEnabled()) return (sendErr(res, 404, "not found"), true);
-  const human = getHumanProfile();
-  if (!human) return (sendErr(res, 409, "Human profile is not initialized"), true);
-  return (sendJson(res, 200, {
-    token: signUser(human.id),
-    user: { id: human.id, name: human.name, displayName: human.name },
-  }), true);
-}
 
 /** Canonical Human profile API backed only by app.db. */
 export async function handleAuthedAuth(ctx: HumanCtx): Promise<boolean> {

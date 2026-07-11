@@ -29,6 +29,22 @@ function harness() {
   return { created, conn };
 }
 
+test("Worker credential uses a private handshake header and never enters the URL", () => {
+  let capturedUrl = "";
+  let capturedHeaders: Record<string, string> = {};
+  const conn = new Connection("http://127.0.0.1:7777", "worker-secret", () => {}, () => {}, (url, options) => {
+    capturedUrl = url;
+    capturedHeaders = options.headers;
+    return new FakeWs() as unknown as WsLike;
+  });
+
+  conn.connect();
+  assert.equal(capturedUrl, "ws://127.0.0.1:7777/daemon/connect");
+  assert.deepEqual(capturedHeaders, { "x-kith-worker-token": "worker-secret" });
+  assert.doesNotMatch(capturedUrl, /worker-secret|[?]key=/);
+  conn.close();
+});
+
 test("backoff does not reset on a raw open — message-less attempts grow exponentially", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { created, conn } = harness();
@@ -50,12 +66,12 @@ test("backoff does not reset on a raw open — message-less attempts grow expone
   assert.equal(created.length, 3, "attempt #3 fires only at 2000ms");
 });
 
-test("a rejected worker bootstrap key backs off to the 30s cap instead of a 1s tight loop", (t) => {
+test("a rejected Worker token backs off to the 30s cap instead of a 1s tight loop", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { created, conn } = harness();
   conn.connect();
   created[0]!.emit("open");
-  created[0]!.emit("close", WORKER_REJECTED_CODE, Buffer.from("invalid local worker bootstrap key"));
+  created[0]!.emit("close", WORKER_REJECTED_CODE, Buffer.from("invalid local runtime worker token"));
 
   t.mock.timers.tick(29999);
   assert.equal(created.length, 1, "fatal rejection must not retry within 30s");

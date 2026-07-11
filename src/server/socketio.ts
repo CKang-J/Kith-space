@@ -1,45 +1,37 @@
 // Human-facing realtime over socket.io.
-// Auth: the client handshake auth carries { token, spaceId }; the server verifies the JWT +
-// resolves it to the one app.db Human, then joins room space:<spaceId>.
+// Auth: the client handshake carries Space scope while the HTTP request itself carries either
+// Desktop trust or the persistent browser Cookie session.
 // Events: the server fans out named events like 42["message:new",payload] (see emitMapped).
 import { Server as IOServer, type Socket } from "socket.io";
 import type { Server } from "node:http";
 import { and, eq, isNull } from "drizzle-orm";
 import { dbForSpace, schema, spaceRecord } from "../db/index.js";
-import { localHumanForSubject } from "../human/humanAuthority.js";
 import { canHumanReadChannel } from "./channelAccess.js";
-import { verifyUser } from "./auth.js";
 import { createLogger } from "../log.js";
 import { spaceRoom } from "./util.js";
+import { authenticateHumanRequest } from "./humanRequestAuth.js";
 
 const log = createLogger("server:io");
 let io: IOServer | null = null;
 
-/** Mirror the HTTP CORS whitelist for socket.io handshake/polling requests.
- *  ALLOWED_ORIGIN (comma-separated) gates which browser origins may connect.
- *  Dev fallback (unset): any localhost / 127.0.0.1 origin is allowed. */
-function socketIoCorsOrigin(): string | ((origin: string | undefined, cb: (err: Error | null, ok: boolean) => void) => void) {
-  const v = process.env.ALLOWED_ORIGIN?.trim();
-  if (v) {
-    const origins = new Set(v.split(",").map(s => s.trim()).filter(Boolean));
-    return (origin, cb) => cb(null, !origin || origins.has(origin));
-  }
-  // Dev mode: allow localhost / 127.0.0.1 (any port) or no origin (same-origin, postman)
-  return (origin, cb) => {
-    const ok = !origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-    cb(ok ? null : new Error("CORS: origin not allowed"), ok);
-  };
-}
-
 export function attachSocketIO(server: Server): void {
-  io = new IOServer(server, { cors: { origin: socketIoCorsOrigin() }, path: "/socket.io/" });
+  io = new IOServer(server, {
+    cors: {
+      credentials: true,
+      origin: (origin, cb) => {
+        const syntacticallySafe = !origin || /^https?:\/\//.test(origin);
+        cb(syntacticallySafe ? null : new Error("CORS: origin not allowed"), syntacticallySafe);
+      },
+    },
+    allowRequest: (req, cb) => cb(null, !!authenticateHumanRequest(req)),
+    path: "/socket.io/",
+  });
   io.on("connection", async (socket: Socket) => {
-    const auth = (socket.handshake.auth || {}) as { token?: string; spaceId?: string };
-    const subjectId = verifyUser(auth.token ?? null);
-    const human = localHumanForSubject(subjectId);
+    const auth = (socket.handshake.auth || {}) as { spaceId?: string };
+    const identity = authenticateHumanRequest(socket.request);
     const spaceId = auth.spaceId?.trim() || null;
-    if (!human || !spaceId || !spaceRecord(spaceId)) { socket.disconnect(true); return; }
-    const humanId = human.id;
+    if (!identity || !spaceId || !spaceRecord(spaceId)) { socket.disconnect(true); return; }
+    const humanId = identity.humanId;
     let db: ReturnType<typeof dbForSpace>;
     try { db = dbForSpace(spaceId); } catch { socket.disconnect(true); return; }
     socket.data.humanId = humanId; socket.data.spaceId = spaceId;

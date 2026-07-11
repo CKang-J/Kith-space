@@ -1,9 +1,10 @@
 // Global state + API + socket.io event bus (React Context). Chat messages and traces are consumed by views via onEvent.
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { io, type Socket } from "socket.io-client";
+import { closeBrowserSession, loadBrowserSession } from "./browserAuth.ts";
 import { appendCapped, type TrajItem } from "./trajBuffer.ts";
 import { messageUnreadDelta, threadUnreadDelta } from "./threadUnread";
-import { initialAuthState, TOKEN_KEY, type AuthState } from "./routing.ts";
+import { initialAuthState, type AuthState } from "./routing.ts";
 import { applySpaceScopeHeaders, spaceScopeHeaders } from "./spaceScope.ts";
 
 export interface Channel { id: string; name: string; description?: string; type: string; lastMessageAt?: string; archivedAt?: string | null }
@@ -24,7 +25,7 @@ interface Store {
   uploadAgentAvatar: (agentId: string, file: File) => Promise<string>;
   createSpace: (name: string, slug?: string) => Promise<string | null>; // POST → optimistically add to spaces; returns the new slug so the caller navigates client-side (no full-page reload)
   switchSpace: (slug: string) => void;                           // client-side Space switch: re-point the active Space, reset per-Space state, reconnect the socket (no full-page reload)
-  logout: () => void;
+  logout: () => Promise<void>;
   channels: Channel[]; dms: Dm[]; unread: Record<string, number>;
   agents: Agent[];        // ALL agents incl. system-seeded showcase demo agents — resolve a sender's avatar/name/profile by id (incl. #showcase history)
   visibleAgents: Agent[]; // agents minus system-seeded showcase demo agents — use for member rosters and every agent picker / @mention candidate list
@@ -56,15 +57,13 @@ export const useStore = () => useContext(Ctx);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
-  // human-auth gate driving the "/" + /s/* route guards (no dev-login fallback). Seeded synchronously
-  // from session hints so a true anonymous visitor is known "anon" on the FIRST render — letting "/"
-  // paint Landing with no skeleton/Landing flash — while a stored token or in-flight ?as= dev-login
-  // defers to "loading" until the async bootstrap below resolves it.
+  // HttpOnly Cookies cannot be inspected synchronously. The route guards wait in "loading"
+  // until the browser-session bootstrap resolves to either protected UI or the Access Token gate.
   const [authState, setAuthState] = useState<AuthState>(initialAuthState);
   const [spaceId, setSpaceId] = useState("");
   const [slug, setSlug] = useState("kith-space");
   const [spaces, setSpaces] = useState<SpaceInfo[]>([]);             // all local Spaces (used by Space switcher)
-  const [spaceAvatar, setSpaceAvatar] = useState<string | null>(null); // Space avatar URL (token-signed for sidebar display); null = use first letter
+  const [spaceAvatar, setSpaceAvatar] = useState<string | null>(null); // Space avatar URL; Cookie auth is supplied by the browser
   const [me, setMe] = useState<Me | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [dms, setDms] = useState<Dm[]>([]);
@@ -74,7 +73,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [agentPanelReq, setAgentPanelReq] = useState<string | null>(null); // cross-component signal: LiveAgentBar (sidebar) → Chat view opens the agent profile panel
   const [activeSpaceId, setActiveSpaceId] = useState(""); // id of the Space to activate; changing it drives the activation effect (initial pick + every client-side switch)
-  const tokenRef = useRef("");
+  const csrfRef = useRef("");
   const spaceIdRef = useRef("");
   const spacesRef = useRef<SpaceInfo[]>([]); // mirror of `spaces` for lookups in effects/handlers without taking a render dependency on it
   const meIdRef = useRef<string | undefined>(undefined); // current user id; read by socket handlers (own-message unread suppression) and stable across workspace switches
@@ -83,10 +82,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const listeners = useRef(new Set<(e: Ev) => void>());
 
   const api = async (method: string, path: string, body?: unknown) => {
-    // Race condition on first render: views may call api before dev-login completes; wait until both token and spaceId are ready.
-    // (Waiting only for token would send requests with empty x-space-id, causing empty data on first load, e.g. AgentProfile.)
-    for (let i = 0; i < 60 && (!tokenRef.current || !spaceIdRef.current); i++) await new Promise((r) => setTimeout(r, 30));
-    const r = await fetch(path, { method, headers: spaceScopeHeaders(tokenRef.current, spaceIdRef.current, { json: true }), body: body ? JSON.stringify(body) : undefined });
+    // Views can mount while a Space is activating. Wait for its scope before sending the request.
+    for (let i = 0; i < 60 && !spaceIdRef.current; i++) await new Promise((r) => setTimeout(r, 30));
+    const r = await fetch(path, {
+      method,
+      credentials: "same-origin",
+      headers: spaceScopeHeaders(spaceIdRef.current, { method, csrfToken: csrfRef.current, json: true }),
+      body: body ? JSON.stringify(body) : undefined,
+    });
     return r.json();
   };
   const reload = async () => {
@@ -122,7 +125,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Client-side Space switch: re-point the active Space by slug. The activation effect (keyed on activeSpaceId) resets
   // per-Space state and reconnects the socket. No-op if the target is unknown or already active.
   const switchSpace = (targetSlug: string) => { const cur = spacesRef.current.find((s) => s.slug === targetSlug); if (cur && cur.id !== spaceIdRef.current) setActiveSpaceId(cur.id); };
-  const logout = () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem("kith-space.devuser"); window.location.assign("/"); }; // clear the temporary JWT session; A3 replaces this with persistent access-token sessions
+  const logout = async () => {
+    await closeBrowserSession(csrfRef.current);
+    csrfRef.current = "";
+    window.location.assign("/");
+  };
   const markActionExecuted = async (messageId: string, result?: { kind: string; id: string; name: string }) => { await api("POST", `/api/actions/${messageId}/mark-executed`, { result: result ?? null }); };
   const createTasks = async (channelId: string, titles: string[]) => { const r = await api("POST", `/api/tasks/channel/${channelId}`, { tasks: titles.map((title) => ({ title })) }); return r?.tasks || []; };
   const openAgentDM = async (agentId: string) => { const r = await api("POST", "/api/channels/dm", { agentId }); if (r?.id) { await reload(); sockRef.current?.emit("join:channel", r.id); } return r?.id ?? null; };
@@ -139,7 +146,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const uploadFiles = async (channelId: string, files: FileList | File[]) => {
     const fd = new FormData(); fd.append("channelId", channelId);
     for (const f of Array.from(files)) fd.append("files", f);
-    const r = await fetch("/api/attachments/upload", { method: "POST", headers: spaceScopeHeaders(tokenRef.current, spaceIdRef.current), body: fd });
+    const r = await fetch("/api/attachments/upload", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: spaceScopeHeaders(spaceIdRef.current, { method: "POST", csrfToken: csrfRef.current }),
+      body: fd,
+    });
     return (await r.json())?.attachments || [];
   };
   // Single-file upload with progress tracking (XHR; fetch does not expose upload progress). Returns one attachment.
@@ -147,26 +159,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const fd = new FormData(); fd.append("channelId", channelId); fd.append("files", file);
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/attachments/upload");
-    applySpaceScopeHeaders(xhr, tokenRef.current, spaceIdRef.current);
+    xhr.withCredentials = true;
+    applySpaceScopeHeaders(xhr, spaceIdRef.current, { method: "POST", csrfToken: csrfRef.current });
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(Math.round((e.loaded / e.total) * 100)); };
     xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) { try { resolve(JSON.parse(xhr.responseText)?.attachments?.[0]); } catch { reject(new Error("parse")); } } else reject(new Error("status " + xhr.status)); };
     xhr.onerror = () => reject(new Error("network"));
     xhr.send(fd);
   });
-  const attachmentUrl = (id: string) => `/api/attachments/${id}?token=${encodeURIComponent(tokenRef.current)}`;
+  const attachmentUrl = (id: string) => `/api/attachments/${id}`;
   const uploadSpaceAvatar = async (file: File) => { // The single Human uploads the Space avatar, then refreshes the sidebar tile.
     const fd = new FormData(); fd.append("files", file);
-    const r = await fetch(`/api/spaces/${spaceIdRef.current}/avatar`, { method: "POST", headers: spaceScopeHeaders(tokenRef.current, spaceIdRef.current), body: fd });
+    const r = await fetch(`/api/spaces/${spaceIdRef.current}/avatar`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: spaceScopeHeaders(spaceIdRef.current, { method: "POST", csrfToken: csrfRef.current }),
+      body: fd,
+    });
     if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || "upload failed");
     const { avatarUrl } = await r.json();
-    setSpaceAvatar(avatarUrl ? `${avatarUrl}?token=${encodeURIComponent(tokenRef.current)}` : null);
+    setSpaceAvatar(avatarUrl || null);
   };
   const uploadAgentAvatar = async (agentId: string, file: File): Promise<string> => {
     const fd = new FormData(); fd.append("files", file);
-    const r = await fetch(`/api/agents/${agentId}/avatar`, { method: "POST", headers: spaceScopeHeaders(tokenRef.current, spaceIdRef.current), body: fd });
+    const r = await fetch(`/api/agents/${agentId}/avatar`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: spaceScopeHeaders(spaceIdRef.current, { method: "POST", csrfToken: csrfRef.current }),
+      body: fd,
+    });
     if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || "upload failed");
     const { avatarUrl } = await r.json();
-    return `${avatarUrl}?token=${encodeURIComponent(tokenRef.current)}`;
+    return avatarUrl;
   };
   const react = async (messageId: string, emoji: string, remove = false) => { await api(remove ? "DELETE" : "POST", `/api/messages/${messageId}/reactions`, { emoji }); };
   const openThread = async (parentChannelId: string, parentMessageId: string) => { const r = await api("POST", `/api/channels/${parentChannelId}/threads`, { parentMessageId }); return r?.threadChannelId ?? null; };
@@ -177,43 +200,39 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const unsaveMsg = async (messageId: string) => { setSavedIds((s) => { const n = new Set(s); n.delete(messageId); return n; }); await api("DELETE", `/api/channels/saved/${messageId}`); };
   const listSaved = async (limit = 20, offset = 0) => { const r = await api("GET", `/api/channels/saved?limit=${limit}&offset=${offset}`); return { saved: r?.saved ?? [], hasMore: !!r?.hasMore }; };
 
-  // ── Auth bootstrap (runs once): resolve a session token + the user's workspace list, then pick the initial workspace
-  //    from the URL. Loading that Space (its data + socket) is the activation effect below, keyed on activeSpaceId — the
-  //    SAME path a client-side switch takes, so there is one load path, not two.
+  // ── Browser-session bootstrap (runs once): ask the server to authenticate its HttpOnly Cookie,
+  //    load the local Space list, and then activate the Space named by the URL (or the first Space).
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Resolve a session token. Precedence: explicit ?as= dev-login (dev only) > stored JWT. NO silent fallback —
-      // an anonymous visitor never auto-logs-in; the /s/* route guard returns them to public home (see main.tsx).
-      const asParam = new URLSearchParams(window.location.search).get("as");
-      let token: string | null = null;
-      let user: Me | null = null;
-      if (asParam) { // explicit developer action: dev-login only succeeds when the backend has ALLOW_DEV_LOGIN=true; on success persist the JWT as a normal session
-        const r = await fetch("/api/auth/dev-login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: asParam }) });
-        if (r.ok) { const d = await r.json().catch(() => null); if (d?.token) { token = d.token; user = d.user ?? null; localStorage.setItem(TOKEN_KEY, d.token); } }
+      try {
+        const session = await loadBrowserSession();
+        if (cancelled) return;
+        if (!session) { setAuthState("anon"); setReady(true); return; }
+
+        csrfRef.current = session.csrfToken;
+        meIdRef.current = session.user.id;
+        setMe(session.user);
+        setAuthState("authed");
+
+        const spacesResponse = await fetch("/api/spaces", { credentials: "same-origin" });
+        if (!spacesResponse.ok) throw new Error(`Space list failed (${spacesResponse.status})`);
+        const data = await spacesResponse.json().catch(() => []);
+        const spaceList: SpaceInfo[] = Array.isArray(data) ? data : [];
+        if (cancelled) return;
+        spacesRef.current = spaceList;
+        setSpaces(spaceList);
+        const urlSlug = location.pathname.match(/\/s\/([^/]+)/)?.[1];
+        const cur = spaceList.find((space) => space.slug === urlSlug) || spaceList[0];
+        if (!cur) { setReady(true); return; }
+        setActiveSpaceId(cur.id);
+      } catch {
+        if (cancelled) return;
+        csrfRef.current = "";
+        setMe(null);
+        setAuthState("anon");
+        setReady(true);
       }
-      if (!token) {
-        const storedToken = localStorage.getItem(TOKEN_KEY); // temporary JWT persisted after dev-login; replaced in A3
-        if (storedToken) {
-          const meRes = await (await fetch("/api/auth/me", { headers: { authorization: "Bearer " + storedToken } })).json().catch(() => null);
-          if (meRes?.id) { token = storedToken; user = meRes; }
-          else localStorage.removeItem(TOKEN_KEY); // expired / invalid / 401 -> drop it so the guard returns to public home
-        }
-      }
-      if (cancelled) return;
-      if (!token) { setAuthState("anon"); setReady(true); return; } // unauthenticated: Landing renders; protected routes return to public home
-      tokenRef.current = token;
-      meIdRef.current = user?.id;
-      setMe(user);
-      setAuthState("authed");
-      const spaceList: SpaceInfo[] = await (await fetch("/api/spaces", { headers: { authorization: "Bearer " + tokenRef.current } })).json();
-      if (cancelled) return;
-      spacesRef.current = spaceList;
-      setSpaces(spaceList);
-      const urlSlug = location.pathname.match(/\/s\/([^/]+)/)?.[1]; // resolve Space from URL /s/:slug; fall back to first
-      const cur = spaceList.find((s) => s.slug === urlSlug) || spaceList[0];
-      if (!cur) { setReady(true); return; } // no workspace found: prevent white screen (defensive fallback; workspace is normally created on register/dev-login)
-      setActiveSpaceId(cur.id); // → activation effect loads this Space + opens the socket
     })();
     return () => { cancelled = true; };
   }, []);
@@ -240,7 +259,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // ready=false → workspace skeleton shows while it reloads.
     setReady(false);
     spaceIdRef.current = cur.id; setSpaceId(cur.id); setSlug(cur.slug || "kith-space");
-    setSpaceAvatar(cur.avatarUrl ? `${cur.avatarUrl}?token=${encodeURIComponent(tokenRef.current)}` : null);
+    setSpaceAvatar(cur.avatarUrl || null);
     setChannels([]); setDms([]); setUnread({}); setAgents([]); setTraj([]); setSavedIds(new Set()); setAgentPanelReq(null);
     subscribedRef.current = new Set(); // the previous workspace's view-subscriptions don't carry over
     sockRef.current = null; // the previous socket is closed by this effect's cleanup; drop the stale ref until the new one connects
@@ -254,8 +273,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try { const s = await api("GET", "/api/messages/sync?since=0"); lastSeq = s?.maxSeq ?? 0; } catch { /* */ }
       if (cancelled) return;
       setReady(true);
-      // Socket.io handshake auth carries {token, spaceId}; event names follow the workspace protocol.
-      sock = io("/", { auth: { token: tokenRef.current, spaceId: spaceIdRef.current }, transports: ["websocket"] });
+      // The HttpOnly session Cookie rides the same-origin handshake; auth carries only Space scope.
+      sock = io("/", { auth: { spaceId: spaceIdRef.current }, transports: ["websocket"], withCredentials: true });
       if (cancelled) { sock.close(); sock = null; return; } // late connect after unmount/switch → close immediately
       sockRef.current = sock; // exposed so channel creation and agent DMs can subscribe their realtime rooms
       let firstConnect = true;

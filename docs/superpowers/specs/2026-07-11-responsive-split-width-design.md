@@ -104,7 +104,7 @@ canSplit = workspaceWidth >= chatMin + activeModuleMin + 10px gap
 
 ### 6.2 浏览器 QA
 
-使用 `http://localhost:5273/?as=you` 验证：
+先通过当前 Access Token Gate 建立浏览器会话，再使用 `http://localhost:5273/` 验证：
 
 - 1493px：打开 Tasks，Chat 自动约为 25%。
 - 2048px：打开 Inbox，Module Pane 可超过 960px，Chat 保持约 25%。

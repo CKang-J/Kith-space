@@ -8,7 +8,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import { desc, eq } from "drizzle-orm";
 import { createMessage, getOrCreateThread } from "../src/server/core.ts";
-import { signUser } from "../src/server/auth.ts";
 import { handleApi } from "../src/server/routes-api/index.ts";
 import { integrationDatabase } from "./helpers/workspace.ts";
 
@@ -19,7 +18,6 @@ const { db, schema, spaceId, human } = fixture;
 const humanId = human.id;
 let agentId = "";
 let channelId = "";
-let humanToken = "";
 let failures = 0;
 
 const check = (label: string, condition: boolean) => {
@@ -34,10 +32,11 @@ function makeReq(options: { method: string; path: string; body?: object }): Inco
     method: options.method,
     url: options.path,
     headers: {
-      authorization: `Bearer ${humanToken}`,
+      "x-kith-desktop-token": process.env.KITH_SPACE_DESKTOP_TOKEN!,
       "content-type": "application/json",
       "x-space-id": spaceId,
     },
+    socket: { remoteAddress: "127.0.0.1" },
   }) as unknown as IncomingMessage;
 }
 
@@ -115,7 +114,6 @@ async function agentMessage(containerId: string, content: string) {
 }
 
 async function setup() {
-  humanToken = signUser(humanId);
   const [agent] = await db.insert(schema.agents).values({
     spaceId,
     name: `researcher_${ts}`,

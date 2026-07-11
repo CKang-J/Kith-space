@@ -5,7 +5,6 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { closeAllDatabases, dbForSpace, schema } from "../src/db/index.ts";
 import { ensurePersonalApp } from "../src/db/personalApp.ts";
-import { signUser } from "../src/server/auth.ts";
 import { agentConfig } from "../src/server/core.ts";
 import { handleAgentApi } from "../src/server/routes-agent.ts";
 import { handleApi } from "../src/server/routes-api/index.ts";
@@ -16,7 +15,7 @@ type ResponseCapture = { status: number; body: any };
 function request(method: string, pathname: string, headers: Record<string, string>, body?: unknown): IncomingMessage {
   const raw = body === undefined ? "" : JSON.stringify(body);
   const input = Readable.from(raw ? [Buffer.from(raw)] : []);
-  return Object.assign(input, { method, url: pathname, headers }) as unknown as IncomingMessage;
+  return Object.assign(input, { method, url: pathname, headers, socket: { remoteAddress: "127.0.0.1" } }) as unknown as IncomingMessage;
 }
 
 function response(): {
@@ -50,14 +49,13 @@ function response(): {
 
 async function humanApi(
   spaceId: string,
-  token: string,
   method: string,
   pathname: string,
   body?: unknown,
 ): Promise<ResponseCapture> {
   const output = response();
   const req = request(method, pathname, {
-    authorization: `Bearer ${token}`,
+    "x-kith-desktop-token": process.env.KITH_SPACE_DESKTOP_TOKEN!,
     "content-type": "application/json",
     "x-space-id": spaceId,
   }, body);
@@ -92,7 +90,6 @@ try {
     name: "Ada",
     homeRootPath: path.join(root, "home"),
   });
-  const humanToken = signUser(human.id);
   const db = dbForSpace(home.id);
 
   const agents = await db.insert(schema.agents).values([
@@ -171,13 +168,12 @@ try {
   assert.ok(agentDmMessage);
 
   for (const channel of [regular, privateChannel, agentDm]) {
-    const result = await humanApi(home.id, humanToken, "GET", `/api/messages/channel/${channel.id}`);
+    const result = await humanApi(home.id, "GET", `/api/messages/channel/${channel.id}`);
     assert.equal(result.status, 200, `Human should read ${channel.type} channels across the Space`);
   }
 
   const initialMembers = await humanApi(
     home.id,
-    humanToken,
     "GET",
     `/api/channels/${privateChannel.id}/members`,
   );
@@ -210,7 +206,6 @@ try {
 
   const addBeta = await humanApi(
     home.id,
-    humanToken,
     "POST",
     `/api/channels/${privateChannel.id}/members`,
     { agentId: beta.id },
@@ -235,7 +230,6 @@ try {
 
   const addGamma = await humanApi(
     home.id,
-    humanToken,
     "POST",
     `/api/channels/${agentDm.id}/members`,
     { agentId: gamma.id },
@@ -252,7 +246,6 @@ try {
 
   const privateMembers = await humanApi(
     home.id,
-    humanToken,
     "GET",
     `/api/channels/${privateChannel.id}/members`,
   );

@@ -24,8 +24,8 @@ function testEnv() {
     env: {
       ...process.env,
       NODE_ENV: "test",
-      JWT_SECRET: process.env.JWT_SECRET ?? "kith-space-test-jwt-secret",
-      DAEMON_BOOTSTRAP_KEY: process.env.DAEMON_BOOTSTRAP_KEY ?? "kith-space-test-daemon-key",
+      KITH_SPACE_DESKTOP_TOKEN: process.env.KITH_SPACE_DESKTOP_TOKEN ?? "kith-space-test-desktop-token",
+      KITH_SPACE_WORKER_TOKEN: process.env.KITH_SPACE_WORKER_TOKEN ?? "kith-space-test-worker-token",
       KITH_SPACE_HOME: home,
     },
   };
@@ -46,7 +46,9 @@ if (mode !== "--integration") {
     ...filesUnder(path.join(root, "test"), (file) => file.endsWith(".unit.test.ts")),
     ...filesUnder(path.join(root, "web", "src"), (file) => file.endsWith(".test.ts")),
   ].sort();
-  run("unit", ["--test", "--test-force-exit", ...unitTests]);
+  // Unit files share one isolated app-data root for the invocation. Run files serially so their
+  // SQLite lifecycle tests cannot race WAL setup or cleanup in separate test workers.
+  run("unit", ["--test", "--test-force-exit", "--test-concurrency=1", ...unitTests]);
 }
 
 if (mode !== "--unit") {

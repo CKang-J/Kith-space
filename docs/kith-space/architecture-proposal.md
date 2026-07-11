@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述 2026-07-11 个人 AgentOS 转向后的目标模块边界。A2 本地领域与数据模型已完成：多用户/Machine 物理 schema、旧 Space 兼容边界与 app 级附件目录均已删除；认证、发行和其他继承资产仍按 `migration-plan.md` 分阶段移除。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
+> 本文描述 2026-07-11 个人 AgentOS 转向后的目标模块边界。A2 本地领域与数据模型、A3 浏览器访问安全边界已完成；Electron 宿主、发行和其他继承资产仍按 `migration-plan.md` 分阶段收口。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
 
 ## 1. 架构原则
 
@@ -31,15 +31,15 @@ Core Service 是本机单实例业务服务，承载 HTTP、socket.io、浏览�
 
 Core Service 根据 Web 模式监听：
 
-- 关闭：不提供普通浏览器入口，只接受受控 Desktop 客户端和内部进程。
-- 仅本机：绑定 loopback。
-- 局域网：显式绑定 LAN 可达地址，并强制浏览器 Token 会话。
+- 关闭（默认）：仍在 `127.0.0.1` 保留 Desktop/Worker 所需的私有传输，但不提供普通浏览器产品壳。
+- 仅本机：绑定 `127.0.0.1`，普通浏览器经 Access Token 会话访问。
+- 局域网：绑定 `0.0.0.0`，同样强制 Access Token 会话，并只允许与请求 Host 匹配的 Origin。
 
-当前实现尚未进入 A3：`src/server/index.ts:60` 固定 `HOST = "127.0.0.1"`。只有 Access Token、持久浏览器会话和监听策略同时落地后，才能启用 LAN 绑定。
+`src/browser-access/browserAccessPolicy.ts:41` 把模式与监听决策隔离为窄策略；`src/server/index.ts:45` 在进程启动时读取该决策，开发用 `PORT` 仅覆盖端口。模式/端口更改需重启 Core Service 后改变监听。非 Desktop 请求在关闭模式下会被 `src/server/index.ts:73` 的产品壳门拒绝。
 
 ### 2.3 Local Runtime Worker
 
-现 daemon 保留为独立进程隔离边界，但产品名称改为 Local Runtime Worker。`src/local-runtime/workerHub.ts` 在 Core Service 内维护安装级唯一连接、ready snapshot 与请求/响应；新连接会用专用关闭码替换旧连接，旧进程停止自动重连，generation lease 阻止旧连接的异步 ready、事件、补唤醒或断线回收覆盖新连接状态。它只连接本机 Core Service，承载 runtime 进程、轨迹和 session 生命周期；不再注册 Machine、不被用户手工连接，也不接受远程 worker。过渡 Worker CLI 固定连接 `http://127.0.0.1:$PORT`，不提供 `--server-url` 或其他远程端点覆盖；A3/A4 只替换内部凭据与 Desktop 监督方式，不重新引入远程 Worker。
+现 daemon 保留为独立进程隔离边界，但产品名称改为 Local Runtime Worker。`src/local-runtime/workerHub.ts` 在 Core Service 内维护安装级唯一连接、ready snapshot 与请求/响应；新连接会用专用关闭码替换旧连接，旧进程停止自动重连，generation lease 阻止旧连接的异步 ready、事件、补唤醒或断线回收覆盖新连接状态。它只连接本机 Core Service，承载 runtime 进程、轨迹和 session 生命周期；不再注册 Machine、不被用户手工连接，也不接受远程 worker。过渡 Worker CLI 固定连接 `http://127.0.0.1:$PORT/daemon/connect`，以私有 `x-kith-worker-token` header 握手，凭据不进 URL；不提供 `--server-url` 或其他远程端点覆盖。A4 只接管凭据生成与 Desktop 监督方式，不重新引入远程 Worker。
 
 唯一 Worker 服务所有本机 Space，而不是隶属某个 Space。Worker 消息只携带 installation-unique agentId；`src/local-runtime/agentLocator.ts` 遍历已注册 Space 定位 agent 所属数据库，`src/server/ws.ts` 再把 status/activity/session/trajectory/reply 发布到正确 Space。Worker ready/reconnect 同样遍历所有 Space 做状态对齐和积压补唤醒。
 
@@ -51,8 +51,8 @@ Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件
 
 保留 open-tag 三平面结构，但收敛身份和连接范围：
 
-1. Human UI plane：Electron 或已授权桌面浏览器到 `/api/*` 与 socket.io。
-2. Worker control plane：本机 Core Service 与唯一 Local Runtime Worker 的受认证 WS，用于 agent start/deliver/stop/profile。
+1. Human UI plane：Electron 通过私有 Desktop 凭据，已授权桌面浏览器通过 HttpOnly Cookie 会话访问 `/api/*` 与 socket.io。
+2. Worker control plane：本机 Core Service 与唯一 Local Runtime Worker 以独立 Worker 凭据建立 WS，用于 agent start/deliver/stop/profile。
 3. Agent data plane：本机 runtime 子进程以最小短期 session token 调用 `/agent-api/*` 或 MCP 工具。
 
 浏览器访问 Token、Desktop 信任凭据、Worker 内部凭据和 agent session token 是四种不同凭据，不可复用或互相兑换。
@@ -61,7 +61,7 @@ Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件
 
 ### 4.1 Human
 
-`src/app-data/appDatabase.ts` 管理唯一 Human 的名称、可选邮箱和描述；`src/human/humanAuthority.ts` 把 A3 前临时 JWT 的 subject 限定为该 Human；`src/human/humanIdentity.ts` 把协作寻址固定为稳定的 `@you`，展示名始终读取 app.db。它不提供注册、登录、密码、角色或成员关系。首次初始化是 app 生命周期的一部分，完成后创建默认 `Home` Space。
+`src/app-data/appDatabase.ts` 管理唯一 Human 的名称、可选邮箱和描述；`src/human/humanIdentity.ts` 把协作寻址固定为稳定的 `@you`，展示名始终读取 app.db。REST 和 socket.io 的 Human authority 只来自 Desktop 私有信任或已验证的浏览器 Cookie 会话（`src/server/humanRequestAuth.ts:18`），不存在 Human JWT、Bearer 登录或 dev-login。它不提供注册、登录、密码、角色或成员关系。首次初始化是 app 生命周期的一部分，完成后创建默认 `Home` Space。
 
 ### 4.2 Space
 
@@ -99,14 +99,15 @@ REST、agent API、MCP handler 和 UI 必须调用同一 Task Service，不能�
 
 ### 5.1 app.db
 
-实现状态：A2.1 已落地 `src/app-data/appDatabase.ts`。旧 `registry.db/workspaces` 已被 `app.db/spaces` 取代；Human profile 为单例行。浏览器 Token、sessions 和 Desktop settings 仍分别属于 A3/A4，尚未提前建空表。
+实现状态：A2.1 已落地 `src/app-data/appDatabase.ts`。旧 `registry.db/workspaces` 已被 `app.db/spaces` 取代；Human profile 为单例行。A3 又增加单例 `browser_access_settings` 和 `browser_sessions`（`src/app-data/appDatabase.ts:78`）。A4 才增加托盘、关闭行为和系统自启动等 Desktop 设置。
 
 本机应用数据目录中的 `app.db` 保存：
 
 - 唯一 Human profile 与初始化状态。
-- Desktop/Web 设置：Web 模式、端口、关闭行为、自启动等。
+- 已实现的 Web 设置：Web 模式和端口。
 - 浏览器访问 Token 哈希与 token revision。
 - 浏览器授权会话和撤销状态。
+- A4 待实现的 Desktop 设置：关闭行为、托盘和系统自启动等。
 - Space registry：id、slug、rootPath、displayName、最近打开时间。
 
 app.db 不保存 Space 消息、任务或 agent 业务数据。
@@ -141,19 +142,25 @@ A2.2b 已把 workspace.db 重建为单一 19 表 baseline。它包含 `spaces`�
 
 ### 6.1 AccessTokenService
 
-- Token 可由用户设置，留空时自动生成高强度值。
-- app.db 只保存慢哈希/安全哈希与版本，不保存明文。
-- 验证接口必须限速，不把 Token 写入 URL、日志、错误或遥测。
-- 轮换 Token 增加 token revision，并使全部既有浏览器会话失效。
+- `src/browser-access/accessTokenService.ts:25` 接受 16-256 字符的自定义 Token；留空时从 32 随机字节生成 base64url 值。
+- app.db 只保存 scrypt 哈希与 revision，不保存明文；原始 Token 只在生成/轮换当次的 Desktop 受信响应中返回。
+- 公开验证端点以远程地址做内存限速（`src/server/browserSessionHttp.ts:93`），不把 Token 写入 URL、日志、错误或遥测。
+- 轮换 Token 在同一 app.db 事务中增加 revision 并删除全部旧浏览器会话（`src/app-data/browserAccessData.ts:69`）。
 
 ### 6.2 BrowserSessionService
 
-- 首次 Token 验证成功后创建持久、可撤销的随机 session。
-- Cookie 使用 HttpOnly、SameSite=Strict；生产路径设置适合当前 HTTP/HTTPS 能力的安全属性。
-- 有状态写请求继续做 Origin/CSRF 校验，不能把 SameSite 当作唯一保护。
-- Desktop 可撤销全部浏览器会话；浏览器清除数据后需要重新验证。
+- 首次 Token 验证成功后创建 32 字节随机 session；原始值只进 HttpOnly Cookie，app.db 只保存 SHA-256 哈希和 token revision（`src/browser-access/browserSessionService.ts:13`）。
+- session Cookie 使用 HttpOnly、SameSite=Strict；可读 CSRF Cookie 也是 SameSite=Strict。当传输本身为 HTTPS 时才加 `Secure`，v1 LAN HTTP 不伪装传输安全。
+- 浏览器写请求同时检查模式允许的 Origin、CSRF Cookie 与 `x-kith-csrf` 等值（`src/server/browserSessionHttp.ts:81`）。
+- 会话持续到浏览器数据清除、当前会话退出、Desktop 全量撤销或 Token 轮换；不依赖 Human 账户/JWT 到期。
 
-### 6.3 LAN 限制
+### 6.3 Desktop 与内部凭据
+
+- `src/local-runtime/internalCredentials.ts:31` 为一次 Desktop 管理的进程组生成两个独立 32 字节凭据；A4 Electron 负责每次启动调用并分别注入子进程。
+- Core Service 当前对 `KITH_SPACE_DESKTOP_TOKEN` 与 `KITH_SPACE_WORKER_TOKEN` 做 fail-fast；前者只接受 loopback 请求中的 `x-kith-desktop-token` 私有管理信任，后者只接受 loopback Worker `/daemon/connect` 的 `x-kith-worker-token` header。分进程开发在 A4 前由 `.env` 注入，两者不得进 URL，也不得与浏览器访问 Token 复用。
+- `/api/desktop/browser-access` 的查询、模式/端口/Token 轮换与会话撤销只对 Desktop 凭据开放；普通浏览器统一收到 404（`src/server/routes-api/browserAccess.ts:125`）。
+
+### 6.4 LAN 限制
 
 LAN 模式允许完整产品操作，因此默认关闭。首次启用显示明确警告：v1 HTTP 未加密，只限受信任私网，禁止端口转发或公网暴露。手机/平板不是 v1 支持客户端。
 
@@ -177,8 +184,10 @@ agent-to-agent 分派继续经过统一 dispatch 收口。现有深度上限、�
 
 Desktop 专属设置通过宿主能力注入，不靠仅隐藏按钮实现安全；服务端必须拒绝普通浏览器调用。
 
+A3 已把 Web bootstrap 改为 Cookie 会话探测（`web/src/browserAuth.ts:20`）；未授权浏览器只渲染 `AccessTokenGate`（`web/src/views/AccessTokenGate.tsx:4`），不先渲染工作区。客户端不保存 Human Bearer/localStorage JWT，Socket 握手只携带 `spaceId`，附件/头像 URL 不携带认证查询参数。
+
 ## 9. 开发与发行
 
-仓库内部保留 `pnpm run server`、`pnpm run daemon`、`pnpm --dir web run dev` 以便调试；其中 daemon 只是 Local Runtime Worker 的过渡代码/命令名。A4 新增 `pnpm run desktop:dev` 作为完整开发宿主。正式产品不要求 `.env`，普通设置全部进 app.db。
+仓库内部保留 `pnpm run server`、`pnpm run daemon`、`pnpm --dir web run dev` 以便调试；其中 daemon 只是 Local Runtime Worker 的过渡代码/命令名。`pnpm run browser-access:dev <off|local|lan>` 是 A4 前唯一显式修改 app.db Web 模式/端口与轮换访问 Token 的开发管理入口；`dev:e2e:up` 会启用 local、同步 `PORT`、每次轮换随机 Token，并只在该启动终端显示一次。A4 新增 `pnpm run desktop:dev` 作为完整开发宿主。正式产品不要求 `.env`，普通设置全部进 app.db。
 
 最终删除 Docker、远程部署、公共 server/daemon npm 发布和 OIDC workflow。Windows Desktop 是 v1 唯一正式发行物；系统能力选型不得无必要绑定 Windows，为 macOS/Linux 留出实现空间。

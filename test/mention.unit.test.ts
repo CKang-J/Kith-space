@@ -2,8 +2,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-process.env.JWT_SECRET ??= "test-secret";
-process.env.DAEMON_BOOTSTRAP_KEY ??= "test-bootstrap-key";
+process.env.KITH_SPACE_DESKTOP_TOKEN ??= "test-desktop-token";
+process.env.KITH_SPACE_WORKER_TOKEN ??= "test-worker-token";
 
 const { parseMentions, membersToAutoJoin } = await import("../src/server/core.ts");
 

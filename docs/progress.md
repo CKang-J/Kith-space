@@ -8,7 +8,7 @@
 
 - 分支：`feat/p0-foundation`，尚未合并或推送远端。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A2 本地领域与数据模型已完成**。app.db/Human/Home、canonical Space 契约、唯一 Human authority、安装级唯一 Worker、19 表 workspace.db baseline 与 Space 级附件目录均已落地；下一步进入 A3 浏览器访问安全边界。
+- 当前阶段：**A3 浏览器访问安全边界已完成**。off/local/lan 三模式、访问 Token、持久 Cookie 会话、Origin/CSRF、Desktop/Worker 独立凭据与前端 Token Gate 均已落地；下一步进入 A4 Electron Desktop 宿主。
 - P4 视觉微调已暂停，等本机化基础收敛后再恢复。
 - 底座为 open-tag 衍生开发副本；`reference/` 只读。OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
 
@@ -50,7 +50,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 ## 四、当前代码事实与过渡债
 
 - 数据层是 SQLite：中央 `app.db` 保存唯一 Human 与 `spaces` registry；每 Space 使用 `<rootPath>/.kith/workspace.db`。canonical 连接入口为 `dbForSpace(spaceId)` / `listSpaces()`；`dbFor`、`listWorkspaces`、`registerWorkspace` 等 workspace facade 已删除。
-- `src/app-data/appDatabase.ts` 是 app.db Human 事实源；`src/human/humanAuthority.ts` 把临时 JWT subject 限定为唯一 Human；`src/human/humanIdentity.ts` 提供稳定 `@you` handle 与 app.db 展示名。REST、公开附件和 Socket 不再查询 `server_members` 授权，新 Space 也不再写该行。
+- `src/app-data/appDatabase.ts` 是 app.db 事实源：除唯一 Human/Space registry 外，A3 增加单例 `browser_access_settings` 与 `browser_sessions`。REST、附件读取和 Socket 的 Human authority 只来自 Desktop 私有信任或已验证的浏览器 Cookie 会话，不再查询 `server_members`，也不存在 Human JWT/Bearer/dev-login。`src/human/humanIdentity.ts` 继续提供稳定 `@you` handle 与 app.db 展示名。
 - A2.2b 已把 workspace.db 压成单一 19 表 baseline：`spaces/space_id` 是唯一领域命名；`users/server_members/machines/join_links` 与 `agents.machine_id` 已删除。`channel_agent_members` 只表达 agent membership；唯一 Human 的 read/DM/thread、收藏与 Space 偏好分别落在 `human_channel_states`、`human_saved_messages`、`human_space_preferences`。持久 actor discriminator 使用 `human`，runtime 协议自身的 `role: "user"` 不受影响。
 - A2.4 已建立 `src/local-runtime/workerHub.ts` 安装级唯一 Worker 控制面：同一时刻只认一个连接，新连接以专用关闭码替换旧连接，旧进程停止自动重连，generation lease 阻止 stale ready/event/disconnect/catch-up 覆盖当前状态；ready snapshot 报告 runtimes/runningAgents 等运行信息，不再携带 Machine 身份。Worker 入口只连接 `127.0.0.1:$PORT`，不再接受远程 `--server-url`。`src/local-runtime/agentLocator.ts` 与 Worker reconnect/reconcile 会遍历本机 Space registry，让状态、轨迹、session、回复和补唤醒正确回到 agent 所属 Space。
 - Machine/Computer 活跃路径和物理 schema 均已删除：没有 Machines API、machine 注册/密钥/心跳/调度、agent machine 选择、Computers Dock/路由、`machines` 表或 `agents.machine_id`。不能据此恢复 Machine 产品概念。
@@ -59,18 +59,22 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - A2.4 验证：`pnpm run typecheck` 通过，`pnpm run web:build` 通过（2563 modules），`pnpm test --integration` 全量通过；`pnpm test --unit` 361 项中 360 项通过，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。Worker 单例/替换与 stale generation、产品 API 不再接受 Machine、跨 Space 路由和旧 Computers 路由降级均有契约或行为测试覆盖。
 - A2.2b 验证：`pnpm run typecheck` 通过，`pnpm run web:build` 通过（2563 modules），`pnpm test --integration` 全量通过；`pnpm test --unit` 364 项中 363 项通过，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。fresh baseline、legacy schema 拒绝、canonical Space transport、唯一 Human channel state 与 agent-only membership 均有行为或契约测试覆盖。
 - A2 最终验收：`pnpm run typecheck` 通过，`pnpm run web:build` 通过（2563 modules），`pnpm test --integration` 全量通过；`pnpm test --unit` 367 项中 366 项通过，唯一失败仍是同一个既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。Space 隔离附件、未知 Space/路径穿越拒绝、旧 app 级上传配置不生效、Worker loopback-only 与旧 `serverId` 发送参数消失均有回归覆盖。
+- A3 最终验收：`pnpm run typecheck` 通过，`pnpm run web:build` 通过（2559 modules），`pnpm test --integration` 全量通过；`pnpm test --unit` 391 项中 390 项通过，唯一失败仍是同一个既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。Web 三模式、Token/会话轮换、Cookie/CSRF/Origin/限速、Desktop 管理不可从浏览器达到、Worker 私有 header 握手、前端 Token Gate 与旧 JWT/URL token 退役均有行为或契约覆盖。
 - P4 壳位于 `web/src/shell/`。URL 以频道/DM 路径、`?module=<id>` 和 `chat=0` 表达三态；Split 默认 Chat 25%。
-- 产品登录/注册、成员/RBAC/邀请 API、Web Human roster、Human-Human DM、Machines API 和 Computers UI 已删除；Dock/模块使用 Agents，频道成员只增删 agent，Human 资料入口位于 Settings；匿名页的“进入空间”只触发 A3 前临时 dev-login。A2.2b 又删除了 raw `user` 持久 actor、旧 `/api/servers`/`x-server-id`/Socket `serverId`、workspace.db `servers/server_id` 与 Machine 物理字段。临时 JWT/dev-login、Landing、`?legacy=1`、`.env`/Worker bootstrap key、Docker/发布仍待后续阶段清理，这些不是目标能力。
-- Core Service 当前强制绑定 `127.0.0.1`；`/health` 暴露 `workerConnected`，`dev:e2e:up` 只有在唯一 Local Runtime Worker ready 后才继续 seed dev-bot。A3 完成访问 Token 与浏览器会话前不得开放 LAN 监听。
-- 当前开发启动仍暂时依赖现有环境变量和分进程命令；在 A3/A4 接管设置与内部凭据前，`docs/dev-commands.md` 必须继续如实记录过渡命令。
+- 产品登录/注册、成员/RBAC/邀请 API、Web Human roster、Human-Human DM、Machines API 和 Computers UI 已删除；Dock/模块使用 Agents，频道成员只增删 agent，Human 资料入口位于 Settings。A3 进一步删除了 Human JWT、dev-login、`?as=`、localStorage/Bearer 会话和附件/Socket URL token；未授权浏览器只看到 Access Token Gate。Landing、`?legacy=1`、Docker/发布等其他继承资产仍待 A5/A6 清理。
+- Core Service 启动时从 app.db 读取 Web 模式：off（默认）与 local 均绑定 `127.0.0.1`，lan 绑定 `0.0.0.0`。off 只留 Desktop/Worker 私有传输，普通浏览器壳被拒绝；LAN 只允许匹配 Host 的 Origin。`/health` 只对 loopback/Desktop 可见并暴露 `workerConnected`。
+- 访问 Token 可自定义 16-256 字符，留空自动生成 32 字节；app.db 只存 scrypt 哈希和 revision。原始 browser session token 只进 HttpOnly、SameSite=Strict Cookie，DB 只存 SHA-256 哈希；写请求同时校验 Origin 和 CSRF。Token 轮换或 Desktop 全量撤销会使旧会话失效。
+- Desktop 管理 API 只认 loopback 请求中的 `x-kith-desktop-token`，浏览器请求得到 404；Worker 只从 loopback 连接 `/daemon/connect` 并用私有 `x-kith-worker-token` header 握手，凭据不进 URL。`generateInternalProcessCredentials` 已提供每次 Desktop 启动的随机凭据生成能力，A4 再接入 Electron 监督器。分进程开发暂从 `.env` 分别注入 `KITH_SPACE_DESKTOP_TOKEN` 与 `KITH_SPACE_WORKER_TOKEN`，不得复用浏览器 Token。
+- `pnpm run browser-access:dev <off|local|lan>` 是 A4 前的开发 Web 管理入口。`dev:e2e:up` 会启用 local、同步 `PORT`、每次轮换随机 Token 并只在启动终端显示一次，然后等待 Worker ready 并 seed dev-bot。
+- LAN 浏览器具有完整产品能力，v1 仅支持桌面浏览器和 HTTP；只限受信任私网，禁止端口转发或公网暴露。
 - Message Context Snapshot 仍是设计契约，尚未持久化。
 - token 预算目前以唤醒次数为代理；真实 usage 等待 Runtime 契约 v2。
 - 外接 runtime 仍使用高权限模式。邮箱/浏览器等不可信内容模块上线前必须补 HTTPS 与审批/沙箱权限升级。
 
 ## 五、下一步顺序
 
-1. A3：实现 Web 三模式、访问 Token、浏览器会话和内部临时凭据；在此之前保持 loopback-only。
-2. A4-A6：Electron 宿主、UI/入口清理和继承资产总审计。
+1. A4：实现 Electron Desktop 宿主，接管设置、内部凭据、子进程、托盘与自启动，并落地 `pnpm run desktop:dev`。
+2. A5-A6：UI/入口清理和继承资产总审计。
 3. 本机化基础稳定后再做 Runtime 契约 v2、生产力模块、Context Snapshot 与 P4 视觉收尾。
 
 每阶段独立验证、独立中文提交。未获得用户明确指示，不合并 main、不推远端、不发布。

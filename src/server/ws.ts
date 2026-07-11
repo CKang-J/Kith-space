@@ -1,14 +1,15 @@
-// Installation-local runtime worker control plane: WS /daemon/connect?key=.
+// Installation-local runtime worker control plane: WS /daemon/connect with a private header.
 import { WebSocketServer, type WebSocket } from "ws";
 import type { Server } from "node:http";
 import { and, desc, eq, isNull, notInArray } from "drizzle-orm";
 import { allSpaceDbs, dbForSpace, schema } from "../db/index.js";
-import { BOOTSTRAP_KEY, safeEqual } from "./auth.js";
+import { safeEqual } from "./auth.js";
 import { publish } from "./realtime.js";
 import { createLogger } from "../log.js";
 import { catchUpAgentsOnWorker } from "./reconnectCatchup.js";
 import { WORKER_REJECTED_CODE } from "../daemonProtocol.js";
 import { locateAgent } from "../local-runtime/agentLocator.js";
+import { WORKER_TOKEN_HEADER, isLoopbackAddress, workerBootstrapToken } from "../local-runtime/internalCredentials.js";
 import {
   isWorkerLeaseCurrent,
   isWorkerLeaseLatest,
@@ -26,15 +27,20 @@ export function attachWs(server: Server): void {
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "", "http://localhost");
     if (url.pathname !== "/daemon/connect") return; // pass through: /socket.io/ etc. are handled by socket.io's own upgrade handler
-    const key = url.searchParams.get("key");
+    if (!isLoopbackAddress(req.socket.remoteAddress)) {
+      socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+      return socket.destroy();
+    }
+    const supplied = req.headers[WORKER_TOKEN_HEADER];
+    const key = typeof supplied === "string" ? supplied : null;
     if (!key) { socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n"); return socket.destroy(); }
     wss.handleUpgrade(req, socket, head, (ws) => void onWorker(ws, key));
   });
 }
 
 async function onWorker(ws: WebSocket, key: string): Promise<void> {
-  if (!safeEqual(key, BOOTSTRAP_KEY)) {
-    ws.close(WORKER_REJECTED_CODE, "invalid local worker bootstrap key");
+  if (!safeEqual(key, workerBootstrapToken())) {
+    ws.close(WORKER_REJECTED_CODE, "invalid local runtime worker token");
     return;
   }
   const lease = registerWorker(ws);
