@@ -1,8 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { TaskBoard } from "../TaskBoard.tsx";
 import { Members } from "../views/Members.tsx";
-import { Computers, Inbox, Search, Settings } from "../views/misc.tsx";
+import { Computers, Inbox, Search, Settings, Tasks } from "../views/misc.tsx";
 import { getWorkspaceModule } from "./workspaceModules.tsx";
 import type { WorkspaceModuleId } from "./workspaceLayout.ts";
 import { workspaceSearchForLayout, type WorkspaceRouteMatch } from "./workspaceRoute.ts";
@@ -20,7 +19,7 @@ function ModuleContent({ moduleId, route, chatVisible }: { moduleId: WorkspaceMo
   const discussionQuerySuffix = workspaceSearchForLayout("", { activeModule: moduleId, chatVisible: true });
   if (moduleId === "tasks") {
     const channelId = route.section === "tasks" && route.resourceId !== "server" ? route.resourceId : null;
-    return <TaskBoard channelId={channelId} />;
+    return <Tasks channelIdOverride={channelId} moduleQuerySuffix={moduleQuerySuffix} />;
   }
   if (moduleId === "members") {
     return (

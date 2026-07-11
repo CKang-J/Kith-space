@@ -13,11 +13,17 @@ import { useConfirm, useEscClose } from "../ConfirmModal.tsx";
 import { useTranslation } from "react-i18next";
 import { daemonUpdateCommandTemplate, isDaemonUpdateAvailable } from "../machineUi.ts";
 
-export function Tasks() {
+interface TasksProps {
+  channelIdOverride?: string | null;
+  moduleQuerySuffix?: string;
+}
+
+export function Tasks({ channelIdOverride, moduleQuerySuffix = "" }: TasksProps = {}) {
   const { channels, slug } = useStore();
-  const { channelId } = useParams(); // "server" = all channels; otherwise a specific channelId
+  const { channelId: routeChannelId } = useParams(); // "server" = all channels; otherwise a specific channelId
   const nav = useNavigate();
   const { t } = useTranslation();
+  const channelId = channelIdOverride === undefined ? routeChannelId : channelIdOverride ?? undefined;
   const scope = channelId || "server";
   const cur = scope === "server" ? null : channels.find((c) => c.id === scope);
 
@@ -27,9 +33,9 @@ export function Tasks() {
         <div className="sb-scroll">
         <div className="sb-title">{t("nav.tasks")}</div>
         <div className="sec">{t("misc.tasksScope")}</div>
-        <button className={"item" + (scope === "server" ? " active" : "")} onClick={() => nav(`/s/${slug}/tasks/server`)}><Star size={14} /><span className="grow">{t("misc.tasksAll")}</span></button>
+        <button className={"item" + (scope === "server" ? " active" : "")} onClick={() => nav(`/s/${slug}/tasks/server${moduleQuerySuffix}`)}><Star size={14} /><span className="grow">{t("misc.tasksAll")}</span></button>
         <div className="sec">{t("common.channels")}</div>
-        {channels.filter((c) => c.type !== "dm").map((c) => <button key={c.id} className={"item" + (c.id === scope ? " active" : "")} onClick={() => nav(`/s/${slug}/tasks/${c.id}`)}># {c.name}</button>)}
+        {channels.filter((c) => c.type !== "dm").map((c) => <button key={c.id} className={"item" + (c.id === scope ? " active" : "")} onClick={() => nav(`/s/${slug}/tasks/${c.id}${moduleQuerySuffix}`)}># {c.name}</button>)}
         </div>
       </aside>
       <main className="content-col">

@@ -201,6 +201,7 @@ Chat | Inbox | Tasks | Members | Computers | Settings
 - 标题区展示模块名称、当前 Space 和模块自身操作。
 - 一次只打开一个模块。
 - 点击其他 Dock 项直接替换当前模块。
+- Tasks 复用现有任务视图的范围侧栏，支持“全部任务”和指定频道任务；范围切换保留 Split / ModuleOnly 状态。
 - 模块加载失败只影响 Module Pane，Chat 保持可用。
 - 模块空状态在自身内容区处理。
 
