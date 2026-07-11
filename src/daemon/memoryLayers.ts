@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { userMemoryDir, workspaceMemoryDir } from "../paths.js";
+import { spaceMemoryDir, userMemoryDir } from "../paths.js";
 
 export interface MemoryLayerPath {
   root: string;
@@ -26,7 +26,7 @@ function layer(root: string): MemoryLayerPath {
 export function resolveMemoryLayerPaths(workspaceRoot: string, agentWorkspace: string): MemoryLayerPaths {
   return {
     user: layer(userMemoryDir()),
-    space: layer(workspaceMemoryDir(workspaceRoot)),
+    space: layer(spaceMemoryDir(workspaceRoot)),
     agent: layer(agentWorkspace),
   };
 }

@@ -77,7 +77,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 ## 当前进展
 
-**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-11：A2.1、A2.5、A2.2a、A2.3、A2.4 与 A2.2b workspace.db baseline 已落地。A2 仍未完成，下一步是全局上传目录、残余本地领域资产与整阶段验证收口；A3 尚未开始。做到哪、下一步与关键过渡事实全部见 `docs/progress.md`。
+**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-11：A2 本地领域与数据模型已完成；附件按 Space 落在 `<spaceRoot>/.kith/uploads`，旧多用户/Machine/Space 兼容与失效本地域资产已收口。下一步是 A3 浏览器访问安全边界。做到哪、下一步与关键过渡事实全部见 `docs/progress.md`。
 
 <!-- CODEGRAPH_START -->
 

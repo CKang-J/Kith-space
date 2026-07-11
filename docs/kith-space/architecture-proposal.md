@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述 2026-07-11 个人 AgentOS 转向后的目标模块边界。A2.4 已删除 Machine/Computer/远程 worker 的活跃产品路径，A2.2b 已删除多用户/Machine 物理 schema 与旧 Space 兼容边界；环境变量、发行和其他继承资产仍按 `migration-plan.md` 分阶段移除。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
+> 本文描述 2026-07-11 个人 AgentOS 转向后的目标模块边界。A2 本地领域与数据模型已完成：多用户/Machine 物理 schema、旧 Space 兼容边界与 app 级附件目录均已删除；认证、发行和其他继承资产仍按 `migration-plan.md` 分阶段移除。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
 
 ## 1. 架构原则
 
@@ -39,7 +39,7 @@ Core Service 根据 Web 模式监听：
 
 ### 2.3 Local Runtime Worker
 
-现 daemon 保留为独立进程隔离边界，但产品名称改为 Local Runtime Worker。`src/local-runtime/workerHub.ts` 在 Core Service 内维护安装级唯一连接、ready snapshot 与请求/响应；新连接会用专用关闭码替换旧连接，旧进程停止自动重连，generation lease 阻止旧连接的异步 ready、事件、补唤醒或断线回收覆盖新连接状态。它只连接本机 Core Service，承载 runtime 进程、轨迹和 session 生命周期；不再注册 Machine、不被用户手工连接，也不接受远程 worker。
+现 daemon 保留为独立进程隔离边界，但产品名称改为 Local Runtime Worker。`src/local-runtime/workerHub.ts` 在 Core Service 内维护安装级唯一连接、ready snapshot 与请求/响应；新连接会用专用关闭码替换旧连接，旧进程停止自动重连，generation lease 阻止旧连接的异步 ready、事件、补唤醒或断线回收覆盖新连接状态。它只连接本机 Core Service，承载 runtime 进程、轨迹和 session 生命周期；不再注册 Machine、不被用户手工连接，也不接受远程 worker。过渡 Worker CLI 固定连接 `http://127.0.0.1:$PORT`，不提供 `--server-url` 或其他远程端点覆盖；A3/A4 只替换内部凭据与 Desktop 监督方式，不重新引入远程 Worker。
 
 唯一 Worker 服务所有本机 Space，而不是隶属某个 Space。Worker 消息只携带 installation-unique agentId；`src/local-runtime/agentLocator.ts` 遍历已注册 Space 定位 agent 所属数据库，`src/server/ws.ts` 再把 status/activity/session/trajectory/reply 发布到正确 Space。Worker ready/reconnect 同样遍历所有 Space 做状态对齐和积压补唤醒。
 
@@ -93,7 +93,7 @@ REST、agent API、MCP handler 和 UI 必须调用同一 Task Service，不能�
 
 ### 4.6 Files
 
-文件和附件只使用本地磁盘服务。A2.5 已删除 S3 driver、SDK 依赖和 bucket 配置，并对存储 key 做平面文件名校验；当前上传目录仍是 app 级 `uploads/`。A2.2a 已让请求通过 `SpaceCtx` 获得 Space 作用域，但附件目录迁入 Space 根路径仍放在 A2 收口执行，不能用字符串路径绕过 registry 与根路径校验。
+文件和附件只使用本地磁盘服务。S3 driver、SDK 依赖、bucket 配置和 app 级上传目录均已删除；storage key 必须是平面文件名。`src/server/storage.ts` 接收 `spaceId`，通过 app.db registry 解析已注册 Space 的 rootPath，并只读写 `<spaceRoot>/.kith/uploads`。Public download 以附件记录的 `spaceId` 为准，agent plane 以认证 `spaceId` 为准；请求和调用方都不能用字符串路径绕过 registry。
 
 ## 5. 数据拓扑
 
@@ -129,11 +129,11 @@ A2.2b 已把 workspace.db 重建为单一 19 表 baseline。它包含 `spaces`�
 允许清空开发期 app 数据与 `.kith`，不实现旧 schema 数据迁移。A2.2b 把 Drizzle 历史压成单一 `0000` baseline；打开旧 schema 时抛出包含数据库路径的可操作错误，要求先备份再显式删除，应用绝不自动迁移或删除旧库。领域迁移状态如下：
 
 1. 建立 app.db 和唯一 Human/Home 初始化。
-2. 将传输、请求上下文、Space API 与 Web 类型改为 `spaceId`，旧名只留服务端兼容边界。
+2. 将传输、请求上下文、Space API 与 Web 类型改为 `spaceId`，并删除旧服务端兼容边界。
 3. A2.3 已完成：唯一 Human 成为传输 authority，稳定身份为 `@you`，删除产品 membership/RBAC/邀请/Web Human roster/Human-Human DM，频道成员只管理 agent。
 4. A2.4 已完成：删除 Machine 服务/API/UI、machine key/心跳/调度与 agent machine 选择；保留安装级唯一 Worker 进程协议，并让 Worker 事件跨 Space 定位。
 5. A2.2b 已完成：破坏性重建 workspace.db baseline，把保留表的 `servers/server_id` 改为 `spaces/space_id`，拆出单 Human 状态/收藏/偏好，并删除旧物理表与兼容边界。
-6. 待 A2 收口：在已完成 S3 删除的基础上，把全局上传目录纳入 Space 根路径，清理残余领域资产并做 A2 总验收。
+6. A2 已完成：附件目录纳入 Space 根路径，旧 app 级上传配置、命名 facade 与不兼容维护脚本已删除，并完成整阶段验收。
 
 不执行无边界的整仓替换；每个切片都需 schema、service、route 和 UI 契约测试。
 

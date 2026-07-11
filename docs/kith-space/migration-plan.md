@@ -26,7 +26,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A2 本地领域与数据模型
 
-当前进度：A2.1 已完成 `app.db`、唯一 Human、幂等 `Home` 初始化；A2.5 已删除 S3；A2.2a 已完成 canonical Space 契约；A2.3 已完成唯一 Human 协作边界；A2.4 已删除 Machine/Computer/远程 worker 活跃产品路径并建立安装级唯一 Worker；A2.2b 已完成 canonical Space 传输/CLI/DB 边界与 19 表 workspace.db baseline。A2 仍在进行，下一步是全局上传目录与残余本地领域资产收口及整阶段验证。
+当前进度：A2 已完成。`app.db`、唯一 Human、幂等 `Home`、canonical Space 契约、安装级唯一 Worker、19 表 workspace.db baseline 与 `<spaceRoot>/.kith/uploads` 均已落地；旧多用户/Machine/Space 兼容、app 级上传配置和不兼容的一次性维护脚本已收口。
 
 改动边界：
 
@@ -36,6 +36,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 - Human membership/RBAC/邀请/Human-Human DM 删除；Space 内 agent membership 保留。
 - Machine/Computer/远程 daemon 注册删除；内部 daemon 变为安装级唯一 Local Runtime Worker，并以 agentId 跨 Space 路由。
 - S3/对象存储删除，本地文件服务保留。
+- 附件存储由 `spaceId` 经 app.db registry 解析 Space 根目录，公开下载与 agent plane 均不能跨 Space 取文件。
 
 实施顺序补充：A2.2b 已用允许的破坏性重置一次性把保留表的 `servers/server_id` 压平为 `spaces/space_id`，删除 `users/server_members/machines/join_links` 与 `agents.machine_id`，拆出 agent-only channel membership、Human 会话状态/收藏/Space 偏好，并把持久 actor 切到 `human`。旧 `/api/servers`、`x-server-id`、Socket `serverId`、`ServerCtx` 和 DB workspace facade 同时删除；Agent CLI 使用 `space info` 与 `space:read`。
 
@@ -43,7 +44,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 模块边界建议：`src/app-data/` 负责 app.db；`src/spaces/` 负责 Space registry/生命周期；`src/human/` 负责唯一 Human；`src/local-runtime/` 负责 Desktop 与 worker 内部协议。实际命名在落地前按现有结构核对，不为目录整齐而搬动无关文件。
 
-验证：A2.2b 已通过 typecheck、web build 和完整 integration；unit 364 项中 363 项通过，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。fresh baseline、legacy schema 拒绝、唯一 Worker 与跨 Space 路由、Machine/旧 Space 契约不可达、Human channel state 和任务/消息回归均有覆盖。A2 最终收口后仍需重跑整阶段验收；A3 前继续验证 Core Service 仅绑定 loopback，`dev:e2e:up` 等待 `/health.workerConnected`。
+验证：A2 最终通过 typecheck、web build（2563 modules）和完整 integration；unit 367 项中 366 项通过，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。fresh/legacy baseline、唯一 Worker 与跨 Space 路由、Worker loopback-only、Machine/旧 Space 契约不可达、Human 状态、任务/消息以及 Space 隔离附件均有覆盖。A3 前继续保持 Core Service loopback-only，并由 `dev:e2e:up` 等待 `/health.workerConnected`。
 
 ### A3 浏览器访问安全边界
 

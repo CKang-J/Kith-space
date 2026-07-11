@@ -109,7 +109,7 @@ export async function handlePublicAttachmentGet(ctx: BaseCtx): Promise<boolean> 
       if (!(await canHumanReadChannel(a.spaceId, a.channelId))) return (sendErr(res, 404, "attachment not found"), true);
     }
     let data: Buffer;
-    try { data = await readObject(a.storageKey); } catch { return (sendErr(res, 404, "file missing"), true); }
+    try { data = await readObject(a.spaceId, a.storageKey); } catch { return (sendErr(res, 404, "file missing"), true); }
     if (adl[2]) { // /preview: text preview
       if (data.includes(0) || (a.sizeBytes ?? 0) > 256 * 1024) return (sendJson(res, 200, { kind: "binary" }), true);
       return (sendJson(res, 200, { kind: "text", text: data.toString("utf8") }), true);
@@ -124,7 +124,7 @@ export async function handleAttachments(ctx: SpaceCtx): Promise<boolean> {
   const { req, res, method, p, humanId, spaceId } = ctx;
   const db = dbForSpace(spaceId);
   if (p === "/api/attachments/upload" && method === "POST") {
-    const { fields, files } = await parseUpload(req);
+    const { fields, files } = await parseUpload(spaceId, req);
     const out: any[] = [];
     for (const f of files) {
       const [a] = await db.insert(schema.attachments).values({ spaceId, channelId: fields.channelId || null, uploaderType: "human", uploaderId: humanId, filename: f.filename, mimeType: f.mimeType, sizeBytes: f.size, storageKey: f.storageKey }).returning();
@@ -136,7 +136,7 @@ export async function handleAttachments(ctx: SpaceCtx): Promise<boolean> {
   const agavatar = /^\/api\/agents\/([^/]+)\/avatar$/.exec(p);
   if (agavatar && method === "POST") {
     const agentId = agavatar[1]!;
-    const { files } = await parseUpload(req);
+    const { files } = await parseUpload(spaceId, req);
     const f = files[0];
     if (!f) return (sendErr(res, 400, "no file"), true);
     if (!(f.mimeType || "").startsWith("image/")) return (sendErr(res, 400, "avatar must be an image"), true);
@@ -150,7 +150,7 @@ export async function handleAttachments(ctx: SpaceCtx): Promise<boolean> {
   if (savatar && method === "POST") {
     const sid = savatar[1]!;
     if (sid !== spaceId) return (sendErr(res, 404, "Space not found"), true);
-    const { files } = await parseUpload(req);
+    const { files } = await parseUpload(spaceId, req);
     const f = files[0];
     if (!f) return (sendErr(res, 400, "no file"), true);
     if (!(f.mimeType || "").startsWith("image/")) return (sendErr(res, 400, "avatar must be an image"), true);

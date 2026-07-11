@@ -32,7 +32,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     if (descTooLong(description)) return (sendErr(res, 400, DESC_TOO_LONG), true);
     // Machine assignment is retired. Reject the old field explicitly so stale clients do not appear to succeed.
     if (Object.prototype.hasOwnProperty.call(b, "machineId")) return (sendErr(res, 400, "machineId is no longer supported"), true);
-    // A live agent name must be unique per server — it is the @mention / dm:@<name> routing key, so a duplicate
+    // A live agent name must be unique per Space — it is the @mention / dm:@<name> routing key, so a duplicate
     // becomes an unreachable routing blind spot. ON CONFLICT against the agents_name_uniq partial index is
     // race-proof (no SELECT-then-INSERT gap): a duplicate live name inserts no row → friendly 409. Soft-deleted
     // names are excluded by the index predicate, so a deleted agent's name can be reused.
@@ -114,7 +114,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   const alog = /^\/api\/agents\/([^/]+)\/activity-log$/.exec(p);
   if (alog && method === "GET") {
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 200);
-    const rows = await db.select().from(schema.agentActivityLog).where(and(eq(schema.agentActivityLog.agentId, alog[1]!), eq(schema.agentActivityLog.spaceId, spaceId))).orderBy(desc(schema.agentActivityLog.ts)).limit(limit); // spaceId scope: never leak another tenant's agent activity by raw agentId
+    const rows = await db.select().from(schema.agentActivityLog).where(and(eq(schema.agentActivityLog.agentId, alog[1]!), eq(schema.agentActivityLog.spaceId, spaceId))).orderBy(desc(schema.agentActivityLog.ts)).limit(limit); // spaceId scope: never leak another Space's agent activity by raw agentId
     return (sendJson(res, 200, rows.reverse().map((r) => ({ timestamp: r.ts, entry: { kind: r.kind === "tool" ? "tool_start" : r.kind, activity: r.activity, detail: r.detail, text: r.text, toolName: r.toolName, toolInput: r.toolInput } }))), true);
   }
   // ── Agent Permissions (scopes) ── GET to read / PUT to replace entirely. Default mode = grant all.
@@ -147,15 +147,15 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   const adms = /^\/api\/agents\/([^/]+)\/agent-dms$/.exec(p);
   if (adms && method === "GET") {
     const agId = adms[1]!;
-    // spaceId scope: confirm the agent belongs to this tenant before fanning out over its memberships
+    // spaceId scope: confirm the agent belongs to this Space before fanning out over its memberships
     // (the inner channel query already filters by spaceId, but pre-checking 404s a foreign agent id and
-    // avoids a cross-tenant channel_members scan). Mirrors the workspace-files / scopes ownership pre-check.
+    // avoids a cross-Space channel_agent_members scan). Mirrors the workspace-files / scopes ownership pre-check.
     const own = (await db.select({ id: schema.agents.id }).from(schema.agents).where(and(eq(schema.agents.id, agId), eq(schema.agents.spaceId, spaceId))))[0];
     if (!own) return (sendErr(res, 404, "agent not found"), true);
     const mine = await db.select().from(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.agentId, agId));
     const out: any[] = [];
     for (const cm of mine) {
-      const ch = (await db.select().from(schema.channels).where(and(eq(schema.channels.id, cm.channelId), eq(schema.channels.type, "dm"), eq(schema.channels.spaceId, spaceId))))[0]; // spaceId scope: don't surface another tenant's DM channels for this agent id
+      const ch = (await db.select().from(schema.channels).where(and(eq(schema.channels.id, cm.channelId), eq(schema.channels.type, "dm"), eq(schema.channels.spaceId, spaceId))))[0]; // spaceId scope: don't surface another Space's DM channels for this agent id
       if (!ch) continue;
       const peers = (await db.select().from(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, ch.id))).filter((member) => member.agentId !== agId);
       const peer = peers[0]; // Human DMs contain only this agent, so only agent-agent DMs have a peer row.

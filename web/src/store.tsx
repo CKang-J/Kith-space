@@ -154,7 +154,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     xhr.send(fd);
   });
   const attachmentUrl = (id: string) => `/api/attachments/${id}?token=${encodeURIComponent(tokenRef.current)}`;
-  const uploadSpaceAvatar = async (file: File) => { // Space avatar upload (owner/admin only): upload image → refresh sidebar tile
+  const uploadSpaceAvatar = async (file: File) => { // The single Human uploads the Space avatar, then refreshes the sidebar tile.
     const fd = new FormData(); fd.append("files", file);
     const r = await fetch(`/api/spaces/${spaceIdRef.current}/avatar`, { method: "POST", headers: spaceScopeHeaders(tokenRef.current, spaceIdRef.current), body: fd });
     if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || "upload failed");

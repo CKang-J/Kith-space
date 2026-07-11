@@ -18,9 +18,9 @@ cp .env.example .env              # 创建本地环境配置
 - `JWT_SECRET` — 人类会话 token 签名密钥。生成：`openssl rand -hex 32`
 - `DAEMON_BOOTSTRAP_KEY` — Local Runtime Worker↔Core Service 过渡握手预共享密钥。生成：`openssl rand -hex 32`
 - `PORT` — 服务端口，默认 `7777`
-- `KITH_SPACE_HOME` — app 数据/日志/上传根目录，默认 `~/.kith-space`（`app.db` 在此，各 Space 库在 `<rootPath>/.kith/workspace.db`）
+- `KITH_SPACE_HOME` — app 数据、日志和 agent 工作目录的根目录，默认 `~/.kith-space`（`app.db` 在此；各 Space 的数据库与附件分别在 `<rootPath>/.kith/workspace.db`、`<rootPath>/.kith/uploads`）
 
-本地便利项（仅过渡开发）：`ALLOW_DEV_LOGIN=true` 可用用户名签发 JWT。账户/JWT/dev login 将在 A2/A3 删除，不得用于新的浏览器 Token 设计。
+本地便利项（仅过渡开发）：`ALLOW_DEV_LOGIN=true` 可用用户名签发 JWT。账户/JWT/dev login 将在 A3 删除，不得用于新的浏览器 Token 设计。
 
 > Worker 与 Core Service 的密钥必须一致。过渡命令仍名为 `pnpm run daemon`，其内置 `--api-key` 是 `poc-secret-key`；因此本地要么把 `.env` 的 `DAEMON_BOOTSTRAP_KEY=poc-secret-key`，要么手动用匹配的 key 起 Worker（见 §3）。用 `pnpm run dev:e2e:up`（§4）则会自动读 `.env` 的 key，无需对齐。
 
@@ -35,7 +35,7 @@ pnpm run db:push                  # 可选/遗留：仅把 schema 推到一个 s
 pnpm run db:studio                # 可选：Drizzle Studio 查那个 scratch db
 ```
 
-数据层是 SQLite：中央 `app.db` + 每 Space 独立 workspace.db，无需 Postgres/Redis。附件固定使用本地磁盘，不支持 S3。详见 `docs/kith-space/architecture-proposal.md §5`。
+数据层是 SQLite：中央 `app.db` + 每 Space 独立 workspace.db，无需 Postgres/Redis。附件固定使用 `<spaceRoot>/.kith/uploads`，不支持 S3 或 app 级上传目录覆盖。详见 `docs/kith-space/architecture-proposal.md §4.6/§5`。
 
 A2.2b 使用破坏性单一 baseline，不迁移旧开发库。若启动时报 legacy workspace database，先备份报错路径指向的 `<space>/.kith/workspace.db`，再由开发者显式删除并重新 seed；应用不会自动迁移或删除旧库。
 
@@ -55,6 +55,8 @@ pnpm exec tsx src/daemon/index.ts --api-key "$DAEMON_BOOTSTRAP_KEY"
 # 终端 C — web 前端热更（仅在改前端时需要）
 pnpm --dir web run dev            # Vite dev server
 ```
+
+Local Runtime Worker 固定连接 `http://127.0.0.1:$PORT`，不接受 `--server-url`；它不是可连接远程服务的独立 daemon 产品。
 
 不带热更起 server：`pnpm start`（= `tsx src/server/index.ts`）。
 停掉本地全部进程：`pnpm run stop`。

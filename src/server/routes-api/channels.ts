@@ -230,7 +230,7 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
   }
   if (cmem && method === "POST") { // add an agent or the local Human to a channel
     const own = (await db.select({ id: schema.channels.id }).from(schema.channels).where(and(eq(schema.channels.id, cmem[1]!), eq(schema.channels.spaceId, spaceId))))[0];
-    if (!own) return (sendErr(res, 404, "channel not found"), true); // and only this tenant's channels
+    if (!own) return (sendErr(res, 404, "channel not found"), true); // and only this Space's channels
     const b = await readJson(req);
     if (b.humanId !== undefined) return (sendErr(res, 400, "Human channel membership is not configurable"), true);
     const agentId = String(b.agentId ?? "").trim();
@@ -264,7 +264,7 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
   if (cfiles && method === "GET") {
     // invariant 3: private/DM channel file list must not be accessible to non-members (IDOR-B2)
     if (!(await canHumanReadChannel(spaceId, cfiles[1]!))) return (sendErr(res, 404, "channel not found"), true);
-    const rows = await db.select().from(schema.attachments).where(and(eq(schema.attachments.channelId, cfiles[1]!), eq(schema.attachments.spaceId, spaceId), isNotNull(schema.attachments.messageId))).orderBy(desc(schema.attachments.createdAt)).limit(100); // spaceId scope: don't list another tenant's channel files by raw channel UUID
+    const rows = await db.select().from(schema.attachments).where(and(eq(schema.attachments.channelId, cfiles[1]!), eq(schema.attachments.spaceId, spaceId), isNotNull(schema.attachments.messageId))).orderBy(desc(schema.attachments.createdAt)).limit(100); // spaceId scope: don't list another Space's channel files by raw channel UUID
     const aIds = rows.filter((r) => r.uploaderType === "agent" && r.uploaderId).map((r) => r.uploaderId!) as string[];
     const ags = aIds.length ? await db.select().from(schema.agents).where(inArray(schema.agents.id, aIds)) : [];
     const human = getHumanIdentity();

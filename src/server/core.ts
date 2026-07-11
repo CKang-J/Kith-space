@@ -546,8 +546,8 @@ export async function createMessage(opts: {
     }
     const replyStreamId = agentReplyStreamId(msg!.id, mem.id);
     await publish(opts.spaceId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, triggerMessageId: msg.id, op: "start" });
-    const startSent = sendAgentStart(opts.spaceId, target, mem.id);
-    const deliverSent = startSent && sendAgentDeliver(opts.spaceId, target, { agentId: mem.id, seq, from: opts.senderName, target: opts.channelId, targetName, msgShort, isTask: !!opts.asTask, message: { content: opts.content }, mentioned, streamId: replyStreamId });
+    const startSent = sendAgentStart(target, mem.id);
+    const deliverSent = startSent && sendAgentDeliver(target, { agentId: mem.id, seq, from: opts.senderName, target: opts.channelId, targetName, msgShort, isTask: !!opts.asTask, message: { content: opts.content }, mentioned, streamId: replyStreamId });
     if (!deliverSent) {
       await dispatchState.releaseWake(reservation.reservationId);
       await publish(opts.spaceId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, op: "error", text: "local runtime worker offline" });
@@ -920,8 +920,8 @@ export async function assignTask(
   if (!reservation) return upd;
   const startTarget = await agentStartTarget(spaceId, assigneeId);
   if (startTarget.ok) {
-    const startSent = sendAgentStart(spaceId, startTarget, assigneeId);
-    const deliverSent = startSent && sendAgentDeliver(spaceId, startTarget, {
+    const startSent = sendAgentStart(startTarget, assigneeId);
+    const deliverSent = startSent && sendAgentDeliver(startTarget, {
       agentId: assigneeId,
       seq: sysMsg.seq,
       from: actor,
@@ -1033,8 +1033,8 @@ export async function setTaskStatus(
     if (!reservation) return upd;
     const target = await agentStartTarget(spaceId, upd.taskAssigneeId);
     if (target.ok) {
-      const startSent = sendAgentStart(spaceId, target, upd.taskAssigneeId);
-      const deliverSent = startSent && sendAgentDeliver(spaceId, target, { type: "agent:deliver", agentId: upd.taskAssigneeId, seq: sysMsg.seq, from: actor, target: threadCh, targetName: `task #${upd.taskNumber}`, msgShort: sysMsg.id.slice(0, 8), isTask: true, message: { content: `#${upd.taskNumber} → ${label}` }, mentioned: true });
+      const startSent = sendAgentStart(target, upd.taskAssigneeId);
+      const deliverSent = startSent && sendAgentDeliver(target, { type: "agent:deliver", agentId: upd.taskAssigneeId, seq: sysMsg.seq, from: actor, target: threadCh, targetName: `task #${upd.taskNumber}`, msgShort: sysMsg.id.slice(0, 8), isTask: true, message: { content: `#${upd.taskNumber} → ${label}` }, mentioned: true });
       if (!deliverSent) {
         await action.state.releaseWake(reservation.reservationId);
         await markAgentUnavailable(spaceId, upd.taskAssigneeId, "local runtime worker offline");
@@ -1082,16 +1082,16 @@ async function markAgentUnavailable(spaceId: string, agentId: string, reason: st
 type AgentStartTarget = { ok: true; cfg: NonNullable<Awaited<ReturnType<typeof agentConfig>>> };
 type AgentControlTarget = { ok: true };
 
-function sendAgentStart(_serverId: string, target: AgentStartTarget, agentId: string): boolean {
+function sendAgentStart(target: AgentStartTarget, agentId: string): boolean {
   const msg = { type: "agent:start", agentId, config: target.cfg };
   return sendToWorker(msg);
 }
 
-function sendAgentDeliver(_serverId: string, _target: AgentStartTarget, msg: Record<string, unknown>): boolean {
+function sendAgentDeliver(_target: AgentStartTarget, msg: Record<string, unknown>): boolean {
   return sendToWorker({ type: "agent:deliver", ...msg });
 }
 
-function sendAgentControl(_serverId: string, _target: AgentControlTarget, msg: Record<string, unknown>): boolean {
+function sendAgentControl(_target: AgentControlTarget, msg: Record<string, unknown>): boolean {
   return sendToWorker(msg);
 }
 
@@ -1125,7 +1125,7 @@ export async function startAgent(spaceId: string, agentId: string): Promise<{ ok
     if (target.reason !== "agent not found") await markAgentUnavailable(spaceId, agentId, target.reason);
     return { ok: false, reason: target.reason };
   }
-  if (!sendAgentStart(spaceId, target, agentId)) {
+  if (!sendAgentStart(target, agentId)) {
     await markAgentUnavailable(spaceId, agentId, "local runtime worker offline");
     return { ok: false, reason: "local runtime worker offline" };
   }
@@ -1137,7 +1137,7 @@ export async function stopAgent(spaceId: string, agentId: string): Promise<boole
   const db = dbForSpace(spaceId);
   const target = await agentControlTarget(spaceId, agentId);
   if (target.ok) {
-    if (!sendAgentControl(spaceId, target, { type: "agent:stop", agentId })) log.warn("agent stop target unavailable", { agentId, reason: "local runtime worker offline" });
+    if (!sendAgentControl(target, { type: "agent:stop", agentId })) log.warn("agent stop target unavailable", { agentId, reason: "local runtime worker offline" });
   } else if (target.reason !== "agent not found") {
     log.warn("agent stop target unavailable", { agentId, reason: target.reason });
   }
@@ -1149,7 +1149,7 @@ export async function resetAgent(spaceId: string, agentId: string, wipeWorkspace
   const db = dbForSpace(spaceId);
   const target = await agentControlTarget(spaceId, agentId);
   if (target.ok) {
-    if (!sendAgentControl(spaceId, target, { type: "agent:reset", agentId, wipeWorkspace, clearMemory })) log.warn("agent reset target unavailable", { agentId, reason: "local runtime worker offline" });
+    if (!sendAgentControl(target, { type: "agent:reset", agentId, wipeWorkspace, clearMemory })) log.warn("agent reset target unavailable", { agentId, reason: "local runtime worker offline" });
   } else if (target.reason !== "agent not found") {
     log.warn("agent reset target unavailable", { agentId, reason: target.reason });
   }
@@ -1162,7 +1162,7 @@ export async function resetAgent(spaceId: string, agentId: string, wipeWorkspace
 export async function syncAgentProfile(spaceId: string, agentId: string, displayName: string, description?: string | null): Promise<void> {
   const target = await agentControlTarget(spaceId, agentId);
   if (target.ok) {
-    if (!sendAgentControl(spaceId, target, { type: "agent:profile", agentId, displayName, description: description ?? null })) log.warn("agent profile target unavailable", { agentId, reason: "local runtime worker offline" });
+    if (!sendAgentControl(target, { type: "agent:profile", agentId, displayName, description: description ?? null })) log.warn("agent profile target unavailable", { agentId, reason: "local runtime worker offline" });
   } else if (target.reason !== "agent not found") {
     log.warn("agent profile target unavailable", { agentId, reason: target.reason });
   }

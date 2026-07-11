@@ -5,7 +5,7 @@ import {
   initializeHumanProfile,
   type HumanProfile,
 } from "../app-data/appDatabase.js";
-import { defaultWorkspaceRoot } from "../paths.js";
+import { defaultSpaceRoot } from "../paths.js";
 import { dbForSpace, schema } from "./index.js";
 import { createSpace } from "./space.js";
 
@@ -28,7 +28,7 @@ export async function ensurePersonalApp(input: {
   }
 
   const home = await createSpace("Home", HOME_SLUG, {
-    rootPath: input.homeRootPath ?? defaultWorkspaceRoot(HOME_SLUG),
+    rootPath: input.homeRootPath ?? defaultSpaceRoot(HOME_SLUG),
   });
   return { human, home };
 }

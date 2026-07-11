@@ -36,7 +36,7 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 
 ### P-A2 本地领域与数据模型
 
-状态：进行中。已完成中央 `app.db`、唯一 Human、默认 `Home`、本地-only 附件、Space 契约、A2.3 唯一 Human 协作边界、A2.4 Machine/Computer/远程 worker 活跃路径删除，以及 A2.2b workspace.db 破坏性 baseline。下一步是 A2 收口：把全局上传目录纳入 Space 根路径、清理残余本地领域资产并完成整阶段验证；A3 尚未开始。
+状态：已完成。中央 `app.db`、唯一 Human、默认 `Home`、canonical Space 契约、唯一 Local Runtime Worker、19 表 workspace.db 破坏性 baseline 与 Space 级附件目录均已落地；旧多用户/Machine/Space 兼容和失效本地域资产已收口。
 
 - 把中央 registry 扩展并更名为 `app.db`。
 - 实现唯一 Human 和首次资料初始化；自动创建 `Home` Space。
@@ -45,7 +45,7 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 - 已删除 Machine/Computer、远程 daemon 注册和多主机调度；内部 daemon 已收敛为安装级唯一 Local Runtime Worker，并跨本机 Space 路由 agent 事件。
 - workspace.db 已重建为单一 19 表 baseline：使用 `spaces/space_id`，删除 `users/server_members/machines/join_links` 与 `agents.machine_id`，分离 agent membership、唯一 Human 会话状态/收藏/Space 偏好，并把持久 actor 统一为 `human`。
 - 已删除 `/api/servers`、`x-server-id`、Socket `serverId`、`ServerCtx` 和 DB workspace facade；Agent CLI 使用 `space info` 与 `space:read`。
-- 删除 S3/对象存储，附件只走本地磁盘。
+- 删除 S3/对象存储，附件只走所属 Space 的 `<spaceRoot>/.kith/uploads`；根路径只能由 app.db registry 解析。
 
 允许破坏性重置当前开发数据，不做旧 `.kith` 数据迁移。
 

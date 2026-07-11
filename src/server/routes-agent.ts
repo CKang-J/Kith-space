@@ -190,7 +190,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
   }
   // Agent uploads an attachment (first-class member, can share files). Multipart fields: files=binary, channel=human-readable target. Returns attachmentId; use message send --attach to attach it.
   if (p === "/agent-api/attachment/upload" && method === "POST") {
-    const { fields, files } = await parseUpload(req);
+    const { fields, files } = await parseUpload(spaceId, req);
     const tgt = await resolveTarget(spaceId, fields.channel ?? fields.target ?? "", agent.id);
     const out = [];
     for (const f of files) {
@@ -262,10 +262,9 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     const name = (b.target ?? "").replace(/^#/, "");
     const ch = (await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.name, name))))[0];
     if (!ch) return (sendErr(res, 404, "channel not found"), true);
-    // Agent ACL: self-join is for public channels only. Private / DM / thread are invite-only — an admin or an
-    // existing member must add the agent (mirrors the human self-join guard). Prevents an agent walking into a
-    // private channel by name.
-    if (ch.type !== "channel") return (sendErr(res, 403, "this channel is invite-only — an admin or member must add the agent"), true);
+    // Agent ACL: self-join is for public channels only. Private channel, DM, and thread membership comes from
+    // the Human or an existing collaboration flow; an agent cannot enroll itself by guessing a channel name.
+    if (ch.type !== "channel") return (sendErr(res, 403, "private channels, DMs, and threads cannot be self-joined"), true);
     // Join at the channel watermark so a self-joining agent's next `message check` sees only new messages, not
     // the channel's pre-join backlog (it can pull history on demand via `message read`).
     await addChannelMembers(spaceId, ch.id, [{ type: "agent", id: agent.id }]);
@@ -537,7 +536,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     const canView = (a.uploaderType === "agent" && a.uploaderId === agent.id) || (!!a.channelId && await canAgentReadChannel(spaceId, a.channelId, agent.id));
     if (!canView) return (sendErr(res, 404, "attachment not found"), true);
     try {
-      const buf = await readObject(a.storageKey);
+      const buf = await readObject(spaceId, a.storageKey);
       // Return bytes (base64) → CLI saves to agent's local workspace, agent inspects with its own tools.
       // File lives in the Core Service data area; return bytes through the agent data plane for inspection.
       const TOO_BIG = 12 * 1024 * 1024; // 12MB raw limit (base64 +33%); oversized files are not inlined

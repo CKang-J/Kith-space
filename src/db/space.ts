@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { defaultWorkspaceRoot } from "../paths.js";
+import { defaultSpaceRoot } from "../paths.js";
 import { dbForSpace, registerSpace, schema, unregisterSpace } from "./index.js";
 
 export async function createSpace(
@@ -9,7 +9,7 @@ export async function createSpace(
   options: { rootPath?: string } = {},
 ) {
   const spaceId = randomUUID();
-  const rootPath = options.rootPath ?? defaultWorkspaceRoot(slug);
+  const rootPath = options.rootPath ?? defaultSpaceRoot(slug);
   registerSpace({ id: spaceId, name, slug, rootPath });
   try {
     const db = dbForSpace(spaceId);

@@ -108,7 +108,7 @@ export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
   if (cmsg && method === "GET") {
     if (!(await canHumanReadChannel(spaceId, cmsg[1]!))) return (sendErr(res, 403, "forbidden"), true);
     const { limit, before } = parseMsgPageParams(url.searchParams); // `before` = keyset cursor on seq → the older page (frontend scroll-to-top "load more")
-    const conds = [eq(schema.messages.spaceId, spaceId), eq(schema.messages.channelId, cmsg[1]!)]; // spaceId scope: a foreign channel UUID must not read another tenant's messages (cross-tenant read)
+    const conds = [eq(schema.messages.spaceId, spaceId), eq(schema.messages.channelId, cmsg[1]!)]; // spaceId scope: a foreign channel UUID must not read another Space's messages
     if (before != null) conds.push(lt(schema.messages.seq, before)); // hits messages_channel_idx (channelId, seq) — keyset, no offset drift
     const rows = await db.select().from(schema.messages).where(and(...conds)).orderBy(desc(schema.messages.seq)).limit(limit + 1); // +1 sentinel row: detect a further page without the exact-page-boundary false positive (mirrors the search/mentions routes)
     const hasMore = rows.length > limit;
@@ -168,7 +168,7 @@ export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
   }
   // Single message by id (serialized like the channel feed). Lets the client open a thread panel whose parent
   // message isn't in the loaded page (the "jump to unread thread" banner). Declared after /search and /sync so
-  // the bare-id regex never shadows them. Tenant-scoped + channel-read gated (invariant 3).
+  // the bare-id regex never shadows them. Space-scoped + channel-read gated (invariant 3).
   const cone = /^\/api\/messages\/([^/]+)$/.exec(p);
   if (cone && method === "GET") {
     const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, cone[1]!), eq(schema.messages.spaceId, spaceId))))[0];

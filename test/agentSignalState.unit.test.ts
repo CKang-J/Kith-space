@@ -22,12 +22,12 @@ test("agent activity detail is forwarded to the UI activity signal", () => {
 test("agent wake delivery handles local worker send failure after preview start", () => {
   assert.match(
     coreSrc,
-    /const startSent = sendAgentStart\(opts\.spaceId, target, mem\.id\);/,
+    /const startSent = sendAgentStart\(target, mem\.id\);/,
     "message wake should check whether agent:start was actually sent",
   );
   assert.match(
     coreSrc,
-    /const deliverSent = startSent && sendAgentDeliver\(opts\.spaceId, target, \{ agentId: mem\.id,/,
+    /const deliverSent = startSent && sendAgentDeliver\(target, \{ agentId: mem\.id,/,
     "message wake should only deliver after a successful start send",
   );
   assert.match(
@@ -55,17 +55,17 @@ test("agent lifecycle control targets the one local runtime worker", () => {
   );
   assert.match(
     coreSrc,
-    /sendAgentControl\(spaceId, target, \{ type: "agent:stop", agentId \}\)/,
+    /sendAgentControl\(target, \{ type: "agent:stop", agentId \}\)/,
     "stop should target the local worker",
   );
   assert.match(
     coreSrc,
-    /sendAgentControl\(spaceId, target, \{ type: "agent:reset", agentId, wipeWorkspace, clearMemory \}\)/,
+    /sendAgentControl\(target, \{ type: "agent:reset", agentId, wipeWorkspace, clearMemory \}\)/,
     "reset should target the local worker",
   );
   assert.match(
     coreSrc,
-    /sendAgentControl\(spaceId, target, \{ type: "agent:profile", agentId, displayName, description: description \?\? null \}\)/,
+    /sendAgentControl\(target, \{ type: "agent:profile", agentId, displayName, description: description \?\? null \}\)/,
     "profile sync should target the local worker",
   );
 });

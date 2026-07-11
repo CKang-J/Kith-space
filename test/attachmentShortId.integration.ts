@@ -99,7 +99,7 @@ async function setup() {
   ]);
 
   // Prod shape: uploaded to a channel (channelId recorded at upload), not yet attached to a message.
-  const saved = await saveObject(`short-id-${ts}.txt`, Readable.from([Buffer.from("short id resolution test payload")]));
+  const saved = await saveObject(spaceId, `short-id-${ts}.txt`, Readable.from([Buffer.from("short id resolution test payload")]));
   const [att] = await db.insert(schema.attachments).values({
     spaceId, channelId, uploaderType: "agent", uploaderId,
     filename: `short-id-${ts}.txt`, mimeType: "text/plain", sizeBytes: saved.size, storageKey: saved.key,

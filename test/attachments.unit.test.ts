@@ -1,5 +1,4 @@
-// Regression contract for multipart uploads backed by the local attachment store.
-// Run: npx tsx --test --test-force-exit test/attachments.unit.test.ts
+// Regression contract for multipart uploads backed by Space-scoped local storage.
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -7,18 +6,30 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 
-const root = await mkdtemp(path.join(tmpdir(), "kith-attachments-"));
-const uploads = path.join(root, "uploads");
+const home = await mkdtemp(path.join(tmpdir(), "kith-attachments-home-"));
+const spaceRoot = await mkdtemp(path.join(tmpdir(), "kith-attachments-space-"));
+const previousHome = process.env.KITH_SPACE_HOME;
 const previousUploadDir = process.env.KITH_SPACE_UPLOAD_DIR;
+process.env.KITH_SPACE_HOME = home;
+process.env.KITH_SPACE_UPLOAD_DIR = path.join(home, "must-not-be-used");
 
-process.env.KITH_SPACE_UPLOAD_DIR = uploads;
+const { closeAppDatabase, registerSpace } = await import("../src/app-data/appDatabase.ts");
+const { spaceUploadsDir } = await import("../src/paths.ts");
 const { parseUpload } = await import("../src/server/attachments.ts");
 const { readObject } = await import("../src/server/storage.ts");
+const spaceId = "attachments-unit-space";
+registerSpace({ id: spaceId, name: "Attachments", slug: spaceId, rootPath: spaceRoot });
 
 after(async () => {
+  closeAppDatabase();
+  if (previousHome === undefined) delete process.env.KITH_SPACE_HOME;
+  else process.env.KITH_SPACE_HOME = previousHome;
   if (previousUploadDir === undefined) delete process.env.KITH_SPACE_UPLOAD_DIR;
   else process.env.KITH_SPACE_UPLOAD_DIR = previousUploadDir;
-  await rm(root, { recursive: true, force: true });
+  await Promise.all([
+    rm(home, { recursive: true, force: true }),
+    rm(spaceRoot, { recursive: true, force: true }),
+  ]);
 });
 
 function uploadRequest(contents: string): Readable & { headers: Record<string, string> } {
@@ -33,21 +44,22 @@ function uploadRequest(contents: string): Readable & { headers: Record<string, s
   return req;
 }
 
-test("parseUpload stores multipart files in the local attachment store", async () => {
-  const result = await parseUpload(uploadRequest("hello-bytes") as any);
+test("parseUpload stores multipart files inside the authenticated Space", async () => {
+  const result = await parseUpload(spaceId, uploadRequest("hello-bytes") as any);
 
   assert.deepEqual(result.fields, { channelId: "channel-1" });
   assert.equal(result.files.length, 1);
   assert.equal(result.files[0]!.filename, "t.txt");
   assert.equal(result.files[0]!.mimeType, "text/plain");
   assert.equal(result.files[0]!.size, Buffer.byteLength("hello-bytes"));
-  assert.equal((await readObject(result.files[0]!.storageKey)).toString(), "hello-bytes");
+  assert.equal((await readObject(spaceId, result.files[0]!.storageKey)).toString(), "hello-bytes");
 });
 
-test("parseUpload rejects instead of hanging when local storage fails before consuming the stream", { timeout: 8000 }, async () => {
+test("parseUpload rejects instead of hanging when Space storage fails before consuming the stream", { timeout: 8000 }, async () => {
+  const uploads = spaceUploadsDir(spaceRoot);
   await rm(uploads, { recursive: true, force: true });
   await writeFile(uploads, "a file blocks creation of the upload directory");
 
-  await assert.rejects(parseUpload(uploadRequest("will-fail") as any), { code: "EEXIST" });
+  await assert.rejects(parseUpload(spaceId, uploadRequest("will-fail") as any), { code: "EEXIST" });
   assert.equal(await readFile(uploads, "utf8"), "a file blocks creation of the upload directory");
 });

@@ -1,37 +1,44 @@
-// Local-only attachment object storage. Keys are opaque flat filenames under uploadsDir().
+// Local-only attachment object storage, rooted inside each registered Space.
 import { createWriteStream } from "node:fs";
-import { readFile, mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
-import { uploadsDir } from "../paths.js";
-
-const LOCAL_DIR = uploadsDir();
+import { getSpaceRecord } from "../app-data/appDatabase.js";
+import { spaceUploadsDir } from "../paths.js";
 
 export interface Saved { key: string; size: number }
 
-function localObjectPath(key: string): string {
+function uploadsForSpace(spaceId: string): string {
+  const space = getSpaceRecord(spaceId);
+  if (!space) throw new Error(`Space not registered: ${spaceId}`);
+  return spaceUploadsDir(space.rootPath);
+}
+
+function localObjectPath(spaceId: string, key: string): string {
   if (!key || path.isAbsolute(key) || key.includes("/") || key.includes("\\") || path.basename(key) !== key) {
     throw new Error("Invalid storage key: expected a local attachment filename");
   }
-  return path.join(LOCAL_DIR, key);
+  return path.join(uploadsForSpace(spaceId), key);
 }
 
-/** Stream-save an object and return its local storage key plus byte count. */
-export async function saveObject(filename: string, stream: Readable): Promise<Saved> {
+/** Stream-save an object under one registered Space and return its flat storage key plus byte count. */
+export async function saveObject(spaceId: string, filename: string, stream: Readable): Promise<Saved> {
   const safe = (filename || "file").replace(/[^\w.\-\u4e00-\u9fa5]/g, "_");
   const key = `${randomUUID()}__${safe}`;
-  await mkdir(LOCAL_DIR, { recursive: true });
+  const uploads = uploadsForSpace(spaceId);
+  await mkdir(uploads, { recursive: true });
   let size = 0;
-  await new Promise<void>((res, rej) => {
-    stream.on("data", (d: Buffer) => { size += d.length; });
-    const ws = createWriteStream(path.join(LOCAL_DIR, key));
-    ws.on("close", () => res()); ws.on("error", rej);
-    stream.pipe(ws);
+  await new Promise<void>((resolve, reject) => {
+    stream.on("data", (data: Buffer) => { size += data.length; });
+    const output = createWriteStream(path.join(uploads, key));
+    output.on("close", resolve);
+    output.on("error", reject);
+    stream.pipe(output);
   });
   return { key, size };
 }
 
-export async function readObject(key: string): Promise<Buffer> {
-  return readFile(localObjectPath(key));
+export async function readObject(spaceId: string, key: string): Promise<Buffer> {
+  return readFile(localObjectPath(spaceId, key));
 }

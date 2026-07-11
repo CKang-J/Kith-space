@@ -33,7 +33,7 @@ export function sanitizeMimeType(declared: string): string {
   return "application/octet-stream";
 }
 
-export function parseUpload(req: IncomingMessage): Promise<{ fields: Record<string, string>; files: UploadedFile[] }> {
+export function parseUpload(spaceId: string, req: IncomingMessage): Promise<{ fields: Record<string, string>; files: UploadedFile[] }> {
   return new Promise((resolve, reject) => {
     let bb: ReturnType<typeof Busboy>;
     try { bb = Busboy({ headers: req.headers, limits: { fileSize: 25 * 1024 * 1024, files: 10 } }); }
@@ -50,7 +50,7 @@ export function parseUpload(req: IncomingMessage): Promise<{ fields: Record<stri
       // on Node ≥15). The error is remembered and surfaced once, after close.
       pending.push((async () => {
         try {
-          const { key, size } = await saveObject(info.filename || "file", stream);
+          const { key, size } = await saveObject(spaceId, info.filename || "file", stream);
           files.push({ filename: info.filename || "file", mimeType: sanitizeMimeType(info.mimeType || "application/octet-stream"), size, storageKey: key });
         } catch (e) {
           stream.resume(); // drain any unconsumed bytes so busboy can finish and emit "close"
