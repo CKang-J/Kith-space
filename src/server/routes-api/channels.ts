@@ -2,12 +2,12 @@
 import type { ServerCtx } from "./ctx.js";
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
 import { dbFor, schema } from "../../db/index.js";
-import { requireCap } from "../capabilities.js";
+import { getHumanIdentity } from "../../human/humanIdentity.js";
 import { addChannelMembers, getOrCreateDM, getOrCreateThread } from "../core.js";
 import { publish } from "../realtime.js";
 import { readJson, sendErr, sendJson } from "../util.js";
-import { canUserReadChannel } from "../channelAccess.js";
-import { userChannels } from "./shared.js";
+import { canHumanReadChannel } from "../channelAccess.js";
+import { humanChannels } from "./shared.js";
 
 const notSentBy = (userId: string) => or(isNull(schema.messages.senderId), ne(schema.messages.senderId, userId));
 
@@ -17,6 +17,34 @@ async function unreadRowsForMember(serverId: string, member: typeof schema.chann
   return db.select({ id: schema.messages.id, seq: schema.messages.seq }).from(schema.messages)
     .where(and(eq(schema.messages.channelId, member.channelId), gt(schema.messages.seq, member.lastReadSeq), notSentBy(userId)))
     .orderBy(asc(schema.messages.seq));
+}
+
+/**
+ * Human channel rows are cursor/follow state, not an authorization roster.
+ * Regular and private channels get an implicit zero cursor when no state row
+ * exists; DMs and threads are tracked only once the Human opens or follows
+ * them, so agent-agent DMs do not pollute the personal inbox.
+ */
+async function humanContainerStates(serverId: string, userId: string) {
+  const db = dbFor(serverId);
+  const stored = await db.select().from(schema.channelMembers).where(and(
+    eq(schema.channelMembers.memberType, "user"),
+    eq(schema.channelMembers.memberId, userId),
+  ));
+  const channels = (await db.select().from(schema.channels).where(eq(schema.channels.serverId, serverId)))
+    .filter((channel) => !channel.deletedAt);
+  const stateByChannel = new Map(stored.map((state) => [state.channelId, state]));
+  const trackedChannels = channels.filter((channel) =>
+    channel.type === "channel" || channel.type === "private" || stateByChannel.has(channel.id));
+  const states = trackedChannels.map((channel) => stateByChannel.get(channel.id) ?? ({
+    channelId: channel.id,
+    memberType: "user",
+    memberId: userId,
+    lastReadSeq: 0,
+    joinedAt: channel.createdAt,
+    threadDoneAt: null,
+  }));
+  return { states, channels: trackedChannels };
 }
 
 async function parentChannelIdForThread(serverId: string, thread: typeof schema.channels.$inferSelect): Promise<string | null> {
@@ -32,9 +60,8 @@ async function parentChannelIdForThread(serverId: string, thread: typeof schema.
 // thread's portion). Single source of truth shared by GET /channels/unread and POST /:id/read.
 async function unreadMapForUser(serverId: string, userId: string): Promise<Record<string, number>> {
   const db = dbFor(serverId);
-  const myMems = await db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, userId)));
+  const { states: myMems, channels: chs } = await humanContainerStates(serverId, userId);
   const map: Record<string, number> = {};
-  const chs = myMems.length ? await db.select().from(schema.channels).where(inArray(schema.channels.id, myMems.map((m) => m.channelId))) : [];
   const byId = new Map(chs.map((c) => [c.id, c]));
   for (const m of myMems) {
     const ch = byId.get(m.channelId);
@@ -93,7 +120,7 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
     const parent = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, b.parentMessageId), eq(schema.messages.serverId, serverId))))[0];
     if (!parent) return (sendErr(res, 404, "parent message not found"), true);
     // Channel visibility gate — non-members must not create threads on private/DM channels (IDOR-B3)
-    if (!(await canUserReadChannel(serverId, parent.channelId, userId))) return (sendErr(res, 403, "forbidden"), true);
+    if (!(await canHumanReadChannel(serverId, parent.channelId))) return (sendErr(res, 403, "forbidden"), true);
     const th = await getOrCreateThread(serverId, b.parentMessageId, { type: "user", id: userId });
     const replies = await db.select({ createdAt: schema.messages.createdAt }).from(schema.messages).where(eq(schema.messages.channelId, th.id));
     const parts = await db.select().from(schema.channelMembers).where(eq(schema.channelMembers.channelId, th.id));
@@ -101,7 +128,7 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
   }
   if (cthreads && method === "GET") {
     // Channel visibility gate — non-members must not enumerate thread metadata on private/DM channels (IDOR-B3)
-    if (!(await canUserReadChannel(serverId, cthreads[1]!, userId))) return (sendErr(res, 403, "forbidden"), true);
+    if (!(await canHumanReadChannel(serverId, cthreads[1]!))) return (sendErr(res, 403, "forbidden"), true);
     const pids = (url.searchParams.get("parentMessageIds") || "").split(",").map((s) => s.trim()).filter(Boolean);
     if (!pids.length) return (sendJson(res, 200, {}), true);
     const threads = await db.select().from(schema.channels).where(and(eq(schema.channels.serverId, serverId), eq(schema.channels.type, "thread"), inArray(schema.channels.parentMessageId, pids)));
@@ -116,14 +143,13 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
   }
   // /channels only lists regular/private channels (bare array, no unread); DMs go through /channels/dm; unread counts through /channels/unread
   if (p === "/api/channels" && method === "GET") {
-    const { chs, joined } = await userChannels(serverId, userId);
+    const chs = await humanChannels(serverId);
     const archIncl = url.searchParams.get("archived") === "include"; // ?archived=include; archived channels hidden by default
-    // Public channels visible to all; private channels visible to members only; archived hidden by default
-    const list = chs.filter((c) => !c.deletedAt && (archIncl || !c.archivedAt) && (c.type === "channel" || (c.type === "private" && joined.has(c.id))));
+    const list = chs.filter((c) => !c.deletedAt && (archIncl || !c.archivedAt) && (c.type === "channel" || c.type === "private"));
     return (sendJson(res, 200, list.map((c) => ({
       id: c.id, serverId: c.serverId, name: c.name, description: c.description, type: c.type,
       parentMessageId: c.parentMessageId, createdAt: c.createdAt, archivedAt: c.archivedAt, deletedAt: c.deletedAt,
-      joined: joined.has(c.id), lastMessageAt: c.lastMessageAt,
+      lastMessageAt: c.lastMessageAt,
     }))), true);
   }
   if (p === "/api/channels/dm" && method === "GET") {
@@ -133,10 +159,9 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
     if (!dms.length) return (sendJson(res, 200, []), true);
     const dmMembers = await db.select().from(schema.channelMembers).where(inArray(schema.channelMembers.channelId, dms.map((d) => d.id)));
     const agentsAll = await db.select().from(schema.agents).where(eq(schema.agents.serverId, serverId));
-    const usersAll = await db.select().from(schema.users);
     const out = dms.map((c) => {
-      const peer = dmMembers.find((m) => m.channelId === c.id && !(m.memberType === "user" && m.memberId === userId));
-      const src = peer ? (peer.memberType === "agent" ? agentsAll.find((a) => a.id === peer.memberId) : usersAll.find((u) => u.id === peer.memberId)) : null;
+      const peer = dmMembers.find((m) => m.channelId === c.id && m.memberType === "agent");
+      const src = peer ? agentsAll.find((a) => a.id === peer.memberId) : null;
       return {
         id: c.id, name: src?.name ?? c.name, type: "dm", description: c.description, createdAt: c.createdAt, lastMessageAt: c.lastMessageAt,
         peerId: peer?.memberId ?? null, peerName: src?.name ?? null, peerDisplayName: src?.displayName ?? null, peerType: peer?.memberType ?? null, peerAvatarUrl: (src as any)?.avatarUrl ?? null,
@@ -147,18 +172,17 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
   if (p === "/api/channels/unread" && method === "GET") {
     return (sendJson(res, 200, await unreadMapForUser(serverId, userId)), true);
   }
-  // Unified inbox (GET /api/channels/inbox?filter=all|unread|mentions): aggregates all channels/DMs/threads the user has joined, with last message + unread count + mentions. User-side equivalent of the agent's inbox-notice.
+  // Unified inbox: regular/private channels are implicit Human containers;
+  // DMs and threads appear once they have Human cursor/follow state.
   if (p === "/api/channels/inbox" && method === "GET") {
     const filter = url.searchParams.get("filter") ?? "all";
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 30), 100);
     const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
-    const myMems = await db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, userId)));
+    const { states: myMems, channels: chs } = await humanContainerStates(serverId, userId);
     if (!myMems.length) return (sendJson(res, 200, { items: [] }), true);
-    const chs = (await db.select().from(schema.channels).where(inArray(schema.channels.id, myMems.map((m) => m.channelId)))).filter((c) => c.serverId === serverId && !c.deletedAt);
     if (!chs.length) return (sendJson(res, 200, { items: [] }), true);
     const allMembers = await db.select().from(schema.channelMembers).where(inArray(schema.channelMembers.channelId, chs.map((c) => c.id)));
     const agentsAll = await db.select().from(schema.agents).where(eq(schema.agents.serverId, serverId));
-    const usersAll = await db.select().from(schema.users);
     const items: any[] = [];
     for (const c of chs) {
       const cm = myMems.find((m) => m.channelId === c.id)!;
@@ -179,9 +203,9 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
       // Thread entry: populate parent message/channel info so the frontend can navigate to the parent channel and expand the thread panel
       let parentMessageId: string | null = null, parentChannelId: string | null = null, parentChannelName: string | null = null;
       if (c.type === "dm") {
-        const peer = allMembers.find((m) => m.channelId === c.id && !(m.memberType === "user" && m.memberId === userId));
+        const peer = allMembers.find((m) => m.channelId === c.id && m.memberType === "agent");
         if (!peer) continue; // peer agent was deleted (left DM, no longer in channelMembers) → exclude from inbox
-        const src = peer.memberType === "agent" ? agentsAll.find((a) => a.id === peer.memberId) : usersAll.find((u) => u.id === peer.memberId);
+        const src = agentsAll.find((a) => a.id === peer.memberId);
         channelName = src?.name ?? c.name;
       } else if (c.type === "thread" && c.parentMessageId) {
         parentMessageId = c.parentMessageId;
@@ -219,37 +243,43 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
     const own = (await db.select({ id: schema.channels.id }).from(schema.channels).where(and(eq(schema.channels.id, cmem[1]!), eq(schema.channels.serverId, serverId))))[0];
     if (!own) return (sendErr(res, 404, "channel not found"), true);
     // invariant 3: private/DM channel member list must not be accessible to non-members (IDOR-B2)
-    if (!(await canUserReadChannel(serverId, cmem[1]!, userId))) return (sendErr(res, 404, "channel not found"), true);
+    if (!(await canHumanReadChannel(serverId, cmem[1]!))) return (sendErr(res, 404, "channel not found"), true);
     const rows = await db.select().from(schema.channelMembers).where(eq(schema.channelMembers.channelId, cmem[1]!));
     const aIds = rows.filter((r) => r.memberType === "agent").map((r) => r.memberId);
-    const uIds = rows.filter((r) => r.memberType === "user").map((r) => r.memberId);
     const ags = aIds.length ? await db.select().from(schema.agents).where(inArray(schema.agents.id, aIds)) : [];
-    const usrs = uIds.length ? await db.select().from(schema.users).where(inArray(schema.users.id, uIds)) : [];
     return (sendJson(res, 200, {
       agents: ags.map((a) => ({ id: a.id, name: a.name, displayName: a.displayName, status: a.status, activity: a.activity, avatarUrl: a.avatarUrl })),
-      humans: usrs.map((u) => ({ userId: u.id, name: u.name, displayName: u.displayName, avatarUrl: u.avatarUrl })),
     }), true);
   }
-  if (cmem && method === "POST") { // add agent/user to channel (managing channel membership = owner/admin)
-    if (!await requireCap(serverId, userId, "manageChannels")) return (sendErr(res, 403, "need manageChannels capability"), true); // members must not add anyone (incl. themselves) to a channel — this is the private-channel invite path
+  if (cmem && method === "POST") { // add an agent or the local Human to a channel
     const own = (await db.select({ id: schema.channels.id }).from(schema.channels).where(and(eq(schema.channels.id, cmem[1]!), eq(schema.channels.serverId, serverId))))[0];
     if (!own) return (sendErr(res, 404, "channel not found"), true); // and only this tenant's channels
     const b = await readJson(req);
-    const mt = b.userId ? "user" : "agent"; const mid = b.userId || b.agentId;
-    if (!mid) return (sendErr(res, 400, "agentId or userId required"), true);
-    // An agent invited into an existing channel joins at its watermark (no pre-join backlog flood on first
-    // `message check`); a user keeps lastReadSeq=0 so the UI still shows channel history as unread. See addChannelMembers.
-    await addChannelMembers(serverId, cmem[1]!, [{ type: mt, id: mid }]);
+    if (b.userId !== undefined) return (sendErr(res, 400, "Human channel membership is not configurable"), true);
+    const agentId = String(b.agentId ?? "").trim();
+    if (!agentId) return (sendErr(res, 400, "agentId required"), true);
+    const agent = (await db.select({ id: schema.agents.id }).from(schema.agents).where(and(
+      eq(schema.agents.id, agentId),
+      eq(schema.agents.serverId, serverId),
+      isNull(schema.agents.deletedAt),
+    )))[0];
+    if (!agent) return (sendErr(res, 404, "agent not found"), true);
+    await addChannelMembers(serverId, cmem[1]!, [{ type: "agent", id: agent.id }]);
     await publish(serverId, { type: "channel:members-updated", channelId: cmem[1]! }); // realtime: membership change → all clients refresh member/channel list and new member joins the room (G-E)
     return (sendJson(res, 200, { ok: true }), true);
   }
-  if (cmem && method === "DELETE") { // remove from channel (owner/admin only)
-    if (!await requireCap(serverId, userId, "manageChannels")) return (sendErr(res, 403, "need manageChannels capability"), true);
+  if (cmem && method === "DELETE") { // remove an agent or the local Human from a channel
     const own = (await db.select({ id: schema.channels.id }).from(schema.channels).where(and(eq(schema.channels.id, cmem[1]!), eq(schema.channels.serverId, serverId))))[0];
     if (!own) return (sendErr(res, 404, "channel not found"), true);
     const b = await readJson(req).catch(() => ({}));
-    const mt = b.userId ? "user" : "agent"; const mid = b.userId || b.agentId;
-    if (mid) await db.delete(schema.channelMembers).where(and(eq(schema.channelMembers.channelId, cmem[1]!), eq(schema.channelMembers.memberType, mt), eq(schema.channelMembers.memberId, mid)));
+    if (b.userId !== undefined) return (sendErr(res, 400, "Human channel membership is not configurable"), true);
+    const agentId = String(b.agentId ?? "").trim();
+    if (!agentId) return (sendErr(res, 400, "agentId required"), true);
+    await db.delete(schema.channelMembers).where(and(
+      eq(schema.channelMembers.channelId, cmem[1]!),
+      eq(schema.channelMembers.memberType, "agent"),
+      eq(schema.channelMembers.memberId, agentId),
+    ));
     await publish(serverId, { type: "channel:members-updated", channelId: cmem[1]! });
     return (sendJson(res, 200, { ok: true }), true);
   }
@@ -257,13 +287,14 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
   const cfiles = /^\/api\/channels\/([^/]+)\/files$/.exec(p);
   if (cfiles && method === "GET") {
     // invariant 3: private/DM channel file list must not be accessible to non-members (IDOR-B2)
-    if (!(await canUserReadChannel(serverId, cfiles[1]!, userId))) return (sendErr(res, 404, "channel not found"), true);
+    if (!(await canHumanReadChannel(serverId, cfiles[1]!))) return (sendErr(res, 404, "channel not found"), true);
     const rows = await db.select().from(schema.attachments).where(and(eq(schema.attachments.channelId, cfiles[1]!), eq(schema.attachments.serverId, serverId), isNotNull(schema.attachments.messageId))).orderBy(desc(schema.attachments.createdAt)).limit(100); // serverId scope: don't list another tenant's channel files by raw channel UUID
     const aIds = rows.filter((r) => r.uploaderType === "agent" && r.uploaderId).map((r) => r.uploaderId!) as string[];
-    const uIds = rows.filter((r) => r.uploaderType === "user" && r.uploaderId).map((r) => r.uploaderId!) as string[];
     const ags = aIds.length ? await db.select().from(schema.agents).where(inArray(schema.agents.id, aIds)) : [];
-    const usrs = uIds.length ? await db.select().from(schema.users).where(inArray(schema.users.id, uIds)) : [];
-    const who = (t: string | null, id: string | null) => (t === "agent" ? ags.find((a) => a.id === id) : usrs.find((u) => u.id === id));
+    const human = getHumanIdentity();
+    const who = (t: string | null, id: string | null) => t === "agent"
+      ? ags.find((a) => a.id === id)
+      : human?.id === id ? { name: human.handle, displayName: human.displayName } : null;
     return (sendJson(res, 200, {
       files: rows.map((a) => {
         const src: any = who(a.uploaderType, a.uploaderId);
@@ -272,8 +303,10 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
     }), true);
   }
   if (p === "/api/channels" && method === "POST") {
-    if (!await requireCap(serverId, userId, "manageChannels")) return (sendErr(res, 403, "need manageChannels capability"), true);
     const b = await readJson(req);
+    if (Object.prototype.hasOwnProperty.call(b, "userIds")) {
+      return (sendErr(res, 400, "Human channel membership is not configurable"), true);
+    }
     const name = String(b.name ?? "").trim().replace(/^#/, "").toLowerCase().replace(/\s+/g, "-");
     if (!name) return (sendErr(res, 400, "name required"), true);
     const dup = (await db.select().from(schema.channels).where(and(eq(schema.channels.serverId, serverId), eq(schema.channels.name, name))))[0];
@@ -281,17 +314,13 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
     // Frontend sends visibility public/private → backend stores as type channel/private (backward-compatible with legacy type field)
     const type = (b.visibility === "private" || b.type === "private") ? "private" : "channel";
     const [ch] = await db.insert(schema.channels).values({ serverId, name, description: b.description ?? null, type }).returning();
-    // Initial members: creator + body.agentIds/userIds (validated against the same server before inserting into channel_members)
+    // The Human row stores per-channel cursor state; agent rows are the
+    // configurable collaboration membership.
     const rows: { channelId: string; memberType: "user" | "agent"; memberId: string }[] = [{ channelId: ch!.id, memberType: "user", memberId: userId }];
     const agentIds = Array.isArray(b.agentIds) ? b.agentIds.filter(Boolean) : [];
-    const userIds = Array.isArray(b.userIds) ? b.userIds.filter(Boolean) : [];
     if (agentIds.length) {
       const valid = await db.select().from(schema.agents).where(and(eq(schema.agents.serverId, serverId), inArray(schema.agents.id, agentIds), isNull(schema.agents.deletedAt)));
       for (const a of valid) rows.push({ channelId: ch!.id, memberType: "agent", memberId: a.id });
-    }
-    if (userIds.length) {
-      const valid = await db.select().from(schema.serverMembers).where(and(eq(schema.serverMembers.serverId, serverId), inArray(schema.serverMembers.userId, userIds)));
-      for (const m of valid) if (m.userId !== userId) rows.push({ channelId: ch!.id, memberType: "user", memberId: m.userId });
     }
     // Channel is brand-new (no messages yet → watermark is 0), but route through the same helper so every
     // agent membership insert shares one watermark-aware path instead of a raw insert that could drift.
@@ -301,22 +330,22 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
   }
   if (p === "/api/channels/dm" && method === "POST") {
     const b = await readJson(req);
-    // body is { agentId } or { userId }
-    const peerType = b.userId ? "user" : "agent";
-    const peerId = b.userId || b.agentId;
-    if (!peerId) return (sendErr(res, 400, "Either agentId or userId is required"), true);
-    const ok = peerType === "agent"
-      ? (await db.select().from(schema.agents).where(and(eq(schema.agents.id, peerId), eq(schema.agents.serverId, serverId))))[0]
-      : (await db.select().from(schema.serverMembers).where(and(eq(schema.serverMembers.userId, peerId), eq(schema.serverMembers.serverId, serverId))))[0];
-    if (!ok) return (sendErr(res, 404, "peer not found in server"), true);
-    const channelId = await getOrCreateDM(serverId, userId, "user", peerId, peerType);
-    await publish(serverId, { type: "dm:new", channelId, participantUserIds: peerType === "user" ? [userId, peerId] : [userId] }); // realtime: new DM → peer refreshes DM list and joins room (G-E)
+    if (b.userId !== undefined) return (sendErr(res, 400, "Human-Human DM is not supported"), true);
+    const agentId = String(b.agentId ?? "").trim();
+    if (!agentId) return (sendErr(res, 400, "agentId required"), true);
+    const agent = (await db.select({ id: schema.agents.id }).from(schema.agents).where(and(
+      eq(schema.agents.id, agentId),
+      eq(schema.agents.serverId, serverId),
+      isNull(schema.agents.deletedAt),
+    )))[0];
+    if (!agent) return (sendErr(res, 404, "agent not found"), true);
+    const channelId = await getOrCreateDM(serverId, userId, "user", agent.id, "agent");
+    await publish(serverId, { type: "dm:new", channelId, participantUserIds: [userId] });
     return (sendJson(res, 200, { id: channelId }), true);
   }
   // Channel lifecycle: archive/unarchive/rename+description+visibility/delete. All gated by manageChannels.
   const cops = /^\/api\/channels\/([^/]+)\/(archive|unarchive)$/.exec(p);
   if (cops && method === "POST") {
-    if (!await requireCap(serverId, userId, "manageChannels")) return (sendErr(res, 403, "need manageChannels capability"), true);
     // Thread channels follow their parent message's lifecycle; direct archive/unarchive is not allowed.
     const archTarget = (await db.select({ type: schema.channels.type }).from(schema.channels)
       .where(and(eq(schema.channels.id, cops[1]!), eq(schema.channels.serverId, serverId))))[0];
@@ -327,7 +356,6 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
   }
   const cone = /^\/api\/channels\/([^/]+)$/.exec(p);
   if (cone && (method === "PATCH" || method === "DELETE")) {
-    if (!await requireCap(serverId, userId, "manageChannels")) return (sendErr(res, 403, "need manageChannels capability"), true);
     // Fetch the channel first: thread channels must not be modified via this endpoint — their
     // lifecycle is managed by their parent message (getOrCreateThread / thread follow API).
     const targetCh = (await db.select({ type: schema.channels.type }).from(schema.channels)
@@ -346,32 +374,23 @@ export async function handleChannels(ctx: ServerCtx): Promise<boolean> {
     await publish(serverId, { type: "channel:updated", channelId: cone[1]! });
     return (sendJson(res, 200, { ok: true }), true);
   }
-  const cjoin = /^\/api\/channels\/([^/]+)\/(join|leave|read)$/.exec(p);
-  if (cjoin && method === "POST") {
-    const [, chId, action] = cjoin;
+  const cread = /^\/api\/channels\/([^/]+)\/read$/.exec(p);
+  if (cread && method === "POST") {
+    const chId = cread[1]!;
     const ch = (await db.select().from(schema.channels).where(and(eq(schema.channels.id, chId!), eq(schema.channels.serverId, serverId))))[0];
     if (!ch) return (sendErr(res, 404, "channel not found"), true);
-    if (action === "join") {
-      if (ch.type === "private") return (sendErr(res, 403, "private channel is invite-only"), true); // private channels require owner/admin invitation (cmem POST); self-join is not allowed
-      if (ch.type === "thread") return (sendErr(res, 403, "thread channels cannot be joined directly — use the thread follow API"), true);
-      await db.insert(schema.channelMembers).values({ channelId: chId!, memberType: "user", memberId: userId }).onConflictDoNothing();
-    } else if (action === "leave") {
-      if (ch.type === "thread") return (sendErr(res, 403, "thread channels cannot be left directly — use the thread unfollow API"), true);
-      await db.delete(schema.channelMembers).where(and(eq(schema.channelMembers.channelId, chId!), eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, userId)));
-    } else { // read: advance this container's cursor, then report the parent channel's remaining aggregated unread
-      const b = await readJson(req).catch(() => ({}));
-      let seq = Number(b?.seq ?? 0);
-      if (!seq) { const [m] = await db.select({ s: schema.messages.seq }).from(schema.messages).where(eq(schema.messages.channelId, chId!)).orderBy(desc(schema.messages.seq)).limit(1); seq = Number(m?.s ?? 0); }
-      await db.update(schema.channelMembers).set({ lastReadSeq: seq }).where(and(eq(schema.channelMembers.channelId, chId!), eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, userId)));
-      // Return the authoritative remaining badge for the affected sidebar channel (a thread read rolls onto its
-      // parent) so the client renders an honest count instead of blindly zeroing it — which made already-read
-      // channels "resurrect" as unread once a followed thread still held unopened replies.
-      const parentId = ch.type === "thread" ? await parentChannelIdForThread(serverId, ch) : chId!;
-      const remaining = parentId ? ((await unreadMapForUser(serverId, userId))[parentId] ?? 0) : 0;
-      return (sendJson(res, 200, { ok: true, channelId: parentId, unread: remaining }), true);
-    }
-    return (sendJson(res, 200, { ok: true }), true);
+    const b = await readJson(req).catch(() => ({}));
+    let seq = Number(b?.seq ?? 0);
+    if (!seq) { const [m] = await db.select({ s: schema.messages.seq }).from(schema.messages).where(eq(schema.messages.channelId, chId)).orderBy(desc(schema.messages.seq)).limit(1); seq = Number(m?.s ?? 0); }
+    await db.insert(schema.channelMembers).values({ channelId: chId, memberType: "user", memberId: userId, lastReadSeq: seq }).onConflictDoNothing();
+    await db.update(schema.channelMembers).set({ lastReadSeq: seq }).where(and(
+      eq(schema.channelMembers.channelId, chId),
+      eq(schema.channelMembers.memberType, "user"),
+      eq(schema.channelMembers.memberId, userId),
+    ));
+    const parentId = ch.type === "thread" ? await parentChannelIdForThread(serverId, ch) : chId;
+    const remaining = parentId ? ((await unreadMapForUser(serverId, userId))[parentId] ?? 0) : 0;
+    return (sendJson(res, 200, { ok: true, channelId: parentId, unread: remaining }), true);
   }
-  // Single member profile (GET /servers/:sid/members/:uid/profile): profile + role + agents created by that member. Requester is already validated as a server member by middleware.
   return false;
 }

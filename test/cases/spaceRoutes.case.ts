@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { getSpaceRecordBySlug } from "../../src/app-data/appDatabase.ts";
-import { closeAllDatabases } from "../../src/db/index.ts";
+import { getSpaceRecordBySlug, listSpaceRecords } from "../../src/app-data/appDatabase.ts";
+import { closeAllDatabases, dbForSpace, schema } from "../../src/db/index.ts";
 import { ensurePersonalApp } from "../../src/db/personalApp.ts";
-import { signUser } from "../../src/server/auth.ts";
+import { signUser, verifyUser } from "../../src/server/auth.ts";
 import { handleApi } from "../../src/server/routes-api/index.ts";
 import { handleSpacesUserScope } from "../../src/server/routes-api/spaces.ts";
 
@@ -51,7 +51,9 @@ try {
   assert.equal(initial.status, 200);
   assert.deepEqual(initial.body.map((space: any) => space.slug), ["home"]);
   assert.equal(initial.body[0].id, home.id);
-  assert.equal(initial.body[0].role, "owner");
+  assert.equal("role" in initial.body[0], false);
+  assert.equal("capabilities" in initial.body[0], false);
+  assert.equal("plan" in initial.body[0], false);
 
   const created = await request("POST", "/api/spaces", human.id, {
     name: "Research Lab",
@@ -60,6 +62,7 @@ try {
   assert.equal(created.status, 201);
   assert.equal(created.body.slug, "research-lab");
   assert.equal(getSpaceRecordBySlug("research-lab")?.id, created.body.id);
+  assert.deepEqual(await dbForSpace(created.body.id).select().from(schema.serverMembers), []);
 
   const updated = await request("PATCH", `/api/spaces/${created.body.id}`, human.id, {
     name: "Writing Lab",
@@ -79,6 +82,7 @@ try {
   assert.ok(unread.body.every((item: any) => item.unreadCount === 0));
 
   const token = signUser(human.id);
+  await dbForSpace(home.id).delete(schema.serverMembers);
   for (const scopeHeaders of [
     { "x-space-id": home.id },
     { "x-server-id": home.id },
@@ -88,6 +92,77 @@ try {
     const scopedCapture = responseCapture();
     await handleApi(scopedRequest, scopedCapture.res, new URL("http://localhost/api/channels"), "GET");
     assert.equal(scopedCapture.response.status, 200);
+  }
+
+  for (const path of [
+    "/api/agents",
+    `/api/spaces/${home.id}/machines`,
+  ]) {
+    const scopedRequest = jsonRequest();
+    scopedRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+    const scopedCapture = responseCapture();
+    await handleApi(scopedRequest, scopedCapture.res, new URL(`http://localhost${path}`), "GET");
+    assert.equal(scopedCapture.response.status, 200, path);
+  }
+
+  const channelRequest = jsonRequest({ name: "human-authority" });
+  channelRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+  const channelCapture = responseCapture();
+  await handleApi(channelRequest, channelCapture.res, new URL("http://localhost/api/channels"), "POST");
+  assert.equal(channelCapture.response.status, 200);
+
+  const sidebarPutRequest = jsonRequest({ pinnedChannelIds: [channelCapture.response.body.id] });
+  sidebarPutRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+  const sidebarPutCapture = responseCapture();
+  const sidebarPath = `/api/spaces/${home.id}/sidebar-order`;
+  await handleApi(sidebarPutRequest, sidebarPutCapture.res, new URL(`http://localhost${sidebarPath}`), "PUT");
+  assert.equal(sidebarPutCapture.response.status, 200);
+  assert.deepEqual(sidebarPutCapture.response.body.pinnedChannelIds, [channelCapture.response.body.id]);
+
+  const sidebarGetRequest = jsonRequest();
+  sidebarGetRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+  const sidebarGetCapture = responseCapture();
+  await handleApi(sidebarGetRequest, sidebarGetCapture.res, new URL(`http://localhost${sidebarPath}`), "GET");
+  assert.equal(sidebarGetCapture.response.status, 200);
+  assert.deepEqual(sidebarGetCapture.response.body.pinnedChannelIds, [channelCapture.response.body.id]);
+
+  const foreignTokenRequest = jsonRequest();
+  foreignTokenRequest.headers = { authorization: `Bearer ${signUser("not-the-local-human")}`, "x-space-id": home.id };
+  const foreignTokenCapture = responseCapture();
+  await handleApi(foreignTokenRequest, foreignTokenCapture.res, new URL("http://localhost/api/channels"), "GET");
+  assert.equal(foreignTokenCapture.response.status, 403);
+
+  const previousDevLogin = process.env.ALLOW_DEV_LOGIN;
+  process.env.ALLOW_DEV_LOGIN = "true";
+  try {
+    const spacesBeforeDevLogin = listSpaceRecords().length;
+    const devLoginRequest = jsonRequest({ name: "another-person" });
+    const devLoginCapture = responseCapture();
+    await handleApi(devLoginRequest, devLoginCapture.res, new URL("http://localhost/api/auth/dev-login"), "POST");
+    assert.equal(devLoginCapture.response.status, 200);
+    assert.equal(verifyUser(devLoginCapture.response.body.token), human.id);
+    assert.equal(listSpaceRecords().length, spacesBeforeDevLogin);
+  } finally {
+    if (previousDevLogin === undefined) delete process.env.ALLOW_DEV_LOGIN;
+    else process.env.ALLOW_DEV_LOGIN = previousDevLogin;
+  }
+
+  for (const retired of [
+    ["POST", "/api/auth/register"],
+    ["POST", "/api/auth/login"],
+    ["POST", "/api/auth/setup"],
+    ["GET", "/api/auth/invite-info?token=retired"],
+    ["POST", "/api/auth/accept-invite"],
+    ["GET", `/api/spaces/${home.id}/members`],
+    ["GET", `/api/spaces/${home.id}/join-links`],
+    ["GET", `/api/spaces/${home.id}/notification-settings`],
+  ] as const) {
+    const retiredRequest = jsonRequest({});
+    retiredRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+    const retiredCapture = responseCapture();
+    const url = new URL(`http://localhost${retired[1]}`);
+    await handleApi(retiredRequest, retiredCapture.res, url, retired[0]);
+    assert.equal(retiredCapture.response.status, 404, retired[1]);
   }
 
   const legacyPatchRequest = jsonRequest({ name: "Renamed Home", slug: "renamed-home" });

@@ -5,8 +5,8 @@ import { dbFor, schema } from "../../db/index.js";
 import { findAttachmentById, updateUserCopies } from "../../db/lookup.js";
 import { parseUpload } from "../attachments.js";
 import { verifyUser } from "../auth.js";
-import { can, requireCap } from "../capabilities.js";
-import { canUserReadChannel } from "../channelAccess.js";
+import { localHumanForSubject } from "../../human/humanAuthority.js";
+import { canHumanReadChannel } from "../channelAccess.js";
 import { readObject } from "../storage.js";
 import { bearer, sendErr, sendJson } from "../util.js";
 
@@ -95,23 +95,19 @@ export async function handlePublicAttachmentGet(ctx: BaseCtx): Promise<boolean> 
   // Attachment download/preview: browsers cannot set headers for anchor/img tags, so the token is passed as a query param (same approach as SSE). Placed before the auth check.
   const adl = /^\/api\/attachments\/([^/]+?)(\/preview)?$/.exec(p);
   if (adl && adl[1] !== "upload" && method === "GET") {
-    const uid = verifyUser(url.searchParams.get("token") ?? bearer(req));
-    if (!uid) return (sendErr(res, 401, "unauthorized"), true);
+    const subjectId = verifyUser(url.searchParams.get("token") ?? bearer(req));
+    if (!subjectId) return (sendErr(res, 401, "unauthorized"), true);
+    const human = localHumanForSubject(subjectId);
+    if (!human) return (sendErr(res, 403, "not the local Human"), true);
     const found = await findAttachmentById(adl[1]!);
     const a = found?.value;
     if (!a) return (sendErr(res, 404, "attachment not found"), true);
-    const db = found.db;
     // Channel/server access gate — invariant 3: non-members of private/DM channels must not
     // access their attachments via direct UUID (IDOR-B3). Use 404 (not 403) to avoid leaking
     // whether the attachment exists at all.
     if (a.channelId) {
       // Attachment linked to a channel: apply the same channel-visibility logic as message reads.
-      if (!(await canUserReadChannel(a.serverId, a.channelId, uid))) return (sendErr(res, 404, "attachment not found"), true);
-    } else {
-      // No channelId (server-scoped attachment such as an avatar): require server membership.
-      const mem = (await db.select({ id: schema.serverMembers.userId }).from(schema.serverMembers)
-        .where(and(eq(schema.serverMembers.serverId, a.serverId), eq(schema.serverMembers.userId, uid))))[0];
-      if (!mem) return (sendErr(res, 404, "attachment not found"), true);
+      if (!(await canHumanReadChannel(a.serverId, a.channelId))) return (sendErr(res, 404, "attachment not found"), true);
     }
     let data: Buffer;
     try { data = await readObject(a.storageKey); } catch { return (sendErr(res, 404, "file missing"), true); }
@@ -137,10 +133,9 @@ export async function handleAttachments(ctx: ServerCtx): Promise<boolean> {
     }
     return (sendJson(res, 200, { attachments: out, attachmentId: out[0]?.attachmentId }), true);
   }
-  // Agent avatar upload: manageAgents capability required → stored as attachment → agents.avatarUrl
+  // Agent avatar upload → stored as attachment → agents.avatarUrl
   const agavatar = /^\/api\/agents\/([^/]+)\/avatar$/.exec(p);
   if (agavatar && method === "POST") {
-    if (!await requireCap(serverId, userId, "manageAgents")) return (sendErr(res, 403, "need manageAgents capability"), true);
     const agentId = agavatar[1]!;
     const { files } = await parseUpload(req);
     const f = files[0];
@@ -162,12 +157,11 @@ export async function handleAttachments(ctx: ServerCtx): Promise<boolean> {
     await updateUserCopies(userId, { avatarUrl });
     return (sendJson(res, 200, { avatarUrl }), true);
   }
-  // Workspace avatar upload: owner/admin uploads image → stored as attachment → servers.avatarUrl
+  // Space avatar upload → stored as attachment → servers.avatarUrl
   const savatar = /^\/api\/servers\/([^/]+)\/avatar$/.exec(p);
   if (savatar && method === "POST") {
     const sid = savatar[1]!;
-    const mem = (await db.select().from(schema.serverMembers).where(and(eq(schema.serverMembers.serverId, sid), eq(schema.serverMembers.userId, userId))))[0];
-    if (!mem || !can(mem.role, "manageServer")) return (sendErr(res, 403, "need manageServer capability"), true);
+    if (sid !== serverId) return (sendErr(res, 404, "Space not found"), true);
     const { files } = await parseUpload(req);
     const f = files[0];
     if (!f) return (sendErr(res, 400, "no file"), true);

@@ -11,6 +11,7 @@ import { Select } from "./Select.tsx";
 import { useEscClose } from "./ConfirmModal.tsx";
 import { PaneEmpty } from "./PaneEmpty.tsx";
 import i18n from "./i18n";
+import { taskStatusOptions } from "./taskStatusPolicy.ts";
 
 const TCOLS: [string, string][] = [
   ["todo", "tasks.statusTodo"],
@@ -26,21 +27,10 @@ export const ST_LABEL: Record<string, string> = {
   done: "tasks.statusDone",
   closed: "tasks.statusClosed",
 };
-// Status dropdown permission rules: server admins see all options; assignees see a restricted set based on current status; server does not re-validate — this is UI-only guidance
-export const ynOptions = (status: string, manageServer: boolean, claimedByMe: boolean): string[] => {
-  if (manageServer) return ["todo", "in_progress", "in_review", "done", "closed"];
-  if (claimedByMe && status === "todo") return ["todo", "in_progress", "closed"];
-  if (claimedByMe && status === "in_progress") return ["in_progress", "in_review", "done", "closed"];
-  if (claimedByMe && status === "in_review") return ["in_review", "done", "in_progress", "closed"];
-  if (status === "in_review") return ["in_review", "done"]; // anyone can approve an in-review task
-  return [];
-};
-
 // channelId = null means global scope (all tasks across channels); creating new tasks is disabled in global scope because tasks must belong to a specific channel
 export function TaskBoard({ channelId, onOpenThread }: { channelId: string | null; onOpenThread?: (t: Msg) => void }) {
   const { t } = useTranslation();
-  const { api, onEvent, agents, humans, me, myRole, channels, dms, createTasks, slug } = useStore();
-  const manageServer = myRole === "owner" || myRole === "admin"; // determines the status dropdown permission set
+  const { api, onEvent, agents, me, channels, dms, createTasks, slug } = useStore();
   const nav = useNavigate();
   // Click on a task card/row → navigate to the source message (highlighted); cross-channel tasks use the task's own channelId
   const goSrc = (t: Msg) => nav(`/s/${slug}/channel/${t.channelId}?msg=${t.id}`);
@@ -102,8 +92,7 @@ export function TaskBoard({ channelId, onOpenThread }: { channelId: string | nul
   const nameOf = (type?: string | null, id?: string | null) => {
     if (!type || !id) return "";
     if (type === "agent") { const a = agents.find((x) => x.id === id); return a?.displayName || a?.name || "agent"; }
-    if (id === me?.id) return me?.displayName || me?.name || t("tasks.me");
-    const h = humans.find((x) => x.userId === id); return h?.displayName || h?.name || t("tasks.me");
+    return id === me?.id ? me.name : t("tasks.me");
   };
 
   // Filter options: deduplicated creator / assignee lists derived from the loaded tasks (pure frontend filtering)
@@ -116,7 +105,7 @@ export function TaskBoard({ channelId, onOpenThread }: { channelId: string | nul
     const m = new Map<string, { key: string; name: string }>();
     for (const task of tasks) { if (!task.taskAssigneeId) continue; const k = `${task.taskAssigneeType}:${task.taskAssigneeId}`; if (!m.has(k)) m.set(k, { key: k, name: nameOf(task.taskAssigneeType, task.taskAssigneeId) }); }
     return [...m.values()];
-  }, [tasks, agents, humans]);
+  }, [tasks, agents, me]);
 
   const filtered = tasks.filter((task) => {
     if (creatorKey === "me" ? task.senderId !== me?.id : creatorKey && `${task.senderType}:${task.senderId}` !== creatorKey) return false;
@@ -165,10 +154,9 @@ export function TaskBoard({ channelId, onOpenThread }: { channelId: string | nul
   // survives this component being remounted on every render and escapes the draggable card's pointer/stacking.
   const StatusPill = ({ t: task }: { t: Msg }) => {
     const status = task.taskStatus || "todo";
-    const claimedByMe = task.taskAssigneeType === "human" && task.taskAssigneeId === me?.id;
     // Unclaimed todo task → show claim pill (atomic claim, automatically sets status to in_progress)
     if (!task.taskAssigneeId && status === "todo") return <button className="claim-pill" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); act(task, "claim"); }}>{t("tasks.claim")}</button>;
-    const opts = ynOptions(status, manageServer, claimedByMe);
+    const opts = taskStatusOptions();
     const canEdit = opts.length > 0;
     const pill = <span className={"st-pill st-" + status}>{t(ST_LABEL[status])}{canEdit && <Pencil size={10} />}</span>;
     if (!canEdit) return pill; // read-only pill (no pencil icon)

@@ -5,6 +5,7 @@
 // null for a system parent so the caller (/agent-api/message/send) surfaces TARGET_FAILED instead of burying it.
 // Runs against an isolated SQLite workspace; no external services required.
 import { and, eq } from "drizzle-orm";
+import { initializeHumanProfile } from "../src/app-data/appDatabase.ts";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { createMessage, resolveTarget } from "../src/server/core.ts";
 
@@ -17,11 +18,11 @@ let failures = 0;
 const check = (label: string, cond: boolean) => { console.log(`  ${cond ? "✔" : "✗ FAIL"} ${label}`); if (!cond) failures++; };
 
 async function setup() {
-  const [u] = await db.insert(schema.users).values({ name: `owner_${ts}`, displayName: "Owner", email: `o_${ts}@t.local` }).returning();
-  ownerId = u!.id;
+  const human = initializeHumanProfile({ name: "Ada", email: `ada-${ts}@test.local` });
+  ownerId = human.id;
+  await db.insert(schema.users).values({ id: ownerId, name: "you", displayName: human.name, email: human.email! });
   const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "T", slug: `t-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
-  await db.insert(schema.serverMembers).values({ serverId, userId: ownerId, role: "owner" });
   const [ag] = await db.insert(schema.agents).values({ serverId, name: `agent_${ts}`, displayName: "Agent" }).returning();
   agentId = ag!.id;
   const [c] = await db.insert(schema.channels).values({ serverId, name: chName, type: "channel" }).returning();
@@ -37,7 +38,6 @@ async function cleanup() {
   for (const c of chans) await db.delete(schema.channelMembers).where(eq(schema.channelMembers.channelId, c.id));
   await db.delete(schema.channels).where(eq(schema.channels.serverId, serverId));
   await db.delete(schema.agents).where(eq(schema.agents.serverId, serverId));
-  await db.delete(schema.serverMembers).where(eq(schema.serverMembers.serverId, serverId));
   await db.delete(schema.servers).where(eq(schema.servers.id, serverId));
   await db.delete(schema.users).where(eq(schema.users.id, ownerId));
 }

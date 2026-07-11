@@ -14,15 +14,15 @@ function ruleBody(selector: string): string {
   return m[1]!;
 }
 
-test("member badge renders on a second header line while agent status text remains", () => {
+test("Human member badge is absent while agent status text remains", () => {
   assert.match(chatSrc, /className="msg-subhead"/);
-  assert.match(chatSrc, /isMember \? <div className="msg-subhead"><span className="member-badge">member<\/span><\/div> : null/);
+  assert.doesNotMatch(chatSrc, /\bisMember\b/);
+  assert.doesNotMatch(chatSrc, /<span className="member-badge">member<\/span>/);
   assert.match(chatSrc, /const agActivity = agentActivityText\(ag\);/);
   assert.match(chatSrc, /className=\{"msg-activity "\s*\+\s*agLive\}/);
   assert.match(chatSrc, /className="msg-role"/);
   assert.doesNotMatch(chatSrc, /activityDetail\?\.\trim\(\)/, "message status badge should display activity/status, not runtime detail like hermes/xiaos");
   assert.doesNotMatch(chatSrc, /dmAgent\.activityDetail/, "DM header should also avoid runtime detail in the status label");
-  assert.doesNotMatch(chatSrc, /<div className="msg-head">[\s\S]{0,700}\{isMember \? <span className="member-badge">member<\/span> : null\}/);
 });
 
 test("agent status badge lives in the header line, pinned to the right, not on its own subhead line", () => {

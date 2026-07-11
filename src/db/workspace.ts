@@ -25,7 +25,6 @@ export async function createWorkspace(
     const db = dbFor(workspaceId);
     await db.insert(schema.users).values({ ...owner, id: ownerId }).onConflictDoNothing();
     const [workspace] = await db.insert(schema.servers).values({ id: workspaceId, name, slug, ownerId, rootPath, plan: "free" }).returning();
-    await db.insert(schema.serverMembers).values({ serverId: workspaceId, userId: ownerId, role: "owner" });
     const [all] = await db.insert(schema.channels).values({ serverId: workspaceId, name: "all", description: "General channel for all members", type: "channel" }).returning();
     await db.insert(schema.channelMembers).values({ channelId: all!.id, memberType: "user", memberId: ownerId }).onConflictDoNothing();
     return workspace!;

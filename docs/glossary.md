@@ -27,6 +27,8 @@
 **Human**
 : 一个 Kith-space 安装实例中唯一的真人使用者。名称必填，邮箱和描述选填；这是给 agent 使用的本地资料，不是账户、登录身份、成员或权限角色。
 
+过渡实现中 raw `"user"` 仍表示该唯一 Human 的 actor 或持久状态，不表示多用户账户或 Human membership；`channel_members` 的 Human 行暂存 read/thread/DM 状态，agent 行才是长期领域 membership。物理拆分与 `human` 命名切换统一归 A2.2b，runtime 协议中的 `role: "user"` 不属于此迁移。
+
 **工作区 / Space（空间）**
 : 一个根植于本地文件夹、自包含、可移植的协作单元，装着自己的 agent 队伍、频道、消息、任务和记忆；一个文件夹对应一个 Space。open-tag 的 `server/serverId` 是待迁移的底座术语，目标代码统一为 `space/spaceId`。
 

@@ -1,5 +1,5 @@
 // Shared helpers used by ≥2 route modules — verbatim from the former routes-api.ts.
-import { and, eq, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { dbFor, schema } from "../../db/index.js";
 import { aggregateReactions } from "../core.js";
 
@@ -17,10 +17,8 @@ export async function attachMentions(serverId: string, msgs: (typeof schema.mess
     reactions: reactions.get(m.id) ?? [],
   }));
 }
-export async function userChannels(serverId: string, userId: string) {
+export async function humanChannels(serverId: string) {
   const db = dbFor(serverId);
-  const cms = await db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, userId)));
   const chs = await db.select().from(schema.channels).where(eq(schema.channels.serverId, serverId));
-  const joined = new Set(cms.map((c) => c.channelId));
-  return { chs, joined };
+  return chs;
 }

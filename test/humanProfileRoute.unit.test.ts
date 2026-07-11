@@ -42,7 +42,7 @@ test("/api/auth/me reads app.db as canonical Human profile and writes legacy row
   try {
     const { human, home } = await ensurePersonalApp({ name: "Ada", homeRootPath: path.join(root, "home-space") });
     const db = dbFor(home.id);
-    await db.update(schema.users).set({ displayName: "Legacy drift" }).where(eq(schema.users.id, human.id));
+    await db.update(schema.users).set({ name: "legacy-drift", displayName: "Legacy drift" }).where(eq(schema.users.id, human.id));
     const { handleAuthedAuth } = await import("../src/server/routes-api/auth.ts");
 
     const getCapture = responseCapture();
@@ -55,11 +55,12 @@ test("/api/auth/me reads app.db as canonical Human profile and writes legacy row
       userId: human.id,
     });
     assert.equal(getCapture.response.status, 200);
+    assert.equal(getCapture.response.body.name, "Ada");
     assert.equal(getCapture.response.body.displayName, "Ada");
 
     const patchCapture = responseCapture();
     await handleAuthedAuth({
-      req: jsonRequest({ displayName: "Grace", email: "grace@example.test", description: "Local Human" }),
+      req: jsonRequest({ name: "Grace", email: "grace@example.test", description: "Local Human" }),
       res: patchCapture.res,
       url: new URL("http://localhost/api/auth/me"),
       method: "PATCH",
@@ -67,6 +68,7 @@ test("/api/auth/me reads app.db as canonical Human profile and writes legacy row
       userId: human.id,
     });
     assert.equal(patchCapture.response.status, 200);
+    assert.equal(patchCapture.response.body.name, "Grace");
     assert.equal(patchCapture.response.body.displayName, "Grace");
     assert.deepEqual(
       { name: getHumanProfile()?.name, email: getHumanProfile()?.email, description: getHumanProfile()?.description },

@@ -8,9 +8,8 @@ import { ToastProvider } from "./toast.tsx";
 import { App } from "./App.tsx";
 import { Chat } from "./views/Chat.tsx";
 import { Showcase } from "./views/Showcase.tsx";
-import { Members } from "./views/Members.tsx";
+import { Agents } from "./views/Members.tsx";
 import { Tasks, Computers, Search, Settings, Inbox, Saved } from "./views/misc.tsx";
-import { AuthPage, JoinPage } from "./views/Auth.tsx";
 import { Landing } from "./views/Landing.tsx";
 import { Features } from "./views/Features.tsx";
 import { homeRoute } from "./routing.ts";
@@ -32,17 +31,17 @@ function PublicHome() {
   }
 }
 
-// Root / unmatched path → wait for bootstrap, then redirect to the current user's own workspace (or /login if anonymous).
+// Root / unmatched path: wait for bootstrap, then redirect to the local workspace or the public home.
 function RootRedirect() {
   const { slug, ready, authState } = useStore();
   if (!ready) return <WorkspaceSkeleton />; // bootstrap in flight: show the workspace skeleton, not a blank screen
-  if (authState !== "authed") return <Navigate to="/login" replace />;
+  if (authState !== "authed") return <Navigate to="/" replace />;
   return <Navigate to={`/s/${slug}/channel`} replace />;
 }
 
 // Auth guard + Space activation for /s/:slug/*. The URL is the source of truth for the active Space: if it
 // names a known Space that isn't active yet, switch to it client-side (no full-page reload) and show the skeleton
-// while it loads. The auth check runs BEFORE <Layout/> renders, so an unauthenticated visitor is redirected to /login
+// while it loads. The auth check runs BEFORE <Layout/> renders, so an unauthenticated visitor returns to public home
 // without the workspace ever painting (no flash of protected UI).
 function WorkspaceRoute() {
   const { slug: activeSlug, ready, authState, spaces, switchSpace } = useStore();
@@ -52,7 +51,7 @@ function WorkspaceRoute() {
   // URL → store: a known-but-not-active slug (Space switcher, deep link, browser back/forward) drives a client-side switch.
   useEffect(() => { if (ready && authState === "authed" && known && routeSlug !== activeSlug) switchSpace(routeSlug!); }, [ready, authState, known, routeSlug, activeSlug, switchSpace]);
   if (!ready || (known && routeSlug !== activeSlug)) return <WorkspaceSkeleton />; // bootstrap or a switch in flight → skeleton (do NOT bounce the URL while slug catches up)
-  if (authState !== "authed") return <Navigate to="/login" replace />; // hard auth gate
+  if (authState !== "authed") return <Navigate to="/" replace />; // A3 replaces the temporary JWT gate with access-token sessions
   if (routeSlug !== activeSlug) { // unknown / stale slug → canonicalize to the active Space
     const pathname = loc.pathname.replace(/^\/s\/[^/]+/, `/s/${activeSlug}`);
     return <Navigate to={`${pathname}${loc.search}${loc.hash}`} replace />;
@@ -69,9 +68,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <Routes>
           <Route path="/" element={<PublicHome />} />
           <Route path="/features" element={<Features />} />
-          <Route path="/login" element={<AuthPage mode="login" />} />
-          <Route path="/register" element={<AuthPage mode="register" />} />
-          <Route path="/join/:token" element={<JoinPage />} />
           <Route path={SPACE_ROUTE_PATTERN} element={<WorkspaceRoute />}>
             <Route index element={<Navigate to="channel" replace />} />
             <Route path="inbox" element={<Inbox />} />
@@ -79,9 +75,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="showcase" element={<Showcase />} />
             <Route path="channel" element={<Chat />} />
             <Route path="channel/:channelId" element={<Chat />} />
-            <Route path="agent" element={<Members />} />
-            <Route path="agent/:agentId" element={<Members />} />
-            <Route path="human/:userId" element={<Members />} />
+            <Route path="agent" element={<Agents />} />
+            <Route path="agent/:agentId" element={<Agents />} />
             <Route path="tasks" element={<Tasks />} />
             <Route path="tasks/:channelId" element={<Tasks />} />
             <Route path="computer" element={<Computers />} />

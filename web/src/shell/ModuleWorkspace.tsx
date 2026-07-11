@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Members } from "../views/Members.tsx";
+import { Agents } from "../views/Members.tsx";
 import { Computers, Inbox, Search, Settings, Tasks } from "../views/misc.tsx";
 import { getWorkspaceModule } from "./workspaceModules.tsx";
 import type { WorkspaceModuleId } from "./workspaceLayout.ts";
@@ -21,11 +21,10 @@ function ModuleContent({ moduleId, route, chatVisible }: { moduleId: WorkspaceMo
     const channelId = route.section === "tasks" && route.resourceId !== "server" ? route.resourceId : null;
     return <Tasks channelIdOverride={channelId} moduleQuerySuffix={moduleQuerySuffix} />;
   }
-  if (moduleId === "members") {
+  if (moduleId === "agents") {
     return (
-      <Members
+      <Agents
         agentIdOverride={route.section === "agent" ? route.resourceId ?? undefined : undefined}
-        userIdOverride={route.section === "human" ? route.resourceId ?? undefined : undefined}
         moduleQuerySuffix={moduleQuerySuffix}
         discussionQuerySuffix={discussionQuerySuffix}
       />

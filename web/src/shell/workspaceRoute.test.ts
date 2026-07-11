@@ -18,11 +18,11 @@ test("maps detail routes to their workspace module", () => {
   assert.deepEqual(parseWorkspaceRoute("/s/space/agent/agent-1"), {
     section: "agent",
     resourceId: "agent-1",
-    moduleId: "members",
+    moduleId: "agents",
     isChatRoute: false,
     isChannelRoute: false,
   });
-  assert.equal(parseWorkspaceRoute("/s/space/human/user-1").moduleId, "members");
+  assert.equal(parseWorkspaceRoute("/s/space/human/user-1").moduleId, null);
   assert.equal(parseWorkspaceRoute("/s/space/computer/machine-1").moduleId, "computers");
   assert.equal(parseWorkspaceRoute("/s/space/settings/notifications").moduleId, "settings");
   assert.equal(parseWorkspaceRoute("/s/space/tasks/server").moduleId, "tasks");
@@ -69,11 +69,11 @@ test("legacy module paths remain valid URL entry points", () => {
 
 test("layout search preserves non-layout conversation state", () => {
   const splitSearch = workspaceSearchForLayout("?thread=thread-1", {
-    activeModule: "members",
+    activeModule: "agents",
     chatVisible: true,
   });
   const moduleOnlySearch = workspaceSearchForLayout(splitSearch, {
-    activeModule: "members",
+    activeModule: "agents",
     chatVisible: false,
   });
   const chatSearch = workspaceSearchForLayout(moduleOnlySearch, {
@@ -81,7 +81,7 @@ test("layout search preserves non-layout conversation state", () => {
     chatVisible: true,
   });
 
-  assert.equal(new URLSearchParams(splitSearch).get("module"), "members");
+  assert.equal(new URLSearchParams(splitSearch).get("module"), "agents");
   assert.equal(new URLSearchParams(moduleOnlySearch).get("chat"), "0");
   assert.equal(new URLSearchParams(chatSearch).get("thread"), "thread-1");
   assert.equal(new URLSearchParams(chatSearch).has("module"), false);

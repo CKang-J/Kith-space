@@ -17,7 +17,6 @@ interface TasksProps {
   channelIdOverride?: string | null;
   moduleQuerySuffix?: string;
 }
-
 export function Tasks({ channelIdOverride, moduleQuerySuffix = "" }: TasksProps = {}) {
   const { channels, slug } = useStore();
   const { channelId: routeChannelId } = useParams(); // "server" = all channels; otherwise a specific channelId
@@ -45,7 +44,6 @@ export function Tasks({ channelIdOverride, moduleQuerySuffix = "" }: TasksProps 
     </>
   );
 }
-
 // Unified inbox (GET /api/channels/inbox): aggregates recent activity across channels/DMs/threads, including unread counts and mentions.
 interface InboxItem {
   kind: string; channelId: string; channelName: string; channelType: string;
@@ -192,7 +190,7 @@ export function Inbox({ embedded = false, onNavigate }: { embedded?: boolean; on
 // Runtime name → display label mapping
 const RT_LABEL: Record<string, string> = { claude: "Claude Code", codex: "Codex CLI", opencode: "OpenCode", copilot: "Copilot CLI", cursor: "Cursor CLI", gemini: "Gemini CLI", kimi: "Kimi", hermes: "Hermes" };
 export function Computers({ machineIdOverride, moduleQuerySuffix = "" }: { machineIdOverride?: string; moduleQuerySuffix?: string } = {}) {
-  const { machines, agents, slug, api, spaceId, reload, attachmentUrl, capabilities, latestDaemonVersion } = useStore();
+  const { machines, agents, slug, api, spaceId, reload, attachmentUrl, latestDaemonVersion } = useStore();
   const confirm = useConfirm();
   const { t } = useTranslation();
   const { machineId: routeMachineId } = useParams();
@@ -223,7 +221,7 @@ export function Computers({ machineIdOverride, moduleQuerySuffix = "" }: { machi
       <aside className="sidebar">
         <div className="sb-scroll">
         <div className="sb-title">{t("misc.computersTitle")}</div>
-        <div className="sec">{t("misc.computersMachines")} <span className="cnt">{machines.length}</span>{capabilities.manageMachines && <button className="addbtn" title={t("misc.computersConnectBtn")} onClick={() => setConnect(true)}>+</button>}</div>
+        <div className="sec">{t("misc.computersMachines")} <span className="cnt">{machines.length}</span><button className="addbtn" title={t("misc.computersConnectBtn")} onClick={() => setConnect(true)}>+</button></div>
         {machines.length ? machines.map((m) => (
           <button key={m.id} className={"item" + (m.id === cur?.id ? " active" : "")} onClick={() => nav(`/s/${slug}/computer/${m.id}${moduleQuerySuffix}`)}>
             <IconMonitor size={15} /><span className="grow">{m.name || m.hostname}</span><span className={"dot " + (m.status === "online" ? "online" : "")} />
@@ -232,14 +230,14 @@ export function Computers({ machineIdOverride, moduleQuerySuffix = "" }: { machi
         </div>
       </aside>
       <main className="content-col">
-        {!cur ? <><div className="head"><h1>{t("misc.computersTitle")}</h1></div><div className="scroll"><PaneEmpty icon={<IconMonitor size={30} />} title={t("misc.computersNoMachine")} sub={t("misc.computersNoMachineHint")} action={capabilities.manageMachines && <button className="pe-cta" onClick={() => setConnect(true)}><Plus size={15} /> {t("misc.computersConnectBtn")}</button>} /></div></>
+        {!cur ? <><div className="head"><h1>{t("misc.computersTitle")}</h1></div><div className="scroll"><PaneEmpty icon={<IconMonitor size={30} />} title={t("misc.computersNoMachine")} sub={t("misc.computersNoMachineHint")} action={<button className="pe-cta" onClick={() => setConnect(true)}><Plus size={15} /> {t("misc.computersConnectBtn")}</button>} /></div></>
           : <>
             <div className="head"><h1>{cur.name || cur.hostname}</h1><small>{cur.status === "online" ? t("misc.computersOnline") : t("misc.computersOffline")} · {t("misc.computersDaemonLabel")} {cur.daemonVersion || "?"}</small>
-              {capabilities.manageMachines && <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                 {canUpdateDaemon && <button className="action-btn" onClick={() => setUpdateGuide({ id: cur.id, name: cur.name || cur.hostname || "", currentVersion: cur.daemonVersion || "?", latestVersion: latestDaemonVersion, apiKeyPrefix: cur.apiKeyPrefix })}>{t("misc.computersUpdateDaemonBtn")}</button>}
                 {cur.status !== "online" && <button className="action-btn" onClick={() => setReconnect({ id: cur.id, name: cur.name || cur.hostname || "" })}>{t("misc.computersReconnectBtn")}</button>}
                 <button className="danger-btn" onClick={removeMachine} disabled={deleting}>{deleting ? t("misc.computersDeleting") : t("misc.computersDeleteBtn")}</button>
-              </div>}
+              </div>
             </div>
             <div className="scroll">
               {delErr && <div className="form-err" style={{ marginBottom: 14 }}>{delErr}</div>}
@@ -337,8 +335,6 @@ export function Search() {
 const SETTINGS: [string, string][] = [
   ["account", "misc.settingsNavAccount"],
   ["space", "misc.settingsNavSpace"],
-  ["invites", "misc.settingsNavInvites"],
-  ["notifications", "misc.settingsNavNotifications"],
 ]; // Machine/Daemon management lives in the Computers view, not duplicated here
 export function Settings({ sectionOverride, moduleQuerySuffix = "" }: { sectionOverride?: string; moduleQuerySuffix?: string } = {}) {
   const { section: routeSection } = useParams();
@@ -359,7 +355,7 @@ export function Settings({ sectionOverride, moduleQuerySuffix = "" }: { sectionO
       <main className="content-col">
         <div className="head"><h1>{t("misc.settingsTitle", { section: curLabel })}</h1></div>
         <div className="scroll">
-          {cur === "account" ? <AccountSettings api={api} /> : cur === "space" ? <SpaceSettings api={api} spaceId={spaceId} /> : cur === "invites" ? <InvitesSettings api={api} spaceId={spaceId} /> : cur === "notifications" ? <NotificationsSettings api={api} spaceId={spaceId} /> : <div className="empty">{t("misc.settingsWip", { section: cur })}</div>}
+          {cur === "account" ? <AccountSettings api={api} /> : cur === "space" ? <SpaceSettings api={api} spaceId={spaceId} /> : <div className="empty">{t("misc.settingsWip", { section: cur })}</div>}
         </div>
       </main>
     </>
@@ -373,14 +369,14 @@ function AccountSettings({ api }: { api: any }) {
   const [saved, setSaved] = useState(false);
   useEffect(() => { (async () => setU(await api("GET", "/api/auth/me")))(); }, []);
   if (!u) return <div className="empty">{t("misc.accountLoading")}</div>;
-  const save = async () => { await api("PATCH", "/api/auth/me", { displayName: u.displayName, description: u.description }); setSaved(true); setTimeout(() => setSaved(false), 1500); };
+  const save = async () => { await api("PATCH", "/api/auth/me", { name: u.name, email: u.email || null, description: u.description }); setSaved(true); setTimeout(() => setSaved(false), 1500); };
   return (
     <div className="setform">
-      <label>{t("misc.accountDisplayName")}</label><input value={u.displayName || ""} onChange={(e) => setU({ ...u, displayName: e.target.value })} />
+      <label>{t("misc.accountDisplayName")}</label><input value={u.name || ""} onChange={(e) => setU({ ...u, name: e.target.value })} />
       <label>{t("misc.accountDescription")}</label>
-      <textarea value={u.description || ""} maxLength={3000} onChange={(e) => setU({ ...u, description: e.target.value })} placeholder="Describe yourself for other humans and agents in this server" />
+      <textarea value={u.description || ""} maxLength={3000} onChange={(e) => setU({ ...u, description: e.target.value })} placeholder={t("misc.accountDescriptionPlaceholder")} />
       <div className="ta-count">{(u.description || "").length}/3000</div>
-      <label>{t("misc.accountEmail")}</label><input value={u.email || ""} disabled />
+      <label>{t("misc.accountEmail")}</label><input value={u.email || ""} onChange={(e) => setU({ ...u, email: e.target.value })} />
       <div className="setrow"><button className="ok" onClick={save}>{t("misc.accountSave")}</button>{saved && <span className="saved">{t("misc.accountSaved")}</span>}</div>
       <div className="lang-row">
         <div><div className="logout-title">{t("settings.language")}</div><div className="logout-desc">{t("settings.languageDesc")}</div></div>
@@ -419,37 +415,10 @@ function SpaceSettings({ api, spaceId }: { api: any; spaceId: string }) {
       {avErr && <div className="form-err">{avErr}</div>}
       <label>{t("misc.spaceNameLabel")}</label><input value={s.name || ""} onChange={(e) => setS({ ...s, name: e.target.value })} />
       <label>{t("misc.spaceSlugLabel")}</label><input value={s.slug || ""} onChange={(e) => setS({ ...s, slug: e.target.value })} />
-      <label>{t("misc.spacePlanLabel")}</label><input value={s.plan || "free"} disabled />
       <div className="setrow"><button className="ok" onClick={save}>{t("misc.spaceSave")}</button>{saved && <span className="saved">{t("misc.spaceSaved")}</span>}</div>
     </div>
   );
 }
-// Notification settings (GET/PATCH /api/spaces/:id/notification-settings): per-user mute toggle for this Space.
-function NotificationsSettings({ api, spaceId }: { api: any; spaceId: string }) {
-  const { t } = useTranslation();
-  const [muted, setMuted] = useState<boolean | null>(null);
-  const [saved, setSaved] = useState(false);
-  useEffect(() => { if (!spaceId) return; (async () => { const r = await api("GET", `/api/spaces/${spaceId}/notification-settings`); setMuted(!!r?.serverPushMuted); })(); }, [spaceId]);
-  if (muted === null) return <div className="empty">{t("misc.notifLoading")}</div>;
-  const toggle = async () => {
-    const next = !muted; setMuted(next);
-    await api("PATCH", `/api/spaces/${spaceId}/notification-settings`, { serverPushMuted: next });
-    setSaved(true); setTimeout(() => setSaved(false), 1500);
-  };
-  return (
-    <div className="setform">
-      <div className="toggle-row">
-        <div className="toggle-text">
-          <div className="toggle-title">{t("misc.notifMuteTitle")}</div>
-          <div className="toggle-sub">{t("misc.notifMuteDesc")}</div>
-        </div>
-        <button role="switch" aria-checked={muted} className={"switch" + (muted ? " on" : "")} onClick={toggle}><span className="knob" /></button>
-      </div>
-      {saved && <div className="setrow"><span className="saved">{t("misc.notifSaved")}</span></div>}
-    </div>
-  );
-}
-
 // Saved messages view (/s/:slug/saved): bookmark list with source channel/thread, sender, relative time, content, and unsave action; clicking a card navigates to the message.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const relTime = (iso?: string, tFn?: (k: string, opts?: any) => string) => {
@@ -513,89 +482,5 @@ export function Saved({ embedded = false }: { embedded?: boolean } = {}) {
         </div>
       </main>
     </>
-  );
-}
-
-// Invite members (join-links): owner/admin generates invite links (configurable role/max-uses) → share → recipient registers or logs in to join.
-export async function copyText(text: string): Promise<boolean> {
-  if (navigator.clipboard && window.isSecureContext) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      // Fall back to the textarea path below.
-    }
-  }
-
-  const el = document.createElement("textarea");
-  el.value = text;
-  el.setAttribute("readonly", "");
-  el.style.position = "fixed";
-  el.style.top = "-1000px";
-  el.style.left = "-1000px";
-  el.style.opacity = "0";
-  document.body.appendChild(el);
-  el.focus();
-  el.select();
-  el.setSelectionRange(0, text.length);
-  try {
-    return document.execCommand("copy");
-  } catch {
-    return false;
-  } finally {
-    document.body.removeChild(el);
-  }
-}
-
-function InvitesSettings({ api, spaceId }: { api: any; spaceId: string }) {
-  const { capabilities } = useStore();
-  const { t } = useTranslation();
-  const [links, setLinks] = useState<any[]>([]);
-  const [role, setRole] = useState("member");
-  const [maxUses, setMaxUses] = useState("");
-  const [copied, setCopied] = useState("");
-  const load = async () => { try { const r = await api("GET", `/api/spaces/${spaceId}/join-links`); setLinks(Array.isArray(r) ? r : []); } catch { setLinks([]); } };
-  useEffect(() => { load(); }, [spaceId]);
-  if (!capabilities.manageMembers) return <div className="empty">{t("misc.invitesAdminOnly")}</div>;
-  const create = async () => { await api("POST", `/api/spaces/${spaceId}/join-links`, { role, maxUses: maxUses ? Number(maxUses) : null }); setMaxUses(""); load(); };
-  const del = async (id: string) => { await api("DELETE", `/api/spaces/${spaceId}/join-links/${id}`); load(); };
-  const urlOf = (tok: string) => `${location.origin}/join/${tok}`;
-  const copy = async (tok: string) => {
-    const link = urlOf(tok);
-    if (await copyText(link)) {
-      setCopied(tok);
-      setTimeout(() => setCopied(""), 1500);
-    } else {
-      window.prompt(t("members.copyLink"), link);
-    }
-  };
-  return (
-    <div className="setform">
-      <label>{t("misc.invitesLabel")}</label>
-      <p className="modal-note">{t("misc.invitesNote")}</p>
-      <div className="inv-new">
-        <select value={role} onChange={(e) => setRole(e.target.value)}>
-          <option value="member">{t("misc.invitesRoleMember")}</option>
-          <option value="admin">{t("misc.invitesRoleAdmin")}</option>
-        </select>
-        <input type="number" min="1" placeholder={t("misc.invitesMaxUsesPlaceholder")} value={maxUses} onChange={(e) => setMaxUses(e.target.value)} />
-        <button className="ok" onClick={create}>{t("misc.invitesGenerateBtn")}</button>
-      </div>
-      <div className="inv-list">
-        {links.length === 0 ? <div className="empty">{t("misc.invitesEmpty")}</div> : links.map((l) => (
-          <div className="inv-item" key={l.id}>
-            <div className="inv-meta">
-              <span className="inv-role">{l.role}</span>
-              <code className="inv-url">{urlOf(l.token)}</code>
-              <span className="inv-uses">{l.maxUses != null ? t("misc.invitesUsesCapped", { used: l.useCount, max: l.maxUses }) : t("misc.invitesUses", { count: l.useCount })}</span>
-            </div>
-            <div className="inv-acts">
-              <button className="joinbtn" onClick={() => copy(l.token)}>{copied === l.token ? t("misc.invitesCopied") : t("misc.invitesCopyBtn")}</button>
-              <button className="joinbtn" style={{ color: "var(--error)" }} onClick={() => del(l.id)}>{t("misc.invitesDeleteBtn")}</button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }

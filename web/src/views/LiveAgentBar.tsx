@@ -32,7 +32,7 @@ export function LiveAgentBar() {
     setOpen(false);
     openAgentPanel(id);
     if (!pathname.includes("/channel/")) {
-      const ch = channels.find((c) => c.joined) ?? channels[0];
+      const ch = channels[0];
       if (ch && slug) nav(`/s/${slug}/channel/${ch.id}`);
     }
   };

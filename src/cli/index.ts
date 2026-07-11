@@ -114,7 +114,7 @@ server.command("info").description("list channels, agents, and humans").action(a
   out += (d.channels ?? []).map((c: any) => `  - #${c.name}${c.joined ? " [joined]" : " [not joined]"}${c.description ? " — " + c.description : ""}`).join("\n") || "  (none)";
   const desc1 = (s: any) => (s ? " — " + String(s).replace(/\s+/g, " ").trim() : ""); // single-line description display (`@name — description`)
   out += "\n\n### Agents\n" + ((d.agents ?? []).map((a: any) => `  - @${a.name} (${a.status})${desc1(a.description)}`).join("\n") || "  (none)");
-  out += "\n\n### Humans\n" + ((d.humans ?? []).map((u: any) => `  - @${u.name}${desc1(u.description)}`).join("\n") || "  (none)");
+  out += "\n\n### Human\n" + (d.human ? `  - @${d.human.name}${desc1(d.human.description)}` : "  (none)");
   console.log(out);
 });
 

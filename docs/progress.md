@@ -8,7 +8,7 @@
 
 - 分支：`feat/p0-foundation`，尚未合并或推送远端。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A2 本地领域与数据模型进行中**。A2.1 app.db/Human/Home、A2.5 本地附件存储与 A2.2a Space 传输/API/Web 术语已完成；下一切片是 A2.3 Human membership/RBAC 删除。
+- 当前阶段：**A2 本地领域与数据模型进行中**。A2.1 app.db/Human/Home、A2.5 本地附件、A2.2a Space 契约和 A2.3 唯一 Human authority/identity、agent-only membership、Human-agent DM 与 Agents UI 已落地；下一切片是 A2.4 Machine/远程 worker 产品模型删除。
 - P4 视觉微调已暂停，等本机化基础收敛后再恢复。
 - 底座为 open-tag 衍生开发副本；`reference/` 只读。OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
 
@@ -31,6 +31,7 @@
 
 | 提交 | 内容 |
 |---|---|
+| `d6a0ad2` | 收敛 `/api/spaces`、`x-space-id`、Socket `spaceId` 与前端 Space 契约 |
 | `365bc2a` | 建立 app.db、唯一 Human/Home、本地-only 附件存储，并移除 S3 SDK |
 | `d7cafc4` | 固化个人 AgentOS 本机化规格，重写 vision/decisions/roadmap/架构/MVP/迁移与相关 UI 文档 |
 | `ec6b735` | 恢复 Tasks 全部/频道范围侧栏；更新 CodeGraph 与相关进度资料 |
@@ -46,12 +47,13 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 ## 四、当前代码事实与过渡债
 
 - 数据层是 SQLite：中央 `app.db` 保存唯一 Human 与 `spaces` registry；每 Space 使用 `<rootPath>/.kith/workspace.db`。canonical 连接入口为 `dbForSpace(spaceId)` / `listSpaces()`，旧 `dbFor(workspaceId)` / `listWorkspaces()` 只作 A2 兼容 facade。
-- `src/app-data/appDatabase.ts` 是 app.db 边界；`src/db/personalApp.ts` 幂等创建 Human 与默认 `Home`。workspace.db 暂时仍有一份兼容 user/owner/server_members 投影，A2.3 删除。
+- `src/app-data/appDatabase.ts` 是 app.db Human 事实源；`src/human/humanAuthority.ts` 把临时 JWT subject 限定为唯一 Human；`src/human/humanIdentity.ts` 提供稳定 `@you` handle 与 app.db 展示名。REST、公开附件和 Socket 不再查询 `server_members` 授权，新 Space 也不再写该行。
+- workspace.db 仍保留 `users/owner` 身份投影、Human `channel_members` read/thread/DM 状态，以及 `server_members/join_links` 等旧物理表；这些不再代表产品 membership，统一在 A2.2b 破坏性 baseline 删除或重塑。
 - A2.2a canonical 契约为 `/api/spaces`、`x-space-id`、Socket `spaceId` 与 `SpaceCtx`；Web Store 已只使用 `SpaceInfo/spaceId/spaces/createSpace/switchSpace`。服务端仍临时兼容旧 API/header/socket/context，并在双 header 值冲突时返回 400。
 - 附件存储已删除 S3 driver/SDK/config，只走本地磁盘并校验平面 storage key；当前仍使用 app 级 `uploads/`，Space 根路径收敛放在 A2 最终 schema 压平时完成。
-- A2.2a 验证：聚焦契约测试 15/15、typecheck、web build（2566 modules）和 integration 全绿；unit 392/393，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。A2.1 的幂等 seed 验证仍有效。
+- A2.3 验证：唯一 Human/agent 频道作用域两条新 integration 契约与迁移后的 12 组保留 integration 通过，typecheck 通过，Web build 通过（2567 modules）；unit 376 项中 375 项通过，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。全量 integration 当前只被首个 A2.4 待删 Machine 契约阻断，Machine 用例归 A2.4 收口。
 - P4 壳位于 `web/src/shell/`。URL 以频道/DM 路径、`?module=<id>` 和 `chat=0` 表达三态；Split 默认 Chat 25%。
-- 当前后端仍有 Members、Computers、Machine、多 Human/认证、旧 `/api/servers` 兼容路由与 workspace.db 的 `servers/server_id` 物理 schema；前端已无旧 Server 契约。`?legacy=1`、`.env`/daemon key、Docker/发布也仍待 A3-A6 清理。这些不是目标能力。
+- 产品登录/注册、成员/RBAC/邀请 API、Web Human roster 与 Human-Human DM 已删除；Dock/模块使用 Agents，频道成员只增删 agent，Human 资料入口位于 Settings；匿名页的“进入空间”只触发 A3 前临时 dev-login。raw `user` discriminator、Computers/Machine、旧 `/api/servers`、workspace.db `servers/server_id`、临时 JWT/dev-login、Landing、`?legacy=1`、`.env`/daemon key、Docker/发布仍待后续阶段清理。这些不是目标能力。
 - 当前开发启动仍暂时依赖现有环境变量和分进程命令；在 A3/A4 接管设置与内部凭据前，`docs/dev-commands.md` 必须继续如实记录过渡命令。
 - Message Context Snapshot 仍是设计契约，尚未持久化。
 - token 预算目前以唤醒次数为代理；真实 usage 等待 Runtime 契约 v2。
@@ -59,13 +61,12 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 五、下一步顺序
 
-1. A2.3：删除 workspace.db 的 Human compatibility 投影、membership/RBAC、邀请与 Human-Human DM。
-2. A2.4：删除 Machine/远程 daemon 产品模型，保留本机 Local Runtime Worker 进程协议。
-3. A2.2b：破坏性压平 workspace.db baseline，把保留表改为 `spaces/space_id` 并删除服务端兼容边界。
-4. A2 收口：把附件目录纳入 Space 根路径、跑完整验证并更新验收状态。
-5. A3：实现 Web 三模式、访问 Token、浏览器会话和内部临时凭据。
-6. A4-A6：Electron 宿主、UI/入口清理和继承资产总审计。
-7. 本机化基础稳定后再做 Runtime 契约 v2、生产力模块、Context Snapshot 与 P4 视觉收尾。
+1. A2.4：删除 Machine/远程 daemon 产品模型，保留本机 Local Runtime Worker 进程协议。
+2. A2.2b：破坏性压平 workspace.db baseline，把保留表改为 `spaces/space_id`，拆出单 Human 会话状态，并删除旧物理表与兼容边界。
+3. A2 收口：把附件目录纳入 Space 根路径、跑完整验证并更新验收状态。
+4. A3：实现 Web 三模式、访问 Token、浏览器会话和内部临时凭据。
+5. A4-A6：Electron 宿主、UI/入口清理和继承资产总审计。
+6. 本机化基础稳定后再做 Runtime 契约 v2、生产力模块、Context Snapshot 与 P4 视觉收尾。
 
 每阶段独立验证、独立中文提交。未获得用户明确指示，不合并 main、不推远端、不发布。
 

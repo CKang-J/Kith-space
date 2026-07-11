@@ -40,8 +40,8 @@ test("switching modules preserves Chat visibility", () => {
     activeModule: "inbox",
     chatVisible: true,
   });
-  assert.deepEqual(selectWorkspaceModule(moduleOnly, "members"), {
-    activeModule: "members",
+  assert.deepEqual(selectWorkspaceModule(moduleOnly, "agents"), {
+    activeModule: "agents",
     chatVisible: false,
   });
 });

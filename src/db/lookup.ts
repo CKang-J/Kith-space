@@ -18,14 +18,8 @@ export const findUserById = (id: string) => firstInWorkspaces(async (db) =>
 export const findUserByName = (name: string) => firstInWorkspaces(async (db) =>
   (await db.select().from(schema.users).where(eq(schema.users.name, name)))[0]);
 
-export const findUserByEmail = (email: string) => firstInWorkspaces(async (db) =>
-  (await db.select().from(schema.users).where(eq(schema.users.email, email)))[0]);
-
 export const findAgentById = (id: string) => firstInWorkspaces(async (db) =>
   (await db.select().from(schema.agents).where(eq(schema.agents.id, id)))[0]);
-
-export const findJoinLinkByToken = (token: string) => firstInWorkspaces(async (db) =>
-  (await db.select().from(schema.joinLinks).where(eq(schema.joinLinks.token, token)))[0]);
 
 export const findAttachmentById = (id: string) => firstInWorkspaces(async (db) =>
   (await db.select().from(schema.attachments).where(eq(schema.attachments.id, id)))[0]);

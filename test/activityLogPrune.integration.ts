@@ -5,6 +5,7 @@
 // Runs against an isolated SQLite workspace; no external services required.
 // Run: npx tsx test/activityLogPrune.integration.ts
 import { eq } from "drizzle-orm";
+import { initializeHumanProfile } from "../src/app-data/appDatabase.ts";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { pruneAgentActivityLog, logActivity, ACTIVITY_LOG_CAP } from "../src/server/ws.ts";
 
@@ -24,8 +25,9 @@ const tsRangeFor = async (aid: string) => {
 };
 
 async function setup() {
-  const [u] = await db.insert(schema.users).values({ name: `owner_${ts}`, displayName: "Owner", email: `o_${ts}@t.local` }).returning();
-  ownerId = u!.id;
+  const human = initializeHumanProfile({ name: "Ada", email: `ada-${ts}@test.local` });
+  ownerId = human.id;
+  await db.insert(schema.users).values({ id: ownerId, name: "you", displayName: human.name, email: human.email! });
   const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "T", slug: `t-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
   const [ag] = await db.insert(schema.agents).values({ serverId, name: `agent_${ts}`, displayName: "Agent" }).returning();

@@ -20,7 +20,7 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
   className?: string;        // extra class on the .composer root (threads pass "thread-composer")
 }) {
   const { t } = useTranslation();
-  const { api, visibleAgents: agents, humans, machines, uploadOne, attachmentUrl } = useStore(); // visibleAgents: only real agents are @-mention candidates / reachability targets (not showcase demo props)
+  const { api, visibleAgents: agents, machines, uploadOne, attachmentUrl } = useStore(); // visibleAgents: only real agents are @-mention candidates / reachability targets (not showcase demo props)
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
   const [text, setText] = useState("");
   const [asTask, setAsTask] = useState(false);
@@ -94,7 +94,7 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
   const onPaste = (e: RClipboardEvent) => { const imgs = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/")).map((f, i) => new File([f], `pasted-${Date.now()}${i ? "-" + i : ""}.${f.type.split("/")[1] || "png"}`, { type: f.type })); if (imgs.length) { e.preventDefault(); addFiles(imgs); } };
   const onDrop = (e: RDragEvent) => { const fs = Array.from(e.dataTransfer?.files ?? []); if (fs.length) { e.preventDefault(); addFiles(fs); } };
 
-  // @ mention autocomplete: candidates are all workspace agents + humans (not just current channel members) —
+  // @ mention autocomplete: candidates are all current Space agents (not just current channel members) —
   // in a public channel, @-ing a non-member pulls them in (server-side auto-join), so suggesting them is intended.
   const onInput = (e: ChangeEvent<HTMLTextAreaElement>) => {
     const v = e.target.value; setText(v);
@@ -103,10 +103,10 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
     if (m) { setAtQuery(m[1]); atPosRef.current = pos - m[0].length; } else setAtQuery(null);
     setAtSel(0); // typing narrows the list → restart highlight at the top
   };
-  const cands = atQuery === null ? [] : [
-    ...agents.map((a) => ({ name: a.name, label: a.displayName || a.name, kind: "agent", avatarUrl: a.avatarUrl })),
-    ...humans.map((h) => ({ name: h.name, label: h.displayName || h.name, kind: "human", avatarUrl: h.avatarUrl })),
-  ].filter((c) => c.name && c.name.toLowerCase().includes((atQuery || "").toLowerCase())).slice(0, 8);
+  const cands = atQuery === null ? [] : agents
+    .map((agent) => ({ name: agent.name, label: agent.displayName || agent.name, kind: "agent", avatarUrl: agent.avatarUrl }))
+    .filter((candidate) => candidate.name && candidate.name.toLowerCase().includes((atQuery || "").toLowerCase()))
+    .slice(0, 8);
   const pick = (c: { name: string }) => {
     const start = atPosRef.current;
     const after = text.slice(start + 1 + (atQuery?.length ?? 0));
@@ -123,7 +123,7 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
               onMouseEnter={() => setAtSel(i)} onMouseDown={(e) => { e.preventDefault(); pick(c); }}>
               <Avatar seed={c.name} url={avFor(c.avatarUrl)} size={22} />
               <span className="grow">{c.label} <span className="mk-name">@{c.name}</span></span>
-              <span className="mk">{c.kind === "agent" ? "agent" : t("chat.memberKind")}</span>
+              <span className="mk">{c.kind === "agent" ? "agent" : t("chat.humanKind")}</span>
             </button>
           ))}
         </div>

@@ -11,7 +11,7 @@ export interface WorkspaceModuleDefinition {
 export const WORKSPACE_MODULES: readonly WorkspaceModuleDefinition[] = [
   { id: "inbox", labelKey: "nav.inbox", Icon: Inbox, dock: true },
   { id: "tasks", labelKey: "nav.tasks", Icon: ListTodo, dock: true },
-  { id: "members", labelKey: "nav.members", Icon: Users, dock: true },
+  { id: "agents", labelKey: "nav.agents", Icon: Users, dock: true },
   { id: "computers", labelKey: "nav.computers", Icon: Monitor, dock: true },
   { id: "settings", labelKey: "nav.settings", Icon: Settings, dock: true },
   { id: "search", labelKey: "nav.search", Icon: Search, dock: false },

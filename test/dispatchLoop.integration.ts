@@ -1,5 +1,6 @@
 import "../src/env.ts";
 import type { WebSocket } from "ws";
+import { initializeHumanProfile } from "../src/app-data/appDatabase.ts";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { createMessage } from "../src/server/core.ts";
 import { registerDaemon, unregisterDaemon } from "../src/server/daemonHub.ts";
@@ -14,8 +15,9 @@ const check = (label: string, condition: boolean) => {
 async function main() {
   const fixture = integrationDatabase("dispatch-loop");
   const { db, schema, serverId, rootPath } = fixture;
-  const [owner] = await db.insert(schema.users).values({ name: "owner", displayName: "Owner", email: `${serverId}@test.local` }).returning();
-  await db.insert(schema.servers).values({ id: serverId, name: "Dispatch loop", slug: serverId, ownerId: owner!.id, rootPath });
+  const human = initializeHumanProfile({ name: "Ada", email: `${serverId}@test.local` });
+  const [owner] = await db.insert(schema.users).values({ id: human.id, name: "you", displayName: human.name, email: human.email! }).returning();
+  await db.insert(schema.servers).values({ id: serverId, name: "Dispatch loop", slug: serverId, ownerId: human.id, rootPath });
   const [channel] = await db.insert(schema.channels).values({ serverId, name: "delivery", type: "channel" }).returning();
   const quietScopes = { granted: [], mode: "custom" as const, revision: 1, updatedAt: new Date().toISOString() };
   const [leader, dev, tester] = await db.insert(schema.agents).values([

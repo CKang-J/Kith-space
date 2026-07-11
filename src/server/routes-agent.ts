@@ -12,6 +12,7 @@ import { readObject } from "./storage.js";
 import { normalizeTaskExecutionMode } from "./dispatchGuard.js";
 import { getTaskDetails, reportTask, submitTaskDelivery } from "./tasks/taskService.js";
 import { sendTaskOperationError } from "./tasks/taskHttp.js";
+import { getHumanIdentity, humanIdentityForHandle, humanIdentityForId } from "../human/humanIdentity.js";
 
 // Freshness-hold draft buffer (prevents agent↔agent duplicate replies): when the agent sends
 // and new messages have arrived since last read → save as draft + surface bounded context, do not post immediately.
@@ -65,7 +66,7 @@ export async function addressableTarget(serverId: string, ch: typeof schema.chan
     const peer = members.find((m) => !(m.memberType === "agent" && m.memberId === selfAgentId));
     if (peer) {
       const name = peer.memberType === "user"
-        ? (await db.select().from(schema.users).where(eq(schema.users.id, peer.memberId)))[0]?.name
+        ? humanIdentityForId(peer.memberId)?.handle
         : (await db.select().from(schema.agents).where(eq(schema.agents.id, peer.memberId)))[0]?.name;
       if (name) return `dm:@${name}`;
     }
@@ -244,14 +245,13 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     // mirroring the human plane's visibleAgents: they aren't reachable (workspaceMembers excludes them from
     // @-mention/wake for every sender), so listing them would just tempt an agent into a no-op @-mention.
     const agents = await db.select().from(schema.agents).where(and(eq(schema.agents.serverId, serverId), isNull(schema.agents.deletedAt), ne(schema.agents.creatorType, "system")));
-    const memberRows = await db.select().from(schema.serverMembers).where(eq(schema.serverMembers.serverId, serverId));
-    const humans = memberRows.length ? await db.select().from(schema.users).where(inArray(schema.users.id, memberRows.map((m) => m.userId))) : [];
+    const human = getHumanIdentity();
     return (sendJson(res, 200, {
       // Agent ACL: only surface public channels + channels the agent has joined — never reveal a private
       // channel's name/description to a non-member (DMs are listed elsewhere). Keeps private channels invisible.
       channels: chs.filter((c) => c.type !== "dm" && c.type !== "thread" && !c.deletedAt && (c.type === "channel" || joined.has(c.id))).map((c) => ({ name: c.name, description: c.description, joined: joined.has(c.id), type: c.type })),
       agents: agents.map((a) => ({ name: a.name, status: a.status, description: a.description ?? null })),
-      humans: humans.map((u) => ({ name: u.name, description: u.description ?? null })),
+      human: human ? { name: human.handle, displayName: human.displayName, description: human.description } : null,
     }), true);
   }
 
@@ -456,12 +456,12 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
   // profile show: own profile or @handle lookup
   if (p === "/agent-api/profile/show" && method === "GET") {
     const who = (url.searchParams.get("handle") || "").replace(/^@/, "");
+    const human = humanIdentityForHandle(who);
+    if (human) return (sendJson(res, 200, { type: "user", name: human.handle, displayName: human.displayName, description: human.description }), true);
     const a = who
       ? (await db.select().from(schema.agents).where(and(eq(schema.agents.serverId, serverId), eq(schema.agents.name, who))))[0]
       : (await db.select().from(schema.agents).where(eq(schema.agents.id, agent.id)))[0];
     if (a) return (sendJson(res, 200, { type: "agent", name: a.name, displayName: a.displayName, description: a.description, runtime: a.runtime, model: a.model, status: a.status }), true);
-    const u = who ? (await db.select().from(schema.users).where(eq(schema.users.name, who)))[0] : null;
-    if (u) return (sendJson(res, 200, { type: "user", name: u.name, displayName: u.displayName, description: u.description }), true);
     return (sendErr(res, 404, "profile not found"), true);
   }
   // profile update: update own displayName/description/avatarUrl

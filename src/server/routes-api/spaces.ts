@@ -1,5 +1,4 @@
 import { eq } from "drizzle-orm";
-import { capabilitiesFor } from "../capabilities.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { getHumanProfile } from "../../app-data/appDatabase.js";
 import { dbForSpace, schema } from "../../db/index.js";
@@ -13,11 +12,9 @@ import {
 } from "../../spaces/spaceService.js";
 import type { UserCtx } from "./ctx.js";
 
-const singleHumanCapabilities = capabilitiesFor("owner");
-
 async function serializeSpace(space: ReturnType<typeof getLocalSpace>) {
   const [legacyPresentation] = await dbForSpace(space.id)
-    .select({ avatarUrl: schema.servers.avatarUrl, plan: schema.servers.plan })
+    .select({ avatarUrl: schema.servers.avatarUrl })
     .from(schema.servers)
     .where(eq(schema.servers.id, space.id));
   return {
@@ -27,10 +24,6 @@ async function serializeSpace(space: ReturnType<typeof getLocalSpace>) {
     rootPath: space.rootPath,
     lastOpenedAt: space.lastOpenedAt.toISOString(),
     avatarUrl: legacyPresentation?.avatarUrl ?? null,
-    // Temporary UI bridge until A2.3 removes the inherited RBAC branches and moves presentation metadata.
-    role: "owner",
-    plan: legacyPresentation?.plan ?? "free",
-    capabilities: singleHumanCapabilities,
   };
 }
 

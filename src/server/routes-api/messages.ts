@@ -6,9 +6,10 @@ import { addReaction, checkSaved, createMessage, listSaved, removeReaction, save
 import { parseMsgPageParams } from "../messagePage.js";
 import { publish } from "../realtime.js";
 import { readJson, sendErr, sendJson } from "../util.js";
-import { attachMentions, userChannels } from "./shared.js";
-import { canUserReadChannel } from "../channelAccess.js";
+import { attachMentions, humanChannels } from "./shared.js";
+import { canHumanReadChannel } from "../channelAccess.js";
 import { normalizeTaskExecutionMode } from "../dispatchGuard.js";
+import { humanIdentityForId } from "../../human/humanIdentity.js";
 
 export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
   const { req, res, url, method, p, userId, serverId } = ctx;
@@ -26,7 +27,7 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
       .from(schema.messageMentions)
       .innerJoin(schema.messages, eq(schema.messages.id, schema.messageMentions.messageId))
       .innerJoin(schema.channels, eq(schema.channels.id, schema.messages.channelId))
-      .innerJoin(schema.channelMembers, and(eq(schema.channelMembers.channelId, schema.channels.id), eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, userId)))
+      .leftJoin(schema.channelMembers, and(eq(schema.channelMembers.channelId, schema.channels.id), eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, userId)))
       .where(and(eq(schema.messageMentions.mentionType, "user"), eq(schema.messageMentions.mentionId, userId), eq(schema.channels.serverId, serverId), isNull(schema.channels.deletedAt)))
       .orderBy(desc(schema.messages.seq))
       .limit(limit + 1).offset(offset); // fetch one extra row to detect a next page without a second COUNT (Saved-style hasMore)
@@ -68,7 +69,7 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
     if (!messageId) return (sendErr(res, 400, "messageId required"), true);
     const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, messageId), eq(schema.messages.serverId, serverId))))[0];
     if (!m) return (sendErr(res, 404, "message not found"), true);
-    if (!(await canUserReadChannel(serverId, m.channelId, userId))) return (sendErr(res, 404, "message not found"), true); // invariant 3 (IDOR-B5): non-members can't bookmark (and thereby read via GET /saved) a private/DM channel's message (404 hides existence, matches reactions B2 / tasks B4)
+    if (!(await canHumanReadChannel(serverId, m.channelId))) return (sendErr(res, 404, "message not found"), true);
     await saveMessage(serverId, messageId, "user", userId);
     return (sendJson(res, 200, { ok: true }), true);
   }
@@ -91,8 +92,7 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 20), 50);
     const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0));
     if (!q) return (sendJson(res, 200, { hasMore: false, results: [] }), true);
-    const mems = await db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, userId)));
-    const chIds = mems.map((m) => m.channelId);
+    const chIds = (await humanChannels(serverId)).filter((channel) => !channel.deletedAt).map((channel) => channel.id);
     if (!chIds.length) return (sendJson(res, 200, { hasMore: false, results: [] }), true);
     const rows = await db.select().from(schema.messages)
       .where(and(eq(schema.messages.serverId, serverId), inArray(schema.messages.channelId, chIds), like(schema.messages.content, `%${q}%`)))
@@ -106,7 +106,7 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
   }
   const cmsg = /^\/api\/messages\/channel\/([^/]+)$/.exec(p);
   if (cmsg && method === "GET") {
-    if (!(await canUserReadChannel(serverId, cmsg[1]!, userId))) return (sendErr(res, 403, "forbidden"), true); // invariant 3: private/DM channels non-members are refused
+    if (!(await canHumanReadChannel(serverId, cmsg[1]!))) return (sendErr(res, 403, "forbidden"), true);
     const { limit, before } = parseMsgPageParams(url.searchParams); // `before` = keyset cursor on seq → the older page (frontend scroll-to-top "load more")
     const conds = [eq(schema.messages.serverId, serverId), eq(schema.messages.channelId, cmsg[1]!)]; // serverId scope: a foreign channel UUID must not read another tenant's messages (cross-tenant read)
     if (before != null) conds.push(lt(schema.messages.seq, before)); // hits messages_channel_idx (channelId, seq) — keyset, no offset drift
@@ -119,11 +119,12 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
     const b = await readJson(req);
     const hasAtt = Array.isArray(b.attachmentIds) && b.attachmentIds.length > 0;
     if (!b.channelId || (!b.content && !hasAtt)) return (sendErr(res, 400, "channelId + content (or attachmentIds) required"), true);
-    if (!(await canUserReadChannel(serverId, b.channelId, userId))) return (sendErr(res, 403, "forbidden"), true); // invariant 3: non-members must not write to private/DM channels
-    const u = (await db.select().from(schema.users).where(eq(schema.users.id, userId)))[0];
+    if (!(await canHumanReadChannel(serverId, b.channelId))) return (sendErr(res, 403, "forbidden"), true);
+    const human = humanIdentityForId(userId);
+    if (!human) return (sendErr(res, 403, "not the local Human"), true);
     const mode = normalizeTaskExecutionMode(b.taskExecutionMode ?? b.executionMode);
     if (b.asTask && !mode) return (sendErr(res, 400, "executionMode must be autopilot or plan-first"), true);
-    const msg = await createMessage({ serverId, channelId: b.channelId, senderType: "user", senderId: userId, senderName: u!.name, content: b.content || "", asTask: !!b.asTask, taskExecutionMode: mode ?? undefined, attachmentIds: hasAtt ? b.attachmentIds : undefined });
+    const msg = await createMessage({ serverId, channelId: b.channelId, senderType: "user", senderId: userId, senderName: human.displayName, content: b.content || "", asTask: !!b.asTask, taskExecutionMode: mode ?? undefined, attachmentIds: hasAtt ? b.attachmentIds : undefined });
     return (sendJson(res, 200, { ok: true, id: msg.id, seq: msg.seq }), true);
   }
   // Emoji reactions: POST to add / DELETE to remove, same path body {emoji}; both broadcast message:updated (full message including reactions[])
@@ -135,7 +136,7 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
     const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, react[1]!), eq(schema.messages.serverId, serverId))))[0];
     if (!m) return (sendErr(res, 404, "message not found"), true);
     // invariant 3: non-members must not react to messages in private/DM channels (IDOR-B2)
-    if (!(await canUserReadChannel(serverId, m.channelId, userId))) return (sendErr(res, 404, "message not found"), true);
+    if (!(await canHumanReadChannel(serverId, m.channelId))) return (sendErr(res, 404, "message not found"), true);
     const out = method === "POST" ? await addReaction(serverId, react[1]!, "user", userId, emoji) : await removeReaction(serverId, react[1]!, "user", userId, emoji);
     return (sendJson(res, 200, out), true);
   }
@@ -146,12 +147,12 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
     const b = await readJson(req).catch(() => ({}));
     const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, amark[1]!), eq(schema.messages.serverId, serverId))))[0];
     if (!m) return (sendErr(res, 404, "action not found"), true);
-    if (!(await canUserReadChannel(serverId, m.channelId, userId))) return (sendErr(res, 404, "action not found"), true); // invariant 3 (IDOR-B4): non-members of a private/DM channel can't mark its action cards (404 hides existence, matches reactions B2)
+    if (!(await canHumanReadChannel(serverId, m.channelId))) return (sendErr(res, 404, "action not found"), true);
     const meta = m.actionMetadata as any;
     if (!meta || meta.kind !== "action-card") return (sendErr(res, 400, "not an action card"), true);
     if (meta.state === "executed") return (sendJson(res, 200, { ok: true, already: true }), true); // idempotent
-    const u = (await db.select().from(schema.users).where(eq(schema.users.id, userId)))[0];
-    const updated = { ...meta, state: "executed", executedAt: new Date().toISOString(), executedByUserId: userId, executedByUserName: u?.displayName || u?.name || "someone", result: b.result ?? null };
+    const human = humanIdentityForId(userId);
+    const updated = { ...meta, state: "executed", executedAt: new Date().toISOString(), executedByUserId: userId, executedByUserName: human?.displayName ?? "someone", result: b.result ?? null };
     await db.update(schema.messages).set({ actionMetadata: updated, updatedAt: new Date() }).where(eq(schema.messages.id, m.id));
     const [serialized] = await attachMentions(serverId, [{ ...m, actionMetadata: updated }]);
     await publish(serverId, { type: "message:updated", message: serialized });
@@ -159,8 +160,7 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
   }
   if (p === "/api/messages/sync" && method === "GET") {
     const since = Number(url.searchParams.get("since") ?? 0);
-    const { chs, joined } = await userChannels(serverId, userId);
-    const chIds = chs.filter((c) => joined.has(c.id)).map((c) => c.id);
+    const chIds = (await humanChannels(serverId)).filter((c) => !c.deletedAt).map((c) => c.id);
     if (!chIds.length) return (sendJson(res, 200, { messages: [], maxSeq: since }), true);
     const msgs = await db.select().from(schema.messages).where(and(eq(schema.messages.serverId, serverId), gt(schema.messages.seq, since), inArray(schema.messages.channelId, chIds))).orderBy(asc(schema.messages.seq)).limit(500);
     const withM = await attachMentions(serverId, msgs);
@@ -173,7 +173,7 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
   if (cone && method === "GET") {
     const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, cone[1]!), eq(schema.messages.serverId, serverId))))[0];
     if (!m) return (sendErr(res, 404, "message not found"), true);
-    if (!(await canUserReadChannel(serverId, m.channelId, userId))) return (sendErr(res, 404, "message not found"), true); // non-members of private/DM channels are refused (don't leak existence)
+    if (!(await canHumanReadChannel(serverId, m.channelId))) return (sendErr(res, 404, "message not found"), true);
     const [serialized] = await attachMentions(serverId, [m]);
     return (sendJson(res, 200, { message: serialized }), true);
   }

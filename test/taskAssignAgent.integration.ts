@@ -6,6 +6,7 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { and, eq } from "drizzle-orm";
+import { initializeHumanProfile } from "../src/app-data/appDatabase.ts";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { handleAgentApi } from "../src/server/routes-agent.ts";
 import { agentConfig, createMessage, convertMessageToTask } from "../src/server/core.ts";
@@ -64,15 +65,11 @@ async function call(path: string, token: string, agentId: string, body?: unknown
 }
 
 async function setup() {
-  const [owner] = await db.insert(schema.users).values({
-    name: `owner_assign_${ts}`,
-    displayName: "Owner",
-    email: `owner_assign_${ts}@agent-route.local`,
-  }).returning();
-  ownerId = owner!.id;
+  const human = initializeHumanProfile({ name: "Ada", email: `ada-${ts}@agent-route.local` });
+  ownerId = human.id;
+  await db.insert(schema.users).values({ id: ownerId, name: "you", displayName: human.name, email: human.email! });
 
   await db.insert(schema.servers).values({ id: serverId, name: `task-assign-agent-${ts}`, slug: `task-assign-agent-${ts}`, ownerId, rootPath });
-  await db.insert(schema.serverMembers).values({ serverId, userId: ownerId, role: "owner" });
   const [ch] = await db.insert(schema.channels).values({ serverId, name: "all", type: "channel" }).returning();
   await db.insert(schema.channelMembers).values({ channelId: ch!.id, memberType: "user", memberId: ownerId });
   channelId = ch.id;
@@ -133,7 +130,6 @@ async function cleanup() {
 
   await db.delete(schema.agents).where(and(eq(schema.agents.serverId, serverId), eq(schema.agents.id, assignerId)));
   await db.delete(schema.agents).where(and(eq(schema.agents.serverId, serverId), eq(schema.agents.id, assigneeId)));
-  await db.delete(schema.serverMembers).where(eq(schema.serverMembers.serverId, serverId));
   await db.delete(schema.servers).where(eq(schema.servers.id, serverId));
   await db.delete(schema.users).where(eq(schema.users.id, ownerId));
 }

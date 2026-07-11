@@ -25,6 +25,7 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { eq } from "drizzle-orm";
+import { initializeHumanProfile } from "../src/app-data/appDatabase.ts";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { handleAgentApi } from "../src/server/routes-agent.ts";
 import { hashToken } from "../src/server/auth.ts";
@@ -82,11 +83,11 @@ async function view(id: string, opts: { token: string; agentId: string }): Promi
 }
 
 async function setup() {
-  const [u] = await db.insert(schema.users).values({ name: `owner_att_${ts}`, displayName: "Owner", email: `att_${ts}@t.local` }).returning();
-  ownerId = u!.id;
+  const human = initializeHumanProfile({ name: "Ada", email: `ada-${ts}@test.local` });
+  ownerId = human.id;
+  await db.insert(schema.users).values({ id: ownerId, name: "you", displayName: human.name, email: human.email! });
   const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "TATT", slug: `tatt-${ts}`, ownerId, rootPath }).returning();
   serverId = srv!.id;
-  await db.insert(schema.serverMembers).values({ serverId, userId: ownerId, role: "owner" });
 
   const [ch] = await db.insert(schema.channels).values({ serverId, name: `att-${ts}`, type: "private" }).returning();
   channelId = ch!.id;
@@ -119,7 +120,6 @@ async function cleanup() {
   await db.delete(schema.channelMembers).where(eq(schema.channelMembers.channelId, channelId));
   await db.delete(schema.channels).where(eq(schema.channels.serverId, serverId));
   await db.delete(schema.agents).where(eq(schema.agents.serverId, serverId));
-  await db.delete(schema.serverMembers).where(eq(schema.serverMembers.serverId, serverId));
   await db.delete(schema.servers).where(eq(schema.servers.id, serverId));
   await db.delete(schema.users).where(eq(schema.users.id, ownerId));
 }

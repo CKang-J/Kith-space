@@ -4,6 +4,7 @@
 // Runs against an isolated SQLite workspace; no external services required.
 import "../src/env.ts";
 import { and, eq } from "drizzle-orm";
+import { initializeHumanProfile } from "../src/app-data/appDatabase.ts";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { assignTask, claimTask, convertMessageToTask, createMessage, setTaskStatus } from "../src/server/core.ts";
 
@@ -21,15 +22,11 @@ let dstAgentId = "";
 let deletedAgentId = "";
 
 async function setup() {
-  const [owner] = await db.insert(schema.users).values({
-    name: `owner_${ts}`,
-    displayName: "Owner",
-    email: `owner_${ts}@task-assign.local`,
-  }).returning();
-  ownerId = owner!.id;
+  const human = initializeHumanProfile({ name: "Ada", email: `ada-${ts}@task-assign.local` });
+  ownerId = human.id;
+  await db.insert(schema.users).values({ id: ownerId, name: "you", displayName: human.name, email: human.email! });
 
   await db.insert(schema.servers).values({ id: serverId, name: `task-assign-${ts}`, slug: `task-assign-${ts}`, ownerId, rootPath });
-  await db.insert(schema.serverMembers).values({ serverId, userId: ownerId, role: "owner" });
   const [all] = await db.insert(schema.channels).values({ serverId, name: "all", type: "channel" }).returning();
   channelId = all!.id;
   await db.insert(schema.channelMembers).values({ channelId, memberType: "user", memberId: ownerId });
@@ -80,7 +77,6 @@ async function cleanup() {
   await db.delete(schema.agents).where(and(eq(schema.agents.serverId, serverId), eq(schema.agents.id, srcAgentId)));
   await db.delete(schema.agents).where(and(eq(schema.agents.serverId, serverId), eq(schema.agents.id, dstAgentId)));
   await db.delete(schema.agents).where(eq(schema.agents.id, deletedAgentId));
-  await db.delete(schema.serverMembers).where(eq(schema.serverMembers.serverId, serverId));
   await db.delete(schema.servers).where(eq(schema.servers.id, serverId));
   await db.delete(schema.users).where(eq(schema.users.id, ownerId));
 }

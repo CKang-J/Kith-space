@@ -4,7 +4,7 @@
 // for a user who has — or is still resolving — a session; every route waits on the bootstrap.
 export type AuthState = "loading" | "authed" | "anon";
 
-export const TOKEN_KEY = "kith-space.token"; // session JWT persisted after register/login/dev-login
+export const TOKEN_KEY = "kith-space.token"; // temporary dev-login JWT; A3 replaces it with browser access-token sessions
 
 // Synchronous best-effort read of "does this visitor have (or is starting) a session?", from the
 // same storage key the store uses + the dev-login ?as= param. Used only to pick the FIRST-render

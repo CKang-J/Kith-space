@@ -8,7 +8,8 @@ import { broadcastToDaemons, daemonCount, isMachineConnected, sendToMachine } fr
 import { agentHasScope } from "./scopes.js";
 import { newKey, hashToken } from "./auth.js";
 import { createLogger } from "../log.js";
-import { canUserReadChannel } from "./channelAccess.js";
+import { getHumanIdentity, humanIdentityForHandle, humanIdentityForId } from "../human/humanIdentity.js";
+import { canHumanReadChannel } from "./channelAccess.js";
 import { canAutoJoinMentionedMembers, isWakeable } from "./agentWakePolicy.js";
 import { SqliteDispatchState, normalizeTaskExecutionMode, type DispatchMessageContext, type TaskExecutionMode, type WakeReservation } from "./dispatchGuard.js";
 import { assignTaskRecord, claimTaskRecord, convertMessageRecord, createTaskRecord, transitionTaskRecord, unclaimTaskRecord } from "./tasks/taskRepository.js";
@@ -56,13 +57,18 @@ export interface Member { type: "user" | "agent"; id: string; name: string; disp
 
 export async function channelMembers(serverId: string, channelId: string): Promise<Member[]> {
   const db = dbFor(serverId);
+  const channel = (await db.select({ id: schema.channels.id }).from(schema.channels).where(and(
+    eq(schema.channels.id, channelId),
+    eq(schema.channels.serverId, serverId),
+    isNull(schema.channels.deletedAt),
+  )))[0];
+  if (!channel) return [];
   const rows = await db.select().from(schema.channelMembers).where(eq(schema.channelMembers.channelId, channelId));
   const out: Member[] = [];
+  const human = getHumanIdentity();
+  if (human) out.push({ type: "user", id: human.id, name: human.handle, displayName: human.displayName });
   for (const r of rows) {
-    if (r.memberType === "user") {
-      const u = (await db.select().from(schema.users).where(eq(schema.users.id, r.memberId)))[0];
-      if (u) out.push({ type: "user", id: u.id, name: u.name, displayName: u.displayName });
-    } else {
+    if (r.memberType === "agent") {
       const a = (await db.select().from(schema.agents).where(eq(schema.agents.id, r.memberId)))[0];
       if (a) out.push({ type: "agent", id: a.id, name: a.name, displayName: a.displayName });
     }
@@ -83,8 +89,8 @@ export async function channelMaxSeq(serverId: string, channelId: string): Promis
  *  channel's current max seq), so its first `kith-space message check` surfaces only messages sent AFTER it
  *  joined — not the channel's pre-join backlog (which it can still pull on demand via `message read`). Without
  *  this, a fresh member's lastReadSeq=0 makes every prior message "unread", flooding a newly created or newly
- *  invited agent with the whole channel history it never needed. A USER keeps lastReadSeq=0 — the human UI
- *  intentionally surfaces channel history as unread on join (unchanged behaviour). Pass `watermark` to override
+ *  invited agent with the whole channel history it never needed. A raw USER row is temporary Human cursor/follow
+ *  state and keeps lastReadSeq=0. Pass `watermark` to override
  *  the agent watermark (the @-mention path passes triggeringSeq-1 so the triggering message stays unread);
  *  `watermark` is a no-op for an all-user batch (users are always pinned to 0). Idempotent via
  *  onConflictDoNothing: re-adding an existing member never rewinds or fast-forwards a real read cursor. */
@@ -109,12 +115,12 @@ export function parseMentions(content: string, members: Member[]) {
   return [...found.values()];
 }
 
-/** All @-addressable members of a workspace: its live agents + human server-members.
- *  Basis for Slack-style mention auto-join — only names that resolve here may be pulled into a channel
- *  (a human in the users table who isn't a member of this server, or another server's agent, is excluded). */
+/** All @-addressable members of a workspace: its live agents + the one local Human. */
 export async function workspaceMembers(serverId: string): Promise<Member[]> {
   const db = dbFor(serverId);
   const out: Member[] = [];
+  const human = getHumanIdentity();
+  if (human) out.push({ type: "user", id: human.id, name: human.handle, displayName: human.displayName });
   // Exclude system-seeded showcase demo agents (creatorType="system"): they are display-only props for the
   // read-only #showcase channel, NOT @-reachable members. This pool feeds @-mention auto-join in public
   // channels — without the filter, @-ing a word that happens to match a prop's name (e.g. "Pat") would
@@ -122,10 +128,6 @@ export async function workspaceMembers(serverId: string): Promise<Member[]> {
   // sender by id elsewhere, so props still render correctly in #showcase history.
   const ags = await db.select().from(schema.agents).where(and(eq(schema.agents.serverId, serverId), isNull(schema.agents.deletedAt), ne(schema.agents.creatorType, "system")));
   for (const a of ags) out.push({ type: "agent", id: a.id, name: a.name, displayName: a.displayName });
-  const sm = await db.select().from(schema.serverMembers).where(eq(schema.serverMembers.serverId, serverId));
-  const uids = sm.map((s) => s.userId);
-  const us = uids.length ? await db.select().from(schema.users).where(inArray(schema.users.id, uids)) : [];
-  for (const u of us) out.push({ type: "user", id: u.id, name: u.name, displayName: u.displayName });
   return out;
 }
 
@@ -292,12 +294,10 @@ export async function aggregateReactions(serverId: string, messageIds: string[])
   const db = dbFor(serverId);
   const rows = await db.select().from(schema.reactions).where(inArray(schema.reactions.messageId, messageIds));
   if (!rows.length) return out;
-  const uIds = [...new Set(rows.filter((r) => r.memberType === "user").map((r) => r.memberId))];
   const aIds = [...new Set(rows.filter((r) => r.memberType === "agent").map((r) => r.memberId))];
-  const users = uIds.length ? await db.select().from(schema.users).where(inArray(schema.users.id, uIds)) : [];
   const agents = aIds.length ? await db.select().from(schema.agents).where(inArray(schema.agents.id, aIds)) : [];
   const nameOf = (t: string, id: string) => t === "user"
-    ? (users.find((u) => u.id === id)?.displayName || users.find((u) => u.id === id)?.name || "?")
+    ? (humanIdentityForId(id)?.displayName ?? "?")
     : (agents.find((a) => a.id === id)?.displayName || agents.find((a) => a.id === id)?.name || "?");
   for (const r of rows) {
     const list = out.get(r.messageId) ?? [];
@@ -383,10 +383,11 @@ export async function listSaved(serverId: string, memberType: "user" | "agent", 
   // channel the saver can no longer read (lost membership / channel turned private) or be an illegitimate
   // pre-write-gate save — re-check access at read time and drop what the caller can't currently see.
   // Hides (does not delete): re-gaining access surfaces it again. Same gate as the write path, per plane.
-  const gate = memberType === "user" ? canUserReadChannel : canAgentReadChannel;
   const accessByChannel = new Map<string, boolean>(
     await Promise.all([...new Set(msgs.map((m) => m.channelId))].map(
-      async (cid) => [cid, await gate(serverId, cid, memberId)] as const)),
+      async (cid) => [cid, memberType === "user"
+        ? await canHumanReadChannel(serverId, cid)
+        : await canAgentReadChannel(serverId, cid, memberId)] as const)),
   );
   const saved = page.map((r) => {
     const m = msgById.get(r.messageId);
@@ -630,12 +631,9 @@ export async function resolveTarget(serverId: string, target: string, selfAgentI
   let baseChannelId: string | null = null;
   if (t.startsWith("dm:@")) {
     const peer = t.slice(4);
-    const uRow = (await db.select().from(schema.users).where(eq(schema.users.name, peer)))[0];
-    // The peer user must belong to THIS server (the agent lookup below is already server-scoped); otherwise an
-    // agent could open a cross-tenant DM to any global username. users.name is global, so gate on serverMembers.
-    const u = uRow && (await db.select().from(schema.serverMembers).where(and(eq(schema.serverMembers.serverId, serverId), eq(schema.serverMembers.userId, uRow.id))))[0] ? uRow : undefined;
+    const human = humanIdentityForHandle(peer);
     const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.name, peer), eq(schema.agents.serverId, serverId))))[0];
-    const peerId = u?.id ?? a?.id; const peerType = u ? "user" : a ? "agent" : null;
+    const peerId = human?.id ?? a?.id; const peerType = human ? "user" : a ? "agent" : null;
     if (!peerId || !peerType) return null;
     baseChannelId = await getOrCreateDM(serverId, selfAgentId, "agent", peerId, peerType);
   } else {
@@ -722,7 +720,7 @@ const STATUS_EMOJI: Record<string, string> = { in_progress: "🔄", in_review: "
 async function actorName(serverId: string, type: "user" | "agent", id: string): Promise<string> {
   const db = dbFor(serverId);
   if (type === "agent") { const a = (await db.select().from(schema.agents).where(eq(schema.agents.id, id)))[0]; return a?.displayName || a?.name || "agent"; }
-  const u = (await db.select().from(schema.users).where(eq(schema.users.id, id)))[0]; return u?.displayName || u?.name || "someone";
+  return humanIdentityForId(id)?.displayName ?? "someone";
 }
 type DispatchAuditContext = DispatchMessageContext & { messageId?: string };
 

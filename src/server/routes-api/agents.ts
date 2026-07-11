@@ -3,7 +3,6 @@ import type { ServerCtx } from "./ctx.js";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { ROLE_TEMPLATES, resolveRoleDescription } from "../../agents/roleTemplates.js";
 import { dbFor, schema } from "../../db/index.js";
-import { requireCap } from "../capabilities.js";
 import { DESC_TOO_LONG, INVALID_AGENT_NAME, addChannelMembers, descTooLong, invalidAgentName, resetAgent, startAgent, stopAgent, syncAgentProfile } from "../core.js";
 import { requestDaemon } from "../daemonHub.js";
 import { publish } from "../realtime.js";
@@ -26,7 +25,6 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
     return (sendJson(res, 200, agents.map((a) => ({ id: a.id, name: a.name, displayName: a.displayName, description: a.description, status: a.status, activity: a.activity, model: a.model, runtime: a.runtime, machineId: a.machineId, avatarUrl: a.avatarUrl, creatorType: a.creatorType }))), true);
   }
   if (p === "/api/agents" && method === "POST") {
-    if (!await requireCap(serverId, userId, "manageAgents")) return (sendErr(res, 403, "need manageAgents capability"), true);
     const b = await readJson(req);
     if (!b.name) return (sendErr(res, 400, "name required"), true);
     if (invalidAgentName(b.name)) return (sendErr(res, 400, INVALID_AGENT_NAME), true);
@@ -68,7 +66,6 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
     return (a ? sendJson(res, 200, a) : sendErr(res, 404, "agent not found"), true);
   }
   if (am && method === "PATCH") {
-    if (!await requireCap(serverId, userId, "manageAgents")) return (sendErr(res, 403, "need manageAgents capability"), true);
     const b = await readJson(req); const patch: Record<string, unknown> = {};
     if (descTooLong(b.description)) return (sendErr(res, 400, DESC_TOO_LONG), true);
     for (const k of ["displayName", "description", "model", "runtime", "avatarUrl"]) if (b[k] !== undefined) patch[k] = b[k];
@@ -82,7 +79,6 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
     return (sendJson(res, 200, { ok: true }), true);
   }
   if (am && method === "DELETE") {
-    if (!await requireCap(serverId, userId, "manageAgents")) return (sendErr(res, 403, "need manageAgents capability"), true);
     await stopAgent(serverId, am[1]!).catch(() => {}); // stop the local process before deleting
     await db.delete(schema.channelMembers).where(and(eq(schema.channelMembers.memberType, "agent"), eq(schema.channelMembers.memberId, am[1]!)));
     await db.update(schema.agents).set({ deletedAt: new Date(), status: "inactive", activity: "offline", agentTokenHash: null }).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.serverId, serverId))); // soft delete: row is kept so historical messages/DM names remain resolvable by id, no orphans; clear the token hash so a still-running deleted agent can no longer authenticate (C4, with resolveAgent's deletedAt filter)
@@ -92,7 +88,6 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
   // Agent lifecycle: start / stop / reset
   const alc = /^\/api\/agents\/([^/]+)\/(start|stop|reset|restart)$/.exec(p);
   if (alc && method === "POST") {
-    if (!await requireCap(serverId, userId, "manageAgents")) return (sendErr(res, 403, "need manageAgents capability"), true);
     const [, agId, action] = alc;
     if (action === "start") { const r = await startAgent(serverId, agId!); return (r.ok ? sendJson(res, 200, { ok: true }) : sendErr(res, 503, r.reason ?? "cannot start")), true; }
     if (action === "stop") { await stopAgent(serverId, agId!); return (sendJson(res, 200, { ok: true }), true); }
@@ -105,7 +100,6 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
   const awsList = /^\/api\/agents\/([^/]+)\/workspace-files$/.exec(p);
   const awsFile = /^\/api\/agents\/([^/]+)\/workspace-files\/read$/.exec(p);
   if ((awsList || awsFile) && method === "GET") {
-    if (!await requireCap(serverId, userId, "manageAgents")) return (sendErr(res, 403, "need manageAgents capability"), true); // reading an agent's workspace (source / secrets / MEMORY.md) is owner/admin-only
     const agId = (awsList || awsFile)![1]!;
     const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, agId), eq(schema.agents.serverId, serverId))))[0];
     if (!a) return (sendErr(res, 404, "agent not found"), true);
@@ -130,7 +124,6 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
     const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, agId), eq(schema.agents.serverId, serverId))))[0];
     if (!a) return (sendErr(res, 404, "agent not found"), true);
     if (method === "GET") { const eff = effectiveScopes(a.scopes); return (sendJson(res, 200, { agentId: agId, ...eff, catalog: SCOPES }), true); }
-    if (!await requireCap(serverId, userId, "manageAgents")) return (sendErr(res, 403, "need manageAgents capability"), true); // changing an agent's permission scopes is owner/admin-only (reading is fine for members)
     const b = await readJson(req);
     if (!Array.isArray(b.scopes) || !b.scopes.every(isScopeLiteral)) return (sendErr(res, 400, "scopes must be an array of scope literals"), true);
     const granted = [...new Set(b.scopes as string[])].filter((s) => ALL_SCOPE_KEYS.includes(s));

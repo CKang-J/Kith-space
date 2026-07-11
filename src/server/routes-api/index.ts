@@ -14,8 +14,8 @@
 //      matches those paths/methods). When adding a route, check it can't be shadowed by an
 //      earlier-dispatched module's guard for the same path+method.
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { and, eq } from "drizzle-orm";
-import { dbForSpace, schema, spaceRecord, touchSpace } from "../../db/index.js";
+import { spaceRecord, touchSpace } from "../../db/index.js";
+import { localHumanForSubject } from "../../human/humanAuthority.js";
 import { sendErr, bearer, spaceIdHeader } from "../util.js";
 import { verifyUser } from "../auth.js";
 import type { BaseCtx, UserCtx, ServerCtx } from "./ctx.js";
@@ -40,14 +40,17 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (await handlePublicAttachmentGet(base)) return true;
 
   // ---- gate 1: require a logged-in user ----
-  const userId = verifyUser(bearer(req));
-  if (!userId) return (sendErr(res, 401, "unauthorized"), true);
+  const subjectId = verifyUser(bearer(req));
+  if (!subjectId) return (sendErr(res, 401, "unauthorized"), true);
+  const human = localHumanForSubject(subjectId);
+  if (!human) return (sendErr(res, 403, "not the local Human"), true);
+  const userId = human.id;
   const user: UserCtx = { ...base, userId };
   if (await handleAuthedAuth(user)) return true;
   if (await handleSpacesUserScope(user)) return true;
   if (await handleServersUserScope(user)) return true;
 
-  // ---- gate 2: require a Space context; membership remains a temporary A2.3 compatibility check ----
+  // ---- gate 2: require a registered local Space context ----
   const resolvedSpace = spaceIdHeader(req);
   if (resolvedSpace.conflict) return (sendErr(res, 400, "x-space-id and x-server-id headers disagree"), true);
   const spaceId = resolvedSpace.spaceId;
@@ -55,9 +58,6 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   const pathSpaceId = /^\/api\/spaces\/([^/]+)(?:\/|$)/.exec(p)?.[1];
   if (pathSpaceId && pathSpaceId !== spaceId) return (sendErr(res, 400, "path Space and x-space-id disagree"), true);
   if (!spaceRecord(spaceId)) return (sendErr(res, 404, "Space not found"), true);
-  const db = dbForSpace(spaceId);
-  const member = (await db.select().from(schema.serverMembers).where(and(eq(schema.serverMembers.serverId, spaceId), eq(schema.serverMembers.userId, userId))))[0];
-  if (!member) return (sendErr(res, 403, "not a member of this Space"), true);
   touchSpace(spaceId);
   // New clients use /api/spaces. Legacy handlers keep their old path matchers until A2.3/A2.4 removes them.
   const legacyPath = p.replace(/^\/api\/spaces(?=\/)/, "/api/servers");

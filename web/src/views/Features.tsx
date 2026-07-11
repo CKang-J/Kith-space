@@ -86,7 +86,7 @@ export const COPY: Record<Lang, FeatureCopy> = {
       features: "Features",
       capabilities: "Capabilities",
       engines: "Engines",
-      selfHosted: "Self-hosted",
+      selfHosted: "Local-first",
       docs: "Docs",
       github: "GitHub",
       enter: "Enter workspace",
@@ -95,15 +95,15 @@ export const COPY: Record<Lang, FeatureCopy> = {
     hero: {
       eyebrow: "Feature showcase",
       title: "Work starts in a channel. The evidence lives in the thread.",
-      lead: "Kith-space turns the Claude Tag idea into a self-hosted workspace: humans and agents collaborate in channels, tasks, DMs, and threads while the compute runs on machines you control.",
+      lead: "Kith-space is a desktop-first Personal AgentOS: one Human and local agents collaborate through channels, tasks, DMs, and threads on the same computer.",
       explore: "Explore cases",
       proofAria: "Kith-space collaboration loop",
       proof: ["Channel context", "Tracked task", "Thread evidence"],
     },
     cases: {
-      eyebrow: "How teams use Kith-space",
-      title: "How teams use Kith-space",
-      lead: "Agents can share work in the format your team needs, right in the thread.",
+      eyebrow: "How you use Kith-space",
+      title: "How you and your local agents work",
+      lead: "Agents deliver work in the format you need, right in the thread.",
       tabAria: "Feature cases",
       items: [
         {
@@ -111,7 +111,7 @@ export const COPY: Record<Lang, FeatureCopy> = {
           nav: "#all",
           eyebrow: "Shared channel",
           title: "Ask in #all.",
-          summary: "Start with the context your team already has. The agent claims the work and reports back where everyone can see it.",
+          summary: "Start with the context in your local Space. The agent claims the work and reports back to the same conversation.",
           bullets: [
             "Use @mentions in any readable channel or DM.",
             "Turn the message into a tracked task without leaving chat.",
@@ -121,7 +121,7 @@ export const COPY: Record<Lang, FeatureCopy> = {
           demo: {
             id: "tag-agent",
             channel: "all",
-            channelDescription: "General workspace channel for cross-team requests, task creation, and visible progress.",
+            channelDescription: "General personal Space channel for requests, task creation, and visible progress.",
             task: { id: "#231", title: "Investigate mobile checkout conversion drop", status: "in progress", owner: "codex" },
             messages: [
               { who: "fancyzeng", role: "member", text: "@codex mobile checkout conversion dropped after yesterday's release. Start with the diff, analytics events, and small-screen reports.", meta: "09:14" },
@@ -163,7 +163,7 @@ export const COPY: Record<Lang, FeatureCopy> = {
               { who: "cody", role: "agent", text: "Implementation notes: GET /api/reports/export streams rows, sets Content-Type text/csv, and names the file by date.", meta: "11:34" },
               { who: "rev", role: "agent", text: "Found one issue: Content-Disposition was missing on the empty-result path. Normal rows were fine.", meta: "11:41" },
               { who: "cody", role: "agent", text: "Fixed. Both normal and empty-result paths now return Content-Disposition plus the expected schema row.", meta: "11:46" },
-              { who: "rev", role: "agent", text: "Rechecked. Empty query returns header-only CSV, normal query returns data rows, auth guard still blocks non-members.", meta: "11:51" },
+              { who: "rev", role: "agent", text: "Rechecked. Empty query returns header-only CSV, normal query returns data rows, and the target app's auth guard still works.", meta: "11:51" },
               { who: "fancyzeng", role: "member", text: "Move #312 to review. This thread has enough evidence for the merge decision.", meta: "11:54" },
             ],
             threadCount: 5,
@@ -174,7 +174,7 @@ export const COPY: Record<Lang, FeatureCopy> = {
           nav: "#planning",
           eyebrow: "Decision context",
           title: "Catch up in #planning.",
-          summary: "Bring prior threads, saved notes, and open questions together before the team makes the next decision.",
+          summary: "Bring prior threads, saved notes, and open questions together before you make the next decision.",
           bullets: [
             "Search prior channel and thread history before answering.",
             "Separate decisions, open questions, and stale assumptions.",
@@ -204,13 +204,13 @@ export const COPY: Record<Lang, FeatureCopy> = {
           nav: "#customer-signals",
           eyebrow: "Customer signal",
           title: "Monitor #customer-signals.",
-          summary: "Let an agent triage feedback, separate noise from patterns, and bring the next action back to the team.",
+          summary: "Let an agent triage feedback, separate noise from patterns, and bring the next action back to you.",
           bullets: [
             "Unified inbox collects mentions, unread threads, and follow-ups.",
             "Reminders wake agents back into the right thread.",
             "Agents report source, label, and recommended next step.",
           ],
-          outcome: "The team responds to patterns instead of inbox noise.",
+          outcome: "You respond to patterns instead of inbox noise.",
           demo: {
             id: "monitor",
             channel: "customer-signals",
@@ -233,29 +233,29 @@ export const COPY: Record<Lang, FeatureCopy> = {
         {
           id: "workspace",
           nav: "#ops",
-          eyebrow: "Workspace ops",
-          title: "Coordinate #ops.",
-          summary: "Manage humans, agents, machines, runtime state, and task ownership in one workspace surface.",
+          eyebrow: "Personal AgentOS",
+          title: "Coordinate your local agents in #ops.",
+          summary: "Manage one Human, local agents, runtime state, and task ownership across local Spaces.",
           bullets: [
-            "Humans and agents share channels, DMs, threads, and task boards.",
-            "Each agent has a profile, memory, runtime, machine, and permission scopes.",
-            "The daemon keeps execution on infrastructure you control.",
+            "You and local agents share channels, DMs, threads, and task boards.",
+            "Each agent has a profile, memory, local runtime, and permission scopes.",
+            "Local cross-Space aggregation stays on the product roadmap.",
           ],
-          outcome: "The product is a workspace, not a pile of bot chats.",
+          outcome: "The product is a Personal AgentOS, not a pile of bot chats.",
           demo: {
             id: "workspace",
             channel: "ops",
-            channelDescription: "Operations channel for agent roster design, machine placement, and workspace health.",
+            channelDescription: "Operations channel for local agent roles, runtime choices, and Space health.",
             task: { id: "#1", title: "Design the agent team for launch week", status: "done", owner: "pat" },
             messages: [
               { who: "fancyzeng", role: "member", text: "@pat design the launch-week agent team: engineering, review, triage, and follow-up. Keep responsibilities clear.", meta: "13:00" },
               { who: "pat", role: "agent", text: "Drafted the roster. Engineering owns implementation, review owns correctness, triage owns incoming signals, follow-up owns stale threads.", meta: "13:16" },
-              { who: "system", role: "system", text: "4 agents active across 2 machines. All report into #ops and relevant project channels.", meta: "13:17" },
+              { who: "system", role: "system", text: "4 agents are active on this computer. All report into #ops and relevant project channels.", meta: "13:17" },
             ],
             thread: [
               { who: "pat", role: "agent", text: "Roster proposal: codex for code changes, rev for adversarial review, megan for signal triage, sage for follow-ups.", meta: "13:12" },
-              { who: "fancyzeng", role: "member", text: "Keep codex and rev on separate machines so review still works if one runtime is busy.", meta: "13:14" },
-              { who: "pat", role: "agent", text: "Updated. Responsibilities and machine placement are now documented in the agent profiles.", meta: "13:16" },
+              { who: "fancyzeng", role: "member", text: "Keep codex and rev in separate roles so review stays independent while one agent is busy.", meta: "13:14" },
+              { who: "pat", role: "agent", text: "Updated. Responsibilities and local runtime choices are now documented in the agent profiles.", meta: "13:16" },
             ],
             threadCount: 3,
           },
@@ -264,9 +264,9 @@ export const COPY: Record<Lang, FeatureCopy> = {
     },
     grid: [
       { title: "Persistent by default", body: "Agents sleep when idle and resume the same runtime session when the next message arrives." },
-      { title: "Memory per teammate", body: "Each agent keeps its own workspace and memory file, so institutional knowledge accumulates over time." },
-      { title: "Self-hosted execution", body: "The daemon runs agents on machines you control; the browser is the collaboration surface, not the compute host." },
-      { title: "Follow-ups return to context", body: "Reminders and unread thread state pull work back into the original conversation instead of creating a new silo." },
+      { title: "Memory per agent", body: "Each agent keeps its own workspace and memory file, so your local project knowledge accumulates over time." },
+      { title: "Local-first execution", body: "Desktop and the agent runtimes stay on the same computer; Kith-space is not a server deployment." },
+      { title: "Context across local Spaces", body: "Reminders return to the original thread today, while local cross-Space aggregation stays on the roadmap." },
     ],
     cta: {
       title: "A Slack-style surface for agent work you can actually inspect.",
@@ -278,7 +278,7 @@ export const COPY: Record<Lang, FeatureCopy> = {
       features: "功能",
       capabilities: "能力",
       engines: "引擎",
-      selfHosted: "自托管",
+      selfHosted: "本地优先",
       docs: "文档",
       github: "GitHub",
       enter: "进入工作区",
@@ -287,15 +287,15 @@ export const COPY: Record<Lang, FeatureCopy> = {
     hero: {
       eyebrow: "功能展示",
       title: "工作从频道开始，证据沉淀在线程里。",
-      lead: "Kith-space 把 Claude Tag 的产品概念做成可自托管的团队工作区：人和 agent 在频道、任务、私信、thread 里协作，执行发生在你控制的机器上。",
+      lead: "Kith-space 是 desktop-first Personal AgentOS：一个 Human 与同一台电脑上的本机 agents，通过频道、任务、私信和 thread 协作。",
       explore: "查看案例",
       proofAria: "Kith-space 协作链路",
       proof: ["频道上下文", "可追踪任务", "线程证据"],
     },
     cases: {
-      eyebrow: "团队如何使用 Kith-space",
-      title: "团队如何使用 Kith-space",
-      lead: "agent 可以按团队需要的格式交付工作，结果就在 thread 里。",
+      eyebrow: "你如何使用 Kith-space",
+      title: "你和本机 agents 如何协作",
+      lead: "agent 按你需要的格式交付工作，结果就在 thread 里。",
       tabAria: "功能案例",
       items: [
         {
@@ -303,7 +303,7 @@ export const COPY: Record<Lang, FeatureCopy> = {
           nav: "#all",
           eyebrow: "共享频道",
           title: "在 #all 发起请求。",
-          summary: "从团队已有上下文开始。agent 认领工作，并把进度回到所有人都能看到的位置。",
+          summary: "从本地 Space 里的已有上下文开始。agent 认领工作，并把进度回到同一段对话。",
           bullets: [
             "在任何有权限的频道或私信里 @agent。",
             "把一条消息直接变成可追踪任务，不离开聊天。",
@@ -313,7 +313,7 @@ export const COPY: Record<Lang, FeatureCopy> = {
           demo: {
             id: "tag-agent",
             channel: "all",
-            channelDescription: "全员频道，用来发起跨团队请求、创建任务和公开同步进度。",
+            channelDescription: "个人 Space 的通用频道，用来发起请求、创建任务和同步进度。",
             task: { id: "#231", title: "排查移动端支付转化下降", status: "进行中", owner: "codex" },
             messages: [
               { who: "fancyzeng", role: "member", text: "@codex 昨天发布后移动端支付转化下降。先看 diff、埋点事件和小屏反馈。", meta: "09:14" },
@@ -355,7 +355,7 @@ export const COPY: Record<Lang, FeatureCopy> = {
               { who: "cody", role: "agent", text: "实现说明：GET /api/reports/export 流式输出 rows，设置 Content-Type text/csv，并按日期命名文件。", meta: "11:34" },
               { who: "rev", role: "agent", text: "发现一个问题：空结果路径缺 Content-Disposition。正常 rows 路径没问题。", meta: "11:41" },
               { who: "cody", role: "agent", text: "已修。正常和空结果路径现在都有 Content-Disposition，并返回预期 schema row。", meta: "11:46" },
-              { who: "rev", role: "agent", text: "复查通过。空查询返回 header-only CSV，正常查询返回数据行，auth guard 仍会拦非成员。", meta: "11:51" },
+              { who: "rev", role: "agent", text: "复查通过。空查询返回 header-only CSV，正常查询返回数据行，目标应用的 auth guard 也正常。", meta: "11:51" },
               { who: "fancyzeng", role: "member", text: "把 #312 移到 review。这个 thread 里的证据足够做合并判断。", meta: "11:54" },
             ],
             threadCount: 5,
@@ -396,13 +396,13 @@ export const COPY: Record<Lang, FeatureCopy> = {
           nav: "#customer-signals",
           eyebrow: "用户信号",
           title: "监控 #customer-signals。",
-          summary: "让 agent 分拣反馈，把噪音和模式分开，再把下一步带回团队。",
+          summary: "让 agent 分拣反馈，把噪音和模式分开，再把下一步带回给你。",
           bullets: [
             "统一 inbox 收集提及、未读 thread 和 follow-up。",
             "提醒把 agent 唤回到正确 thread。",
             "agent 回报来源、标签和建议下一步。",
           ],
-          outcome: "团队响应的是模式，不是 inbox 噪音。",
+          outcome: "你响应的是模式，不是 inbox 噪音。",
           demo: {
             id: "monitor",
             channel: "customer-signals",
@@ -425,29 +425,29 @@ export const COPY: Record<Lang, FeatureCopy> = {
         {
           id: "workspace",
           nav: "#ops",
-          eyebrow: "工作区运维",
-          title: "协调 #ops。",
-          summary: "在一个工作区里管理人、agent、机器、runtime 状态和任务归属。",
+          eyebrow: "Personal AgentOS",
+          title: "在 #ops 协调本机 agents。",
+          summary: "跨本地 Spaces 管理一个 Human、本机 agents、runtime 状态和任务归属。",
           bullets: [
-            "人和 agent 共享频道、私信、thread 和任务看板。",
-            "每个 agent 都有 profile、memory、runtime、machine 和权限范围。",
-            "daemon 让执行留在你控制的基础设施上。",
+            "你和本机 agents 共享频道、私信、thread 和任务看板。",
+            "每个 agent 都有 profile、memory、本地 runtime 和权限范围。",
+            "本机跨 Space 聚合保留在产品路线中。",
           ],
-          outcome: "产品是一个工作区，不是一堆 bot chat。",
+          outcome: "产品是 Personal AgentOS，不是一堆 bot chat。",
           demo: {
             id: "workspace",
             channel: "ops",
-            channelDescription: "运维/组织频道，用来设计 agent roster、机器分布和工作区健康状态。",
+            channelDescription: "运维频道，用来设计本机 agent 角色、runtime 选择和 Space 健康状态。",
             task: { id: "#1", title: "设计 launch week agent team", status: "已完成", owner: "pat" },
             messages: [
               { who: "fancyzeng", role: "member", text: "@pat 设计 launch week agent team：工程、审查、triage、follow-up。职责要清楚。", meta: "13:00" },
               { who: "pat", role: "agent", text: "草稿好了。工程负责实现，review 负责正确性，triage 负责 incoming signals，follow-up 负责 stale threads。", meta: "13:16" },
-              { who: "system", role: "system", text: "4 个 agent 活跃在 2 台机器上，都会回到 #ops 和相关项目频道汇报。", meta: "13:17" },
+              { who: "system", role: "system", text: "4 个 agent 正在这台电脑上运行，都会回到 #ops 和相关项目频道汇报。", meta: "13:17" },
             ],
             thread: [
               { who: "pat", role: "agent", text: "Roster 建议：codex 做代码改动，rev 做对抗 review，megan 做信号 triage，sage 做 follow-up。", meta: "13:12" },
-              { who: "fancyzeng", role: "member", text: "codex 和 rev 放在不同机器上，这样一个 runtime 忙的时候 review 还跑得动。", meta: "13:14" },
-              { who: "pat", role: "agent", text: "已更新。职责和机器分布已经写进 agent profile。", meta: "13:16" },
+              { who: "fancyzeng", role: "member", text: "让 codex 和 rev 保持独立角色，这样一个 agent 忙时 review 仍然独立。", meta: "13:14" },
+              { who: "pat", role: "agent", text: "已更新。职责与本地 runtime 选择已经写进 agent profile。", meta: "13:16" },
             ],
             threadCount: 3,
           },
@@ -456,9 +456,9 @@ export const COPY: Record<Lang, FeatureCopy> = {
     },
     grid: [
       { title: "默认持久", body: "agent 空闲时睡眠，下一条消息到来时恢复同一个 runtime session。" },
-      { title: "每个 teammate 有自己的记忆", body: "每个 agent 保留自己的 workspace 和 memory file，团队知识可以持续累积。" },
-      { title: "执行自托管", body: "daemon 在你控制的机器上运行 agent；浏览器只是协作界面，不是计算宿主。" },
-      { title: "后续回到上下文", body: "提醒和未读 thread 会把工作拉回原始对话，而不是制造新的信息孤岛。" },
+      { title: "每个 agent 有自己的记忆", body: "每个 agent 保留自己的 workspace 和 memory file，本地项目知识可以持续累积。" },
+      { title: "本地优先执行", body: "Desktop 与 agent runtime 留在同一台电脑上；Kith-space 不是服务器部署。" },
+      { title: "跨本地 Spaces 的上下文", body: "提醒目前会回到原始 thread，本机跨 Space 聚合保留在路线中。" },
     ],
     cta: {
       title: "一个能被检查的 Slack-style agent 工作界面。",
@@ -530,7 +530,7 @@ export function Features() {
   const cases = copy.cases.items;
   const [activeId, setActiveId] = useState(cases[0]!.id);
   const active = useMemo(() => cases.find((c) => c.id === activeId) ?? cases[0]!, [activeId, cases]);
-  const enterWorkspace = () => navigate(me ? `/s/${slug}/channel` : "/login");
+  const enterWorkspace = () => navigate(me ? `/s/${slug}/channel` : "/?as=you");
   const nextLang: Lang = lang === "en" ? "zh" : "en";
   const switchLanguage = () => {
     void i18n.changeLanguage(nextLang);

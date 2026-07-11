@@ -6,44 +6,40 @@ import { messageUnreadDelta, threadUnreadDelta } from "./threadUnread";
 import { initialAuthState, TOKEN_KEY, type AuthState } from "./routing.ts";
 import { applySpaceScopeHeaders, spaceScopeHeaders } from "./spaceScope.ts";
 
-export interface Channel { id: string; name: string; description?: string; type: string; joined?: boolean; lastMessageAt?: string; archivedAt?: string | null }
+export interface Channel { id: string; name: string; description?: string; type: string; lastMessageAt?: string; archivedAt?: string | null }
 export interface Dm { id: string; name: string; type: string; description?: string; lastMessageAt?: string; peerId?: string | null; peerName?: string | null; peerDisplayName?: string | null; peerType?: string | null; peerAvatarUrl?: string | null }
 export interface Agent { id: string; name: string; displayName: string; description?: string; status: string; activity?: string; activityDetail?: string; model?: string; runtime: string; machineId?: string; avatarUrl?: string | null; creatorType?: string }
 export interface Machine { id: string; name?: string; hostname?: string; os?: string; runtimes?: string[]; status?: string; daemonVersion?: string; isComputer?: boolean; apiKeyPrefix?: string }
-export interface Human { userId: string; name: string; displayName?: string; role?: string; description?: string; avatarUrl?: string | null }
-export interface SpaceInfo { id: string; name: string; slug: string; avatarUrl?: string | null; role?: string; capabilities?: Record<string, boolean> }
-export interface Me { id: string; name: string; displayName?: string }
+export interface SpaceInfo { id: string; name: string; slug: string; avatarUrl?: string | null }
+export interface Me { id: string; name: string; email?: string | null; description?: string | null }
 export interface Att { id: string; filename: string; mimeType?: string; sizeBytes?: number }
 export interface Reaction { emoji: string; count: number; reactorIds: string[]; reactorNames: string[] }
-export interface ActionMeta { kind: string; state: "prepared" | "executed"; action: { type: string; name: string; description?: string | null; visibility?: string; initialHumans?: string[]; initialAgents?: string[]; requiredComputer?: string | null; suggestedComputer?: string | null }; executedByUserName?: string | null; result?: { kind: string; id: string; name: string } | null }
+export interface ActionMeta { kind: string; state: "prepared" | "executed"; action: { type: string; name: string; description?: string | null; visibility?: string; initialAgents?: string[]; requiredComputer?: string | null; suggestedComputer?: string | null }; executedByUserName?: string | null; result?: { kind: string; id: string; name: string } | null }
 export interface Msg { id: string; seq: number; channelId: string; senderType: string; senderId?: string | null; senderName: string; content: string; messageType?: string; actionMetadata?: ActionMeta | null; createdAt?: string; taskStatus?: string | null; taskNumber?: number | null; taskAssigneeType?: string | null; taskAssigneeId?: string | null; mentions?: { type?: string; id?: string; name: string }[]; attachments?: Att[]; reactions?: Reaction[] }
 type Ev = { type: string; [k: string]: any };
 
 interface Store {
-  ready: boolean; authState: "loading" | "authed" | "anon"; spaceId: string; slug: string; me: Me | null; myRole: string; spaceAvatar: string | null;
-  spaces: SpaceInfo[]; capabilities: Record<string, boolean>;
+  ready: boolean; authState: "loading" | "authed" | "anon"; spaceId: string; slug: string; me: Me | null; spaceAvatar: string | null;
+  spaces: SpaceInfo[];
   uploadSpaceAvatar: (file: File) => Promise<void>;
   uploadAgentAvatar: (agentId: string, file: File) => Promise<string>;
-  uploadUserAvatar: (file: File) => Promise<string>;
   createSpace: (name: string, slug?: string) => Promise<string | null>; // POST → optimistically add to spaces; returns the new slug so the caller navigates client-side (no full-page reload)
   switchSpace: (slug: string) => void;                           // client-side Space switch: re-point the active Space, reset per-Space state, reconnect the socket (no full-page reload)
   logout: () => void;
   channels: Channel[]; dms: Dm[]; unread: Record<string, number>;
   agents: Agent[];        // ALL agents incl. system-seeded showcase demo agents — resolve a sender's avatar/name/profile by id (incl. #showcase history)
   visibleAgents: Agent[]; // agents minus system-seeded showcase demo agents — use for member rosters and every agent picker / @mention candidate list
-  machines: Machine[]; humans: Human[];
+  machines: Machine[];
   latestDaemonVersion: string;                                    // newest published daemon version (packages/daemon); online machines below it are flagged outdated in the system-alert center
   traj: TrajItem[];                                               // global Agent Live Trace ring buffer (newest TRAJ_CAP entries); survives channel/DM switch, fed by agent:activity
   api: (m: string, p: string, b?: unknown) => Promise<any>;
   reload: () => Promise<void>;
   onEvent: (cb: (e: Ev) => void) => () => void;
   subscribeChannel: (id: string) => void;                         // join the channel/thread's realtime room while it is being viewed (idempotent; re-emitted on reconnect)
-  createChannel: (opts: { name: string; description?: string; visibility?: string; agentIds?: string[]; userIds?: string[] }) => Promise<{ id?: string; error?: string } | null>;
+  createChannel: (opts: { name: string; description?: string; visibility?: string; agentIds?: string[] }) => Promise<{ id?: string; error?: string } | null>;
   markActionExecuted: (messageId: string, result?: { kind: string; id: string; name: string }) => Promise<void>; // mark action card as executed after submission
   createTasks: (channelId: string, titles: string[]) => Promise<any[]>;
-  openDM: (memberType: string, memberId: string) => Promise<string | null>;
-  joinChannel: (id: string) => Promise<void>;
-  leaveChannel: (id: string) => Promise<void>;
+  openAgentDM: (agentId: string) => Promise<string | null>;
   markRead: (id: string) => void;
   uploadFiles: (channelId: string, files: FileList | File[]) => Promise<any[]>;
   uploadOne: (channelId: string, file: File, onProgress?: (pct: number) => void) => Promise<any>;
@@ -71,17 +67,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [spaceId, setSpaceId] = useState("");
   const [slug, setSlug] = useState("kith-space");
   const [spaces, setSpaces] = useState<SpaceInfo[]>([]);             // all local Spaces (used by Space switcher)
-  const [capabilities, setCapabilities] = useState<Record<string, boolean>>({}); // compatibility capability flags for the current Space (used to show/hide UI until A2.3)
   const [spaceAvatar, setSpaceAvatar] = useState<string | null>(null); // Space avatar URL (token-signed for sidebar display); null = use first letter
   const [me, setMe] = useState<Me | null>(null);
-  const [myRole, setMyRole] = useState(""); // current workspace role (owner/admin/member) — used for manageServer permission check on task board
   const [channels, setChannels] = useState<Channel[]>([]);
   const [dms, setDms] = useState<Dm[]>([]);
   const [unread, setUnread] = useState<Record<string, number>>({});
   const [agents, setAgents] = useState<Agent[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [latestDaemonVersion, setLatestDaemonVersion] = useState(""); // newest published daemon version from the machines endpoint; "" until first load (→ raises no outdated alert)
-  const [humans, setHumans] = useState<Human[]>([]);
   const [traj, setTraj] = useState<TrajItem[]>([]); // global live-trace feed: bounded ring buffer held here (not per Chat view) so it persists across channel/DM switches
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [agentPanelReq, setAgentPanelReq] = useState<string | null>(null); // cross-component signal: LiveAgentBar (sidebar) → Chat view opens the agent profile panel
@@ -112,23 +105,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try { const un = (await api("GET", "/api/channels/unread")) || {}; if (fresh()) setUnread(un); } catch { if (fresh()) setUnread({}); }
     const ag = await api("GET", "/api/agents"); if (fresh()) setAgents(ag);
     try { const mc = await api("GET", `/api/spaces/${reloadSpaceId}/machines`); if (fresh()) { setMachines(mc.machines || []); setLatestDaemonVersion(mc.latestDaemonVersion || ""); } } catch { if (fresh()) setMachines([]); }
-    try { const hm = await api("GET", `/api/spaces/${reloadSpaceId}/members`); if (fresh()) setHumans(hm); } catch { if (fresh()) setHumans([]); }
   };
   const onEvent = (cb: (e: Ev) => void) => { listeners.current.add(cb); return () => { listeners.current.delete(cb); }; };
-  // View-driven realtime subscription: opening a channel/thread joins its room so message:new arrives live, regardless of how the
-  // channel became relevant (public non-member, thread, or appeared after connect). Tracked so a reconnect re-joins. Idempotent.
+  // View-driven realtime subscription: opening a channel/thread joins its transport room so message:new arrives live, regardless
+  // of whether it was created or first opened after connect. This is socket state, not Human channel membership. Idempotent.
   const subscribeChannel = (id: string) => { if (!id) return; subscribedRef.current.add(id); sockRef.current?.emit("join:channel", id); };
 
   // Returns the raw response (incl. `error` on failure, e.g. 409 "channel name exists") instead of collapsing
   // it to null — callers need `error` to surface a toast instead of silently closing the create-channel modal.
-  const createChannel = async (opts: { name: string; description?: string; visibility?: string; agentIds?: string[]; userIds?: string[] }) => { const r = await api("POST", "/api/channels", { name: opts.name, description: opts.description, visibility: opts.visibility, agentIds: opts.agentIds ?? [], userIds: opts.userIds ?? [] }); if (r?.id) { await reload(); sockRef.current?.emit("join:channel", r.id); } return r; };
-  // Create Space → optimistically add it to the Space list (POST returns role+capabilities so no re-fetch needed) and
+  const createChannel = async (opts: { name: string; description?: string; visibility?: string; agentIds?: string[] }) => { const r = await api("POST", "/api/channels", { name: opts.name, description: opts.description, visibility: opts.visibility, agentIds: opts.agentIds ?? [] }); if (r?.id) { await reload(); sockRef.current?.emit("join:channel", r.id); } return r; };
+  // Create Space → optimistically add it to the Space list and
   // return the new slug. The caller navigates client-side to /s/<slug>/channel; the URL drives activation (see main.tsx),
   // so there is no full-page reload — the workspace skeleton shows while the new workspace's data loads.
   const createSpace = async (name: string, slug?: string): Promise<string | null> => {
     const r = await api("POST", "/api/spaces", { name, slug });
     if (!r?.id) return null;
-    const info: SpaceInfo = { id: r.id, name: r.name, slug: r.slug, avatarUrl: null, role: r.role || "owner", capabilities: r.capabilities || {} };
+    const info: SpaceInfo = { id: r.id, name: r.name, slug: r.slug, avatarUrl: null };
     const next = [...spacesRef.current.filter((s) => s.id !== r.id), info];
     spacesRef.current = next; setSpaces(next);
     return r.slug;
@@ -136,12 +128,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Client-side Space switch: re-point the active Space by slug. The activation effect (keyed on activeSpaceId) resets
   // per-Space state and reconnects the socket. No-op if the target is unknown or already active.
   const switchSpace = (targetSlug: string) => { const cur = spacesRef.current.find((s) => s.slug === targetSlug); if (cur && cur.id !== spaceIdRef.current) setActiveSpaceId(cur.id); };
-  const logout = () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem("kith-space.devuser"); window.location.assign("/login"); }; // clear token + dev user → redirect to login (JWT is short-lived; client-side removal is sufficient)
+  const logout = () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem("kith-space.devuser"); window.location.assign("/"); }; // clear the temporary JWT session; A3 replaces this with persistent access-token sessions
   const markActionExecuted = async (messageId: string, result?: { kind: string; id: string; name: string }) => { await api("POST", `/api/actions/${messageId}/mark-executed`, { result: result ?? null }); };
   const createTasks = async (channelId: string, titles: string[]) => { const r = await api("POST", `/api/tasks/channel/${channelId}`, { tasks: titles.map((title) => ({ title })) }); return r?.tasks || []; };
-  const openDM = async (memberType: string, memberId: string) => { const body = memberType === "user" ? { userId: memberId } : { agentId: memberId }; const r = await api("POST", "/api/channels/dm", body); if (r?.id) { await reload(); sockRef.current?.emit("join:channel", r.id); } return r?.id ?? null; };
-  const joinChannel = async (id: string) => { await api("POST", `/api/channels/${id}/join`); await reload(); sockRef.current?.emit("join:channel", id); };
-  const leaveChannel = async (id: string) => { await api("POST", `/api/channels/${id}/leave`); await reload(); };
+  const openAgentDM = async (agentId: string) => { const r = await api("POST", "/api/channels/dm", { agentId }); if (r?.id) { await reload(); sockRef.current?.emit("join:channel", r.id); } return r?.id ?? null; };
   // A channel's badge = its own-timeline unread + its followed threads' unread. Reading a container (channel OR
   // thread) clears only that container's portion; the server returns the affected sidebar channel's authoritative
   // remaining (a thread read rolls onto its parent). We set the badge to that exact value instead of blind-zeroing
@@ -184,13 +174,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const { avatarUrl } = await r.json();
     return `${avatarUrl}?token=${encodeURIComponent(tokenRef.current)}`;
   };
-  const uploadUserAvatar = async (file: File): Promise<string> => {
-    const fd = new FormData(); fd.append("files", file);
-    const r = await fetch("/api/auth/me/avatar", { method: "POST", headers: spaceScopeHeaders(tokenRef.current, spaceIdRef.current), body: fd });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || "upload failed");
-    const { avatarUrl } = await r.json();
-    return `${avatarUrl}?token=${encodeURIComponent(tokenRef.current)}`;
-  };
   const react = async (messageId: string, emoji: string, remove = false) => { await api(remove ? "DELETE" : "POST", `/api/messages/${messageId}/reactions`, { emoji }); };
   const openThread = async (parentChannelId: string, parentMessageId: string) => { const r = await api("POST", `/api/channels/${parentChannelId}/threads`, { parentMessageId }); return r?.threadChannelId ?? null; };
   const openAgentPanel = (agentId: string) => setAgentPanelReq(agentId); // LiveAgentBar → Chat: open the agent profile panel (Activity tab); Chat consumes & clears
@@ -207,7 +190,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       // Resolve a session token. Precedence: explicit ?as= dev-login (dev only) > stored JWT. NO silent fallback —
-      // an anonymous visitor never auto-logs-in; the /s/* route guard sends them to /login (see main.tsx).
+      // an anonymous visitor never auto-logs-in; the /s/* route guard returns them to public home (see main.tsx).
       const asParam = new URLSearchParams(window.location.search).get("as");
       let token: string | null = null;
       let user: Me | null = null;
@@ -216,15 +199,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (r.ok) { const d = await r.json().catch(() => null); if (d?.token) { token = d.token; user = d.user ?? null; localStorage.setItem(TOKEN_KEY, d.token); } }
       }
       if (!token) {
-        const storedToken = localStorage.getItem(TOKEN_KEY); // JWT persisted after real register/login (or dev-login above)
+        const storedToken = localStorage.getItem(TOKEN_KEY); // temporary JWT persisted after dev-login; replaced in A3
         if (storedToken) {
           const meRes = await (await fetch("/api/auth/me", { headers: { authorization: "Bearer " + storedToken } })).json().catch(() => null);
           if (meRes?.id) { token = storedToken; user = meRes; }
-          else localStorage.removeItem(TOKEN_KEY); // expired / invalid / 401 → drop it so the guard redirects to /login
+          else localStorage.removeItem(TOKEN_KEY); // expired / invalid / 401 -> drop it so the guard returns to public home
         }
       }
       if (cancelled) return;
-      if (!token) { setAuthState("anon"); setReady(true); return; } // unauthenticated: auth pages & landing render; protected routes redirect to /login
+      if (!token) { setAuthState("anon"); setReady(true); return; } // unauthenticated: Landing renders; protected routes return to public home
       tokenRef.current = token;
       meIdRef.current = user?.id;
       setMe(user);
@@ -262,9 +245,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Point at the active workspace + clear the previous one's state so a switch starts from a clean slate; the
     // ready=false → workspace skeleton shows while it reloads.
     setReady(false);
-    spaceIdRef.current = cur.id; setSpaceId(cur.id); setSlug(cur.slug || "kith-space"); setMyRole(cur.role || "member"); setCapabilities(cur.capabilities || {});
+    spaceIdRef.current = cur.id; setSpaceId(cur.id); setSlug(cur.slug || "kith-space");
     setSpaceAvatar(cur.avatarUrl ? `${cur.avatarUrl}?token=${encodeURIComponent(tokenRef.current)}` : null);
-    setChannels([]); setDms([]); setUnread({}); setAgents([]); setMachines([]); setHumans([]); setTraj([]); setSavedIds(new Set()); setAgentPanelReq(null);
+    setChannels([]); setDms([]); setUnread({}); setAgents([]); setMachines([]); setTraj([]); setSavedIds(new Set()); setAgentPanelReq(null);
     subscribedRef.current = new Set(); // the previous workspace's view-subscriptions don't carry over
     sockRef.current = null; // the previous socket is closed by this effect's cleanup; drop the stale ref until the new one connects
     let lastSeq = 0;
@@ -281,10 +264,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // (message:new / agent:activity / machine:status).
       sock = io("/", { auth: { token: tokenRef.current, spaceId: spaceIdRef.current }, transports: ["websocket"] });
       if (cancelled) { sock.close(); sock = null; return; } // late connect after unmount/switch → close immediately
-      sockRef.current = sock; // exposed so joinChannel/createChannel/openDM can emit join:channel for room isolation
+      sockRef.current = sock; // exposed so channel creation and agent DMs can subscribe their realtime rooms
       let firstConnect = true;
       sock.on("connect", async () => {
-        for (const id of subscribedRef.current) sock!.emit("join:channel", id); // re-join view-subscribed rooms (the server only auto-joins member channels at connect; reconnect would otherwise drop non-member/thread rooms)
+        for (const id of subscribedRef.current) sock!.emit("join:channel", id); // re-join view-subscribed rooms after reconnect
         if (firstConnect) { firstConnect = false; return; } // first connect is covered by the initial reload()
         // Reconnect: fetch only messages missed during disconnect (incremental, not full reload).
         try {
@@ -327,8 +310,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sock.on("agent:reply", (p: any) => dispatch({ type: "agent:reply", ...p }));
       sock.on("agent:created", () => reload());
       sock.on("agent:deleted", () => reload());
-      // Real-time: new DM / channel membership change → reload lists + join the new channel room
-      // (the server validates membership; non-member join requests are rejected).
+      // Real-time: new DM / agent membership change → reload lists + subscribe to the affected transport room.
+      // The server validates Space access for the Human; this socket event does not create domain membership.
       sock.on("dm:new", (p: any) => { reload(); if (p?.channelId) sockRef.current?.emit("join:channel", p.channelId); });
       sock.on("channel:members-updated", (p: any) => { reload(); if (p?.channelId) sockRef.current?.emit("join:channel", p.channelId); });
       // Machine online/offline → reload machine list (DB is source of truth for status/daemon version/runtimes/new rows).
@@ -353,6 +336,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Showcase demo agents (creatorType="system") stay in `agents` so #showcase history still resolves their
   // avatar/name/profile by id — but they are not real members, so every roster / picker uses `visibleAgents`.
   const visibleAgents = agents.filter((a) => a.creatorType !== "system");
-  return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, myRole, spaceAvatar, spaces, capabilities, createSpace, switchSpace, logout, uploadSpaceAvatar, uploadAgentAvatar, uploadUserAvatar, channels, dms, unread, agents, visibleAgents, machines, latestDaemonVersion, humans, traj, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openDM, joinChannel, leaveChannel, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, spaceAvatar, spaces, createSpace, switchSpace, logout, uploadSpaceAvatar, uploadAgentAvatar, channels, dms, unread, agents, visibleAgents, machines, latestDaemonVersion, traj, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
 }
 

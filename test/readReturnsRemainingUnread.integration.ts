@@ -1,123 +1,218 @@
-// Read-clears-its-own-source contract (the "read messages become unread again" fix):
-// - the channel unread badge aggregates the channel's own timeline unread + its followed threads' unread
-// - POST /api/channels/:id/read advances ONLY that container's read cursor and returns the parent channel's
-//   *authoritative remaining* aggregated unread, so the client can render an honest badge with no false "all clear"
-// - reading the channel clears the channel-own portion (thread portion stays); reading the thread clears the
-//   thread portion. Each source is cleared independently; neither over-clears nor resurrects the other.
-//
-// Requires infra up. Run:
-//   npx tsx test/readReturnsRemainingUnread.integration.ts
+// Read cursor contract for the one Human:
+// - a channel badge aggregates its own unread messages and followed-thread unread
+// - reading one container clears only that source
+// - POST /read returns the authoritative remaining parent-channel unread count
 import "../src/env.js";
 import { EventEmitter } from "node:events";
-import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { and, desc, eq } from "drizzle-orm";
-import { integrationDatabase } from "./helpers/workspace.ts";
+import { Readable } from "node:stream";
+import { desc, eq } from "drizzle-orm";
+import { initializeHumanProfile } from "../src/app-data/appDatabase.ts";
 import { createMessage, getOrCreateThread } from "../src/server/core.ts";
-import { handleApi } from "../src/server/routes-api/index.ts";
 import { signUser } from "../src/server/auth.ts";
+import { handleApi } from "../src/server/routes-api/index.ts";
+import { integrationDatabase } from "./helpers/workspace.ts";
 
 const ts = Date.now();
-let failures = 0;
 const fixture = integrationDatabase("read-remaining-unread");
 const { db, schema, rootPath } = fixture;
-let serverId = fixture.serverId, ownerId = "", viewerId = "", channelId = "", viewerToken = "";
 
-const check = (label: string, cond: boolean) => { console.log(`  ${cond ? "✔" : "✗ FAIL"} ${label}`); if (!cond) failures++; };
+let serverId = fixture.serverId;
+let humanId = "";
+let agentId = "";
+let channelId = "";
+let humanToken = "";
+let failures = 0;
 
-function makeReq(opts: { method: string; path: string; token: string; serverId: string; body?: object }): IncomingMessage {
-  const bodyStr = opts.body ? JSON.stringify(opts.body) : "";
-  const readable = Readable.from(bodyStr ? [Buffer.from(bodyStr)] : ([] as Buffer[]));
-  return Object.assign(readable, { method: opts.method, url: opts.path, headers: { authorization: `Bearer ${opts.token}`, "x-server-id": opts.serverId, "content-type": "application/json" } }) as unknown as IncomingMessage;
+const check = (label: string, condition: boolean) => {
+  console.log(`  ${condition ? "PASS" : "FAIL"} ${label}`);
+  if (!condition) failures++;
+};
+
+function makeReq(options: { method: string; path: string; body?: object }): IncomingMessage {
+  const body = options.body ? JSON.stringify(options.body) : "";
+  const stream = Readable.from(body ? [Buffer.from(body)] : []);
+  return Object.assign(stream, {
+    method: options.method,
+    url: options.path,
+    headers: {
+      authorization: `Bearer ${humanToken}`,
+      "content-type": "application/json",
+      "x-space-id": serverId,
+    },
+  }) as unknown as IncomingMessage;
 }
+
 function makeRes(): { res: ServerResponse; status: () => number; body: () => any } {
-  let status = 0, raw = "";
+  let status = 0;
+  let raw = "";
   const emitter = new EventEmitter();
-  const res = Object.assign(emitter, { statusCode: 0, headersSent: false, setHeader() {}, writeHead(c: number) { status = c; this.statusCode = c; }, end(d?: string | Buffer) { raw = d ? String(d) : ""; (emitter as any).emit("finish"); } }) as unknown as ServerResponse;
-  return { res, status: () => status, body: () => { try { return JSON.parse(raw); } catch { return raw; } } };
+  const res = Object.assign(emitter, {
+    statusCode: 0,
+    headersSent: false,
+    setHeader() {},
+    writeHead(code: number) {
+      status = code;
+      this.statusCode = code;
+    },
+    end(data?: string | Buffer) {
+      raw = data ? String(data) : "";
+      emitter.emit("finish");
+    },
+  }) as unknown as ServerResponse;
+  return {
+    res,
+    status: () => status,
+    body: () => {
+      try { return JSON.parse(raw); } catch { return raw; }
+    },
+  };
 }
-async function apiCall(opts: { method: string; path: string; body?: object }) {
-  const req = makeReq({ ...opts, token: viewerToken, serverId });
+
+async function apiCall(options: { method: string; path: string; body?: object }) {
   const { res, status, body } = makeRes();
-  await handleApi(req, res, new URL(opts.path, "http://localhost"), opts.method);
+  await handleApi(makeReq(options), res, new URL(options.path, "http://localhost"), options.method);
   return { status: status(), body: body() };
 }
-async function badge(chId: string) { const r = await apiCall({ method: "GET", path: "/api/channels/unread" }); return r.body?.[chId] ?? 0; }
-async function readContainer(chId: string) { return apiCall({ method: "POST", path: `/api/channels/${chId}/read`, body: {} }); }
-async function latestSeq(chId: string) { const [row] = await db.select({ seq: schema.messages.seq }).from(schema.messages).where(eq(schema.messages.channelId, chId)).orderBy(desc(schema.messages.seq)).limit(1); return Number(row?.seq ?? 0); }
-// Baseline cursor advance via direct DB write — keeps the setup independent of the very endpoint under test.
-async function dbMarkRead(chId: string) {
-  await db.insert(schema.channelMembers)
-    .values({ channelId: chId, memberType: "user", memberId: viewerId, lastReadSeq: await latestSeq(chId) })
-    .onConflictDoUpdate({ target: [schema.channelMembers.channelId, schema.channelMembers.memberType, schema.channelMembers.memberId], set: { lastReadSeq: await latestSeq(chId), threadDoneAt: null } });
+
+async function badge(parentChannelId: string): Promise<number> {
+  const response = await apiCall({ method: "GET", path: "/api/channels/unread" });
+  return response.body?.[parentChannelId] ?? 0;
+}
+
+async function readContainer(containerId: string) {
+  return apiCall({ method: "POST", path: `/api/channels/${containerId}/read`, body: {} });
+}
+
+async function latestSeq(containerId: string): Promise<number> {
+  const [row] = await db.select({ seq: schema.messages.seq }).from(schema.messages)
+    .where(eq(schema.messages.channelId, containerId))
+    .orderBy(desc(schema.messages.seq))
+    .limit(1);
+  return Number(row?.seq ?? 0);
+}
+
+// Establish a baseline independently of the endpoint under test.
+async function dbMarkRead(containerId: string) {
+  const lastReadSeq = await latestSeq(containerId);
+  await db.insert(schema.channelMembers).values({
+    channelId: containerId,
+    memberType: "user",
+    memberId: humanId,
+    lastReadSeq,
+  }).onConflictDoUpdate({
+    target: [schema.channelMembers.channelId, schema.channelMembers.memberType, schema.channelMembers.memberId],
+    set: { lastReadSeq, threadDoneAt: null },
+  });
+}
+
+async function agentMessage(containerId: string, content: string) {
+  return createMessage({
+    serverId,
+    channelId: containerId,
+    senderType: "agent",
+    senderId: agentId,
+    senderName: "Researcher",
+    content,
+  });
 }
 
 async function setup() {
-  const [owner] = await db.insert(schema.users).values({ name: `o_${ts}`, displayName: "Owner", email: `o_${ts}@t.local` }).returning();
-  const [viewer] = await db.insert(schema.users).values({ name: `v_${ts}`, displayName: "Viewer", email: `v_${ts}@t.local` }).returning();
-  ownerId = owner!.id; viewerId = viewer!.id;
-  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "ReadRemaining", slug: `read-remaining-${ts}`, ownerId, rootPath }).returning();
-  serverId = srv!.id;
-  await db.insert(schema.serverMembers).values([{ serverId, userId: ownerId, role: "owner" }, { serverId, userId: viewerId, role: "member" }]);
-  const [ch] = await db.insert(schema.channels).values({ serverId, name: `general-${ts}`, type: "channel" }).returning();
-  channelId = ch!.id;
-  await db.insert(schema.channelMembers).values([{ channelId, memberType: "user", memberId: ownerId }, { channelId, memberType: "user", memberId: viewerId }]);
-  viewerToken = signUser(viewerId);
+  const human = initializeHumanProfile({ name: "Ada", email: `ada-${ts}@test.local` });
+  humanId = human.id;
+  humanToken = signUser(humanId);
+  await db.insert(schema.users).values({
+    id: humanId,
+    name: "you",
+    displayName: human.name,
+    email: human.email!,
+  });
+  await db.insert(schema.servers).values({
+    id: serverId,
+    name: "Read Remaining",
+    slug: `read-remaining-${ts}`,
+    ownerId: humanId,
+    rootPath,
+  });
+  const [agent] = await db.insert(schema.agents).values({
+    serverId,
+    name: `researcher_${ts}`,
+    displayName: "Researcher",
+    creatorId: humanId,
+  }).returning();
+  agentId = agent!.id;
+  const [channel] = await db.insert(schema.channels).values({
+    serverId,
+    name: `general-${ts}`,
+    type: "channel",
+  }).returning();
+  channelId = channel!.id;
+  await db.insert(schema.channelMembers).values([
+    { channelId, memberType: "user", memberId: humanId },
+    { channelId, memberType: "agent", memberId: agentId },
+  ]);
 }
+
 async function cleanup() {
-  const chans = await db.select({ id: schema.channels.id }).from(schema.channels).where(eq(schema.channels.serverId, serverId));
+  const channels = await db.select({ id: schema.channels.id }).from(schema.channels)
+    .where(eq(schema.channels.serverId, serverId));
+  const messages = await db.select({ id: schema.messages.id }).from(schema.messages)
+    .where(eq(schema.messages.serverId, serverId));
+  for (const message of messages) {
+    await db.delete(schema.messageMentions).where(eq(schema.messageMentions.messageId, message.id));
+  }
   await db.delete(schema.messages).where(eq(schema.messages.serverId, serverId));
-  for (const ch of chans) await db.delete(schema.channelMembers).where(eq(schema.channelMembers.channelId, ch.id));
+  for (const channel of channels) {
+    await db.delete(schema.channelMembers).where(eq(schema.channelMembers.channelId, channel.id));
+  }
   await db.delete(schema.channels).where(eq(schema.channels.serverId, serverId));
-  await db.delete(schema.serverMembers).where(eq(schema.serverMembers.serverId, serverId));
+  await db.delete(schema.agents).where(eq(schema.agents.serverId, serverId));
   await db.delete(schema.servers).where(eq(schema.servers.id, serverId));
-  await db.delete(schema.users).where(eq(schema.users.id, ownerId));
-  await db.delete(schema.users).where(eq(schema.users.id, viewerId));
+  await db.delete(schema.users).where(eq(schema.users.id, humanId));
 }
 
 async function main() {
   await setup();
 
-  // Establish a caught-up baseline first, then add EXACTLY one channel-own unread + one thread unread,
-  // so the aggregate badge is unambiguously 2.
-  const parent = await createMessage({ serverId, channelId, senderType: "user", senderId: ownerId, senderName: "owner", content: "parent message" });
-  const thread = await getOrCreateThread(serverId, parent.id, { type: "user", id: viewerId }); // viewer joins the thread
+  const parent = await agentMessage(channelId, "parent message");
+  const thread = await getOrCreateThread(serverId, parent.id, { type: "user", id: humanId });
   await dbMarkRead(channelId);
   await dbMarkRead(thread.id);
-  check("baseline: caught up, badge 0", (await badge(channelId)) === 0);
-  await createMessage({ serverId, channelId: thread.id, senderType: "user", senderId: ownerId, senderName: "owner", content: "thread reply (thread-source unread)" });
-  await createMessage({ serverId, channelId, senderType: "user", senderId: ownerId, senderName: "owner", content: "channel-timeline message (channel-source unread)" });
+  check("caught-up baseline has no unread", await badge(channelId) === 0);
 
-  console.log("\n[1] badge aggregates channel-own + thread unread");
-  check("badge = 2 (1 channel-own + 1 thread)", (await badge(channelId)) === 2);
+  await agentMessage(thread.id, "thread-source unread");
+  await agentMessage(channelId, "channel-source unread");
 
-  console.log("\n[2] reading the CHANNEL clears only the channel-own portion and returns authoritative remaining");
-  {
-    const r = await readContainer(channelId);
-    check("POST /read returns 200", r.status === 200);
-    check("response reports the affected sidebar channel id", r.body?.channelId === channelId);
-    check("response reports remaining aggregated unread = 1 (thread portion stays)", r.body?.unread === 1);
-    check("GET /unread agrees: channel still shows 1 (thread unread not over-cleared)", (await badge(channelId)) === 1);
-  }
+  console.log("\n[1] badge aggregates channel and followed-thread unread");
+  check("badge equals two", await badge(channelId) === 2);
 
-  console.log("\n[3] reading the THREAD clears the thread portion and returns the parent's remaining (now 0)");
-  {
-    const r = await readContainer(thread.id);
-    check("POST /read on a thread returns 200", r.status === 200);
-    check("response reports the PARENT channel id as the affected sidebar key", r.body?.channelId === channelId);
-    check("response reports remaining = 0 (everything read)", r.body?.unread === 0);
-    check("GET /unread agrees: channel cleared", (await badge(channelId)) === 0);
-  }
+  console.log("\n[2] reading the channel preserves thread unread");
+  const channelRead = await readContainer(channelId);
+  check("channel read returns 200", channelRead.status === 200);
+  check("channel read reports the parent channel", channelRead.body?.channelId === channelId);
+  check("channel read reports one remaining unread", channelRead.body?.unread === 1);
+  check("unread endpoint agrees", await badge(channelId) === 1);
 
-  console.log("\n[4] no resurrection: re-reading an already-read channel stays at 0");
-  {
-    const r = await readContainer(channelId);
-    check("re-read returns remaining 0", r.body?.unread === 0);
-    check("GET /unread still 0", (await badge(channelId)) === 0);
-  }
+  console.log("\n[3] reading the thread clears the remaining source");
+  const threadRead = await readContainer(thread.id);
+  check("thread read returns 200", threadRead.status === 200);
+  check("thread read reports the parent channel", threadRead.body?.channelId === channelId);
+  check("thread read reports zero remaining", threadRead.body?.unread === 0);
+  check("unread endpoint is clear", await badge(channelId) === 0);
 
-  await cleanup();
-  if (failures) { console.log(`\n${failures} check(s) failed`); process.exit(1); }
-  console.log("\nall checks passed");
+  console.log("\n[4] reading an already-read channel does not resurrect unread");
+  const reread = await readContainer(channelId);
+  check("re-read reports zero remaining", reread.body?.unread === 0);
+  check("unread endpoint remains clear", await badge(channelId) === 0);
 }
-main().catch(async (e) => { console.error(e); if (serverId) await cleanup().catch(() => {}); process.exit(1); });
+
+main()
+  .catch((error) => {
+    console.error("ERROR", error);
+    failures++;
+  })
+  .finally(async () => {
+    await cleanup().catch((error) => console.error("cleanup error", error));
+    console.log(failures ? `\n${failures} check(s) failed` : "\nall checks passed");
+    process.exit(failures ? 1 : 0);
+  });

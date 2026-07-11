@@ -9,7 +9,6 @@ export type WorkspaceRouteSection =
   | "inbox"
   | "tasks"
   | "agent"
-  | "human"
   | "computer"
   | "settings"
   | "search"
@@ -26,8 +25,7 @@ export interface WorkspaceRouteMatch {
 const MODULE_BY_SECTION: Partial<Record<Exclude<WorkspaceRouteSection, null>, WorkspaceModuleId>> = {
   inbox: "inbox",
   tasks: "tasks",
-  agent: "members",
-  human: "members",
+  agent: "agents",
   computer: "computers",
   settings: "settings",
   search: "search",
@@ -40,7 +38,6 @@ const KNOWN_SECTIONS = new Set<Exclude<WorkspaceRouteSection, null>>([
   "inbox",
   "tasks",
   "agent",
-  "human",
   "computer",
   "settings",
   "search",
@@ -49,7 +46,7 @@ const KNOWN_SECTIONS = new Set<Exclude<WorkspaceRouteSection, null>>([
 const MODULE_IDS = new Set<WorkspaceModuleId>([
   "inbox",
   "tasks",
-  "members",
+  "agents",
   "computers",
   "settings",
   "search",

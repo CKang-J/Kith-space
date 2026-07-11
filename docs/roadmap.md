@@ -36,7 +36,7 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 
 ### P-A2 本地领域与数据模型
 
-状态：进行中。已完成中央 `app.db`、唯一 Human、默认 `Home`、本地-only 附件存储，以及 Space 传输/API/Web 术语；正在继续清理兼容 user/owner、旧物理 `servers/server_id` 与 Machine。
+状态：进行中。已完成中央 `app.db`、唯一 Human、默认 `Home`、本地-only 附件、Space 契约，以及 A2.3 的唯一 Human authority/identity、产品 RBAC/邀请删除、agent-only membership、Human-agent DM 和 Agents UI。旧物理表与 Machine 仍未完成。
 
 - 把中央 registry 扩展并更名为 `app.db`。
 - 实现唯一 Human 和首次资料初始化；自动创建 `Home` Space。

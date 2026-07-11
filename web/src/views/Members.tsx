@@ -24,23 +24,20 @@ function statusOf(a: { activity?: string | null; status: string }): string {
   return a.activity && a.activity !== "offline" ? a.activity : a.status;
 }
 
-interface MembersProps {
+interface AgentsProps {
   agentIdOverride?: string;
-  userIdOverride?: string;
   moduleQuerySuffix?: string;
   discussionQuerySuffix?: string;
 }
 
-export function Members({ agentIdOverride, userIdOverride, moduleQuerySuffix = "", discussionQuerySuffix = "" }: MembersProps = {}) {
+export function Agents({ agentIdOverride, moduleQuerySuffix = "", discussionQuerySuffix = "" }: AgentsProps = {}) {
   const { t } = useTranslation();
-  const { visibleAgents: agents, humans, machines, slug, capabilities, attachmentUrl } = useStore(); // visibleAgents: showcase demo props are hidden from the roster (they stay in the store for #showcase history)
+  const { visibleAgents: agents, machines, slug, attachmentUrl } = useStore(); // visibleAgents: showcase demo props are hidden from the roster (they stay in the store for #showcase history)
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
-  const { agentId: routeAgentId, userId: routeUserId } = useParams();
+  const { agentId: routeAgentId } = useParams();
   const agentId = agentIdOverride ?? routeAgentId;
-  const userId = userIdOverride ?? routeUserId;
   const nav = useNavigate();
   const [modal, setModal] = useState(false);
-  const [inviteModal, setInviteModal] = useState(false);
 
   const byMachine: Record<string, typeof agents> = {};
   for (const a of agents) { const k = a.machineId || "_none"; (byMachine[k] = byMachine[k] || []).push(a); }
@@ -50,8 +47,8 @@ export function Members({ agentIdOverride, userIdOverride, moduleQuerySuffix = "
     <>
       <aside className="sidebar">
         <div className="sb-scroll">
-        <div className="sb-title">{t("nav.members")}</div>
-        <div className="sec">{t("common.agents")} <span className="cnt">{agents.length}</span>{capabilities.manageAgents && <button className="addbtn" title={t("members.createAgent")} onClick={() => setModal(true)}>+</button>}</div>
+        <div className="sb-title">{t("nav.agents")}</div>
+        <div className="sec">{t("common.agents")} <span className="cnt">{agents.length}</span><button className="addbtn" title={t("members.createAgent")} onClick={() => setModal(true)}>+</button></div>
         {Object.keys(byMachine).map((k) => (
           <div key={k}>
             <div className="machine"><IconMonitor size={13} /> {k === "_none" ? t("members.unassigned") : mName(k)}</div>
@@ -62,67 +59,27 @@ export function Members({ agentIdOverride, userIdOverride, moduleQuerySuffix = "
             ))}
           </div>
         ))}
-        <div className="sec">{t("common.humans")} <span className="cnt">{humans.length}</span>{capabilities.manageMembers && <button className="addbtn" title={t("members.inviteMember")} onClick={() => setInviteModal(true)}>+</button>}</div>
-        {humans.map((u) => (
-          <button key={u.userId} className={"item" + (u.userId === userId ? " active" : "")} onClick={() => nav(`/s/${slug}/human/${u.userId}${moduleQuerySuffix}`)}>
-            <Avatar seed={u.name} url={avFor(u.avatarUrl)} size={20} /><span className="grow">{u.displayName || u.name}</span>
-          </button>
-        ))}
         </div>
       </aside>
       <main className="content-col">
-        {userId ? <HumanProfile uid={userId} moduleQuerySuffix={moduleQuerySuffix} discussionQuerySuffix={discussionQuerySuffix} /> : agentId ? <AgentProfile id={agentId} onDeleted={() => nav(`/s/${slug}/agent${moduleQuerySuffix}`)} discussionQuerySuffix={discussionQuerySuffix} /> : <Roster agents={agents} humans={humans} onCreate={() => setModal(true)} canCreate={!!capabilities.manageAgents} moduleQuerySuffix={moduleQuerySuffix} />}
+        {agentId ? <AgentProfile id={agentId} onDeleted={() => nav(`/s/${slug}/agent${moduleQuerySuffix}`)} discussionQuerySuffix={discussionQuerySuffix} /> : <Roster agents={agents} onCreate={() => setModal(true)} moduleQuerySuffix={moduleQuerySuffix} />}
       </main>
       {modal && <CreateAgentModal onClose={() => setModal(false)} />}
-      {inviteModal && <InviteHumanModal onClose={() => setInviteModal(false)} />}
     </>
   );
 }
 
-// Invite member entry point: automatically fetches or creates a member join-link for display and copy. Email invitations require a mail service.
-function InviteHumanModal({ onClose }: { onClose: () => void }) {
-  const { t } = useTranslation();
-  useEscClose(onClose);
-  const { api, spaceId } = useStore();
-  const [link, setLink] = useState("");
-  const [copied, setCopied] = useState(false);
-  useEffect(() => { (async () => {
-    const links = await api("GET", `/api/spaces/${spaceId}/join-links`).catch(() => []);
-    let l = Array.isArray(links) ? links.find((x: any) => x.role === "member") : null;
-    if (!l) l = await api("POST", `/api/spaces/${spaceId}/join-links`, { role: "member", maxUses: null });
-    if (l?.token) setLink(`${location.origin}/join/${l.token}`);
-  })(); /* eslint-disable-next-line */ }, [spaceId]);
-  const copy = async () => { try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* */ } };
-  return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{t("members.inviteTitle")}</h3>
-        <p className="modal-note">{t("members.inviteNote")}</p>
-        <label>{t("members.inviteLinkLabel")}</label>
-        <input readOnly value={link || t("members.inviteLinkGenerating")} onFocus={(e) => e.currentTarget.select()} />
-        <div className="acts">
-          <button className="cancel" onClick={onClose}>{t("members.close")}</button>
-          <button className="ok" onClick={copy} disabled={!link}>{copied ? t("members.copied") : t("members.copyLink")}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Members roster: agents + humans as two labelled sections (mirrors the left sidebar order),
-// every card a navigable entry into that member's profile (agent → /agent/:id, human → /human/:userId).
-function Roster({ agents, humans, onCreate, canCreate, moduleQuerySuffix = "" }: { agents: any[]; humans: any[]; onCreate: () => void; canCreate?: boolean; moduleQuerySuffix?: string }) {
+function Roster({ agents, onCreate, moduleQuerySuffix = "" }: { agents: any[]; onCreate: () => void; moduleQuerySuffix?: string }) {
   const { t } = useTranslation();
   const { attachmentUrl, slug } = useStore();
   const nav = useNavigate();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
-  const total = agents.length + humans.length;
   const goKey = (e: React.KeyboardEvent, to: string) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav(to); } };
   return (
     <>
-      <div className="head"><h1>{t("nav.members")}</h1><small>{t("common.membersCount", { count: total })}</small></div>
+      <div className="head"><h1>{t("nav.agents")}</h1><small>{t("common.membersCount", { count: agents.length })}</small></div>
       <div className="scroll">
-        {total === 0 ? <div className="empty">{t("members.rosterEmpty")}{canCreate && <> {t("members.rosterEmptyCreate")} <button className="addbtn" onClick={onCreate}>+</button></>}</div>
+        {agents.length === 0 ? <div className="empty">{t("members.rosterEmpty")} {t("members.rosterEmptyCreate")} <button className="addbtn" onClick={onCreate}>+</button></div>
           : <>
             {agents.length > 0 && <div className="sec">{t("common.agents")} <span className="cnt">{agents.length}</span></div>}
             {agents.map((a) => {
@@ -136,17 +93,6 @@ function Roster({ agents, humans, onCreate, canCreate, moduleQuerySuffix = "" }:
                 </div>
               );
             })}
-            {humans.length > 0 && <div className="sec">{t("common.humans")} <span className="cnt">{humans.length}</span></div>}
-            {humans.map((u) => {
-              const to = `/s/${slug}/human/${u.userId}${moduleQuerySuffix}`;
-              return (
-                <div className="card card-link" key={u.userId} role="button" tabIndex={0} onClick={() => nav(to)} onKeyDown={(e) => goKey(e, to)}>
-                  <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}><Avatar seed={u.name} url={avFor(u.avatarUrl)} size={24} />{u.displayName || u.name} <small className="meta">@{u.name}</small></h3>
-                  <div className="meta">{u.description || t("members.noDescription")}</div>
-                  <div className="kv"><b>{t("members.role")}</b> {u.role || "member"}</div>
-                </div>
-              );
-            })}
           </>}
       </div>
     </>
@@ -155,7 +101,7 @@ function Roster({ agents, humans, onCreate, canCreate, moduleQuerySuffix = "" }:
 
 export function AgentProfile({ id, onDeleted, onClose, onMessage, discussionQuerySuffix = "" }: { id: string; onDeleted: () => void; onClose?: () => void; onMessage?: () => void; discussionQuerySuffix?: string }) {
   const { t } = useTranslation();
-  const { api, reload, onEvent, capabilities, openDM, slug, uploadAgentAvatar, attachmentUrl } = useStore();
+  const { api, reload, onEvent, openAgentDM, slug, uploadAgentAvatar, attachmentUrl } = useStore();
   const confirm = useConfirm();
   const toast = useToast();
   const nav = useNavigate();
@@ -194,16 +140,13 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage, discussionQuer
   const startEdit = () => { setDn(a.displayName || a.name); setDs(a.description || ""); setEdit(true); };
   const saveProfile = async () => { await api("PATCH", "/api/agents/" + id, { displayName: dn.trim() || a.name, description: ds.trim() }); setEdit(false); await refetch(); await reload(); }; // profile tab: editable displayName/description
   const live = statusOf(a);
-  const msgAgent = async () => { const cid = await openDM("agent", id); if (cid) nav(`/s/${slug}/channel/${cid}${discussionQuerySuffix}`); };
-  // Header action bar: Message available to everyone; start/stop/restart/delete gated by manageAgents capability
+  const msgAgent = async () => { const cid = await openAgentDM(id); if (cid) nav(`/s/${slug}/channel/${cid}${discussionQuerySuffix}`); };
   const acts = (
     <div className="agent-acts">
       <button className="joinbtn" onClick={onMessage ?? msgAgent}><MessageCircle size={13} style={{ verticalAlign: "-2px" }} /> {t("members.dm")}</button>
-      {capabilities.manageAgents && <>
-        <button className="joinbtn" onClick={() => ctl(a.status === "active" ? "stop" : "start")}>{a.status === "active" ? t("members.stop") : t("members.start")}</button>
-        <button className="joinbtn" onClick={() => setShowRestart(true)}>{t("members.restart")}</button>
-        <button className="joinbtn" style={{ color: "var(--error)" }} onClick={del}>{t("members.delete")}</button>
-      </>}
+      <button className="joinbtn" onClick={() => ctl(a.status === "active" ? "stop" : "start")}>{a.status === "active" ? t("members.stop") : t("members.start")}</button>
+      <button className="joinbtn" onClick={() => setShowRestart(true)}>{t("members.restart")}</button>
+      <button className="joinbtn" style={{ color: "var(--error)" }} onClick={del}>{t("members.delete")}</button>
     </div>
   );
   return (
@@ -215,7 +158,7 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage, discussionQuer
           <button className="joinbtn pph-close" title={t("members.close")} onClick={onClose}><X size={14} /></button>
           {acts}
         </div>
-      ) : <div className="head head-agent"><AvatarPicker name={a.name} url={signedAvatar} size={48} editable={!!capabilities.manageAgents} busy={avBusy} onPickSeed={onPickSeed} onPickFile={onPickAvatar} /><div className="head-id"><h1>{a.displayName || a.name}</h1><small>@{a.name} <span className={"dot " + live} />{avErr ? <span className="form-err" style={{ marginLeft: 8 }}>{avErr}</span> : null}</small></div>{acts}</div>}
+      ) : <div className="head head-agent"><AvatarPicker name={a.name} url={signedAvatar} size={48} editable busy={avBusy} onPickSeed={onPickSeed} onPickFile={onPickAvatar} /><div className="head-id"><h1>{a.displayName || a.name}</h1><small>@{a.name} <span className={"dot " + live} />{avErr ? <span className="form-err" style={{ marginLeft: 8 }}>{avErr}</span> : null}</small></div>{acts}</div>}
       <div className="ptabs">
         {/* Tab order follows AgentDetailPanel spec: integrations (not apps) */}
         {([
@@ -255,9 +198,9 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage, discussionQuer
                 <div className="kv"><b>{t("common.session")}</b> {a.sessionId || "(none)"}</div>
                 <div className="kv"><b>{t("common.workspace")}</b> ~/.kith-space/agents/{a.id}</div>
                 {a.createdAt && <div className="kv"><b>{t("common.created")}</b> {fmtDateTime(a.createdAt)}</div>}
-                {capabilities.manageAgents && <div className="task-acts" style={{ marginTop: 14 }}>
+                <div className="task-acts" style={{ marginTop: 14 }}>
                   <button className="joinbtn" onClick={startEdit}>{t("members.editProfile")}</button>
-                </div>}
+                </div>
               </>)}
             </div>
             <SkillsSection id={id} />
@@ -345,7 +288,7 @@ function DmsTab({ id, name, discussionQuerySuffix = "" }: { id: string; name: st
   return <div className="scroll"><div className="sec">{t("members.agentDms")}</div>{!dms?.length ? <div className="empty">{t("members.dmsEmpty", { name })}</div> : dms.map((d) => <button className="item" key={d.id} onClick={() => nav(`/s/${slug}/channel/${d.id}${discussionQuerySuffix}`)}><Avatar seed={d.name} size={22} /><span className="grow">{d.name}</span></button>)}</div>;
 }
 
-// Reminders tab (read-only; agents create reminders via CLI, humans can only view)
+// Reminders tab (read-only in the Human UI; agents create reminders through their runtime)
 const REM_STATUS: Record<string, string> = {
   scheduled: i18n.t("members.remScheduled"),
   fired: i18n.t("members.remFired"),
@@ -539,76 +482,6 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
         <div className="acts"><button className="cancel" onClick={onClose}>{t("members.cancel")}</button><button className="ok" onClick={create} disabled={busy || !machineId} title={!machineId ? t("members.machineRequired") : undefined}>{busy ? t("members.creating") : t("members.create")}</button></div>
       </div>
     </div>
-  );
-}
-
-// Human member profile (HumanDetailPanel): shows info/role/Created Agents; the member themselves can edit their own description (max 3000 chars).
-// Description is visible to other humans and agents in the server; agents fetch it via `kith-space server info` for collaboration context.
-export function HumanProfile({ uid, onClose, onMessage, moduleQuerySuffix = "", discussionQuerySuffix = "" }: { uid: string; onClose?: () => void; onMessage?: () => void; moduleQuerySuffix?: string; discussionQuerySuffix?: string }) {
-  const { t } = useTranslation();
-  const { api, spaceId, me, reload, slug, capabilities, openDM, uploadUserAvatar, attachmentUrl } = useStore();
-  const confirm = useConfirm();
-  const nav = useNavigate();
-  const [p, setP] = useState<any>(null);
-  const [edit, setEdit] = useState(false); const [ds, setDs] = useState("");
-  const [avBusy, setAvBusy] = useState(false); const [avErr, setAvErr] = useState(""); const [signedAvatar, setSignedAvatar] = useState<string | null>(null);
-  const refetch = async () => { const data = await api("GET", `/api/spaces/${spaceId}/members/${uid}/profile`); setP(data); setSignedAvatar(resolveAvatar(data?.avatarUrl, attachmentUrl)); };
-  useEffect(() => { setP(null); setSignedAvatar(null); refetch(); }, [uid, spaceId]);
-  const onPickAvatar = async (f: File) => { setAvBusy(true); setAvErr(""); try { const url = await uploadUserAvatar(f); setSignedAvatar(url); await refetch(); await reload(); } catch (err: any) { setAvErr(String(err?.message || err)); } finally { setAvBusy(false); } };
-  const onPickSeed = async (scheme: string) => { setAvBusy(true); setAvErr(""); try { await api("PATCH", "/api/auth/me", { avatarUrl: scheme }); await refetch(); await reload(); } catch (err: any) { setAvErr(String(err?.message || err)); } finally { setAvBusy(false); } };
-  if (!p) return <div className="scroll"><div className="empty">{t("members.loading")}</div></div>;
-  const isMe = me?.id === uid;
-  const save = async () => { await api("PATCH", "/api/auth/me", { description: ds.trim() }); setEdit(false); await refetch(); await reload(); };
-  const dmHuman = async () => { const cid = await openDM("user", uid); if (cid) nav(`/s/${slug}/channel/${cid}${discussionQuerySuffix}`); };
-  const dmBtn = !isMe ? <button className="joinbtn" onClick={onMessage ?? dmHuman}><MessageCircle size={13} style={{ verticalAlign: "-2px" }} /> {t("members.dm")}</button> : null;
-  return (
-    <>
-      {onClose ? ( // panel mode (embedded in chat right column: click avatar / name / @mention → profile overlay), mirrors AgentProfile
-        <div className="profile-panel-head">
-          <Avatar seed={p.name} url={signedAvatar} size={28} />
-          <div className="pph-id"><span className="pph-name">{p.displayName || p.name}</span><span className="pph-handle">@{p.name} · {p.role}</span></div>
-          <button className="joinbtn pph-close" title={t("members.close")} onClick={onClose}><X size={14} /></button>
-          {dmBtn && <div className="agent-acts">{dmBtn}</div>}
-        </div>
-      ) : <div className="head head-agent"><AvatarPicker name={p.name} url={signedAvatar} size={48} editable={isMe} busy={avBusy} onPickSeed={onPickSeed} onPickFile={onPickAvatar} /><div className="head-id"><h1>{p.displayName || p.name}</h1><small>@{p.name} · {p.role}{avErr ? <span className="form-err" style={{ marginLeft: 8 }}>{avErr}</span> : null}</small></div><div className="agent-acts">{dmBtn}</div></div>}
-      <div className="scroll">
-        <div className="card">
-          {edit ? (
-            <div className="setform">
-              <label>{t("members.humanDescriptionLabel")}</label>
-              <textarea value={ds} maxLength={3000} onChange={(e) => setDs(e.target.value)} placeholder="Describe yourself for other humans and agents in this server" />
-              <div className="ta-count">{ds.trim().length}/3000</div>
-              <div className="setrow"><button className="ok" onClick={save}>{t("members.save")}</button><button className="cancel" onClick={() => setEdit(false)}>{t("members.cancel")}</button></div>
-            </div>
-          ) : (<>
-            <div className="meta">{p.description || "No description"}</div>
-            <div className="kv"><b>{t("members.role")}</b> {p.role}</div>
-            {p.joinedAt && <div className="kv"><b>{t("members.joined")}</b> {fmtDateTime(p.joinedAt)}</div>}
-            {p.email && <div className="kv"><b>{t("members.email")}</b> {p.email}</div>}
-            {isMe && <div className="task-acts" style={{ marginTop: 14 }}><button className="joinbtn" onClick={() => { setDs(p.description || ""); setEdit(true); }}>{t("members.editProfile")}</button></div>}
-          </>)}
-        </div>
-        {!isMe && (capabilities.changeMemberRoles || capabilities.manageMembers) && (
-          <div className="card">
-            <h3>{t("members.memberManagement")}</h3>
-            {capabilities.changeMemberRoles && (
-              <div className="kv"><b>{t("members.role")}</b> <Select ariaLabel={t("members.role")} value={p.role} options={[{ value: "owner", label: "owner" }, { value: "admin", label: "admin" }, { value: "member", label: "member" }]} onChange={async (role) => { const r = await api("PATCH", `/api/spaces/${spaceId}/members/${uid}`, { role }); if (r?.error) { alert(r.error); return; } await refetch(); await reload(); }} /></div>
-            )}
-            {capabilities.manageMembers && <button className="joinbtn" style={{ color: "var(--error)", marginTop: 12 }} onClick={async () => { if (!(await confirm({ title: t("members.removeMemberTitle", { name: p.name }), message: t("members.removeMemberMessage"), confirmLabel: t("members.remove"), danger: true }))) return; const r = await api("DELETE", `/api/spaces/${spaceId}/members/${uid}`); if (r?.error) { alert(r.error); return; } await reload(); if (onClose) onClose(); else nav(`/s/${slug}/agent${moduleQuerySuffix}`); }}>{t("members.removeMember")}</button>}
-          </div>
-        )}
-        {p.createdAgents?.length > 0 && (
-          <div className="card">
-            <h3>Created Agents <small className="meta">· {p.createdAgents.length}</small></h3>
-            {p.createdAgents.map((a: any) => (
-              <button key={a.id} className="item" onClick={() => nav(`/s/${slug}/agent/${a.id}${moduleQuerySuffix}`)}>
-                <Avatar seed={a.name} url={resolveAvatar(a.avatarUrl, attachmentUrl)} size={20} /><span className="grow">{a.displayName || a.name}</span><span className={"dot " + a.status} role="img" aria-label={t("members.statusLabel", { status: a.status })} title={a.status} />
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </>
   );
 }
 

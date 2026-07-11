@@ -1,92 +1,29 @@
-// Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
+// Temporary A2.4 Machine routes plus the /api/servers Space compatibility alias.
 import type { UserCtx, ServerCtx } from "./ctx.js";
-import { and, count, eq, gt, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
-import { allWorkspaceDbs, dbFor, schema } from "../../db/index.js";
-import { findServerBySlug } from "../../db/lookup.js";
-import { SpaceServiceError, updateLocalSpace } from "../../spaces/spaceService.js";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { dbFor, schema } from "../../db/index.js";
 import { hashToken, newKey } from "../auth.js";
-import { can, capabilitiesFor, requireCap } from "../capabilities.js";
-import { createServer } from "../core.js";
 import { publish } from "../realtime.js";
 import { DYNAMIC_RUNTIMES, getDynamicModels } from "../runtimeModels.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { createRequire } from "node:module";
+import { handleSpacesUserScope } from "./spaces.js";
 
 // Single source of truth for the newest published daemon version (packages/daemon/package.json). The web client
 // compares each machine's reported daemonVersion against this to raise an "outdated daemon" system alert. Falls
-// back to "" — a safe no-op that raises no outdated alert — if the file isn't reachable in the current layout.
+// Fall back to "" - a safe no-op that raises no outdated alert - if the file is not reachable in the current layout.
 const LATEST_DAEMON_VERSION: string = (() => { try { return String(createRequire(import.meta.url)("../../../packages/daemon/package.json").version ?? ""); } catch { return ""; } })();
 
+const SIDEBAR_DEFAULTS = {
+  channelOrder: [] as string[], agentOrder: [] as string[], dmOrder: [] as string[],
+  channelSortMode: "manual", jointChannelSortMode: "manual", dmSortMode: "manual", pinnedSortMode: "manual",
+  pinnedChannelIds: [] as string[], pinnedAgentIds: [] as string[], pinnedOrder: [] as string[],
+  hiddenDmIds: [] as string[], channelPanelTabOrder: [] as string[], agentPanelTabOrder: [] as string[],
+};
+
 export async function handleServersUserScope(ctx: UserCtx): Promise<boolean> {
-  const { req, res, method, p, userId } = ctx;
-  if (p === "/api/servers" && method === "GET") {
-    const out: Record<string, unknown>[] = [];
-    for (const { db } of allWorkspaceDbs()) {
-      const mem = (await db.select().from(schema.serverMembers).where(eq(schema.serverMembers.userId, userId)))[0];
-      if (!mem) continue;
-      const server = (await db.select().from(schema.servers).where(eq(schema.servers.id, mem.serverId)))[0];
-      if (server) out.push({ id: server.id, name: server.name, slug: server.slug, avatarUrl: server.avatarUrl, role: mem.role, capabilities: capabilitiesFor(mem.role) });
-    }
-    return (sendJson(res, 200, out), true);
-  }
-  // Create workspace (community). No x-server-id needed: the server does not exist yet; creator becomes owner.
-  if (p === "/api/servers" && method === "POST") {
-    const b = await readJson(req);
-    const name = String(b.name ?? "").trim();
-    if (!name) return (sendErr(res, 400, "name required"), true);
-    const base = String(b.slug ?? name).trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "community";
-    let slug = base; // slug must be unique: append -N suffix on collision
-    for (let n = 2; await findServerBySlug(slug); n++) slug = `${base}-${n}`;
-    const rootPath = typeof b.rootPath === "string" && b.rootPath.trim() ? b.rootPath.trim() : undefined;
-    const srv = await createServer(name, slug, userId, { rootPath });
-    // Return role + capabilities (creator is owner) so the client can optimistically activate the new workspace
-    // without a re-fetch — mirrors the GET /api/servers shape. Enables instant client-side nav (no full-page reload).
-    return (sendJson(res, 200, { id: srv.id, name: srv.name, slug: srv.slug, role: "owner", capabilities: capabilitiesFor("owner") }), true);
-  }
-  // Cross-server unread aggregation: server switcher badge. No x-server-id; placed before the :id regex to avoid being consumed by it.
-  if (p === "/api/servers/unread-summary" && method === "GET") {
-    const perServer: Record<string, number> = {};
-    const memberIds: string[] = [];
-    for (const { db } of allWorkspaceDbs()) {
-      const mems = await db.select().from(schema.serverMembers).where(eq(schema.serverMembers.userId, userId));
-      memberIds.push(...mems.map((m) => m.serverId));
-      const myCms = await db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, userId)));
-      if (myCms.length) {
-        const chs = await db.select({ id: schema.channels.id, serverId: schema.channels.serverId, type: schema.channels.type, deletedAt: schema.channels.deletedAt }).from(schema.channels).where(inArray(schema.channels.id, myCms.map((c) => c.channelId)));
-        const chById = new Map(chs.filter((c) => !c.deletedAt).map((c) => [c.id, c]));
-        for (const cm of myCms) {
-          const ch = chById.get(cm.channelId); if (!ch) continue;
-          if (ch.type === "thread" && cm.threadDoneAt) continue;
-          const [r] = await db.select({ n: count() }).from(schema.messages).where(and(eq(schema.messages.channelId, cm.channelId), gt(schema.messages.seq, cm.lastReadSeq), or(isNull(schema.messages.senderId), ne(schema.messages.senderId, userId))));
-          perServer[ch.serverId] = (perServer[ch.serverId] ?? 0) + Number(r?.n ?? 0);
-        }
-      }
-    }
-    return (sendJson(res, 200, memberIds.map((serverId) => ({ serverId, unreadCount: perServer[serverId] ?? 0 }))), true);
-  }
-  const srv = /^\/api\/servers\/([^/]+)$/.exec(p);
-  if (srv && (method === "GET" || method === "PATCH")) {
-    const db = (() => { try { return dbFor(srv[1]!); } catch { return null; } })();
-    if (!db) return (sendErr(res, 404, "not found"), true);
-    const mem = (await db.select().from(schema.serverMembers).where(and(eq(schema.serverMembers.serverId, srv[1]!), eq(schema.serverMembers.userId, userId))))[0];
-    if (!mem) return (sendErr(res, 403, "not a member"), true);
-    if (method === "PATCH") {
-      if (!can(mem.role, "manageServer")) return (sendErr(res, 403, "need manageServer capability"), true);
-      const body = await readJson(req);
-      if (body.name !== undefined || body.slug !== undefined) {
-        try {
-          await updateLocalSpace(srv[1]!, { name: body.name, slug: body.slug });
-        } catch (error) {
-          if (!(error instanceof SpaceServiceError)) throw error;
-          const status = error.code === "SPACE_SLUG_CONFLICT" ? 409 : error.code === "SPACE_NOT_FOUND" ? 404 : 400;
-          return (sendErr(res, status, error.message, { code: error.code }), true);
-        }
-      }
-    }
-    const s = (await db.select().from(schema.servers).where(eq(schema.servers.id, srv[1]!)))[0];
-    return (s ? sendJson(res, 200, { id: s.id, name: s.name, slug: s.slug, plan: s.plan, role: mem.role, createdAt: s.createdAt }) : sendErr(res, 404, "not found"), true);
-  }
-  return false;
+  const canonicalPath = ctx.p.replace(/^\/api\/servers(?=\/|$)/, "/api/spaces");
+  return handleSpacesUserScope({ ...ctx, p: canonicalPath });
 }
 
 export async function handleServersServerScope(ctx: ServerCtx): Promise<boolean> {
@@ -97,7 +34,7 @@ export async function handleServersServerScope(ctx: ServerCtx): Promise<boolean>
     const machineId = rm[1]!, runtime = rm[2]!;
     // The static lists below are the FALLBACK. opencode/cursor/pi are probed live on the machine (further
     // down) and only use these on miss/offline/timeout. claude/codex use their native CLI (no gateway
-    // model list), so their catalog is curated here. copilot/kimi have no list command — live per-account
+    // model list), so their catalog is curated here. copilot/kimi have no list command; live per-account
     // discovery would need an ACP probe (tracked in docs/tech-debt-tracker.md); "auto" is first/default
     // for copilot so it picks an accessible model (one the account lacks fails loudly at runtime).
     const MODELS: Record<string, { id: string; label: string }[]> = {
@@ -123,7 +60,7 @@ export async function handleServersServerScope(ctx: ServerCtx): Promise<boolean>
     // Live discovery for runtimes whose CLI lists its own models: ask THAT machine's daemon to probe,
     // cache briefly, serve the static list on any miss/offline/timeout (machineId "none" = unbound agent).
     // Tenant isolation: machineId is client-supplied, so confirm it belongs to THIS server before routing
-    // a probe to it — otherwise a cross-tenant id could enumerate another server's machine model list.
+    // a probe to it; otherwise a cross-tenant id could enumerate another server's machine model list.
     if (DYNAMIC_RUNTIMES.has(runtime) && machineId !== "none") {
       const owns = (await db.select().from(schema.machines).where(and(eq(schema.machines.id, machineId), eq(schema.machines.serverId, serverId))))[0];
       if (owns) {
@@ -133,114 +70,45 @@ export async function handleServersServerScope(ctx: ServerCtx): Promise<boolean>
     }
     return (sendJson(res, 200, { models: MODELS[runtime] ?? [{ id: "default", label: "Default" }] }), true);
   }
-  // Reminders (read-only for users): reminders can only be created by the agent side via CLI; user side GETs to list them. ?ownerAgentId=&status=scheduled
-  const mprof = /^\/api\/servers\/[^/]+\/members\/([^/]+)\/profile$/.exec(p);
-  if (mprof && method === "GET") {
-    const uid = mprof[1]!;
-    const mem = (await db.select().from(schema.serverMembers).where(and(eq(schema.serverMembers.serverId, serverId), eq(schema.serverMembers.userId, uid))))[0];
-    const u = mem ? (await db.select().from(schema.users).where(eq(schema.users.id, uid)))[0] : null;
-    if (!mem || !u) return (sendErr(res, 404, "member not found"), true);
-    const created = await db.select().from(schema.agents).where(and(eq(schema.agents.serverId, serverId), eq(schema.agents.creatorId, uid), isNull(schema.agents.deletedAt))); // exclude soft-deleted agents, same as GET /api/agents — otherwise deleted agents leak into the profile's "Created Agents" card
+  const machinesRoute = /^\/api\/servers\/[^/]+\/machines$/.exec(p);
+  if (machinesRoute && method === "GET") {
+    const machines = await db.select().from(schema.machines).where(eq(schema.machines.serverId, serverId));
     return (sendJson(res, 200, {
-      userId: u.id, name: u.name, displayName: u.displayName, description: u.description,
-      avatarUrl: u.avatarUrl, email: u.email, gravatarHash: u.gravatarHash,
-      role: mem.role, joinedAt: mem.joinedAt,
-      createdAgents: created.map((a) => ({ id: a.id, name: a.name, displayName: a.displayName, avatarUrl: a.avatarUrl, runtime: a.runtime, status: a.status })),
+      machines: machines.map((machine) => ({
+        id: machine.id,
+        name: machine.name,
+        hostname: machine.hostname,
+        os: machine.os,
+        runtimes: machine.runtimes,
+        status: machine.status,
+        daemonVersion: machine.daemonVersion,
+        isComputer: machine.isComputer,
+        apiKeyPrefix: machine.apiKeyPrefix,
+        lastHeartbeat: machine.lastHeartbeat,
+      })),
+      latestDaemonVersion: LATEST_DAEMON_VERSION,
     }), true);
   }
-  // Join links (/servers/:id/join-links, manageMembers). serverId comes from middleware (x-server-id).
-  const jl = /^\/api\/servers\/[^/]+\/join-links$/.exec(p);
-  if (jl && (method === "GET" || method === "POST")) {
-    if (!await requireCap(serverId, userId, "manageMembers")) return (sendErr(res, 403, "need manageMembers capability"), true);
-    if (method === "GET") {
-      const links = await db.select().from(schema.joinLinks).where(eq(schema.joinLinks.serverId, serverId));
-      return (sendJson(res, 200, links.map((l) => ({ id: l.id, token: l.token, role: l.role, maxUses: l.maxUses, useCount: l.useCount, expiresAt: l.expiresAt, createdAt: l.createdAt }))), true);
-    }
-    const b = await readJson(req);
-    const role = b.role === "admin" ? "admin" : "member"; // joining via link only grants admin/member; never owner (prevents privilege escalation via leaked link)
-    const [link] = await db.insert(schema.joinLinks).values({ serverId, token: newKey("inv_"), createdByUserId: userId, role, maxUses: b.maxUses != null ? Number(b.maxUses) : null, expiresAt: b.expiresAt ? new Date(b.expiresAt) : null }).returning();
-    return (sendJson(res, 200, { id: link!.id, token: link!.token, role: link!.role, maxUses: link!.maxUses, useCount: 0, expiresAt: link!.expiresAt, createdAt: link!.createdAt }), true);
-  }
-  const jld = /^\/api\/servers\/[^/]+\/join-links\/([^/]+)$/.exec(p);
-  if (jld && method === "DELETE") {
-    if (!await requireCap(serverId, userId, "manageMembers")) return (sendErr(res, 403, "need manageMembers capability"), true);
-    await db.delete(schema.joinLinks).where(and(eq(schema.joinLinks.id, jld[1]!), eq(schema.joinLinks.serverId, serverId)));
-    return (sendJson(res, 200, { ok: true }), true);
-  }
-  // Member role management (PATCH/DELETE /servers/:id/members/:uid). Constraints: matching capability + cannot modify self + last owner cannot be demoted or removed.
-  const mrole = /^\/api\/servers\/[^/]+\/members\/([^/]+)$/.exec(p);
-  if (mrole && (method === "PATCH" || method === "DELETE")) {
-    const cap = method === "PATCH" ? "changeMemberRoles" : "manageMembers";
-    if (!await requireCap(serverId, userId, cap)) return (sendErr(res, 403, `need ${cap} capability`), true);
-    const targetId = mrole[1]!;
-    if (targetId === userId) return (sendErr(res, 400, "cannot change your own membership"), true);
-    const target = (await db.select().from(schema.serverMembers).where(and(eq(schema.serverMembers.serverId, serverId), eq(schema.serverMembers.userId, targetId))))[0];
-    if (!target) return (sendErr(res, 404, "member not found"), true);
-    if (target.role === "owner") { // last owner guard
-      const owners = await db.select().from(schema.serverMembers).where(and(eq(schema.serverMembers.serverId, serverId), eq(schema.serverMembers.role, "owner")));
-      if (owners.length <= 1) return (sendErr(res, 400, "cannot demote/remove the last owner"), true);
-    }
-    if (method === "PATCH") {
-      const b = await readJson(req);
-      if (!["owner", "admin", "member"].includes(b.role)) return (sendErr(res, 400, "invalid role"), true);
-      await db.update(schema.serverMembers).set({ role: b.role }).where(and(eq(schema.serverMembers.serverId, serverId), eq(schema.serverMembers.userId, targetId)));
-      await publish(serverId, { type: "server:members-updated" });
-      return (sendJson(res, 200, { ok: true, role: b.role }), true);
-    }
-    // DELETE: remove member (also removes them from all channels in this server)
-    const chs = await db.select({ id: schema.channels.id }).from(schema.channels).where(eq(schema.channels.serverId, serverId));
-    if (chs.length) await db.delete(schema.channelMembers).where(and(eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, targetId), inArray(schema.channelMembers.channelId, chs.map((c) => c.id))));
-    await db.delete(schema.serverMembers).where(and(eq(schema.serverMembers.serverId, serverId), eq(schema.serverMembers.userId, targetId)));
-    await publish(serverId, { type: "server:members-updated" });
-    return (sendJson(res, 200, { ok: true }), true);
-  }
-  let mm = /^\/api\/servers\/[^/]+\/(members|machines)$/.exec(p);
-  if (mm && method === "GET") {
-    if (mm[1] === "members") {
-      const rows = await db.select().from(schema.serverMembers).where(eq(schema.serverMembers.serverId, serverId));
-      const uids = rows.map((r) => r.userId);
-      const users = uids.length ? await db.select().from(schema.users).where(inArray(schema.users.id, uids)) : [];
-      return (sendJson(res, 200, users.map((u) => ({ userId: u.id, name: u.name, displayName: u.displayName, description: u.description, avatarUrl: u.avatarUrl, role: rows.find((r) => r.userId === u.id)?.role }))), true);
-    }
-    const machines = await db.select().from(schema.machines).where(eq(schema.machines.serverId, serverId));
-    return (sendJson(res, 200, { machines: machines.map((m) => ({ id: m.id, name: m.name, hostname: m.hostname, os: m.os, runtimes: m.runtimes, status: m.status, daemonVersion: m.daemonVersion, isComputer: m.isComputer, apiKeyPrefix: m.apiKeyPrefix, lastHeartbeat: m.lastHeartbeat })), latestDaemonVersion: LATEST_DAEMON_VERSION }), true);
-  }
-  // Notification settings (GET/PATCH /api/servers/:id/notification-settings): per-user push mute setting for this server
-  const nset = /^\/api\/servers\/[^/]+\/notification-settings$/.exec(p);
-  if (nset && (method === "GET" || method === "PATCH" || method === "PUT")) {
-    if (method !== "GET") {
-      const b = await readJson(req).catch(() => ({}));
-      if (typeof b.serverPushMuted === "boolean") {
-        await db.update(schema.serverMembers).set({ pushMuted: b.serverPushMuted }).where(and(eq(schema.serverMembers.serverId, serverId), eq(schema.serverMembers.userId, userId)));
-      }
-    }
-    const mrow = (await db.select().from(schema.serverMembers).where(and(eq(schema.serverMembers.serverId, serverId), eq(schema.serverMembers.userId, userId))))[0];
-    return (sendJson(res, 200, { serverPushMuted: mrow?.pushMuted ?? false }), true);
-  }
-  // Sidebar preferences (GET/PUT /api/servers/:id/sidebar-order): pin / sort / hide DMs, per user per server.
-  const sbo = /^\/api\/servers\/[^/]+\/sidebar-order$/.exec(p);
-  if (sbo && (method === "GET" || method === "PUT" || method === "PATCH")) {
-    const DEFAULTS = {
-      channelOrder: [] as string[], agentOrder: [] as string[], dmOrder: [] as string[],
-      channelSortMode: "manual", jointChannelSortMode: "manual", dmSortMode: "manual", pinnedSortMode: "manual",
-      pinnedChannelIds: [] as string[], pinnedAgentIds: [] as string[], pinnedOrder: [] as string[],
-      hiddenDmIds: [] as string[], channelPanelTabOrder: [] as string[], agentPanelTabOrder: [] as string[],
-    };
-    if (method !== "GET") {
-      const b = await readJson(req).catch(() => ({}));
-      const cur = (await db.select().from(schema.serverSidebarPrefs).where(and(eq(schema.serverSidebarPrefs.serverId, serverId), eq(schema.serverSidebarPrefs.userId, userId))))[0];
-      const merged = { ...DEFAULTS, ...(cur?.prefs as object ?? {}), ...(b && typeof b === "object" ? b : {}) };
-      await db.insert(schema.serverSidebarPrefs).values({ serverId, userId, prefs: merged })
-        .onConflictDoUpdate({ target: [schema.serverSidebarPrefs.serverId, schema.serverSidebarPrefs.userId], set: { prefs: merged, updatedAt: new Date() } });
-      return (sendJson(res, 200, merged), true);
-    }
-    const row = (await db.select().from(schema.serverSidebarPrefs).where(and(eq(schema.serverSidebarPrefs.serverId, serverId), eq(schema.serverSidebarPrefs.userId, userId))))[0];
-    return (sendJson(res, 200, { ...DEFAULTS, ...(row?.prefs as object ?? {}) }), true);
+  // Temporary storage for the one Human's per-Space sidebar ordering. This is UI state, not membership/RBAC.
+  const sidebarOrder = /^\/api\/servers\/[^/]+\/sidebar-order$/.exec(p);
+  if (sidebarOrder && (method === "GET" || method === "PUT" || method === "PATCH")) {
+    const row = (await db.select().from(schema.serverSidebarPrefs).where(and(
+      eq(schema.serverSidebarPrefs.serverId, serverId),
+      eq(schema.serverSidebarPrefs.userId, userId),
+    )))[0];
+    if (method === "GET") return (sendJson(res, 200, { ...SIDEBAR_DEFAULTS, ...(row?.prefs as object ?? {}) }), true);
+    const body = await readJson(req).catch(() => ({}));
+    const prefs = { ...SIDEBAR_DEFAULTS, ...(row?.prefs as object ?? {}), ...(body && typeof body === "object" ? body : {}) };
+    await db.insert(schema.serverSidebarPrefs).values({ serverId, userId, prefs })
+      .onConflictDoUpdate({
+        target: [schema.serverSidebarPrefs.serverId, schema.serverSidebarPrefs.userId],
+        set: { prefs, updatedAt: new Date() },
+      });
+    return (sendJson(res, 200, prefs), true);
   }
   // Connect a machine (add computer flow): generate sk_machine_* key + pre-create offline machine record
   // Key is returned in plaintext exactly once; daemon uses it to connect via /daemon/connect?key=; onReady claims this row by apiKeyHash
-  if (mm && mm[1] === "machines" && method === "POST") {
-    if (!await requireCap(serverId, userId, "manageMachines")) return (sendErr(res, 403, "need manageMachines capability"), true);
+  if (machinesRoute && method === "POST") {
     const b = await readJson(req).catch(() => ({}));
     const name = String(b.name ?? "").trim() || "new machine";
     const key = newKey("sk_machine_");
@@ -250,11 +118,10 @@ export async function handleServersServerScope(ctx: ServerCtx): Promise<boolean>
     return (sendJson(res, 200, { id: m!.id, name: m!.name, apiKeyPrefix: m!.apiKeyPrefix, key }), true);
   }
   // Reconnect a machine: rotate the connection key on the SAME row. Lets an offline machine whose one-time
-  // key was lost come back online without spawning a duplicate row (the old key stops resolving → its daemon
+  // key was lost come back online without spawning a duplicate row (the old key stops resolving, so its daemon
   // gets a permanent-rejection close). Returns the new key in plaintext exactly once, same shape as create.
   const recon = /^\/api\/servers\/[^/]+\/machines\/([^/]+)\/reconnect$/.exec(p);
   if (recon && method === "POST") {
-    if (!await requireCap(serverId, userId, "manageMachines")) return (sendErr(res, 403, "need manageMachines capability"), true);
     const mid = recon[1]!;
     const m = (await db.select().from(schema.machines).where(and(eq(schema.machines.id, mid), eq(schema.machines.serverId, serverId))))[0];
     if (!m) return (sendErr(res, 404, "machine not found"), true);
@@ -266,15 +133,14 @@ export async function handleServersServerScope(ctx: ServerCtx): Promise<boolean>
     return (sendJson(res, 200, { id: m.id, name: m.name, apiKeyPrefix: key.slice(0, 14), key }), true);
   }
   // Rename a machine: set a human-friendly display name. Tenant-isolated (machineId must belong to
-  // the path's server) and gated on manageMachines — same guard shape as reconnect/delete above.
+  // the path's server); it uses the same guard shape as reconnect/delete above.
   const renm = /^\/api\/servers\/[^/]+\/machines\/([^/]+)$/.exec(p);
   if (renm && method === "PATCH") {
-    if (!await requireCap(serverId, userId, "manageMachines")) return (sendErr(res, 403, "need manageMachines capability"), true);
     const mid = renm[1]!;
     const b = await readJson(req).catch(() => ({}));
-    // name must be a real string — reject non-string payloads (e.g. 12345) instead of coercing them.
+    // name must be a real string; reject non-string payloads (e.g. 12345) instead of coercing them.
     const name = typeof b.name === "string" ? b.name.trim() : "";
-    if (!name || name.length > 80) return (sendErr(res, 400, "name must be a string of 1–80 characters"), true);
+    if (!name || name.length > 80) return (sendErr(res, 400, "name must be a string of 1-80 characters"), true);
     const m = (await db.select().from(schema.machines).where(and(eq(schema.machines.id, mid), eq(schema.machines.serverId, serverId))))[0];
     if (!m) return (sendErr(res, 404, "machine not found"), true);
     const [u] = await db.update(schema.machines).set({ name }).where(eq(schema.machines.id, mid)).returning();
@@ -284,14 +150,13 @@ export async function handleServersServerScope(ctx: ServerCtx): Promise<boolean>
   // before deleting. Wrapped in a transaction to reduce (but not fully eliminate under READ
   // COMMITTED) the TOCTOU window between the live-agent check and the delete.
   //
-  // Bug (I66): agents.machineId → machines.id FK has no onDelete action (= RESTRICT). Soft-
+  // Bug (I66): agents.machineId -> machines.id FK has no onDelete action (= RESTRICT). Soft-
   // deleted agent rows (deletedAt IS NOT NULL) still physically reference the machine. The
-  // original guard only counted WHERE deletedAt IS NULL — zero live agents → guard passed →
-  // db.delete(machines) hit FK constraint → PG 23503 → 500 "internal". Fix: null out machineId
+  // original guard only counted WHERE deletedAt IS NULL: zero live agents -> guard passed ->
+  // db.delete(machines) hit FK constraint -> PG 23503 -> 500 "internal". Fix: null out machineId
   // on any remaining soft-deleted agents inside the transaction before deleting the machine.
   const dmach = /^\/api\/servers\/[^/]+\/machines\/([^/]+)$/.exec(p);
   if (dmach && method === "DELETE") {
-    if (!await requireCap(serverId, userId, "manageMachines")) return (sendErr(res, 403, "need manageMachines capability"), true);
     const mid = dmach[1]!;
     const m = (await db.select().from(schema.machines).where(and(eq(schema.machines.id, mid), eq(schema.machines.serverId, serverId))))[0];
     if (!m) return (sendErr(res, 404, "machine not found"), true);

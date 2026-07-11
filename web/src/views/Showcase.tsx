@@ -77,7 +77,7 @@ function ShowcaseMsg({ line, task, attachment, replyCount, onOpenThread }: {
       <div className="msg-col">
         <div className="msg-head">
           <span className="who" title={title || undefined}>{senderName}</span>
-          {role ? <span className="msg-role" title={title}>{role}</span> : <span className="member-badge">{t("chat.memberKind")}</span>}
+          {role ? <span className="msg-role" title={title}>{role}</span> : <span className="member-badge">{t("chat.humanKind")}</span>}
         </div>
         {!!line.content && <div className="mbody"><MessageContent content={line.content} mentions={[]} channels={[]} nav={noNav} /></div>}
         {attachment && <ShowcaseAtt att={attachment} />}

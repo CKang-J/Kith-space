@@ -13,14 +13,10 @@ test("serves the app shell for real client-side routes", () => {
     "/",
     "/features",
     "/features/",
-    "/login",
-    "/login/",
-    "/register",
-    "/register/",
-    "/join/invite-token",
     "/s/kith-space",
     "/s/kith-space/channel",
     "/s/kith-space/agent/123",
+    "/s/kith-space/settings/account",
   ]) {
     assert.equal(shouldServeAppShell(pathname), true, pathname);
   }

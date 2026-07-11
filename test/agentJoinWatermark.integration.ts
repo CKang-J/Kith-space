@@ -1,125 +1,173 @@
-// Real end-to-end verification that an agent joining a channel with pre-existing history starts "caught up"
-// at the channel watermark, instead of inheriting lastReadSeq=0 (which floods its first `message check` with
-// every pre-join message). Runs against isolated SQLite; no external services required.
-//
-// Covers two join paths:
-//   A) @-mention auto-join (createMessage path) — watermark MUST exclude the triggering @ message, so the agent
-//      still sees the @ that pulled it in, but not the channel's prior backlog.
-//   B) direct add (addChannelMembers helper — the path agent-create→#all / CLI join / admin add-member share) —
-//      watermark = the channel's current max seq, so zero pre-join backlog is unread.
-// Also asserts forward delivery is intact (a message sent AFTER join is still counted unread) and that a USER
-// joining is unaffected (lastReadSeq stays 0 — human UI unread behaviour unchanged).
-import { and, eq, gt, ne, desc, or, isNull } from "drizzle-orm";
+// Agent join watermark contract:
+// - an agent auto-joined by @mention sees the triggering message, not older backlog
+// - a directly added agent starts caught up at the current channel watermark
+// - messages sent after either join remain unread for that agent
+import { and, desc, eq, gt, isNull, ne, or } from "drizzle-orm";
+import { initializeHumanProfile } from "../src/app-data/appDatabase.ts";
+import { addChannelMembers, createMessage } from "../src/server/core.ts";
 import { integrationDatabase } from "./helpers/workspace.ts";
-import { createMessage, addChannelMembers } from "../src/server/core.ts";
 
 const ts = Date.now();
-const owner = `owner_${ts}`, ghostA = `ghostA_${ts}`, botB = `botB_${ts}`, userC = `userC_${ts}`;
-
+const ghostName = `ghostA_${ts}`;
+const directName = `botB_${ts}`;
 const fixture = integrationDatabase("agent-join-watermark");
 const { db, schema, rootPath } = fixture;
-let serverId = fixture.serverId, ownerId = "", ghostAId = "", botBId = "", userCId = "";
-let chA = "", chB = "";
-let failures = 0;
-const check = (label: string, cond: boolean, detail = "") => { console.log(`  ${cond ? "✔" : "✗ FAIL"} ${label}${detail ? `  — ${detail}` : ""}`); if (!cond) failures++; };
 
-async function memberRow(channelId: string, type: string, id: string) {
-  return (await db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.channelId, channelId), eq(schema.channelMembers.memberType, type), eq(schema.channelMembers.memberId, id))))[0];
+let serverId = fixture.serverId;
+let humanId = "";
+let ghostId = "";
+let directId = "";
+let mentionChannelId = "";
+let directChannelId = "";
+let failures = 0;
+
+const check = (label: string, condition: boolean, detail = "") => {
+  console.log(`  ${condition ? "PASS" : "FAIL"} ${label}${detail ? ` - ${detail}` : ""}`);
+  if (!condition) failures++;
+};
+
+async function memberRow(channelId: string, memberType: "agent" | "user", memberId: string) {
+  return (await db.select().from(schema.channelMembers).where(and(
+    eq(schema.channelMembers.channelId, channelId),
+    eq(schema.channelMembers.memberType, memberType),
+    eq(schema.channelMembers.memberId, memberId),
+  )))[0];
 }
+
 async function channelMaxSeq(channelId: string): Promise<number> {
-  const [r] = await db.select({ seq: schema.messages.seq }).from(schema.messages).where(eq(schema.messages.channelId, channelId)).orderBy(desc(schema.messages.seq)).limit(1);
-  return r?.seq ?? 0;
+  const [row] = await db.select({ seq: schema.messages.seq }).from(schema.messages)
+    .where(eq(schema.messages.channelId, channelId))
+    .orderBy(desc(schema.messages.seq))
+    .limit(1);
+  return row?.seq ?? 0;
 }
-// Unread as `message check` / reconnectCatchup compute it: seq > lastReadSeq, excluding the agent's own messages.
+
 async function unreadCount(channelId: string, agentId: string, lastReadSeq: number): Promise<number> {
-  const rows = await db.select({ id: schema.messages.id }).from(schema.messages)
-    .where(and(eq(schema.messages.channelId, channelId), gt(schema.messages.seq, lastReadSeq), or(isNull(schema.messages.senderId), ne(schema.messages.senderId, agentId))));
+  const rows = await db.select({ id: schema.messages.id }).from(schema.messages).where(and(
+    eq(schema.messages.channelId, channelId),
+    gt(schema.messages.seq, lastReadSeq),
+    or(isNull(schema.messages.senderId), ne(schema.messages.senderId, agentId)),
+  ));
   return rows.length;
 }
+
 async function post(channelId: string, content: string) {
-  return createMessage({ serverId, channelId, senderType: "user", senderId: ownerId, senderName: owner, content });
+  return createMessage({
+    serverId,
+    channelId,
+    senderType: "user",
+    senderId: humanId,
+    senderName: "Ada",
+    content,
+  });
 }
 
 async function setup() {
-  const [u1] = await db.insert(schema.users).values({ name: owner, displayName: "Owner", email: `${owner}@t.local` }).returning();
-  ownerId = u1!.id;
-  const [u3] = await db.insert(schema.users).values({ name: userC, displayName: "UserC", email: `${userC}@t.local` }).returning();
-  userCId = u3!.id;
-  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "T", slug: `t-${ts}`, ownerId, rootPath }).returning();
-  serverId = srv!.id;
-  await db.insert(schema.serverMembers).values([
-    { serverId, userId: ownerId, role: "owner" },
-    { serverId, userId: userCId, role: "member" },
+  const human = initializeHumanProfile({ name: "Ada", email: `ada-${ts}@test.local` });
+  humanId = human.id;
+  await db.insert(schema.users).values({
+    id: humanId,
+    name: "you",
+    displayName: human.name,
+    email: human.email!,
+  });
+  await db.insert(schema.servers).values({
+    id: serverId,
+    name: "Agent Join Watermark",
+    slug: `agent-join-watermark-${ts}`,
+    ownerId: humanId,
+    rootPath,
+  });
+
+  const [ghost, direct] = await db.insert(schema.agents).values([
+    { serverId, name: ghostName, displayName: "Ghost A", creatorId: humanId },
+    { serverId, name: directName, displayName: "Bot B", creatorId: humanId },
+  ]).returning();
+  ghostId = ghost!.id;
+  directId = direct!.id;
+
+  const [mentionChannel, directChannel] = await db.insert(schema.channels).values([
+    { serverId, name: `mention-${ts}`, type: "channel" },
+    { serverId, name: `direct-${ts}`, type: "channel" },
+  ]).returning();
+  mentionChannelId = mentionChannel!.id;
+  directChannelId = directChannel!.id;
+  await db.insert(schema.channelMembers).values([
+    { channelId: mentionChannelId, memberType: "user", memberId: humanId },
+    { channelId: directChannelId, memberType: "user", memberId: humanId },
   ]);
-  const [ag] = await db.insert(schema.agents).values({ serverId, name: ghostA, displayName: "GhostA" }).returning();
-  ghostAId = ag!.id;
-  const [ag2] = await db.insert(schema.agents).values({ serverId, name: botB, displayName: "BotB" }).returning();
-  botBId = ag2!.id;
-  // Channel A (mention path) + Channel B (direct-add path): owner is the only member, both get 3 history messages.
-  const [c1] = await db.insert(schema.channels).values({ serverId, name: `cha-${ts}`, type: "channel" }).returning();
-  chA = c1!.id;
-  await db.insert(schema.channelMembers).values({ channelId: chA, memberType: "user", memberId: ownerId });
-  const [c2] = await db.insert(schema.channels).values({ serverId, name: `chb-${ts}`, type: "channel" }).returning();
-  chB = c2!.id;
-  await db.insert(schema.channelMembers).values({ channelId: chB, memberType: "user", memberId: ownerId });
-  for (const ch of [chA, chB]) for (const n of [1, 2, 3]) await post(ch, `history ${n} in ${ch.slice(0, 4)}`);
+
+  for (const channelId of [mentionChannelId, directChannelId]) {
+    for (const index of [1, 2, 3]) await post(channelId, `history ${index}`);
+  }
 }
 
 async function cleanup() {
-  const chans = await db.select({ id: schema.channels.id }).from(schema.channels).where(eq(schema.channels.serverId, serverId));
-  const msgs = await db.select({ id: schema.messages.id }).from(schema.messages).where(eq(schema.messages.serverId, serverId));
-  for (const m of msgs) await db.delete(schema.messageMentions).where(eq(schema.messageMentions.messageId, m.id));
+  const channels = await db.select({ id: schema.channels.id }).from(schema.channels)
+    .where(eq(schema.channels.serverId, serverId));
+  const messages = await db.select({ id: schema.messages.id }).from(schema.messages)
+    .where(eq(schema.messages.serverId, serverId));
+  for (const message of messages) {
+    await db.delete(schema.messageMentions).where(eq(schema.messageMentions.messageId, message.id));
+  }
   await db.delete(schema.messages).where(eq(schema.messages.serverId, serverId));
-  for (const c of chans) await db.delete(schema.channelMembers).where(eq(schema.channelMembers.channelId, c.id));
+  for (const channel of channels) {
+    await db.delete(schema.channelMembers).where(eq(schema.channelMembers.channelId, channel.id));
+  }
   await db.delete(schema.channels).where(eq(schema.channels.serverId, serverId));
   await db.delete(schema.agents).where(eq(schema.agents.serverId, serverId));
-  await db.delete(schema.serverMembers).where(eq(schema.serverMembers.serverId, serverId));
   await db.delete(schema.servers).where(eq(schema.servers.id, serverId));
-  await db.delete(schema.users).where(eq(schema.users.id, ownerId));
-  await db.delete(schema.users).where(eq(schema.users.id, userCId));
+  await db.delete(schema.users).where(eq(schema.users.id, humanId));
 }
 
-async function run() {
+async function main() {
   await setup();
-  const preMaxA = await channelMaxSeq(chA);
-  const preMaxB = await channelMaxSeq(chB);
+  const directPreJoinMax = await channelMaxSeq(directChannelId);
 
-  // ── A) @-mention auto-join: the triggering @ message must stay unread; the 3 prior messages must be read.
-  const atMsg = await post(chA, `@${ghostA} please look`);
-  const mA = await memberRow(chA, "agent", ghostAId);
-  check("[A] @-mentioned agent auto-joined channel A", !!mA);
-  check("[A] watermark excludes the triggering @ (lastReadSeq == atSeq-1)", !!mA && mA.lastReadSeq === atMsg.seq - 1, `lastReadSeq=${mA?.lastReadSeq} atSeq=${atMsg.seq} preMax=${preMaxA}`);
-  const unreadA = await unreadCount(chA, ghostAId, mA?.lastReadSeq ?? 0);
-  check("[A] only the @ message is unread (pre-join backlog NOT re-read)", unreadA === 1, `unread=${unreadA} (expected 1)`);
-  // forward delivery intact: a message after join is still unread → total 2.
-  await post(chA, "after join 1");
-  const unreadA2 = await unreadCount(chA, ghostAId, mA?.lastReadSeq ?? 0);
-  check("[A] post-join message is still delivered (unread now 2)", unreadA2 === 2, `unread=${unreadA2} (expected 2)`);
+  const mention = await post(mentionChannelId, `@${ghostName} please look`);
+  const autoJoined = await memberRow(mentionChannelId, "agent", ghostId);
+  check("mentioned agent auto-joined", Boolean(autoJoined));
+  check(
+    "mention watermark excludes the triggering message",
+    autoJoined?.lastReadSeq === mention.seq - 1,
+    `lastReadSeq=${autoJoined?.lastReadSeq} mentionSeq=${mention.seq}`,
+  );
+  check(
+    "only the triggering mention is initially unread",
+    await unreadCount(mentionChannelId, ghostId, autoJoined?.lastReadSeq ?? 0) === 1,
+  );
+  await post(mentionChannelId, "after auto-join");
+  check(
+    "post-join message remains unread for auto-joined agent",
+    await unreadCount(mentionChannelId, ghostId, autoJoined?.lastReadSeq ?? 0) === 2,
+  );
 
-  // ── B) direct add via addChannelMembers: zero pre-join backlog unread, watermark == channel max seq.
-  await addChannelMembers(serverId, chB, [{ type: "agent", id: botBId }]);
-  const mB = await memberRow(chB, "agent", botBId);
-  check("[B] direct-added agent is a member of channel B", !!mB);
-  check("[B] watermark == channel max seq at join (lastReadSeq == preMax)", !!mB && mB.lastReadSeq === preMaxB, `lastReadSeq=${mB?.lastReadSeq} preMax=${preMaxB}`);
-  const unreadB = await unreadCount(chB, botBId, mB?.lastReadSeq ?? 0);
-  check("[B] zero pre-join backlog is unread", unreadB === 0, `unread=${unreadB} (expected 0)`);
-  await post(chB, "after join in B");
-  const unreadB2 = await unreadCount(chB, botBId, mB?.lastReadSeq ?? 0);
-  check("[B] post-join message is delivered (unread now 1)", unreadB2 === 1, `unread=${unreadB2} (expected 1)`);
-
-  // ── C) a USER added via the same helper keeps lastReadSeq=0 (human UI unread behaviour unchanged).
-  await addChannelMembers(serverId, chB, [{ type: "user", id: userCId }]);
-  const mC = await memberRow(chB, "user", userCId);
-  check("[C] user added via helper keeps lastReadSeq=0 (history visible as unread in UI)", !!mC && mC.lastReadSeq === 0, `lastReadSeq=${mC?.lastReadSeq} (expected 0)`);
-
-  void preMaxA;
+  await addChannelMembers(serverId, directChannelId, [{ type: "agent", id: directId }]);
+  const directlyAdded = await memberRow(directChannelId, "agent", directId);
+  check("directly added agent is a channel member", Boolean(directlyAdded));
+  check(
+    "direct add starts at the current channel watermark",
+    directlyAdded?.lastReadSeq === directPreJoinMax,
+    `lastReadSeq=${directlyAdded?.lastReadSeq} channelMax=${directPreJoinMax}`,
+  );
+  check(
+    "directly added agent has no pre-join unread backlog",
+    await unreadCount(directChannelId, directId, directlyAdded?.lastReadSeq ?? 0) === 0,
+  );
+  await post(directChannelId, "after direct add");
+  check(
+    "post-join message remains unread for directly added agent",
+    await unreadCount(directChannelId, directId, directlyAdded?.lastReadSeq ?? 0) === 1,
+  );
 }
 
-run()
-  .catch((e) => { console.error("ERROR", e); failures++; })
+main()
+  .catch((error) => {
+    console.error("ERROR", error);
+    failures++;
+  })
   .finally(async () => {
-    await cleanup().catch((e) => console.error("cleanup error", e));
-    console.log(failures ? `\n✗ ${failures} check(s) failed` : "\n✓ all checks passed");
-    await db.$client.end?.();
+    await cleanup().catch((error) => console.error("cleanup error", error));
+    console.log(failures ? `\n${failures} check(s) failed` : "\nall checks passed");
     process.exit(failures ? 1 : 0);
   });

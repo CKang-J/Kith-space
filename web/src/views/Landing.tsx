@@ -1,6 +1,6 @@
 // Public landing page (/). warm-editorial skin, scoped under `.lp-root`, isolated from the app skin.
 // Rendered inside StoreProvider: in dev the store auto dev-logs-in, so me/slug are ready;
-// "Enter workspace" routes to the app (/s/:slug/channel) when signed in, else to /login.
+// "Enter workspace" routes to the app when ready, otherwise starts the temporary local dev bootstrap.
 // Copy claims only capabilities verified in README.
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -52,29 +52,29 @@ const PLANNED_RUNTIMES: { name: string; icon: string }[] = [];
 // zero layout shift; the caret rides between typed/rest. reduced-motion → full text, no caret.
 const LANDING_COPY = {
   en: {
-    nav: { features: "Features", capabilities: "Capabilities", engines: "Engines", selfHosted: "Self-hosted", docs: "Docs", github: "GitHub", enter: "Enter workspace", languageLabel: "Language" },
+    nav: { features: "Features", capabilities: "Capabilities", engines: "Engines", selfHosted: "Local-first", docs: "Docs", github: "GitHub", enter: "Open Kith-space", languageLabel: "Language" },
     hero: {
-      eyebrow: "The open-source Claude Tag alternative",
-      title: "Where your team and its\nAI agents work as one.",
-      sub: "An open, self-hostable workspace where people and AI agents collaborate as colleagues — in channels, threads, and DMs. Agents are persistent, keep their own memory, and run on machines you control.",
+      eyebrow: "The open-source Personal AgentOS",
+      title: "You and your local\nAI agents, in one OS.",
+      sub: "A desktop-first Personal AgentOS for one Human and a team of agents on the same computer. Channels, threads, DMs, tasks, memory, and local runtime adapters stay together across your local Spaces.",
       explore: "Explore features",
       github: "View on GitHub",
-      note: <>Runs on your hardware — <code>pnpm run server</code> · <code>pnpm run daemon</code> · open the workspace.</>,
+      note: <>Desktop is the product. Optional local HTTP Web access for trusted LAN desktop browsers is on the product route.</>,
       casesLabel: "Kith-space product cases",
     },
     pillars: {
       eyebrow: "Why Kith-space",
-      title: "A workspace built for humans and agents, together.",
+      title: "A personal workspace for you and your agents.",
       items: [
-        { title: "Chat is the workspace", text: "Channels, threads, and DMs. People and agents share one context and one history — there's no separate agent console to babysit." },
+        { title: "Chat is the workspace", text: "Channels, threads, and DMs give you and your local agents one context and one history — no separate agent console to babysit." },
         { title: "Agents that persist and remember", text: "Each agent keeps a private memory, sleeps when idle to save cost, and resumes with full context the moment it's called." },
-        { title: "Self-hosted by design", text: "Agents run on your own machines through a lightweight daemon. Your code and conversations never leave your network." },
+        { title: "Local-first by design", text: "Agents and product data stay on the same computer. Kith-space is a Desktop product, not a server deployment or remote-agent host." },
       ],
     },
     capabilities: {
       eyebrow: "Capabilities",
-      title: "Everything you'd ask a teammate to do.",
-      lead: "Real, working interactions between people and agents — verified end to end, not a demo reel.",
+      title: "Everything you'd ask your agent team to do.",
+      lead: "Real, working interactions between one Human and local agents — verified end to end, not a demo reel.",
       items: [
         { title: "Mention to delegate", text: "@ an agent in any channel. It picks up the work in its own workspace, edits files, runs commands, and reports back." },
         { title: "Agents delegate to agents", text: "Not just human→agent. Agents @ each other to hand off and report — across runtimes — and relay the result back to you." },
@@ -82,15 +82,15 @@ const LANDING_COPY = {
         { title: "Scheduled follow-ups", text: "Set a reminder and an agent gets @-woken at the right time to pick a thread back up. Nothing falls through." },
         { title: "Live activity", text: "Watch what an agent is actually doing — its reasoning and tool calls, streamed live — not just a final answer." },
         { title: "Idle-sleep, full resume", text: "Idle agents are killed to save money. On the next message they resume the same session with context intact." },
-        { title: "Private agent memory", text: "Every agent keeps its own MEMORY.md, building durable knowledge of your codebase and decisions across sessions." },
-        { title: "Unified inbox", text: "Unread messages and mentions across every channel, thread, and DM aggregated into one place to triage." },
-        { title: "Pluggable engines", text: "Run claude, codex, copilot, and opencode side by side. Every agent speaks one protocol, so you pick the right engine per teammate." },
+        { title: "Private agent memory", text: "Every agent keeps its own MEMORY.md, building durable knowledge of your local projects and decisions across sessions." },
+        { title: "Unified inbox", text: "Triage unread messages and mentions inside each Space today; local cross-Space aggregation remains on the roadmap." },
+        { title: "Pluggable engines", text: "Run claude, codex, copilot, and opencode side by side. Every agent speaks one protocol, so you pick the right local runtime for each role." },
       ],
     },
     engines: {
       eyebrow: "Pluggable engines",
-      title: "Bring your own coding agent.",
-      lead: "Every agent talks one protocol through a bundled CLI, so you can mix engines per teammate — and watch the model traffic when it matters.",
+      title: "Bring your local agent runtimes.",
+      lead: "Every agent talks one protocol through a bundled CLI, so you can mix local engines by role — and watch the model traffic when it matters.",
       more: "More runtimes, landing one at a time",
       soon: "soon",
       desc: {
@@ -110,18 +110,18 @@ const LANDING_COPY = {
       trace: ["# agent cody · live trace", "Read src/server/auth.ts", "Grep \"verifyToken\"", "short-lived JWT, no refresh path…", "→ #general · summary posted"],
     },
     selfHosted: {
-      eyebrow: "Self-hosted",
-      title: "Three planes. Your machines.",
-      lead: "A clean split between people, control, and compute — so the work happens on hardware you own and the data stays in your network.",
+      eyebrow: "Local-first",
+      title: "Desktop first. One computer.",
+      lead: "The formal product is the Desktop app: one Human, local agents, local Spaces, and local data on the same computer.",
       planes: [
-        { kicker: "People · Web", title: "The workspace", text: "A React workspace over REST plus realtime sockets — channels, threads, tasks, members.", flow: "browser → server" },
-        { kicker: "Control plane", title: "The router", text: "The server routes work to the daemon running on your host, and streams activity back live.", flow: "server ⇄ daemon" },
-        { kicker: "Your machine", title: "The agents", text: "A local daemon spawns each agent in its own workspace. Code and context never leave.", flow: "daemon → agents" },
+        { kicker: "Desktop · Primary", title: "Personal AgentOS", text: "Electron is the formal product surface for one Human, local agents, Spaces, channels, tasks, and modules.", flow: "Human → Desktop → agents" },
+        { kicker: "Local control", title: "Runtime bridge", text: "Desktop-managed local services connect Claude Code, Codex, and opencode without turning Kith-space into a remote agent host.", flow: "Desktop ⇄ local runtimes" },
+        { kicker: "Optional · HTTP Web", title: "Browser access", text: "The planned route will keep the full UI available on localhost or trusted LAN desktop browsers. Access Token setup is planned in Desktop settings and is not delivered yet.", flow: "Desktop → local HTTP → LAN" },
       ],
     },
     cta: { title: "Ready to put your agents to work?" },
     footer: {
-      tagline: "An open, self-hostable workspace for humans and AI agents.",
+      tagline: "An open-source, desktop-first Personal AgentOS for one Human and local agents.",
       product: "Product",
       resources: "Resources",
       openSource: "Open source",
@@ -130,33 +130,33 @@ const LANDING_COPY = {
       license: "License",
       issues: "Issues",
       copyright: "© 2026 Kith-space",
-      built: "Built to be self-hosted.",
+      built: "Built for one Human and one computer.",
     },
   },
   zh: {
-    nav: { features: "功能", capabilities: "能力", engines: "引擎", selfHosted: "自托管", docs: "文档", github: "GitHub", enter: "进入工作区", languageLabel: "语言" },
+    nav: { features: "功能", capabilities: "能力", engines: "引擎", selfHosted: "本地优先", docs: "文档", github: "GitHub", enter: "打开 Kith-space", languageLabel: "语言" },
     hero: {
-      eyebrow: "开源 Claude Tag 替代方案",
-      title: "让你的团队和\nAI agents 一起工作。",
-      sub: "一个开放、可自托管的工作区：人和 AI agents 像队友一样在频道、thread 和私信里协作。agents 持久存在，保留自己的记忆，并运行在你控制的机器上。",
+      eyebrow: "开源 Personal AgentOS",
+      title: "你和本机的\nAI agents，在一个 OS 里。",
+      sub: "一个 desktop-first Personal AgentOS：一个 Human 与同一台电脑上的一队 agents，通过频道、thread、私信、任务和记忆协作，并在多个本地 Space 中持续工作。",
       explore: "查看功能",
       github: "查看 GitHub",
-      note: <>运行在你的硬件上 — <code>pnpm run server</code> · <code>pnpm run daemon</code> · 打开工作区。</>,
+      note: <>Desktop 是正式产品；可选的本地 HTTP Web 与受信任 LAN 桌面浏览器访问在产品路线中。</>,
       casesLabel: "Kith-space 产品案例",
     },
     pillars: {
       eyebrow: "为什么是 Kith-space",
-      title: "为人和 agent 一起工作而生的工作区。",
+      title: "为你和本机 agents 而生的个人工作空间。",
       items: [
-        { title: "聊天就是工作区", text: "频道、thread、私信共用同一份上下文和历史，不需要另开一个 agent 控制台盯着。" },
+        { title: "聊天就是工作区", text: "你和本机 agents 在频道、thread、私信中共用同一份上下文和历史，不需要另开 agent 控制台盯着。" },
         { title: "agent 会持久存在并记住", text: "每个 agent 都有自己的记忆，空闲时睡眠省成本，被再次叫到时带着上下文恢复。" },
-        { title: "为自托管而设计", text: "agent 通过轻量 daemon 运行在你的机器上。代码和对话不必离开你的网络。" },
+        { title: "为本地优先而设计", text: "agents 与产品数据都留在同一台电脑上。Kith-space 是 Desktop 产品，不是服务器部署或远程 agent 主机。" },
       ],
     },
     capabilities: {
       eyebrow: "能力",
-      title: "你会交给队友的事，都可以交给 agent。",
-      lead: "真实可用的人机协作流程，端到端验证过，不是只给投资人看的 demo。",
+      title: "你会交给 agent 团队的事，都可以在这里推进。",
+      lead: "一个 Human 与本机 agents 的真实协作流程，端到端验证过，不是只给投资人看的 demo。",
       items: [
         { title: "提及即委派", text: "在任意频道 @agent。它会在自己的工作区接活、改文件、跑命令，并把结果回报回来。" },
         { title: "agent 也能委派给 agent", text: "不只是人叫 agent。agent 可以互相 @、跨 runtime 交接，再把结果带回给你。" },
@@ -164,15 +164,15 @@ const LANDING_COPY = {
         { title: "定时 follow-up", text: "设置提醒后，agent 会在正确时间被唤醒，回到原 thread 继续处理。" },
         { title: "实时活动", text: "看到 agent 正在做什么：推理、工具调用和活动流都能实时进入工作区。" },
         { title: "空闲睡眠，完整恢复", text: "空闲 agent 会被停止以节省成本；下一条消息到来时恢复同一 session 和上下文。" },
-        { title: "私有 agent 记忆", text: "每个 agent 都有自己的 MEMORY.md，持续积累代码库和团队决策知识。" },
-        { title: "统一 inbox", text: "跨频道、thread、私信的未读和提及集中到一个地方处理。" },
-        { title: "可插拔引擎", text: "claude、codex、copilot、opencode 等 runtime 可以并排使用。同一协议下按队友选择引擎。" },
+        { title: "私有 agent 记忆", text: "每个 agent 都有自己的 MEMORY.md，持续积累本地项目与决策知识。" },
+        { title: "统一 inbox", text: "当前可集中处理每个 Space 内的未读和提及；本机跨 Space 聚合保留在路线中。" },
+        { title: "可插拔引擎", text: "claude、codex、copilot、opencode 等本地 runtime 可以并排使用，同一协议下按角色选择引擎。" },
       ],
     },
     engines: {
       eyebrow: "可插拔引擎",
-      title: "带上你自己的 coding agent。",
-      lead: "每个 agent 都通过同一个协议和 bundled CLI 工作，所以你可以混用不同引擎，并在需要时看到模型活动。",
+      title: "接入你本机已有的 agent runtime。",
+      lead: "每个 agent 都通过同一个协议和 bundled CLI 工作，所以你可以按角色混用本地引擎，并在需要时看到模型活动。",
       more: "更多 runtime 会逐个落地",
       soon: "即将支持",
       desc: {
@@ -192,18 +192,18 @@ const LANDING_COPY = {
       trace: ["# agent cody · 实时 trace", "Read src/server/auth.ts", "Grep \"verifyToken\"", "JWT 太短且没有 refresh path…", "→ #general · 已发总结"],
     },
     selfHosted: {
-      eyebrow: "自托管",
-      title: "三层平面。你的机器。",
-      lead: "把人、控制面和计算面清楚拆开：工作发生在你自己的硬件上，数据留在你的网络里。",
+      eyebrow: "本地优先",
+      title: "Desktop 优先。一台电脑。",
+      lead: "正式产品是 Desktop 应用：一个 Human、本机 agents、本地 Spaces 与本地数据都在同一台电脑上。",
       planes: [
-        { kicker: "People · Web", title: "工作区", text: "React 工作区通过 REST 和实时 socket 承载频道、thread、任务和成员。", flow: "browser → server" },
-        { kicker: "Control plane", title: "路由器", text: "server 把工作路由到你机器上的 daemon，并把活动实时流回工作区。", flow: "server ⇄ daemon" },
-        { kicker: "Your machine", title: "agents", text: "本地 daemon 为每个 agent 启动独立工作区。代码和上下文不离开你的机器。", flow: "daemon → agents" },
+        { kicker: "Desktop · 正式产品", title: "Personal AgentOS", text: "Electron 承载一个 Human、本机 agents、Spaces、频道、任务与模块。", flow: "Human → Desktop → agents" },
+        { kicker: "本地控制", title: "Runtime 桥接", text: "由 Desktop 管理的本地服务连接 Claude Code、Codex 和 opencode，不把 Kith-space 变成远程 agent 主机。", flow: "Desktop ⇄ 本地 runtimes" },
+        { kicker: "可选 · HTTP Web", title: "浏览器访问", text: "路线中保留 localhost 与受信任 LAN 桌面浏览器的完整 UI；访问 Token 设置计划放入 Desktop，目前尚未交付。", flow: "Desktop → 本地 HTTP → LAN" },
       ],
     },
     cta: { title: "准备把 agents 真正用起来了吗？" },
     footer: {
-      tagline: "一个开放、可自托管的人机协作工作区。",
+      tagline: "一个面向单 Human 与本机 agents 的开源 desktop-first Personal AgentOS。",
       product: "产品",
       resources: "资源",
       openSource: "开源",
@@ -212,7 +212,7 @@ const LANDING_COPY = {
       license: "许可证",
       issues: "Issues",
       copyright: "© 2026 Kith-space",
-      built: "为自托管而构建。",
+      built: "为一个 Human 和一台电脑而构建。",
     },
   },
 } satisfies Record<Lang, any>;
@@ -299,7 +299,7 @@ export function Landing() {
   const { me, slug } = useStore();
   const navigate = useNavigate();
   const [lang, setLang] = useState<Lang>(() => detectLandingLang());
-  const enterWorkspace = () => navigate(me ? `/s/${slug}/channel` : "/login");
+  const enterWorkspace = () => navigate(me ? `/s/${slug}/channel` : "/?as=you");
   const copy = LANDING_COPY[lang];
   const nextLang: Lang = lang === "en" ? "zh" : "en";
   const switchLanguage = () => {

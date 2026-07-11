@@ -4,6 +4,7 @@ import { and, eq, lte } from "drizzle-orm";
 import { allWorkspaceDbs, dbFor, schema } from "../db/index.js";
 import { createMessage } from "./core.js";
 import { createLogger } from "../log.js";
+import { humanIdentityForId } from "../human/humanIdentity.js";
 
 const log = createLogger("server:reminders");
 const TICK_MS = Number(process.env.KITH_SPACE_REMINDER_TICK_MS ?? 20_000);
@@ -38,10 +39,9 @@ async function fire(r: typeof schema.reminders.$inferSelect): Promise<void> {
     .where(and(eq(schema.reminders.id, r.id), eq(schema.reminders.status, "scheduled"), lte(schema.reminders.remindAt, now)))
     .returning();
   if (!won.length) return; // already claimed by another tick/instance
-  const owner = r.ownerType === "agent"
-    ? (await db.select().from(schema.agents).where(eq(schema.agents.id, r.ownerId)))[0]
-    : (await db.select().from(schema.users).where(eq(schema.users.id, r.ownerId)))[0];
-  const ownerName = (owner as { name?: string } | undefined)?.name;
+  const ownerName = r.ownerType === "agent"
+    ? (await db.select().from(schema.agents).where(eq(schema.agents.id, r.ownerId)))[0]?.name
+    : humanIdentityForId(r.ownerId)?.handle;
   // Anchor channel: the anchor message's channel > reminder.channelId > #all
   let channelId = r.channelId ?? null;
   if (r.anchorMessageId) {

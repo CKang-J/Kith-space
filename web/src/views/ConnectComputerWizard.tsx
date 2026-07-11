@@ -20,7 +20,7 @@ type Step = "intro" | "connect" | "connected";
 //   add       → parent-mounted (Computers "+"); starts at connect.
 //   reconnect → parent-mounted; rotates the key on an existing offline machine; starts at connect.
 export function ConnectComputerWizard({ mode, machine, onClose }: { mode: Mode; machine?: { id: string; name: string }; onClose?: () => void }) {
-  const { machines, capabilities, api, spaceId, reload } = useStore();
+  const { machines, api, spaceId, reload } = useStore();
   const { t } = useTranslation();
 
   const [dontRemind, setDontRemind] = useState(false);
@@ -43,7 +43,7 @@ export function ConnectComputerWizard({ mode, machine, onClose }: { mode: Mode; 
   // Other modes are mounted/unmounted by their parent, so they're always shown.
   const shown = mode !== "onboard"
     ? true
-    : (!dismissed && !!capabilities.manageMachines && (step === "intro" ? machines.length === 0 : true));
+    : (!dismissed && (step === "intro" ? machines.length === 0 : true));
 
   // The just-touched machine (created or reconnected) and whether its daemon is online yet.
   const targetId = res?.id ?? machine?.id;

@@ -14,10 +14,11 @@ const TASK_ICON: Record<string, typeof Circle> = { todo: Circle, in_progress: Pl
 import { IconFile, IconExternalLink, IconDownload } from "../icons.tsx";
 import { Avatar, resolveAvatar } from "../Avatar.tsx";
 import { Lightbox } from "../Lightbox.tsx";
-import { TaskBoard, ynOptions, ST_LABEL } from "../TaskBoard.tsx";
+import { TaskBoard, ST_LABEL } from "../TaskBoard.tsx";
+import { taskStatusOptions } from "../taskStatusPolicy.ts";
 import { PaneEmpty } from "../PaneEmpty.tsx";
 import { ChatSkeleton } from "./Skeleton.tsx";
-import { AgentProfile, HumanProfile, CreateAgentModal } from "./Members.tsx";
+import { AgentProfile, CreateAgentModal } from "./Members.tsx";
 import { ChatSidebar, CreateChannelModal, channelCreateErrorMsg } from "./ChatSidebar.tsx";
 import { ConnectComputerWizard } from "./ConnectComputerWizard.tsx";
 import { Composer } from "./Composer.tsx";
@@ -132,7 +133,7 @@ function ActionCardMsg({ m }: { m: Msg }) {
       </div>
       {open && isChan && (
         <CreateChannelModal
-          prefill={{ name: a.name, description: a.description ?? "", visibility: a.visibility, agentIds: a.initialAgents ?? [], userIds: a.initialHumans ?? [] }}
+          prefill={{ name: a.name, description: a.description ?? "", visibility: a.visibility, agentIds: a.initialAgents ?? [] }}
           submitLabel={t("chat.createChannel")} onClose={() => setOpen(false)}
           onCreate={async (opts) => {
             const r = await createChannel(opts);
@@ -153,17 +154,15 @@ function ActionCardMsg({ m }: { m: Msg }) {
 
 export function Chat({ embedded = false, channelIdOverride }: { embedded?: boolean; channelIdOverride?: string }) {
   const { t } = useTranslation();
-  const { api, channels, dms, unread, agents, humans, slug, me, myRole, capabilities, reload, onEvent, subscribeChannel, openDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, savedIds, saveMsg, unsaveMsg, agentPanelReq, clearAgentPanelReq } = useStore();
+  const { api, channels, dms, unread, agents, slug, me, reload, onEvent, subscribeChannel, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, savedIds, saveMsg, unsaveMsg, agentPanelReq, clearAgentPanelReq } = useStore();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
-  // A message's sender avatar: look the sender up in the loaded agents/humans lists (carry avatarUrl) — no message-schema change needed.
-  const senderAvatar = (m: Msg) => avFor(m.senderType === "agent" ? agents.find((a) => a.id === m.senderId)?.avatarUrl : humans.find((h) => h.userId === m.senderId)?.avatarUrl);
+  const senderAvatar = (m: Msg) => avFor(m.senderType === "agent" ? agents.find((agent) => agent.id === m.senderId)?.avatarUrl : undefined);
   const confirm = useConfirm();
   const [showEdit, setShowEdit] = useState(false);
-  const manageServer = myRole === "owner" || myRole === "admin"; // server admins get the full task-status dropdown (matches TaskBoard permission model)
   const { channelId: routeChannelId } = useParams();
   const channelId = channelIdOverride ?? routeChannelId;
   const nav = useNavigate();
-  const [profile, setProfile] = useState<{ type: "agent" | "human"; id: string } | null>(null); // right-column profile overlay: clicking an avatar / name / @mention (agent, human, or yourself) opens it ON TOP of the thread/trajectory ("click X → show X"); closing it reveals the layer underneath
+  const [profile, setProfile] = useState<{ id: string } | null>(null);
   const [taskMenu, setTaskMenu] = useState<string | null>(null); // task badge status menu: id of the currently open message (clicking the badge changes status, does not open thread)
   const [hoverAgent, setHoverAgent] = useState<{ id: string; x: number; y: number } | null>(null); // hovering over an agent shows a quick-info hover card
   const [ctxMenu, setCtxMenu] = useState<{ m: Msg; x: number; y: number } | null>(null); // right-clicking a message opens the context action menu
@@ -272,7 +271,7 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
   // makes its setProfile win. In-channel clicks only re-run this effect (cur.id unchanged), so order is moot there.
   useEffect(() => {
     if (!agentPanelReq) return;
-    setProfile({ type: "agent", id: agentPanelReq });
+    setProfile({ id: agentPanelReq });
     setSp((prev) => { const n = new URLSearchParams(prev); n.set("agentTab", "activity"); return n; }, { replace: true });
     clearAgentPanelReq();
     // eslint-disable-next-line
@@ -348,8 +347,8 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
   }, [threadParam, msgs, hasMore]);
 
   const setTab = (t: string) => { const n = new URLSearchParams(sp); if (t === "chat") n.delete("chatTab"); else n.set("chatTab", t); setSp(n, { replace: true }); };
-  const doDM = async (agentId: string) => { const id = await openDM("agent", agentId); if (id) nav(`/s/${slug}/channel/${id}`); }; // used by AgentProfile onMessage callback
-  const doDMHuman = async (uid: string) => { const id = await openDM("user", uid); if (id) nav(`/s/${slug}/channel/${id}`); }; // used by HumanProfile onMessage callback
+  const doDM = async (agentId: string) => { const id = await openAgentDM(agentId); if (id) nav(`/s/${slug}/channel/${id}`); };
+  const openHumanSettings = () => nav(`/s/${slug}/settings/account`);
   // Opening a thread is an explicit "show me this thread" action → it becomes the right-column base layer and clears any profile overlay on top of it (otherwise the just-opened thread would stay hidden behind a stale profile).
   const startThread = async (m: Msg) => { if (!cur) return; const tid = threadMeta[m.id]?.threadChannelId || await openThread(cur.id, m.id); if (tid) { setProfile(null); setThread({ channelId: tid, parent: m }); setThreadMeta((tm) => (tm[m.id] ? { ...tm, [m.id]: { ...tm[m.id]!, unreadCount: 0 } } : tm)); markRead(tid); } }; // opening a thread clears the unread count optimistically and marks the thread channel as read
   // "Jump to unread thread" bar: open a thread whose parent message may not be in the loaded page — fetch the parent
@@ -366,7 +365,7 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
     } catch { /* parent fetch failed (deleted / no access) — leave the bar untouched */ }
   };
   // Returns the display name of the task assignee, used by the task pill
-  const taskAssignee = (m: Msg) => { if (!m.taskAssigneeId) return ""; const a = agents.find((x) => x.id === m.taskAssigneeId); if (a) return " @" + (a.displayName || a.name); const h = humans.find((x) => x.userId === m.taskAssigneeId); return h ? " @" + (h.displayName || h.name) : ""; };
+  const taskAssignee = (m: Msg) => { if (!m.taskAssigneeId) return ""; const a = agents.find((x) => x.id === m.taskAssigneeId); if (a) return " @" + (a.displayName || a.name); return m.taskAssigneeId === me?.id ? " @" + me.name : ""; };
   // Handles task status change / claim from the task badge; socket message:updated event refreshes the message automatically
   const doTask = async (m: Msg, action: string, body?: unknown) => { try { await api("PATCH", `/api/tasks/${m.id}/${action}`, body); } catch { /* will self-correct on next reload */ } };
   const copyMarkdown = (content: string) => { navigator.clipboard?.writeText(content).catch(() => {}); };
@@ -383,8 +382,8 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
   };
   // Routes inline token clicks (@mention / #channel / thread / task #N) inside MessageContent
   const navToken = async (type: string, args: string[]) => {
-    if (type === "agent") return setProfile({ type: "agent", id: args[0]! });
-    if (type === "human") return setProfile({ type: "human", id: args[0]! }); // @human click → profile panel (same overlay as agents, not a full-page route)
+    if (type === "agent") return setProfile({ id: args[0]! });
+    if (type === "human") return openHumanSettings();
     if (type === "channel") return nav(`/s/${slug}/channel/${args[0]}`);
     if (type === "thread") return nav(`/s/${slug}/channel/${args[0]}?thread=${args[0]}:${args[1]}`);
     if (type === "task") {
@@ -407,7 +406,7 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
             : <small>{sub || cur?.description || ""}</small>}
           {cur && <div className="chtabs">{(isDm ? ["chat", "tasks"] : ["chat", "tasks", "files"]).map((tt) => <button key={tt} className={chatTab === tt ? "on" : ""} onClick={() => setTab(tt)}>{tt === "chat" ? t("nav.channel") : tt === "tasks" ? t("nav.tasks") : t("common.files")}</button>)}</div>}
           {!isDm && cur && cur.type !== "showcase" && <button className="joinbtn" style={{ marginLeft: "auto" }} title={t("chat.channelMembers")} onClick={() => setShowMembers(true)}>{t("chat.members")}</button>}
-          {!isDm && cur && cur.type !== "showcase" && capabilities.manageChannels && (
+          {!isDm && cur && cur.type !== "showcase" && (
             <button className="joinbtn" title={t("chat.channelSettings")} onClick={() => setShowEdit(true)}>⋯</button>
           )}
         </div>
@@ -430,7 +429,6 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
                 const agLive = agentLiveState(ag);
                 const agActivity = agentActivityText(ag);
                 const tm = threadMeta[m.id];
-                const isMember = m.senderType !== "agent" && m.senderType !== "system"; // human/user senders get a "member" badge
                 const isSaved = savedIds.has(m.id);
                 const isAgentReplyPreview = m.messageType === AGENT_REPLY_PREVIEW_TYPE;
                 const agentReplyPreview = isAgentReplyPreview ? m as AgentReplyPreviewMsg : undefined;
@@ -465,27 +463,26 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
                     <button title={t("chat.more")} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setCtxMenu({ m, x: r.right - 212, y: r.bottom + 4 }); }}><MoreHorizontal size={15} /></button>
                   </div>
                   {ag
-                    ? <span className="msg-av clickable" onClick={() => setProfile({ type: "agent", id: m.senderId! })}
+                    ? <span className="msg-av clickable" onClick={() => setProfile({ id: m.senderId! })}
                         onMouseEnter={(e) => setHoverAgent({ id: m.senderId!, x: e.currentTarget.getBoundingClientRect().right + 8, y: e.currentTarget.getBoundingClientRect().top })}
                         onMouseLeave={() => setHoverAgent(null)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} />{agLive !== "offline" && <span className={"av-status " + agLive} />}</span>
                     : m.senderId
-                      ? <span className="msg-av clickable" onClick={() => setProfile({ type: "human", id: m.senderId! })}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></span>
+                      ? <span className="msg-av clickable" onClick={openHumanSettings}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></span>
                       : <span className="msg-av"><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></span>}
                   <div className="msg-col">
                     <div className="msg-head">
                       {ag
-                        ? <span className="who clickable" onClick={() => setProfile({ type: "agent", id: m.senderId! })}
+                        ? <span className="who clickable" onClick={() => setProfile({ id: m.senderId! })}
                             onMouseEnter={(e) => setHoverAgent({ id: m.senderId!, x: e.currentTarget.getBoundingClientRect().left, y: e.currentTarget.getBoundingClientRect().bottom + 6 })}
                             onMouseLeave={() => setHoverAgent(null)}>{m.senderName}</span>
                         : m.senderId
-                          ? <span className="who clickable" onClick={() => setProfile({ type: "human", id: m.senderId! })}>{m.senderName}</span>
+                          ? <span className="who clickable" onClick={openHumanSettings}>{m.senderName}</span>
                           : <span className="who">{m.senderName}</span>}
                       <span className="ts">{fmtDateTime(m.createdAt)}</span>
                       {agActivity ? <code className={"msg-activity " + agLive}>{agActivity}</code> : null}</div>
                     {ag && ag.description ? <div className="msg-subhead">
                       <span className="msg-role">{ag.description}</span>
                     </div> : null}
-                    {isMember ? <div className="msg-subhead"><span className="member-badge">member</span></div> : null}
                     {isAgentReplyPreview && !m.content
                       ? <AgentReplyPreviewBody m={m} />
                       : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={channels} nav={navToken} /></div>}
@@ -496,8 +493,7 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
                           const TI = TASK_ICON[m.taskStatus] || Circle;
                           const isShowcase = cur?.type === "showcase";
                           const claimable = !isShowcase && !m.taskAssigneeId && m.taskStatus === "todo";
-                          const claimedByMe = m.taskAssigneeType === "user" && m.taskAssigneeId === me?.id;
-                          const opts = ynOptions(m.taskStatus, manageServer, claimedByMe);
+                          const opts = taskStatusOptions();
                           const open = !isShowcase && taskMenu === m.id;
                           return (
                             <span className="task-pill-wrap">
@@ -532,13 +528,9 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
       </main>
       {/* Right column = one base layer (thread, else trajectory) with a profile overlay on top. Priority: profile > thread > trajectory, so a profile opened from anywhere ("click X → show X") covers the thread; closing it reveals the thread again. */}
       {profile
-        ? <aside className="traj-col profile-mode">
-            {profile.type === "agent"
-              ? <AgentProfile id={profile.id} onDeleted={closeProfile} onClose={closeProfile} onMessage={() => { const id = profile.id; closeProfile(); doDM(id); }} />
-              : <HumanProfile uid={profile.id} onClose={() => setProfile(null)} onMessage={() => { const id = profile.id; setProfile(null); doDMHuman(id); }} />}
-          </aside>
+        ? <aside className="traj-col profile-mode"><AgentProfile id={profile.id} onDeleted={closeProfile} onClose={closeProfile} onMessage={() => { const id = profile.id; closeProfile(); doDM(id); }} /></aside>
         : thread
-        ? <ThreadPanel channelId={thread.channelId} parent={thread.parent} onClose={() => setThread(null)} onOpenProfile={(type, id) => setProfile({ type, id })} />
+        ? <ThreadPanel channelId={thread.channelId} parent={thread.parent} onClose={() => setThread(null)} onOpenAgent={(id) => setProfile({ id })} />
         : !embedded && <aside className="traj-col"><LiveTrace /></aside>}
       <ConnectComputerWizard mode="onboard" />
       {showMembers && cur && <ChannelMembersModal channelId={cur.id} channelName={cur.name} onClose={() => setShowMembers(false)} />}
@@ -642,14 +634,14 @@ function EditChannelModal({ channel, onClose, onDone, onDeleted }: { channel: an
 }
 
 // Thread panel: right-side overlay showing the parent message, its replies, and a reply composer.
-function ThreadPanel({ channelId, parent, onClose, onOpenProfile }: { channelId: string; parent: Msg; onClose: () => void; onOpenProfile: (type: "agent" | "human", id: string) => void }) {
+function ThreadPanel({ channelId, parent, onClose, onOpenAgent }: { channelId: string; parent: Msg; onClose: () => void; onOpenAgent: (id: string) => void }) {
   const { t } = useTranslation();
-  const { api, onEvent, subscribeChannel, attachmentUrl, me, react, agents, humans, channels, slug } = useStore();
-  const senderAvatar = (m: Msg) => resolveAvatar(m.senderType === "agent" ? agents.find((a) => a.id === m.senderId)?.avatarUrl : humans.find((h) => h.userId === m.senderId)?.avatarUrl, attachmentUrl);
+  const { api, onEvent, subscribeChannel, attachmentUrl, me, react, agents, channels, slug } = useStore();
+  const senderAvatar = (m: Msg) => resolveAvatar(m.senderType === "agent" ? agents.find((agent) => agent.id === m.senderId)?.avatarUrl : undefined, attachmentUrl);
   const nav = useNavigate();
   const navToken = async (type: string, args: string[]) => {
-    if (type === "agent") return onOpenProfile("agent", args[0]!); // @agent click inside a thread opens the profile overlay (profile state is owned by the parent component)
-    if (type === "human") return onOpenProfile("human", args[0]!); // @human click → profile overlay too (parent renders it on top of the thread)
+    if (type === "agent") return onOpenAgent(args[0]!);
+    if (type === "human") return nav(`/s/${slug}/settings/account`);
     if (type === "channel") return nav(`/s/${slug}/channel/${args[0]}`);
     if (type === "thread") return nav(`/s/${slug}/channel/${args[0]}?thread=${args[0]}:${args[1]}`);
     if (type === "task") { try { const r = await api("GET", "/api/tasks/server"); const tk = (r?.tasks ?? r ?? []).find((x: any) => x.taskNumber === Number(args[0])); if (tk) nav(`/s/${slug}/channel/${tk.channelId}?msg=${tk.id}`); } catch { /* */ } }
@@ -689,13 +681,13 @@ function ThreadPanel({ channelId, parent, onClose, onOpenProfile }: { channelId:
     <Fragment key={renderKeyForMessage(m)}>
       {dateDivider}
       <div className={"msg" + (agentReplyPreview ? " msg-enter" : "")}>
-      {ag ? <span className="msg-av clickable" onClick={() => onOpenProfile("agent", m.senderId!)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />{live !== "offline" && <span className={"av-status " + live} />}</span>
-        : m.senderId ? <span className="msg-av clickable" onClick={() => onOpenProfile("human", m.senderId!)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></span>
+      {ag ? <span className="msg-av clickable" onClick={() => onOpenAgent(m.senderId!)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />{live !== "offline" && <span className={"av-status " + live} />}</span>
+        : m.senderId ? <span className="msg-av clickable" onClick={() => nav(`/s/${slug}/settings/account`)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></span>
         : <Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />}
       {/* content column reuses .msg-col (flex:1;min-width:0) like the main chat — without it a flex child defaults to min-width:auto and a long unbreakable token blows the message past this narrow thread panel */}
       <div className="msg-col">
-        <div>{ag ? <span className="who clickable" onClick={() => onOpenProfile("agent", m.senderId!)}>{m.senderName}</span>
-          : m.senderId ? <span className="who clickable" onClick={() => onOpenProfile("human", m.senderId!)}>{m.senderName}</span>
+        <div>{ag ? <span className="who clickable" onClick={() => onOpenAgent(m.senderId!)}>{m.senderName}</span>
+          : m.senderId ? <span className="who clickable" onClick={() => nav(`/s/${slug}/settings/account`)}>{m.senderName}</span>
           : <span className="who">{m.senderName}</span>}<span className="ts">{fmtDateTime(m.createdAt)}</span></div>
         {isAgentReplyPreview && !m.content
           ? <AgentReplyPreviewBody m={m} />
@@ -732,36 +724,31 @@ function ThreadPanel({ channelId, parent, onClose, onOpenProfile }: { channelId:
   );
 }
 
-// Channel members modal: lists Agents (with online status) and Humans; allows adding or removing agents from the channel
+// Channel agent membership: the Human has implicit Space access and is not a channel member row.
 function ChannelMembersModal({ channelId, channelName, onClose }: { channelId: string; channelName: string; onClose: () => void }) {
-  /* avatars: data.agents/humans come from /channels/:id/members (carry avatarUrl); resolve to signed/scheme via resolveAvatar */
   const { t } = useTranslation();
   useEscClose(onClose);
-  const { api, visibleAgents: agents, attachmentUrl, capabilities } = useStore(); // visibleAgents: showcase demo props are not offered in the "add agent" list
+  const { api, visibleAgents: agents, attachmentUrl } = useStore(); // visibleAgents: showcase demo props are not offered in the "add agent" list
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
-  const [data, setData] = useState<{ agents: any[]; humans: any[] }>({ agents: [], humans: [] });
-  const load = async () => { const d = await api("GET", `/api/channels/${channelId}/members`); setData({ agents: d?.agents || [], humans: d?.humans || [] }); };
+  const [members, setMembers] = useState<any[]>([]);
+  const load = async () => { const data = await api("GET", `/api/channels/${channelId}/members`); setMembers(data?.agents || []); };
   useEffect(() => { load(); }, [channelId]);
-  const inCh = new Set(data.agents.map((a) => a.id));
+  const inCh = new Set(members.map((agent) => agent.id));
   const addable = agents.filter((a) => !inCh.has(a.id));
   const add = async (agentId: string) => { await api("POST", `/api/channels/${channelId}/members`, { agentId }); load(); };
   const remove = async (agentId: string) => { await api("DELETE", `/api/channels/${channelId}/members`, { agentId }); load(); };
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3># {channelName} · {t("chat.membersCount", { count: data.agents.length + data.humans.length })}</h3>
-        <div className="sec">{t("common.agents")} <span className="cnt">{data.agents.length}</span></div>
-        {data.agents.map((a) => (
-          <div key={a.id} className="item"><Avatar seed={a.name} url={avFor(a.avatarUrl)} size={22} /><span className="grow">{a.displayName || a.name}</span><span className={"dot " + (a.activity || a.status)} />{capabilities.manageChannels && <button className="joinbtn" onClick={() => remove(a.id)}>{t("chat.remove")}</button>}</div>
+        <h3># {channelName} · {t("chat.membersCount", { count: members.length })}</h3>
+        <div className="sec">{t("common.agents")} <span className="cnt">{members.length}</span></div>
+        {members.map((a) => (
+          <div key={a.id} className="item"><Avatar seed={a.name} url={avFor(a.avatarUrl)} size={22} /><span className="grow">{a.displayName || a.name}</span><span className={"dot " + (a.activity || a.status)} /><button className="joinbtn" onClick={() => remove(a.id)}>{t("chat.remove")}</button></div>
         ))}
-        <div className="sec">{t("common.humans")} <span className="cnt">{data.humans.length}</span></div>
-        {data.humans.map((u) => (
-          <div key={u.userId} className="item"><Avatar seed={u.name} url={avFor(u.avatarUrl)} size={22} /><span className="grow">{u.displayName || u.name}</span></div>
-        ))}
-        {capabilities.manageChannels && addable.length > 0 && <>
+        {addable.length > 0 && <>
           <div className="sec sec-sub">{t("chat.addAgent")}</div>
           {addable.map((a) => (
-            <div key={a.id} className="item ghost"><Avatar seed={a.name} url={avFor(a.avatarUrl)} size={22} /><span className="grow">{a.displayName || a.name}</span><button className="joinbtn" onClick={() => add(a.id)}>{t("chat.join")}</button></div>
+            <div key={a.id} className="item ghost"><Avatar seed={a.name} url={avFor(a.avatarUrl)} size={22} /><span className="grow">{a.displayName || a.name}</span><button className="joinbtn" onClick={() => add(a.id)}>{t("chat.addToChannel")}</button></div>
           ))}
         </>}
         <div className="acts"><button className="cancel" onClick={onClose}>{t("chat.close")}</button></div>
@@ -784,7 +771,7 @@ function ChannelFiles({ channelId }: { channelId: string }) {
           <div key={f.id} className="card file-row">
             <a className="file-main" href={attachmentUrl(f.id)} target="_blank" rel="noreferrer">
               {isImage(f.mimeType) ? <img className="file-thumb" src={attachmentUrl(f.id)} alt={f.filename} loading="lazy" /> : <IconFile size={22} />}
-              <div className="grow"><div className="who">{f.filename}</div><div className="meta">{fmtSize(f.sizeBytes)} · {f.uploader?.displayName || f.uploader?.name || (f.uploader?.type === "agent" ? "agent" : t("chat.memberKind"))} · {fmtDateTime(f.createdAt)}</div></div>
+              <div className="grow"><div className="who">{f.filename}</div><div className="meta">{fmtSize(f.sizeBytes)} · {f.uploader?.displayName || f.uploader?.name || (f.uploader?.type === "agent" ? "agent" : t("chat.humanKind"))} · {fmtDateTime(f.createdAt)}</div></div>
             </a>
             <div className="file-acts">
               {f.messageId && <button title={t("chat.jumpToMessage")} onClick={() => nav(`/s/${slug}/channel/${f.channelId}?msg=${f.messageId}`)}><IconExternalLink size={14} /></button>}

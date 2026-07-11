@@ -56,7 +56,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 - 技术栈：TypeScript / Node（server + daemon）、React + Vite（web）、Drizzle ORM。
 - 包管理：**pnpm**（workspace：根 + `web/` + `packages/*`，`pnpm-lock.yaml`）。安装 `pnpm install`。注意 pnpm 的传参约定：脚本参数**直接跟在后面、不加 `--`**——用 `pnpm test --unit` / `pnpm test --integration`，**不要**写 `pnpm test -- --integration`。当前 OIDC/npm 发布 workflow 是 A6 待删除遗留，不是产品发行路线。
-- 数据层：**SQLite**。每 Space 一个 `<folder>/.kith/workspace.db`；中央 `app.db` 保存唯一 Human 和 Space registry。A2 仍在清理 workspace.db 内的兼容 user/owner 投影。非 open-tag 原来的 Postgres+Redis。详见 `architecture-proposal.md §5`。
+- 数据层：**SQLite**。每 Space 一个 `<folder>/.kith/workspace.db`；中央 `app.db` 保存唯一 Human 和 Space registry。A2.3 已让 `server_members`、legacy user lookup 与 Human `channel_members` 退出产品授权；兼容 `users/owner` 身份投影、Human 会话状态及旧物理表统一留到 A2.2b baseline 清理。非 open-tag 原来的 Postgres+Redis。详见 `architecture-proposal.md §5`。
 - 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。跑测试时把 `KITH_SPACE_HOME` 指向临时目录，零 Postgres/Redis 即可全绿（既有 `publicNavContract` 因缺 `docs-site/` 失败，非回归）。改动配套跑测试再提交。
 - 启动：当前过渡代码仍使用 `pnpm install` → 配 `.env` → `pnpm run dev:e2e:up`，或手动分起 server/daemon/web。目标态由 Desktop 管理设置与内部凭据并提供 `pnpm run desktop:dev`，普通用户不维护 `.env`。**以当前 `docs/dev-commands.md` 为准，不得提前写入尚未实现的命令。**
 - 提交：中文提交信息，列要点变更；只在用户明确要求时提交；先分支不直推主干。
@@ -77,7 +77,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 ## 当前进展
 
-**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-11：A1 文档路线已提交；A2.1 `app.db + 唯一 Human + Home`、A2.5 本地附件存储和 A2.2a Space 传输/API/前端术语已经落地。下一步删除 Human membership/RBAC 与 Machine，再压平 workspace.db 的旧物理 schema。做到哪、下一步与关键过渡事实全部见 `docs/progress.md`。
+**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-11：A2.1 `app.db + 唯一 Human + Home`、A2.5 本地附件、A2.2a Space 契约和 A2.3 唯一 Human authority / identity / agent-only membership / Human-agent DM 已落地。下一步是 A2.4 删除 Machine/远程 worker 产品模型，再压平 workspace.db。做到哪、下一步与关键过渡事实全部见 `docs/progress.md`。
 
 <!-- CODEGRAPH_START -->
 
