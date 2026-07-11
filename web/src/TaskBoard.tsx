@@ -248,7 +248,7 @@ export function TaskBoard({ channelId, onOpenThread }: { channelId: string | nul
         <span className="grow" />
         {channelId && <button className="ok newtask" onClick={() => setMkOpen(true)}>{t("tasks.newTask")}</button>}
       </div>
-      {filtered.length === 0 ? <PaneEmpty icon={<ListChecks size={30} />} title={tasks.length ? t("tasks.emptyFiltered") : channelId ? t("tasks.emptyChannel") : t("tasks.emptyServer")} />
+      {filtered.length === 0 ? <PaneEmpty icon={<ListChecks size={30} />} title={tasks.length ? t("tasks.emptyFiltered") : channelId ? t("tasks.emptyChannel") : t("tasks.emptySpace")} />
         : view === "board" ? (
           <DndContext sensors={sensors} onDragStart={(e) => setActiveId(String(e.active.id))} onDragCancel={() => setActiveId(null)} onDragEnd={onDragEnd}>
             <div ref={boardRef} className={"task-board " + boardLayout + (activeId ? " dragging" : "")}>

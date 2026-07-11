@@ -135,6 +135,11 @@ const setOptionalParam = (params: URLSearchParams, key: string, value: string | 
   if (value) params.set(key, value);
 };
 
+const normalizeSettingsResource = (value: string | null | undefined) => {
+  if (value === null || value === undefined) return value;
+  return value === "human" || value === "space" || value === "desktop" ? value : "human";
+};
+
 export function workspaceLocationForModule(
   pathname: string,
   search: string,
@@ -154,7 +159,7 @@ export function workspaceLocationForModule(
     setOptionalParam(params, "agent", target.agent);
     setOptionalParam(params, "agentTab", target.agentTab);
   } else if (target.moduleId === "settings") {
-    setOptionalParam(params, "settings", target.settings);
+    setOptionalParam(params, "settings", normalizeSettingsResource(target.settings));
   }
 
   const encoded = params.toString();

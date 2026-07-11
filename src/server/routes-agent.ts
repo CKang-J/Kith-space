@@ -170,6 +170,9 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     const b = await readJson(req);
     const action = b.action;
     if (!action || typeof action !== "object") return (sendErr(res, 400, "action (object) required on stdin", { code: "BAD_ACTION" }), true);
+    if (Object.prototype.hasOwnProperty.call(action, "initialHumans")) {
+      return (sendErr(res, 400, "initialHumans is not supported", { code: "BAD_ACTION" }), true);
+    }
     const ty = String(action.type ?? "");
     if (ty !== "channel:create" && ty !== "agent:create") return (sendErr(res, 400, `unsupported action.type "${ty}" (only channel:create / agent:create)`, { code: "BAD_ACTION" }), true);
     if (!String(action.name ?? "").trim()) return (sendErr(res, 400, "action.name required", { code: "BAD_ACTION" }), true);
@@ -177,7 +180,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     if (!tgt) return (sendErr(res, 404, "target not found", { code: "TARGET_FAILED" }), true);
     let norm;
     if (ty === "channel:create") {
-      norm = { type: ty, name: String(action.name).trim().replace(/^#/, ""), description: action.description ?? null, visibility: action.visibility === "private" ? "private" : "public", initialHumans: Array.isArray(action.initialHumans) ? action.initialHumans : [], initialAgents: Array.isArray(action.initialAgents) ? action.initialAgents : [] };
+      norm = { type: ty, name: String(action.name).trim().replace(/^#/, ""), description: action.description ?? null, visibility: action.visibility === "private" ? "private" : "public", initialAgents: Array.isArray(action.initialAgents) ? action.initialAgents : [] };
     } else {
       let description: string | null;
       try { description = resolveRoleDescription(action.description, action.roleTemplate); }

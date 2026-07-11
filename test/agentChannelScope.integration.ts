@@ -186,6 +186,24 @@ try {
   assert.ok(betaConfig?.agentToken);
   assert.ok(gammaConfig?.agentToken);
 
+  const retiredInitialHumans = await agentApi(
+    betaConfig.agentToken,
+    beta.id,
+    "POST",
+    "/agent-api/action/prepare",
+    {
+      target: `#${regular.name}`,
+      action: {
+        type: "channel:create",
+        name: "invalid-human-membership",
+        initialHumans: [human.id],
+        initialAgents: [alpha.id],
+      },
+    },
+  );
+  assert.equal(retiredInitialHumans.status, 400);
+  assert.equal(retiredInitialHumans.body.code, "BAD_ACTION");
+
   const info = await agentApi(betaConfig.agentToken, beta.id, "GET", "/agent-api/space/info");
   assert.equal(info.status, 200);
   assert.equal("humans" in info.body, false);

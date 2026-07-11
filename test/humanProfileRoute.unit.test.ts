@@ -30,7 +30,7 @@ function jsonRequest(body?: unknown): any {
   return req;
 }
 
-test("/api/auth/me reads and updates the canonical app.db Human profile", async () => {
+test("/api/human/profile reads and updates the canonical app.db Human profile", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "kith-human-route-"));
   const previousHome = process.env.KITH_SPACE_HOME;
   const previousDesktopToken = process.env.KITH_SPACE_DESKTOP_TOKEN;
@@ -40,15 +40,15 @@ test("/api/auth/me reads and updates the canonical app.db Human profile", async 
   process.env.KITH_SPACE_WORKER_TOKEN = "human-route-worker-token-for-tests";
   try {
     const { human } = await ensurePersonalApp({ name: "Ada", homeRootPath: path.join(root, "home-space") });
-    const { handleAuthedAuth } = await import("../src/server/routes-api/auth.ts");
+    const { handleHumanProfile } = await import("../src/server/routes-api/humanProfile.ts");
 
     const getCapture = responseCapture();
-    await handleAuthedAuth({
+    await handleHumanProfile({
       req: jsonRequest(),
       res: getCapture.res,
-      url: new URL("http://localhost/api/auth/me"),
+      url: new URL("http://localhost/api/human/profile"),
       method: "GET",
-      p: "/api/auth/me",
+      p: "/api/human/profile",
       humanId: human.id,
     });
     assert.equal(getCapture.response.status, 200);
@@ -56,12 +56,12 @@ test("/api/auth/me reads and updates the canonical app.db Human profile", async 
     assert.equal(getCapture.response.body.displayName, "Ada");
 
     const patchCapture = responseCapture();
-    await handleAuthedAuth({
+    await handleHumanProfile({
       req: jsonRequest({ name: "Grace", email: "grace@example.test", description: "Local Human" }),
       res: patchCapture.res,
-      url: new URL("http://localhost/api/auth/me"),
+      url: new URL("http://localhost/api/human/profile"),
       method: "PATCH",
-      p: "/api/auth/me",
+      p: "/api/human/profile",
       humanId: human.id,
     });
     assert.equal(patchCapture.response.status, 200);
@@ -72,12 +72,12 @@ test("/api/auth/me reads and updates the canonical app.db Human profile", async 
       { name: "Grace", email: "grace@example.test", description: "Local Human" },
     );
     const clearEmailCapture = responseCapture();
-    await handleAuthedAuth({
+    await handleHumanProfile({
       req: jsonRequest({ email: null }),
       res: clearEmailCapture.res,
-      url: new URL("http://localhost/api/auth/me"),
+      url: new URL("http://localhost/api/human/profile"),
       method: "PATCH",
-      p: "/api/auth/me",
+      p: "/api/human/profile",
       humanId: human.id,
     });
     assert.equal(clearEmailCapture.response.status, 200);

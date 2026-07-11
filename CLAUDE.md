@@ -16,7 +16,7 @@
 
 ## 开发命令
 
-包管理是 **pnpm**（传参不加 `--`：`pnpm test --unit`）。启动/测试/数据库等**完整命令看 `docs/dev-commands.md`**。当前代码仍处于 `.env` + 分进程过渡期；目标是 Desktop 设置和内部临时凭据，不要把过渡方式误写成长期产品要求。
+包管理是 **pnpm**（传参不加 `--`：`pnpm test --unit`）。启动/测试/数据库/打包等**完整命令看 `docs/dev-commands.md`**。`desktop:dev` 是完整开发宿主；可选本地 `.env` 与 `server`/`daemon`/`web` 只服务分进程调试。`desktop:build` 仅构建 main/preload，`desktop:bundle`/`desktop:pack`/`desktop:dist` 才形成生产 bundle、unpacked 包与 Windows NSIS 安装器。当前安装器未签名且尚未执行真实安装/卸载验收，不要误写成已签名或已发布。
 
 ## 文档更新规则（强制，务必遵守）
 

@@ -1,58 +1,53 @@
 ## Summary
 
-<!-- 1–3 bullets describing what this PR does and why. -->
+<!-- 1-3 bullets describing what this PR does and why. -->
 
-- 
+-
 
 ## Motivation / linked issue
 
-<!-- Closes #N  /  Relates to #N  /  Standalone improvement -->
+<!-- Closes #N / Relates to #N / Standalone improvement -->
 
 ## Changes
 
-<!-- List the files changed and why each change was made. Keep it surgical —
-every changed line should trace back to the task described above. -->
+<!-- List the files changed and why. Keep the diff surgical. -->
 
 ## Test plan and evidence
 
-<!-- Code complete ≠ task done. Paste real output — not "I think it works."
+<!-- Paste real output or observations, not only an expected result.
 
-For backend / REST changes:
-  - curl command + response (against a running server)
+Examples:
+- Domain/API changes: focused test plus `pnpm test --integration`
+- Frontend changes: browser screenshots or interaction notes from a running app
+- Desktop/runtime changes: `pnpm run desktop:dev` or packaged smoke evidence
+- Packaging changes: `pnpm run desktop:pack` and, when relevant, `pnpm run desktop:dist`
+-->
 
-For frontend / UI changes:
-  - Before / after screenshots from a real browser session
-
-For daemon / agent-runtime changes:
-  - dev:e2e:up output + browser/curl confirmation
-
-For docs-only changes:
-  - pnpm run typecheck (must pass) -->
-
-```
+```text
 # paste evidence here
 ```
 
-## Doc-sync checklist
+## Documentation sync
 
-Check every box that applies — leave unchecked boxes with a note explaining
-why the corresponding doc was not changed.
+Check the applicable items. The source of truth is `AGENTS.md` and `docs/progress.md`.
 
-- [ ] `src/db/schema.ts` changed → `docs/generated/db-schema.md` updated
-- [ ] Routes / endpoints changed → `ARCHITECTURE.md` updated
-- [ ] Module boundary / invariant changed → `ARCHITECTURE.md` §II–IV updated
-- [ ] Feature completed or modified → `FEATURES.md` checkbox updated
-- [ ] Doc/code mismatch found → entry added to `docs/tech-debt-tracker.md`
-- [ ] `src/daemon/**` (bundle) changed → `packages/daemon/package.json` version bumped + GitHub Release planned
-- [ ] No doc-sync needed (explain why): 
+- [ ] Commands or scripts changed -> `docs/dev-commands.md` updated; `README.md` and `AGENTS.md` checked
+- [ ] Architecture, API, data model, or guard changed -> `docs/kith-space/architecture-proposal.md` updated
+- [ ] UI information architecture changed -> `docs/kith-space/ui-direction.md` updated
+- [ ] Product or architecture decision changed -> `docs/decisions.md` updated; `docs/vision.md` / `docs/roadmap.md` checked
+- [ ] Terminology changed -> `docs/glossary.md` updated
+- [ ] Stage progress changed -> `README.md`, `docs/progress.md`, and `docs/roadmap.md` updated
+- [ ] No documentation change is needed (explain why below)
+
+**Documentation note:**
 
 ## Verification bar
 
-- [ ] `pnpm run typecheck` passes
-- [ ] Unit/integration tests pass (`pnpm exec tsx --test --test-force-exit test/*.unit.test.ts`)
-- [ ] Real-run evidence posted above (curl / screenshot / CLI output)
-- [ ] Fail-loud: I've listed below what was **not** verified in this PR
+- [ ] `pnpm run typecheck`
+- [ ] `pnpm test --unit`
+- [ ] `pnpm test --integration`
+- [ ] `pnpm run desktop:bundle`
+- [ ] Relevant real-run, browser, or packaged smoke evidence is included above
+- [ ] Anything not verified is listed below
 
 **Not verified / skipped:**
-
-<!-- Be explicit. "Nothing skipped" is almost never true. -->

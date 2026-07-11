@@ -24,7 +24,7 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 - P4：单窗口 ChatOnly / Split / ModuleOnly 工作区、可拖拽面板、常驻 Dock、任务范围侧栏。
 - Runtime 调研：Claude Code、Codex、opencode 适配边界与 Runtime 契约 v2 草案。
 
-P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运行方式，再回到视觉收尾。
+P4 的视觉微调暂缓。本机化 A1-A6 已收口，下一步先完成 Runtime 契约 v2，再进入生产力模块、Context Snapshot 与视觉收尾。
 
 ## 3. 当前路线：个人 AgentOS 本机化
 
@@ -75,7 +75,7 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 - 默认关闭窗口进入托盘；显式退出等待 runtime 后停止 Windows process tree/Unix process group，失败时保留句柄供重试；可改为关闭即退出。Windows 打包态预留默认关闭的系统自启动，开发态显示 unsupported。
 - Desktop Settings 管理 Web 模式、端口、Token 轮换、浏览器会话撤销、关闭行为和自启动；LAN 变更前确认 HTTP 风险，一次性 Token 保持显示到主动确认；普通浏览器无管理入口。
 
-验收：Desktop 构建、监督器/安全/IPC/Settings 测试与隔离数据目录的实际 smoke 已通过；一次命令可启动完整 Windows 开发宿主，Desktop 管理进程不依赖用户内部凭据 `.env`。`desktop:build` 仍只是开发 bundle，正式安装器留到后续发行阶段。
+验收：Desktop 构建、监督器/安全/IPC/Settings 测试与隔离数据目录的实际 smoke 已通过；一次命令可启动完整 Windows 开发宿主，Desktop 管理进程不依赖用户内部凭据 `.env`。`desktop:build` 只负责 main/preload；A6 已在此基础上补齐生产 bundle、unpacked 包和 NSIS 安装器。
 
 ### P-A5 UI 与入口清理
 
@@ -93,15 +93,16 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 
 ### P-A6 继承资产清理与总审计
 
-状态：下一阶段。
+状态：已完成。
 
-- 删除 Dockerfile、compose、entrypoint、环境样例和远程部署文档。
-- 删除公共 server/daemon npm 发布、它们各自的独立安装器和 OIDC 发布 workflow；完成 Windows Desktop 正式生产 bundle、打包/安装器与发行路径。
-- 审计 Human JWT/dev-login 等 A3 退役路径保持不可达，并删除 Machine/多用户历史术语、PWA 和其他旧领域资产。
-- 保留仓库内部的分进程开发命令与少量测试覆盖环境变量。
-- 完成 typecheck、单元、集成、web build、Electron 冒烟和文档口径审计。
+- 已删除 Dockerfile、compose、entrypoint、Railway、环境样例和 prod 脚本。
+- 已删除公共 daemon package、npm/OIDC 发布 workflow 与 docs-site 发布路线；pnpm workspace 只保留根目录和 `web/`。
+- Human 资料只走 `/api/human/profile`，Settings 使用 `settings=human`；旧 `/api/auth/me`、`settings=account` 与 `initialHumans` 产品入口已退役。
+- 保留仓库内部 `server`、`daemon`、`web`、`browser-access:dev`、`dev:e2e:up` 和可选本地 `.env`，仅用于分进程源码调试。
+- Electron 43.1.0 + electron-builder 26.15.3 + `@electron/rebuild` 4.2.0 已形成四层发行链：main/preload 开发构建、Web + Core/Worker/agent CLI 生产 bundle、Windows unpacked 包、x64 per-user assisted NSIS 安装器。构建关闭 electron-builder 自动 npm rebuild，包装器显式强制生成 Electron x64 的 `better-sqlite3`，再在 `finally` 中恢复 Node ABI；最终核对为 Node ABI 137、Electron ABI 148。
+- Windows workflow 仅支持手动触发并上传未签名 installer artifact，不自动创建 Release 或发布。
 
-验收：Windows Desktop 是唯一正式发行路径，仓库没有仍可启用的旧产品路线。
+验收：Windows Desktop 是唯一正式发行路径，仓库没有仍可启用的旧产品路线。typecheck、449/449 unit、完整 integration、2564-module Web build、production bundle/pack/dist、生产依赖高危审计与 packaged Desktop/Core fresh smoke 全部通过；最终 unpacked smoke Exit 0、`app.db` 创建、残留进程 0、端口监听 0。安装器 `Kith-space-Setup-0.1.0-x64.exe` 为 113625983 bytes，SHA-256 `D314DAE15A8E9AB598901D2E3DF8B90DE1C7B46E79824CC8575BD4C742B89646`，Authenticode `NotSigned`；它是可复现的本地/CI 未签名产物，不是已签名或已发布版本，公开分发前仍需代码签名，且尚未执行真实 NSIS 安装/卸载验收。
 
 ## 4. 本机化基础完成后的能力路线
 

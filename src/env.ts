@@ -1,7 +1,6 @@
-// Load the project-root .env at startup (Node 20.6+ native loadEnvFile), so `cp .env.example .env` works out of the box.
-// Imported as the first side-effect import in each entry point, ensuring it runs before any module reads process.env (e.g. db/index.ts).
-// Silently skipped when the file is missing or the Node version is too old; falls back to in-code defaults (aligned with docker-compose).
-// Set ENV_FILE to load a different env file (default: .env); use ENV_FILE=.env.prod to switch to a separate port/database in production.
+// Internal source-checkout helper: manual split-process development may load an optional local .env.
+// Packaged Desktop is authoritative and never loads it; tests may point ENV_FILE at an isolated fixture.
+// Imported first so a developer override is visible before modules read process.env.
 const desktopManaged = process.env.KITH_SPACE_DESKTOP_MANAGED === "1";
 if (!desktopManaged) {
   const envFile = process.env.ENV_FILE || ".env";

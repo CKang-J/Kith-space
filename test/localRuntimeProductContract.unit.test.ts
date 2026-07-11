@@ -26,6 +26,7 @@ test("active Core Service paths use the installation-local worker instead of Mac
 test("browser access policy owns the Core listener while the runtime worker remains installation-local", () => {
   const server = read("../src/server/index.ts");
   const workerSocket = read("../src/server/ws.ts");
+  const realtime = read("../src/server/realtime.ts");
   assert.match(server, /new BrowserAccessPolicy\(\)/);
   assert.match(server, /const listenerPolicy = accessPolicy\.getListenerPolicy\(\)/);
   assert.match(server, /const HOST = listenerPolicy\.host/);
@@ -37,6 +38,8 @@ test("browser access policy owns the Core listener while the runtime worker rema
   assert.doesNotMatch(workerSocket, /searchParams\.get\("key"\)/);
   assert.match(workerSocket, /agent\.status === "sleeping" \|\| agent\.activity === "sleeping"/);
   assert.match(workerSocket, /eq\(schema\.agents\.status, "active"\)/);
+  assert.match(realtime, /installation-local Core Service instance/);
+  assert.doesNotMatch(realtime, /redis-adapter|multi-instance|horizontal scaling/);
 });
 
 test("CLI and QA seed no longer carry Machine credentials or records", () => {

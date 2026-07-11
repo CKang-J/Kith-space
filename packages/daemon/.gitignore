@@ -1,3 +1,0 @@
-# Build artifact — produced by `pnpm run pkg:daemon:build` (esbuild bundle of src/daemon).
-# Rebuilt in CI before publish; never committed.
-dist/

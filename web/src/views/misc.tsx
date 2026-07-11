@@ -239,7 +239,7 @@ export function Search() {
 // Settings sub-pages. Desktop administration exists only inside the Electron preload boundary.
 // SETTINGS labels are i18n keys; call t(label) at render time
 const SETTINGS: [string, string][] = [
-  ["account", "misc.settingsNavAccount"],
+  ["human", "misc.settingsNavHuman"],
   ["space", "misc.settingsNavSpace"],
 ];
 export function Settings({ sectionOverride }: { sectionOverride?: string } = {}) {
@@ -249,20 +249,20 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
   const location = useLocation();
   const { t } = useTranslation();
   const desktopBridge = getDesktopBridge();
-  const requestedSection = section || "account";
+  const requestedSection = section || "human";
   const cur = resolveSettingsSection(section, desktopBridge !== null);
   const settingsEntries: [string, string][] = desktopBridge
     ? [...SETTINGS, ["desktop", "misc.settingsNavDesktop"]]
     : SETTINGS;
   const curLabel = t(settingsEntries.find((s) => s[0] === cur)?.[1] || cur);
   useEffect(() => {
-    if (requestedSection !== "desktop" || desktopBridge) return;
+    if (requestedSection === cur) return;
     nav(workspaceLocationForModule(
       location.pathname,
       location.search,
-      { moduleId: "settings", settings: "account" },
+      { moduleId: "settings", settings: cur },
     ), { replace: true });
-  }, [desktopBridge, location.pathname, location.search, nav, requestedSection]);
+  }, [cur, location.pathname, location.search, nav, requestedSection]);
   return (
     <>
       <aside className="sidebar">
@@ -274,8 +274,8 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
       <main className="content-col">
         <div className="head"><h1>{t("misc.settingsTitle", { section: curLabel })}</h1></div>
         <div className="scroll">
-          {cur === "account"
-            ? <AccountSettings api={api} />
+          {cur === "human"
+            ? <HumanSettings api={api} />
             : cur === "space"
               ? <SpaceSettings api={api} spaceId={spaceId} />
               : cur === "desktop" && desktopBridge
@@ -286,24 +286,24 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
     </>
   );
 }
-function AccountSettings({ api }: { api: any }) {
+function HumanSettings({ api }: { api: any }) {
   const { clearBrowserAccess } = useStore();
   const { t, i18n } = useTranslation();
   const desktopAvailable = getDesktopBridge() !== null;
   const setLang = (l: string) => { i18n.changeLanguage(l); localStorage.setItem("kith-space.lang", l); };
   const [u, setU] = useState<any>(null);
   const [saved, setSaved] = useState(false);
-  useEffect(() => { (async () => setU(await api("GET", "/api/auth/me")))(); }, []);
-  if (!u) return <div className="empty">{t("misc.accountLoading")}</div>;
-  const save = async () => { await api("PATCH", "/api/auth/me", { name: u.name, email: u.email || null, description: u.description }); setSaved(true); setTimeout(() => setSaved(false), 1500); };
+  useEffect(() => { (async () => setU(await api("GET", "/api/human/profile")))(); }, []);
+  if (!u) return <div className="empty">{t("misc.humanLoading")}</div>;
+  const save = async () => { await api("PATCH", "/api/human/profile", { name: u.name, email: u.email || null, description: u.description }); setSaved(true); setTimeout(() => setSaved(false), 1500); };
   return (
     <div className="setform">
-      <label>{t("misc.accountDisplayName")}</label><input value={u.name || ""} onChange={(e) => setU({ ...u, name: e.target.value })} />
-      <label>{t("misc.accountDescription")}</label>
-      <textarea value={u.description || ""} maxLength={3000} onChange={(e) => setU({ ...u, description: e.target.value })} placeholder={t("misc.accountDescriptionPlaceholder")} />
+      <label>{t("misc.humanDisplayName")}</label><input value={u.name || ""} onChange={(e) => setU({ ...u, name: e.target.value })} />
+      <label>{t("misc.humanDescription")}</label>
+      <textarea value={u.description || ""} maxLength={3000} onChange={(e) => setU({ ...u, description: e.target.value })} placeholder={t("misc.humanDescriptionPlaceholder")} />
       <div className="ta-count">{(u.description || "").length}/3000</div>
-      <label>{t("misc.accountEmail")}</label><input value={u.email || ""} onChange={(e) => setU({ ...u, email: e.target.value })} />
-      <div className="setrow"><button className="ok" onClick={save}>{t("misc.accountSave")}</button>{saved && <span className="saved">{t("misc.accountSaved")}</span>}</div>
+      <label>{t("misc.humanEmail")}</label><input value={u.email || ""} onChange={(e) => setU({ ...u, email: e.target.value })} />
+      <div className="setrow"><button className="ok" onClick={save}>{t("misc.humanSave")}</button>{saved && <span className="saved">{t("misc.humanSaved")}</span>}</div>
       <div className="lang-row">
         <div><div className="browser-session-title">{t("settings.language")}</div><div className="browser-session-desc">{t("settings.languageDesc")}</div></div>
         <div className="seg-pill" role="group" aria-label={t("settings.language")}>

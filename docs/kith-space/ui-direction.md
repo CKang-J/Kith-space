@@ -167,9 +167,9 @@ A5 已完成工作区入口与规范 URL 收口，但 `MessageContextSnapshot`�
 ## 8. 初始化与 Settings 边界
 
 - 首次启动页只收集 Human 名称、可选邮箱和描述，文案不得使用“注册”“账户”或“加入团队”。默认 `Home` 与根路径由应用创建，界面不要求用户选择。
-- 首次初始化只在检测到完整 Electron preload bridge 时运行，并先于 `StoreProvider`/Space bootstrap。若上次写入 Human 后中断，页面用 status 返回的 partial Human 预填恢复；重复提交保持幂等。初始化完成后挂载正常产品树并自动进入 `Home`；Human 资料可以在全局 Settings 修改。
+- 首次初始化只在检测到完整 Electron preload bridge 时运行，并先于 `StoreProvider`/Space bootstrap。若上次写入 Human 后中断，页面用 status 返回的 partial Human 预填恢复；重复提交保持幂等。初始化完成后挂载正常产品树并自动进入 `Home`；Human 资料在全局 Settings 以 `settings=human` 表达，并通过 `GET/PATCH /api/human/profile` 修改，不使用账户页或 `/api/auth/me`。
 - 普通本机/LAN 浏览器从不探测 setup API，也不显示首次启动页；未授权时只显示 Access Token Gate，已授权后进入共享工作区。
-- Desktop Settings 已包含 Web 模式、端口、访问 Token、撤销浏览器会话、托盘关闭行为和系统自启动；系统自启动在开发态明确显示 unsupported，待 Windows 正式打包后启用。
+- Desktop Settings 已包含 Web 模式、端口、访问 Token、撤销浏览器会话、托盘关闭行为和系统自启动；系统自启动在开发态明确显示 unsupported，在 Windows packaged Desktop 中启用。
 - 普通浏览器可在 Human Settings 撤销当前浏览器授权；该动作调用 `DELETE /api/browser-auth/session` 并返回 Access Token Gate，不是 Human 账户 logout。
 - Desktop 设置区只在检测到 `window.kithDesktop` 窄 preload bridge 时显示；普通浏览器直接进入该路由会回落到 Human 设置，并且服务端对管理 API 返回 404。隐藏入口不是唯一安全边界。
 - LAN 模式首次开启会先展示确认面板，明确说明 HTTP 未加密、只限受信任私网、禁止端口转发/公网暴露；用户确认后才改变监听。自动生成/轮换的访问 Token 保持一次性显示，直到用户主动确认已保存。

@@ -217,7 +217,7 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
   const openHumanSettings = () => nav(workspaceLocationForModule(
     routeLocation.pathname,
     routeLocation.search,
-    { moduleId: "settings", settings: "account" },
+    { moduleId: "settings", settings: "human" },
   ));
 
   // Channel-scoped state (loaded messages + load gate + has-more) belongs to one channel. When the
@@ -652,7 +652,7 @@ function ThreadPanel({ channelId, parent, onClose, onOpenAgent }: { channelId: s
   const openHumanSettings = () => nav(workspaceLocationForModule(
     routeLocation.pathname,
     routeLocation.search,
-    { moduleId: "settings", settings: "account" },
+    { moduleId: "settings", settings: "human" },
   ));
   const navToken = async (type: string, args: string[]) => {
     if (type === "agent") return onOpenAgent(args[0]!);

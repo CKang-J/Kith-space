@@ -5,14 +5,14 @@ body:
   - type: markdown
     attributes:
       value: |
-        Before filing: search existing issues to avoid duplicates.
-        **Do not report security vulnerabilities here** — see [SECURITY.md](../SECURITY.md).
+        Before filing, search existing issues to avoid duplicates.
+        Do not paste access Tokens, provider credentials, private messages, or other secrets into a public issue.
 
   - type: textarea
     id: description
     attributes:
       label: What happened?
-      description: A clear description of the bug.
+      description: Describe the problem and what you were doing when it occurred.
       placeholder: "When I do X, Y happens. I expected Z."
     validations:
       required: true
@@ -21,11 +21,11 @@ body:
     id: reproduce
     attributes:
       label: Steps to reproduce
-      description: Minimal steps to reliably trigger the bug.
+      description: Provide the smallest reliable sequence, starting from launching Kith-space.
       placeholder: |
-        1. Start the server with `pnpm run server`
-        2. ...
-        3. See error
+        1. Launch Kith-space Desktop
+        2. Open a Space and ...
+        3. Observe ...
     validations:
       required: true
 
@@ -41,44 +41,47 @@ body:
     id: actual
     attributes:
       label: Actual behavior
-      description: What actually happened? Paste relevant logs or a screenshot.
+      description: What actually happened? Include redacted logs or screenshots when useful.
     validations:
       required: true
 
   - type: input
-    id: node_version
+    id: desktop_version
     attributes:
-      label: Node.js version
-      description: Output of `node --version`
-      placeholder: "v20.x.x"
+      label: Kith-space Desktop version
+      description: Use the installed application version, commit, or "dev" for a source checkout.
+      placeholder: "0.1.0 / commit 1a2b3c4 / dev"
     validations:
       required: true
 
   - type: input
-    id: os
+    id: windows_version
     attributes:
-      label: Operating system
-      placeholder: "macOS 15 / Ubuntu 24.04 / Windows 11"
+      label: Windows version
+      description: Include edition, release, and architecture when known.
+      placeholder: "Windows 11 24H2 x64"
     validations:
       required: true
 
-  - type: input
-    id: daemon_version
+  - type: dropdown
+    id: web_mode
     attributes:
-      label: Daemon version
-      description: >
-        The `daemonVersion` shown in the machine row of the UI, or the output
-        of `npx @fancyboi999/kith-space-daemon --version` (if available).
-      placeholder: "0.4.0 / dev"
+      label: Desktop Web mode
+      description: Which mode was selected in Desktop Settings when the problem occurred?
+      options:
+        - "Off (Electron window only)"
+        - "Local browser access"
+        - "LAN browser access"
+        - "Not applicable or unknown"
     validations:
-      required: false
+      required: true
 
   - type: input
     id: runtime
     attributes:
       label: Agent runtime (if applicable)
-      description: Which runtime is the affected agent using?
-      placeholder: "claude / codex / copilot / opencode / kimi / pi / cursor"
+      description: Which local runtime and version was the affected agent using?
+      placeholder: "Claude Code 2.x / Codex / opencode / not applicable"
     validations:
       required: false
 
@@ -86,6 +89,6 @@ body:
     id: extra
     attributes:
       label: Additional context
-      description: Anything else that might help — config snippets, related issues, etc.
+      description: Add relevant redacted logs, browser details, screenshots, or related issues.
     validations:
       required: false

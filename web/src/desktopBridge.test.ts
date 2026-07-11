@@ -20,9 +20,12 @@ test("Desktop bridge detection accepts only the complete preload contract", () =
   assert.equal(getDesktopBridge({}), null);
 });
 
-test("Desktop settings routes fall back to account outside Electron", () => {
-  assert.equal(resolveSettingsSection("desktop", false), "account");
+test("settings routes default and fall back to the Human profile", () => {
+  assert.equal(resolveSettingsSection("desktop", false), "human");
   assert.equal(resolveSettingsSection("desktop", true), "desktop");
   assert.equal(resolveSettingsSection("space", false), "space");
-  assert.equal(resolveSettingsSection(undefined, false), "account");
+  assert.equal(resolveSettingsSection("human", false), "human");
+  assert.equal(resolveSettingsSection("account", false), "human");
+  assert.equal(resolveSettingsSection("unknown", true), "human");
+  assert.equal(resolveSettingsSection(undefined, false), "human");
 });

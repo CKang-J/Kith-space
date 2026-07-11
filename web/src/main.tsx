@@ -15,7 +15,7 @@ import "./styles.css";
 
 // Home waits for the HttpOnly Cookie session bootstrap. Anonymous browser clients see the Access
 // Token gate; authenticated clients go straight to their Space without flashing the gate.
-function PublicHome() {
+function ProductEntry() {
   const { slug, ready, authState } = useStore();
   switch (homeRoute({ authState, ready })) {
     case "redirect": return <Navigate to={`/s/${slug}/channel`} replace />;
@@ -24,7 +24,7 @@ function PublicHome() {
   }
 }
 
-// Root / unmatched path: wait for bootstrap, then redirect to the local workspace or the public home.
+// Root / unmatched path: wait for bootstrap, then redirect to the local workspace or the Token Gate.
 function RootRedirect() {
   const { slug, ready, authState } = useStore();
   if (!ready) return <WorkspaceSkeleton />; // bootstrap in flight: show the workspace skeleton, not a blank screen
@@ -62,7 +62,7 @@ function ProductRoot() {
       <ToastProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<PublicHome />} />
+          <Route path="/" element={<ProductEntry />} />
           <Route path={SPACE_ROUTE_PATTERN} element={<WorkspaceRoute />} />
           <Route path="*" element={<RootRedirect />} />
         </Routes>

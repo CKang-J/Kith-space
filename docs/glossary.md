@@ -32,6 +32,9 @@
 **Personal Setup（首次初始化）**
 : Desktop 在全新安装数据中建立唯一 Human 与默认 `Home` 的一次性应用生命周期。它只收集名称、可选邮箱和描述，允许从“已有 Human、尚缺 Home”的中断态恢复，并保持重复提交幂等；它不是注册、登录或浏览器授权流程。
 
+**Human Settings / Human Profile**
+: 唯一 Human 在全局 Settings 中查看和修改本地资料的入口，规范 URL resource 为 `settings=human`，数据接口为 `GET/PATCH /api/human/profile`。它不是账户页；旧 `settings=account` 与 `/api/auth/me` 已退役，`initialHumans` 也不是当前产品入口。
+
 **工作区 / Space（空间）**
 : 一个根植于本地文件夹、自包含、可移植的协作单元，装着自己的 agent 队伍、频道、消息、任务和记忆；一个文件夹对应一个 Space。产品 schema、API、Socket、CLI 与类型统一使用 `space/spaceId`；`server` 只可描述 Core Service 等技术进程或保留在历史研究原文中。
 
@@ -150,7 +153,19 @@
 ## 宿主形态与数据层
 
 **Electron 桌面壳**
-: 唯一正式宿主与发行形态。Electron 主进程监督 Core Service 和 Local Runtime Worker、创建受控 UI 窗口，并管理端口、托盘、关闭行为与系统自启动。
+: 唯一正式宿主与发行形态。Electron 主进程监督 Core Service 和 Local Runtime Worker、创建受控 UI 窗口，并管理端口、托盘、关闭行为与系统自启动；Windows 发行由 production bundle、unpacked 包和 NSIS 安装器组成。
+
+**Production Desktop Bundle**
+: `pnpm run desktop:bundle` 生成的完整打包输入：共享 `web/dist`、Electron main/preload、Core Service CJS、Local Runtime Worker ESM 与 agent CLI ESM。它是生产运行资产集合，不等于安装器。
+
+**Windows unpacked 包**
+: `pnpm run desktop:pack` 生成的 `dist/desktop/win-unpacked` 目录，用于在不经过安装器的情况下验证真实 packaged Desktop、内置 Core/Worker/Web/Drizzle 资产和退出行为；它不是公开发行包。
+
+**Windows NSIS 安装器**
+: `pnpm run desktop:dist` 生成的 x64、per-user、assisted NSIS `.exe`。当前本地与手动 CI 产物默认未签名，CI 只上传 artifact、不创建 Release；公开分发前必须配置 Windows 代码签名证书并执行真实安装/卸载验收。
+
+**未签名 installer artifact**
+: 能证明 Desktop 打包链可复现、但 Authenticode 状态为 `NotSigned` 的构建产物。它不等于已签名版本或已公开发布版本，不能绕过代码签名与安装流程验收。
 
 **Core Service**
 : Desktop 管理的本机单实例 HTTP/socket.io/业务服务。名称只描述技术进程，不是公开部署的 server 产品，也不等于 Space。
@@ -168,7 +183,7 @@
 : Desktop 信任凭据和 Local Runtime Worker 控制凭据的统称。两者彼此独立，也不与浏览器 Access Token 或 agent session token 复用。Desktop 每次启动/重启受管进程组都会重新生成；只有手动分进程开发才临时使用 `KITH_SPACE_DESKTOP_TOKEN` 和 `KITH_SPACE_WORKER_TOKEN` 注入。
 
 **每工作区独立 SQLite 文件**
-: 每个 Space 把自己的 `spaces` 元数据、消息、任务、频道、agent、agent membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前是单一 19 表 baseline，所有领域外键使用 `space_id`；Human 资料和 Desktop 设置不随 Space 复制。
+: 每个 Space 把自己的 `spaces` 元数据、消息、任务、频道、agent、agent membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 baseline 有 19 张产品表；连同 Drizzle 的 `__drizzle_migrations` 是 20 张物理表，`PRAGMA user_version=2`。所有领域外键使用 `space_id`；Human 资料和 Desktop 设置不随 Space 复制。
 
 **`.kith/`**
 : 工作区文件夹下承载其全部状态的目录：`workspace.db`（结构化数据）、`agents/`（agent 阵容配置，明文）、`memory/`（空间级 + agent 级记忆，一事一文件）、`uploads/`（该 Space 的附件对象）。

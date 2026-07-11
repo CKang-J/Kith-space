@@ -244,7 +244,9 @@
 
 **凭据隔离**：浏览器 Access Token、Desktop 私有信任、Local Runtime Worker 控制凭据和 agent session token 四者互不复用。A3 已删除 Human JWT、dev-login、`?as=`、Bearer/localStorage 会话和 URL token；Desktop 管理 API 对普通浏览器返回 404。A4 Electron 已在每次进程组启动/重启时为 Desktop/Worker 生成两个独立内部凭据，并阻止受管子进程从 `.env` 回灌；渲染器 JavaScript 不持有凭据，Vite 子进程环境不包含凭据，agent runtime 环境会剥离全部宿主级 `KITH_SPACE_*` 变量后只注入当前 agent 的短期能力。只有保留给开发调试的手动分进程模式从环境变量注入。
 
-**Desktop 生命周期**：关闭窗口默认隐藏到托盘，服务和 agent 继续运行；显式退出才停止全部进程。可选改为关闭即退出。系统自启动默认关闭，启用后以托盘方式启动；A4 已接入 Windows 打包态的 Electron 自启动接口，开发态明确标记 unsupported，正式安装器仍属后续发行工作。
+**Desktop 生命周期**：关闭窗口默认隐藏到托盘，服务和 agent 继续运行；显式退出才停止全部进程。可选改为关闭即退出。系统自启动默认关闭，启用后以托盘方式启动；A4 已接入 Windows 打包态的 Electron 自启动接口，开发态明确标记 unsupported。A6 已补齐正式生产 bundle、Windows unpacked 包与 NSIS 安装器，打包态可实际走系统自启动接口。
+
+**发行边界**：Windows v1 使用 Electron 43.1.0 与 electron-builder 26.15.3。正式构建分为 main/preload、Web + Core/Worker/agent CLI 生产 bundle、`win-unpacked` 和 x64 per-user assisted NSIS 四层；公共 daemon/npm/OIDC/docs-site 发布路径已删除。当前本地与手动 CI 只产出未签名 installer artifact，不自动创建 Release。公开分发前必须配置 Windows 代码签名证书；在真实执行 NSIS 安装/卸载前，不得把“安装器构建成功”描述成安装流程已验收。
 
 **推理与权衡**：共享 UI/API 避免维护两个产品；Desktop 监督内部进程，消除普通用户的服务配置负担。LAN 入口满足同一局域网内的临时访问需求，但不改变单 Human、本机 agent 和本地数据边界。HTTP 是明确安全债；HTTPS 与 runtime 权限升级是邮箱、浏览器等高风险模块上线前的硬前置。
 
@@ -282,7 +284,7 @@
 
 ## 决策 20：仓库统一使用 pnpm
 
-**结论**：根目录、web 与 packages workspace 统一使用 pnpm 和 `pnpm-lock.yaml`。脚本参数直接传递，例如 `pnpm test --unit`，不写额外的 `--`。普通开发命令不再使用 npm；当前遗留的 `npm publish` 只属于 A6 待删除的公共包发布 workflow。
+**结论**：仓库根目录与 `web/` workspace 统一使用 pnpm 和 `pnpm-lock.yaml`。脚本参数直接传递，例如 `pnpm test --unit`，不写额外的 `--`。A6 已删除公共 daemon package 及其 `npm publish`/OIDC workflow，当前 workspace 不再包含 `packages/*`，也不存在产品 npm 发行路线。
 
 **推理与权衡**：pnpm 的 workspace 与确定性依赖布局更适合当前多包仓库，也避免 npm/pnpm 双锁文件漂移。迁移已经完成，后续文档、脚本和 CI 必须保持一致。
 
@@ -300,7 +302,9 @@
 
 **实施方式**：先同步权威文档，再依次完成本地领域与 `app.db`、浏览器访问安全、Electron 宿主、UI/入口清理和继承资产总审计。每阶段独立验证、独立提交。完整规格见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`。
 
-**实施状态（2026-07-11）**：A2 本地域与数据模型、A3 浏览器访问安全、A4 Electron Desktop 宿主、A5 首次 Human 初始化和旧界面/登录残留清理均已落地。Landing、PWA、旧 `Layout` 与账户入口已删除，Dock 与 canonical 模块 query 已收口；下一阶段是 A6 继承部署/发布资产清理、Windows 正式生产 bundle、打包/安装器和总审计。
+**Windows 发行姿态**：Desktop 是唯一正式发行路径，但“有安装器文件”和“已公开发行”必须分开。A6 锁定 x64、per-user、assisted NSIS；本地/CI 产物默认未签名，CI 只上传 artifact。代码签名证书是公开分发的硬前置，真实安装/卸载测试也是正式发布验收的一部分。该约束不改变未来 macOS/Linux 路线，只规定当前 Windows v1 的可验证边界。
+
+**实施状态（2026-07-11）**：A2 本地域与数据模型、A3 浏览器访问安全、A4 Electron Desktop 宿主、A5 首次 Human 初始化和旧界面/登录残留清理、A6 继承资产清理与 Windows 打包均已落地。Landing、PWA、旧 `Layout`、账户入口、Docker/Railway、环境样例、公共 daemon/npm/OIDC/docs-site 发布路径已删除；Human 资料收口到 `/api/human/profile` 与 `settings=human`。生产 bundle、unpacked 包、未签名 NSIS 安装器、packaged Desktop/Core smoke 与 449/449 单测已通过。下一阶段是 Runtime 契约 v2，之后进入生产力模块、Context Snapshot 与 P4 视觉收尾。
 
 ---
 

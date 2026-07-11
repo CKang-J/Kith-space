@@ -89,6 +89,8 @@ try {
   assert.equal(addHuman.status, 400);
   const createWithHumans = await api(home.id, "POST", "/api/channels", { name: "invalid-humans", userIds: [human.id] });
   assert.equal(createWithHumans.status, 400);
+  const createWithLegacyType = await api(home.id, "POST", "/api/channels", { name: "legacy-type", type: "private" });
+  assert.equal(createWithLegacyType.status, 400);
 
   const humanDm = await api(home.id, "POST", "/api/channels/dm", { userId: "another-human" });
   assert.equal(humanDm.status, 400);

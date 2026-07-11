@@ -1,6 +1,6 @@
 // Realtime: the human side runs over socket.io (see socketio.ts); seq comes from the workspace-local counter.
 // publish() is the single global entry point; internally it maps to named realtime events and fans out to the Space room.
-// Note: single-instance direct emit; for multi-instance horizontal scaling switch to @socket.io/redis-adapter (TODO).
+// One installation-local Core Service instance owns every Space room, so direct emit is the complete transport.
 import { nextSeq } from "../counters.js";
 import { emitMapped } from "./socketio.js";
 

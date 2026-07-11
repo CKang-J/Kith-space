@@ -18,6 +18,8 @@ Kith-space 只服务当前电脑的使用者。这个 Human 可以创建多个�
 
 正式产品只有 Electron Desktop 安装包。Desktop 自动管理本机 Core Service、Local Runtime Worker 和 React UI，不要求普通用户配置服务或 `.env`。
 
+Windows v1 已具备 production bundle、unpacked 包和 x64 per-user assisted NSIS 安装器构建链。当前本地/CI 安装器默认未签名，CI 只上传 artifact；这不代表已经公开发布。正式公开分发前必须配置 Windows 代码签名证书，并完成真实安装与卸载验收。
+
 浏览器访问是 Desktop 运行期间的附属入口，不是独立 Web 产品。用户可选择关闭、仅本机或局域网访问；所有浏览器首次访问都需要访问 Token。浏览器中的使用者仍是同一个 Human，数据和 agent 都留在 Desktop 所在电脑。
 
 Windows 是 v1 正式平台，macOS 和 Linux 后续支持。局域网 v1 只做 HTTP，限受信任私网；HTTPS 与 runtime 权限升级是高风险外部内容模块上线前的硬前置。
@@ -50,7 +52,7 @@ Windows 是 v1 正式平台，macOS 和 Linux 后续支持。局域网 v1 只做
 
 ## 源项目关系与许可证
 
-- open-tag（Apache-2.0）是代码底座，复用消息、频道、任务、daemon 和 runtime 适配骨架；它的服务器部署、多用户和多机器产品假设会被清除。
+- open-tag（Apache-2.0）是代码底座，复用消息、频道、任务、Local Runtime Worker 和 runtime 适配骨架；它的服务器部署、多用户、多机器、公共 daemon/npm 与独立 Web 发布假设已经清除。
 - OpenLoaf（AGPLv3）只作视觉和产品思路参考，禁止复制源码。
 - openagents 和 zano 是历史研究与局部交互参考，不定义产品路线。
 

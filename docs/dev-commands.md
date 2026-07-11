@@ -4,16 +4,15 @@
 
 包管理器是 **pnpm**（不是 npm）。pnpm 传参不加 `--`：用 `pnpm test --unit`，不要写 `pnpm test -- --integration`。
 
-> A5 已落地 Desktop 首次初始化。完整开发优先使用 `pnpm run desktop:dev`；全新数据目录无需 seed，它会自行生成并隔离 Desktop/Worker 内部凭据，并在窗口中收集 Human 资料、创建 `Home`。`.env` 中的内部凭据只服务手动分进程调试，不是普通用户配置。
+> A6 已完成 Desktop 生产 bundle 与 Windows 安装器链。完整开发优先使用 `pnpm run desktop:dev`；全新数据目录无需 seed，它会自行生成并隔离 Desktop/Worker 内部凭据，并在窗口中收集 Human 资料、创建 `Home`。可选本地 `.env` 中的内部凭据只服务手动分进程调试，不是普通用户配置，也不随仓库提供样例。
 
 ## 1. 首次准备
 
 ```bash
-pnpm install                      # 安装依赖（workspace：根 + web/ + packages/*）
-cp .env.example .env              # 可选：只为手动分进程调试或覆盖 KITH_SPACE_HOME/VITE_PORT
+pnpm install                      # 安装依赖（workspace 仅根目录 + web/）
 ```
 
-手动分进程开发的环境变量（`.env`）：
+仓库已删除 `.env.example`、`.env.docker.example` 等服务器部署样例。需要手动分进程调试时，可自行创建不提交的本地 `.env`，或在各进程环境中设置：
 
 - `KITH_SPACE_DESKTOP_TOKEN` — Desktop/开发管理请求到 Core Service 的私有信任凭据（必填）。
 - `KITH_SPACE_WORKER_TOKEN` — Local Runtime Worker 控制 WS 的独立凭据（必填）。
@@ -98,16 +97,22 @@ pnpm test                         # 全量（单测 + 集成）
 ```
 
 跑测试时把数据落到临时目录，避免污染真实 home：`KITH_SPACE_HOME=$(mktemp -d) pnpm test --unit`。
-A5 当前完整单测基线是 439/439。旧 `test/publicNavContract.unit.test.ts` 随 public landing/PWA 路线删除，不再是可忽略的既有失败；当前全量检查应为全绿。
+A6 当前完整单测基线是 449/449。旧 `test/publicNavContract.unit.test.ts` 随 public landing/PWA 路线删除，不再是可忽略的既有失败；当前全量检查应为全绿。生产依赖审计可运行 `pnpm audit --prod --audit-level=high`。
 
 ## 7. 构建与打包
 
 ```bash
 pnpm run web:build                # 构建前端到 web/dist（server 会提供它）
 pnpm run desktop:build            # 用 esbuild 构建 Electron main/preload 到 desktop/dist
-pnpm run pkg:daemon:build         # 打包 daemon 分发件
-pnpm run cli -- <args>            # 运行 CLI（如 pnpm run cli role-template list）
+pnpm run desktop:bundle           # web build + main/preload + Core CJS + Worker/agent CLI ESM
+pnpm run desktop:pack             # 先 production bundle，再生成 dist/desktop/win-unpacked
+pnpm run desktop:dist             # 先 production bundle，再生成 x64、per-user、assisted NSIS 安装器
+pnpm run cli role-template list   # 源码调试时直接运行 CLI；pnpm 脚本传参不加额外 --
 ```
+
+`desktop:build` 只生成 Electron main/preload，不包含 Web/Core/Worker，也不是安装器。`desktop:bundle` 生成打包所需的完整生产资产：`web/dist`、`desktop/dist/main.cjs`、`preload.cjs`、`runtime/core.cjs`、`runtime/worker.mjs` 与 `runtime/agent-cli.mjs`。打包态用 Electron 自身可执行文件配合 `ELECTRON_RUN_AS_NODE=1` 启动 Core/Worker，并从 `resources` 读取 Web 与 Drizzle migration。
+
+`desktop:pack` 和 `desktop:dist` 都通过 `scripts/package-desktop.mjs` 调用 electron-builder 26.15.3。由于 pnpm 的物理 store 不能依赖 electron-builder 自动扫描正确重建，`package.json` 固定 `npmRebuild=false`，包装器使用 `@electron/rebuild` 4.2.0 对 `better-sqlite3` 执行 `--force --arch x64` 的 Electron rebuild，再调用 electron-builder；无论成功或失败，`finally` 都执行 `pnpm rebuild better-sqlite3` 恢复后续开发/测试的 Node ABI。最终核对：本地 Node ABI 137，packaged Electron ABI 148。
 
 ## 8. 编排护栏相关环境变量（P1）
 
@@ -116,15 +121,18 @@ pnpm run cli -- <args>            # 运行 CLI（如 pnpm run cli role-template 
 
 急停等运行时控制走 `/api/tasks/:id/dispatch/*` 与 `/api/spaces/:id/dispatch/*`，详见 `docs/kith-space/architecture-proposal.md §6`。
 
-## 9. 待删除的继承命令
+## 9. 已退役的继承发行路径
 
-`start:prod`、`daemon:prod`、`seed:prod`、`prod:up`、`prod:down`、`.env.prod`、公共 server/daemon 包和 OIDC 发布 workflow 是 open-tag 服务器发行遗留。它们在 A6 删除，不属于 Kith-space 正式产品路线；正式发行物只有 Desktop 安装包。
+`start:prod`、`daemon:prod`、`seed:prod`、`prod:up`、`prod:down`、公共 daemon package、Docker/compose/Railway、npm/OIDC 与 docs-site 发布 workflow 已在 A6 删除，不再是可运行命令或发行入口。源码调试用 `start`/`server`/`daemon` 不等于恢复公共 server/daemon 产品；正式发行物只有 Desktop 安装包。
 
-## 10. Electron Desktop 开发入口
+## 10. Electron Desktop 开发与 Windows 发行
 
 ```bash
 pnpm run desktop:build            # 仅构建 Electron main/preload，不启动进程、不生成安装器
 pnpm run desktop:dev              # desktop:build 后启动 Electron 管理的完整开发进程组
+pnpm run desktop:bundle           # 构建完整 production assets，不运行 electron-builder
+pnpm run desktop:pack             # 生成 Windows unpacked 目录，便于 packaged smoke
+pnpm run desktop:dist             # 生成 Windows NSIS 安装器
 ```
 
 `desktop:dev` 使用 Electron 43.1.0。Desktop 先启动 Core Service；Core 从 app.db 读取稳定端口并以 IPC 报告 ready 后，监督器才把实际端口注入唯一 Worker 和可选 Vite。端口占用会作为明确启动错误返回，不静默换端口。进程组每次启动或因 Web 设置变更而重启时，都会重新生成相互独立的 Desktop/Worker 凭据；受管子进程带 `KITH_SPACE_DESKTOP_MANAGED=1`，不会从仓库 `.env` 重新载入凭据，Vite 子进程环境不包含任一内部 Token。
@@ -133,4 +141,6 @@ pnpm run desktop:dev              # desktop:build 后启动 Electron 管理的�
 
 开发窗口默认关闭到托盘；可在 Desktop Settings 改为关闭即退出。显式 Quit 会等待 agent runtime 退出，再结束整个进程组；Windows 使用 process-tree 兜底，终止失败时应用保持运行并允许重试。Desktop Settings 还管理 off/local/lan、端口、访问 Token 轮换、浏览器会话撤销与系统自启动。LAN 在改变监听前要求确认 HTTP 风险，自动生成的 Token 会保持显示到用户确认已保存。自启动只在 Windows 正式打包形态启用，开发态会明确显示不支持。
 
-`desktop:build` 当前只是 Electron main/preload 的开发构建。Windows 正式生产子进程 bundle、正式打包、安装器和发行流程仍属于后续阶段，不能把该命令当作可分发应用包。
+Windows 配置固定为 Electron 43.1.0、electron-builder 26.15.3、x64、per-user、assisted NSIS；输出目录是 `dist/desktop/`。手动 GitHub Actions workflow `Build Windows Desktop` 只运行 `desktop:dist` 并上传保留 14 天的未签名 `.exe` artifact，不创建 Release，也不自动发布。
+
+A6 本地验证生成的安装器是 `dist/desktop/Kith-space-Setup-0.1.0-x64.exe`，大小 113625983 bytes，SHA-256 为 `D314DAE15A8E9AB598901D2E3DF8B90DE1C7B46E79824CC8575BD4C742B89646`，Authenticode 状态为 `NotSigned`。最终 unpacked Desktop smoke Exit 0，成功创建 `app.db`，退出后残留受管进程 0、端口监听 0。这证明构建链可复现，不代表产品已签名或已发布；公开分发前必须配置 Windows 代码签名证书。本阶段只验证了 unpacked/packaged Desktop 与 Core smoke，没有实际执行 NSIS 安装和卸载，正式发布验收仍必须补做该流程。

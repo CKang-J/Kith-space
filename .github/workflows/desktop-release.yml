@@ -1,0 +1,40 @@
+name: Build Windows Desktop
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    name: Windows x64 installer
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Windows x64 installer
+        run: pnpm run desktop:dist
+
+      - name: Upload unsigned installer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: kith-space-windows-x64
+          path: dist/desktop/*.exe
+          if-no-files-found: error
+          retention-days: 14

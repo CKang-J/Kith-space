@@ -283,12 +283,15 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
     if (Object.prototype.hasOwnProperty.call(b, "userIds")) {
       return (sendErr(res, 400, "Human channel membership is not configurable"), true);
     }
+    if (Object.prototype.hasOwnProperty.call(b, "type")) {
+      return (sendErr(res, 400, "channel type is retired; use visibility"), true);
+    }
     const name = String(b.name ?? "").trim().replace(/^#/, "").toLowerCase().replace(/\s+/g, "-");
     if (!name) return (sendErr(res, 400, "name required"), true);
     const dup = (await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.name, name))))[0];
     if (dup && !dup.deletedAt) return (sendErr(res, 409, "channel name exists"), true);
-    // Frontend sends visibility public/private → backend stores as type channel/private (backward-compatible with legacy type field)
-    const type = (b.visibility === "private" || b.type === "private") ? "private" : "channel";
+    // Product input uses visibility; the database type remains the internal channel-kind discriminator.
+    const type = b.visibility === "private" ? "private" : "channel";
     const [ch] = await db.insert(schema.channels).values({ spaceId, name, description: b.description ?? null, type }).returning();
     const agentIds = Array.isArray(b.agentIds) ? b.agentIds.filter(Boolean) : [];
     const members: { type: "agent"; id: string }[] = [];

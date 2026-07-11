@@ -149,7 +149,7 @@ test("opening a module from Chat creates Split and selects its resource", () => 
   const settingsTarget = workspaceLocationForModule(
     "/s/space/channel/channel-1",
     tasksTarget.slice(tasksTarget.indexOf("?")),
-    { moduleId: "settings", settings: "account" },
+    { moduleId: "settings", settings: "human" },
   );
   const tasksUrl = new URL(tasksTarget, "http://kith-space.local");
   const settingsUrl = new URL(settingsTarget, "http://kith-space.local");
@@ -157,8 +157,19 @@ test("opening a module from Chat creates Split and selects its resource", () => 
   assert.equal(tasksUrl.searchParams.get("module"), "tasks");
   assert.equal(tasksUrl.searchParams.get("taskScope"), "space");
   assert.equal(tasksUrl.searchParams.has("chat"), false);
-  assert.equal(settingsUrl.searchParams.get("settings"), "account");
+  assert.equal(settingsUrl.searchParams.get("settings"), "human");
   assert.equal(settingsUrl.searchParams.has("taskScope"), false);
+});
+
+test("settings locations normalize retired and unknown resources to Human", () => {
+  for (const resource of ["account", "unknown"]) {
+    const target = workspaceLocationForModule(
+      "/s/space/channel/channel-1",
+      "?module=settings",
+      { moduleId: "settings", settings: resource },
+    );
+    assert.equal(new URL(target, "http://kith-space.local").searchParams.get("settings"), "human");
+  }
 });
 
 test("module resources are decoded only for their owning module", () => {

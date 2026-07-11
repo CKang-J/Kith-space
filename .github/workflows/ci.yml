@@ -1,50 +1,48 @@
 name: CI
 
-# Keep types clean, tests green, and the web app buildable on every push / PR.
+# Keep the Personal AgentOS code, tests, and production Desktop bundles healthy on every push / PR.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
-  typecheck-and-build:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v6
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.33.2
 
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "pnpm"
 
-      - name: Install workspace deps
+      - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck (root + web)
+      - name: Typecheck root and web
         run: pnpm run typecheck
 
-      - name: Unit tests (node:test + tsx)
-        # Dummy secrets so modules that import auth.ts (which fail-fasts on missing
-        # JWT_SECRET/DAEMON_BOOTSTRAP_KEY at load) can be loaded by the test runner.
-        # authFailFast.unit.test.ts spawns a subprocess with these explicitly unset,
-        # so the fail-fast behavior is still verified independently of this env.
-        env:
-          JWT_SECRET: ci-test-secret
-          DAEMON_BOOTSTRAP_KEY: ci-test-bootstrap-key
-        run: pnpm exec tsx --test --test-force-exit test/*.unit.test.ts src/daemon/*.test.ts
+      - name: Unit tests
+        run: pnpm test --unit
 
-      - name: Security audit (prod deps, high+)
+      - name: Integration tests
+        run: pnpm test --integration
+
+      - name: Build production Desktop bundles
+        # desktop:bundle includes the production web build, so do not build web twice here.
+        run: pnpm run desktop:bundle
+
+      - name: Audit production dependencies
         run: pnpm audit --prod --audit-level=high
-
-      - name: Build web
-        run: pnpm run web:build
-
-      - name: Build daemon package (@fancyboi999/kith-space-daemon bundle)
-        run: pnpm run pkg:daemon:build

@@ -17,6 +17,7 @@ test("agent runtime env preserves provider access but strips every host capabili
       ENV_FILE: ".env",
       PORT: "7777",
       NODE_CHANNEL_FD: "3",
+      NODE_PATH: "private-host-modules",
       CLAUDECODE: "1",
     },
     binDir: "agent-bin",
@@ -40,6 +41,7 @@ test("agent runtime env preserves provider access but strips every host capabili
     "ENV_FILE",
     "PORT",
     "NODE_CHANNEL_FD",
+    "NODE_PATH",
     "CLAUDECODE",
   ]) assert.equal(env[name], undefined, `${name} must not reach an agent runtime`);
 });

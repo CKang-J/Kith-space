@@ -15,6 +15,7 @@ import { generateInternalProcessCredentials } from "../local-runtime/internalCre
 import { DesktopCoreClient } from "./coreClient.js";
 import { parseBrowserAccessUpdate, parseLifecycleUpdate } from "./ipcValidation.js";
 import { isPortAvailable } from "./portAvailability.js";
+import { buildDesktopProcessCommands } from "./processCommands.js";
 import { DesktopProcessSupervisor } from "./processSupervisor.js";
 import {
   DESKTOP_TRUST_HEADER,
@@ -75,22 +76,23 @@ function requiredDevelopmentPath(name: string): string {
 }
 
 function processCommands() {
-  if (!isDevelopment) {
-    throw new Error("Packaged Desktop child-process bundles are introduced in the packaging stage");
-  }
-  const node = requiredDevelopmentPath("KITH_SPACE_NODE_BINARY");
-  const tsx = requiredDevelopmentPath("KITH_SPACE_TSX_CLI");
-  const vite = requiredDevelopmentPath("KITH_SPACE_VITE_CLI");
-  return {
-    core: { command: node, args: [tsx, "src/server/index.ts"], cwd: repoRoot },
-    worker: { command: node, args: [tsx, "src/daemon/index.ts"], cwd: repoRoot },
-    vite: {
-      command: node,
-      args: [vite, "--host", "127.0.0.1"],
-      cwd: path.join(repoRoot, "web"),
-      env: { VITE_PORT: String(uiPort) },
-    },
-  };
+  return isDevelopment
+    ? buildDesktopProcessCommands({
+        mode: "development",
+        appRoot: repoRoot,
+        resourcesPath: process.resourcesPath,
+        executable: requiredDevelopmentPath("KITH_SPACE_NODE_BINARY"),
+        tsxCli: requiredDevelopmentPath("KITH_SPACE_TSX_CLI"),
+        viteCli: requiredDevelopmentPath("KITH_SPACE_VITE_CLI"),
+        uiPort,
+      })
+    : buildDesktopProcessCommands({
+        mode: "packaged",
+        appRoot: repoRoot,
+        resourcesPath: process.resourcesPath,
+        executable: process.execPath,
+        uiPort,
+      });
 }
 
 function launchAtLoginSupported(): boolean {
@@ -232,7 +234,7 @@ function showMainWindow(): void {
 function createTray(): void {
   const iconPath = isDevelopment
     ? path.join(repoRoot, "web", "public", "favicon.ico")
-    : path.join(process.resourcesPath, "web", "public", "favicon.ico");
+    : path.join(process.resourcesPath, "web", "dist", "favicon.ico");
   const icon = nativeImage.createFromPath(iconPath);
   tray = new Tray(icon);
   tray.setToolTip("Kith-space");
@@ -370,7 +372,7 @@ async function bootstrap(): Promise<void> {
   registerDesktopIpc();
   createTray();
   await createMainWindow(configureDesktopSession());
-  if (isDevelopment && process.env.KITH_SPACE_DESKTOP_SMOKE_EXIT_MS) {
+  if (process.env.KITH_SPACE_DESKTOP_SMOKE_EXIT_MS) {
     const delay = Number(process.env.KITH_SPACE_DESKTOP_SMOKE_EXIT_MS);
     if (Number.isFinite(delay) && delay >= 0) setTimeout(requestQuit, delay);
   }

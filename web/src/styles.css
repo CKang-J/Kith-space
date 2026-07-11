@@ -128,7 +128,7 @@ mark{background:var(--g-peach);color:var(--ink);padding:0 2px;border-radius:4px}
 .access-gate-submit{width:100%;margin-top:4px;padding:10px}
 .access-gate-help{margin-top:14px;font-size:13px;color:var(--muted);text-align:center}
 .browser-session-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:26px;padding-top:18px;border-top:1px solid var(--hair)}
-/* Language switcher: segmented control (settings account page).
+/* Language switcher: segmented control (Human settings page).
    Uses .seg-pill (pill border-radius:9999px) to distinguish from the rect .seg
    used in the task-toolbar Board/List toggle (border-radius:8px, defined below). */
 .lang-row{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:26px;padding-top:18px;border-top:1px solid var(--hair)}

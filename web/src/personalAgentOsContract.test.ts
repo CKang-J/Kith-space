@@ -55,6 +55,8 @@ test("Human membership, invite, and profile surfaces are absent", () => {
   assert.match(chat, /\/members`, \{ agentId \}/);
   assert.doesNotMatch(quickSwitcher, /kind:\s*"human"|channels\/dm[^\n]+userId|unknownUser/);
   assert.doesNotMatch(settings, /InvitesSettings|NotificationsSettings|notification-settings|settingsNavInvites/);
+  assert.match(settings, /\/api\/human\/profile/);
+  assert.doesNotMatch(settings, /\/api\/auth\/me/);
 });
 
 test("channel copy describes Human authority separately from agent membership", () => {
@@ -66,6 +68,15 @@ test("channel copy describes Human authority separately from agent membership", 
   }
   assert.match(en, /Human always has access/);
   assert.match(zh, /Human 始终可访问/);
+});
+
+test("Showcase scenarios stay inside the Desktop-first local AgentOS boundary", () => {
+  const showcase = source("./showcaseData.ts");
+
+  assert.doesNotMatch(showcase, /\bPWA\b|web push|push notifications?|native mobile|mobile browser|App Store|\biOS\b/i);
+  assert.match(showcase, /Desktop/);
+  assert.match(showcase, /Local Runtime Worker/);
+  assert.match(showcase, /LAN/);
 });
 
 test("the frontend exposes only the local product shell", () => {

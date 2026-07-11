@@ -36,26 +36,76 @@
     "server": "tsx watch src/server/index.ts",
     "start": "tsx src/server/index.ts",
     "web:build": "pnpm --dir web run build",
-    "docs:build": "pnpm --dir docs-site run build",
-    "site:build": "pnpm run web:build && pnpm run docs:build",
     "stop": "pkill -f 'src/server/index.ts'; pkill -f 'src/daemon/index.ts'; pkill -f 'bin/vite'; true",
-    "start:prod": "ENV_FILE=.env.prod tsx src/server/index.ts",
-    "daemon:prod": "set -a && . ./.env.prod && set +a && ENV_FILE=.env.prod tsx src/daemon/index.ts",
-    "seed:prod": "ENV_FILE=.env.prod tsx src/db/seed.ts",
-    "stop:prod": "lsof -ti tcp:7788 -sTCP:LISTEN | xargs kill 2>/dev/null; true",
-    "prod:up": "bash scripts/prod-up.sh",
-    "prod:down": "bash scripts/prod-down.sh",
     "daemon": "tsx src/daemon/index.ts",
     "cli": "tsx src/cli/index.ts",
     "browser-access:dev": "tsx src/dev/browserAccess.ts",
     "desktop:build": "node scripts/build-desktop.mjs",
+    "desktop:bundle": "pnpm run web:build && node scripts/build-desktop.mjs --production",
+    "desktop:pack": "node scripts/package-desktop.mjs --dir",
+    "desktop:dist": "node scripts/package-desktop.mjs --nsis",
     "desktop:dev": "pnpm run desktop:build && node scripts/desktop-dev.mjs",
-    "pkg:daemon:build": "node scripts/build-daemon-pkg.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web/tsconfig.json",
     "wt:add": "bash scripts/wt-add.sh",
     "wt:rm": "bash scripts/wt-rm.sh",
     "dev:e2e:up": "bash scripts/dev-e2e-up.sh",
     "dev:e2e:down": "bash scripts/dev-e2e-down.sh"
+  },
+  "build": {
+    "appId": "space.kith.desktop",
+    "productName": "Kith-space",
+    "artifactName": "Kith-space-Setup-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "dist/desktop"
+    },
+    "files": [
+      "desktop/dist/main.cjs",
+      "desktop/dist/preload.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop/dist/runtime",
+        "to": "runtime",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "web/dist",
+        "to": "web/dist",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "drizzle",
+        "to": "drizzle",
+        "filter": [
+          "**/*"
+        ]
+      },
+      "LICENSE",
+      "NOTICE"
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "web/public/favicon.svg"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -69,12 +119,14 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "4.2.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/busboy": "^1.5.4",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.12",
     "drizzle-kit": "^0.31.10",
     "electron": "43.1.0",
+    "electron-builder": "26.15.3",
     "esbuild": "^0.28.0",
     "tsx": "^4.22.5",
     "typescript": "^5.6.0"

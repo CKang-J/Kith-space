@@ -7,7 +7,7 @@
 // response, `false` to let the next handler try.
 //
 // Two things here are security-load-bearing and must not be reordered casually:
-//   1. Gate order — which gate a handler sits behind IS its auth level (see docs/authorization.md).
+//   1. Gate order — which gate a handler sits behind IS its auth level (see docs/kith-space/architecture-proposal.md §6).
 //   2. Gate-2 dispatch order — preserves the former monolith's EFFECTIVE first-match resolution
 //      (not its physical line order: e.g. the `/api/channels/saved` routes now live in messages.ts
 //      and are reached only after handleChannels declines them — safe because no channels.ts guard
@@ -19,7 +19,7 @@ import { sendErr, spaceIdHeader } from "../util.js";
 import { browserMutationAllowed } from "../browserSessionHttp.js";
 import { authenticateHumanRequest } from "../humanRequestAuth.js";
 import type { BaseCtx, HumanCtx, SpaceCtx } from "./ctx.js";
-import { handleAuthedAuth } from "./auth.js";
+import { handleHumanProfile } from "./humanProfile.js";
 import { handleHumanAttachmentGet, handleAttachments } from "./attachments.js";
 import { handleAuthenticatedBrowserAuth, handleDesktopBrowserAccess, handlePublicBrowserAuth } from "./browserAccess.js";
 import { handleDesktopSettings } from "./desktopSettings.js";
@@ -55,7 +55,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   const humanCtx: HumanCtx = { ...base, humanId };
   if (await handleAuthenticatedBrowserAuth(base, auth)) return true;
   if (await handleHumanAttachmentGet(humanCtx)) return true;
-  if (await handleAuthedAuth(humanCtx)) return true;
+  if (await handleHumanProfile(humanCtx)) return true;
   if (await handleLocalRuntimeHumanScope(humanCtx)) return true;
   if (await handleSpacesHumanScope(humanCtx)) return true;
 

@@ -4,9 +4,10 @@ import { DESC_TOO_LONG, descTooLong } from "../core.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 
 /** Canonical Human profile API backed only by app.db. */
-export async function handleAuthedAuth(ctx: HumanCtx): Promise<boolean> {
+export async function handleHumanProfile(ctx: HumanCtx): Promise<boolean> {
   const { req, res, method, p, humanId } = ctx;
-  if (p === "/api/auth/me" && method === "GET") {
+  if (p === "/api/auth/me") return (sendErr(res, 404, "not found"), true);
+  if (p === "/api/human/profile" && method === "GET") {
     const human = getHumanProfile();
     if (!human || human.id !== humanId) return (sendErr(res, 404, "not found"), true);
     return (sendJson(res, 200, {
@@ -18,7 +19,7 @@ export async function handleAuthedAuth(ctx: HumanCtx): Promise<boolean> {
       avatarUrl: null,
     }), true);
   }
-  if (p === "/api/auth/me" && method === "PATCH") {
+  if (p === "/api/human/profile" && method === "PATCH") {
     const current = getHumanProfile();
     if (!current || current.id !== humanId) return (sendErr(res, 404, "not found"), true);
     const body = await readJson(req);

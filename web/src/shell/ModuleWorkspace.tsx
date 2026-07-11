@@ -23,7 +23,7 @@ function ModuleContent({ moduleId }: { moduleId: WorkspaceModuleId }) {
     return <Agents agentIdOverride={resourceId ?? undefined} />;
   }
   if (moduleId === "settings") {
-    return <Settings sectionOverride={resourceId ?? "account"} />;
+    return <Settings sectionOverride={resourceId ?? "human"} />;
   }
   if (moduleId === "search") return <Search />;
   return <Inbox />;

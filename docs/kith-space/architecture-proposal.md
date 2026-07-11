@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述 2026-07-11 个人 AgentOS 转向后的目标模块边界。A2 本地领域与数据模型、A3 浏览器访问安全边界、A4 Electron Desktop 宿主、A5 首次初始化与旧入口清理均已完成；正式打包/安装器和其他继承资产仍按 `migration-plan.md` 的 A6 分阶段收口。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
+> 本文描述 2026-07-11 个人 AgentOS 转向后的目标模块边界。A2 本地领域与数据模型、A3 浏览器访问安全边界、A4 Electron Desktop 宿主、A5 首次初始化与旧入口清理、A6 继承资产清理与 Windows 打包均已完成；下一工程阶段是 Runtime 契约 v2。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
 
 ## 1. 架构原则
 
@@ -23,9 +23,11 @@ Electron 43.1.0 main 是正式入口，职责限制为：
 - 创建受控 Electron 窗口，提供 Desktop 信任桥。
 - 管理托盘、关闭行为、系统自启动、端口冲突和显式退出。
 
-`src/desktop/processSupervisor.ts:34` 先启动 Core 并等待 `src/server/index.ts:167` 的 ready IPC；只有拿到 Core 报告的实际端口后才启动唯一 Worker 和可选 Vite。每次 `start`/`restart` 重新生成一对独立凭据，受管环境固定 `KITH_SPACE_DESKTOP_MANAGED=1`，Core 同时获得 Desktop/Worker 凭据，Worker 只获得 Worker 凭据，Vite 子进程环境不包含两者。端口占用、ready 超时和关键子进程退出都会形成明确诊断并清理整组；显式退出先等待 agent runtime 退出，再用 Windows process tree/Unix process group 作为超时兜底。终止失败时监督器保留子进程句柄，Desktop 留驻托盘供用户重试 Quit。
+`src/desktop/processSupervisor.ts:68` 先启动 Core 并等待 `src/server/index.ts:145` 的 ready IPC；只有拿到 Core 报告的实际端口后才启动唯一 Worker 和可选 Vite。每次 `start`/`restart` 重新生成一对独立凭据，受管环境固定 `KITH_SPACE_DESKTOP_MANAGED=1`，Core 同时获得 Desktop/Worker 凭据，Worker 只获得 Worker 凭据，Vite 子进程环境不包含两者。端口占用、ready 超时和关键子进程退出都会形成明确诊断并清理整组；显式退出先等待 agent runtime 退出，再用 Windows process tree/Unix process group 作为超时兜底。终止失败时监督器保留子进程句柄，Desktop 留驻托盘供用户重试 Quit。
 
-业务逻辑不进入 Electron main。`src/desktop/main.ts:248` 创建 `nodeIntegration: false`、`contextIsolation: true`、`sandbox: true` 的 BrowserWindow，拒绝权限请求、新窗口、webview 和白名单外导航。`src/desktop/preload.ts:3` 只暴露读取/更新 Desktop Settings 与撤销浏览器会话的窄桥；main 同时校验 IPC sender。Desktop 私有 header 由独立 Electron session 仅附加到允许的 loopback 产品 API/socket 请求，并排除 Desktop 管理路径；渲染器 JavaScript 不持有凭据。普通浏览器既没有 preload bridge，也不能调用 Desktop 管理接口。
+开发态与打包态的子进程命令由 `src/desktop/processCommands.ts:25` 统一解析。开发态使用 Node + tsx/Vite；打包态在 `src/desktop/processCommands.ts:39` 以 Electron 可执行文件、`ELECTRON_RUN_AS_NODE=1` 和内置 `runtime/core.cjs`/`worker.mjs` 启动 Core/Worker，并通过 `KITH_SPACE_WEB_DIST`、`KITH_SPACE_MIGRATIONS_DIR` 指向 `resources` 内的 Web 与 Drizzle 资产。这样 production Desktop 不依赖源码树、tsx、Vite 或用户 `.env`。
+
+业务逻辑不进入 Electron main。`src/desktop/main.ts:249` 创建 `nodeIntegration: false`、`contextIsolation: true`、`sandbox: true` 的 BrowserWindow，拒绝权限请求、新窗口、webview 和白名单外导航。`src/desktop/preload.ts:3` 只暴露读取/更新 Desktop Settings 与撤销浏览器会话的窄桥；main 同时校验 IPC sender。Desktop 私有 header 由独立 Electron session 仅附加到允许的 loopback 产品 API/socket 请求，并排除 Desktop 管理路径；渲染器 JavaScript 不持有凭据。普通浏览器既没有 preload bridge，也不能调用 Desktop 管理接口。
 
 ### 2.2 Core Service
 
@@ -37,7 +39,7 @@ Core Service 根据 Web 模式监听：
 - 仅本机：绑定 `127.0.0.1`，普通浏览器经 Access Token 会话访问。
 - 局域网：绑定 `0.0.0.0`，同样强制 Access Token 会话，并只允许与请求 Host 匹配的 Origin。
 
-`src/browser-access/browserAccessPolicy.ts:41` 把模式与监听决策隔离为窄策略；`src/server/localEndpoint.ts:8` 让 Desktop 管理的 Core 以 app.db 端口为权威，只有手动分进程开发才允许 `PORT` 覆盖。模式/端口更改后 Desktop 重启整个受管进程组。非 Desktop 请求在关闭模式下会被 `src/server/index.ts:65` 的产品壳门拒绝。
+`src/browser-access/browserAccessPolicy.ts:41` 把模式与监听决策隔离为窄策略；`src/server/localEndpoint.ts:7` 让 Desktop 管理的 Core 以 app.db 端口为权威，只有手动分进程开发才允许 `PORT` 覆盖。模式/端口更改后 Desktop 重启整个受管进程组。非 Desktop 请求在关闭模式下会被 `src/server/index.ts:115` 的产品壳门拒绝。
 
 ### 2.3 Local Runtime Worker
 
@@ -47,7 +49,7 @@ Core Service 根据 Web 模式监听：
 
 ### 2.4 React UI
 
-Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件。客户端能力由不可伪造的宿主桥决定：`web/src/desktopBridge.ts` 只有检测到窄 preload bridge 时才开放 Desktop 设置区；普通浏览器请求该区会回落到 Human 设置，并且服务端仍拒绝其管理调用。Desktop Settings 已管理 Web 模式、端口、Token 轮换、浏览器会话撤销、关闭行为和自启动。
+Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件。客户端能力由不可伪造的宿主桥决定：`web/src/desktopBridge.ts:62` 只有检测到窄 preload bridge 时才开放 Desktop 设置区；普通浏览器请求该区会经 `resolveSettingsSection`（`:67`）回落到 Human 设置，并且服务端仍拒绝其管理调用。Human Settings 的规范 resource 是 `settings=human`；Desktop Settings 管理 Web 模式、端口、Token 轮换、浏览器会话撤销、关闭行为和自启动。
 
 首次初始化位于产品 Store 之前：`web/src/main.tsx:58` 定义正常产品根，`web/src/main.tsx:78` 再用 `DesktopSetupBoundary` 包住它，因此未初始化时不会先创建 `StoreProvider` 或发起 Space bootstrap。`web/src/personalSetup.ts:54` 只在检测到完整 preload bridge 时启用检查；普通浏览器不探测 setup API，只进入既有 Cookie 会话探测与 Access Token Gate。`web/src/personalSetupBoundary.tsx:22` 负责 loading、可恢复表单、错误重试和完成后一次性挂载正常产品树。
 
@@ -65,9 +67,11 @@ Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件
 
 ### 4.1 Human
 
-`src/app-data/appDatabase.ts` 管理唯一 Human 的名称、可选邮箱和描述；`src/human/humanIdentity.ts` 把协作寻址固定为稳定的 `@you`，展示名始终读取 app.db。REST 和 socket.io 的 Human authority 只来自 Desktop 私有信任或已验证的浏览器 Cookie 会话（`src/server/humanRequestAuth.ts:18`），不存在 Human JWT、Bearer 登录或 dev-login。它不提供注册、登录、密码、角色或成员关系。
+`src/app-data/appDatabase.ts` 管理唯一 Human 的名称、可选邮箱和描述；`src/human/humanIdentity.ts` 把协作寻址固定为稳定的 `@you`，展示名始终读取 app.db。REST 和 socket.io 的 Human authority 只来自 Desktop 私有信任或已验证的浏览器 Cookie 会话（`src/server/humanRequestAuth.ts:18`），不存在 Human JWT、Bearer 登录或 dev-login。唯一资料接口是 `handleHumanProfile`（`src/server/routes-api/humanProfile.ts:7`）提供的 `GET/PATCH /api/human/profile`；旧 `/api/auth/me` 在同一 handler 的 `:9` 显式 404。前端 Human Settings 在 `web/src/views/misc.tsx:289` 读取该接口，规范 query 是 `settings=human`，不提供账户、密码、角色或成员关系。
 
 首次初始化是 Desktop 应用生命周期的一部分。`PersonalSetupService`（`src/personal-setup/personalSetupService.ts:68`）读取唯一 Human 与 `Home` 的组合状态；两者都存在时重复初始化直接返回原结果，只有 Human 的中断态则返回该资料供界面预填恢复。初始化只接受 `name/email/description`，并通过既有 `ensurePersonalApp` 幂等补齐默认 `Home`，客户端不能提交 rootPath 或选择另一个首次 Space。`GET /api/setup/status` 与 `POST /api/setup/initialize` 集中在 `src/server/routes-api/setup.ts:12`，虽然挂在鉴权前的 gate 0（`src/server/routes-api/index.ts:43`），路由自身仍先校验 Desktop 私有信任；普通浏览器、Worker、错误凭据和远程请求统一得到 404。全新数据目录因此直接运行 Desktop 即可完成初始化，不再要求先执行 seed。
+
+旧 `initialHumans` bootstrap/产品契约已在 A6 退役；测试 fixture 中为构造特定频道状态保留的同名字面量不构成 HTTP、UI 或持久领域入口。
 
 ### 4.2 Space
 
@@ -120,7 +124,7 @@ app.db 不保存 Space 消息、任务或 agent 业务数据。
 
 ### 5.2 workspace.db
 
-A2.2b 已把 workspace.db 重建为单一 19 表 baseline。它包含 `spaces`、agent、频道、消息/任务、dispatch、附件/提醒/知识/活动，以及分离后的 Human 状态表；所有 Space 外键统一为 `space_id`。`users/server_members/machines/join_links`、`agents.machine_id` 和旧 `servers/server_id` 已删除。
+A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Drizzle 内部的 `__drizzle_migrations`，fresh 数据库共有 20 张物理表，`PRAGMA user_version=2`（`src/db/index.ts:32`、`:124`-`:127`）。它包含 `spaces`、agent、频道、消息/任务、dispatch、附件/提醒/知识/活动，以及分离后的 Human 状态表；所有 Space 外键统一为 `space_id`。`users/server_members/machines/join_links`、`agents.machine_id` 和旧 `servers/server_id` 已删除。
 
 每个 Space 的 `<space>/.kith/workspace.db` 保存：
 
@@ -150,7 +154,7 @@ A2.2b 已把 workspace.db 重建为单一 19 表 baseline。它包含 `spaces`�
 
 - `src/browser-access/accessTokenService.ts:25` 接受 16-256 字符的自定义 Token；留空时从 32 随机字节生成 base64url 值。
 - app.db 只保存 scrypt 哈希与 revision，不保存明文；原始 Token 只在生成/轮换当次的 Desktop 受信响应中返回。
-- 公开验证端点以远程地址做内存限速（`src/server/browserSessionHttp.ts:93`），不把 Token 写入 URL、日志、错误或遥测。
+- 公开验证端点以远程地址做内存限速（`src/server/routes-api/browserAccess.ts:79`-`:101`），不把 Token 写入 URL、日志、错误或遥测。
 - 轮换 Token 在同一 app.db 事务中增加 revision 并删除全部旧浏览器会话（`src/app-data/browserAccessData.ts:69`）。
 
 ### 6.2 BrowserSessionService
@@ -186,8 +190,8 @@ agent-to-agent 分派继续经过统一 dispatch 收口。现有深度上限、�
 - `paneConstraints.ts` 只计算面板最小宽度与单 Pane 降级。
 - `workspaceModules.tsx` 当前注册 Inbox、Tasks、Agents、Settings 与非 Dock 的 Search；Computers/Machines 已退出模块注册和路由。
 - `ChatWorkspace` 管理会话列表、Chat 和实时轨迹；业务模块不能直接操控 Chat 内部状态。
-- URL 是模块与 Chat 显隐事实来源。会话始终使用规范 `/s/:slug/channel[/<channelId>]`、`saved` 或 `showcase` 路径；`module`/`chat` 表达工作区布局，`taskScope`、`agent`/`agentTab`、`settings` 分别表达 Tasks、Agents、Settings 的模块资源（`web/src/shell/workspaceRoute.ts:42`）。模块切换由 `workspaceLocationForModule`（`web/src/shell/workspaceRoute.ts:138`）生成 query，不再生成 `/tasks`、`/agent`、`/settings` 等模块实体路径。
-- 切换频道或 Human-Agent DM 时保留当前 active module、Chat 显隐和该模块拥有的 resource query，同时丢弃旧会话的 `msg`/`thread` 等临时聚焦参数（`web/src/shell/workspaceRoute.ts:115`）。这样模块上下文跨会话导航保持稳定，旧消息焦点不会泄漏到新会话。
+- URL 是模块与 Chat 显隐事实来源。会话始终使用规范 `/s/:slug/channel[/<channelId>]`、`saved` 或 `showcase` 路径；`module`/`chat` 表达工作区布局，`taskScope`、`agent`/`agentTab`、`settings` 分别表达 Tasks、Agents、Settings 的模块资源（`web/src/shell/workspaceRoute.ts:65`、`:128`）。模块切换由 `workspaceLocationForModule`（`:143`）生成 query，不再生成 `/tasks`、`/agent`、`/settings` 等模块实体路径；Settings 未指定或传入旧/未知资源时统一归一为 `human`（`:138`）。
+- 切换频道或 Human-Agent DM 时保留当前 active module、Chat 显隐和该模块拥有的 resource query，同时丢弃旧会话的 `msg`/`thread` 等临时聚焦参数（`web/src/shell/workspaceRoute.ts:180`）。这样模块上下文跨会话导航保持稳定，旧消息焦点不会泄漏到新会话。
 - `MessageContextSnapshot` 在发送时固化 Space、会话、模块、Context Stack 和 focused item，adapter 再编码为各 runtime 所需格式。
 
 Desktop 专属设置通过 `window.kithDesktop` 窄桥注入，不靠仅隐藏按钮实现安全；服务端同时拒绝普通浏览器调用。Windows 打包态可调用 Electron 系统自启动接口，开发态通过 `launchAtLoginSupported: false` 明确禁用该控件。
@@ -198,6 +202,17 @@ A5 后 `web/src/App.tsx:4` 只渲染 `WorkspaceFrame`。Landing、Features、旧
 
 ## 9. 开发与发行
 
-Electron 固定为 43.1.0。`pnpm run desktop:dev` 先执行 `desktop:build`，再由 Electron 统一启动 Core、唯一 Worker 和开发期 Vite；它是完整开发宿主。全新 `KITH_SPACE_HOME` 会在 Electron 内显示首次初始化页，完成后进入 `Home`，正常 Desktop 开发启动不再以 `pnpm run seed` 为前置。仓库内部仍保留 `pnpm run server`、`pnpm run daemon`、`pnpm --dir web run dev`、`browser-access:dev` 与 `dev:e2e:up` 以便分进程调试，其中 daemon 只是 Local Runtime Worker 的过渡代码/命令名。Desktop 管理的普通配置全部进入 app.db，内部凭据不依赖用户 `.env`。
+Electron 固定为 43.1.0，electron-builder 固定为 26.15.3，`@electron/rebuild` 固定为 4.2.0（`package.json:122`、`:128`-`:129`）。`pnpm run desktop:dev` 先执行 `desktop:build`，再由 Electron 统一启动 Core、唯一 Worker 和开发期 Vite；它是完整开发宿主。全新 `KITH_SPACE_HOME` 会在 Electron 内显示首次初始化页，完成后进入 `Home`，正常 Desktop 开发启动不再以 `pnpm run seed` 为前置。仓库内部仍保留 `pnpm run server`、`pnpm run daemon`、`pnpm --dir web run dev`、`browser-access:dev` 与 `dev:e2e:up` 以便分进程调试，其中 daemon 只是 Local Runtime Worker 的过渡代码/命令名。`src/env.ts:1`-`:11` 仍允许源码调试加载可选本地 `.env`；受管/打包 Desktop 不加载它，普通配置全部进入 app.db。
 
-`pnpm run desktop:build` 当前只用 esbuild 生成 Electron main/preload 开发 bundle，不是正式产品包。后续阶段仍需删除 Docker、远程部署、公共 server/daemon npm 发布和 OIDC workflow，并完成 Windows production child bundles、正式打包和安装器。Windows Desktop 是 v1 唯一正式发行物；系统能力选型不得无必要绑定 Windows，为 macOS/Linux 留出实现空间。
+发行脚本在 `package.json:43`-`:46` 固定为四层：
+
+1. `desktop:build`：`scripts/build-desktop.mjs:10`-`:31` 仅生成 Electron main/preload CJS。
+2. `desktop:bundle`：先构建 `web/dist`，再以 production 模式生成 main/preload、Core CJS、Worker ESM 和 agent CLI ESM（`scripts/build-desktop.mjs:33`-`:72`）。
+3. `desktop:pack`：生成 `dist/desktop/win-unpacked`，用于 packaged smoke。
+4. `desktop:dist`：生成 x64、per-user、assisted NSIS 安装器；electron-builder 的文件、`extraResources`、asar、`npmRebuild=false` 与 NSIS 约束位于 `package.json:57`-`:108`。
+
+`scripts/package-desktop.mjs:33` 会先刷新 production bundle。随后它使用 `@electron/rebuild` 对 pnpm store 中的 `better-sqlite3` 执行显式 `--force --arch x64` Electron rebuild（`:40`-`:54`），成功后才调用 electron-builder；包装器在 `finally`（`:56`-`:58`）中执行 Node rebuild，即使 native rebuild 或打包中途失败也恢复开发/测试 ABI。最终核对为本地 Node ABI 137、packaged Electron ABI 148。旧 Docker/compose/Railway、环境样例、prod 脚本、公共 daemon package、npm/OIDC 与 docs-site workflow 已删除；pnpm workspace 只有根目录和 `web/`。
+
+`.github/workflows/desktop-release.yml:1`-`:40` 仅支持手动触发 Windows x64 构建，并上传未签名 installer artifact 14 天；它不创建 Release、不签名、不自动发布。本地最终安装器 `dist/desktop/Kith-space-Setup-0.1.0-x64.exe` 为 113625983 bytes，SHA-256 `D314DAE15A8E9AB598901D2E3DF8B90DE1C7B46E79824CC8575BD4C742B89646`，Authenticode `NotSigned`。最终 unpacked Desktop smoke Exit 0、`app.db` 创建、残留进程 0、端口监听 0；packaged Core、内置 Web/Drizzle/CLI 与优雅退出也已 smoke。真实 NSIS 安装/卸载尚未执行。公开分发前必须配置 Windows 代码签名证书并补齐安装流程验收，不能把可复现的未签名 artifact 描述为已签名或已发布。
+
+Windows Desktop 是 v1 唯一正式发行物；系统能力选型不得无必要绑定 Windows，为 macOS/Linux 留出实现空间。

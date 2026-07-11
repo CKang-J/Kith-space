@@ -15,6 +15,7 @@ Windows Desktop 上，一个 Human 在多个本地 Space 中与本机 agent 协�
 - 任务生命周期、autopilot/plan-first 与分派深度、唤醒预算、急停护栏。
 - ChatOnly / Split / ModuleOnly 单窗口工作区，Dock 为 `Chat | Inbox | Tasks | Agents | Settings`。
 - Electron Desktop 监督 Core Service 和唯一 Local Runtime Worker，支持托盘和可选系统自启动。
+- Windows production bundle、unpacked 包和 x64 per-user assisted NSIS 安装器；安装器公开分发前必须完成代码签名与真实安装/卸载验收。
 - Web 模式：关闭（默认）、仅本机、局域网；访问 Token、持久授权会话、轮换和撤销。
 - 本地磁盘文件/附件，不依赖 Postgres、Redis、S3、Docker 或用户 `.env`。
 
@@ -62,16 +63,20 @@ Windows Desktop 上，一个 Human 在多个本地 Space 中与本机 agent 协�
 - ChatOnly、Split、ModuleOnly 三态均可达；Chat 和 Module 不会同时隐藏。
 - Split 可拖拽，默认 Chat 占 25%，窄窗按面板最小宽度退化为单 Pane。
 - Agents 只展示当前 Space agent；Human 资料位于全局 Settings。
+- Human Settings 使用规范 `settings=human` resource 与 `/api/human/profile`，不恢复账户页、`settings=account` 或 `/api/auth/me`。
 
 ### 5.4 Desktop 与浏览器访问
 
 - `pnpm run desktop:dev` 一次启动完整开发宿主；正式 Desktop 自动管理内部进程。
+- `desktop:build` 只生成 main/preload；`desktop:bundle` 包含 Web/Core/Worker/agent CLI；`desktop:pack` 生成可运行 unpacked 目录；`desktop:dist` 生成 Windows NSIS 安装器。
 - Web 默认关闭；仅本机模式不接受 LAN 连接；LAN 模式显式启用且显示 HTTP 风险提示。
 - 默认端口 7777，可在 Desktop 修改；冲突时给出明确错误和修复入口。
 - 所有浏览器首次访问必须输入 Token；Token 不在 URL、日志或明文数据库出现。
 - 授权会话使用 HttpOnly、SameSite=Strict cookie；轮换 Token 或撤销全部会话后立即失效。
 - 浏览器不能查看/修改 Token、监听、端口、进程、托盘或系统自启动设置。
 - 关闭窗口默认进入托盘，显式退出清理全部子进程；关闭即退出选项有效。
+- packaged Desktop 在全新数据目录中可启动内置 Core/Worker/Web/Drizzle 资产、完成 Human/Home 初始化并优雅退出；退出后默认端口无残留监听。
+- CI 只手动构建并上传未签名 installer artifact，不自动发布。公开分发前必须具备 Windows 代码签名证书，并补做真实 NSIS 安装/卸载；未签名 `.exe` 构建成功不能被描述为已签名或已发布。
 
 ## 6. 安全姿态
 

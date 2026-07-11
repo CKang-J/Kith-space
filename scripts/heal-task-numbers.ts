@@ -11,7 +11,7 @@
 //
 // Run (reads KITH_SPACE_HOME from the env, like the server):
 //   pnpm exec tsx scripts/heal-task-numbers.ts
-//   ENV_FILE=.env.prod pnpm exec tsx scripts/heal-task-numbers.ts   # against a prod env file
+//   KITH_SPACE_HOME=D:/tmp/kith-debug pnpm exec tsx scripts/heal-task-numbers.ts
 import { and, asc, eq, isNull, isNotNull } from "drizzle-orm";
 import { allSpaceDbs, closeAllDatabases, schema } from "../src/db/index.js";
 import { nextTaskNumber, reconcileCounters } from "../src/counters.js";

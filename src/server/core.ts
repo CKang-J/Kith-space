@@ -572,9 +572,9 @@ export async function createMessage(opts: {
 /** Target resolution: #name / dm:@name / thread #name:shortid or dm:@name:shortid.
  *  Thread suffix shortid = 8-char short id of the parent message → resolve/create the thread channel for that parent message (thread = standalone channel, unified for human/agent). */
 // May this AGENT read/act in this channel? The agent-plane mirror of the human `canReadChannel` (socketio.ts):
-// a channel member, OR a public channel in the agent's server, OR a thread whose parent channel is accessible.
+// a channel member, OR a public channel in the agent's Space, OR a thread whose parent channel is accessible.
 // Private / DM channels the agent was never added to are refused → private content stays isolated on the agent
-// plane too (docs/authorization.md invariant 4). resolveTarget / resolveMessageId / findParent all gate on this,
+// plane too (docs/kith-space/architecture-proposal.md §6). resolveTarget / resolveMessageId / findParent all gate on this,
 // so every channel-touching /agent-api/* endpoint inherits the boundary at once.
 export async function canAgentReadChannel(spaceId: string, channelId: string, agentId: string): Promise<boolean> {
   const db = dbForSpace(spaceId);
@@ -582,7 +582,7 @@ export async function canAgentReadChannel(spaceId: string, channelId: string, ag
   if (member) return true;
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, channelId)))[0];
   if (!ch || ch.spaceId !== spaceId || ch.deletedAt) return false;
-  if (ch.type === "channel") return true;                                  // public: any agent in the server may read
+  if (ch.type === "channel") return true;                                  // public: any agent in the Space may read
   if (ch.parentMessageId) {                                                // thread: visibility follows its parent message's channel
     const parent = (await db.select().from(schema.messages).where(eq(schema.messages.id, ch.parentMessageId)))[0];
     if (parent) return canAgentReadChannel(spaceId, parent.channelId, agentId); // depth 1 (a parent channel is never itself a thread)

@@ -2,6 +2,8 @@
 
 本文记录从当前 open-tag 衍生实现收敛到本机个人 AgentOS 的工程顺序。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`，权威转向规格见 `../superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`。
 
+截至 2026-07-11，A1-A6 已全部完成。下一阶段不是继续清理旧路线，而是 Runtime 契约 v2。
+
 ## 1. 已完成基线
 
 P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完成 ChatOnly / Split / ModuleOnly 单窗口壳、可拖拽面板、常驻 Dock 与任务作用域侧栏。它们作为本机化改造的可用基线保留。
@@ -64,7 +66,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A4 Electron Desktop 宿主
 
-当前进度：A4 已完成。Electron 43.1.0 Desktop 已成为完整开发宿主；正式生产 bundle、打包与安装器仍在后续发行阶段。
+当前进度：A4 已完成。Electron 43.1.0 Desktop 已成为完整开发宿主；A6 随后补齐了正式生产 bundle、打包与安装器。
 
 已落地边界：
 
@@ -75,7 +77,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 - Tray 管理显示主窗口和显式退出；显式退出优雅停止 Core/Worker 及整个受管进程组。Windows 打包态使用系统自启动接口，开发态显示 unsupported。
 - 已增加 `pnpm run desktop:dev` 和 `desktop:build`；保留 server/daemon/web 分进程命令给开发调试。
 
-验证：Desktop 构建、监督器/安全策略/IPC/Settings/优雅关闭测试及隔离 `KITH_SPACE_HOME` 的实际 Desktop smoke 已通过。`desktop:build` 尚不生成可分发安装器。
+验证：A4 检查点的 Desktop 构建、监督器/安全策略/IPC/Settings/优雅关闭测试及隔离 `KITH_SPACE_HOME` 的实际 Desktop smoke 已通过。当时 `desktop:build` 只生成 main/preload；这个命令语义在 A6 后仍保持不变，安装器由新增的 `desktop:dist` 生成。
 
 ### A5 UI 与入口清理
 
@@ -95,9 +97,20 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A6 继承资产清理与总审计
 
-改动：删除 Docker、环境样例、远程部署/发布、公共 server/daemon 包、OIDC workflow 和残余旧领域；保留内部开发/测试覆盖变量。
+当前进度：A6 已完成，等待阶段提交。
 
-验证：`rg` 旧路线审计、typecheck、单元/集成测试、web build、Electron 冒烟、许可证和文档检查。
+已落地边界：
+
+- 删除 Dockerfile/compose/entrypoint、Railway、环境样例、prod 脚本、公共 daemon package 与构建脚本、npm/OIDC 发布 workflow、docs-site workflow/路由/脚本；pnpm workspace 仅保留根目录与 `web/`。
+- 保留 `server`、`daemon`、`web`、`browser-access:dev`、`dev:e2e:up` 和可选本地 `.env`，仅作为源码分进程调试入口；正式 Desktop 不依赖这些配置或公共发行面。
+- Human Settings 规范 resource 收口为 `settings=human`，唯一资料接口为 `GET/PATCH /api/human/profile`；旧 `/api/auth/me` 返回 404，`settings=account` 与 `initialHumans` 产品入口退役。
+- 固定 Electron 43.1.0 + electron-builder 26.15.3；`desktop:build` 生成 main/preload，`desktop:bundle` 生成 Web + Core CJS + Worker/agent CLI ESM，`desktop:pack` 生成 `win-unpacked`，`desktop:dist` 生成 x64 per-user assisted NSIS。
+- packaged Desktop 用 Electron 可执行文件的 Node 模式监督内置 Core/Worker，并从 `resources` 读取 Web 与 Drizzle migration；构建固定 `npmRebuild=false`，package wrapper 用 `@electron/rebuild` 显式强制生成 Electron x64 `better-sqlite3`，再在 `finally` 中恢复 Node ABI。最终核对为 Node ABI 137、Electron ABI 148。
+- 新增仅手动触发的 Windows workflow，只上传未签名 installer artifact，不自动签名、创建 Release 或发布。
+
+验证：旧路线 `rg` 审计、typecheck、449/449 unit、完整 integration、2564-module Web build、`desktop:bundle`/`pack`/`dist`、`pnpm audit --prod --audit-level=high` 均通过。最终 unpacked Desktop fresh smoke Exit 0，Core/Worker ready、内置 assets/setup/CLI、`app.db` 创建均通过，退出后残留进程 0、端口监听 0；packaged Core 真实初始化 Human/Home，workspace.db 为 19 张产品表 + migration 表共 20 张物理表、`user_version=2`，并优雅退出。最终安装器大小 113625983 bytes，SHA-256 `D314DAE15A8E9AB598901D2E3DF8B90DE1C7B46E79824CC8575BD4C742B89646`，Authenticode `NotSigned`。
+
+发行边界：上述结果证明本地/CI 未签名安装器可复现，不代表已签名或已发布。公开分发前必须配置 Windows 代码签名证书；本阶段未实际执行 NSIS 安装/卸载，正式发布前仍需补做。
 
 ## 4. 强制依赖
 
@@ -105,8 +118,8 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 - A2 先于 A3/A4/A5；Token、Desktop 和 UI 都依赖唯一 Human、app.db 与 Space 领域。
 - A3 已在 LAN 绑定前建立 Token/会话/Origin/CSRF 安全门；后续不得绕过该门直接暴露新路由。
 - A4 已接管配置、内部凭据与受管进程；手动分进程 `.env` 仅保留为仓库调试入口。
-- A5 已在稳定的领域/API/Desktop 能力边界上删除旧入口；A6 不得恢复旧兼容面，只清理剩余发行与部署遗产。
-- A6 最后执行，但每个前置阶段都要清理自己产生的孤立引用。
+- A5 已在稳定的领域/API/Desktop 能力边界上删除旧入口；A6 没有恢复旧兼容面，只保留内部开发调试入口。
+- A6 已完成本机化基础收口。Runtime 契约 v2 现在成为生产力模块、可靠 usage 预算和统一 MCP bootstrap 的直接前置。
 
 ## 5. 主要风险
 
@@ -117,4 +130,4 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 | 删除 Machine 误伤 daemon 进程隔离 | 保留 Local Runtime Worker 进程和内部协议，只删除远程注册/多主机领域 |
 | LAN + 高权限 runtime 扩大攻击面 | 默认关闭、Token、持久会话/撤销、私网警告；高风险模块上线前补 HTTPS 与权限升级 |
 | 大范围命名迁移造成一次性失控 diff | 按 schema、服务、API、前端四个可验证切片推进，不整仓机械替换 |
-| Desktop 开发 bundle 被误当正式安装器 | 明确 `desktop:build` 只生成 main/preload；生产子进程 bundle、正式打包和 Windows 安装器留在发行阶段 |
+| Desktop 构建产物被误标为正式发布 | 区分 `desktop:build`、`desktop:bundle`、`desktop:pack` 与 `desktop:dist`；当前 installer 未签名且未执行真实安装/卸载，公开分发前必须补代码签名与安装验收 |

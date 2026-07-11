@@ -65,6 +65,7 @@ export function getDesktopBridge(host?: DesktopBridgeHost): KithDesktopBridge | 
 }
 
 export function resolveSettingsSection(requested: string | undefined, desktopAvailable: boolean) {
-  const section = requested || "account";
-  return section === "desktop" && !desktopAvailable ? "account" : section;
+  if (requested === "space") return "space";
+  if (requested === "desktop" && desktopAvailable) return "desktop";
+  return "human";
 }

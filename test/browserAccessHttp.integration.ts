@@ -154,7 +154,7 @@ try {
 
   const missingCsrf = await api({
     method: "PATCH",
-    pathname: "/api/auth/me",
+    pathname: "/api/human/profile",
     headers: { cookie: session.cookie, origin, host: "localhost:7777" },
     body: { description: "blocked" },
   });
@@ -162,7 +162,7 @@ try {
 
   const updated = await api({
     method: "PATCH",
-    pathname: "/api/auth/me",
+    pathname: "/api/human/profile",
     headers: { cookie: session.cookie, origin, host: "localhost:7777", "x-kith-csrf": session.csrf },
     body: { description: "allowed" },
   });
@@ -178,11 +178,18 @@ try {
 
   const desktopBypassesBrowserCsrf = await api({
     method: "PATCH",
-    pathname: "/api/auth/me",
+    pathname: "/api/human/profile",
     headers: desktopHeaders(),
     body: { description: "desktop" },
   });
   assert.equal(desktopBypassesBrowserCsrf.status, 200);
+
+  const retiredHumanAuthProfile = await api({
+    method: "GET",
+    pathname: "/api/auth/me",
+    headers: { cookie: session.cookie, host: "localhost:7777" },
+  });
+  assert.equal(retiredHumanAuthProfile.status, 404);
 
   const retiredLogout = await api({
     method: "POST",
