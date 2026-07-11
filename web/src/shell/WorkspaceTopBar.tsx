@@ -1,4 +1,4 @@
-import { MoreHorizontal, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { QuickSwitcher } from "../QuickSwitcher.tsx";
@@ -12,11 +12,10 @@ interface WorkspaceTopBarProps {
   activeModule: WorkspaceModuleId | null;
   channelId: string | null;
   layoutSearch: string;
-  legacyHref: string;
   onOpenSearch: () => void;
 }
 
-export function WorkspaceTopBar({ activeModule, channelId, layoutSearch, legacyHref, onOpenSearch }: WorkspaceTopBarProps) {
+export function WorkspaceTopBar({ activeModule, channelId, layoutSearch, onOpenSearch }: WorkspaceTopBarProps) {
   const { t } = useTranslation();
   const { channels, dms, spaceId, spaces } = useStore();
   const [showQuickSwitcher, setShowQuickSwitcher] = useState(false);
@@ -57,9 +56,6 @@ export function WorkspaceTopBar({ activeModule, channelId, layoutSearch, legacyH
           <button type="button" title={`${t("nav.search")} (Ctrl/Command + K)`} aria-label={t("nav.search")} onClick={onOpenSearch}>
             <Search size={17} />
           </button>
-          <a href={legacyHref} title="打开现有界面" aria-label="打开现有界面">
-            <MoreHorizontal size={17} />
-          </a>
         </div>
       </header>
       {showQuickSwitcher ? <QuickSwitcher onClose={() => setShowQuickSwitcher(false)} /> : null}

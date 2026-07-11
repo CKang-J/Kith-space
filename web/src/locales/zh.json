@@ -14,6 +14,39 @@
     "langEnglish": "English",
     "langChinese": "中文"
   },
+  "personalSetup": {
+    "checkingTitle": "正在准备你的工作空间",
+    "checkingDescription": "Kith-space 正在检查本机安装状态。",
+    "loadFailedTitle": "无法开始初始化",
+    "loadFailedDescription": "Kith-space 暂时无法连接本机服务。",
+    "retry": "重试",
+    "eyebrow": "首次启动",
+    "title": "先让 agents 认识你",
+    "description": "为这台电脑创建唯一的 Human 资料，Kith-space 也会同时准备本地 Home Space。",
+    "nameLabel": "名称",
+    "namePlaceholder": "你希望 agents 如何称呼你？",
+    "emailLabel": "邮箱",
+    "emailPlaceholder": "you@example.com",
+    "descriptionLabel": "描述",
+    "descriptionPlaceholder": "写下你的角色、偏好，或希望 agents 始终记住的信息。",
+    "optional": "选填",
+    "continue": "创建我的工作空间",
+    "creating": "正在创建工作空间...",
+    "footnote": "你的资料和 Space 只保存在这台电脑上。这是本地初始化，不是账号注册。",
+    "submitFailed": "Kith-space 无法完成首次初始化。",
+    "validation": {
+      "name": {
+        "required": "请输入名称后继续。",
+        "tooLong": "名称不能超过 64 个字符。"
+      },
+      "email": {
+        "invalid": "请输入有效的邮箱地址。"
+      },
+      "description": {
+        "tooLong": "描述不能超过 3000 个字符。"
+      }
+    }
+  },
   "desktopSettings": {
     "loading": "正在加载桌面设置...",
     "loadFailed": "无法加载桌面设置。",
@@ -207,9 +240,9 @@
     "accountEmail": "邮箱",
     "accountSave": "保存",
     "accountSaved": "已保存",
-    "logoutTitle": "清除本地会话",
-    "logoutDesc": "清除当前浏览器的临时本地会话；本机数据不会被删除。",
-    "logoutBtn": "清除会话",
+    "browserAuthorizationTitle": "浏览器授权",
+    "browserAuthorizationDesc": "撤销当前浏览器的本地访问权限；本机数据不会被删除。",
+    "browserAuthorizationBtn": "撤销访问",
     "spaceLoading": "加载中…",
     "spaceAvatarLabel": "空间头像",
     "spaceAvatarUploading": "上传中…",
@@ -311,44 +344,6 @@
   "showcase": {
     "title": "案例展示",
     "subtitle": "只读——工程、研究、安全、增长四个领域的真实协作实录。"
-  },
-  "auth": {
-    "createAccount": "创建账号",
-    "login": "登录",
-    "register": "注册",
-    "usernameLabel": "用户名",
-    "emailLabel": "邮箱",
-    "passwordLabel": "密码",
-    "usernamePlaceholder": "用户名(@提及用,唯一)",
-    "emailPlaceholder": "邮箱",
-    "passwordPlaceholder": "密码",
-    "errors": {
-      "auth_email_invalid": "邮箱需要包含 @ 符号。例如 name@example.com。",
-      "auth_login_fields_required": "请输入邮箱和密码后登录。",
-      "auth_login_email_not_found": "这个邮箱还没有账号。确认邮箱是否输入正确，或先注册。",
-      "auth_login_password_wrong": "这个邮箱对应的密码不对。请重试，或联系管理员重置。",
-      "auth_password_invalid": "密码长度需要在 8 到 200 个字符之间。",
-      "auth_register_name_invalid": "用户名需要 1 到 64 个字符。",
-      "auth_register_email_taken": "这个邮箱已注册。请直接登录。",
-      "auth_register_username_taken": "这个用户名已被占用。换一个 @ 提及名。",
-      "auth_rate_limited": "尝试次数太多。等一分钟后再试。"
-    },
-    "opFailed": "操作失败",
-    "joinFailed": "加入失败",
-    "loading": "加载中…",
-    "invalidInvite": "邀请无效",
-    "invalidInviteDesc": "该邀请链接已失效、用尽或过期。",
-    "backHome": "返回首页",
-    "joinTitle": "加入 {{spaceName}}",
-    "invitedBy": "{{inviter}} 邀请你",
-    "youAreInvited": "你被邀请",
-    "joinWorkspace": "加入空间「{{spaceName}}」,角色 {{role}}。",
-    "joinAsCurrent": "以当前账号加入",
-    "registerAndJoin": "注册并加入",
-    "loginAndJoin": "登录并加入",
-    "hasAccount": "已有账号？",
-    "noAccount": "没有账号？",
-    "newUser": "新用户？"
   },
   "qs": {
     "ariaLabel": "快速跳转",

@@ -6,13 +6,10 @@ import { WorkspaceSkeleton } from "./views/Skeleton.tsx";
 import { ConfirmProvider } from "./ConfirmModal.tsx";
 import { ToastProvider } from "./toast.tsx";
 import { App } from "./App.tsx";
-import { Chat } from "./views/Chat.tsx";
-import { Showcase } from "./views/Showcase.tsx";
-import { Agents } from "./views/Members.tsx";
-import { Tasks, Search, Settings, Inbox, Saved } from "./views/misc.tsx";
 import { AccessTokenGate } from "./views/AccessTokenGate.tsx";
+import { DesktopSetupBoundary } from "./personalSetupBoundary.tsx";
 import { homeRoute } from "./routing.ts";
-import { SPACE_ROUTE_PATTERN } from "./shell/workspaceRoute.ts";
+import { parseWorkspaceRoute, SPACE_ROUTE_PATTERN } from "./shell/workspaceRoute.ts";
 import "./i18n";
 import "./styles.css";
 
@@ -37,7 +34,7 @@ function RootRedirect() {
 
 // Auth guard + Space activation for /s/:slug/*. The URL is the source of truth for the active Space: if it
 // names a known Space that isn't active yet, switch to it client-side (no full-page reload) and show the skeleton
-// while it loads. The auth check runs BEFORE <Layout/> renders, so an unauthenticated visitor returns to public home
+// while it loads. The auth check runs before the workspace shell renders, so an unauthenticated visitor returns home
 // without the workspace ever painting (no flash of protected UI).
 function WorkspaceRoute() {
   const { slug: activeSlug, ready, authState, spaces, switchSpace } = useStore();
@@ -52,37 +49,34 @@ function WorkspaceRoute() {
     const pathname = loc.pathname.replace(/^\/s\/[^/]+/, `/s/${activeSlug}`);
     return <Navigate to={`${pathname}${loc.search}${loc.hash}`} replace />;
   }
+  if (parseWorkspaceRoute(loc.pathname).section === null) {
+    return <Navigate to={`/s/${activeSlug}/channel${loc.search}${loc.hash}`} replace />;
+  }
   return <App />;
 }
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
+function ProductRoot() {
+  return (
     <StoreProvider>
       <ConfirmProvider>
       <ToastProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<PublicHome />} />
-          <Route path={SPACE_ROUTE_PATTERN} element={<WorkspaceRoute />}>
-            <Route index element={<Navigate to="channel" replace />} />
-            <Route path="inbox" element={<Inbox />} />
-            <Route path="saved" element={<Saved />} />
-            <Route path="showcase" element={<Showcase />} />
-            <Route path="channel" element={<Chat />} />
-            <Route path="channel/:channelId" element={<Chat />} />
-            <Route path="agent" element={<Agents />} />
-            <Route path="agent/:agentId" element={<Agents />} />
-            <Route path="tasks" element={<Tasks />} />
-            <Route path="tasks/:channelId" element={<Tasks />} />
-            <Route path="search" element={<Search />} />
-            <Route path="settings" element={<Settings />} />
-            <Route path="settings/:section" element={<Settings />} />
-          </Route>
+          <Route path={SPACE_ROUTE_PATTERN} element={<WorkspaceRoute />} />
           <Route path="*" element={<RootRedirect />} />
         </Routes>
       </BrowserRouter>
       </ToastProvider>
       </ConfirmProvider>
     </StoreProvider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <DesktopSetupBoundary>
+      <ProductRoot />
+    </DesktopSetupBoundary>
   </React.StrictMode>,
 );

@@ -27,7 +27,9 @@ test("Desktop settings navigation and copy are present only behind bridge detect
   assert.match(settings, /desktopBridge\s*\?\s*\[\.\.\.SETTINGS, \["desktop", "misc\.settingsNavDesktop"\]\]/);
   assert.match(settings, /resolveSettingsSection\(section, desktopBridge !== null\)/);
   assert.match(settings, /requestedSection !== "desktop" \|\| desktopBridge/);
-  assert.match(moduleWorkspace, /route\.section === "settings" \? route\.resourceId/);
+  assert.match(moduleWorkspace, /workspaceModuleResourceFromSearch\(location\.search, moduleId\)/);
+  assert.match(settings, /moduleId: "settings", settings: "account"/);
+  assert.match(settings, /!desktopAvailable \? <div className="browser-session-row">/);
   assert.match(panel, /result\.accessToken/);
   assert.match(panel, /copyText\(revealedToken\)/);
   assert.match(panel, /browser\.mode === "lan"/);

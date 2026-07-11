@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Trash2, ChevronDown, ChevronRight, Pencil, Columns3, Rows3, ListChecks } from "lucide-react";
 import { createPortal } from "react-dom";
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, useDroppable, type DragEndEvent } from "@dnd-kit/core";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useStore, type Msg } from "./store.tsx";
 import { Select } from "./Select.tsx";
@@ -12,6 +12,7 @@ import { useEscClose } from "./ConfirmModal.tsx";
 import { PaneEmpty } from "./PaneEmpty.tsx";
 import i18n from "./i18n";
 import { taskStatusOptions } from "./taskStatusPolicy.ts";
+import { workspaceLocationForConversation } from "./shell/workspaceRoute.ts";
 
 const TCOLS: [string, string][] = [
   ["todo", "tasks.statusTodo"],
@@ -32,8 +33,13 @@ export function TaskBoard({ channelId, onOpenThread }: { channelId: string | nul
   const { t } = useTranslation();
   const { api, onEvent, agents, me, channels, dms, createTasks, slug } = useStore();
   const nav = useNavigate();
+  const location = useLocation();
   // Click on a task card/row → navigate to the source message (highlighted); cross-channel tasks use the task's own channelId
-  const goSrc = (t: Msg) => nav(`/s/${slug}/channel/${t.channelId}?msg=${t.id}`);
+  const goSrc = (t: Msg) => nav(workspaceLocationForConversation(
+    `/s/${slug}/channel/${t.channelId}?msg=${t.id}`,
+    location.pathname,
+    location.search,
+  ));
   // Clicking a card opens the task's thread panel (tasks are threads); falls back to source message navigation when no thread context is available (global Tasks page)
   const open = (task: Msg) => (onOpenThread ? onOpenThread(task) : goSrc(task));
   const [tasks, setTasks] = useState<Msg[]>([]);

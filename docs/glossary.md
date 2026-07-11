@@ -29,6 +29,9 @@
 
 持久化 actor 使用 `human` 表示该唯一 Human；runtime 自身协议中的 `role: "user"` 是外部协议字面量，不代表多用户账户，也不属于数据库 actor 命名。
 
+**Personal Setup（首次初始化）**
+: Desktop 在全新安装数据中建立唯一 Human 与默认 `Home` 的一次性应用生命周期。它只收集名称、可选邮箱和描述，允许从“已有 Human、尚缺 Home”的中断态恢复，并保持重复提交幂等；它不是注册、登录或浏览器授权流程。
+
 **工作区 / Space（空间）**
 : 一个根植于本地文件夹、自包含、可移植的协作单元，装着自己的 agent 队伍、频道、消息、任务和记忆；一个文件夹对应一个 Space。产品 schema、API、Socket、CLI 与类型统一使用 `space/spaceId`；`server` 只可描述 Core Service 等技术进程或保留在历史研究原文中。
 
@@ -130,6 +133,9 @@
 **Dock**
 : 当前主要工作面板底部的统一控制器，固定为 Chat、Inbox、Tasks、Agents、Settings；当前模块横向展开，Chat 始终只显示图标。它同时负责模块切换与 Chat 显隐。
 
+**规范工作区 URL**
+: 用当前 Space 的会话 pathname 表达频道或 Human-Agent DM，用 `module`/`chat` 表达工作区三态，并由 `taskScope`、`agent`/`agentTab`、`settings` 分别表达模块资源的唯一 URL 形式。切换会话时保留 active module 及其资源，替换旧 `msg`/`thread` 临时焦点；旧模块实体路径不属于规范 URL。
+
 **agent 实时轨迹**
 : 近实时展示 agent 执行动作的透明度窗口。ChatOnly 时是 Chat 右侧独立面板，Split 时收进 Chat 内的轨迹抽屉，不是业务模块 Dock 项。
 
@@ -156,10 +162,10 @@
 : 普通浏览器首次进入 Kith-space 时验证的共享访问秘密。用户可设 16-256 字符，留空时自动生成 32 字节值；app.db 只保存 scrypt 哈希和 revision。它与 Desktop 信任、Worker 内部凭据和 agent session token 相互独立，不进入 URL、日志或明文数据库。
 
 **浏览器授权会话**
-: Access Token 验证成功后创建的持久会话。原始随机 session token 只存在 HttpOnly、SameSite=Strict Cookie，app.db 只存 SHA-256 哈希；写请求另做 Origin 与 CSRF 校验。会话持续到浏览器数据清除、退出、Desktop 全量撤销或 Access Token 轮换。
+: Access Token 验证成功后创建的持久会话。原始随机 session token 只存在 HttpOnly、SameSite=Strict Cookie，app.db 只存 SHA-256 哈希；写请求另做 Origin 与 CSRF 校验。会话持续到浏览器数据清除、当前浏览器撤销授权、Desktop 全量撤销或 Access Token 轮换；撤销当前会话不是 Human 账户 logout。
 
 **内部进程凭据**
-: Desktop 信任凭据和 Local Runtime Worker 控制凭据的统称。两者彼此独立，也不与浏览器 Access Token 或 agent session token 复用。A4 将由 Desktop 在每次启动生成；当前分进程开发临时使用 `KITH_SPACE_DESKTOP_TOKEN` 和 `KITH_SPACE_WORKER_TOKEN` 注入。
+: Desktop 信任凭据和 Local Runtime Worker 控制凭据的统称。两者彼此独立，也不与浏览器 Access Token 或 agent session token 复用。Desktop 每次启动/重启受管进程组都会重新生成；只有手动分进程开发才临时使用 `KITH_SPACE_DESKTOP_TOKEN` 和 `KITH_SPACE_WORKER_TOKEN` 注入。
 
 **每工作区独立 SQLite 文件**
 : 每个 Space 把自己的 `spaces` 元数据、消息、任务、频道、agent、agent membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前是单一 19 表 baseline，所有领域外键使用 `space_id`；Human 资料和 Desktop 设置不随 Space 复制。

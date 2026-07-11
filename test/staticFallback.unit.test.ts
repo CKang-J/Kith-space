@@ -11,12 +11,11 @@ import { shouldServeAppShell } from "../src/server/staticRoutes.ts";
 test("serves the app shell for real client-side routes", () => {
   for (const pathname of [
     "/",
-    "/features",
-    "/features/",
     "/s/kith-space",
     "/s/kith-space/channel",
-    "/s/kith-space/agent/123",
-    "/s/kith-space/settings/account",
+    "/s/kith-space/channel/123",
+    "/s/kith-space/saved",
+    "/s/kith-space/showcase/",
   ]) {
     assert.equal(shouldServeAppShell(pathname), true, pathname);
   }
@@ -30,6 +29,10 @@ test("does not serve the app shell for unknown file or scanner paths", () => {
     "/wp-admin",
     "/wordpress/",
     "/old/",
+    "/features",
+    "/s/kith-space/agent/123",
+    "/s/kith-space/tasks/space",
+    "/s/kith-space/settings/account",
     "/favicon.ico",
   ]) {
     assert.equal(shouldServeAppShell(pathname), false, pathname);

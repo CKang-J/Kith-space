@@ -67,13 +67,13 @@ test("message first line keeps name and timestamp together", () => {
   assert.match(ts, /margin-left\s*:\s*0\b/, `timestamp spacing should be controlled by .msg-head gap: ${ts}`);
 });
 
-test("app chrome headings keep the upstream classic title face", () => {
-  const titleFace = /font-family\s*:\s*'EB Garamond','Times New Roman',serif/;
-  assert.match(ruleBody(".sb-title"), titleFace, "sidebar section titles should not inherit the Markdown/body font experiment");
+test("app chrome headings share the local system serif token", () => {
+  const titleFace = /font-family\s*:\s*var\(--serif\)/;
+  assert.match(ruleBody(".sb-title"), titleFace, "sidebar section titles should use the shared serif token");
   const headTitle = ruleBody(".head h1");
-  assert.match(headTitle, titleFace, "main channel/page header titles should keep the upstream title face");
-  assert.match(headTitle, /font-weight\s*:\s*400\b/, "main channel/page header titles should keep the upstream lighter weight");
-  assert.match(ruleBody(".thread-head"), titleFace, "thread panel title should keep the same upstream title face");
+  assert.match(headTitle, titleFace, "main channel/page header titles should use the shared serif token");
+  assert.match(headTitle, /font-weight\s*:\s*400\b/, "main channel/page header titles should keep the lighter weight");
+  assert.match(ruleBody(".thread-head"), titleFace, "thread panel title should use the same serif token");
 });
 
 test("avatar status dot covers the same agent state colors as live dots", () => {

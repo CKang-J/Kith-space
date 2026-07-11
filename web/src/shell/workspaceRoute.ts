@@ -1,16 +1,11 @@
 import { INITIAL_WORKSPACE_LAYOUT, type WorkspaceLayoutState, type WorkspaceModuleId } from "./workspaceLayout.ts";
 
-export const SPACE_ROUTE_PATTERN = "/s/:slug";
+export const SPACE_ROUTE_PATTERN = "/s/:slug/*";
 
 export type WorkspaceRouteSection =
   | "channel"
   | "saved"
   | "showcase"
-  | "inbox"
-  | "tasks"
-  | "agent"
-  | "settings"
-  | "search"
   | null;
 
 export interface WorkspaceRouteMatch {
@@ -21,23 +16,10 @@ export interface WorkspaceRouteMatch {
   isChannelRoute: boolean;
 }
 
-const MODULE_BY_SECTION: Partial<Record<Exclude<WorkspaceRouteSection, null>, WorkspaceModuleId>> = {
-  inbox: "inbox",
-  tasks: "tasks",
-  agent: "agents",
-  settings: "settings",
-  search: "search",
-};
-
 const KNOWN_SECTIONS = new Set<Exclude<WorkspaceRouteSection, null>>([
   "channel",
   "saved",
   "showcase",
-  "inbox",
-  "tasks",
-  "agent",
-  "settings",
-  "search",
 ]);
 
 const MODULE_IDS = new Set<WorkspaceModuleId>([
@@ -47,6 +29,29 @@ const MODULE_IDS = new Set<WorkspaceModuleId>([
   "settings",
   "search",
 ]);
+
+type WorkspaceResourceModuleId = "tasks" | "agents" | "settings";
+type WorkspaceModuleResourceParam = "taskScope" | "agent" | "settings";
+
+const RESOURCE_PARAM_BY_MODULE: Record<WorkspaceResourceModuleId, WorkspaceModuleResourceParam> = {
+  tasks: "taskScope",
+  agents: "agent",
+  settings: "settings",
+};
+
+const RESOURCE_PARAMS_BY_MODULE: Partial<Record<WorkspaceModuleId, readonly string[]>> = {
+  tasks: ["taskScope"],
+  agents: ["agent", "agentTab"],
+  settings: ["settings"],
+};
+
+const ALL_MODULE_RESOURCE_PARAMS = Object.values(RESOURCE_PARAMS_BY_MODULE).flat();
+
+export type WorkspaceModuleTarget =
+  | { moduleId: "inbox" | "search" }
+  | { moduleId: "tasks"; taskScope?: string | null }
+  | { moduleId: "agents"; agent?: string | null; agentTab?: string | null }
+  | { moduleId: "settings"; settings?: string | null };
 
 const decodeSegment = (value: string | undefined) => {
   if (!value) return null;
@@ -64,13 +69,12 @@ export function parseWorkspaceRoute(pathname: string): WorkspaceRouteMatch {
     ? rawSection as Exclude<WorkspaceRouteSection, null>
     : null;
   const resourceId = section ? decodeSegment(match?.[2]) : null;
-  const moduleId = section ? MODULE_BY_SECTION[section] ?? null : null;
   const isChannelRoute = section === "channel";
 
   return {
     section,
     resourceId,
-    moduleId,
+    moduleId: null,
     isChatRoute: isChannelRoute || section === "saved" || section === "showcase",
     isChannelRoute,
   };
@@ -93,12 +97,68 @@ export function workspaceSearchForLayout(search: string, state: WorkspaceLayoutS
   const params = new URLSearchParams(search);
   params.delete("module");
   params.delete("chat");
+  const ownedResourceParams = state.activeModule === null
+    ? []
+    : RESOURCE_PARAMS_BY_MODULE[state.activeModule] ?? [];
+  ALL_MODULE_RESOURCE_PARAMS.forEach((param) => {
+    if (!ownedResourceParams.includes(param)) params.delete(param);
+  });
   if (state.activeModule !== null) {
     params.set("module", state.activeModule);
     if (!state.chatVisible) params.set("chat", "0");
   }
   const encoded = params.toString();
   return encoded ? `?${encoded}` : "";
+}
+
+/** Keep only durable workspace layout and the active module's resource while changing conversations. */
+export function workspaceSearchForShellState(search: string, state: WorkspaceLayoutState) {
+  const source = new URLSearchParams(search);
+  const params = new URLSearchParams(workspaceSearchForLayout("", state));
+  if (state.activeModule !== null) {
+    for (const key of RESOURCE_PARAMS_BY_MODULE[state.activeModule] ?? []) {
+      const value = source.get(key);
+      if (value) params.set(key, value);
+    }
+  }
+  const encoded = params.toString();
+  return encoded ? `?${encoded}` : "";
+}
+
+export function workspaceModuleResourceFromSearch(search: string, moduleId: WorkspaceModuleId) {
+  if (moduleId !== "tasks" && moduleId !== "agents" && moduleId !== "settings") return null;
+  return new URLSearchParams(search).get(RESOURCE_PARAM_BY_MODULE[moduleId]);
+}
+
+const setOptionalParam = (params: URLSearchParams, key: string, value: string | null | undefined) => {
+  params.delete(key);
+  if (value) params.set(key, value);
+};
+
+export function workspaceLocationForModule(
+  pathname: string,
+  search: string,
+  target: WorkspaceModuleTarget,
+  options: { chatVisible?: boolean } = {},
+) {
+  const currentLayout = workspaceLayoutFromRoute(parseWorkspaceRoute(pathname), search);
+  const nextSearch = workspaceSearchForLayout(search, {
+    activeModule: target.moduleId,
+    chatVisible: options.chatVisible ?? currentLayout.chatVisible,
+  });
+  const params = new URLSearchParams(nextSearch);
+
+  if (target.moduleId === "tasks") {
+    setOptionalParam(params, "taskScope", target.taskScope);
+  } else if (target.moduleId === "agents") {
+    setOptionalParam(params, "agent", target.agent);
+    setOptionalParam(params, "agentTab", target.agentTab);
+  } else if (target.moduleId === "settings") {
+    setOptionalParam(params, "settings", target.settings);
+  }
+
+  const encoded = params.toString();
+  return encoded ? `${pathname}?${encoded}` : pathname;
 }
 
 export function mergeWorkspaceSearch(target: string, preservedSearch: string) {
@@ -109,4 +169,14 @@ export function mergeWorkspaceSearch(target: string, preservedSearch: string) {
   new URLSearchParams(preservedSearch).forEach((value, key) => params.set(key, value));
   const encoded = params.toString();
   return encoded ? `${pathname}?${encoded}` : pathname;
+}
+
+/** Change the active conversation without closing or resetting the current module workspace. */
+export function workspaceLocationForConversation(
+  target: string,
+  currentPathname: string,
+  currentSearch: string,
+) {
+  const layout = workspaceLayoutFromRoute(parseWorkspaceRoute(currentPathname), currentSearch);
+  return mergeWorkspaceSearch(target, workspaceSearchForShellState(currentSearch, layout));
 }

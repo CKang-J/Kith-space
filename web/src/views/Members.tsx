@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { MessageCircle, X, Wrench, ChevronRight, Check, Copy, Eye, EyeOff } from "lucide-react";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -14,6 +14,7 @@ import { useConfirm, useEscClose } from "../ConfirmModal.tsx";
 import { useToast } from "../toast.tsx";
 import { CodeBlock, ColorSwatch, GithubAlertBlockquote, colorValueFromTag, markdownSchema, markdownUrlTransform, remarkColorSwatches, remarkGithubAlerts, remarkHtmlAsText } from "../messageRender.tsx";
 import i18n from "../i18n";
+import { mergeWorkspaceSearch, workspaceLocationForModule, workspaceSearchForShellState } from "../shell/workspaceRoute.ts";
 
 // Unified agent status label: fine-grained activity (working/thinking/online) takes priority;
 // offline/absent falls back to lifecycle status (active/sleeping/inactive).
@@ -24,18 +25,21 @@ function statusOf(a: { activity?: string | null; status: string }): string {
 
 interface AgentsProps {
   agentIdOverride?: string;
-  moduleQuerySuffix?: string;
-  discussionQuerySuffix?: string;
 }
 
-export function Agents({ agentIdOverride, moduleQuerySuffix = "", discussionQuerySuffix = "" }: AgentsProps = {}) {
+export function Agents({ agentIdOverride }: AgentsProps = {}) {
   const { t } = useTranslation();
-  const { visibleAgents: agents, slug, attachmentUrl } = useStore(); // visibleAgents: showcase demo props are hidden from the roster (they stay in the store for #showcase history)
+  const { visibleAgents: agents, attachmentUrl } = useStore(); // visibleAgents: showcase demo props are hidden from the roster (they stay in the store for #showcase history)
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
-  const { agentId: routeAgentId } = useParams();
-  const agentId = agentIdOverride ?? routeAgentId;
+  const agentId = agentIdOverride;
   const nav = useNavigate();
+  const location = useLocation();
   const [modal, setModal] = useState(false);
+  const openAgent = (agent: string | null) => nav(workspaceLocationForModule(
+    location.pathname,
+    location.search,
+    { moduleId: "agents", agent },
+  ));
 
   return (
     <>
@@ -44,24 +48,25 @@ export function Agents({ agentIdOverride, moduleQuerySuffix = "", discussionQuer
         <div className="sb-title">{t("nav.agents")}</div>
         <div className="sec">{t("common.agents")} <span className="cnt">{agents.length}</span><button className="addbtn" title={t("members.createAgent")} onClick={() => setModal(true)}>+</button></div>
         {agents.map((a) => (
-          <button key={a.id} className={"item" + (a.id === agentId ? " active" : "")} onClick={() => nav(`/s/${slug}/agent/${a.id}${moduleQuerySuffix}`)}>
+          <button key={a.id} className={"item" + (a.id === agentId ? " active" : "")} onClick={() => openAgent(a.id)}>
             <Avatar seed={a.name} url={avFor(a.avatarUrl)} size={20} /><span className="grow">{a.name}</span><span className={"dot " + statusOf(a)} role="img" aria-label={t("members.statusLabel", { status: statusOf(a) })} title={statusOf(a)} />
           </button>
         ))}
         </div>
       </aside>
       <main className="content-col">
-        {agentId ? <AgentProfile id={agentId} onDeleted={() => nav(`/s/${slug}/agent${moduleQuerySuffix}`)} discussionQuerySuffix={discussionQuerySuffix} /> : <Roster agents={agents} onCreate={() => setModal(true)} moduleQuerySuffix={moduleQuerySuffix} />}
+        {agentId ? <AgentProfile id={agentId} onDeleted={() => openAgent(null)} /> : <Roster agents={agents} onCreate={() => setModal(true)} />}
       </main>
       {modal && <CreateAgentModal onClose={() => setModal(false)} />}
     </>
   );
 }
 
-function Roster({ agents, onCreate, moduleQuerySuffix = "" }: { agents: any[]; onCreate: () => void; moduleQuerySuffix?: string }) {
+function Roster({ agents, onCreate }: { agents: any[]; onCreate: () => void }) {
   const { t } = useTranslation();
-  const { attachmentUrl, slug } = useStore();
+  const { attachmentUrl } = useStore();
   const nav = useNavigate();
+  const location = useLocation();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
   const goKey = (e: React.KeyboardEvent, to: string) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav(to); } };
   return (
@@ -72,7 +77,7 @@ function Roster({ agents, onCreate, moduleQuerySuffix = "" }: { agents: any[]; o
           : <>
             {agents.length > 0 && <div className="sec">{t("common.agents")} <span className="cnt">{agents.length}</span></div>}
             {agents.map((a) => {
-              const to = `/s/${slug}/agent/${a.id}${moduleQuerySuffix}`;
+              const to = workspaceLocationForModule(location.pathname, location.search, { moduleId: "agents", agent: a.id });
               return (
                 <div className="card card-link" key={a.id} role="button" tabIndex={0} onClick={() => nav(to)} onKeyDown={(e) => goKey(e, to)}>
                   <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}><Avatar seed={a.name} url={avFor(a.avatarUrl)} size={24} />{a.displayName || a.name} <small className="meta">@{a.name}</small></h3>
@@ -88,12 +93,13 @@ function Roster({ agents, onCreate, moduleQuerySuffix = "" }: { agents: any[]; o
   );
 }
 
-export function AgentProfile({ id, onDeleted, onClose, onMessage, discussionQuerySuffix = "" }: { id: string; onDeleted: () => void; onClose?: () => void; onMessage?: () => void; discussionQuerySuffix?: string }) {
+export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string; onDeleted: () => void; onClose?: () => void; onMessage?: () => void }) {
   const { t } = useTranslation();
   const { api, reload, onEvent, openAgentDM, slug, uploadAgentAvatar, attachmentUrl } = useStore();
   const confirm = useConfirm();
   const toast = useToast();
   const nav = useNavigate();
+  const location = useLocation();
   const [sp, setSp] = useSearchParams();
   const tab = sp.get("agentTab") || "profile";
   const [a, setA] = useState<any>(null);
@@ -126,7 +132,12 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage, discussionQuer
   const startEdit = () => { setDn(a.displayName || a.name); setDs(a.description || ""); setEdit(true); };
   const saveProfile = async () => { await api("PATCH", "/api/agents/" + id, { displayName: dn.trim() || a.name, description: ds.trim() }); setEdit(false); await refetch(); await reload(); }; // profile tab: editable displayName/description
   const live = statusOf(a);
-  const msgAgent = async () => { const cid = await openAgentDM(id); if (cid) nav(`/s/${slug}/channel/${cid}${discussionQuerySuffix}`); };
+  const msgAgent = async () => {
+    const cid = await openAgentDM(id);
+    if (!cid) return;
+    const discussionSearch = workspaceSearchForShellState(location.search, { activeModule: "agents", chatVisible: true });
+    nav(mergeWorkspaceSearch(`/s/${slug}/channel/${cid}`, discussionSearch));
+  };
   const acts = (
     <div className="agent-acts">
       <button className="joinbtn" onClick={onMessage ?? msgAgent}><MessageCircle size={13} style={{ verticalAlign: "-2px" }} /> {t("members.dm")}</button>
@@ -163,7 +174,7 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage, discussionQuer
         : tab === "activity" ? <ActivityTab id={id} name={a.name} />
         : tab === "permissions" ? <PermissionsTab id={id} />
         : tab === "integrations" ? <AppsTab id={id} />
-        : tab === "dms" ? <DmsTab id={id} name={a.name} discussionQuerySuffix={discussionQuerySuffix} />
+        : tab === "dms" ? <DmsTab id={id} name={a.name} />
         : tab === "reminders" ? <RemindersTab id={id} name={a.name} />
         : (
           <div className="scroll">
@@ -265,13 +276,18 @@ function AppsTab({ id }: { id: string }) {
 }
 
 // DMs tab (derived from channels: direct message threads between this agent and others)
-function DmsTab({ id, name, discussionQuerySuffix = "" }: { id: string; name: string; discussionQuerySuffix?: string }) {
+function DmsTab({ id, name }: { id: string; name: string }) {
   const { t } = useTranslation();
   const { api, slug } = useStore();
   const nav = useNavigate();
+  const location = useLocation();
   const [dms, setDms] = useState<any[] | null>(null);
   useEffect(() => { (async () => { try { setDms(await api("GET", `/api/agents/${id}/agent-dms`)); } catch { setDms([]); } })(); }, [id]);
-  return <div className="scroll"><div className="sec">{t("members.agentDms")}</div>{!dms?.length ? <div className="empty">{t("members.dmsEmpty", { name })}</div> : dms.map((d) => <button className="item" key={d.id} onClick={() => nav(`/s/${slug}/channel/${d.id}${discussionQuerySuffix}`)}><Avatar seed={d.name} size={22} /><span className="grow">{d.name}</span></button>)}</div>;
+  const openDiscussion = (channelId: string) => {
+    const discussionSearch = workspaceSearchForShellState(location.search, { activeModule: "agents", chatVisible: true });
+    nav(mergeWorkspaceSearch(`/s/${slug}/channel/${channelId}`, discussionSearch));
+  };
+  return <div className="scroll"><div className="sec">{t("members.agentDms")}</div>{!dms?.length ? <div className="empty">{t("members.dmsEmpty", { name })}</div> : dms.map((d) => <button className="item" key={d.id} onClick={() => openDiscussion(d.id)}><Avatar seed={d.name} size={22} /><span className="grow">{d.name}</span></button>)}</div>;
 }
 
 // Reminders tab (read-only in the Human UI; agents create reminders through their runtime)

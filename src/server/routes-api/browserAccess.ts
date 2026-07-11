@@ -108,7 +108,7 @@ export async function handlePublicBrowserAuth(ctx: BaseCtx): Promise<boolean> {
 
 export async function handleAuthenticatedBrowserAuth(ctx: BaseCtx, auth: HumanRequestAuth): Promise<boolean> {
   const { req, res, method, p } = ctx;
-  if (p !== "/api/browser-auth/logout" || method !== "POST") return false;
+  if (p !== "/api/browser-auth/session" || method !== "DELETE") return false;
   if (auth.kind === "browser" && auth.sessionToken) sessions.revoke(auth.sessionToken);
   clearBrowserSessionCookies(res, isSecure(req));
   return (sendJson(res, 200, { ok: true }), true);

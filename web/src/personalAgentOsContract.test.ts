@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -33,6 +33,7 @@ test("Machine and Computers are absent from the frontend product surface", () =>
     [...modules.matchAll(/\{ id: "([^"]+)",[^\n]+dock: true \}/g)].map((match) => match[1]),
     ["inbox", "tasks", "agents", "settings"],
   );
+  assert.match(modules, /\{ id: "search",[^\n]+dock: false \}/);
   assert.match(dock, /<MessageCircle size=\{18\} \/>/);
   assert.match(agents, /\/api\/local-runtime\/models\/\$\{runtime\}/);
   assert.match(agents, /api\("POST", "\/api\/agents", \{ name:/);
@@ -67,18 +68,36 @@ test("channel copy describes Human authority separately from agent membership", 
   assert.match(zh, /Human 始终可访问/);
 });
 
-test("marketing copy presents the desktop-first Personal AgentOS route", () => {
-  const landing = source("./views/Landing.tsx");
-  const features = source("./views/Features.tsx");
+test("the frontend exposes only the local product shell", () => {
+  const app = source("./App.tsx");
+  const frame = source("./shell/WorkspaceFrame.tsx");
+  const topBar = source("./shell/WorkspaceTopBar.tsx");
   const index = source("../index.html");
-  const marketing = `${landing}\n${features}\n${index}`;
+  const webPackage = JSON.parse(source("../package.json")) as { scripts: { build: string } };
+  const removedPaths = [
+    "./Layout.tsx",
+    "./entry-server.tsx",
+    "./views/Landing.tsx",
+    "./views/Features.tsx",
+    "./views/ProductMock.tsx",
+    "./landing/landing.css",
+    "./landing/MarketingNav.tsx",
+    "./landing/publicNav.css",
+    "./landing/publicNav.ts",
+    "../scripts/prerender.js",
+  ];
 
-  assert.match(marketing, /desktop-first Personal AgentOS/i);
-  assert.match(marketing, /one Human/);
-  assert.match(marketing, /same computer/);
-  assert.match(marketing, /local HTTP Web/);
-  assert.match(marketing, /trusted LAN desktop browsers/);
-  assert.match(marketing, /Access Token[^\n]+(?:planned|路线)/i);
-  assert.match(marketing, /cross-Space aggregation[^\n]+(?:roadmap|路线)/i);
-  assert.doesNotMatch(marketing, /An open, self-hostable|self-hosted multi-agent|teams and AI agents collaborate|可自托管的团队工作区|humans and agents collaborate|4 agents active across 2 machines|4 个 agent 活跃在 2 台机器|Self-hosted execution|执行自托管/);
+  assert.match(app, /return <WorkspaceFrame \/>/);
+  assert.doesNotMatch(app, /Layout|legacy|useLocation|useState/);
+  assert.doesNotMatch(frame, /legacyHref/);
+  assert.doesNotMatch(topBar, /legacyHref|MoreHorizontal|<a\b/);
+  assert.match(topBar, /onOpenSearch/);
+  assert.equal(webPackage.scripts.build, "vite build");
+  assert.match(index, /<title>Kith-space<\/title>/);
+  assert.match(index, /<meta name="description"/);
+  assert.match(index, /<link rel="icon" href="\/favicon\.svg"/);
+  assert.doesNotMatch(index, /canonical|og:|twitter:|application\/ld\+json|apple-touch|fonts\.googleapis|fonts\.gstatic/);
+  for (const path of removedPaths) {
+    assert.equal(existsSync(new URL(path, import.meta.url)), false, `${path} must stay removed`);
+  }
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Star, Bookmark, Lock, MessageCircle, Eye } from "lucide-react";
 import { useStore } from "../store.tsx";
 import { fmtDateTime } from "../format";
@@ -10,19 +10,23 @@ import { PaneEmpty } from "../PaneEmpty.tsx";
 import { useTranslation } from "react-i18next";
 import { getDesktopBridge, resolveSettingsSection } from "../desktopBridge.ts";
 import { DesktopSettings } from "./DesktopSettings.tsx";
+import { workspaceLocationForConversation, workspaceLocationForModule } from "../shell/workspaceRoute.ts";
 
 interface TasksProps {
   channelIdOverride?: string | null;
-  moduleQuerySuffix?: string;
 }
-export function Tasks({ channelIdOverride, moduleQuerySuffix = "" }: TasksProps = {}) {
-  const { channels, slug } = useStore();
-  const { channelId: routeChannelId } = useParams(); // "space" = all channels; otherwise a specific channelId
+export function Tasks({ channelIdOverride }: TasksProps = {}) {
+  const { channels } = useStore();
   const nav = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
-  const channelId = channelIdOverride === undefined ? routeChannelId : channelIdOverride ?? undefined;
-  const scope = channelId || "space";
+  const scope = channelIdOverride || "space";
   const cur = scope === "space" ? null : channels.find((c) => c.id === scope);
+  const openScope = (taskScope: string) => nav(workspaceLocationForModule(
+    location.pathname,
+    location.search,
+    { moduleId: "tasks", taskScope },
+  ));
 
   return (
     <>
@@ -30,9 +34,9 @@ export function Tasks({ channelIdOverride, moduleQuerySuffix = "" }: TasksProps 
         <div className="sb-scroll">
         <div className="sb-title">{t("nav.tasks")}</div>
         <div className="sec">{t("misc.tasksScope")}</div>
-        <button className={"item" + (scope === "space" ? " active" : "")} onClick={() => nav(`/s/${slug}/tasks/space${moduleQuerySuffix}`)}><Star size={14} /><span className="grow">{t("misc.tasksAll")}</span></button>
+        <button className={"item" + (scope === "space" ? " active" : "")} onClick={() => openScope("space")}><Star size={14} /><span className="grow">{t("misc.tasksAll")}</span></button>
         <div className="sec">{t("common.channels")}</div>
-        {channels.filter((c) => c.type !== "dm").map((c) => <button key={c.id} className={"item" + (c.id === scope ? " active" : "")} onClick={() => nav(`/s/${slug}/tasks/${c.id}${moduleQuerySuffix}`)}># {c.name}</button>)}
+        {channels.filter((c) => c.type !== "dm").map((c) => <button key={c.id} className={"item" + (c.id === scope ? " active" : "")} onClick={() => openScope(c.id)}># {c.name}</button>)}
         </div>
       </aside>
       <main className="content-col">
@@ -75,6 +79,7 @@ function KindGlyph({ type }: { type: string }) {
 export function Inbox({ embedded = false, onNavigate }: { embedded?: boolean; onNavigate?: () => void }) {
   const { api, slug, markRead, onEvent } = useStore();
   const nav = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
   const [filter, setFilter] = useState("all");
   const [items, setItems] = useState<InboxItem[]>([]);
@@ -83,6 +88,11 @@ export function Inbox({ embedded = false, onNavigate }: { embedded?: boolean; on
   const [loading, setLoading] = useState(true);
   const filterRef = useRef("all");
   const MENTIONS_PAGE = 50;
+  const openConversation = (target: string) => nav(workspaceLocationForConversation(
+    target,
+    location.pathname,
+    location.search,
+  ));
 
   const load = (f: string, silent = false) => {
     if (!silent) setLoading(true);
@@ -115,15 +125,15 @@ export function Inbox({ embedded = false, onNavigate }: { embedded?: boolean; on
     if (it.unreadCount > 0) markRead(it.channelId);
     onNavigate?.();
     // Thread entry → navigate to parent channel and open the thread panel; non-thread unread → jump to first unread message; otherwise navigate to channel
-    if (it.kind === "thread" && it.parentChannelId && it.parentMessageId) nav(`/s/${slug}/channel/${it.parentChannelId}?thread=${it.parentMessageId}`);
-    else if (it.firstUnreadMessageId) nav(`/s/${slug}/channel/${it.channelId}?msg=${it.firstUnreadMessageId}`);
-    else nav(`/s/${slug}/channel/${it.channelId}`);
+    if (it.kind === "thread" && it.parentChannelId && it.parentMessageId) openConversation(`/s/${slug}/channel/${it.parentChannelId}?thread=${it.parentMessageId}`);
+    else if (it.firstUnreadMessageId) openConversation(`/s/${slug}/channel/${it.channelId}?msg=${it.firstUnreadMessageId}`);
+    else openConversation(`/s/${slug}/channel/${it.channelId}`);
   };
   // Jump straight to the @-mention: highlight that message via ?msg=; a thread mention opens the parent thread panel.
   const openMention = (m: MentionItem) => {
     onNavigate?.();
-    if (m.channelType === "thread" && m.parentChannelId && m.parentMessageId) nav(`/s/${slug}/channel/${m.parentChannelId}?thread=${m.parentMessageId}`);
-    else nav(`/s/${slug}/channel/${m.channelId}?msg=${m.messageId}`);
+    if (m.channelType === "thread" && m.parentChannelId && m.parentMessageId) openConversation(`/s/${slug}/channel/${m.parentChannelId}?thread=${m.parentMessageId}`);
+    else openConversation(`/s/${slug}/channel/${m.channelId}?msg=${m.messageId}`);
   };
 
   const curFilter = INBOX_FILTERS.find((f) => f.key === filter);
@@ -191,6 +201,7 @@ const hilite = (s: string, q: string) => { const e = escHtml(s); if (!q) return 
 export function Search() {
   const { api, slug } = useStore();
   const nav = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<any[]>([]);
@@ -210,7 +221,11 @@ export function Search() {
           <input type="text" value={q} onChange={(e) => setQ(e.target.value)} autoFocus placeholder={t("misc.searchPlaceholder")} style={{ width: "100%", fontSize: 16, padding: "11px 16px", border: "1px solid var(--hair-strong)", borderRadius: 8, marginBottom: 16, outline: "none" }} />
           {searched && results.length === 0 && <div className="empty">{t("misc.searchNoResults", { q })}</div>}
           {results.map((r) => (
-            <div className="card" key={r.id} style={{ cursor: "pointer" }} onClick={() => nav(`/s/${slug}/channel/${r.channelId}?msg=${r.id}`)}>
+            <div className="card" key={r.id} style={{ cursor: "pointer" }} onClick={() => nav(workspaceLocationForConversation(
+              `/s/${slug}/channel/${r.channelId}?msg=${r.id}`,
+              location.pathname,
+              location.search,
+            ))}>
               <div className="kv"><b># {r.channelName}</b> · {r.senderName} · {fmtDateTime(r.createdAt)}</div>
               <div className="mbody" dangerouslySetInnerHTML={{ __html: hilite(r.snippet || r.content, q) }} />
             </div>
@@ -227,11 +242,11 @@ const SETTINGS: [string, string][] = [
   ["account", "misc.settingsNavAccount"],
   ["space", "misc.settingsNavSpace"],
 ];
-export function Settings({ sectionOverride, moduleQuerySuffix = "" }: { sectionOverride?: string; moduleQuerySuffix?: string } = {}) {
-  const { section: routeSection } = useParams();
-  const section = sectionOverride ?? routeSection;
-  const { slug, spaceId, api } = useStore();
+export function Settings({ sectionOverride }: { sectionOverride?: string } = {}) {
+  const section = sectionOverride;
+  const { spaceId, api } = useStore();
   const nav = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
   const desktopBridge = getDesktopBridge();
   const requestedSection = section || "account";
@@ -242,14 +257,18 @@ export function Settings({ sectionOverride, moduleQuerySuffix = "" }: { sectionO
   const curLabel = t(settingsEntries.find((s) => s[0] === cur)?.[1] || cur);
   useEffect(() => {
     if (requestedSection !== "desktop" || desktopBridge) return;
-    nav(`/s/${slug}/settings/account${moduleQuerySuffix}`, { replace: true });
-  }, [desktopBridge, moduleQuerySuffix, nav, requestedSection, slug]);
+    nav(workspaceLocationForModule(
+      location.pathname,
+      location.search,
+      { moduleId: "settings", settings: "account" },
+    ), { replace: true });
+  }, [desktopBridge, location.pathname, location.search, nav, requestedSection]);
   return (
     <>
       <aside className="sidebar">
         <div className="sb-scroll">
         <div className="sb-title">{t("nav.settings")}</div>
-        <div className="settings-nav">{settingsEntries.map(([k, labelKey]) => <button key={k} className={"item" + (cur === k ? " active" : "")} onClick={() => nav(`/s/${slug}/settings/${k}${moduleQuerySuffix}`)}>{t(labelKey)}</button>)}</div>
+        <div className="settings-nav">{settingsEntries.map(([k, labelKey]) => <button key={k} className={"item" + (cur === k ? " active" : "")} onClick={() => nav(workspaceLocationForModule(location.pathname, location.search, { moduleId: "settings", settings: k }))}>{t(labelKey)}</button>)}</div>
         </div>
       </aside>
       <main className="content-col">
@@ -268,8 +287,9 @@ export function Settings({ sectionOverride, moduleQuerySuffix = "" }: { sectionO
   );
 }
 function AccountSettings({ api }: { api: any }) {
-  const { logout } = useStore();
+  const { clearBrowserAccess } = useStore();
   const { t, i18n } = useTranslation();
+  const desktopAvailable = getDesktopBridge() !== null;
   const setLang = (l: string) => { i18n.changeLanguage(l); localStorage.setItem("kith-space.lang", l); };
   const [u, setU] = useState<any>(null);
   const [saved, setSaved] = useState(false);
@@ -285,16 +305,16 @@ function AccountSettings({ api }: { api: any }) {
       <label>{t("misc.accountEmail")}</label><input value={u.email || ""} onChange={(e) => setU({ ...u, email: e.target.value })} />
       <div className="setrow"><button className="ok" onClick={save}>{t("misc.accountSave")}</button>{saved && <span className="saved">{t("misc.accountSaved")}</span>}</div>
       <div className="lang-row">
-        <div><div className="logout-title">{t("settings.language")}</div><div className="logout-desc">{t("settings.languageDesc")}</div></div>
+        <div><div className="browser-session-title">{t("settings.language")}</div><div className="browser-session-desc">{t("settings.languageDesc")}</div></div>
         <div className="seg-pill" role="group" aria-label={t("settings.language")}>
           <button className={"seg-opt" + (i18n.language.startsWith("en") ? " on" : "")} onClick={() => setLang("en")}>{t("settings.langEnglish")}</button>
           <button className={"seg-opt" + (i18n.language.startsWith("zh") ? " on" : "")} onClick={() => setLang("zh")}>{t("settings.langChinese")}</button>
         </div>
       </div>
-      <div className="logout-row">
-        <div><div className="logout-title">{t("misc.logoutTitle")}</div><div className="logout-desc">{t("misc.logoutDesc")}</div></div>
-        <button className="logout-btn" onClick={logout}>{t("misc.logoutBtn")}</button>
-      </div>
+      {!desktopAvailable ? <div className="browser-session-row">
+        <div><div className="browser-session-title">{t("misc.browserAuthorizationTitle")}</div><div className="browser-session-desc">{t("misc.browserAuthorizationDesc")}</div></div>
+        <button className="browser-session-btn" onClick={clearBrowserAccess}>{t("misc.browserAuthorizationBtn")}</button>
+      </div> : null}
     </div>
   );
 }
@@ -342,6 +362,7 @@ const relTime = (iso?: string, tFn?: (k: string, opts?: any) => string) => {
 export function Saved({ embedded = false }: { embedded?: boolean } = {}) {
   const { slug, listSaved, unsaveMsg } = useStore();
   const nav = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
   const PAGE = 20;
   const [items, setItems] = useState<any[]>([]);
@@ -358,7 +379,11 @@ export function Saved({ embedded = false }: { embedded?: boolean } = {}) {
     setNextOffset(off + PAGE);
   }).finally(() => setLoading(false));
   useEffect(() => { load(0); /* eslint-disable-next-line */ }, []);
-  const open = (it: any) => nav(`/s/${slug}/channel/${it.channelId}?msg=${it.messageId}`);
+  const open = (it: any) => nav(workspaceLocationForConversation(
+    `/s/${slug}/channel/${it.channelId}?msg=${it.messageId}`,
+    location.pathname,
+    location.search,
+  ));
   const unsave = (e: React.MouseEvent, it: any) => { e.stopPropagation(); unsaveMsg(it.messageId); setItems((p) => p.filter((x) => x.messageId !== it.messageId)); setNextOffset((n) => Math.max(0, n - 1)); };
   const source = (it: any) => it.channelType === "thread"
     ? <><MessageCircle size={12} /> {t("misc.savedThread")}{it.parentChannelType === "dm" ? "@" : "#"}{it.parentChannelName ?? "?"}</>

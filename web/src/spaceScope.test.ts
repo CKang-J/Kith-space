@@ -43,5 +43,5 @@ test("space-scoped XHR requests receive the same Cookie and CSRF headers", () =>
 });
 
 test("Space URLs keep the /s/:slug contract", () => {
-  assert.equal(SPACE_ROUTE_PATTERN, "/s/:slug");
+  assert.equal(SPACE_ROUTE_PATTERN, "/s/:slug/*");
 });

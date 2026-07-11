@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useStore, type Agent } from "../store.tsx";
 import { Avatar, resolveAvatar } from "../Avatar.tsx";
+import { workspaceLocationForConversation } from "../shell/workspaceRoute.ts";
 
 // Live agent activity bar pinned to the bottom of the sidebar: an at-a-glance, workspace-wide
 // pulse of which agents are doing something right now (working / thinking). Complements — does
@@ -16,7 +17,7 @@ export function LiveAgentBar() {
   const { t } = useTranslation();
   const { agents, channels, slug, attachmentUrl, openAgentPanel } = useStore();
   const nav = useNavigate();
-  const { pathname } = useLocation();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
 
@@ -31,9 +32,13 @@ export function LiveAgentBar() {
   const goActivity = (id: string) => {
     setOpen(false);
     openAgentPanel(id);
-    if (!pathname.includes("/channel/")) {
+    if (!location.pathname.includes("/channel/")) {
       const ch = channels[0];
-      if (ch && slug) nav(`/s/${slug}/channel/${ch.id}`);
+      if (ch && slug) nav(workspaceLocationForConversation(
+        `/s/${slug}/channel/${ch.id}`,
+        location.pathname,
+        location.search,
+      ));
     }
   };
   const labelOf = (a: Agent) => a.activityDetail?.trim() || t(a.activity === "thinking" ? "liveBar.thinking" : "liveBar.working");

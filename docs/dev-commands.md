@@ -4,7 +4,7 @@
 
 包管理器是 **pnpm**（不是 npm）。pnpm 传参不加 `--`：用 `pnpm test --unit`，不要写 `pnpm test -- --integration`。
 
-> A4 已落地 Electron Desktop 宿主。完整开发优先使用 `pnpm run desktop:dev`；它自行生成并隔离 Desktop/Worker 内部凭据。`.env` 中的内部凭据只服务手动分进程调试，不是普通用户配置。
+> A5 已落地 Desktop 首次初始化。完整开发优先使用 `pnpm run desktop:dev`；全新数据目录无需 seed，它会自行生成并隔离 Desktop/Worker 内部凭据，并在窗口中收集 Human 资料、创建 `Home`。`.env` 中的内部凭据只服务手动分进程调试，不是普通用户配置。
 
 ## 1. 首次准备
 
@@ -24,10 +24,10 @@ cp .env.example .env              # 可选：只为手动分进程调试或覆�
 
 ## 2. 数据库
 
-**不需要单独 `db:push`**：每个 Space db 在连接时自动迁移（`src/db/index.ts` 的 `migrate()`）；`pnpm run seed` 初始化唯一 Human 与默认 `Home` Space，并建好 schema。分段起时**先 `seed` 即可**。
+**不需要单独 `db:push`**：每个 Space db 在连接时自动迁移（`src/db/index.ts` 的 `migrate()`）。正式 Desktop 流程不执行 seed：首次初始化界面会幂等创建唯一 Human 与默认 `Home`，并建好 schema。`pnpm run seed` 只保留给手动分进程调试、测试 fixture 或需要预置数据的脚本；普通浏览器不能调用 Desktop-only setup API，因此用全新 `KITH_SPACE_HOME` 手动分起时，可先运行一次 seed。
 
 ```bash
-pnpm run seed                     # 建唯一 Human + Home Space 并自动迁移 schema（幂等）
+pnpm run seed                     # 可选调试 fixture：预建唯一 Human + Home Space 并自动迁移 schema（幂等）
 pnpm run seed:dev                 # 追加开发用 dev-bot agent
 pnpm run db:push                  # 可选/遗留：仅把 schema 推到一个 scratch db（./.kith-space-dev.db），供 drizzle-kit 迭代/studio 用，非应用运行所需
 pnpm run db:studio                # 可选：Drizzle Studio 查那个 scratch db
@@ -53,7 +53,7 @@ pnpm run browser-access:dev lan --port 7777 --token "a-custom-token-at-least-16-
 - 省略 `--token`/`--rotate-token` 时，已有 Token 不变且不回显；首次开启且尚无 Token 时会自动生成并显示一次。
 - LAN v1 是未加密 HTTP，仅用于受信任私有局域网；不得做端口转发、反向代理公开或暴露到互联网。
 
-浏览器首次访问输入访问 Token，成功后取得持久 HttpOnly Cookie 会话。会话持续到浏览器数据清除、退出、Desktop 全量撤销或 Token 轮换；URL 不携 Token，也不支持 `?as=`。
+浏览器首次访问输入访问 Token，成功后取得持久 HttpOnly Cookie 会话。会话持续到浏览器数据清除、用户撤销当前浏览器访问授权、Desktop 全量撤销或 Token 轮换；URL 不携 Token，也不支持 `?as=`。这里的“撤销访问”只清除浏览器授权会话，不是账户 logout。
 
 ## 4. 手动起各服务（三个进程，分别开终端）
 
@@ -98,7 +98,7 @@ pnpm test                         # 全量（单测 + 集成）
 ```
 
 跑测试时把数据落到临时目录，避免污染真实 home：`KITH_SPACE_HOME=$(mktemp -d) pnpm test --unit`。
-已知既有失败：`test/publicNavContract.unit.test.ts` 因仓库缺 `docs-site/` 而失败，非回归，可忽略。
+A5 当前完整单测基线是 439/439。旧 `test/publicNavContract.unit.test.ts` 随 public landing/PWA 路线删除，不再是可忽略的既有失败；当前全量检查应为全绿。
 
 ## 7. 构建与打包
 
@@ -123,12 +123,13 @@ pnpm run cli -- <args>            # 运行 CLI（如 pnpm run cli role-template 
 ## 10. Electron Desktop 开发入口
 
 ```bash
-pnpm run seed                     # A5 首次初始化 UI 落地前，全新数据目录先执行一次
 pnpm run desktop:build            # 仅构建 Electron main/preload，不启动进程、不生成安装器
 pnpm run desktop:dev              # desktop:build 后启动 Electron 管理的完整开发进程组
 ```
 
 `desktop:dev` 使用 Electron 43.1.0。Desktop 先启动 Core Service；Core 从 app.db 读取稳定端口并以 IPC 报告 ready 后，监督器才把实际端口注入唯一 Worker 和可选 Vite。端口占用会作为明确启动错误返回，不静默换端口。进程组每次启动或因 Web 设置变更而重启时，都会重新生成相互独立的 Desktop/Worker 凭据；受管子进程带 `KITH_SPACE_DESKTOP_MANAGED=1`，不会从仓库 `.env` 重新载入凭据，Vite 子进程环境不包含任一内部 Token。
+
+全新 `KITH_SPACE_HOME` 无需先运行 seed。Electron 渲染器通过 preload 私有信任探测 Desktop-only setup API；未初始化时显示 Human 名称（必填）、邮箱和描述（选填）表单，完成后再挂载正式 Store 并进入 `Home`。普通浏览器没有该 preload bridge，不会探测 setup API，只按 Web 模式与 Access Token Gate 进入产品。
 
 开发窗口默认关闭到托盘；可在 Desktop Settings 改为关闭即退出。显式 Quit 会等待 agent runtime 退出，再结束整个进程组；Windows 使用 process-tree 兜底，终止失败时应用保持运行并允许重试。Desktop Settings 还管理 off/local/lan、端口、访问 Token 轮换、浏览器会话撤销与系统自启动。LAN 在改变监听前要求确认 HTTP 风险，自动生成的 Token 会保持显示到用户确认已保存。自启动只在 Windows 正式打包形态启用，开发态会明确显示不支持。
 

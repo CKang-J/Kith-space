@@ -12,7 +12,7 @@
   --on-ink:#fff;--mention:#fdf2d6;--scrim:rgba(12,10,9,.4);
   /* Shadow scale (elevation depth): black at varying opacity, centralized as tokens to prevent scattering (same sidecar approach); used for box-shadow on overlays/cards/menus */
   --shadow-1:rgba(0,0,0,.05);--shadow-2:rgba(0,0,0,.1);--shadow-3:rgba(0,0,0,.12);--shadow-4:rgba(0,0,0,.16);--shadow-5:rgba(0,0,0,.25);--shadow-6:rgba(0,0,0,.3);--shadow-7:rgba(0,0,0,.45);
-  --serif:'EB Garamond','Times New Roman',serif;--sans:'Inter',-apple-system,'PingFang SC','Segoe UI',sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --serif:Georgia,'Times New Roman',serif;--sans:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   /* Markdown rendering sidecar tokens: scoped to .md/.ws-md so app chrome keeps the existing palette/layout contract. */
   --link-blue:#7097F1;--quote-text:#8f8881;--done-text:#9b9690;
   --channel-mention:#e7f0ff;--channel-mention-strong:#dbe8ff;
@@ -23,7 +23,7 @@
   --read-measure:76ch;--read-pad:24px;--read-top:40px;--read-bottom:80px;--scrollbar-gutter:16px;--chat-card-width:calc(var(--read-measure) + 72px + 2ch);
   --md-text-size:14.5px;--md-line-height:1.68;--md-paragraph-gap:.75em;
   --md-h1-size:1.4em;--md-h2-size:1.25em;--md-h3-size:1.12em;--md-h-rest-size:1em;
-  /* Motion tokens — app shell (not landing page --lp-* system) */
+  /* Motion tokens for the product shell. */
   --ease-quint: cubic-bezier(.22, 1, .36, 1);
   --ease-expo:  cubic-bezier(.16, 1, .3, 1);
   --ease-decel: cubic-bezier(0, 0, .2, 1);
@@ -35,19 +35,7 @@
 *{box-sizing:border-box}
 body{margin:0;font-family:var(--sans);font-size:16px;line-height:1.5;letter-spacing:.15px;background:var(--canvas);color:var(--ink-2)}
 button{font-family:inherit}
-.app{height:100vh;display:grid;grid-template-columns:56px var(--sb-w,248px) 1fr;position:relative}
-.app.has-traj{grid-template-columns:56px var(--sb-w,248px) 1fr var(--traj-w,320px)}
-.resizer{position:absolute;top:0;bottom:0;width:7px;cursor:col-resize;z-index:45;background:transparent;transition:background .12s}
-.resizer:hover{background:var(--g-sky)}
-.resizer-sb{left:calc(56px + var(--sb-w,248px) - 3px)}
-.resizer-traj{right:calc(var(--traj-w,320px) - 3px)}
-
-.rail{background:var(--surface-strong);box-shadow:1px 0 0 var(--hair-strong);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:6px}
-.rail .brand{width:36px;height:36px;border-radius:8px;background:var(--ink);color:var(--canvas);font-family:var(--serif);font-size:20px;display:flex;align-items:center;justify-content:center;margin-bottom:8px;position:relative}
-.rail .brand .dot{position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:var(--g-peach);border:1px solid var(--canvas-soft)}
-.rail .brand .brand-img{width:100%;height:100%;border-radius:8px;object-fit:cover;display:block}
 .sw-wrap{position:relative}
-.rail button.brand{appearance:none;padding:0;border:0;box-sizing:border-box;font:inherit;font-family:var(--serif);font-size:20px;cursor:pointer}
 .sw-backdrop{position:fixed;inset:0;z-index:40}
 .sw-pop{position:absolute;left:46px;top:0;z-index:41;width:230px;background:var(--canvas);border:1px solid var(--hair-strong);border-radius:8px;box-shadow:0 8px 28px var(--shadow-3);padding:7px}
 .sw-title{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:5px 8px 6px}
@@ -62,14 +50,10 @@ button{font-family:inherit}
 .sw-create{display:flex;gap:6px;margin-top:6px;padding:2px}
 .sw-create input{flex:1;min-width:0;font-size:13px;padding:6px 9px;border:1px solid var(--hair-strong);border-radius:8px;outline:none;background:var(--canvas);color:var(--ink);font-family:inherit}
 .sw-go{font-size:13px;color:var(--on-ink);background:var(--ink-2);border:0;padding:6px 12px;border-radius:8px;cursor:pointer}
-.rail a.t{width:40px;height:40px;border-radius:12px;border:1px solid transparent;background:transparent;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;text-decoration:none}
-.rail a.t:hover{background:var(--canvas-soft);color:var(--ink)}
-.rail a.t.active{background:var(--surface);border-color:var(--hair-strong);color:var(--ink);box-shadow:0 1px 2px var(--shadow-1)}
-.rail .spacer{flex:1}
-/* sidebar = flex column: .sb-scroll (scrolls) above a pinned .live-bar footer. Height comes from the .app grid cell (desktop) or the fixed drawer's top/bottom:0 (mobile @820), so .sb-scroll needs no own height. */
+/* Embedded module sidebars keep their own scroll area above any pinned footer. */
 .sidebar{background:var(--canvas-soft);border-right:1px solid var(--hair);display:flex;flex-direction:column;min-height:0}
 .sb-scroll{flex:1;min-height:0;overflow:auto;padding:18px 14px}
-.sb-title{font-family:'EB Garamond','Times New Roman',serif;font-size:22px;letter-spacing:-.3px;color:var(--ink);margin:0 0 16px}
+.sb-title{font-family:var(--serif);font-size:22px;letter-spacing:-.3px;color:var(--ink);margin:0 0 16px}
 /* Section header: label (+ optional count hugging it) on the left, optional add affordance pinned right.
    The count counts what the label names, so it sits next to the label; only .addbtn floats to the edge. */
 .sec{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);margin:18px 4px 6px}
@@ -131,30 +115,19 @@ mark{background:var(--g-peach);color:var(--ink);padding:0 2px;border-radius:4px}
 .avatar-edit button{font-size:14px;color:var(--ink);background:var(--canvas);border:1px solid var(--hair-strong);padding:8px 18px;border-radius:9999px;cursor:pointer}
 .avatar-edit button:disabled{opacity:.55;cursor:default}
 .ta-count{font-size:12px;color:var(--muted);text-align:right;margin-top:5px;font-variant-numeric:tabular-nums}
-.inv-new{display:flex;gap:8px;align-items:center;margin:6px 0 16px;flex-wrap:wrap}
-.inv-new select,.inv-new input{font-size:14px;padding:8px 11px;border:1px solid var(--hair-strong);border-radius:8px;background:var(--canvas);color:var(--ink);font-family:inherit;width:auto}
-.inv-new input{flex:1;min-width:130px}
-.inv-list{display:flex;flex-direction:column;gap:8px}
-.inv-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--hair);border-radius:8px;background:var(--canvas)}
-.inv-meta{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
-.inv-role{font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);border:1px solid var(--hair-strong);border-radius:9999px;padding:2px 8px;flex:0 0 auto}
-.inv-url{font-size:12px;color:var(--body);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
-.inv-uses{font-size:12px;color:var(--muted);flex:0 0 auto;font-variant-numeric:tabular-nums}
-.inv-acts{display:flex;gap:6px;flex:0 0 auto}
-.auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--canvas-soft);padding:20px}
-.auth-card{width:100%;max-width:380px;background:var(--canvas);border:1px solid var(--hair-strong);border-radius:8px;padding:28px 26px;box-shadow:0 8px 28px var(--shadow-3)}
-.auth-brand{font-family:var(--serif);font-size:22px;color:var(--ink);margin-bottom:6px}
-.auth-card h1{font-size:20px;margin:0 0 16px;color:var(--ink)}
-.auth-field{display:block;margin-bottom:10px}
-.auth-field span{display:block;font-size:13px;font-weight:500;color:var(--body);margin:0 0 5px}
-.auth-card input{width:100%;font-size:15px;padding:10px 12px;border:1px solid var(--hair-strong);border-radius:8px;outline:none;background:var(--canvas);color:var(--ink);font-family:inherit}
-.auth-card input:focus{border-color:var(--ink);box-shadow:0 0 0 2px var(--hair)}
-.auth-card input::placeholder{color:var(--muted)}
-.auth-card .form-err{margin:2px 0 12px;padding:10px 12px;border:1px solid var(--error-line);border-radius:8px;background:var(--error-soft);color:#991b1b;font-size:13px;line-height:1.45}
-.auth-submit{width:100%;margin-top:4px;padding:10px}
-.auth-alt{margin-top:14px;font-size:13px;color:var(--muted);text-align:center}
-.auth-alt a{color:var(--ink);cursor:pointer;text-decoration:underline}
-.logout-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:26px;padding-top:18px;border-top:1px solid var(--hair)}
+.access-gate-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--canvas-soft);padding:20px}
+.access-gate-card{width:100%;max-width:380px;background:var(--canvas);border:1px solid var(--hair-strong);border-radius:8px;padding:28px 26px;box-shadow:0 8px 28px var(--shadow-3)}
+.access-gate-brand{font-family:var(--serif);font-size:22px;color:var(--ink);margin-bottom:6px}
+.access-gate-card h1{font-size:20px;margin:0 0 16px;color:var(--ink)}
+.access-gate-field{display:block;margin-bottom:10px}
+.access-gate-field span{display:block;font-size:13px;font-weight:500;color:var(--body);margin:0 0 5px}
+.access-gate-card input{width:100%;font-size:15px;padding:10px 12px;border:1px solid var(--hair-strong);border-radius:8px;outline:none;background:var(--canvas);color:var(--ink);font-family:inherit}
+.access-gate-card input:focus{border-color:var(--ink);box-shadow:0 0 0 2px var(--hair)}
+.access-gate-card input::placeholder{color:var(--muted)}
+.access-gate-error{margin:2px 0 12px;padding:10px 12px;border:1px solid var(--error-line);border-radius:8px;background:var(--error-soft);color:#991b1b;font-size:13px;line-height:1.45}
+.access-gate-submit{width:100%;margin-top:4px;padding:10px}
+.access-gate-help{margin-top:14px;font-size:13px;color:var(--muted);text-align:center}
+.browser-session-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:26px;padding-top:18px;border-top:1px solid var(--hair)}
 /* Language switcher: segmented control (settings account page).
    Uses .seg-pill (pill border-radius:9999px) to distinguish from the rect .seg
    used in the task-toolbar Board/List toggle (border-radius:8px, defined below). */
@@ -163,9 +136,9 @@ mark{background:var(--g-peach);color:var(--ink);padding:0 2px;border-radius:4px}
 .seg-opt{border:0;background:transparent;padding:6px 16px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;font-family:inherit;line-height:1.6}
 .seg-opt.on{background:var(--ink-2);color:var(--on-ink)}
 .seg-opt:not(.on):hover{color:var(--ink);background:var(--surface-strong)}
-.logout-title{font-size:14px;font-weight:600;color:var(--ink)}
-.logout-desc{font-size:12px;color:var(--muted);margin-top:2px}
-.logout-btn{font-size:13px;color:var(--error);background:var(--canvas);border:1px solid var(--error-line);padding:7px 16px;border-radius:9999px;cursor:pointer;flex:0 0 auto}
+.browser-session-title{font-size:14px;font-weight:600;color:var(--ink)}
+.browser-session-desc{font-size:12px;color:var(--muted);margin-top:2px}
+.browser-session-btn{font-size:13px;color:var(--error);background:var(--canvas);border:1px solid var(--error-line);padding:7px 16px;border-radius:9999px;cursor:pointer;flex:0 0 auto}
 /* Profile header (agent + human): compound selector outranks the later .head{align-items:baseline}
    so avatar, name block and actions sit on one centered row; .head-id grows to push actions flush-right. */
 .head.head-agent{display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -191,7 +164,7 @@ main.content-col{display:flex;flex-direction:column;height:100vh;background:var(
 .jump-bottom svg{width:17px;height:17px;stroke-width:2.2}
 .msg-meta .msg-rx{margin-top:0} /* reactions merged into meta row: remove top margin from standalone row */
 .head{padding:18px 28px;border-bottom:1px solid var(--hair);display:flex;align-items:baseline;gap:12px}
-.head h1{font-family:'EB Garamond','Times New Roman',serif;font-weight:400;font-size:24px;letter-spacing:-.32px;color:var(--ink);margin:0}
+.head h1{font-family:var(--serif);font-weight:400;font-size:24px;letter-spacing:-.32px;color:var(--ink);margin:0}
 .head small{font-size:12px;color:var(--muted)}
 /* Chat channel header only (scoped via .chat-head so the shared .head in Members / agent profile is untouched):
    keep name + description + tabs on ONE row. The description shrinks to an ellipsis instead of wrapping — wrapping
@@ -624,7 +597,7 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .head-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
 /* Thread panel (right-side overlay) */
 .thread-panel{background:var(--canvas);display:flex;flex-direction:column;overflow:hidden}
-.thread-head{display:flex;align-items:center;gap:2px;padding:14px 18px;border-bottom:1px solid var(--hair);font-family:'EB Garamond','Times New Roman',serif;font-size:20px;color:var(--ink)}
+.thread-head{display:flex;align-items:center;gap:2px;padding:14px 18px;border-bottom:1px solid var(--hair);font-family:var(--serif);font-size:20px;color:var(--ink)}
 .thread-head .grow{flex:1}
 /* thread head icon buttons (mark done / unfollow / source message / close): unified transparent tertiary, surface appears on hover, flex-centered icons */
 .tp-link,.tp-close{background:none;border:0;color:var(--muted);cursor:pointer;padding:5px 7px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center}
@@ -680,18 +653,11 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .skill-desc{margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.5}
 .saved{font-size:13px;color:var(--success)}
 
-/* ── rail unread badge + unified inbox ────────────────────────────── */
-.rail a.t{position:relative}
-/* rail icon label: desktop hover/focus floats as right-side tooltip, mobile (see @media) stays below icon */
-.t-label{position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%) translateX(-4px);background:var(--ink);color:var(--on-ink);font-size:12px;line-height:1;padding:5px 9px;border-radius:8px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s ease,transform .12s ease;z-index:45;box-shadow:0 2px 10px var(--scrim)}
-.rail a.t:hover .t-label,.rail a.t:focus-visible .t-label{opacity:1;transform:translateY(-50%) translateX(0)}
 /* Global keyboard focus ring (accessibility: fills in previously missing :focus-visible) */
 a:focus-visible,button:focus-visible,[role="button"]:focus-visible{outline:2px solid var(--ink-2);outline-offset:2px}
 /* Input fields: use flush ring (no offset, won't separate from own border into a double frame); those with container-level focus feedback (composer/qs) delegate to the parent */
 input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;box-shadow:0 0 0 2px var(--ink-2)}
 .composer-input:focus-visible,.qs-search input:focus-visible{box-shadow:none}
-.rail a.t:focus-visible{outline-offset:-2px}
-.rail-badge{position:absolute;top:1px;right:1px;min-width:16px;height:16px;padding:0 4px;border-radius:9999px;background:var(--tint-rose-ink);color:var(--on-ink);font-size:10px;font-weight:600;line-height:16px;text-align:center;box-shadow:0 0 0 1.5px var(--surface-strong)}
 .inbox-list{flex:1;overflow:auto;padding:8px 0}
 .inbox-row{display:flex;align-items:flex-start;gap:12px;width:100%;text-align:left;border:0;background:transparent;cursor:pointer;padding:13px 28px;border-bottom:1px solid var(--hair)}
 .inbox-row:hover{background:var(--canvas-soft)}
@@ -912,30 +878,8 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
   .send-btn,.modal .ok,.setform .ok,.newtask,.action-card .ac-btn,.perm-head .ok,.pe-cta{transition:none}
 }
 
-/* ───────── Mobile adaptation (≤820px): three columns → single column, rail moves to bottom tab bar, sidebar becomes drawer, thread/profile goes fullscreen, modal becomes bottom sheet ───────── */
-.mobile-burger,.mobile-scrim{display:none}  /* hidden on desktop by default: if scrim is not hidden it occupies the first grid column and shifts rail/sidebar/content out of place */
+/* Compact-window modal and touch-target adjustments. */
 @media (max-width:820px){
-  /* Layout: rail moves to bottom, main content full-width single column */
-  .app,.app.has-traj{grid-template-columns:1fr;grid-template-rows:1fr auto}
-  .rail{grid-row:2;flex-direction:row;align-items:center;justify-content:space-around;gap:2px;padding:4px 6px;box-shadow:0 -1px 0 var(--hair);overflow-x:auto}
-  .rail .brand,.rail .spacer,.sw-wrap{display:none}
-  .rail a.t{flex-direction:column;gap:2px;width:auto;min-width:0;height:auto;flex:1 1 0;padding:5px 2px}
-  .t-label{position:static;opacity:1;transform:none;background:none;color:var(--muted);font-size:10px;padding:0;box-shadow:none;pointer-events:auto;line-height:1.1}
-  .rail a.t.active .t-label{color:var(--ink)}
-  main.content-col{grid-row:1;min-width:0;height:auto;min-height:0}  /* overrides desktop height:100vh, delegated to grid 1fr; otherwise fills viewport and pushes bottom bar off screen */
-  .showcase-shell{grid-row:1;height:auto;min-height:0}  /* same delegation: the showcase wrapper is the grid cell here (its inner .content-col gets height:auto via the rule above; the thread panel goes fullscreen via .thread-panel) */
-  /* sidebar (channels/members etc.) → left drawer, collapsed by default, hamburger toggles body.sb-open */
-  .sidebar{position:fixed;top:0;bottom:0;left:0;width:84vw;max-width:330px;z-index:60;transform:translateX(-100%);transition:transform var(--dur-slow) var(--ease-quint);box-shadow:4px 0 28px var(--scrim)}
-  body.sb-open .sidebar{transform:translateX(0)}
-  body.sb-open .mobile-scrim{display:block}
-  .mobile-scrim{display:none;position:fixed;inset:0;background:var(--scrim);z-index:55}
-  .mobile-burger{display:inline-flex;align-items:center;justify-content:center;position:fixed;top:9px;left:9px;z-index:64;width:38px;height:38px;border:1px solid var(--hair-strong);border-radius:8px;background:var(--surface);color:var(--ink);cursor:pointer}
-  .head{padding-left:54px}  /* make room for hamburger */
-  /* thread/profile right panel → fullscreen overlay */
-  .thread-panel,.traj-col.profile-mode{position:fixed;inset:0;z-index:70;width:100%}  /* a profile opened in the right column gets the same fullscreen treatment as a thread (otherwise .traj-col is display:none below and the profile would be invisible on mobile) */
-  .traj-col.profile-mode{display:block;overflow:auto}
-  .traj-col{display:none}  /* agent trajectory sidebar: no horizontal space on mobile, hidden (otherwise pushed into implicit grid row and squashes main chat) */
-  .resizer{display:none}
   /* Modal → full-width bottom sheet */
   .modal-bg{align-items:flex-end}
   .modal{width:100%;max-width:100%;border-radius:16px 16px 0 0}
@@ -945,34 +889,54 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
 }
 
 /* ───────── Loading skeletons (WorkspaceSkeleton / ChatSkeleton, see views/Skeleton.tsx) ─────────
-   Mirror the app-shell grid (.app.has-traj) so the swap to the real UI is layout-shift-free. Editorial-calm:
-   hairline placeholder blocks with a soft left-to-right shimmer; shimmer off under prefers-reduced-motion. */
-.skel-app{background:var(--canvas)}
+   Match the single-window shell: a quiet gray canvas, white rounded work panels, and restrained shimmer. */
+.skel-workspace{background:var(--shell-bg,#f5f5f5)}
+.skel-workspace-canvas{background:var(--shell-bg,#f5f5f5)}
 .skel-box{position:relative;overflow:hidden;background:var(--hair);border-radius:8px}
 .skel-box::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.5) 50%,transparent 100%);animation:skel-shimmer 1.5s var(--ease-decel) infinite}
 @keyframes skel-shimmer{100%{transform:translateX(100%)}}
 @media (prefers-reduced-motion:reduce){.skel-box::after{display:none}}
-.skel-rail{justify-content:flex-start;gap:10px}
-.skel-rail .skel-brand{width:36px;height:36px;border-radius:8px;margin-bottom:8px}
-.skel-rail .skel-railicon{width:40px;height:40px;border-radius:12px}
-.skel-sb{background:var(--canvas-soft);box-shadow:1px 0 0 var(--hair);display:flex;flex-direction:column;gap:14px;padding:20px 16px;min-width:0}
-.skel-sb .skel-sb-title{height:22px;width:60%;border-radius:6px;margin-bottom:6px}
-.skel-sb .skel-sb-line{height:13px;border-radius:6px}
-.skel-main{display:flex;flex-direction:column;min-width:0}
-.skel-main-head{height:56px;box-shadow:0 1px 0 var(--hair);display:flex;align-items:center;padding:0 24px;flex:none}
-.skel-main-head .skel-main-title{height:18px;width:180px;border-radius:6px}
-.skel-main-scroll{flex:1;overflow:hidden;padding:24px 28px}
-.skel-traj{background:var(--canvas-soft);box-shadow:-1px 0 0 var(--hair);display:flex;flex-direction:column;gap:12px;padding:20px 18px;min-width:0}
-.skel-traj .skel-traj-title{height:16px;width:50%;border-radius:6px;margin-bottom:8px}
-.skel-traj .skel-traj-line{height:11px;border-radius:6px}
+.skel-topbar-brand{width:30px;height:30px;border-radius:9px;background:var(--hair-strong)}
+.skel-topbar-space{width:92px;height:13px;border-radius:5px}
+.skel-topbar-context{width:150px;height:11px;border-radius:5px}
+.skel-topbar-tools{gap:4px;padding:4px;background:var(--shell-panel,#fff)}
+.skel-topbar-tool{width:26px;height:26px;border-radius:8px}
+.skel-chat-full{width:100%}
+.skel-conversations,.skel-trace{display:flex;min-width:0;flex-direction:column;gap:13px;padding:20px 18px;background:var(--shell-panel,#fff)}
+.skel-panel-title{width:56%;height:16px;margin-bottom:8px;border-radius:6px}
+.skel-panel-line{height:11px;border-radius:6px}
+.skel-chat-main{min-width:0;background:var(--shell-panel,#fff)}
+.skel-chat-head{display:flex;height:52px;flex:0 0 52px;align-items:center;padding:0 24px;border-bottom:1px solid var(--hair)}
+.skel-chat-title{width:180px;height:16px;border-radius:6px}
+.skel-chat-scroll{min-width:0;min-height:0;flex:1;overflow:hidden;padding:24px 28px}
+.skel-chat-compact{flex:1 1 25%;min-width:360px;background:var(--shell-panel,#fff)}
+.skel-chat-compact-tools{justify-content:space-between}
+.skel-compact-action{width:62px;height:26px;border-radius:8px}
+.skel-compact-title{width:54px;height:10px;border-radius:5px}
+.skel-divider{cursor:default}
+.skel-divider::after{opacity:.45}
+.skel-module-panel{min-width:0;flex:3 1 75%;background:var(--shell-panel,#fff)}
+.skel-module-content{display:flex;min-width:0;min-height:0;flex:1;overflow:hidden}
+.skel-module-sidebar{display:flex;width:clamp(220px,24%,280px);flex:none;flex-direction:column;gap:14px;padding:22px 18px;border-right:1px solid var(--hair);background:var(--canvas-soft)}
+.skel-module-main{display:flex;min-width:0;flex:1;flex-direction:column;gap:16px;padding:24px}
+.skel-module-title{width:180px;height:20px;border-radius:6px}
+.skel-module-card{width:100%;height:96px;border-radius:10px}
+.skel-module-card--short{width:72%;height:64px}
+.skel-dock-zone{background:var(--shell-panel,#fff)}
+.skel-dock{gap:6px}
+.skel-dock-item{width:41px;height:39px;border-radius:10px}
 .skel-msgs{display:flex;flex-direction:column;gap:22px}
 .skel-msg{display:flex;gap:12px;align-items:flex-start}
 .skel-msg .skel-ava{width:36px;height:36px;border-radius:8px;flex:none}
 .skel-msg-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;padding-top:2px}
 .skel-msg-body .skel-line{height:12px;border-radius:6px}
 .skel-msg-body .skel-line-name{width:120px;height:13px}
+@media (max-width:950px){
+  .skel-workspace[data-layout-mode="split"] .skel-chat-compact,
+  .skel-workspace[data-layout-mode="split"] .skel-divider{display:none}
+  .skel-workspace[data-layout-mode="split"] .skel-module-panel{flex:1}
+}
 @media (max-width:820px){
-  /* match the real shell's mobile behavior: sidebar + trace hidden, main full-width; rail uses the base .rail mobile rules */
-  .skel-sb,.skel-traj{display:none}
-  .skel-rail .skel-brand{display:none}
+  .skel-topbar-context{display:none}
+  .skel-chat-full{grid-template-columns:190px minmax(280px,1fr) 210px}
 }

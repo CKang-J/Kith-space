@@ -2,7 +2,7 @@
 
 本文是 Kith-space 当前 UI 信息架构与视觉语言的权威说明。单窗口交互契约见 `docs/superpowers/specs/2026-07-10-kith-space-single-window-workspace-design.md`，个人 AgentOS 宿主与产品边界见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，可交互线框见 `docs/prototypes/kith-space-single-window-flow.html`。
 
-结论前置：Kith-space 采用**单窗口工作区**。首次启动先初始化唯一 Human，随后直接进入 `Home` 或最近 Space；Chat 是默认主页与基础工作面，底部 Dock 常驻；功能模块打开后，界面只在 Chat 全宽、Chat + 模块分屏、模块全宽三种形态间切换。此前的“空间总览壳 + 空间内部壳”与旧 `Layout` 回退已经被本设计取代，后续实现将彻底删除。
+结论前置：Kith-space 采用**单窗口工作区**。首次启动先初始化唯一 Human，随后直接进入 `Home` 或最近 Space；Chat 是默认主页与基础工作面，底部 Dock 常驻；功能模块打开后，界面只在 Chat 全宽、Chat + 模块分屏、模块全宽三种形态间切换。此前的“空间总览壳 + 空间内部壳”、旧 `Layout` 回退、Landing 与 PWA 入口均已删除。
 
 ---
 
@@ -44,7 +44,9 @@
 - 宽度不足以容纳双栏时不强行压缩，临时退化为单 Pane；窗口变宽后恢复此前的双栏意图。
 - 拖拽偏好保存为工作区宽度比例而非像素。Split 内切换模块保留该比例；从 ChatOnly 打开模块、关闭模块后重新打开，或从 ModuleOnly 恢复 Chat 时，均回到 Chat 25% 的默认下限。
 
-当前 Space 的频道或 Human-Agent DM 继续由路径表达；打开模块时在同一会话 URL 上增加 `?module=<id>`，ModuleOnly 再增加 `chat=0`。因此一个 URL 可以同时表达“频道 A + Tasks + Split”，在紧凑会话抽屉切频道不会关闭模块。迁移期旧模块实体路径可作为兼容深链入口，A5 完成后只保留规范 Space 路由。浏览器刷新、前进和后退都以 URL 为准恢复三态；会话/轨迹抽屉等短暂界面状态不进入 URL。`?legacy=1` 与旧 `Layout` 不再属于目标态，必须删除。
+当前 Space 的频道或 Human-Agent DM 由规范会话 pathname 表达；打开模块时在同一 URL 上增加 `?module=<id>`，ModuleOnly 再增加 `chat=0`。Tasks 使用 `taskScope`，Agents 使用 `agent` 与 `agentTab`，Settings 使用 `settings` 表达自己的模块资源；不属于当前模块的资源参数会被清除。切换频道或 DM 时保留 active module、Chat 显隐和该模块的资源 query，并替换旧会话的 `msg`/`thread` 等临时焦点。因此一个 URL 可以同时表达“频道 A + Tasks + Split”，在紧凑会话抽屉切频道不会关闭模块，也不会把旧消息焦点带到新会话。
+
+浏览器刷新、前进和后退都以 URL 为准恢复三态；会话/轨迹抽屉等短暂界面状态不进入 URL。`/tasks`、`/agent`、`/settings` 等旧模块实体路径不再作为兼容深链，未知 Space 子路径会规范化到 `/s/:slug/channel` 并保留有效 query/hash。`?legacy=1` 与旧 `Layout` 已删除。
 
 ---
 
@@ -140,13 +142,13 @@ Composer
 
 每条消息发送时应固化一个结构化 `MessageContextSnapshot`，包含 Space、会话、当前模块、Context Stack 和 focused item。UI 与服务端保存 Kith-space 自己的结构，不把 OpenLoaf 的 `<stack>` XML 硬编码进核心模型；不同 runtime 适配器再按需要编码为 XML、JSON 或提示文本。
 
-本轮 P4 只落地工作区壳、Dock 和布局状态机，`MessageContextSnapshot`、Composer Context 标签及服务端持久化仍属于后续工作，不得误标为已实现。
+A5 已完成工作区入口与规范 URL 收口，但 `MessageContextSnapshot`、Composer Context 标签及服务端持久化仍属于后续工作，不得误标为已实现。
 
 ---
 
 ## 7. 当前实现边界
 
-当前生产壳仍处于本机化转向的过渡期：Agents 模块、Human Settings 资料入口与 A4 Desktop Settings 已落地，登录/注册和 Computers 入口已删除；旧 `/computer/*` 深链与 `?module=computers` 不再打开模块，而是回到 ChatOnly。Landing、其他旧深链、旧 `Layout` 与 `?legacy=1` 仍待 A5 删除，不是可继续扩展的兼容承诺。
+当前生产壳已完成 A5 入口收口：`App` 只渲染 `WorkspaceFrame`；Agents、Human Settings 与 Desktop Settings 已落地，登录/注册/邀请、Computers、Landing、Features、PWA、SSR/prerender、旧 `Layout` 与 `?legacy=1` 均已退出活跃代码。旧 `/computer/*`、`/tasks`、`/agent`、`/settings` 和未知 Space 子路径都不再激活对应模块；模块只由当前会话 pathname 上的规范 query 表达。
 
 单窗口壳按职责拆在 `web/src/shell/`：
 
@@ -154,19 +156,21 @@ Composer
 - `workspaceLayout.ts`：无 React 依赖的三态状态机。
 - `paneConstraints.ts`：集中计算 Chat 响应式下限、各模块下限、单 Pane 阈值和比例到像素的夹取结果。
 - `shellStore.ts`：`useSyncExternalStore` 保存版本化模块宽度比例，并按 Space 持久化最近 Chat 位置；模块与 Chat 显隐由 URL 表达，避免双重状态源。
-- `workspaceRoute.ts`：解析父壳拿不到的频道/agent/设置子路由参数，并把 URL 映射回三态；Human profile 与机器旧路由均不再映射模块。
+- `workspaceRoute.ts`：解析规范会话 pathname，把 `module/chat` 与模块拥有的 `taskScope/agent/agentTab/settings` query 映射回三态，并在会话导航时只保留持久布局/模块资源；Human profile、机器旧路由和旧模块实体路径均不再映射模块。
 - `ChatWorkspace.tsx`：全宽三区与紧凑抽屉形态。
 - `ModuleWorkspace.tsx`：现有业务视图薄适配。
 - `WorkspaceDock.tsx` / `WorkspaceTopBar.tsx`：Dock 与顶部工具组。
 - `workspaceModules.tsx`：模块注册、路由和图标元数据。
 
-复用 `Chat.tsx`、`ChatSidebar.tsx`、`LiveTrace.tsx`、`TaskBoard.tsx`、Inbox、Settings 与现有 agent 列表能力，不整块重写大文件。产品模块已从 Members 收敛为 Agents（内部文件名 `Members.tsx` 暂留）；Computers 已删除，旧 `Layout` 仍待删除。旧 `OverviewShell`、`SpaceShell`、`IconRail`、`RightDock` 和 `ChatSlot` 已被新壳取代。
+复用 `Chat.tsx`、`ChatSidebar.tsx`、`LiveTrace.tsx`、`TaskBoard.tsx`、Inbox、Settings 与现有 agent 列表能力，不整块重写大文件。产品模块已从 Members 收敛为 Agents（内部文件名 `Members.tsx` 暂留）；Computers 与旧 `Layout` 已删除。旧 `OverviewShell`、`SpaceShell`、`IconRail`、`RightDock` 和 `ChatSlot` 已被新壳取代。
 
 ## 8. 初始化与 Settings 边界
 
-- 首次启动页只收集 Human 名称、可选邮箱和描述，文案不得使用“注册”“账户”或“加入团队”。
-- 初始化完成后自动进入 `Home`；Human 资料可以在全局 Settings 修改。
+- 首次启动页只收集 Human 名称、可选邮箱和描述，文案不得使用“注册”“账户”或“加入团队”。默认 `Home` 与根路径由应用创建，界面不要求用户选择。
+- 首次初始化只在检测到完整 Electron preload bridge 时运行，并先于 `StoreProvider`/Space bootstrap。若上次写入 Human 后中断，页面用 status 返回的 partial Human 预填恢复；重复提交保持幂等。初始化完成后挂载正常产品树并自动进入 `Home`；Human 资料可以在全局 Settings 修改。
+- 普通本机/LAN 浏览器从不探测 setup API，也不显示首次启动页；未授权时只显示 Access Token Gate，已授权后进入共享工作区。
 - Desktop Settings 已包含 Web 模式、端口、访问 Token、撤销浏览器会话、托盘关闭行为和系统自启动；系统自启动在开发态明确显示 unsupported，待 Windows 正式打包后启用。
+- 普通浏览器可在 Human Settings 撤销当前浏览器授权；该动作调用 `DELETE /api/browser-auth/session` 并返回 Access Token Gate，不是 Human 账户 logout。
 - Desktop 设置区只在检测到 `window.kithDesktop` 窄 preload bridge 时显示；普通浏览器直接进入该路由会回落到 Human 设置，并且服务端对管理 API 返回 404。隐藏入口不是唯一安全边界。
 - LAN 模式首次开启会先展示确认面板，明确说明 HTTP 未加密、只限受信任私网、禁止端口转发/公网暴露；用户确认后才改变监听。自动生成/轮换的访问 Token 保持一次性显示，直到用户主动确认已保存。
 

@@ -57,7 +57,7 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 
 - Web 模式已落地为关闭（默认）/仅本机/局域网；仅本机绑定 `127.0.0.1`，LAN 绑定 `0.0.0.0`。关闭模式保留 Desktop/Worker 的私有 loopback 传输，但不提供普通浏览器壳。
 - 访问 Token 可设 16-256 字符，留空自动生成 32 字节高强度值；app.db 只存 scrypt 哈希与 revision。
-- 验证成功后建立持久 HttpOnly、SameSite=Strict Cookie 会话，写请求同时校验 Origin 与 CSRF；可单会话退出、Desktop 全量撤销，Token 轮换使全部旧会话失效。
+- 验证成功后建立持久 HttpOnly、SameSite=Strict Cookie 会话，写请求同时校验 Origin 与 CSRF；可撤销当前浏览器授权会话或由 Desktop 全量撤销，Token 轮换使全部旧会话失效。这是访问授权语义，不恢复账户登录/退出概念。
 - Desktop 信任、Worker 控制面和浏览器 Token 凭据已分离；Desktop 每次启动/重启进程组都会生成新的两份独立内部凭据，分进程调试才由环境注入。
 - Human JWT、dev-login、`?as=`、Bearer 和 URL token 传递已从活跃路径删除。
 - LAN v1 只做 HTTP 且拥有完整产品能力；只限受信任私网，禁止端口转发或公网暴露。
@@ -79,15 +79,21 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 
 ### P-A5 UI 与入口清理
 
-- 首次启动收集 Human 名称、可选邮箱和描述，然后进入 `Home`。
-- Dock 固定为 `Chat | Inbox | Tasks | Agents | Settings`。
+状态：已完成。
+
+- Desktop 首次启动通过仅 Desktop 私有信任可达的 setup API 收集 Human 名称、可选邮箱和描述，幂等初始化唯一 Human 与 `Home`；普通浏览器不会探测或调用该入口。全新 Desktop 目录不再要求 seed。
+- Dock 已固定为 `Chat | Inbox | Tasks | Agents | Settings`。
 - `Members` 改为当前 Space 的 `Agents`；Human 资料进入全局 Settings；`Computers` 已在 A2.4 提前删除。
-- 删除 landing、登录、注册、邀请、PWA 和 `?legacy=1`/旧 `Layout`。
+- 已删除 landing、登录、注册、邀请、PWA 和 `?legacy=1`/旧 `Layout`，静态路由只提供产品壳与 canonical Space 路径。
+- 模块统一挂在当前 Chat/收藏等会话 pathname 上，以 `?module=<id>` 和模块专属 resource query 表达；切换频道、DM 或收藏时保留当前模块及其合法 resource，不再生成 `/tasks`、`/agent`、`/settings` 等旧模块 pathname。
+- 浏览器的会话动作统一为“撤销访问授权”：`DELETE /api/browser-auth/session` 清除当前持久 Cookie 会话，不表达账户 logout。
 - 延续 A4 的宿主能力边界：Desktop 显示 Web/Token/端口/托盘/自启动设置，普通浏览器无该入口且不能调用管理 API。
 
-验收：所有入口都服务一个 Human 与本机 agent；浏览器和 Desktop 复用工作区 UI，但权限边界不同。
+验收：全量单测 439/439、类型检查、集成测试、Web/Desktop 构建通过；已删除失效的 public landing 契约测试，当前不再有旧 `publicNavContract` 基线失败。隔离目录的浏览器 smoke 验证 Token Gate、canonical 模块 query 与会话导航保留；未 seed 的 fresh Desktop smoke 验证首次初始化探测、完整进程组启动和无端口残留。所有入口都服务一个 Human 与本机 agent；浏览器和 Desktop 复用工作区 UI，但权限边界不同。
 
 ### P-A6 继承资产清理与总审计
+
+状态：下一阶段。
 
 - 删除 Dockerfile、compose、entrypoint、环境样例和远程部署文档。
 - 删除公共 server/daemon npm 发布、它们各自的独立安装器和 OIDC 发布 workflow；完成 Windows Desktop 正式生产 bundle、打包/安装器与发行路径。

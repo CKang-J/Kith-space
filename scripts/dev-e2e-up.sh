@@ -52,7 +52,7 @@ cat <<EOF
 dev E2E up (worktree-isolated)
   data dir : $RUN
   app      : http://127.0.0.1:$PORT/
-  login    : enter the Access Token printed above
+  access   : enter the Access Token printed above
   agent    : @dev-bot (claude/sonnet) in #all
   logs     : $RUN/logs/dev-e2e-{server,daemon}.log
   stop     : pnpm run dev:e2e:down

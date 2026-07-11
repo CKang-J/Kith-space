@@ -1,11 +1,11 @@
-// Loading skeletons that mirror the app-shell layout (rail · sidebar · chat · trace), shown while the workspace
-// bootstraps or switches — so navigation feels instant (skeleton-first) instead of blanking to a null screen.
-// Editorial-calm skin: hairline placeholder blocks with a soft left-to-right shimmer; the shimmer is removed
-// under prefers-reduced-motion (see .skel-box in styles.css).
+// Loading skeletons mirror the current single-window workspace while data bootstraps or a Space switches.
+// Placeholder blocks use a restrained shimmer that is disabled under prefers-reduced-motion in styles.css.
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 
-// One placeholder message row: avatar block + a name line and a body line of the given width (mimics a real chat line).
+const WORKSPACE_MODULES = new Set(["inbox", "tasks", "agents", "settings", "search"]);
+
+// One placeholder message row: avatar block plus name and body lines of varied width.
 function SkelMsg({ w }: { w: string }) {
   return (
     <div className="skel-msg" aria-hidden="true">
@@ -18,9 +18,9 @@ function SkelMsg({ w }: { w: string }) {
   );
 }
 
-const MSG_WIDTHS = ["72%", "54%", "83%", "61%", "44%", "77%"]; // varied widths so the rows don't read as a uniform grid
+const MSG_WIDTHS = ["72%", "54%", "83%", "61%", "44%", "77%"];
 
-// Message-area skeleton: reused by the full shell skeleton and by Chat while a channel's messages load.
+// Reused by the workspace skeleton and by Chat while a channel's messages load.
 export function ChatSkeleton() {
   return (
     <div className="skel-msgs" aria-hidden="true">
@@ -29,34 +29,127 @@ export function ChatSkeleton() {
   );
 }
 
-// Full workspace shell skeleton: same grid as <Layout/> (.app.has-traj) so the swap to the real UI is shift-free.
-// `chat` forces the 4-column chat variant when the caller knows the destination is a channel even though the
-// current URL isn't one yet (e.g. the "/" guard redirects an authed user to /s/:slug/channel) — without it the
-// skeleton would render 3-col then shift to 4-col on arrival, the exact jump this skeleton exists to avoid.
-export function WorkspaceSkeleton({ chat }: { chat?: boolean }) {
-  const { t } = useTranslation();
-  const loc = useLocation();
-  const isChat = chat ?? loc.pathname.includes("/channel"); // mirror <Layout/>'s has-traj rule: only chat shows the 4th (trace) column → swap is shift-free
+function TopBarSkeleton() {
   return (
-    <div className={"app skel-app" + (isChat ? " has-traj" : "")} role="status" aria-busy="true" aria-label={t("common.loadingWorkspace")}>
-      <div className="rail skel-rail">
-        <div className="skel-box skel-brand" />
-        {Array.from({ length: 6 }).map((_, i) => <div key={i} className="skel-box skel-railicon" />)}
+    <header className="shell-topbar skel-topbar" aria-hidden="true">
+      <div className="skel-box skel-topbar-brand" />
+      <div className="skel-box skel-topbar-space" />
+      <div className="skel-box skel-topbar-context" />
+      <div className="shell-topbar__spacer" />
+      <div className="shell-topbar__tools skel-topbar-tools">
+        {Array.from({ length: 3 }).map((_, i) => <div key={i} className="skel-box skel-topbar-tool" />)}
       </div>
-      <div className="skel-sb">
-        <div className="skel-box skel-sb-title" />
-        {Array.from({ length: 7 }).map((_, i) => <div key={i} className="skel-box skel-sb-line" style={{ width: `${64 - (i % 3) * 12}%` }} />)}
+    </header>
+  );
+}
+
+function DockSkeleton() {
+  return (
+    <footer className="shell-dock-zone skel-dock-zone" aria-hidden="true">
+      <div className="workspace-dock skel-dock">
+        {Array.from({ length: 5 }).map((_, i) => <div key={i} className="skel-box skel-dock-item" />)}
       </div>
-      <div className="skel-main">
-        <div className="skel-main-head"><div className="skel-box skel-main-title" /></div>
-        <div className="skel-main-scroll"><ChatSkeleton /></div>
-      </div>
-      {isChat && (
-        <div className="skel-traj">
-          <div className="skel-box skel-traj-title" />
-          {Array.from({ length: 4 }).map((_, i) => <div key={i} className="skel-box skel-traj-line" style={{ width: `${80 - i * 9}%` }} />)}
+    </footer>
+  );
+}
+
+function ConversationListSkeleton() {
+  return (
+    <aside className="shell-work-panel shell-chat-conversations skel-conversations" aria-hidden="true">
+      <div className="skel-box skel-panel-title" />
+      {Array.from({ length: 7 }).map((_, i) => (
+        <div key={i} className="skel-box skel-panel-line" style={{ width: `${72 - (i % 3) * 12}%` }} />
+      ))}
+    </aside>
+  );
+}
+
+function TraceSkeleton() {
+  return (
+    <aside className="shell-work-panel shell-chat-trace skel-trace" aria-hidden="true">
+      <div className="skel-box skel-panel-title" />
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="skel-box skel-panel-line" style={{ width: `${80 - i * 9}%` }} />
+      ))}
+    </aside>
+  );
+}
+
+function ChatPanelSkeleton({ compact, dock }: { compact: boolean; dock: boolean }) {
+  if (compact) {
+    return (
+      <section className="shell-work-panel shell-chat-workspace shell-chat-workspace--compact skel-chat-compact">
+        <header className="shell-chat-compact-tools skel-chat-compact-tools" aria-hidden="true">
+          <div className="skel-box skel-compact-action" />
+          <div className="skel-box skel-compact-title" />
+          <div className="skel-box skel-compact-action" />
+        </header>
+        <div className="skel-chat-scroll"><ChatSkeleton /></div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="shell-chat-workspace shell-chat-workspace--full skel-chat-full">
+      <ConversationListSkeleton />
+      <section className="shell-work-panel shell-chat-main-card skel-chat-main">
+        <div className="skel-chat-head" aria-hidden="true"><div className="skel-box skel-chat-title" /></div>
+        <div className="skel-chat-scroll"><ChatSkeleton /></div>
+        {dock ? <DockSkeleton /> : null}
+      </section>
+      <TraceSkeleton />
+    </section>
+  );
+}
+
+function ModulePanelSkeleton({ dock }: { dock: boolean }) {
+  return (
+    <section className="shell-work-panel shell-module-workspace skel-module-panel">
+      <div className="skel-module-content" aria-hidden="true">
+        <aside className="skel-module-sidebar">
+          <div className="skel-box skel-panel-title" />
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="skel-box skel-panel-line" style={{ width: `${76 - (i % 2) * 15}%` }} />
+          ))}
+        </aside>
+        <div className="skel-module-main">
+          <div className="skel-box skel-module-title" />
+          <div className="skel-box skel-module-card" />
+          <div className="skel-box skel-module-card skel-module-card--short" />
         </div>
-      )}
-    </div>
+      </div>
+      {dock ? <DockSkeleton /> : null}
+    </section>
+  );
+}
+
+// A root/channel bootstrap is ChatOnly. A legal module query mirrors Split or ModuleOnly without mounting product data.
+export function WorkspaceSkeleton({ chat = false }: { chat?: boolean }) {
+  const { t } = useTranslation();
+  const { search } = useLocation();
+  const params = new URLSearchParams(search);
+  const requestedModule = params.get("module");
+  const activeModule = !chat && requestedModule && WORKSPACE_MODULES.has(requestedModule)
+    ? requestedModule
+    : null;
+  const chatVisible = activeModule === null || params.get("chat") !== "0";
+  const mode = activeModule === null ? "chat-only" : chatVisible ? "split" : "module-only";
+
+  return (
+    <main
+      className="shell-workspace-frame skel-workspace"
+      data-layout-mode={mode}
+      data-visual-mode={mode}
+      role="status"
+      aria-busy="true"
+      aria-label={t("common.loadingWorkspace")}
+    >
+      <TopBarSkeleton />
+      <div className="shell-workspace-canvas skel-workspace-canvas">
+        {chatVisible ? <ChatPanelSkeleton compact={mode === "split"} dock={mode === "chat-only"} /> : null}
+        {mode === "split" ? <div className="shell-drag-divider skel-divider" aria-hidden="true" /> : null}
+        {activeModule ? <ModulePanelSkeleton dock /> : null}
+      </div>
+    </main>
   );
 }

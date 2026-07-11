@@ -1,6 +1,6 @@
 // Regression: HttpOnly browser sessions cannot be discovered synchronously, so every first render
 // waits for the session bootstrap. Once the server answers, anonymous visitors get the Access Token
-// gate and authenticated visitors enter their Space without flashing either the gate or Landing.
+// gate and authenticated visitors enter their Space without flashing either surface.
 // Run: npx tsx --test --test-force-exit test/landingRedirect.unit.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -36,8 +36,15 @@ test("homeRoute: a defensively handled ready+loading state remains on the skelet
   assert.equal(homeRoute({ authState: "loading", ready: true }), "skeleton");
 });
 
-test("the build-time first paint is the session bootstrap shell, not Landing", () => {
-  const entry = readFileSync(new URL("../web/src/entry-server.tsx", import.meta.url), "utf8");
-  assert.match(entry, /<WorkspaceSkeleton chat \/>/);
-  assert.doesNotMatch(entry, /views\/Landing|<Landing/);
+test("the frontend has no public Landing or legacy workspace fallback", () => {
+  const app = readFileSync(new URL("../web/src/App.tsx", import.meta.url), "utf8");
+  const main = readFileSync(new URL("../web/src/main.tsx", import.meta.url), "utf8");
+  const webPackage = JSON.parse(
+    readFileSync(new URL("../web/package.json", import.meta.url), "utf8"),
+  ) as { scripts: { build: string } };
+
+  assert.match(app, /return <WorkspaceFrame \/>/);
+  assert.doesNotMatch(app, /Layout|legacy/);
+  assert.doesNotMatch(main, /views\/(?:Landing|Features)|<(?:Landing|Features)\b/);
+  assert.equal(webPackage.scripts.build, "vite build");
 });

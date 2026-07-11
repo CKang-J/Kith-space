@@ -59,12 +59,12 @@ export async function verifyBrowserAccessToken(token: string): Promise<AccessTok
   };
 }
 
-export async function closeBrowserSession(csrfToken: string): Promise<void> {
+export async function revokeBrowserSession(csrfToken: string): Promise<void> {
   if (!csrfToken) throw new Error("Missing browser session CSRF token");
-  const response = await fetch("/api/browser-auth/logout", {
-    method: "POST",
+  const response = await fetch("/api/browser-auth/session", {
+    method: "DELETE",
     credentials: "same-origin",
     headers: { "x-kith-csrf": csrfToken },
   });
-  if (!response.ok) throw new Error(`Logout failed (${response.status})`);
+  if (!response.ok) throw new Error(`Browser session revoke failed (${response.status})`);
 }

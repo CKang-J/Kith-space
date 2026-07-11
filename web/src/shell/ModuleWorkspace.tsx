@@ -1,44 +1,35 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
 import { Agents } from "../views/Members.tsx";
 import { Inbox, Search, Settings, Tasks } from "../views/misc.tsx";
 import { getWorkspaceModule } from "./workspaceModules.tsx";
 import type { WorkspaceModuleId } from "./workspaceLayout.ts";
-import { workspaceSearchForLayout, type WorkspaceRouteMatch } from "./workspaceRoute.ts";
+import { workspaceModuleResourceFromSearch } from "./workspaceRoute.ts";
 
 interface ModuleWorkspaceProps {
   moduleId: WorkspaceModuleId;
-  route: WorkspaceRouteMatch;
-  chatVisible: boolean;
   dock: ReactNode;
   style?: CSSProperties;
 }
 
-function ModuleContent({ moduleId, route, chatVisible }: { moduleId: WorkspaceModuleId; route: WorkspaceRouteMatch; chatVisible: boolean }) {
-  const moduleQuerySuffix = workspaceSearchForLayout("", { activeModule: moduleId, chatVisible });
-  const discussionQuerySuffix = workspaceSearchForLayout("", { activeModule: moduleId, chatVisible: true });
+function ModuleContent({ moduleId }: { moduleId: WorkspaceModuleId }) {
+  const location = useLocation();
+  const resourceId = workspaceModuleResourceFromSearch(location.search, moduleId);
   if (moduleId === "tasks") {
-    const channelId = route.section === "tasks" && route.resourceId !== "space" ? route.resourceId : null;
-    return <Tasks channelIdOverride={channelId} moduleQuerySuffix={moduleQuerySuffix} />;
+    return <Tasks channelIdOverride={resourceId && resourceId !== "space" ? resourceId : null} />;
   }
   if (moduleId === "agents") {
-    return (
-      <Agents
-        agentIdOverride={route.section === "agent" ? route.resourceId ?? undefined : undefined}
-        moduleQuerySuffix={moduleQuerySuffix}
-        discussionQuerySuffix={discussionQuerySuffix}
-      />
-    );
+    return <Agents agentIdOverride={resourceId ?? undefined} />;
   }
   if (moduleId === "settings") {
-    const section = route.section === "settings" ? route.resourceId ?? undefined : undefined;
-    return <Settings sectionOverride={section} moduleQuerySuffix={moduleQuerySuffix} />;
+    return <Settings sectionOverride={resourceId ?? "account"} />;
   }
   if (moduleId === "search") return <Search />;
   return <Inbox />;
 }
 
-export function ModuleWorkspace({ moduleId, route, chatVisible, dock, style }: ModuleWorkspaceProps) {
+export function ModuleWorkspace({ moduleId, dock, style }: ModuleWorkspaceProps) {
   const { t } = useTranslation();
   const module = getWorkspaceModule(moduleId);
 
@@ -50,7 +41,7 @@ export function ModuleWorkspace({ moduleId, route, chatVisible, dock, style }: M
       aria-label={`${t(module.labelKey)}模块`}
     >
       <div className="shell-module-surface">
-        <ModuleContent moduleId={moduleId} route={route} chatVisible={chatVisible} />
+        <ModuleContent moduleId={moduleId} />
       </div>
       <footer className="shell-dock-zone">{dock}</footer>
     </section>

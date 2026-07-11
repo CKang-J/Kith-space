@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   accessTokenFailureMessage,
-  closeBrowserSession,
+  revokeBrowserSession,
   loadBrowserSession,
   verifyBrowserAccessToken,
 } from "./browserAuth.ts";
@@ -23,7 +23,7 @@ test("server-provided Access Token errors remain visible", () => {
   );
 });
 
-test("browser auth uses same-origin Cookie endpoints and CSRF only for logout", async (t) => {
+test("browser auth uses same-origin Cookie endpoints and CSRF only for session revoke", async (t) => {
   const originalFetch = globalThis.fetch;
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   t.after(() => { globalThis.fetch = originalFetch; });
@@ -39,16 +39,17 @@ test("browser auth uses same-origin Cookie endpoints and CSRF only for logout", 
 
   assert.equal((await loadBrowserSession())?.user.id, "human");
   assert.deepEqual(await verifyBrowserAccessToken("access-1"), { ok: true });
-  await closeBrowserSession("csrf-1");
+  await revokeBrowserSession("csrf-1");
 
   assert.deepEqual(calls.map(({ url }) => url), [
     "/api/browser-auth/session",
     "/api/browser-auth/verify",
-    "/api/browser-auth/logout",
+    "/api/browser-auth/session",
   ]);
   assert.equal(calls.every(({ init }) => init?.credentials === "same-origin"), true);
   assert.equal(new Headers(calls[0]!.init?.headers).has("authorization"), false);
   assert.equal(new Headers(calls[1]!.init?.headers).has("x-kith-csrf"), false);
+  assert.equal(calls[2]!.init?.method, "DELETE");
   assert.equal(new Headers(calls[2]!.init?.headers).get("x-kith-csrf"), "csrf-1");
   assert.deepEqual(JSON.parse(String(calls[1]!.init?.body)), { token: "access-1" });
 });

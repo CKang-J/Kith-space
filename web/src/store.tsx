@@ -1,7 +1,7 @@
 // Global state + API + socket.io event bus (React Context). Chat messages and traces are consumed by views via onEvent.
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { io, type Socket } from "socket.io-client";
-import { closeBrowserSession, loadBrowserSession } from "./browserAuth.ts";
+import { loadBrowserSession, revokeBrowserSession } from "./browserAuth.ts";
 import { appendCapped, type TrajItem } from "./trajBuffer.ts";
 import { messageUnreadDelta, threadUnreadDelta } from "./threadUnread";
 import { initialAuthState, type AuthState } from "./routing.ts";
@@ -25,7 +25,7 @@ interface Store {
   uploadAgentAvatar: (agentId: string, file: File) => Promise<string>;
   createSpace: (name: string, slug?: string) => Promise<string | null>; // POST → optimistically add to spaces; returns the new slug so the caller navigates client-side (no full-page reload)
   switchSpace: (slug: string) => void;                           // client-side Space switch: re-point the active Space, reset per-Space state, reconnect the socket (no full-page reload)
-  logout: () => Promise<void>;
+  clearBrowserAccess: () => Promise<void>;
   channels: Channel[]; dms: Dm[]; unread: Record<string, number>;
   agents: Agent[];        // ALL agents incl. system-seeded showcase demo agents — resolve a sender's avatar/name/profile by id (incl. #showcase history)
   visibleAgents: Agent[]; // agents minus system-seeded showcase demo agents — use for member rosters and every agent picker / @mention candidate list
@@ -125,8 +125,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Client-side Space switch: re-point the active Space by slug. The activation effect (keyed on activeSpaceId) resets
   // per-Space state and reconnects the socket. No-op if the target is unknown or already active.
   const switchSpace = (targetSlug: string) => { const cur = spacesRef.current.find((s) => s.slug === targetSlug); if (cur && cur.id !== spaceIdRef.current) setActiveSpaceId(cur.id); };
-  const logout = async () => {
-    await closeBrowserSession(csrfRef.current);
+  const clearBrowserAccess = async () => {
+    await revokeBrowserSession(csrfRef.current);
     csrfRef.current = "";
     window.location.assign("/");
   };
@@ -342,6 +342,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Showcase demo agents (creatorType="system") stay in `agents` so #showcase history still resolves their
   // avatar/name/profile by id — but they are not real members, so every roster / picker uses `visibleAgents`.
   const visibleAgents = agents.filter((a) => a.creatorType !== "system");
-  return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, spaceAvatar, spaces, createSpace, switchSpace, logout, uploadSpaceAvatar, uploadAgentAvatar, channels, dms, unread, agents, visibleAgents, traj, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, spaceAvatar, spaces, createSpace, switchSpace, clearBrowserAccess, uploadSpaceAvatar, uploadAgentAvatar, channels, dms, unread, agents, visibleAgents, traj, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
 }
 

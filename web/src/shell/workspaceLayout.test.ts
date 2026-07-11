@@ -8,6 +8,15 @@ import {
   toggleChat,
   type DockModuleId,
 } from "./workspaceLayout.ts";
+import { DOCK_MODULES, WORKSPACE_MODULES } from "./workspaceModules.tsx";
+
+test("Dock is fixed to Chat, Inbox, Tasks, Agents, and Settings", () => {
+  assert.deepEqual(
+    ["chat", ...DOCK_MODULES.map((module) => module.id)],
+    ["chat", "inbox", "tasks", "agents", "settings"],
+  );
+  assert.equal(WORKSPACE_MODULES.find((module) => module.id === "search")?.dock, false);
+});
 
 test("initial layout is ChatOnly", () => {
   assert.deepEqual(INITIAL_WORKSPACE_LAYOUT, {

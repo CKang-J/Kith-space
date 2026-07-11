@@ -1,0 +1,208 @@
+.personal-setup-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(255, 255, 255, .9), transparent 34%),
+    var(--canvas-soft);
+  color: var(--ink);
+}
+
+.personal-setup-card {
+  width: min(100%, 560px);
+  min-height: 480px;
+  display: flex;
+  flex-direction: column;
+  padding: 34px 38px 30px;
+  border: 1px solid var(--hair-strong);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 18px 55px var(--shadow-3);
+}
+
+.personal-setup-brand {
+  margin-bottom: 34px;
+  font-family: var(--serif);
+  font-size: 22px;
+  letter-spacing: -.02em;
+}
+
+.personal-setup-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.personal-setup-state h1,
+.personal-setup-form h1 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 400;
+  letter-spacing: -.025em;
+}
+
+.personal-setup-state p,
+.personal-setup-form header > p:last-child {
+  max-width: 440px;
+  margin: 10px 0 22px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.personal-setup-spinner {
+  width: 28px;
+  height: 28px;
+  margin-bottom: 20px;
+  border: 2px solid var(--hair-strong);
+  border-top-color: var(--ink);
+  border-radius: 50%;
+  animation: personal-setup-spin .8s linear infinite;
+}
+
+.personal-setup-eyebrow {
+  margin: 0 0 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.personal-setup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.personal-setup-field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.personal-setup-field > span:first-child {
+  color: var(--body);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.personal-setup-field > span small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.personal-setup-field input,
+.personal-setup-field textarea {
+  width: 100%;
+  border: 1px solid var(--hair-strong);
+  border-radius: 9px;
+  outline: none;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.personal-setup-field input {
+  height: 42px;
+  padding: 0 12px;
+}
+
+.personal-setup-field textarea {
+  min-height: 100px;
+  padding: 10px 12px 24px;
+  resize: vertical;
+}
+
+.personal-setup-field input:focus,
+.personal-setup-field textarea:focus {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px var(--hair);
+}
+
+.personal-setup-field input[aria-invalid="true"],
+.personal-setup-field textarea[aria-invalid="true"] {
+  border-color: var(--error-line);
+}
+
+.personal-setup-count {
+  position: absolute;
+  right: 9px;
+  bottom: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.personal-setup-field:has(.personal-setup-field-error) .personal-setup-count {
+  bottom: 28px;
+}
+
+.personal-setup-field-error {
+  color: var(--error);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.personal-setup-error {
+  padding: 9px 11px;
+  border: 1px solid var(--error-line);
+  border-radius: 8px;
+  background: var(--error-soft);
+  color: var(--error);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.personal-setup-primary {
+  min-height: 42px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 20px;
+  background: var(--ink-2);
+  color: var(--on-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.personal-setup-state .personal-setup-primary {
+  min-width: 130px;
+}
+
+.personal-setup-primary:disabled {
+  cursor: default;
+  opacity: .55;
+}
+
+.personal-setup-footnote {
+  margin: -2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+@keyframes personal-setup-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 640px) {
+  .personal-setup-page { padding: 16px; }
+  .personal-setup-card { min-height: 0; padding: 28px 22px 24px; border-radius: 14px; }
+  .personal-setup-brand { margin-bottom: 26px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .personal-setup-spinner { animation: none; }
+}

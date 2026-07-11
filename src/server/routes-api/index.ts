@@ -23,6 +23,7 @@ import { handleAuthedAuth } from "./auth.js";
 import { handleHumanAttachmentGet, handleAttachments } from "./attachments.js";
 import { handleAuthenticatedBrowserAuth, handleDesktopBrowserAccess, handlePublicBrowserAuth } from "./browserAccess.js";
 import { handleDesktopSettings } from "./desktopSettings.js";
+import { handlePersonalSetup } from "./setup.js";
 import { handleSpacesHumanScope } from "./spaces.js";
 import { handleLocalRuntimeHumanScope } from "./localRuntime.js";
 import { handleSpacePreferences } from "./spacePreferences.js";
@@ -39,6 +40,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   const base: BaseCtx = { req, res, url, method, p };
 
   // ---- gate 0: public / self-authenticating ----
+  if (await handlePersonalSetup(base)) return true;
   if (await handleDesktopBrowserAccess(base)) return true;
   if (await handleDesktopSettings(base)) return true;
   if (await handlePublicBrowserAuth(base)) return true;

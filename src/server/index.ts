@@ -53,7 +53,7 @@ const DOCSDIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const log = createLogger("server");
 initRealtime();
 
-const CTYPE: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2", ".map": "application/json", ".webmanifest": "application/manifest+json" };
+const CTYPE: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2", ".map": "application/json" };
 
 function corsOriginHeader(req: http.IncomingMessage): string | null {
   const origin = req.headers.origin;

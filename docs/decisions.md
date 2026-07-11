@@ -86,6 +86,8 @@
 
 **推理与权衡**：多用户不是“免费保留”。它持续渗透 schema、API、导航、认证和权限判断，并让个人 AgentOS 的领域模型含混。产品定位已经排除团队协作，因此现在删除比长期背负双重语义更低成本。Agent 的频道成员关系仍保留，只承担上下文与唤醒语义。
 
+**实施状态（A5）**：首次资料流程由 Desktop 私有信任调用 setup API；普通浏览器不会探测该入口，也不能伪造首次初始化。接口幂等创建唯一 Human 与默认 `Home`，已有资料不会被再次覆盖；全新 Desktop 数据目录直接进入首次初始化界面，不再以 `seed` 作为产品前置步骤。
+
 ---
 
 ## 决策 5：agent 永久只在本机唯一 Local Runtime Worker 上执行
@@ -202,7 +204,7 @@
 
 ## 决策 14：底部 Dock 是工作姿态与模块切换的统一控制器
 
-**当前结论（2026-07-11 修正）**：Dock 常驻于当前主要工作面板底部，为 `Chat | Inbox | Tasks | Agents | Settings`。`Members` 收敛为当前 Space 的 `Agents`，`Computers` 删除，唯一 Human 的资料移入全局 Settings。Search 位于顶部入口。一次只打开一个模块；当前模块从纯图标横向展开并显示名称，Chat 始终只显示图标。
+**当前结论（2026-07-11 修正）**：Dock 常驻于当前主要工作面板底部，为 `Chat | Inbox | Tasks | Agents | Settings`。`Members` 收敛为当前 Space 的 `Agents`，`Computers` 删除，唯一 Human 的资料移入全局 Settings。Search 位于顶部入口。一次只打开一个模块；当前模块从纯图标横向展开并显示名称，Chat 始终只显示图标。模块不拥有独立 pathname，而是在当前频道、DM 或收藏会话路径上使用 `?module=<id>`；合法 resource query 分别为 Tasks 的 `taskScope`、Agents 的 `agent`/`agentTab` 与 Settings 的 `settings`。切换会话保留当前模块及其 resource，切换模块则清除不属于新模块的 resource。
 
 **原决定**：Dock 曾被限定为“窄右栏容器自身的底部导航”，实时轨迹也曾作为右栏模块之一。新方向取消固定窄右栏：模块是可伸缩、可全宽的第二工作面；实时轨迹回到 Chat 工作面的伴随区域，在紧凑态以抽屉出现。
 
@@ -238,7 +240,7 @@
 
 **当前结论（2026-07-11 推翻并细化）**：Electron Desktop 是唯一正式宿主和发行物，自动管理 Core Service、Local Runtime Worker 与 React UI。浏览器访问不是独立 Web 产品，而是 Desktop 运行期间对同一 Core Service 的可选入口。模式为“关闭（默认）/仅本机/局域网”，默认稳定端口 7777，可由 Desktop 修改。
 
-**访问安全**：所有浏览器首次访问都输入访问 Token，Electron 内嵌界面免输。Token 可自定义 16-256 字符，留空自动生成 32 字节；app.db 只存 scrypt 哈希与 revision。持久会话的原始随机值只进 HttpOnly、SameSite=Strict Cookie，DB 只存 SHA-256 哈希；写请求同时做 Origin 和 CSRF 校验。Desktop 可轮换 Token 或撤销全部会话，轮换通过 revision 立即使全部旧会话失效。局域网浏览器具有完整产品能力，但 v1 只支持 HTTP 和桌面级浏览器；首次开启必须警告仅限受信任私网、不得端口转发或公网暴露。
+**访问安全**：所有浏览器首次访问都输入访问 Token，Electron 内嵌界面免输。Token 可自定义 16-256 字符，留空自动生成 32 字节；app.db 只存 scrypt 哈希与 revision。持久会话的原始随机值只进 HttpOnly、SameSite=Strict Cookie，DB 只存 SHA-256 哈希；写请求同时做 Origin 和 CSRF 校验。浏览器可通过 `DELETE /api/browser-auth/session` 撤销当前访问授权，Desktop 可轮换 Token 或撤销全部会话，轮换通过 revision 立即使全部旧会话失效；产品文案和状态方法不再把该动作称为账户 logout。局域网浏览器具有完整产品能力，但 v1 只支持 HTTP 和桌面级浏览器；首次开启必须警告仅限受信任私网、不得端口转发或公网暴露。
 
 **凭据隔离**：浏览器 Access Token、Desktop 私有信任、Local Runtime Worker 控制凭据和 agent session token 四者互不复用。A3 已删除 Human JWT、dev-login、`?as=`、Bearer/localStorage 会话和 URL token；Desktop 管理 API 对普通浏览器返回 404。A4 Electron 已在每次进程组启动/重启时为 Desktop/Worker 生成两个独立内部凭据，并阻止受管子进程从 `.env` 回灌；渲染器 JavaScript 不持有凭据，Vite 子进程环境不包含凭据，agent runtime 环境会剥离全部宿主级 `KITH_SPACE_*` 变量后只注入当前 agent 的短期能力。只有保留给开发调试的手动分进程模式从环境变量注入。
 
@@ -298,7 +300,7 @@
 
 **实施方式**：先同步权威文档，再依次完成本地领域与 `app.db`、浏览器访问安全、Electron 宿主、UI/入口清理和继承资产总审计。每阶段独立验证、独立提交。完整规格见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`。
 
-**实施状态（2026-07-11）**：A2 本地域与数据模型、A3 浏览器访问安全、A4 Electron Desktop 宿主均已落地。下一阶段是 A5 首次 Human 初始化和旧界面/登录残留清理；生产 bundle、正式打包与安装器没有在 A4 提前完成。
+**实施状态（2026-07-11）**：A2 本地域与数据模型、A3 浏览器访问安全、A4 Electron Desktop 宿主、A5 首次 Human 初始化和旧界面/登录残留清理均已落地。Landing、PWA、旧 `Layout` 与账户入口已删除，Dock 与 canonical 模块 query 已收口；下一阶段是 A6 继承部署/发布资产清理、Windows 正式生产 bundle、打包/安装器和总审计。
 
 ---
 

@@ -44,7 +44,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 模块边界建议：`src/app-data/` 负责 app.db；`src/spaces/` 负责 Space registry/生命周期；`src/human/` 负责唯一 Human；`src/local-runtime/` 负责 Desktop 与 worker 内部协议。实际命名在落地前按现有结构核对，不为目录整齐而搬动无关文件。
 
-验证：A2 最终通过 typecheck、web build（2563 modules）和完整 integration；unit 367 项中 366 项通过，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。fresh/legacy baseline、唯一 Worker 与跨 Space 路由、Worker loopback-only、Machine/旧 Space 契约不可达、Human 状态、任务/消息以及 Space 隔离附件均有覆盖。
+验证：A2 当时通过 typecheck、web build（2563 modules）和完整 integration；当时的 unit 367 项中 366 项通过，失败项是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。fresh/legacy baseline、唯一 Worker 与跨 Space 路由、Worker loopback-only、Machine/旧 Space 契约不可达、Human 状态、任务/消息以及 Space 隔离附件均有覆盖；该营销导航契约已在 A5 随对应入口一并删除。
 
 ### A3 浏览器访问安全边界
 
@@ -60,7 +60,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 - 前端以 Cookie 会话探测和 Access Token Gate 代替 Human Bearer/localStorage JWT、dev-login、`?as=` 和 URL token。Socket 握手只携带 `spaceId`。
 - LAN 浏览器拥有完整产品能力，v1 仅 HTTP 且只限受信任私网，明确禁止端口转发或公网暴露。
 
-验证：typecheck 通过，web build 通过（2559 modules），integration 全量通过，unit 除既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro` 外全部通过。策略、Token 密码学、Cookie/CSRF/Origin/限速、Desktop/Worker 内部凭据、Token 验证到会话/产品 API/退出/撤销/轮换失效、前端 Token Gate 与旧 JWT/URL token 活跃路径均有行为或契约覆盖。
+验证：typecheck 通过，web build 通过（2559 modules），integration 全量通过，unit 除当时既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro` 外全部通过。策略、Token 密码学、Cookie/CSRF/Origin/限速、Desktop/Worker 内部凭据、Token 验证到会话/产品 API/单会话撤销/全量撤销/轮换失效、前端 Token Gate 与旧 JWT/URL token 活跃路径均有行为或契约覆盖。该公开营销导航契约已随 A5 删除，不再是当前测试基线中的已知失败。
 
 ### A4 Electron Desktop 宿主
 
@@ -79,9 +79,19 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A5 UI 与入口清理
 
-下一阶段。改动：Human 首次初始化与 Home 入口；彻底删除 Landing、PWA、`?legacy=1`、旧 `Layout` 和登录残留。延续 A4 已实现的 Desktop Settings 与普通浏览器能力差异；完成 Dock `Chat | Inbox | Tasks | Agents | Settings` 的最终入口收口。Agents/Human Settings 表面迁移及登录/注册/邀请 UI/API 已在 A2.3 提前完成，Computers 已在 A2.4 提前删除，相关 `join_links`/Machine 物理表已在 A2.2b 删除。
+当前进度：A5 已完成。Desktop 可在全新数据目录中直接完成唯一 Human 与 `Home` 初始化；共享前端只保留单窗口工作区和规范 Space URL，旧 Web 营销/PWA/登录入口与旧界面回退均已删除。
 
-验证：路由契约、Dock 状态机、Desktop/Web 设置差异、web build 与浏览器冒烟。
+已落地边界：
+
+- `PersonalSetupService` 以“唯一 Human + `Home`”判断完成态。重复初始化幂等返回；若中断后只有 Human，则 status 返回 partial Human 供表单预填恢复。请求仅接受 Human 名称、可选邮箱和描述，不能提交 rootPath 或改变默认首次 Space。
+- Desktop-only `GET /api/setup/status` 与 `POST /api/setup/initialize` 位于普通产品鉴权之前，但仍要求 loopback Desktop 私有信任；普通浏览器、Worker、错误凭据和远程请求统一不可见。
+- `DesktopSetupBoundary` 位于 `StoreProvider` 外，先完成 setup 再挂载产品 bootstrap。只有完整 preload bridge 会探测 setup API；普通浏览器始终沿用 Cookie 会话探测与 Access Token Gate，不会看到首次初始化页。
+- 删除 Landing、Features、旧 `Layout`、`?legacy=1`、SSR/prerender、PWA manifest、公开营销元数据和营销图片；`App` 只渲染 `WorkspaceFrame`，Dock 固定为 `Chat | Inbox | Tasks | Agents | Settings`，Search 仍是顶部工具入口。
+- 会话路径成为唯一规范 pathname；模块和资源统一进入 `module`/`chat`/`taskScope`/`agent`/`agentTab`/`settings` query。切换频道或 Human-Agent DM 时保留 active module 与其资源，清掉旧 `msg`/`thread` 焦点，不再生成 `/tasks`、`/agent`、`/settings` 等旧模块实体路径。
+- 浏览器自身授权使用 `DELETE /api/browser-auth/session` 撤销并清 Cookie，前端和 Settings 均使用“撤销浏览器访问”语义，不再借用 Human logout 概念。
+- 正常 `pnpm run desktop:dev` 在 fresh `KITH_SPACE_HOME` 下不再要求先运行 seed；seed 只保留给手动 fixture/debug 流程。
+
+验证：typecheck、web build（2564 modules）、desktop build、完整 integration 与 439/439 unit 均通过；已删除的公开营销导航契约不再制造历史性测试失败。首次初始化、partial recovery、Desktop/Web 能力差异、规范模块 URL、会话导航与浏览器授权撤销均有行为或契约覆盖。
 
 ### A6 继承资产清理与总审计
 
@@ -95,7 +105,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 - A2 先于 A3/A4/A5；Token、Desktop 和 UI 都依赖唯一 Human、app.db 与 Space 领域。
 - A3 已在 LAN 绑定前建立 Token/会话/Origin/CSRF 安全门；后续不得绕过该门直接暴露新路由。
 - A4 已接管配置、内部凭据与受管进程；手动分进程 `.env` 仅保留为仓库调试入口。
-- A5 现在可以在稳定的领域/API/Desktop 能力边界上删除旧入口，不再同时适配两套宿主。
+- A5 已在稳定的领域/API/Desktop 能力边界上删除旧入口；A6 不得恢复旧兼容面，只清理剩余发行与部署遗产。
 - A6 最后执行，但每个前置阶段都要清理自己产生的孤立引用。
 
 ## 5. 主要风险

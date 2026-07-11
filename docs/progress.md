@@ -8,7 +8,7 @@
 
 - 分支：`feat/p0-foundation`，尚未合并或推送远端。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A4 Electron Desktop 宿主已完成**。Electron 43.1.0 已接管 Core Service、唯一 Local Runtime Worker 与开发期 Vite 的启动监督、临时凭据、托盘生命周期和 Desktop Settings；下一步进入 A5 首次 Human 初始化与旧界面/登录残留清理。
+- 当前阶段：**A5 首次 Human 初始化与旧界面/入口清理已完成**。全新 Desktop 数据目录无需 seed；Landing/PWA/旧 `Layout` 与账户入口已删除，Dock、canonical 模块 query 和浏览器授权撤销语义已经收口。下一步进入 A6 继承部署/发布资产清理、Windows 正式打包/安装器与总审计。
 - P4 视觉微调已暂停，等本机化基础收敛后再恢复。
 - 底座为 open-tag 衍生开发副本；`reference/` 只读。OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
 
@@ -22,7 +22,7 @@
 - LAN 浏览器拥有完整产品能力，v1 使用 HTTP + 访问 Token，只限受信任私网。
 - 删除多真人、邀请/RBAC、Machines/Computers、远程 daemon、服务器部署、云同步、S3、Docker、PWA 和独立 Web 发行路线。
 - 中央 registry 已扩展并更名为 `app.db`；每个 Space 继续使用 `<space>/.kith/workspace.db`。
-- Dock 目标为 `Chat | Inbox | Tasks | Agents | Settings`；旧 `Layout` 回退将彻底删除。
+- Dock 已固定为 `Chat | Inbox | Tasks | Agents | Settings`；旧 `Layout` 回退、Landing 与 PWA 已删除。
 - 允许破坏性重置当前开发数据，不做旧 `.kith` schema 迁移。
 
 完整共识与验收见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`。决策推理见 `docs/decisions.md` 决策 21，工程顺序见 `docs/kith-space/migration-plan.md`。
@@ -31,6 +31,9 @@
 
 | 提交 | 内容 |
 |---|---|
+| 本阶段提交 | Desktop-only 首次 Human/Home 初始化、Landing/PWA/旧 Layout 清理、canonical 模块 query 与浏览器会话撤销语义 |
+| `20ba921` | Electron 43.1.0 Desktop 宿主、进程监督、托盘生命周期、Desktop Settings 与内部凭据隔离 |
+| `3cde80e` | 浏览器 off/local/lan 模式、访问 Token、持久 Cookie 会话、CSRF/Origin 与 Desktop 管理边界 |
 | `274e6de` | 压平 19 表 Personal AgentOS workspace.db baseline、canonical Space transport/CLI/task 契约与 Human 状态表 |
 | `c0d5a9c` | 收敛安装级唯一 Local Runtime Worker 与跨 Space agent 事件定位 |
 | `b55de90` | 收敛唯一 Human authority/identity、agent-only 频道成员、Human-agent DM 与 Agents/Settings 产品表面 |
@@ -61,15 +64,23 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - A2 最终验收：`pnpm run typecheck` 通过，`pnpm run web:build` 通过（2563 modules），`pnpm test --integration` 全量通过；`pnpm test --unit` 367 项中 366 项通过，唯一失败仍是同一个既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。Space 隔离附件、未知 Space/路径穿越拒绝、旧 app 级上传配置不生效、Worker loopback-only 与旧 `serverId` 发送参数消失均有回归覆盖。
 - A3 最终验收：`pnpm run typecheck` 通过，`pnpm run web:build` 通过（2559 modules），`pnpm test --integration` 全量通过；`pnpm test --unit` 391 项中 390 项通过，唯一失败仍是同一个既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。Web 三模式、Token/会话轮换、Cookie/CSRF/Origin/限速、Desktop 管理不可从浏览器达到、Worker 私有 header 握手、前端 Token Gate 与旧 JWT/URL token 退役均有行为或契约覆盖。
 - A4 最终验收：`pnpm run typecheck`、`pnpm run desktop:build`、`pnpm run web:build`（2561 modules）和 `pnpm test --integration` 全量通过；`pnpm test --unit` 426 项中 425 项通过，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。使用隔离 `KITH_SPACE_HOME` 的实际 Desktop smoke 已验证 Core ready 后才启动 Worker/Vite，Electron 成功加载共享 UI，退出后测试端口无残留监听。
+- A5 首次初始化由 `src/personal-setup/personalSetupService.ts` 和 `/api/setup/status`、`/api/setup/initialize` 提供。setup 路由只接受 loopback 上的 Desktop 私有信任，普通浏览器、Worker、错误凭据和远程来源统一不可达；初始化只接受 Human 名称、可选邮箱与描述，幂等创建唯一 Human 与 `Home`，已有资料不会被覆盖，部分 Human 状态可恢复到表单。
+- 前端 `DesktopSetupBoundary` 位于正式 Store 外层，只有 Electron preload bridge 会探测 setup；普通浏览器不会探测该 API，仍从 Access Token Gate/已有授权会话进入。初始化成功后才新挂载 ProductRoot/StoreProvider，因此不需要刷新或 seed 就能进入 `Home`。
+- A5 已删除 Landing、Features、PWA/公开营销元数据、SSR/prerender、旧 `Layout`、`?legacy=1` 与登录/注册/邀请 locale/CSS 残留。静态产品入口只保留根路径和 canonical `/s/:slug` 工作区路径，WorkspaceSkeleton 已与当前卡片面板、顶部工具区和五项 Dock 对齐。
+- 模块 URL 统一为当前频道、DM 或收藏 pathname 上的 query：`module` 选择 Inbox/Tasks/Agents/Settings，资源参数分别使用 `taskScope`、`agent`/`agentTab` 与 `settings`。切换模块会删除不属于新模块的资源参数，切换会话则保留 active module 及其合法 resource；UI 不再生成 `/tasks`、`/agent`、`/settings` 等旧模块 pathname。
+- 浏览器当前授权撤销使用 `DELETE /api/browser-auth/session`；前端状态和文案统一为 `clearBrowserAccess`/“撤销访问”，不再借用账户 logout 语义。Desktop Settings 可继续全量撤销浏览器会话，普通浏览器只可撤销自身授权且看不到 Desktop Settings。
+- A5 最终验收：`pnpm run typecheck`、`pnpm run desktop:build`、`pnpm run web:build`（2564 modules）和 `pnpm test --integration` 全量通过；`pnpm test --unit` 439/439 全绿。旧 public landing 与 `publicNavContract` 测试随取消的产品路线删除，因此 A2-A4 记录中的单一既有失败只属于历史检查点，当前不再存在。
+- A5 浏览器 smoke 验证 canonical 会话导航：从 `/s/home/channel?module=tasks&taskScope=space` 切到 `/s/home/saved?module=tasks&taskScope=space` 后，右侧 Tasks 模块及 Space 范围资源保持不变。
+- A5 fresh Desktop smoke 使用全新隔离 `KITH_SPACE_HOME` 且未执行 seed：`pnpm run desktop:dev` 完成构建并启动 Core `127.0.0.1:7777`（browserMode off）、Vite `127.0.0.1:5273`、唯一 Worker（connected/ready，`runtimes=[]`）和 Electron；渲染器连续两次请求 `/api/setup/status` 均返回 200。退出后同一目录的 setup 状态仍为 `{initialized:false}`，证明首次初始化页被真实探测且未被 seed 绕过；定时 smoke 结束后 5273/7777 均无监听残留。PowerShell wrapper 未提供 ExitCode，因此验收不声称 ExitCode 0。
 - P4 壳位于 `web/src/shell/`。URL 以频道/DM 路径、`?module=<id>` 和 `chat=0` 表达三态；Split 默认 Chat 25%。
-- 产品登录/注册、成员/RBAC/邀请 API、Web Human roster、Human-Human DM、Machines API 和 Computers UI 已删除；Dock/模块使用 Agents，频道成员只增删 agent，Human 资料入口位于 Settings。A3 进一步删除了 Human JWT、dev-login、`?as=`、localStorage/Bearer 会话和附件/Socket URL token；未授权浏览器只看到 Access Token Gate。Landing、`?legacy=1`、Docker/发布等其他继承资产仍待 A5/A6 清理。
+- 产品登录/注册、成员/RBAC/邀请 API、Web Human roster、Human-Human DM、Machines API 和 Computers UI 已删除；Dock/模块使用 Agents，频道成员只增删 agent，Human 资料入口位于 Settings。A3 进一步删除了 Human JWT、dev-login、`?as=`、localStorage/Bearer 会话和附件/Socket URL token；A5 删除 Landing、旧 Layout/PWA 与剩余账户入口，未授权浏览器只看到 Access Token Gate。Docker、公共 server/daemon 发布和生产部署等继承资产仍待 A6 清理。
 - Core Service 启动时从 app.db 读取 Web 模式：off（默认）与 local 均绑定 `127.0.0.1`，lan 绑定 `0.0.0.0`。off 只留 Desktop/Worker 私有传输，普通浏览器壳被拒绝；LAN 只允许匹配 Host 的 Origin。`/health` 只对 loopback/Desktop 可见并暴露 `workerConnected`。
 - 访问 Token 可自定义 16-256 字符，留空自动生成 32 字节；app.db 只存 scrypt 哈希和 revision。原始 browser session token 只进 HttpOnly、SameSite=Strict Cookie，DB 只存 SHA-256 哈希；写请求同时校验 Origin 和 CSRF。Token 轮换或 Desktop 全量撤销会使旧会话失效。
 - `src/desktop/processSupervisor.ts` 先启动 Core，并等待其通过 IPC 报告 app.db 中的实际端口；收到 ready 后才启动唯一 Worker 和可选 Vite。Core 报端口占用、ready 超时或任一关键子进程异常时会给出明确诊断并收掉进程组；显式退出按 Vite、Worker、Core 顺序停止，Worker 等待全部 runtime 报告退出，超时后使用 Windows process tree 或 Unix process group 强制收尾。终止失败会保留句柄和托盘重试入口，不会假装退出成功。
 - Desktop 每次启动或重启进程组都会轮换独立的 Desktop/Worker 32 字节凭据。Core 仅同时持有两者，Worker 只持有 Worker 凭据，Vite 子进程环境不包含两者；`KITH_SPACE_DESKTOP_MANAGED=1` 阻止受管子进程从 `.env` 回灌凭据。agent runtime 环境会大小写无关剥离全部宿主 `KITH_SPACE_*`/IPC/端口变量，只重加当前 agent 的 server URL、id 和 token。渲染器 JavaScript 不接触 Desktop 私有凭据，Electron session 只在允许的 loopback Core/API/socket 请求上附加信任 header，并排除 `/api/desktop/*` 管理路径。
 - `src/desktop/main.ts` 使用 `nodeIntegration: false`、`contextIsolation: true`、`sandbox: true` 的 BrowserWindow，拒绝新窗口、外部导航、webview 与全部权限请求；`src/desktop/preload.ts` 只暴露读取/修改 Desktop Settings 和撤销浏览器会话的窄桥，IPC 同时校验发送者。
 - app.db 现保存 `desktop_settings` 单例（关闭到托盘/关闭即退出、系统自启动）以及既有浏览器访问设置。Desktop Settings 管理 off/local/lan、端口、访问 Token、会话撤销和生命周期；进入 LAN 前先确认明文 HTTP 风险，自动生成的 Token 保持显示到用户主动确认已保存。普通浏览器没有 preload bridge，Desktop 管理 HTTP 路由继续统一返回 404。Windows 打包态使用 Electron 系统自启动接口，开发态明确显示 unsupported。
-- `pnpm run desktop:dev` 是完整开发宿主入口；`desktop:build` 只构建 Electron main/preload，不生成安装器。`server`、`daemon`、`web`、`browser-access:dev` 与 `dev:e2e:up` 继续保留给分进程调试，手动模式仍需独立环境凭据。正式生产子进程 bundle、Windows 安装器和发行流程尚未完成。
+- `pnpm run desktop:dev` 是完整开发宿主入口；fresh Desktop 不再要求 seed，首次窗口通过 Desktop-only setup 完成 Human/Home 初始化。`desktop:build` 只构建 Electron main/preload，不生成安装器。`seed`、`server`、`daemon`、`web`、`browser-access:dev` 与 `dev:e2e:up` 继续保留给 fixture 或分进程调试，手动模式仍需独立环境凭据。正式生产子进程 bundle、Windows 安装器和发行流程尚未完成。
 - LAN 浏览器具有完整产品能力，v1 仅支持桌面浏览器和 HTTP；只限受信任私网，禁止端口转发或公网暴露。
 - Message Context Snapshot 仍是设计契约，尚未持久化。
 - token 预算目前以唤醒次数为代理；真实 usage 等待 Runtime 契约 v2。
@@ -77,9 +88,8 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 五、下一步顺序
 
-1. A5：实现首次 Human 初始化与 Home 进入流程，彻底删除 Landing、`?legacy=1`、旧 `Layout` 和登录残留；保留 A4 已落地的 Desktop Settings 能力边界。
-2. A6：清理继承的部署/发布资产，完成 Windows 正式打包/安装器和总审计。
-3. 本机化基础稳定后再做 Runtime 契约 v2、生产力模块、Context Snapshot 与 P4 视觉收尾。
+1. A6：清理继承的 Docker/部署/公共包发布资产，完成 Windows 正式生产 bundle、打包/安装器和总审计。
+2. A6 完成并稳定本机化基础后，再做 Runtime 契约 v2、生产力模块、Context Snapshot 与 P4 视觉收尾。
 
 每阶段独立验证、独立中文提交。未获得用户明确指示，不合并 main、不推远端、不发布。
 
@@ -88,7 +98,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - 包管理使用 pnpm；脚本参数直接跟在后面，例如 `pnpm test --unit`。
 - 常规验证：`pnpm run typecheck`、`pnpm test --unit`、`pnpm test --integration`、`pnpm --dir web run build`。
 - 测试把 `KITH_SPACE_HOME` 指向仓库内或系统临时目录，绝不在用户 home 生成测试数据。
-- 既有 `publicNavContract` 因缺 `docs-site/` 的失败是已知基线，不能用无关 hack 掩盖。
+- A5 当前单测基线为 439/439；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。
 - 新功能优先拆到职责清楚的模块；不整块重写 `src/server/core.ts` 或大型 React 组件。
 - 代码、命令、架构、UI、术语或阶段变化时，同一提交同步相应文档。
 - 用户未要求时不修改或提交 `.agents/`、`.claude/`、`.codegraph/daemon.pid`、`skills-lock.json` 等外部/个人工具文件。

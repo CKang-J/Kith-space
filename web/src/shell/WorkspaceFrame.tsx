@@ -25,13 +25,9 @@ import {
   type WorkspaceLayoutState,
   type WorkspaceModuleId,
 } from "./workspaceLayout.ts";
-import { parseWorkspaceRoute, workspaceLayoutFromRoute, workspaceSearchForLayout } from "./workspaceRoute.ts";
+import { parseWorkspaceRoute, workspaceLayoutFromRoute, workspaceSearchForLayout, workspaceSearchForShellState } from "./workspaceRoute.ts";
 
-interface WorkspaceFrameProps {
-  legacyHref: string;
-}
-
-export function WorkspaceFrame({ legacyHref }: WorkspaceFrameProps) {
+export function WorkspaceFrame() {
   const location = useLocation();
   const navigate = useNavigate();
   const { channels, dms, slug, unread } = useStore();
@@ -81,7 +77,7 @@ export function WorkspaceFrame({ legacyHref }: WorkspaceFrameProps) {
   const rememberedChatSearch = chatQueryIndex === -1 ? "" : chatPath.slice(chatQueryIndex);
   const layoutPathname = route.isChatRoute ? location.pathname : rememberedChatPathname;
   const layoutBaseSearch = route.isChatRoute ? location.search : rememberedChatSearch;
-  const layoutSearch = workspaceSearchForLayout("", layoutState);
+  const layoutSearch = workspaceSearchForShellState(location.search, layoutState);
   const effectiveModuleRatio = openingModule ? DEFAULT_MODULE_RATIO : moduleRatio;
   const panes = activeModule ? paneConstraints(workspaceWidth, activeModule, effectiveModuleRatio) : null;
   const isNarrow = activeModule !== null && !panes?.canSplit;
@@ -129,7 +125,6 @@ export function WorkspaceFrame({ legacyHref }: WorkspaceFrameProps) {
         activeModule={activeModule}
         channelId={currentChannelId}
         layoutSearch={layoutSearch}
-        legacyHref={legacyHref}
         onOpenSearch={() => selectModule("search")}
       />
       <div ref={workspaceRef} className="shell-workspace-canvas">
@@ -152,8 +147,6 @@ export function WorkspaceFrame({ legacyHref }: WorkspaceFrameProps) {
         {renderModule && activeModule ? (
           <ModuleWorkspace
             moduleId={activeModule}
-            route={route}
-            chatVisible={chatVisible}
             dock={dock}
             style={
               showDivider

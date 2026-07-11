@@ -14,6 +14,39 @@
     "langEnglish": "English",
     "langChinese": "Chinese"
   },
+  "personalSetup": {
+    "checkingTitle": "Preparing your workspace",
+    "checkingDescription": "Kith-space is checking this installation before it starts.",
+    "loadFailedTitle": "Could not start setup",
+    "loadFailedDescription": "Kith-space could not reach its local service.",
+    "retry": "Try again",
+    "eyebrow": "First run",
+    "title": "Tell your agents who you are",
+    "description": "Create the one Human profile for this computer. Kith-space will also prepare your local Home Space.",
+    "nameLabel": "Name",
+    "namePlaceholder": "How should your agents address you?",
+    "emailLabel": "Email",
+    "emailPlaceholder": "you@example.com",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "Share your role, preferences, or anything your agents should keep in mind.",
+    "optional": "Optional",
+    "continue": "Create my workspace",
+    "creating": "Creating your workspace...",
+    "footnote": "Your profile and spaces stay on this computer. This is local setup, not account registration.",
+    "submitFailed": "Kith-space could not complete first-run setup.",
+    "validation": {
+      "name": {
+        "required": "Enter a name to continue.",
+        "tooLong": "Name must contain no more than 64 characters."
+      },
+      "email": {
+        "invalid": "Enter a valid email address."
+      },
+      "description": {
+        "tooLong": "Description must contain no more than 3000 characters."
+      }
+    }
+  },
   "desktopSettings": {
     "loading": "Loading Desktop settings...",
     "loadFailed": "Desktop settings could not be loaded.",
@@ -207,9 +240,9 @@
     "accountEmail": "Email",
     "accountSave": "Save",
     "accountSaved": "Saved",
-    "logoutTitle": "Sign out",
-    "logoutDesc": "Clear this browser's temporary local session. Your local data remains on this computer.",
-    "logoutBtn": "Sign out",
+    "browserAuthorizationTitle": "Browser authorization",
+    "browserAuthorizationDesc": "Revoke this browser's local access. Your data remains on this computer.",
+    "browserAuthorizationBtn": "Revoke access",
     "spaceLoading": "Loading…",
     "spaceAvatarLabel": "Space avatar",
     "spaceAvatarUploading": "Uploading…",
@@ -311,44 +344,6 @@
   "showcase": {
     "title": "showcase",
     "subtitle": "Read-only — four real collaboration sessions across engineering, research, security, and growth."
-  },
-  "auth": {
-    "createAccount": "Create account",
-    "login": "Sign in",
-    "register": "Sign up",
-    "usernameLabel": "Username",
-    "emailLabel": "Email",
-    "passwordLabel": "Password",
-    "usernamePlaceholder": "Username (used for @mentions, must be unique)",
-    "emailPlaceholder": "Email",
-    "passwordPlaceholder": "Password",
-    "errors": {
-      "auth_email_invalid": "Email addresses need an @ symbol. Try: name@example.com.",
-      "auth_login_fields_required": "Enter your email and password to sign in.",
-      "auth_login_email_not_found": "No account uses that email yet. Check the address, or create an account.",
-      "auth_login_password_wrong": "That password is not right for this email. Try again, or reset it with your admin.",
-      "auth_password_invalid": "Password must be 8 to 200 characters.",
-      "auth_register_name_invalid": "Usernames need 1-64 characters.",
-      "auth_register_email_taken": "That email already has an account. Sign in instead.",
-      "auth_register_username_taken": "That username is taken. Choose another @mention name.",
-      "auth_rate_limited": "Too many attempts. Wait a minute and try again."
-    },
-    "opFailed": "Operation failed",
-    "joinFailed": "Failed to join",
-    "loading": "Loading…",
-    "invalidInvite": "Invalid invitation",
-    "invalidInviteDesc": "This invite link has expired, been used up, or is invalid.",
-    "backHome": "Back to home",
-    "joinTitle": "Join {{spaceName}}",
-    "invitedBy": "{{inviter}} invited you",
-    "youAreInvited": "You were invited",
-    "joinWorkspace": " to join Space \"{{spaceName}}\", role: {{role}}.",
-    "joinAsCurrent": "Join with current account",
-    "registerAndJoin": "Sign up & join",
-    "loginAndJoin": "Sign in & join",
-    "hasAccount": "Already have an account? ",
-    "noAccount": "No account? ",
-    "newUser": "New user? "
   },
   "qs": {
     "ariaLabel": "Quick switcher",

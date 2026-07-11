@@ -184,21 +184,29 @@ try {
   });
   assert.equal(desktopBypassesBrowserCsrf.status, 200);
 
-  const logoutWithoutCsrf = await api({
+  const retiredLogout = await api({
     method: "POST",
     pathname: "/api/browser-auth/logout",
+    headers: { cookie: session.cookie, origin, host: "localhost:7777", "x-kith-csrf": session.csrf, "x-space-id": home.id },
+    body: {},
+  });
+  assert.equal(retiredLogout.status, 404);
+
+  const revokeWithoutCsrf = await api({
+    method: "DELETE",
+    pathname: "/api/browser-auth/session",
     headers: { cookie: session.cookie, origin, host: "localhost:7777" },
   });
-  assert.equal(logoutWithoutCsrf.status, 403);
+  assert.equal(revokeWithoutCsrf.status, 403);
 
-  const logout = await api({
-    method: "POST",
-    pathname: "/api/browser-auth/logout",
+  const revoke = await api({
+    method: "DELETE",
+    pathname: "/api/browser-auth/session",
     headers: { cookie: session.cookie, origin, host: "localhost:7777", "x-kith-csrf": session.csrf },
   });
-  assert.equal(logout.status, 200);
-  const loggedOut = await api({ method: "GET", pathname: "/api/browser-auth/session", headers: { cookie: session.cookie, host: "localhost:7777" } });
-  assert.equal(loggedOut.status, 401);
+  assert.equal(revoke.status, 200);
+  const afterRevoke = await api({ method: "GET", pathname: "/api/browser-auth/session", headers: { cookie: session.cookie, host: "localhost:7777" } });
+  assert.equal(afterRevoke.status, 401);
 
   const beforeRotation = await api({
     method: "POST", pathname: "/api/browser-auth/verify", headers: { origin, host: "localhost:7777" }, body: { token: "correct-horse-browser-token" },

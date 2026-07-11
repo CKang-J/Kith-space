@@ -57,8 +57,8 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 - 技术栈：TypeScript / Node（Core Service + 安装级唯一 Local Runtime Worker；目录/命令仍暂用 server/daemon）、Electron 43.1.0（正式 Desktop 宿主）、React + Vite（共享 UI）、Drizzle ORM。
 - 包管理：**pnpm**（workspace：根 + `web/` + `packages/*`，`pnpm-lock.yaml`）。安装 `pnpm install`。注意 pnpm 的传参约定：脚本参数**直接跟在后面、不加 `--`**——用 `pnpm test --unit` / `pnpm test --integration`，**不要**写 `pnpm test -- --integration`。当前 OIDC/npm 发布 workflow 是 A6 待删除遗留，不是产品发行路线。
 - 数据层：**SQLite**。每 Space 一个 `<folder>/.kith/workspace.db`；中央 `app.db` 保存唯一 Human、Space registry、Web 模式、访问 Token 哈希/版本、浏览器会话与 Desktop 关闭/自启动设置。A2.2b 已落地单一 19 表 baseline：`spaces/space_id`、agent-only `channel_agent_members`、独立的 `human_channel_states`/`human_saved_messages`/`human_space_preferences`，持久 actor 使用 `human`；`users/server_members/machines/join_links`、`agents.machine_id` 和 DB workspace facade 已删除。旧 schema 不自动迁移或删除，打开时会要求先备份再显式删除。非 open-tag 原来的 Postgres+Redis。详见 `architecture-proposal.md §5`。
-- 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。跑测试时把 `KITH_SPACE_HOME` 指向临时目录，零 Postgres/Redis 即可全绿（既有 `publicNavContract` 因缺 `docs-site/` 失败，非回归）。改动配套跑测试再提交。
-- 启动：推荐 `pnpm install` → `pnpm run seed`（A5 首次初始化 UI 落地前的全新目录需要）→ `pnpm run desktop:dev`。Desktop 统一启动 Core Service、唯一 Local Runtime Worker、开发期 Vite 与 Electron；每次进程组启动/重启生成相互独立的 Desktop/Worker 临时凭据，普通用户和渲染器都不接触它们。`pnpm run desktop:build` 只构建 Electron main/preload，不是正式安装器。`server`、`daemon`、`web`、`browser-access:dev` 和 `dev:e2e:up` 继续作为分进程调试入口；只有这类手动调试才从环境注入独立内部凭据。**完整命令以 `docs/dev-commands.md` 为准。**
+- 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。跑测试时把 `KITH_SPACE_HOME` 指向临时目录，零 Postgres/Redis 即可全绿；A5 后当前单测基线为 439/439，通过删除已失效的 public landing 契约测试消除了旧的 `publicNavContract` 既有失败。改动配套跑测试再提交。
+- 启动：推荐 `pnpm install` → `pnpm run desktop:dev`。全新数据目录由 Desktop 首次初始化界面收集 Human 名称（必填）、邮箱和描述（选填），并创建 `Home`，不再要求预先执行 `seed`；`pnpm run seed` 只保留为手动分进程调试或 fixture 辅助。Desktop 统一启动 Core Service、唯一 Local Runtime Worker、开发期 Vite 与 Electron；每次进程组启动/重启生成相互独立的 Desktop/Worker 临时凭据，普通用户和渲染器都不接触它们。`pnpm run desktop:build` 只构建 Electron main/preload，不是正式安装器。`server`、`daemon`、`web`、`browser-access:dev` 和 `dev:e2e:up` 继续作为分进程调试入口；只有这类手动调试才从环境注入独立内部凭据。**完整命令以 `docs/dev-commands.md` 为准。**
 - 提交：中文提交信息，列要点变更；只在用户明确要求时提交；先分支不直推主干。
 - 安全：外接 runtime 的高权限是追踪中的技术债。LAN 浏览器 v1 使用 HTTP + 访问 Token且仅限受信任私网；邮箱/浏览器等不可信内容模块上线前，必须先完成 HTTPS 与审批/沙箱权限升级（见 `decisions.md` 决策 8/17/21）。
 
@@ -77,7 +77,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 ## 当前进展
 
-**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-11：A2 本地领域与数据模型、A3 浏览器访问安全边界、A4 Electron Desktop 宿主均已完成。Desktop 已接管进程组、内部凭据、托盘生命周期和 Desktop Settings；Web 默认关闭，本机/LAN 浏览器经独立访问 Token 换取持久 Cookie 会话。下一步是 A5 首次 Human 初始化与旧界面/登录残留清理。做到哪、下一步与关键过渡事实全部见 `docs/progress.md`。
+**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-11：A2 本地领域与数据模型、A3 浏览器访问安全边界、A4 Electron Desktop 宿主、A5 首次 Human 初始化与旧入口/UI 清理均已完成。Desktop 可在全新目录无 seed 启动并进入首次初始化；产品壳只保留 canonical Space 会话路径与 query 驱动模块，浏览器授权使用访问 Token、持久 Cookie 会话和明确的撤销语义。下一步是 A6 继承部署/发布资产清理、Windows 正式打包/安装器与总审计。做到哪、下一步与关键过渡事实全部见 `docs/progress.md`。
 
 <!-- CODEGRAPH_START -->
 

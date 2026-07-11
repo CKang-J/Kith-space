@@ -1,10 +1,11 @@
 // Cmd/Ctrl+K global quick switcher: aggregates channels, Human-agent DMs, and agents with text filter, arrow-key navigation, and Enter to jump.
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useStore } from "./store.tsx";
 import { Avatar } from "./Avatar.tsx";
 import { Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { workspaceLocationForConversation, workspaceLocationForModule } from "./shell/workspaceRoute.ts";
 
 interface QSItem { kind: "channel" | "dm" | "agent"; id: string; label: string; sub: string; go: () => void }
 
@@ -12,6 +13,7 @@ export function QuickSwitcher({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const { channels, dms, visibleAgents: agents, slug } = useStore(); // visibleAgents: keep showcase demo props out of the quick switcher
   const nav = useNavigate();
+  const location = useLocation();
   const [q, setQ] = useState("");
   const [hi, setHi] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -19,10 +21,11 @@ export function QuickSwitcher({ onClose }: { onClose: () => void }) {
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   const ql = q.toLowerCase().trim();
+  const openChannel = (channelId: string) => nav(workspaceLocationForConversation(`/s/${slug}/channel/${channelId}`, location.pathname, location.search));
   const all: QSItem[] = [
-    ...channels.filter((c) => c.type !== "dm").map((c): QSItem => ({ kind: "channel", id: c.id, label: c.name, sub: t("qs.subChannel"), go: () => nav(`/s/${slug}/channel/${c.id}`) })),
-    ...dms.map((d): QSItem => ({ kind: "dm", id: d.id, label: d.peerDisplayName || d.peerName || t("qs.unknownAgent"), sub: t("qs.subDm"), go: () => nav(`/s/${slug}/channel/${d.id}`) })),
-    ...agents.map((a): QSItem => ({ kind: "agent", id: a.id, label: a.displayName || a.name, sub: t("qs.subAgent"), go: () => nav(`/s/${slug}/agent/${a.id}`) })),
+    ...channels.filter((c) => c.type !== "dm").map((c): QSItem => ({ kind: "channel", id: c.id, label: c.name, sub: t("qs.subChannel"), go: () => openChannel(c.id) })),
+    ...dms.map((d): QSItem => ({ kind: "dm", id: d.id, label: d.peerDisplayName || d.peerName || t("qs.unknownAgent"), sub: t("qs.subDm"), go: () => openChannel(d.id) })),
+    ...agents.map((a): QSItem => ({ kind: "agent", id: a.id, label: a.displayName || a.name, sub: t("qs.subAgent"), go: () => nav(workspaceLocationForModule(location.pathname, location.search, { moduleId: "agents", agent: a.id })) })),
   ];
   const items = (ql ? all.filter((it) => it.label.toLowerCase().includes(ql)) : all).slice(0, 40);
 
