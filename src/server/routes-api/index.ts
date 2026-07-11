@@ -1,8 +1,8 @@
-// User-facing REST: /api/*  (Bearer JWT + x-server-id)
+// User-facing REST: /api/*  (Bearer JWT + x-space-id)
 //
 // Thin dispatcher. It owns ONLY the three auth gates and the dispatch order; the actual route
 // logic lives in the per-domain handlers in this directory. Each gate widens the context
-// (public → +userId → +serverId, see ./ctx.ts) and then delegates to the handlers registered
+// (public → +userId → +spaceId, see ./ctx.ts) and then delegates to the handlers registered
 // behind that gate. A handler returns `true` once it has matched a route and written the
 // response, `false` to let the next handler try.
 //
@@ -15,12 +15,13 @@
 //      earlier-dispatched module's guard for the same path+method.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { and, eq } from "drizzle-orm";
-import { dbFor, schema, touchWorkspace } from "../../db/index.js";
-import { sendErr, bearer, serverIdHeader } from "../util.js";
+import { dbForSpace, schema, spaceRecord, touchSpace } from "../../db/index.js";
+import { sendErr, bearer, spaceIdHeader } from "../util.js";
 import { verifyUser } from "../auth.js";
 import type { BaseCtx, UserCtx, ServerCtx } from "./ctx.js";
 import { handlePublicAuth, handleAuthedAuth } from "./auth.js";
 import { handlePublicAttachmentGet, handleAttachments } from "./attachments.js";
+import { handleSpacesUserScope } from "./spaces.js";
 import { handleServersUserScope, handleServersServerScope } from "./servers.js";
 import { handleAgents } from "./agents.js";
 import { handleReminders } from "./reminders.js";
@@ -43,16 +44,24 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (!userId) return (sendErr(res, 401, "unauthorized"), true);
   const user: UserCtx = { ...base, userId };
   if (await handleAuthedAuth(user)) return true;
+  if (await handleSpacesUserScope(user)) return true;
   if (await handleServersUserScope(user)) return true;
 
-  // ---- gate 2: require a server context + membership ----
-  const serverId = serverIdHeader(req);
-  if (!serverId) return (sendErr(res, 400, "x-server-id header required"), true);
-  const db = dbFor(serverId);
-  const member = (await db.select().from(schema.serverMembers).where(and(eq(schema.serverMembers.serverId, serverId), eq(schema.serverMembers.userId, userId))))[0];
-  if (!member) return (sendErr(res, 403, "not a member of this server"), true);
-  touchWorkspace(serverId);
-  const sctx: ServerCtx = { ...user, serverId };
+  // ---- gate 2: require a Space context; membership remains a temporary A2.3 compatibility check ----
+  const resolvedSpace = spaceIdHeader(req);
+  if (resolvedSpace.conflict) return (sendErr(res, 400, "x-space-id and x-server-id headers disagree"), true);
+  const spaceId = resolvedSpace.spaceId;
+  if (!spaceId) return (sendErr(res, 400, "x-space-id header required"), true);
+  const pathSpaceId = /^\/api\/spaces\/([^/]+)(?:\/|$)/.exec(p)?.[1];
+  if (pathSpaceId && pathSpaceId !== spaceId) return (sendErr(res, 400, "path Space and x-space-id disagree"), true);
+  if (!spaceRecord(spaceId)) return (sendErr(res, 404, "Space not found"), true);
+  const db = dbForSpace(spaceId);
+  const member = (await db.select().from(schema.serverMembers).where(and(eq(schema.serverMembers.serverId, spaceId), eq(schema.serverMembers.userId, userId))))[0];
+  if (!member) return (sendErr(res, 403, "not a member of this Space"), true);
+  touchSpace(spaceId);
+  // New clients use /api/spaces. Legacy handlers keep their old path matchers until A2.3/A2.4 removes them.
+  const legacyPath = p.replace(/^\/api\/spaces(?=\/)/, "/api/servers");
+  const sctx: ServerCtx = { ...user, p: legacyPath, spaceId, serverId: spaceId };
 
   if (await handleAgents(sctx)) return true;
   if (await handleReminders(sctx)) return true;

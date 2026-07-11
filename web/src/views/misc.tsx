@@ -192,7 +192,7 @@ export function Inbox({ embedded = false, onNavigate }: { embedded?: boolean; on
 // Runtime name → display label mapping
 const RT_LABEL: Record<string, string> = { claude: "Claude Code", codex: "Codex CLI", opencode: "OpenCode", copilot: "Copilot CLI", cursor: "Cursor CLI", gemini: "Gemini CLI", kimi: "Kimi", hermes: "Hermes" };
 export function Computers({ machineIdOverride, moduleQuerySuffix = "" }: { machineIdOverride?: string; moduleQuerySuffix?: string } = {}) {
-  const { machines, agents, slug, api, serverId, reload, attachmentUrl, capabilities, latestDaemonVersion } = useStore();
+  const { machines, agents, slug, api, spaceId, reload, attachmentUrl, capabilities, latestDaemonVersion } = useStore();
   const confirm = useConfirm();
   const { t } = useTranslation();
   const { machineId: routeMachineId } = useParams();
@@ -213,7 +213,7 @@ export function Computers({ machineIdOverride, moduleQuerySuffix = "" }: { machi
     if (!(await confirm({ title: t("misc.computersDeleteTitle", { name: cur.name || cur.hostname }), message: t("misc.computersDeleteMessage"), confirmLabel: t("misc.computersDeleteConfirm"), danger: true }))) return;
     setDeleting(true);
     try {
-      const r = await api("DELETE", `/api/servers/${serverId}/machines/${cur.id}`);
+      const r = await api("DELETE", `/api/spaces/${spaceId}/machines/${cur.id}`);
       if (r?.error) { setDelErr(r.error); return; }
       await reload(); nav(`/s/${slug}/computer${moduleQuerySuffix}`);
     } finally { setDeleting(false); }
@@ -332,18 +332,18 @@ export function Search() {
   );
 }
 
-// Settings sub-pages (account/server implemented; remaining entries are navigation placeholders)
+// Settings sub-pages (account/Space implemented; remaining entries are navigation placeholders)
 // SETTINGS labels are i18n keys; call t(label) at render time
 const SETTINGS: [string, string][] = [
   ["account", "misc.settingsNavAccount"],
-  ["server", "misc.settingsNavServer"],
+  ["space", "misc.settingsNavSpace"],
   ["invites", "misc.settingsNavInvites"],
   ["notifications", "misc.settingsNavNotifications"],
 ]; // Machine/Daemon management lives in the Computers view, not duplicated here
 export function Settings({ sectionOverride, moduleQuerySuffix = "" }: { sectionOverride?: string; moduleQuerySuffix?: string } = {}) {
   const { section: routeSection } = useParams();
   const section = sectionOverride ?? routeSection;
-  const { slug, serverId, api } = useStore();
+  const { slug, spaceId, api } = useStore();
   const nav = useNavigate();
   const { t } = useTranslation();
   const cur = section || "account";
@@ -359,7 +359,7 @@ export function Settings({ sectionOverride, moduleQuerySuffix = "" }: { sectionO
       <main className="content-col">
         <div className="head"><h1>{t("misc.settingsTitle", { section: curLabel })}</h1></div>
         <div className="scroll">
-          {cur === "account" ? <AccountSettings api={api} /> : cur === "server" ? <ServerSettings api={api} serverId={serverId} /> : cur === "invites" ? <InvitesSettings api={api} serverId={serverId} /> : cur === "notifications" ? <NotificationsSettings api={api} serverId={serverId} /> : <div className="empty">{t("misc.settingsWip", { section: cur })}</div>}
+          {cur === "account" ? <AccountSettings api={api} /> : cur === "space" ? <SpaceSettings api={api} spaceId={spaceId} /> : cur === "invites" ? <InvitesSettings api={api} spaceId={spaceId} /> : cur === "notifications" ? <NotificationsSettings api={api} spaceId={spaceId} /> : <div className="empty">{t("misc.settingsWip", { section: cur })}</div>}
         </div>
       </main>
     </>
@@ -396,44 +396,44 @@ function AccountSettings({ api }: { api: any }) {
     </div>
   );
 }
-function ServerSettings({ api, serverId }: { api: any; serverId: string }) {
-  const { serverAvatar, uploadServerAvatar } = useStore();
+function SpaceSettings({ api, spaceId }: { api: any; spaceId: string }) {
+  const { spaceAvatar, uploadSpaceAvatar } = useStore();
   const { t } = useTranslation();
   const [s, setS] = useState<any>(null);
   const [saved, setSaved] = useState(false);
   const [avErr, setAvErr] = useState("");
   const [avBusy, setAvBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { (async () => setS(await api("GET", "/api/servers/" + serverId)))(); }, [serverId]);
-  if (!s) return <div className="empty">{t("misc.serverLoading")}</div>;
-  const save = async () => { await api("PATCH", "/api/servers/" + serverId, { name: s.name, slug: s.slug }); setSaved(true); setTimeout(() => setSaved(false), 1500); };
-  const onPick = async (e: any) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; setAvErr(""); setAvBusy(true); try { await uploadServerAvatar(f); } catch (err: any) { setAvErr(String(err?.message || err)); } finally { setAvBusy(false); } };
+  useEffect(() => { (async () => setS(await api("GET", "/api/spaces/" + spaceId)))(); }, [spaceId]);
+  if (!s) return <div className="empty">{t("misc.spaceLoading")}</div>;
+  const save = async () => { await api("PATCH", "/api/spaces/" + spaceId, { name: s.name, slug: s.slug }); setSaved(true); setTimeout(() => setSaved(false), 1500); };
+  const onPick = async (e: any) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; setAvErr(""); setAvBusy(true); try { await uploadSpaceAvatar(f); } catch (err: any) { setAvErr(String(err?.message || err)); } finally { setAvBusy(false); } };
   return (
     <div className="setform">
-      <label>{t("misc.serverAvatarLabel")}</label>
+      <label>{t("misc.spaceAvatarLabel")}</label>
       <div className="avatar-edit">
-        {serverAvatar ? <img className="avatar-edit-img" src={serverAvatar} alt="" /> : <div className="avatar-edit-ph">{(s.name || "?")[0].toUpperCase()}</div>}
-        <button className="ghost" disabled={avBusy} onClick={() => fileRef.current?.click()}>{avBusy ? t("misc.serverAvatarUploading") : serverAvatar ? t("misc.serverAvatarChange") : t("misc.serverAvatarUpload")}</button>
+        {spaceAvatar ? <img className="avatar-edit-img" src={spaceAvatar} alt="" /> : <div className="avatar-edit-ph">{(s.name || "?")[0].toUpperCase()}</div>}
+        <button className="ghost" disabled={avBusy} onClick={() => fileRef.current?.click()}>{avBusy ? t("misc.spaceAvatarUploading") : spaceAvatar ? t("misc.spaceAvatarChange") : t("misc.spaceAvatarUpload")}</button>
         <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onPick} />
       </div>
       {avErr && <div className="form-err">{avErr}</div>}
-      <label>{t("misc.serverNameLabel")}</label><input value={s.name || ""} onChange={(e) => setS({ ...s, name: e.target.value })} />
-      <label>{t("misc.serverSlugLabel")}</label><input value={s.slug || ""} onChange={(e) => setS({ ...s, slug: e.target.value })} />
-      <label>{t("misc.serverPlanLabel")}</label><input value={s.plan || "free"} disabled />
-      <div className="setrow"><button className="ok" onClick={save}>{t("misc.serverSave")}</button>{saved && <span className="saved">{t("misc.serverSaved")}</span>}</div>
+      <label>{t("misc.spaceNameLabel")}</label><input value={s.name || ""} onChange={(e) => setS({ ...s, name: e.target.value })} />
+      <label>{t("misc.spaceSlugLabel")}</label><input value={s.slug || ""} onChange={(e) => setS({ ...s, slug: e.target.value })} />
+      <label>{t("misc.spacePlanLabel")}</label><input value={s.plan || "free"} disabled />
+      <div className="setrow"><button className="ok" onClick={save}>{t("misc.spaceSave")}</button>{saved && <span className="saved">{t("misc.spaceSaved")}</span>}</div>
     </div>
   );
 }
-// Notification settings (GET/PATCH /api/servers/:id/notification-settings): per-user mute toggle for this workspace.
-function NotificationsSettings({ api, serverId }: { api: any; serverId: string }) {
+// Notification settings (GET/PATCH /api/spaces/:id/notification-settings): per-user mute toggle for this Space.
+function NotificationsSettings({ api, spaceId }: { api: any; spaceId: string }) {
   const { t } = useTranslation();
   const [muted, setMuted] = useState<boolean | null>(null);
   const [saved, setSaved] = useState(false);
-  useEffect(() => { if (!serverId) return; (async () => { const r = await api("GET", `/api/servers/${serverId}/notification-settings`); setMuted(!!r?.serverPushMuted); })(); }, [serverId]);
+  useEffect(() => { if (!spaceId) return; (async () => { const r = await api("GET", `/api/spaces/${spaceId}/notification-settings`); setMuted(!!r?.serverPushMuted); })(); }, [spaceId]);
   if (muted === null) return <div className="empty">{t("misc.notifLoading")}</div>;
   const toggle = async () => {
     const next = !muted; setMuted(next);
-    await api("PATCH", `/api/servers/${serverId}/notification-settings`, { serverPushMuted: next });
+    await api("PATCH", `/api/spaces/${spaceId}/notification-settings`, { serverPushMuted: next });
     setSaved(true); setTimeout(() => setSaved(false), 1500);
   };
   return (
@@ -450,7 +450,7 @@ function NotificationsSettings({ api, serverId }: { api: any; serverId: string }
   );
 }
 
-// Saved messages view (/s/:server/saved): bookmark list with source channel/thread, sender, relative time, content, and unsave action; clicking a card navigates to the message.
+// Saved messages view (/s/:slug/saved): bookmark list with source channel/thread, sender, relative time, content, and unsave action; clicking a card navigates to the message.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const relTime = (iso?: string, tFn?: (k: string, opts?: any) => string) => {
   try {
@@ -547,18 +547,18 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
-function InvitesSettings({ api, serverId }: { api: any; serverId: string }) {
+function InvitesSettings({ api, spaceId }: { api: any; spaceId: string }) {
   const { capabilities } = useStore();
   const { t } = useTranslation();
   const [links, setLinks] = useState<any[]>([]);
   const [role, setRole] = useState("member");
   const [maxUses, setMaxUses] = useState("");
   const [copied, setCopied] = useState("");
-  const load = async () => { try { const r = await api("GET", `/api/servers/${serverId}/join-links`); setLinks(Array.isArray(r) ? r : []); } catch { setLinks([]); } };
-  useEffect(() => { load(); }, [serverId]);
+  const load = async () => { try { const r = await api("GET", `/api/spaces/${spaceId}/join-links`); setLinks(Array.isArray(r) ? r : []); } catch { setLinks([]); } };
+  useEffect(() => { load(); }, [spaceId]);
   if (!capabilities.manageMembers) return <div className="empty">{t("misc.invitesAdminOnly")}</div>;
-  const create = async () => { await api("POST", `/api/servers/${serverId}/join-links`, { role, maxUses: maxUses ? Number(maxUses) : null }); setMaxUses(""); load(); };
-  const del = async (id: string) => { await api("DELETE", `/api/servers/${serverId}/join-links/${id}`); load(); };
+  const create = async () => { await api("POST", `/api/spaces/${spaceId}/join-links`, { role, maxUses: maxUses ? Number(maxUses) : null }); setMaxUses(""); load(); };
+  const del = async (id: string) => { await api("DELETE", `/api/spaces/${spaceId}/join-links/${id}`); load(); };
   const urlOf = (tok: string) => `${location.origin}/join/${tok}`;
   const copy = async (tok: string) => {
     const link = urlOf(tok);

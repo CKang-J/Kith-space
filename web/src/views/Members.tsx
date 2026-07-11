@@ -83,15 +83,15 @@ export function Members({ agentIdOverride, userIdOverride, moduleQuerySuffix = "
 function InviteHumanModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   useEscClose(onClose);
-  const { api, serverId } = useStore();
+  const { api, spaceId } = useStore();
   const [link, setLink] = useState("");
   const [copied, setCopied] = useState(false);
   useEffect(() => { (async () => {
-    const links = await api("GET", `/api/servers/${serverId}/join-links`).catch(() => []);
+    const links = await api("GET", `/api/spaces/${spaceId}/join-links`).catch(() => []);
     let l = Array.isArray(links) ? links.find((x: any) => x.role === "member") : null;
-    if (!l) l = await api("POST", `/api/servers/${serverId}/join-links`, { role: "member", maxUses: null });
+    if (!l) l = await api("POST", `/api/spaces/${spaceId}/join-links`, { role: "member", maxUses: null });
     if (l?.token) setLink(`${location.origin}/join/${l.token}`);
-  })(); /* eslint-disable-next-line */ }, [serverId]);
+  })(); /* eslint-disable-next-line */ }, [spaceId]);
   const copy = async () => { try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* */ } };
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -454,7 +454,7 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
   const { t } = useTranslation();
   const toast = useToast();
   useEscClose(onClose);
-  const { api, serverId, machines, reload } = useStore();
+  const { api, spaceId, machines, reload } = useStore();
   const [name, setName] = useState(prefill?.name ?? ""); const [desc, setDesc] = useState(prefill?.description ?? "");
   const [machineId, setMachineId] = useState(machines[0]?.id || "");
   const [runtime, setRuntime] = useState("claude"); const [model, setModel] = useState("");
@@ -471,7 +471,7 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
     setModelsLoading(true);
     (async () => {
       try {
-        const d = await api("GET", `/api/servers/${serverId}/machines/${machineId || "none"}/runtime-models/${runtime}`);
+        const d = await api("GET", `/api/spaces/${spaceId}/machines/${machineId || "none"}/runtime-models/${runtime}`);
         if (cancelled) return;
         const ms: typeof models = d.models || [];
         setModels(ms);
@@ -546,14 +546,14 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
 // Description is visible to other humans and agents in the server; agents fetch it via `kith-space server info` for collaboration context.
 export function HumanProfile({ uid, onClose, onMessage, moduleQuerySuffix = "", discussionQuerySuffix = "" }: { uid: string; onClose?: () => void; onMessage?: () => void; moduleQuerySuffix?: string; discussionQuerySuffix?: string }) {
   const { t } = useTranslation();
-  const { api, serverId, me, reload, slug, capabilities, openDM, uploadUserAvatar, attachmentUrl } = useStore();
+  const { api, spaceId, me, reload, slug, capabilities, openDM, uploadUserAvatar, attachmentUrl } = useStore();
   const confirm = useConfirm();
   const nav = useNavigate();
   const [p, setP] = useState<any>(null);
   const [edit, setEdit] = useState(false); const [ds, setDs] = useState("");
   const [avBusy, setAvBusy] = useState(false); const [avErr, setAvErr] = useState(""); const [signedAvatar, setSignedAvatar] = useState<string | null>(null);
-  const refetch = async () => { const data = await api("GET", `/api/servers/${serverId}/members/${uid}/profile`); setP(data); setSignedAvatar(resolveAvatar(data?.avatarUrl, attachmentUrl)); };
-  useEffect(() => { setP(null); setSignedAvatar(null); refetch(); }, [uid, serverId]);
+  const refetch = async () => { const data = await api("GET", `/api/spaces/${spaceId}/members/${uid}/profile`); setP(data); setSignedAvatar(resolveAvatar(data?.avatarUrl, attachmentUrl)); };
+  useEffect(() => { setP(null); setSignedAvatar(null); refetch(); }, [uid, spaceId]);
   const onPickAvatar = async (f: File) => { setAvBusy(true); setAvErr(""); try { const url = await uploadUserAvatar(f); setSignedAvatar(url); await refetch(); await reload(); } catch (err: any) { setAvErr(String(err?.message || err)); } finally { setAvBusy(false); } };
   const onPickSeed = async (scheme: string) => { setAvBusy(true); setAvErr(""); try { await api("PATCH", "/api/auth/me", { avatarUrl: scheme }); await refetch(); await reload(); } catch (err: any) { setAvErr(String(err?.message || err)); } finally { setAvBusy(false); } };
   if (!p) return <div className="scroll"><div className="empty">{t("members.loading")}</div></div>;
@@ -592,9 +592,9 @@ export function HumanProfile({ uid, onClose, onMessage, moduleQuerySuffix = "", 
           <div className="card">
             <h3>{t("members.memberManagement")}</h3>
             {capabilities.changeMemberRoles && (
-              <div className="kv"><b>{t("members.role")}</b> <Select ariaLabel={t("members.role")} value={p.role} options={[{ value: "owner", label: "owner" }, { value: "admin", label: "admin" }, { value: "member", label: "member" }]} onChange={async (role) => { const r = await api("PATCH", `/api/servers/${serverId}/members/${uid}`, { role }); if (r?.error) { alert(r.error); return; } await refetch(); await reload(); }} /></div>
+              <div className="kv"><b>{t("members.role")}</b> <Select ariaLabel={t("members.role")} value={p.role} options={[{ value: "owner", label: "owner" }, { value: "admin", label: "admin" }, { value: "member", label: "member" }]} onChange={async (role) => { const r = await api("PATCH", `/api/spaces/${spaceId}/members/${uid}`, { role }); if (r?.error) { alert(r.error); return; } await refetch(); await reload(); }} /></div>
             )}
-            {capabilities.manageMembers && <button className="joinbtn" style={{ color: "var(--error)", marginTop: 12 }} onClick={async () => { if (!(await confirm({ title: t("members.removeMemberTitle", { name: p.name }), message: t("members.removeMemberMessage"), confirmLabel: t("members.remove"), danger: true }))) return; const r = await api("DELETE", `/api/servers/${serverId}/members/${uid}`); if (r?.error) { alert(r.error); return; } await reload(); if (onClose) onClose(); else nav(`/s/${slug}/agent${moduleQuerySuffix}`); }}>{t("members.removeMember")}</button>}
+            {capabilities.manageMembers && <button className="joinbtn" style={{ color: "var(--error)", marginTop: 12 }} onClick={async () => { if (!(await confirm({ title: t("members.removeMemberTitle", { name: p.name }), message: t("members.removeMemberMessage"), confirmLabel: t("members.remove"), danger: true }))) return; const r = await api("DELETE", `/api/spaces/${spaceId}/members/${uid}`); if (r?.error) { alert(r.error); return; } await reload(); if (onClose) onClose(); else nav(`/s/${slug}/agent${moduleQuerySuffix}`); }}>{t("members.removeMember")}</button>}
           </div>
         )}
         {p.createdAgents?.length > 0 && (

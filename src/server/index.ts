@@ -105,7 +105,7 @@ const server = http.createServer(async (req, res) => {
     res.setHeader("access-control-allow-origin", allowedOrigin);
     res.setHeader("vary", "Origin");
   }
-  res.setHeader("access-control-allow-headers", "authorization,content-type,x-server-id,x-agent-id");
+  res.setHeader("access-control-allow-headers", "authorization,content-type,x-space-id,x-server-id,x-agent-id");
   res.setHeader("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS");
   if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
 

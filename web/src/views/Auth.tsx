@@ -15,11 +15,11 @@ function finishAuth(token: string, to = "/") {
 }
 
 // Where to land after auth: the user's first workspace, resolved from the SAME source bootstrap uses
-// (GET /api/servers → serverList[0]) so the target always matches RootRedirect. Falls back to "/" if none.
+// (GET /api/spaces → spaceList[0]) so the target always matches RootRedirect. Falls back to "/" if none.
 async function workspaceHome(token: string): Promise<string> {
   try {
-    const servers = await (await fetch("/api/servers", { headers: { authorization: "Bearer " + token } })).json();
-    const slug = Array.isArray(servers) ? servers[0]?.slug : null;
+    const spaces = await (await fetch("/api/spaces", { headers: { authorization: "Bearer " + token } })).json();
+    const slug = Array.isArray(spaces) ? spaces[0]?.slug : null;
     return slug ? `/s/${slug}/channel` : "/";
   } catch { return "/"; }
 }
@@ -125,7 +125,7 @@ export function JoinPage() {
     const r = await fetch("/api/auth/accept-invite", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + authToken }, body: JSON.stringify({ token }) });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || t("auth.joinFailed"));
-    finishAuth(authToken, `/s/${d.serverSlug}/channel`);
+    finishAuth(authToken, `/s/${d.spaceSlug}/channel`);
   };
   const joinAsCurrent = async () => { if (busy) return; setBusy(true); setErr(""); try { await accept(localStorage.getItem(TOKEN_KEY)!); } catch (e: any) { setErr(String(e?.message || e)); } finally { setBusy(false); } };
   const submitAuth = async (e?: FormEvent<HTMLFormElement>) => {
@@ -146,8 +146,8 @@ export function JoinPage() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-brand">Kith-space</div>
-        <h1>{t("auth.joinTitle", { serverName: info.serverName })}</h1>
-        <p className="modal-note">{info.inviterName ? t("auth.invitedBy", { inviter: info.inviterName }) : t("auth.youAreInvited")}{t("auth.joinWorkspace", { serverName: info.serverName, role: info.role })}</p>
+        <h1>{t("auth.joinTitle", { spaceName: info.spaceName })}</h1>
+        <p className="modal-note">{info.inviterName ? t("auth.invitedBy", { inviter: info.inviterName }) : t("auth.youAreInvited")}{t("auth.joinWorkspace", { spaceName: info.spaceName, role: info.role })}</p>
         {loggedIn ? (
           <button className="ok auth-submit" disabled={busy} onClick={joinAsCurrent}>{t("auth.joinAsCurrent")}</button>
         ) : (<>

@@ -14,6 +14,7 @@ import { AuthPage, JoinPage } from "./views/Auth.tsx";
 import { Landing } from "./views/Landing.tsx";
 import { Features } from "./views/Features.tsx";
 import { homeRoute } from "./routing.ts";
+import { SPACE_ROUTE_PATTERN } from "./shell/workspaceRoute.ts";
 import "./i18n";
 import "./styles.css";
 
@@ -39,21 +40,21 @@ function RootRedirect() {
   return <Navigate to={`/s/${slug}/channel`} replace />;
 }
 
-// Auth guard + workspace activation for /s/:server/*. The URL is the source of truth for the active workspace: if it
-// names a known workspace that isn't active yet, switch to it client-side (no full-page reload) and show the skeleton
+// Auth guard + Space activation for /s/:slug/*. The URL is the source of truth for the active Space: if it
+// names a known Space that isn't active yet, switch to it client-side (no full-page reload) and show the skeleton
 // while it loads. The auth check runs BEFORE <Layout/> renders, so an unauthenticated visitor is redirected to /login
 // without the workspace ever painting (no flash of protected UI).
 function WorkspaceRoute() {
-  const { slug, ready, authState, servers, switchServer } = useStore();
-  const { server } = useParams();
+  const { slug: activeSlug, ready, authState, spaces, switchSpace } = useStore();
+  const { slug: routeSlug } = useParams();
   const loc = useLocation();
-  const known = !!server && servers.some((s) => s.slug === server); // is the URL's slug a workspace this user belongs to?
-  // URL → store: a known-but-not-active slug (server switcher, deep link, browser back/forward) drives a client-side switch.
-  useEffect(() => { if (ready && authState === "authed" && known && server !== slug) switchServer(server!); }, [ready, authState, known, server, slug, switchServer]);
-  if (!ready || (known && server !== slug)) return <WorkspaceSkeleton />; // bootstrap or a switch in flight → skeleton (do NOT bounce the URL while slug catches up)
+  const known = !!routeSlug && spaces.some((space) => space.slug === routeSlug); // is the URL's slug a registered Space?
+  // URL → store: a known-but-not-active slug (Space switcher, deep link, browser back/forward) drives a client-side switch.
+  useEffect(() => { if (ready && authState === "authed" && known && routeSlug !== activeSlug) switchSpace(routeSlug!); }, [ready, authState, known, routeSlug, activeSlug, switchSpace]);
+  if (!ready || (known && routeSlug !== activeSlug)) return <WorkspaceSkeleton />; // bootstrap or a switch in flight → skeleton (do NOT bounce the URL while slug catches up)
   if (authState !== "authed") return <Navigate to="/login" replace />; // hard auth gate
-  if (server !== slug) { // unknown / stale slug (not a member, typo) → canonicalize to the active workspace
-    const pathname = loc.pathname.replace(/^\/s\/[^/]+/, `/s/${slug}`);
+  if (routeSlug !== activeSlug) { // unknown / stale slug → canonicalize to the active Space
+    const pathname = loc.pathname.replace(/^\/s\/[^/]+/, `/s/${activeSlug}`);
     return <Navigate to={`${pathname}${loc.search}${loc.hash}`} replace />;
   }
   return <App />;
@@ -71,7 +72,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/register" element={<AuthPage mode="register" />} />
           <Route path="/join/:token" element={<JoinPage />} />
-          <Route path="/s/:server" element={<WorkspaceRoute />}>
+          <Route path={SPACE_ROUTE_PATTERN} element={<WorkspaceRoute />}>
             <Route index element={<Navigate to="channel" replace />} />
             <Route path="inbox" element={<Inbox />} />
             <Route path="saved" element={<Saved />} />

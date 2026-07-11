@@ -1,8 +1,9 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
 import type { UserCtx, ServerCtx } from "./ctx.js";
 import { and, count, eq, gt, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
-import { allWorkspaceDbs, dbFor, renameWorkspace, schema } from "../../db/index.js";
+import { allWorkspaceDbs, dbFor, schema } from "../../db/index.js";
 import { findServerBySlug } from "../../db/lookup.js";
+import { SpaceServiceError, updateLocalSpace } from "../../spaces/spaceService.js";
 import { hashToken, newKey } from "../auth.js";
 import { can, capabilitiesFor, requireCap } from "../capabilities.js";
 import { createServer } from "../core.js";
@@ -71,11 +72,16 @@ export async function handleServersUserScope(ctx: UserCtx): Promise<boolean> {
     if (!mem) return (sendErr(res, 403, "not a member"), true);
     if (method === "PATCH") {
       if (!can(mem.role, "manageServer")) return (sendErr(res, 403, "need manageServer capability"), true);
-      const b = await readJson(req); const patch: Record<string, unknown> = {};
-      if (b.name !== undefined) patch.name = b.name;
-      if (b.slug !== undefined) patch.slug = String(b.slug).trim().toLowerCase().replace(/\s+/g, "-");
-      if (Object.keys(patch).length) await db.update(schema.servers).set(patch).where(eq(schema.servers.id, srv[1]!));
-      if (typeof patch.name === "string") renameWorkspace(srv[1]!, patch.name);
+      const body = await readJson(req);
+      if (body.name !== undefined || body.slug !== undefined) {
+        try {
+          await updateLocalSpace(srv[1]!, { name: body.name, slug: body.slug });
+        } catch (error) {
+          if (!(error instanceof SpaceServiceError)) throw error;
+          const status = error.code === "SPACE_SLUG_CONFLICT" ? 409 : error.code === "SPACE_NOT_FOUND" ? 404 : 400;
+          return (sendErr(res, status, error.message, { code: error.code }), true);
+        }
+      }
     }
     const s = (await db.select().from(schema.servers).where(eq(schema.servers.id, srv[1]!)))[0];
     return (s ? sendJson(res, 200, { id: s.id, name: s.name, slug: s.slug, plan: s.plan, role: mem.role, createdAt: s.createdAt }) : sendErr(res, 404, "not found"), true);

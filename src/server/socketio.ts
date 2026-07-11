@@ -1,13 +1,14 @@
 // Human-facing realtime over socket.io.
-// Auth: the client handshake auth carries { token, serverId }; the server verifies the JWT +
-// checks server membership → joins room server:<serverId> → emits "rooms:joined".
+// Auth: the client handshake auth carries { token, spaceId }; the server verifies the JWT +
+// checks the temporary membership projection, then joins room space:<spaceId>.
 // Events: the server fans out named events like 42["message:new",payload] (see emitMapped).
 import { Server as IOServer, type Socket } from "socket.io";
 import type { Server } from "node:http";
 import { and, eq } from "drizzle-orm";
-import { dbFor, schema } from "../db/index.js";
+import { dbForSpace, schema, spaceRecord } from "../db/index.js";
 import { verifyUser } from "./auth.js";
 import { createLogger } from "../log.js";
+import { resolveSpaceId, spaceRoom } from "./util.js";
 
 const log = createLogger("server:io");
 let io: IOServer | null = null;
@@ -31,27 +32,29 @@ function socketIoCorsOrigin(): string | ((origin: string | undefined, cb: (err: 
 export function attachSocketIO(server: Server): void {
   io = new IOServer(server, { cors: { origin: socketIoCorsOrigin() }, path: "/socket.io/" });
   io.on("connection", async (socket: Socket) => {
-    const auth = (socket.handshake.auth || {}) as { token?: string; serverId?: string };
+    const auth = (socket.handshake.auth || {}) as { token?: string; spaceId?: string; serverId?: string };
     const uid = verifyUser(auth.token ?? null);
-    const serverId = auth.serverId;
-    if (!uid || !serverId) { socket.disconnect(true); return; }
-    const db = dbFor(serverId);
+    const resolvedSpace = resolveSpaceId(auth.spaceId, auth.serverId);
+    const spaceId = resolvedSpace.spaceId;
+    if (!uid || !spaceId || resolvedSpace.conflict || !spaceRecord(spaceId)) { socket.disconnect(true); return; }
+    let db: ReturnType<typeof dbForSpace>;
+    try { db = dbForSpace(spaceId); } catch { socket.disconnect(true); return; }
     const mem = (await db.select().from(schema.serverMembers)
-      .where(and(eq(schema.serverMembers.serverId, serverId), eq(schema.serverMembers.userId, uid))))[0];
+      .where(and(eq(schema.serverMembers.serverId, spaceId), eq(schema.serverMembers.userId, uid))))[0];
     if (!mem) { socket.disconnect(true); return; }
-    socket.data.uid = uid; socket.data.serverId = serverId;
-    socket.join(`server:${serverId}`);
+    socket.data.uid = uid; socket.data.spaceId = spaceId;
+    socket.join(spaceRoom(spaceId));
     // Channel isolation: join the channel:<id> room for every channel this user belongs to → content-bearing events only reach members, so private channels are not leaked to non-members
     const myChans = await db.select({ channelId: schema.channelMembers.channelId }).from(schema.channelMembers)
       .where(and(eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, uid)));
     for (const c of myChans) socket.join(`channel:${c.channelId}`);
     socket.emit("rooms:joined");
-    log.debug("socket connected", { uid, serverId, channels: myChans.length });
+    log.debug("socket connected", { uid, spaceId, channels: myChans.length });
     // Mid-session join: client emits join:channel when it opens a channel/thread → server joins the room IFF the
     // user can read it (member / public channel / thread of a readable channel), so realtime tracks what you view.
     socket.on("join:channel", async (channelId: string) => {
       if (!channelId || typeof channelId !== "string") return;
-      if (await canReadChannel(uid, serverId, channelId)) socket.join(`channel:${channelId}`); // refuses private/DM non-members (no content leak)
+      if (await canReadChannel(uid, spaceId, channelId)) socket.join(`channel:${channelId}`); // refuses private/DM non-members (no content leak)
     });
     socket.on("leave:channel", (channelId: string) => { if (typeof channelId === "string") socket.leave(`channel:${channelId}`); });
     socket.on("disconnect", (reason) => log.debug("socket disconnected", { uid, reason }));
@@ -62,26 +65,26 @@ export function attachSocketIO(server: Server): void {
 // May this user READ this channel (and thus join its realtime room)? Read access = channel member, OR a public
 // channel in the user's server, OR a thread whose parent channel is readable. Private/DM channels the user is not a
 // member of are refused → content stays isolated. The socket already verified server membership at connect time.
-async function canReadChannel(uid: string, serverId: string, channelId: string): Promise<boolean> {
-  const db = dbFor(serverId);
+async function canReadChannel(uid: string, spaceId: string, channelId: string): Promise<boolean> {
+  const db = dbForSpace(spaceId);
   const member = (await db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.channelId, channelId), eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, uid))))[0];
   if (member) return true;
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, channelId)))[0];
-  if (!ch || ch.serverId !== serverId || ch.deletedAt) return false;
+  if (!ch || ch.serverId !== spaceId || ch.deletedAt) return false;
   if (ch.type === "channel") return true;                                  // public: any server member may read realtime events
   if (ch.parentMessageId) {                                                 // thread: visibility follows its parent message's channel
     const parent = (await db.select().from(schema.messages).where(eq(schema.messages.id, ch.parentMessageId)))[0];
-    if (parent) return canReadChannel(uid, serverId, parent.channelId);     // depth 1 (a parent channel is never itself a thread)
+    if (parent) return canReadChannel(uid, spaceId, parent.channelId);     // depth 1 (a parent channel is never itself a thread)
   }
   return false;                                                             // private / DM the user is not a member of
 }
 
 // Internal event object → named realtime events. Content-bearing events (message/task) only fan out to channel:<channelId> rooms (members only),
-// preventing private channel content from leaking to non-members; metadata / server-level events (agent/machine/thread:updated) fan out to server:<serverId>.
-export function emitMapped(serverId: string, event: any): void {
+// preventing private channel content from leaking to non-members; Space metadata events fan out to space:<spaceId>.
+export function emitMapped(spaceId: string, event: any): void {
   if (!io) return;
   const srv = io;                                                           // capture non-null (io is not narrowed inside the closure)
-  const room = srv.to(`server:${serverId}`);                                // server-level (all members)
+  const room = srv.to(spaceRoom(spaceId));                                // Space-level (the single Human session)
   const chan = (cid: string) => srv.to(`channel:${cid}`);                   // channel-level (channel members only)
   switch (event?.type) {
     case "message": chan(event.message.channelId).emit("message:new", event.message); break; // content → channel members only

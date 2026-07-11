@@ -121,6 +121,7 @@ Composer
 - 当前模块包括 Inbox、Tasks、Agents、Settings；Search 由顶部入口打开。Computers/Machines 不再是产品模块。
 - 一次只显示一个 Module Pane，切换 Dock 项直接替换模块。
 - 当前阶段所有模块只读取当前 Space 数据；切换 Space 时 Chat 与模块数据源一起切换。
+- Web Store 与路由状态只使用 `SpaceInfo/spaceId/spaces` 和 `/s/:slug`；请求只发送 `x-space-id`，不得在前端保留旧 Server 双命名。
 - Tasks 保留旧布局的范围侧栏，可在当前 Space 的全部任务与指定频道任务之间切换；切换范围不得改变当前 Split / ModuleOnly 姿态。
 - 模块加载失败或空状态只在自身面板处理，Chat 保持可用。
 - 模块不得直接控制 Chat 内部组件；Chat 也不得依赖具体模块的数据结构。

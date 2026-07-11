@@ -11,7 +11,8 @@ import { createWorkspace } from "./workspace.js";
 
 const HOME_SLUG = "home";
 
-function legacyHumanRow(human: HumanProfile): typeof schema.users.$inferInsert {
+/** Temporary workspace.db projection; remove with Human membership in A2.3. */
+export function legacyHumanRow(human: HumanProfile): typeof schema.users.$inferInsert {
   return {
     id: human.id,
     name: "you",

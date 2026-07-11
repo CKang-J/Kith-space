@@ -8,7 +8,7 @@
 
 - 分支：`feat/p0-foundation`，尚未合并或推送远端。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A2 本地领域与数据模型进行中**。A2.1 app.db/Human/Home 与 A2.5 本地附件存储已完成；下一切片是 A2.2 Space 术语迁移。
+- 当前阶段：**A2 本地领域与数据模型进行中**。A2.1 app.db/Human/Home、A2.5 本地附件存储与 A2.2a Space 传输/API/Web 术语已完成；下一切片是 A2.3 Human membership/RBAC 删除。
 - P4 视觉微调已暂停，等本机化基础收敛后再恢复。
 - 底座为 open-tag 衍生开发副本；`reference/` 只读。OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
 
@@ -31,6 +31,7 @@
 
 | 提交 | 内容 |
 |---|---|
+| `365bc2a` | 建立 app.db、唯一 Human/Home、本地-only 附件存储，并移除 S3 SDK |
 | `d7cafc4` | 固化个人 AgentOS 本机化规格，重写 vision/decisions/roadmap/架构/MVP/迁移与相关 UI 文档 |
 | `ec6b735` | 恢复 Tasks 全部/频道范围侧栏；更新 CodeGraph 与相关进度资料 |
 | `0a8eb89` | P4-3 单窗口工作区生产壳、25/75 响应式分栏和路由状态机 |
@@ -44,12 +45,13 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 四、当前代码事实与过渡债
 
-- 数据层是 SQLite：中央 `app.db` 保存唯一 Human 与 `spaces` registry；每 Space 使用 `<rootPath>/.kith/workspace.db`。连接入口仍是兼容名 `src/db/index.ts` 的 `dbFor(workspaceId)`。
+- 数据层是 SQLite：中央 `app.db` 保存唯一 Human 与 `spaces` registry；每 Space 使用 `<rootPath>/.kith/workspace.db`。canonical 连接入口为 `dbForSpace(spaceId)` / `listSpaces()`，旧 `dbFor(workspaceId)` / `listWorkspaces()` 只作 A2 兼容 facade。
 - `src/app-data/appDatabase.ts` 是 app.db 边界；`src/db/personalApp.ts` 幂等创建 Human 与默认 `Home`。workspace.db 暂时仍有一份兼容 user/owner/server_members 投影，A2.3 删除。
-- 附件存储已删除 S3 driver/SDK/config，只走本地磁盘并校验平面 storage key；当前仍使用 app 级 `uploads/`，Space 根路径收敛待 A2.2 上下文贯通。
-- A2.1/A2.5 验证：聚焦测试 16/16、typecheck 通过、integration 全绿；unit 384/385，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。`pnpm run seed` 在隔离临时目录连续运行两次，Human/Home/#all id 保持不变，只生成 `app.db` 与 `workspaces/home/.kith/workspace.db`。
+- A2.2a canonical 契约为 `/api/spaces`、`x-space-id`、Socket `spaceId` 与 `SpaceCtx`；Web Store 已只使用 `SpaceInfo/spaceId/spaces/createSpace/switchSpace`。服务端仍临时兼容旧 API/header/socket/context，并在双 header 值冲突时返回 400。
+- 附件存储已删除 S3 driver/SDK/config，只走本地磁盘并校验平面 storage key；当前仍使用 app 级 `uploads/`，Space 根路径收敛放在 A2 最终 schema 压平时完成。
+- A2.2a 验证：聚焦契约测试 15/15、typecheck、web build（2566 modules）和 integration 全绿；unit 392/393，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。A2.1 的幂等 seed 验证仍有效。
 - P4 壳位于 `web/src/shell/`。URL 以频道/DM 路径、`?module=<id>` 和 `chat=0` 表达三态；Split 默认 Chat 25%。
-- 当前代码仍有 Members、Computers、Machine、多 Human/认证、`server/serverId` 领域名、`?legacy=1`、`.env`/daemon key、Docker/发布遗留。它们属于 A2-A6 删除清单，不是目标能力。
+- 当前后端仍有 Members、Computers、Machine、多 Human/认证、旧 `/api/servers` 兼容路由与 workspace.db 的 `servers/server_id` 物理 schema；前端已无旧 Server 契约。`?legacy=1`、`.env`/daemon key、Docker/发布也仍待 A3-A6 清理。这些不是目标能力。
 - 当前开发启动仍暂时依赖现有环境变量和分进程命令；在 A3/A4 接管设置与内部凭据前，`docs/dev-commands.md` 必须继续如实记录过渡命令。
 - Message Context Snapshot 仍是设计契约，尚未持久化。
 - token 预算目前以唤醒次数为代理；真实 usage 等待 Runtime 契约 v2。
@@ -57,9 +59,9 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 五、下一步顺序
 
-1. A2.2：分层迁移 `server/serverId` 到 `space/spaceId`，保留 `/s/:slug`。
-2. A2.3：删除 workspace.db 的 Human compatibility 投影、membership/RBAC、邀请与 Human-Human DM。
-3. A2.4：删除 Machine/远程 daemon 产品模型，保留本机 Local Runtime Worker 进程协议。
+1. A2.3：删除 workspace.db 的 Human compatibility 投影、membership/RBAC、邀请与 Human-Human DM。
+2. A2.4：删除 Machine/远程 daemon 产品模型，保留本机 Local Runtime Worker 进程协议。
+3. A2.2b：破坏性压平 workspace.db baseline，把保留表改为 `spaces/space_id` 并删除服务端兼容边界。
 4. A2 收口：把附件目录纳入 Space 根路径、跑完整验证并更新验收状态。
 5. A3：实现 Web 三模式、访问 Token、浏览器会话和内部临时凭据。
 6. A4-A6：Electron 宿主、UI/入口清理和继承资产总审计。

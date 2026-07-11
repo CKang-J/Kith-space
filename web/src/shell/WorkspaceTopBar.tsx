@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useSystemAlerts } from "../alerts.tsx";
 import { QuickSwitcher } from "../QuickSwitcher.tsx";
-import { ServerSwitcher } from "../ServerSwitcher.tsx";
+import { SpaceSwitcher } from "../SpaceSwitcher.tsx";
 import { useStore } from "../store.tsx";
 import { getWorkspaceModule } from "./workspaceModules.tsx";
 import type { WorkspaceModuleId } from "./workspaceLayout.ts";
@@ -23,10 +23,10 @@ interface WorkspaceTopBarProps {
 export function WorkspaceTopBar({ activeModule, chatVisible, channelId, layoutSearch, legacyHref, onOpenSearch }: WorkspaceTopBarProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { channels, dms, serverId, servers, slug } = useStore();
+  const { channels, dms, spaceId, spaces, slug } = useStore();
   const alerts = useSystemAlerts();
   const [showQuickSwitcher, setShowQuickSwitcher] = useState(false);
-  const server = servers.find((item) => item.id === serverId);
+  const space = spaces.find((item) => item.id === spaceId);
   const conversation = [...channels, ...dms].find((item) => item.id === channelId);
   const conversationLabel = conversation ? `${dms.some((item) => item.id === conversation.id) ? "@" : "#"} ${conversation.name}` : "Chat";
   const moduleLabel = activeModule ? t(getWorkspaceModule(activeModule).labelKey) : null;
@@ -47,14 +47,14 @@ export function WorkspaceTopBar({ activeModule, chatVisible, channelId, layoutSe
     <>
       <header className="shell-topbar">
         <div className="shell-topbar__space">
-          <ServerSwitcher
+          <SpaceSwitcher
             targetPathForSlug={(nextSlug) => {
               const remembered = storedChatLocation(nextSlug)?.path;
               const pathname = remembered?.split("?")[0] ?? `/s/${nextSlug}/channel`;
               return `${pathname}${layoutSearch}`;
             }}
           />
-          <span className="shell-topbar__space-name">{server?.name ?? "Kith-space"}</span>
+          <span className="shell-topbar__space-name">{space?.name ?? "Kith-space"}</span>
         </div>
         <span className="shell-topbar__context">
           {conversationLabel}

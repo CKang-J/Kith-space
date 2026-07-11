@@ -1,5 +1,7 @@
 import { INITIAL_WORKSPACE_LAYOUT, type WorkspaceLayoutState, type WorkspaceModuleId } from "./workspaceLayout.ts";
 
+export const SPACE_ROUTE_PATTERN = "/s/:slug";
+
 export type WorkspaceRouteSection =
   | "channel"
   | "saved"

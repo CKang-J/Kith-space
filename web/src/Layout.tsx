@@ -2,7 +2,7 @@ import { useEffect, useState, type MouseEvent as RMouseEvent } from "react";
 import { Outlet, useLocation, useParams, useNavigate } from "react-router-dom";
 import { IconSearch, IconChat, IconTasks, IconUsers, IconMonitor, IconSettings, IconInbox } from "./icons.tsx";
 import { useStore } from "./store.tsx";
-import { ServerSwitcher } from "./ServerSwitcher.tsx";
+import { SpaceSwitcher } from "./SpaceSwitcher.tsx";
 import { QuickSwitcher } from "./QuickSwitcher.tsx";
 import { Menu, AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -53,7 +53,7 @@ export function Layout() {
       <div className="mobile-scrim" onClick={() => document.body.classList.remove("sb-open")} />
       {showQS && <QuickSwitcher onClose={() => setShowQS(false)} />}
       <div className="rail">
-        <ServerSwitcher />
+        <SpaceSwitcher />
         {SECTIONS.map((s) => (
           <a key={s.key} className={"t" + (active(s.key) ? " active" : "")} aria-label={t(s.labelKey)} onClick={() => go(s.key)}>
             <s.Icon size={19} />

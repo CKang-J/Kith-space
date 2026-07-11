@@ -61,7 +61,9 @@ Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件
 
 ### 4.2 Space
 
-`SpaceService` 管理本地文件夹注册、slug、最近打开记录和 `<space>/.kith/` 初始化。产品 schema/API/type 分阶段从 `server/serverId` 迁移为 `space/spaceId`；URL `/s/:slug` 保留。
+`SpaceService` 管理本地文件夹注册、slug、最近打开记录和 `<space>/.kith/` 初始化。A2.2a 已落地 `src/spaces/spaceService.ts`：Space 列表、创建和修改以 app.db registry 为事实源，创建时仅为旧 workspace.db 写兼容 Human 投影。当前 avatar/plan 仍从旧表读取为 UI 展示投影，不决定 Space 身份或生命周期。产品 schema/API/type 分阶段从 `server/serverId` 迁移为 `space/spaceId`；URL `/s/:slug` 保留。
+
+当前 canonical 传输契约是 `/api/spaces`、`x-space-id`、Socket handshake `spaceId` 和 `SpaceCtx`。Web 只使用这套契约；旧 `/api/servers`、`x-server-id`、Socket `serverId`、`ServerCtx` 与 DB facade 被限制在明确的服务端适配边界（dispatcher、util、socketio、ctx 与 db/index），且新旧 Space ID 同时存在但值不一致时拒绝请求。兼容层在 A2.3/A2.4 删除旧路由后移除。
 
 每个 Space 拥有频道、消息、任务、agent 队伍和 Space/agent 记忆。Agent membership 只表达“某 agent 是否在频道中并可被唤醒”，不承载 Human 权限。
 
@@ -87,7 +89,7 @@ REST、agent API、MCP handler 和 UI 必须调用同一 Task Service，不能�
 
 ### 4.6 Files
 
-文件和附件只使用本地磁盘服务。A2.5 已删除 S3 driver、SDK 依赖和 bucket 配置，并对存储 key 做平面文件名校验；当前上传目录仍是 app 级 `uploads/`。把附件进一步迁入受 Space 根路径约束的目录，需要等待 A2.2 Space 领域上下文贯穿附件服务，不能用字符串路径绕过 registry 与根路径校验。
+文件和附件只使用本地磁盘服务。A2.5 已删除 S3 driver、SDK 依赖和 bucket 配置，并对存储 key 做平面文件名校验；当前上传目录仍是 app 级 `uploads/`。A2.2a 已让请求通过 `SpaceCtx` 获得 Space 作用域，但附件目录迁入 Space 根路径仍放在 A2 收口执行，不能用字符串路径绕过 registry 与根路径校验。
 
 ## 5. 数据拓扑
 
@@ -122,10 +124,11 @@ app.db 不保存 Space 消息、任务或 agent 业务数据。
 允许清空开发期 app 数据与 `.kith`，不实现旧 schema 数据迁移。领域迁移按以下切片进行：
 
 1. 建立 app.db 和唯一 Human/Home 初始化。
-2. 区分 Human 与 agent membership，再删除 Human membership/RBAC。
-3. 将产品 `serverId` 改为 `spaceId`，同时保留短期兼容适配层。
+2. 将传输、请求上下文、Space API 与 Web 类型改为 `spaceId`，旧名只留服务端兼容边界。
+3. 区分 Human 与 agent membership，再删除 Human membership/RBAC。
 4. 删除 Machine 数据与远程 worker 路径，保留本机 worker 进程协议。
-5. 删除 S3 字段、配置和服务。
+5. 破坏性重建 workspace.db baseline，把保留表的 `servers/server_id` 改为 `spaces/space_id`，并删除兼容边界。
+6. 在已完成 S3 删除的基础上，把附件目录纳入 Space 根路径并做 A2 总验收。
 
 不执行无边界的整仓替换；每个切片都需 schema、service、route 和 UI 契约测试。
 

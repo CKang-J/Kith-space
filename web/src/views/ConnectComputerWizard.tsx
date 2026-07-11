@@ -20,7 +20,7 @@ type Step = "intro" | "connect" | "connected";
 //   add       → parent-mounted (Computers "+"); starts at connect.
 //   reconnect → parent-mounted; rotates the key on an existing offline machine; starts at connect.
 export function ConnectComputerWizard({ mode, machine, onClose }: { mode: Mode; machine?: { id: string; name: string }; onClose?: () => void }) {
-  const { machines, capabilities, api, serverId, reload } = useStore();
+  const { machines, capabilities, api, spaceId, reload } = useStore();
   const { t } = useTranslation();
 
   const [dontRemind, setDontRemind] = useState(false);
@@ -56,14 +56,14 @@ export function ConnectComputerWizard({ mode, machine, onClose }: { mode: Mode; 
     // reconnect rotates an EXISTING row — never delete it; an online machine means the user effectively
     // succeeded even without pressing Done — keep it.
     if (mode !== "reconnect" && res && !isOnline) {
-      api("DELETE", `/api/servers/${serverId}/machines/${res.id}`).then(() => reload()).catch(() => { /* best-effort cleanup */ });
+      api("DELETE", `/api/spaces/${spaceId}/machines/${res.id}`).then(() => reload()).catch(() => { /* best-effort cleanup */ });
     }
     if (mode === "onboard") {
       try { sessionStorage.setItem(COMPUTER_DISMISSED_KEY, "1"); if (dontRemind) localStorage.setItem(COMPUTER_OPTOUT_KEY, "1"); } catch { /* storage unavailable — dismiss in memory only */ }
       setDismissed(true);
     }
     onClose?.();
-  }, [mode, res, isOnline, dontRemind, onClose, api, serverId, reload]);
+  }, [mode, res, isOnline, dontRemind, onClose, api, spaceId, reload]);
 
   // Esc-to-dismiss, only while shown.
   useEffect(() => {
@@ -78,13 +78,13 @@ export function ConnectComputerWizard({ mode, machine, onClose }: { mode: Mode; 
     setBusy(true); setGenErr("");
     try {
       const r = mode === "reconnect" && machine
-        ? await api("POST", `/api/servers/${serverId}/machines/${machine.id}/reconnect`, {})
-        : await api("POST", `/api/servers/${serverId}/machines`, {});
+        ? await api("POST", `/api/spaces/${spaceId}/machines/${machine.id}/reconnect`, {})
+        : await api("POST", `/api/spaces/${spaceId}/machines`, {});
       if (r?.key) { setRes({ id: r.id, key: r.key, name: r.name }); await reload(); }
       else setGenErr(r?.error || t("misc.wizardGenError"));
     } catch { setGenErr(t("misc.wizardGenError")); }
     finally { setBusy(false); }
-  }, [mode, machine, api, serverId, reload, t]);
+  }, [mode, machine, api, spaceId, reload, t]);
 
   // Auto-generate exactly once when the connect step is first shown. The ref guard (not state) makes this
   // idempotent even under React StrictMode's double effect invocation, so it never creates a second machine.
@@ -107,7 +107,7 @@ export function ConnectComputerWizard({ mode, machine, onClose }: { mode: Mode; 
     const curName = res?.name ?? machine?.name ?? "";
     if (chosen && chosen !== curName && targetId) {
       setSavingName(true); setRenameErr("");
-      const r = await api("PATCH", `/api/servers/${serverId}/machines/${targetId}`, { name: chosen }).catch(() => null);
+      const r = await api("PATCH", `/api/spaces/${spaceId}/machines/${targetId}`, { name: chosen }).catch(() => null);
       setSavingName(false);
       if (!r || r.error) { setRenameErr(t("misc.wizardRenameError")); return; } // stay on the step so the user can retry instead of losing the rename silently
       await reload();

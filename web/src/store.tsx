@@ -4,13 +4,14 @@ import { io, type Socket } from "socket.io-client";
 import { appendCapped, type TrajItem } from "./trajBuffer.ts";
 import { messageUnreadDelta, threadUnreadDelta } from "./threadUnread";
 import { initialAuthState, TOKEN_KEY, type AuthState } from "./routing.ts";
+import { applySpaceScopeHeaders, spaceScopeHeaders } from "./spaceScope.ts";
 
 export interface Channel { id: string; name: string; description?: string; type: string; joined?: boolean; lastMessageAt?: string; archivedAt?: string | null }
 export interface Dm { id: string; name: string; type: string; description?: string; lastMessageAt?: string; peerId?: string | null; peerName?: string | null; peerDisplayName?: string | null; peerType?: string | null; peerAvatarUrl?: string | null }
 export interface Agent { id: string; name: string; displayName: string; description?: string; status: string; activity?: string; activityDetail?: string; model?: string; runtime: string; machineId?: string; avatarUrl?: string | null; creatorType?: string }
 export interface Machine { id: string; name?: string; hostname?: string; os?: string; runtimes?: string[]; status?: string; daemonVersion?: string; isComputer?: boolean; apiKeyPrefix?: string }
 export interface Human { userId: string; name: string; displayName?: string; role?: string; description?: string; avatarUrl?: string | null }
-export interface ServerInfo { id: string; name: string; slug: string; avatarUrl?: string | null; role?: string; capabilities?: Record<string, boolean> }
+export interface SpaceInfo { id: string; name: string; slug: string; avatarUrl?: string | null; role?: string; capabilities?: Record<string, boolean> }
 export interface Me { id: string; name: string; displayName?: string }
 export interface Att { id: string; filename: string; mimeType?: string; sizeBytes?: number }
 export interface Reaction { emoji: string; count: number; reactorIds: string[]; reactorNames: string[] }
@@ -19,13 +20,13 @@ export interface Msg { id: string; seq: number; channelId: string; senderType: s
 type Ev = { type: string; [k: string]: any };
 
 interface Store {
-  ready: boolean; authState: "loading" | "authed" | "anon"; serverId: string; slug: string; me: Me | null; myRole: string; serverAvatar: string | null;
-  servers: ServerInfo[]; capabilities: Record<string, boolean>;
-  uploadServerAvatar: (file: File) => Promise<void>;
+  ready: boolean; authState: "loading" | "authed" | "anon"; spaceId: string; slug: string; me: Me | null; myRole: string; spaceAvatar: string | null;
+  spaces: SpaceInfo[]; capabilities: Record<string, boolean>;
+  uploadSpaceAvatar: (file: File) => Promise<void>;
   uploadAgentAvatar: (agentId: string, file: File) => Promise<string>;
   uploadUserAvatar: (file: File) => Promise<string>;
-  createServer: (name: string, slug?: string) => Promise<string | null>; // POST → optimistically add to servers; returns the new slug so the caller navigates client-side (no full-page reload)
-  switchServer: (slug: string) => void;                          // client-side workspace switch: re-point the active server, reset per-workspace state, reconnect the socket (no full-page reload)
+  createSpace: (name: string, slug?: string) => Promise<string | null>; // POST → optimistically add to spaces; returns the new slug so the caller navigates client-side (no full-page reload)
+  switchSpace: (slug: string) => void;                           // client-side Space switch: re-point the active Space, reset per-Space state, reconnect the socket (no full-page reload)
   logout: () => void;
   channels: Channel[]; dms: Dm[]; unread: Record<string, number>;
   agents: Agent[];        // ALL agents incl. system-seeded showcase demo agents — resolve a sender's avatar/name/profile by id (incl. #showcase history)
@@ -67,11 +68,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // paint Landing with no skeleton/Landing flash — while a stored token or in-flight ?as= dev-login
   // defers to "loading" until the async bootstrap below resolves it.
   const [authState, setAuthState] = useState<AuthState>(initialAuthState);
-  const [serverId, setServerId] = useState("");
+  const [spaceId, setSpaceId] = useState("");
   const [slug, setSlug] = useState("kith-space");
-  const [servers, setServers] = useState<ServerInfo[]>([]);          // all servers the user belongs to (used by server switcher)
-  const [capabilities, setCapabilities] = useState<Record<string, boolean>>({}); // capability flags for the current server (used to show/hide UI)
-  const [serverAvatar, setServerAvatar] = useState<string | null>(null); // workspace avatar URL (token-signed for sidebar display); null = use first letter
+  const [spaces, setSpaces] = useState<SpaceInfo[]>([]);             // all local Spaces (used by Space switcher)
+  const [capabilities, setCapabilities] = useState<Record<string, boolean>>({}); // compatibility capability flags for the current Space (used to show/hide UI until A2.3)
+  const [spaceAvatar, setSpaceAvatar] = useState<string | null>(null); // Space avatar URL (token-signed for sidebar display); null = use first letter
   const [me, setMe] = useState<Me | null>(null);
   const [myRole, setMyRole] = useState(""); // current workspace role (owner/admin/member) — used for manageServer permission check on task board
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -84,34 +85,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [traj, setTraj] = useState<TrajItem[]>([]); // global live-trace feed: bounded ring buffer held here (not per Chat view) so it persists across channel/DM switches
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [agentPanelReq, setAgentPanelReq] = useState<string | null>(null); // cross-component signal: LiveAgentBar (sidebar) → Chat view opens the agent profile panel
-  const [activeId, setActiveId] = useState(""); // id of the workspace to activate; changing it drives the activation effect (initial pick + every client-side switch)
+  const [activeSpaceId, setActiveSpaceId] = useState(""); // id of the Space to activate; changing it drives the activation effect (initial pick + every client-side switch)
   const tokenRef = useRef("");
-  const sidRef = useRef("");
-  const serversRef = useRef<ServerInfo[]>([]); // mirror of `servers` for lookups in effects/handlers without taking a render dependency on it
+  const spaceIdRef = useRef("");
+  const spacesRef = useRef<SpaceInfo[]>([]); // mirror of `spaces` for lookups in effects/handlers without taking a render dependency on it
   const meIdRef = useRef<string | undefined>(undefined); // current user id; read by socket handlers (own-message unread suppression) and stable across workspace switches
   const sockRef = useRef<Socket | null>(null); // active socket connection; emits join:channel when joining/creating a channel mid-session for room isolation
   const subscribedRef = useRef<Set<string>>(new Set()); // channels/threads explicitly subscribed by the active view; re-emitted on every (re)connect so a reconnect re-joins them
   const listeners = useRef(new Set<(e: Ev) => void>());
 
   const api = async (method: string, path: string, body?: unknown) => {
-    // Race condition on first render: views may call api before dev-login completes; wait until both token and serverId are ready.
-    // (Waiting only for token would send requests with empty x-server-id, causing empty data on first load, e.g. AgentProfile.)
-    for (let i = 0; i < 60 && (!tokenRef.current || !sidRef.current); i++) await new Promise((r) => setTimeout(r, 30));
-    const r = await fetch(path, { method, headers: { "content-type": "application/json", authorization: "Bearer " + tokenRef.current, "x-server-id": sidRef.current }, body: body ? JSON.stringify(body) : undefined });
+    // Race condition on first render: views may call api before dev-login completes; wait until both token and spaceId are ready.
+    // (Waiting only for token would send requests with empty x-space-id, causing empty data on first load, e.g. AgentProfile.)
+    for (let i = 0; i < 60 && (!tokenRef.current || !spaceIdRef.current); i++) await new Promise((r) => setTimeout(r, 30));
+    const r = await fetch(path, { method, headers: spaceScopeHeaders(tokenRef.current, spaceIdRef.current, { json: true }), body: body ? JSON.stringify(body) : undefined });
     return r.json();
   };
   const reload = async () => {
-    // Pin the target server at entry. A client-side workspace switch re-points sidRef mid-flight; `fresh()` then
+    // Pin the target Space at entry. A client-side Space switch re-points spaceIdRef mid-flight; `fresh()` then
     // turns false, so this (now-stale) reload's results are dropped instead of landing mixed with the new
-    // workspace's data — guards rapid A→B→C switches (the sequential awaits below each read the shared sidRef).
-    const sid = sidRef.current;
-    const fresh = () => sidRef.current === sid;
+    // Space's data — guards rapid A→B→C switches (the sequential awaits below each read the shared spaceIdRef).
+    const reloadSpaceId = spaceIdRef.current;
+    const fresh = () => spaceIdRef.current === reloadSpaceId;
     const ch = await api("GET", "/api/channels"); if (fresh()) setChannels(ch);
     try { const dm = await api("GET", "/api/channels/dm"); if (fresh()) setDms(dm); } catch { if (fresh()) setDms([]); }
     try { const un = (await api("GET", "/api/channels/unread")) || {}; if (fresh()) setUnread(un); } catch { if (fresh()) setUnread({}); }
     const ag = await api("GET", "/api/agents"); if (fresh()) setAgents(ag);
-    try { const mc = await api("GET", `/api/servers/${sid}/machines`); if (fresh()) { setMachines(mc.machines || []); setLatestDaemonVersion(mc.latestDaemonVersion || ""); } } catch { if (fresh()) setMachines([]); }
-    try { const hm = await api("GET", `/api/servers/${sid}/members`); if (fresh()) setHumans(hm); } catch { if (fresh()) setHumans([]); }
+    try { const mc = await api("GET", `/api/spaces/${reloadSpaceId}/machines`); if (fresh()) { setMachines(mc.machines || []); setLatestDaemonVersion(mc.latestDaemonVersion || ""); } } catch { if (fresh()) setMachines([]); }
+    try { const hm = await api("GET", `/api/spaces/${reloadSpaceId}/members`); if (fresh()) setHumans(hm); } catch { if (fresh()) setHumans([]); }
   };
   const onEvent = (cb: (e: Ev) => void) => { listeners.current.add(cb); return () => { listeners.current.delete(cb); }; };
   // View-driven realtime subscription: opening a channel/thread joins its room so message:new arrives live, regardless of how the
@@ -121,20 +122,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Returns the raw response (incl. `error` on failure, e.g. 409 "channel name exists") instead of collapsing
   // it to null — callers need `error` to surface a toast instead of silently closing the create-channel modal.
   const createChannel = async (opts: { name: string; description?: string; visibility?: string; agentIds?: string[]; userIds?: string[] }) => { const r = await api("POST", "/api/channels", { name: opts.name, description: opts.description, visibility: opts.visibility, agentIds: opts.agentIds ?? [], userIds: opts.userIds ?? [] }); if (r?.id) { await reload(); sockRef.current?.emit("join:channel", r.id); } return r; };
-  // Create workspace → optimistically add it to the server list (POST returns role+capabilities so no re-fetch needed) and
+  // Create Space → optimistically add it to the Space list (POST returns role+capabilities so no re-fetch needed) and
   // return the new slug. The caller navigates client-side to /s/<slug>/channel; the URL drives activation (see main.tsx),
   // so there is no full-page reload — the workspace skeleton shows while the new workspace's data loads.
-  const createServer = async (name: string, slug?: string): Promise<string | null> => {
-    const r = await api("POST", "/api/servers", { name, slug });
+  const createSpace = async (name: string, slug?: string): Promise<string | null> => {
+    const r = await api("POST", "/api/spaces", { name, slug });
     if (!r?.id) return null;
-    const info: ServerInfo = { id: r.id, name: r.name, slug: r.slug, avatarUrl: null, role: r.role || "owner", capabilities: r.capabilities || {} };
-    const next = [...serversRef.current.filter((s) => s.id !== r.id), info];
-    serversRef.current = next; setServers(next);
+    const info: SpaceInfo = { id: r.id, name: r.name, slug: r.slug, avatarUrl: null, role: r.role || "owner", capabilities: r.capabilities || {} };
+    const next = [...spacesRef.current.filter((s) => s.id !== r.id), info];
+    spacesRef.current = next; setSpaces(next);
     return r.slug;
   };
-  // Client-side workspace switch: re-point the active server by slug. The activation effect (keyed on activeId) resets
-  // per-workspace state and reconnects the socket. No-op if the target is unknown or already active.
-  const switchServer = (targetSlug: string) => { const cur = serversRef.current.find((s) => s.slug === targetSlug); if (cur && cur.id !== sidRef.current) setActiveId(cur.id); };
+  // Client-side Space switch: re-point the active Space by slug. The activation effect (keyed on activeSpaceId) resets
+  // per-Space state and reconnects the socket. No-op if the target is unknown or already active.
+  const switchSpace = (targetSlug: string) => { const cur = spacesRef.current.find((s) => s.slug === targetSlug); if (cur && cur.id !== spaceIdRef.current) setActiveSpaceId(cur.id); };
   const logout = () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem("kith-space.devuser"); window.location.assign("/login"); }; // clear token + dev user → redirect to login (JWT is short-lived; client-side removal is sufficient)
   const markActionExecuted = async (messageId: string, result?: { kind: string; id: string; name: string }) => { await api("POST", `/api/actions/${messageId}/mark-executed`, { result: result ?? null }); };
   const createTasks = async (channelId: string, titles: string[]) => { const r = await api("POST", `/api/tasks/channel/${channelId}`, { tasks: titles.map((title) => ({ title })) }); return r?.tasks || []; };
@@ -154,7 +155,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const uploadFiles = async (channelId: string, files: FileList | File[]) => {
     const fd = new FormData(); fd.append("channelId", channelId);
     for (const f of Array.from(files)) fd.append("files", f);
-    const r = await fetch("/api/attachments/upload", { method: "POST", headers: { authorization: "Bearer " + tokenRef.current, "x-server-id": sidRef.current }, body: fd });
+    const r = await fetch("/api/attachments/upload", { method: "POST", headers: spaceScopeHeaders(tokenRef.current, spaceIdRef.current), body: fd });
     return (await r.json())?.attachments || [];
   };
   // Single-file upload with progress tracking (XHR; fetch does not expose upload progress). Returns one attachment.
@@ -162,31 +163,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const fd = new FormData(); fd.append("channelId", channelId); fd.append("files", file);
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/attachments/upload");
-    xhr.setRequestHeader("authorization", "Bearer " + tokenRef.current);
-    xhr.setRequestHeader("x-server-id", sidRef.current);
+    applySpaceScopeHeaders(xhr, tokenRef.current, spaceIdRef.current);
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(Math.round((e.loaded / e.total) * 100)); };
     xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) { try { resolve(JSON.parse(xhr.responseText)?.attachments?.[0]); } catch { reject(new Error("parse")); } } else reject(new Error("status " + xhr.status)); };
     xhr.onerror = () => reject(new Error("network"));
     xhr.send(fd);
   });
   const attachmentUrl = (id: string) => `/api/attachments/${id}?token=${encodeURIComponent(tokenRef.current)}`;
-  const uploadServerAvatar = async (file: File) => { // workspace avatar upload (owner/admin only): upload image → refresh sidebar tile
+  const uploadSpaceAvatar = async (file: File) => { // Space avatar upload (owner/admin only): upload image → refresh sidebar tile
     const fd = new FormData(); fd.append("files", file);
-    const r = await fetch(`/api/servers/${sidRef.current}/avatar`, { method: "POST", headers: { authorization: "Bearer " + tokenRef.current, "x-server-id": sidRef.current }, body: fd });
+    const r = await fetch(`/api/spaces/${spaceIdRef.current}/avatar`, { method: "POST", headers: spaceScopeHeaders(tokenRef.current, spaceIdRef.current), body: fd });
     if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || "upload failed");
     const { avatarUrl } = await r.json();
-    setServerAvatar(avatarUrl ? `${avatarUrl}?token=${encodeURIComponent(tokenRef.current)}` : null);
+    setSpaceAvatar(avatarUrl ? `${avatarUrl}?token=${encodeURIComponent(tokenRef.current)}` : null);
   };
   const uploadAgentAvatar = async (agentId: string, file: File): Promise<string> => {
     const fd = new FormData(); fd.append("files", file);
-    const r = await fetch(`/api/agents/${agentId}/avatar`, { method: "POST", headers: { authorization: "Bearer " + tokenRef.current, "x-server-id": sidRef.current }, body: fd });
+    const r = await fetch(`/api/agents/${agentId}/avatar`, { method: "POST", headers: spaceScopeHeaders(tokenRef.current, spaceIdRef.current), body: fd });
     if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || "upload failed");
     const { avatarUrl } = await r.json();
     return `${avatarUrl}?token=${encodeURIComponent(tokenRef.current)}`;
   };
   const uploadUserAvatar = async (file: File): Promise<string> => {
     const fd = new FormData(); fd.append("files", file);
-    const r = await fetch("/api/auth/me/avatar", { method: "POST", headers: { authorization: "Bearer " + tokenRef.current, "x-server-id": sidRef.current }, body: fd });
+    const r = await fetch("/api/auth/me/avatar", { method: "POST", headers: spaceScopeHeaders(tokenRef.current, spaceIdRef.current), body: fd });
     if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || "upload failed");
     const { avatarUrl } = await r.json();
     return `${avatarUrl}?token=${encodeURIComponent(tokenRef.current)}`;
@@ -201,7 +201,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const listSaved = async (limit = 20, offset = 0) => { const r = await api("GET", `/api/channels/saved?limit=${limit}&offset=${offset}`); return { saved: r?.saved ?? [], hasMore: !!r?.hasMore }; };
 
   // ── Auth bootstrap (runs once): resolve a session token + the user's workspace list, then pick the initial workspace
-  //    from the URL. Loading that workspace (its data + socket) is the activation effect below, keyed on activeId — the
+  //    from the URL. Loading that Space (its data + socket) is the activation effect below, keyed on activeSpaceId — the
   //    SAME path a client-side switch takes, so there is one load path, not two.
   useEffect(() => {
     let cancelled = false;
@@ -229,25 +229,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       meIdRef.current = user?.id;
       setMe(user);
       setAuthState("authed");
-      const serverList: ServerInfo[] = await (await fetch("/api/servers", { headers: { authorization: "Bearer " + tokenRef.current } })).json();
+      const spaceList: SpaceInfo[] = await (await fetch("/api/spaces", { headers: { authorization: "Bearer " + tokenRef.current } })).json();
       if (cancelled) return;
-      serversRef.current = serverList;
-      setServers(serverList);
-      const urlSlug = location.pathname.match(/\/s\/([^/]+)/)?.[1]; // resolve workspace from URL /s/:slug (multi-workspace support); fall back to first
-      const cur = serverList.find((s) => s.slug === urlSlug) || serverList[0];
+      spacesRef.current = spaceList;
+      setSpaces(spaceList);
+      const urlSlug = location.pathname.match(/\/s\/([^/]+)/)?.[1]; // resolve Space from URL /s/:slug; fall back to first
+      const cur = spaceList.find((s) => s.slug === urlSlug) || spaceList[0];
       if (!cur) { setReady(true); return; } // no workspace found: prevent white screen (defensive fallback; workspace is normally created on register/dev-login)
-      setActiveId(cur.id); // → activation effect loads this workspace + opens the socket
+      setActiveSpaceId(cur.id); // → activation effect loads this Space + opens the socket
     })();
     return () => { cancelled = true; };
   }, []);
 
-  // ── Workspace activation (runs on the initial pick + every client-side switch): load the active workspace's data and
-  //    open a socket scoped to it. Resets all per-workspace state first so nothing leaks across a switch, and flips
+  // ── Space activation (runs on the initial pick + every client-side switch): load the active Space's data and
+  //    open a socket scoped to it. Resets all per-Space state first so nothing leaks across a switch, and flips
   //    `ready` false→true so the route guard shows the workspace skeleton during the gap (no blank screen, no reload).
   useEffect(() => {
-    if (!activeId) return; // nothing to activate yet (pre-auth / anon / no-workspace)
-    const cur = serversRef.current.find((s) => s.id === activeId);
-    if (!cur) return; // unknown id (should not happen: serversRef is always seeded before setActiveId)
+    if (!activeSpaceId) return; // nothing to activate yet (pre-auth / anon / no-Space)
+    const cur = spacesRef.current.find((s) => s.id === activeSpaceId);
+    if (!cur) return; // unknown id (should not happen: spacesRef is always seeded before setActiveSpaceId)
     let sock: Socket | null = null;
     // StrictMode / switch guard: socket is built asynchronously; if this effect is cleaned up (unmount or a newer
     // switch) before the socket connects, the flag ensures the late connection is closed immediately.
@@ -262,8 +262,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Point at the active workspace + clear the previous one's state so a switch starts from a clean slate; the
     // ready=false → workspace skeleton shows while it reloads.
     setReady(false);
-    sidRef.current = cur.id; setServerId(cur.id); setSlug(cur.slug || "kith-space"); setMyRole(cur.role || "member"); setCapabilities(cur.capabilities || {});
-    setServerAvatar(cur.avatarUrl ? `${cur.avatarUrl}?token=${encodeURIComponent(tokenRef.current)}` : null);
+    spaceIdRef.current = cur.id; setSpaceId(cur.id); setSlug(cur.slug || "kith-space"); setMyRole(cur.role || "member"); setCapabilities(cur.capabilities || {});
+    setSpaceAvatar(cur.avatarUrl ? `${cur.avatarUrl}?token=${encodeURIComponent(tokenRef.current)}` : null);
     setChannels([]); setDms([]); setUnread({}); setAgents([]); setMachines([]); setHumans([]); setTraj([]); setSavedIds(new Set()); setAgentPanelReq(null);
     subscribedRef.current = new Set(); // the previous workspace's view-subscriptions don't carry over
     sockRef.current = null; // the previous socket is closed by this effect's cleanup; drop the stale ref until the new one connects
@@ -277,9 +277,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try { const s = await api("GET", "/api/messages/sync?since=0"); lastSeq = s?.maxSeq ?? 0; } catch { /* */ }
       if (cancelled) return;
       setReady(true);
-      // Socket.io handshake auth carries {token, serverId}; event names follow the workspace protocol
+      // Socket.io handshake auth carries {token, spaceId}; event names follow the workspace protocol
       // (message:new / agent:activity / machine:status).
-      sock = io("/", { auth: { token: tokenRef.current, serverId: sidRef.current }, transports: ["websocket"] });
+      sock = io("/", { auth: { token: tokenRef.current, spaceId: spaceIdRef.current }, transports: ["websocket"] });
       if (cancelled) { sock.close(); sock = null; return; } // late connect after unmount/switch → close immediately
       sockRef.current = sock; // exposed so joinChannel/createChannel/openDM can emit join:channel for room isolation
       let firstConnect = true;
@@ -334,7 +334,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Machine online/offline → reload machine list (DB is source of truth for status/daemon version/runtimes/new rows).
       // Note: machine:status payload omits id (only forwards {online,hostname,runtimes}), so targeted row update is not possible → full reload is safest.
       sock.on("machine:status", async (p: any) => {
-        try { const mc = await api("GET", `/api/servers/${sidRef.current}/machines`); setMachines(mc.machines || []); setLatestDaemonVersion(mc.latestDaemonVersion || ""); } catch { /* keep stale value on error */ }
+        try { const mc = await api("GET", `/api/spaces/${spaceIdRef.current}/machines`); setMachines(mc.machines || []); setLatestDaemonVersion(mc.latestDaemonVersion || ""); } catch { /* keep stale value on error */ }
         dispatch({ type: "machine", ...p });
       });
       sock.on("task:created", (p: any) => (p.tasks || []).forEach((t: any) => dispatch({ type: "task", op: "created", task: t }))); // payload={channelId,tasks:[]}
@@ -348,11 +348,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
     })();
     return () => { cancelled = true; sock?.close(); sockRef.current = null; if (unreadTimer) clearTimeout(unreadTimer); };
-  }, [activeId]);
+  }, [activeSpaceId]);
 
   // Showcase demo agents (creatorType="system") stay in `agents` so #showcase history still resolves their
   // avatar/name/profile by id — but they are not real members, so every roster / picker uses `visibleAgents`.
   const visibleAgents = agents.filter((a) => a.creatorType !== "system");
-  return <Ctx.Provider value={{ ready, authState, serverId, slug, me, myRole, serverAvatar, servers, capabilities, createServer, switchServer, logout, uploadServerAvatar, uploadAgentAvatar, uploadUserAvatar, channels, dms, unread, agents, visibleAgents, machines, latestDaemonVersion, humans, traj, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openDM, joinChannel, leaveChannel, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, myRole, spaceAvatar, spaces, capabilities, createSpace, switchSpace, logout, uploadSpaceAvatar, uploadAgentAvatar, uploadUserAvatar, channels, dms, unread, agents, visibleAgents, machines, latestDaemonVersion, humans, traj, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openDM, joinChannel, leaveChannel, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
 }
 

@@ -77,7 +77,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 ## 当前进展
 
-**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-11：A1 文档路线已提交；A2.1 `app.db + 唯一 Human + Home` 与 A2.5 本地附件存储已落地，接下来推进 Space 术语、Human membership/RBAC 与 Machine 清理。做到哪、下一步与关键过渡事实全部见 `docs/progress.md`。
+**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-11：A1 文档路线已提交；A2.1 `app.db + 唯一 Human + Home`、A2.5 本地附件存储和 A2.2a Space 传输/API/前端术语已经落地。下一步删除 Human membership/RBAC 与 Machine，再压平 workspace.db 的旧物理 schema。做到哪、下一步与关键过渡事实全部见 `docs/progress.md`。
 
 <!-- CODEGRAPH_START -->
 

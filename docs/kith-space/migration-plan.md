@@ -26,7 +26,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A2 本地领域与数据模型
 
-当前进度：A2.1 已完成 `app.db`、唯一 Human、幂等 `Home` 初始化；A2.5 已删除 S3 driver 与 SDK，附件只走本地磁盘。workspace.db 的兼容 Human 投影、Space 全量命名、Machine 和全局上传目录仍待后续切片。
+当前进度：A2.1 已完成 `app.db`、唯一 Human、幂等 `Home` 初始化；A2.5 已删除 S3 driver 与 SDK；A2.2a 已完成 canonical `/api/spaces`、`x-space-id`、Socket `spaceId`、`SpaceCtx`、Space 数据 facade 与 Web Store 术语。旧 `/api/servers`、`x-server-id` 和 `ServerCtx` 只在服务端边界兼容；workspace.db 的兼容 Human 投影、`servers/server_id` 物理 schema、Machine 和全局上传目录仍待后续切片。
 
 改动边界：
 
@@ -36,6 +36,8 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 - Human membership/RBAC/邀请/Human-Human DM 删除；Space 内 agent membership 保留。
 - Machine/Computer/远程 daemon 注册删除；内部 daemon 变为唯一 Local Runtime Worker。
 - S3/对象存储删除，本地文件服务保留。
+
+实施顺序补充：先完成 A2.2a 传输/API/前端边界，再执行 A2.3 Human 关系删除与 A2.4 Machine 删除；之后用允许的破坏性重置一次性把保留表的 `servers/server_id` 压平为 `spaces/space_id`。这样避免重命名即将删除的表和字段两次。
 
 模块边界建议：`src/app-data/` 负责 app.db；`src/spaces/` 负责 Space registry/生命周期；`src/human/` 负责唯一 Human；`src/local-runtime/` 负责 Desktop 与 worker 内部协议。实际命名在落地前按现有结构核对，不为目录整齐而搬动无关文件。
 

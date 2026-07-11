@@ -114,7 +114,16 @@ export async function handlePublicAuth(ctx: BaseCtx): Promise<boolean> {
     const exhausted = link.maxUses != null && link.useCount >= link.maxUses;
     const srv = (await db.select().from(schema.servers).where(eq(schema.servers.id, link.serverId)))[0];
     const inviter = link.createdByUserId ? (await db.select().from(schema.users).where(eq(schema.users.id, link.createdByUserId)))[0] : null;
-    return (sendJson(res, 200, { valid: !expired && !exhausted && !!srv, serverName: srv?.name, serverSlug: srv?.slug, inviterName: inviter?.displayName || inviter?.name || null, role: link.role }), true);
+    return (sendJson(res, 200, {
+      valid: !expired && !exhausted && !!srv,
+      spaceName: srv?.name,
+      spaceSlug: srv?.slug,
+      inviterName: inviter?.displayName || inviter?.name || null,
+      role: link.role,
+      // A2.3 compatibility fields for old invite clients.
+      serverName: srv?.name,
+      serverSlug: srv?.slug,
+    }), true);
   }
   return false;
 }
@@ -142,7 +151,14 @@ export async function handleAuthedAuth(ctx: UserCtx): Promise<boolean> {
       const all = (await db.select().from(schema.channels).where(and(eq(schema.channels.serverId, link.serverId), eq(schema.channels.name, "all"))))[0];
       if (all) await db.insert(schema.channelMembers).values({ channelId: all.id, memberType: "user", memberId: userId }).onConflictDoNothing();
     }
-    return (sendJson(res, 200, { serverSlug: srv.slug, serverId: srv.id, already: !!existing }), true);
+    return (sendJson(res, 200, {
+      spaceSlug: srv.slug,
+      spaceId: srv.id,
+      already: !!existing,
+      // A2.3 compatibility fields for old invite clients.
+      serverSlug: srv.slug,
+      serverId: srv.id,
+    }), true);
   }
 
   if (p === "/api/auth/me" && method === "GET") {

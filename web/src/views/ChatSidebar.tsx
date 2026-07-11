@@ -19,7 +19,7 @@ export function channelCreateErrorMsg(t: (key: string) => string, error?: string
 // Both the Chat view and the Saved view (misc.tsx) render this component so the channel list stays visible when navigating to Saved.
 export function ChatSidebar({ channelIdOverride, preserveSearch = "" }: { channelIdOverride?: string; preserveSearch?: string } = {}) {
   const { t } = useTranslation();
-  const { api, serverId, channels, dms, unread, agents, visibleAgents, slug, savedIds, capabilities, createChannel, openDM, joinChannel, attachmentUrl } = useStore();
+  const { api, spaceId, channels, dms, unread, agents, visibleAgents, slug, savedIds, capabilities, createChannel, openDM, joinChannel, attachmentUrl } = useStore();
   const toast = useToast();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
   const { channelId: routeChannelId } = useParams();
@@ -40,9 +40,9 @@ export function ChatSidebar({ channelIdOverride, preserveSearch = "" }: { channe
   const togglePin = async (id: string) => {
     const next = pinned.includes(id) ? pinned.filter((x) => x !== id) : [...pinned, id];
     setPinned(next);
-    try { await api("PUT", `/api/servers/${serverId}/sidebar-order`, { pinnedChannelIds: next }); } catch { /* rollback deferred to next load */ }
+    try { await api("PUT", `/api/spaces/${spaceId}/sidebar-order`, { pinnedChannelIds: next }); } catch { /* rollback deferred to next load */ }
   };
-  useEffect(() => { if (!serverId) return; api("GET", `/api/servers/${serverId}/sidebar-order`).then((p) => setPinned(p?.pinnedChannelIds || [])).catch(() => {}); }, [serverId]);
+  useEffect(() => { if (!spaceId) return; api("GET", `/api/spaces/${spaceId}/sidebar-order`).then((p) => setPinned(p?.pinnedChannelIds || [])).catch(() => {}); }, [spaceId]);
   const doCreate = async (opts: { name: string; description?: string; visibility?: string; agentIds?: string[]; userIds?: string[] }) => {
     const r = await createChannel(opts);
     if (r?.id) { setMkChan(false); nav(withPreservedSearch(`/s/${slug}/channel/${r.id}`)); }
