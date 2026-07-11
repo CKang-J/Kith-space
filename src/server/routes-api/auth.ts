@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import type { BaseCtx, UserCtx } from "./ctx.js";
 import { and, eq } from "drizzle-orm";
+import { AppDataError, getHumanProfile, updateHumanProfile } from "../../app-data/appDatabase.js";
 import { allWorkspaceDbs, schema } from "../../db/index.js";
 import { findJoinLinkByToken, findServerBySlug, findUserByEmail, findUserById, findUserByName, updateUserCopies } from "../../db/lookup.js";
 import { devLoginEnabled, hashPassword, isValidEmail, passwordError, safeEqual, setupToken, signUser, verifyPassword } from "../auth.js";
@@ -40,7 +41,7 @@ export async function handlePublicAuth(ctx: BaseCtx): Promise<boolean> {
     if (!rl.ok) return (sendErr(res, 429, "too many requests", { retryAfter: rl.retryAfter }), true);
     const b = await readJson(req);
     if (!safeEqual(String(b.token ?? ""), tok)) return (sendErr(res, 403, "invalid setup token"), true);
-    const located = await findServerBySlug("kith-space");
+    const located = await findServerBySlug("home");
     const ws = located?.value;
     if (!ws || !located) return (sendErr(res, 409, "no default workspace; run seed first"), true);
     const db = located.db;
@@ -59,6 +60,18 @@ export async function handlePublicAuth(ctx: BaseCtx): Promise<boolean> {
       }
     }
     if (typeof b.displayName === "string" && b.displayName.trim()) patch.displayName = b.displayName.trim();
+    const human = getHumanProfile();
+    if (human?.id === admin.id && (patch.email !== undefined || patch.displayName !== undefined)) {
+      try {
+        updateHumanProfile({
+          ...(patch.email !== undefined ? { email: patch.email as string } : {}),
+          ...(patch.displayName !== undefined ? { name: patch.displayName as string } : {}),
+        });
+      } catch (error) {
+        if (error instanceof AppDataError) return (sendErr(res, 400, error.message, { code: error.code }), true);
+        throw error;
+      }
+    }
     await updateUserCopies(admin.id, patch);
     return (sendJson(res, 200, { token: signUser(admin.id), user: { id: admin.id, name: admin.name, email: (patch.email as string) ?? admin.email } }), true);
   }
@@ -133,17 +146,50 @@ export async function handleAuthedAuth(ctx: UserCtx): Promise<boolean> {
   }
 
   if (p === "/api/auth/me" && method === "GET") {
-    const u = (await findUserById(userId))?.value;
-    return (u ? sendJson(res, 200, { id: u.id, name: u.name, displayName: u.displayName, email: u.email, description: u.description, avatarUrl: u.avatarUrl }) : sendErr(res, 404, "not found"), true);
+    const human = getHumanProfile();
+    if (!human || human.id !== userId) return (sendErr(res, 404, "not found"), true);
+    const legacy = (await findUserById(userId))?.value;
+    return (sendJson(res, 200, {
+      id: human.id,
+      name: legacy?.name ?? "you",
+      displayName: human.name,
+      email: human.email,
+      description: human.description,
+      avatarUrl: legacy?.avatarUrl ?? null,
+    }), true);
   }
   if (p === "/api/auth/me" && method === "PATCH") {
-    const b = await readJson(req); const patch: Record<string, unknown> = {};
+    const current = getHumanProfile();
+    if (!current || current.id !== userId) return (sendErr(res, 404, "not found"), true);
+    const b = await readJson(req);
     if (descTooLong(b.description)) return (sendErr(res, 400, DESC_TOO_LONG), true);
-    for (const k of ["displayName", "description", "avatarUrl"]) if (b[k] !== undefined) patch[k] = b[k];
-    if (Object.keys(patch).length) await updateUserCopies(userId, patch);
-    const u = (await findUserById(userId))?.value;
-    if (!u) return (sendErr(res, 404, "not found"), true);
-    return (sendJson(res, 200, { id: u!.id, name: u!.name, displayName: u!.displayName, email: u!.email, description: u!.description }), true);
+    let human = current;
+    try {
+      human = updateHumanProfile({
+        ...(b.displayName !== undefined ? { name: b.displayName } : {}),
+        ...(b.email !== undefined ? { email: b.email } : {}),
+        ...(b.description !== undefined ? { description: b.description } : {}),
+      });
+    } catch (error) {
+      if (error instanceof AppDataError) return (sendErr(res, 400, error.message, { code: error.code }), true);
+      throw error;
+    }
+    const legacyPatch: Record<string, unknown> = {
+      displayName: human.name,
+      email: human.email ?? `${human.id}@human.kith-space.invalid`,
+      description: human.description,
+    };
+    if (b.avatarUrl !== undefined) legacyPatch.avatarUrl = b.avatarUrl;
+    await updateUserCopies(userId, legacyPatch);
+    const legacy = (await findUserById(userId))?.value;
+    return (sendJson(res, 200, {
+      id: human.id,
+      name: legacy?.name ?? "you",
+      displayName: human.name,
+      email: human.email,
+      description: human.description,
+      avatarUrl: legacy?.avatarUrl ?? null,
+    }), true);
   }
   return false;
 }

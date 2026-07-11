@@ -1,4 +1,4 @@
-// Attachment multipart upload parser: streams via busboy into storage.saveObject (driver-agnostic: local disk or S3-compatible).
+// Attachment multipart upload parser: streams via busboy into the local attachment object store.
 import Busboy from "busboy";
 import type { IncomingMessage } from "node:http";
 import { saveObject } from "./storage.js";
@@ -44,8 +44,8 @@ export function parseUpload(req: IncomingMessage): Promise<{ fields: Record<stri
     let firstError: unknown = null;
     bb.on("field", (name, val) => { fields[name] = val; });
     bb.on("file", (_name, stream, info) => {
-      // Each per-file task self-catches: a save that fails (especially before the stream is
-      // consumed, e.g. s3Config() validation) must still drain the stream so busboy emits
+      // Each per-file task self-catches: a save that fails before the stream is consumed
+      // must still drain the stream so busboy emits
       // "close", and must never surface as an unhandledRejection (which crashes the process
       // on Node ≥15). The error is remembered and surfaced once, after close.
       pending.push((async () => {

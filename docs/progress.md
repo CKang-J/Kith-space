@@ -8,8 +8,8 @@
 
 - 分支：`feat/p0-foundation`，尚未合并或推送远端。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A1 个人 AgentOS 本机化权威文档收敛已完成，等待用户审阅规格**。
-- P4 视觉微调已暂停。用户确认 A1 书面规格后，进入 A2 本地领域与数据模型。
+- 当前阶段：**A2 本地领域与数据模型进行中**。A2.1 app.db/Human/Home 与 A2.5 本地附件存储已完成；下一切片是 A2.2 Space 术语迁移。
+- P4 视觉微调已暂停，等本机化基础收敛后再恢复。
 - 底座为 open-tag 衍生开发副本；`reference/` 只读。OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
 
 ## 二、2026-07-11 路线转向
@@ -21,7 +21,7 @@
 - Desktop 是唯一正式宿主和发行物；浏览器入口依附 Desktop，可关闭、仅本机或 LAN。
 - LAN 浏览器拥有完整产品能力，v1 使用 HTTP + 访问 Token，只限受信任私网。
 - 删除多真人、邀请/RBAC、Machines/Computers、远程 daemon、服务器部署、云同步、S3、Docker、PWA 和独立 Web 发行路线。
-- 中央 registry 将扩展并更名为 `app.db`；每个 Space 继续使用 `<space>/.kith/workspace.db`。
+- 中央 registry 已扩展并更名为 `app.db`；每个 Space 继续使用 `<space>/.kith/workspace.db`。
 - Dock 目标为 `Chat | Inbox | Tasks | Agents | Settings`；旧 `Layout` 回退将彻底删除。
 - 允许破坏性重置当前开发数据，不做旧 `.kith` schema 迁移。
 
@@ -31,6 +31,7 @@
 
 | 提交 | 内容 |
 |---|---|
+| `d7cafc4` | 固化个人 AgentOS 本机化规格，重写 vision/decisions/roadmap/架构/MVP/迁移与相关 UI 文档 |
 | `ec6b735` | 恢复 Tasks 全部/频道范围侧栏；更新 CodeGraph 与相关进度资料 |
 | `0a8eb89` | P4-3 单窗口工作区生产壳、25/75 响应式分栏和路由状态机 |
 | `7cc026e` | 单窗口原型、交互规格、面板视觉语言与 Context Snapshot 契约 |
@@ -43,9 +44,12 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 四、当前代码事实与过渡债
 
-- 数据层已经是 SQLite：每 Space `<rootPath>/.kith/workspace.db`，中央库目前仍名为 `registry.db`；连接入口是 `src/db/index.ts` 的 `dbFor(workspaceId)`。
+- 数据层是 SQLite：中央 `app.db` 保存唯一 Human 与 `spaces` registry；每 Space 使用 `<rootPath>/.kith/workspace.db`。连接入口仍是兼容名 `src/db/index.ts` 的 `dbFor(workspaceId)`。
+- `src/app-data/appDatabase.ts` 是 app.db 边界；`src/db/personalApp.ts` 幂等创建 Human 与默认 `Home`。workspace.db 暂时仍有一份兼容 user/owner/server_members 投影，A2.3 删除。
+- 附件存储已删除 S3 driver/SDK/config，只走本地磁盘并校验平面 storage key；当前仍使用 app 级 `uploads/`，Space 根路径收敛待 A2.2 上下文贯通。
+- A2.1/A2.5 验证：聚焦测试 16/16、typecheck 通过、integration 全绿；unit 384/385，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。`pnpm run seed` 在隔离临时目录连续运行两次，Human/Home/#all id 保持不变，只生成 `app.db` 与 `workspaces/home/.kith/workspace.db`。
 - P4 壳位于 `web/src/shell/`。URL 以频道/DM 路径、`?module=<id>` 和 `chat=0` 表达三态；Split 默认 Chat 25%。
-- 当前代码仍有 Members、Computers、Machine、多 Human/认证、`server/serverId` 领域名、`?legacy=1`、`.env`/daemon key、Docker/S3/发布遗留。它们属于 A2-A6 删除清单，不是目标能力。
+- 当前代码仍有 Members、Computers、Machine、多 Human/认证、`server/serverId` 领域名、`?legacy=1`、`.env`/daemon key、Docker/发布遗留。它们属于 A2-A6 删除清单，不是目标能力。
 - 当前开发启动仍暂时依赖现有环境变量和分进程命令；在 A3/A4 接管设置与内部凭据前，`docs/dev-commands.md` 必须继续如实记录过渡命令。
 - Message Context Snapshot 仍是设计契约，尚未持久化。
 - token 预算目前以唤醒次数为代理；真实 usage 等待 Runtime 契约 v2。
@@ -53,12 +57,12 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 五、下一步顺序
 
-1. 审阅并确认 A1 权威规格；如有调整，在进入代码前修正文档。
-2. A2：建立 app.db、唯一 Human/Home、Space 领域；删除 Human membership/RBAC、Machine 和 S3。
-3. A3：实现 Web 三模式、访问 Token、浏览器会话和内部临时凭据。
-4. A4：Electron 进程监督、`desktop:dev`、托盘、自启动和 Desktop Settings。
-5. A5：初始化 UI、Agents、删除 Computers/login/landing/PWA/legacy。
-6. A6：删除 Docker、远程发布/部署和残余旧口径，完成总验证。
+1. A2.2：分层迁移 `server/serverId` 到 `space/spaceId`，保留 `/s/:slug`。
+2. A2.3：删除 workspace.db 的 Human compatibility 投影、membership/RBAC、邀请与 Human-Human DM。
+3. A2.4：删除 Machine/远程 daemon 产品模型，保留本机 Local Runtime Worker 进程协议。
+4. A2 收口：把附件目录纳入 Space 根路径、跑完整验证并更新验收状态。
+5. A3：实现 Web 三模式、访问 Token、浏览器会话和内部临时凭据。
+6. A4-A6：Electron 宿主、UI/入口清理和继承资产总审计。
 7. 本机化基础稳定后再做 Runtime 契约 v2、生产力模块、Context Snapshot 与 P4 视觉收尾。
 
 每阶段独立验证、独立中文提交。未获得用户明确指示，不合并 main、不推远端、不发布。

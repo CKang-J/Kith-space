@@ -1,60 +1,45 @@
-// Unit tests for S3 config validation (fail-loud). Pure logic, no network/disk.
+// Unit contract for the local-only attachment object store.
 // Run: npx tsx --test --test-force-exit test/storage.unit.test.ts
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { s3Config } from "../src/server/storage.ts";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { Readable } from "node:stream";
 
-const S3_VARS = ["KITH_SPACE_S3_ENDPOINT", "KITH_SPACE_S3_BUCKET", "KITH_SPACE_S3_KEY", "KITH_SPACE_S3_SECRET", "KITH_SPACE_S3_REGION"];
-function setAll() {
-  process.env.KITH_SPACE_S3_ENDPOINT = "http://localhost:9000";
-  process.env.KITH_SPACE_S3_BUCKET = "kith-space";
-  process.env.KITH_SPACE_S3_KEY = "ak";
-  process.env.KITH_SPACE_S3_SECRET = "sk";
-  delete process.env.KITH_SPACE_S3_REGION;
-}
-function clearAll() { for (const v of S3_VARS) delete process.env[v]; }
+const root = await mkdtemp(path.join(tmpdir(), "kith-storage-"));
+const uploads = path.join(root, "uploads");
+const previousUploadDir = process.env.KITH_SPACE_UPLOAD_DIR;
+const previousStorageDriver = process.env.KITH_SPACE_STORAGE;
 
-test("all required set → returns config, region defaults to us-east-1", () => {
-  setAll();
-  assert.deepEqual(s3Config(), {
-    endpoint: "http://localhost:9000", region: "us-east-1",
-    bucket: "kith-space", key: "ak", secret: "sk",
-  });
+process.env.KITH_SPACE_UPLOAD_DIR = uploads;
+// Legacy configuration must no longer switch attachment storage away from disk.
+process.env.KITH_SPACE_STORAGE = "s3";
+
+const { readObject, saveObject } = await import("../src/server/storage.ts");
+
+after(async () => {
+  if (previousUploadDir === undefined) delete process.env.KITH_SPACE_UPLOAD_DIR;
+  else process.env.KITH_SPACE_UPLOAD_DIR = previousUploadDir;
+  if (previousStorageDriver === undefined) delete process.env.KITH_SPACE_STORAGE;
+  else process.env.KITH_SPACE_STORAGE = previousStorageDriver;
+  await rm(root, { recursive: true, force: true });
 });
 
-test("explicit region is honored", () => {
-  setAll();
-  process.env.KITH_SPACE_S3_REGION = "cn-hangzhou";
-  assert.equal(s3Config().region, "cn-hangzhou");
+test("saveObject persists to local disk even when the legacy S3 driver variable is set", async () => {
+  const body = Buffer.from("local attachment contents");
+
+  const saved = await saveObject("quarterly report?.txt", Readable.from([body]));
+
+  assert.equal(saved.size, body.length);
+  assert.match(saved.key, /^[0-9a-f-]{36}__quarterly_report_.txt$/);
+  assert.deepEqual(await readObject(saved.key), body);
 });
 
-test("missing endpoint throws and names the var", () => {
-  setAll();
-  delete process.env.KITH_SPACE_S3_ENDPOINT;
-  assert.throws(() => s3Config(), /KITH_SPACE_S3_ENDPOINT/);
-});
+test("readObject rejects keys that escape the upload directory", async () => {
+  await mkdir(uploads, { recursive: true });
+  await writeFile(path.join(root, "outside.txt"), "must stay outside");
 
-test("missing bucket throws and names the var", () => {
-  setAll();
-  delete process.env.KITH_SPACE_S3_BUCKET;
-  assert.throws(() => s3Config(), /KITH_SPACE_S3_BUCKET/);
-});
-
-test("missing key throws and names the var", () => {
-  setAll();
-  delete process.env.KITH_SPACE_S3_KEY;
-  assert.throws(() => s3Config(), /KITH_SPACE_S3_KEY/);
-});
-
-test("missing secret throws and names the var", () => {
-  setAll();
-  delete process.env.KITH_SPACE_S3_SECRET;
-  assert.throws(() => s3Config(), /KITH_SPACE_S3_SECRET/);
-});
-
-test("multiple missing → message lists all of them", () => {
-  clearAll();
-  assert.throws(() => s3Config(), (e: Error) =>
-    /KITH_SPACE_S3_ENDPOINT/.test(e.message) && /KITH_SPACE_S3_BUCKET/.test(e.message) &&
-    /KITH_SPACE_S3_KEY/.test(e.message) && /KITH_SPACE_S3_SECRET/.test(e.message));
+  await assert.rejects(readObject("../outside.txt"), /invalid storage key/i);
+  assert.equal(await readFile(path.join(root, "outside.txt"), "utf8"), "must stay outside");
 });

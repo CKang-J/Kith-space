@@ -29,7 +29,7 @@ async function onDaemon(ws: WebSocket, key: string): Promise<void> {
   let machineId: string | null = null;
   for (const candidate of allWorkspaceDbs()) {
     const found = safeEqual(key, BOOTSTRAP_KEY)
-      ? (await candidate.db.select().from(schema.servers).where(eq(schema.servers.slug, "kith-space")))[0]
+      ? (await candidate.db.select().from(schema.servers).where(eq(schema.servers.slug, "home")))[0]
       : (await candidate.db.select().from(schema.machines).where(eq(schema.machines.apiKeyHash, hashToken(key))))[0];
     if (found) { serverId = candidate.workspace.id; break; }
   }

@@ -18,7 +18,7 @@ cp .env.example .env              # 创建本地环境配置
 - `JWT_SECRET` — 人类会话 token 签名密钥。生成：`openssl rand -hex 32`
 - `DAEMON_BOOTSTRAP_KEY` — daemon↔server 握手预共享密钥。生成：`openssl rand -hex 32`
 - `PORT` — 服务端口，默认 `7777`
-- `KITH_SPACE_HOME` — 工作区/日志/上传根目录，默认 `~/.kith-space`（registry.db 在此，各工作区库在 `<rootPath>/.kith/workspace.db`）
+- `KITH_SPACE_HOME` — app 数据/日志/上传根目录，默认 `~/.kith-space`（`app.db` 在此，各 Space 库在 `<rootPath>/.kith/workspace.db`）
 
 本地便利项（仅过渡开发）：`ALLOW_DEV_LOGIN=true` 可用用户名签发 JWT。账户/JWT/dev login 将在 A2/A3 删除，不得用于新的浏览器 Token 设计。
 
@@ -26,16 +26,16 @@ cp .env.example .env              # 创建本地环境配置
 
 ## 2. 数据库
 
-**不需要单独 `db:push`**：每个工作区 db 在连接时自动迁移（`src/db/index.ts` 的 `migrate()`），`pnpm run seed` 打开工作区时就建好了 schema。分段起时**先 `seed` 即可**。
+**不需要单独 `db:push`**：每个 Space db 在连接时自动迁移（`src/db/index.ts` 的 `migrate()`）；`pnpm run seed` 初始化唯一 Human 与默认 `Home` Space，并建好 schema。分段起时**先 `seed` 即可**。
 
 ```bash
-pnpm run seed                     # 建 kith-space 工作区并自动迁移 schema（幂等）；daemon 靠 slug=kith-space 找到它
+pnpm run seed                     # 建唯一 Human + Home Space 并自动迁移 schema（幂等）；当前 daemon bootstrap 靠 slug=home 找到它
 pnpm run seed:dev                 # 追加开发用 dev-bot agent
 pnpm run db:push                  # 可选/遗留：仅把 schema 推到一个 scratch db（./.kith-space-dev.db），供 drizzle-kit 迭代/studio 用，非应用运行所需
 pnpm run db:studio                # 可选：Drizzle Studio 查那个 scratch db
 ```
 
-数据层是 SQLite + 每工作区独立 db，无需 Postgres/Redis。详见 `docs/kith-space/architecture-proposal.md §5`。
+数据层是 SQLite：中央 `app.db` + 每 Space 独立 workspace.db，无需 Postgres/Redis。附件固定使用本地磁盘，不支持 S3。详见 `docs/kith-space/architecture-proposal.md §5`。
 
 ## 3. 手动起各服务（三个进程，分别开终端）
 

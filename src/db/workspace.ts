@@ -20,7 +20,7 @@ export async function createWorkspace(
     }
   }
   if (!owner) throw new Error(`workspace owner not found: ${ownerId}`);
-  registerWorkspace({ id: workspaceId, name, rootPath });
+  registerWorkspace({ id: workspaceId, name, slug, rootPath });
   try {
     const db = dbFor(workspaceId);
     await db.insert(schema.users).values({ ...owner, id: ownerId }).onConflictDoNothing();

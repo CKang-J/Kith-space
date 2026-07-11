@@ -1,6 +1,4 @@
-// Pluggable object storage: defaults to local disk (zero-config, data stays on-prem), switchable to any S3-compatible backend (MinIO/Garage/SeaweedFS/OSS).
-// env KITH_SPACE_STORAGE=local|s3; s3 uses @aws-sdk/client-s3 to connect to any S3-compatible endpoint (KITH_SPACE_S3_*).
-// storageKey is driver-agnostic (local = relative filename, s3 = object key); switching storage backends requires no changes to business logic.
+// Local-only attachment object storage. Keys are opaque flat filenames under uploadsDir().
 import { createWriteStream } from "node:fs";
 import { readFile, mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -8,16 +6,21 @@ import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
 import { uploadsDir } from "../paths.js";
 
-const DRIVER = process.env.KITH_SPACE_STORAGE ?? "local";
 const LOCAL_DIR = uploadsDir();
 
 export interface Saved { key: string; size: number }
 
-/** Stream-save an object and return the driver-agnostic storageKey plus byte count. */
+function localObjectPath(key: string): string {
+  if (!key || path.isAbsolute(key) || key.includes("/") || key.includes("\\") || path.basename(key) !== key) {
+    throw new Error("Invalid storage key: expected a local attachment filename");
+  }
+  return path.join(LOCAL_DIR, key);
+}
+
+/** Stream-save an object and return its local storage key plus byte count. */
 export async function saveObject(filename: string, stream: Readable): Promise<Saved> {
   const safe = (filename || "file").replace(/[^\w.\-\u4e00-\u9fa5]/g, "_");
   const key = `${randomUUID()}__${safe}`;
-  if (DRIVER === "s3") return saveS3(key, stream);
   await mkdir(LOCAL_DIR, { recursive: true });
   let size = 0;
   await new Promise<void>((res, rej) => {
@@ -30,48 +33,5 @@ export async function saveObject(filename: string, stream: Readable): Promise<Sa
 }
 
 export async function readObject(key: string): Promise<Buffer> {
-  if (DRIVER === "s3") return readS3(key);
-  return readFile(path.join(LOCAL_DIR, key));
-}
-
-// ── S3-compatible driver (disabled by default; enable by running `pnpm add @aws-sdk/client-s3` and setting KITH_SPACE_S3_ENDPOINT/BUCKET/KEY/SECRET, optional KITH_SPACE_S3_REGION) ──
-export interface S3Config { endpoint: string; region: string; bucket: string; key: string; secret: string }
-
-/** Validate + read S3 env on each call (mirrors paths.ts: honors lazily-loaded env, stays testable). Fail loud on missing config. */
-export function s3Config(): S3Config {
-  const endpoint = process.env.KITH_SPACE_S3_ENDPOINT;
-  const bucket = process.env.KITH_SPACE_S3_BUCKET;
-  const key = process.env.KITH_SPACE_S3_KEY;
-  const secret = process.env.KITH_SPACE_S3_SECRET;
-  const missing = ([
-    ["KITH_SPACE_S3_ENDPOINT", endpoint], ["KITH_SPACE_S3_BUCKET", bucket],
-    ["KITH_SPACE_S3_KEY", key], ["KITH_SPACE_S3_SECRET", secret],
-  ] as const).filter(([, v]) => !v).map(([n]) => n);
-  if (missing.length) throw new Error(
-    `KITH_SPACE_STORAGE=s3 requires ${missing.join(", ")} to be set (see README → Object storage).`);
-  return { endpoint: endpoint!, region: process.env.KITH_SPACE_S3_REGION ?? "us-east-1", bucket: bucket!, key: key!, secret: secret! };
-}
-
-async function s3client(cfg: S3Config): Promise<any> {
-  const mod = await import("@aws-sdk/client-s3" as string).catch(() => { throw new Error("S3 driver requires @aws-sdk/client-s3: pnpm add @aws-sdk/client-s3"); });
-  return new mod.S3Client({
-    endpoint: cfg.endpoint, region: cfg.region,
-    forcePathStyle: true, // required for MinIO/Garage
-    credentials: { accessKeyId: cfg.key, secretAccessKey: cfg.secret },
-  });
-}
-async function saveS3(key: string, stream: Readable): Promise<Saved> {
-  const cfg = s3Config();
-  const chunks: Buffer[] = []; let size = 0;
-  for await (const c of stream) { chunks.push(c as Buffer); size += (c as Buffer).length; }
-  const mod = await import("@aws-sdk/client-s3" as string);
-  await (await s3client(cfg)).send(new mod.PutObjectCommand({ Bucket: cfg.bucket, Key: key, Body: Buffer.concat(chunks) }));
-  return { key, size };
-}
-async function readS3(key: string): Promise<Buffer> {
-  const cfg = s3Config();
-  const mod = await import("@aws-sdk/client-s3" as string);
-  const r = await (await s3client(cfg)).send(new mod.GetObjectCommand({ Bucket: cfg.bucket, Key: key }));
-  const chunks: Buffer[] = []; for await (const c of r.Body as Readable) chunks.push(c as Buffer);
-  return Buffer.concat(chunks);
+  return readFile(localObjectPath(key));
 }

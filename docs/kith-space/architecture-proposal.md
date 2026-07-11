@@ -87,11 +87,13 @@ REST、agent API、MCP handler 和 UI 必须调用同一 Task Service，不能�
 
 ### 4.6 Files
 
-文件和附件只使用受 Space 根路径约束的本地磁盘服务。删除 S3、远程对象 URL 和云端 bucket 配置。跨 Space 文件访问必须显式选择 Space，不能用字符串路径绕过 registry 与根路径校验。
+文件和附件只使用本地磁盘服务。A2.5 已删除 S3 driver、SDK 依赖和 bucket 配置，并对存储 key 做平面文件名校验；当前上传目录仍是 app 级 `uploads/`。把附件进一步迁入受 Space 根路径约束的目录，需要等待 A2.2 Space 领域上下文贯穿附件服务，不能用字符串路径绕过 registry 与根路径校验。
 
 ## 5. 数据拓扑
 
 ### 5.1 app.db
+
+实现状态：A2.1 已落地 `src/app-data/appDatabase.ts`。旧 `registry.db/workspaces` 已被 `app.db/spaces` 取代；Human profile 为单例行。浏览器 Token、sessions 和 Desktop settings 仍分别属于 A3/A4，尚未提前建空表。
 
 本机应用数据目录中的 `app.db` 保存：
 
@@ -104,6 +106,8 @@ REST、agent API、MCP handler 和 UI 必须调用同一 Task Service，不能�
 app.db 不保存 Space 消息、任务或 agent 业务数据。
 
 ### 5.2 workspace.db
+
+过渡状态：A2.1 创建 `Home` 时仍向 workspace.db 写入一份兼容 `users/owner/server_members` 投影，以维持现有 API；该投影不是第二个 Human 事实源，将在 A2.3 连同 Human membership/RBAC 删除。
 
 每个 Space 的 `<space>/.kith/workspace.db` 保存：
 

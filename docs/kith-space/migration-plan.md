@@ -26,6 +26,8 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A2 本地领域与数据模型
 
+当前进度：A2.1 已完成 `app.db`、唯一 Human、幂等 `Home` 初始化；A2.5 已删除 S3 driver 与 SDK，附件只走本地磁盘。workspace.db 的兼容 Human 投影、Space 全量命名、Machine 和全局上传目录仍待后续切片。
+
 改动边界：
 
 - 新建 app 数据层，中央 registry 扩展/更名为 `app.db`。

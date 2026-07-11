@@ -7,22 +7,14 @@ import path from "node:path";
 import Database from "better-sqlite3";
 
 const home = process.env.KITH_SPACE_HOME ?? path.join(os.homedir(), ".kith-space");
-const registryPath = path.join(home, "registry.db");
+const appDbPath = path.join(home, "app.db");
 const uploadsDir = () => process.env.KITH_SPACE_UPLOAD_DIR ?? path.join(home, "uploads");
 
 async function deleteBlob(storageKey) {
-  if ((process.env.KITH_SPACE_STORAGE ?? "local") === "s3") {
-    const mod = await import("@aws-sdk/client-s3");
-    const client = new mod.S3Client({
-      endpoint: process.env.KITH_SPACE_S3_ENDPOINT,
-      region: process.env.KITH_SPACE_S3_REGION ?? "us-east-1",
-      forcePathStyle: true,
-      credentials: { accessKeyId: process.env.KITH_SPACE_S3_KEY, secretAccessKey: process.env.KITH_SPACE_S3_SECRET },
-    });
-    await client.send(new mod.DeleteObjectCommand({ Bucket: process.env.KITH_SPACE_S3_BUCKET, Key: storageKey }));
-    return;
+  if (!storageKey || path.isAbsolute(storageKey) || storageKey.includes("/") || storageKey.includes("\\") || path.basename(storageKey) !== storageKey) {
+    throw new Error("invalid local storage key");
   }
-  await unlink(path.isAbsolute(storageKey) ? storageKey : path.join(uploadsDir(), storageKey));
+  await unlink(path.join(uploadsDir(), storageKey));
 }
 
 const placeholders = (values) => values.map(() => "?").join(",");
@@ -64,10 +56,10 @@ function cleanWorkspace(rootPath) {
 }
 
 async function main() {
-  if (!existsSync(registryPath)) throw new Error(`registry not found: ${registryPath}`);
-  const registry = new Database(registryPath, { readonly: true });
-  const workspaces = registry.prepare("SELECT name, root_path FROM workspaces").all();
-  registry.close();
+  if (!existsSync(appDbPath)) throw new Error(`app database not found: ${appDbPath}`);
+  const appDb = new Database(appDbPath, { readonly: true });
+  const workspaces = appDb.prepare("SELECT name, root_path FROM spaces").all();
+  appDb.close();
   const total = { channels: 0, agents: 0, messages: 0, attachments: 0 };
   let blobsDeleted = 0;
   let blobCount = 0;

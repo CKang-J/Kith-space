@@ -1,26 +1,53 @@
-// Regression test: an upload whose saveObject fails BEFORE the file stream is consumed
-// (e.g. s3Config() validation throws) must make parseUpload REJECT — not hang (busboy never
-// emits "close") and not crash the process (unhandledRejection). Pre-fix this hangs/crashes.
+// Regression contract for multipart uploads backed by the local attachment store.
 // Run: npx tsx --test --test-force-exit test/attachments.unit.test.ts
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { Readable } from "node:stream";
 
-test("parseUpload rejects (not hangs/crashes) when saveObject fails before consuming the stream", { timeout: 8000 }, async () => {
-  // Force the S3 driver to throw inside saveS3 → s3Config(), which happens BEFORE the stream is read.
-  process.env.KITH_SPACE_STORAGE = "s3";
-  process.env.KITH_SPACE_S3_ENDPOINT = "http://127.0.0.1:9000";
-  process.env.KITH_SPACE_S3_KEY = "k";
-  process.env.KITH_SPACE_S3_SECRET = "s";
-  delete process.env.KITH_SPACE_S3_BUCKET; // missing → s3Config() throws "requires KITH_SPACE_S3_BUCKET"
-  // Dynamic import so storage.ts's top-level DRIVER const is evaluated after env is set.
-  const { parseUpload } = await import("../src/server/attachments.ts");
+const root = await mkdtemp(path.join(tmpdir(), "kith-attachments-"));
+const uploads = path.join(root, "uploads");
+const previousUploadDir = process.env.KITH_SPACE_UPLOAD_DIR;
 
-  const B = "----otTestBoundary";
+process.env.KITH_SPACE_UPLOAD_DIR = uploads;
+const { parseUpload } = await import("../src/server/attachments.ts");
+const { readObject } = await import("../src/server/storage.ts");
+
+after(async () => {
+  if (previousUploadDir === undefined) delete process.env.KITH_SPACE_UPLOAD_DIR;
+  else process.env.KITH_SPACE_UPLOAD_DIR = previousUploadDir;
+  await rm(root, { recursive: true, force: true });
+});
+
+function uploadRequest(contents: string): Readable & { headers: Record<string, string> } {
+  const boundary = "----kithTestBoundary";
   const body = Buffer.from(
-    `--${B}\r\nContent-Disposition: form-data; name="files"; filename="t.txt"\r\nContent-Type: text/plain\r\n\r\nhello-bytes\r\n--${B}--\r\n`);
-  const req: any = Readable.from([body]);
-  req.headers = { "content-type": `multipart/form-data; boundary=${B}` };
+    `--${boundary}\r\nContent-Disposition: form-data; name="channelId"\r\n\r\nchannel-1\r\n` +
+    `--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="t.txt"\r\nContent-Type: text/plain\r\n\r\n${contents}\r\n` +
+    `--${boundary}--\r\n`,
+  );
+  const req = Readable.from([body]) as Readable & { headers: Record<string, string> };
+  req.headers = { "content-type": `multipart/form-data; boundary=${boundary}` };
+  return req;
+}
 
-  await assert.rejects(parseUpload(req), /KITH_SPACE_S3_BUCKET/);
+test("parseUpload stores multipart files in the local attachment store", async () => {
+  const result = await parseUpload(uploadRequest("hello-bytes") as any);
+
+  assert.deepEqual(result.fields, { channelId: "channel-1" });
+  assert.equal(result.files.length, 1);
+  assert.equal(result.files[0]!.filename, "t.txt");
+  assert.equal(result.files[0]!.mimeType, "text/plain");
+  assert.equal(result.files[0]!.size, Buffer.byteLength("hello-bytes"));
+  assert.equal((await readObject(result.files[0]!.storageKey)).toString(), "hello-bytes");
+});
+
+test("parseUpload rejects instead of hanging when local storage fails before consuming the stream", { timeout: 8000 }, async () => {
+  await rm(uploads, { recursive: true, force: true });
+  await writeFile(uploads, "a file blocks creation of the upload directory");
+
+  await assert.rejects(parseUpload(uploadRequest("will-fail") as any), { code: "EEXIST" });
+  assert.equal(await readFile(uploads, "utf8"), "a file blocks creation of the upload directory");
 });

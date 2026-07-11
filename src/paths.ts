@@ -5,7 +5,9 @@ import os from "node:os";
 import path from "node:path";
 
 export const kithSpaceHome = (): string => process.env.KITH_SPACE_HOME ?? path.join(os.homedir(), ".kith-space");
-export const registryDbFile = (): string => path.join(kithSpaceHome(), "registry.db");
+export const appDbFile = (): string => path.join(kithSpaceHome(), "app.db");
+/** @deprecated A2 compatibility alias. New code should use appDbFile(). */
+export const registryDbFile = appDbFile;
 export const defaultWorkspacesDir = (): string => process.env.KITH_SPACE_HOME
   ? path.join(kithSpaceHome(), "workspaces")
   : path.join(os.homedir(), "Kith-space");

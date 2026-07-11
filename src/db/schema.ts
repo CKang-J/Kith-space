@@ -252,7 +252,7 @@ export const attachments = sqliteTable("attachments", {
   filename: text("filename").notNull(),
   mimeType: text("mime_type"),
   sizeBytes: integer("size_bytes"),
-  storageKey: text("storage_key").notNull(),      // absolute local server path (MVP; object storage to follow)
+  storageKey: text("storage_key").notNull(),      // opaque local filename under the app upload directory
   createdAt: timestamp("created_at").default(now).notNull(),
 }, (t) => ({
   byChannel: index("attachments_channel_idx").on(t.channelId),

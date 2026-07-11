@@ -26,7 +26,7 @@ async function seed(db: typeof firstDb, id: string, rootPath: string, suffix: st
   return { userId, channelId };
 }
 
-test("registry records workspace roots and dbFor keeps connections isolated", async () => {
+test("app.db records Space roots and dbFor keeps workspace connections isolated", async () => {
   const first = await seed(firstDb, firstId, firstRoot, "first");
   await seed(secondDb, secondId, secondRoot, "second");
   await firstDb.insert(schema.messages).values({ serverId: firstId, channelId: first.channelId, senderType: "user", senderId: first.userId, senderName: "owner", content: "first only", seq: 41 });

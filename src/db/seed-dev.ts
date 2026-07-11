@@ -4,8 +4,8 @@ import { closeAllDatabases, schema } from "./index.js";
 import { findServerBySlug } from "./lookup.js";
 
 async function main() {
-  const found = await findServerBySlug("kith-space");
-  if (!found) throw new Error("[seed:dev] no 'kith-space' workspace — run `pnpm run seed` first");
+  const found = await findServerBySlug("home");
+  if (!found) throw new Error("[seed:dev] no Home Space — run `pnpm run seed` first");
   const { db, value: server } = found;
   const existing = await db.select().from(schema.agents).where(and(eq(schema.agents.serverId, server.id), eq(schema.agents.name, "dev-bot")));
   if (existing.length && !existing[0]!.deletedAt) { console.log("[seed:dev] dev-bot already exists, skipping"); return; }
