@@ -146,7 +146,7 @@ Composer
 
 ## 7. 当前实现边界
 
-当前生产壳仍处于本机化转向的过渡期：Agents 模块与 Human Settings 资料入口已落地，登录/注册和 Computers 入口已删除；旧 `/computer/*` 深链与 `?module=computers` 不再打开模块，而是回到 ChatOnly。Landing、其他旧深链与 `?legacy=1` 仍待 A4/A5 删除，不是可继续扩展的兼容承诺。
+当前生产壳仍处于本机化转向的过渡期：Agents 模块、Human Settings 资料入口与 A4 Desktop Settings 已落地，登录/注册和 Computers 入口已删除；旧 `/computer/*` 深链与 `?module=computers` 不再打开模块，而是回到 ChatOnly。Landing、其他旧深链、旧 `Layout` 与 `?legacy=1` 仍待 A5 删除，不是可继续扩展的兼容承诺。
 
 单窗口壳按职责拆在 `web/src/shell/`：
 
@@ -166,8 +166,8 @@ Composer
 
 - 首次启动页只收集 Human 名称、可选邮箱和描述，文案不得使用“注册”“账户”或“加入团队”。
 - 初始化完成后自动进入 `Home`；Human 资料可以在全局 Settings 修改。
-- Desktop Settings 额外包含 Web 模式、端口、访问 Token、撤销浏览器会话、托盘关闭行为和系统自启动。
-- 普通浏览器不显示也不能调用上述 Desktop 专属设置；浏览器只显示可安全远程操作的产品设置。
-- LAN 模式首次开启必须展示 HTTP 未加密、只限受信任私网、禁止端口转发/公网暴露的明确提示。
+- Desktop Settings 已包含 Web 模式、端口、访问 Token、撤销浏览器会话、托盘关闭行为和系统自启动；系统自启动在开发态明确显示 unsupported，待 Windows 正式打包后启用。
+- Desktop 设置区只在检测到 `window.kithDesktop` 窄 preload bridge 时显示；普通浏览器直接进入该路由会回落到 Human 设置，并且服务端对管理 API 返回 404。隐藏入口不是唯一安全边界。
+- LAN 模式首次开启会先展示确认面板，明确说明 HTTP 未加密、只限受信任私网、禁止端口转发/公网暴露；用户确认后才改变监听。自动生成/轮换的访问 Token 保持一次性显示，直到用户主动确认已保存。
 
 一句话：**Chat 是基础工作面，模块是可并行、可独占的第二工作面，Dock 是两者之间唯一稳定的布局控制器。**

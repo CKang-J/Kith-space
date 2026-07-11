@@ -726,6 +726,54 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;box
 .switch.on .knob{transform:translateX(17px)}
 @media (prefers-reduced-motion: reduce){.switch,.switch .knob{transition:none}}
 
+/* Desktop-only settings. Management actions stay behind the Electron preload bridge. */
+.desktop-settings{width:min(100%,760px);display:flex;flex-direction:column;gap:18px}
+.desktop-settings-section{border:1px solid var(--hair);border-radius:12px;background:var(--canvas-soft);padding:20px}
+.desktop-settings-heading{padding-bottom:14px;border-bottom:1px solid var(--hair)}
+.desktop-settings-heading h2{font-family:var(--serif);font-size:21px;font-weight:400;color:var(--ink);margin:0}
+.desktop-settings-heading p,.desktop-setting-block p{font-size:13px;line-height:1.5;color:var(--muted);margin:4px 0 0}
+.desktop-setting-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:16px 0;border-bottom:1px solid var(--hair)}
+.desktop-setting-copy{min-width:0}
+.desktop-setting-title{font-size:15px;font-weight:500;color:var(--ink-2)}
+.desktop-setting-desc{font-size:13px;line-height:1.5;color:var(--muted);margin-top:3px;max-width:52ch}
+.desktop-settings button:disabled{opacity:.5;cursor:default}
+.desktop-mode-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:16px}
+.desktop-mode-card{display:flex;flex-direction:column;gap:3px;text-align:left;border:1px solid var(--hair-strong);border-radius:8px;background:var(--surface);color:var(--ink-2);padding:11px 12px;cursor:pointer}
+.desktop-mode-card:hover:not(:disabled){border-color:var(--muted-soft)}
+.desktop-mode-card.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);background:var(--canvas)}
+.desktop-mode-card span{font-size:14px;font-weight:600}
+.desktop-mode-card small{font-size:12px;line-height:1.4;color:var(--muted)}
+.desktop-lan-warning{display:flex;align-items:flex-start;gap:9px;margin-top:12px;padding:10px 12px;border:1px solid var(--g-peach);border-radius:8px;background:var(--mention);color:var(--amber);font-size:13px;line-height:1.5}
+.desktop-lan-warning svg{flex:none;margin-top:1px}
+.desktop-lan-confirm{display:flex;align-items:flex-start;gap:9px;margin-top:12px;padding:12px;border:1px solid var(--error-line);border-radius:8px;background:var(--error-soft);color:var(--body)}
+.desktop-lan-confirm>svg{flex:none;margin-top:2px;color:var(--error)}
+.desktop-lan-confirm strong{font-size:14px;color:var(--ink)}
+.desktop-lan-confirm p{font-size:13px;line-height:1.5;color:var(--body);margin:4px 0 10px}
+.desktop-setting-block{padding-top:16px}
+.desktop-setting-block label{display:block;font-size:13px;font-weight:500;color:var(--body);margin-bottom:6px}
+.desktop-setting-block input{width:100%;font-family:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--hair-strong);border-radius:8px;padding:9px 11px;outline:none}
+.desktop-inline-control{display:flex;align-items:center;gap:8px}
+.desktop-inline-control input{max-width:180px}
+.desktop-inline-control .cancel{white-space:nowrap}
+.desktop-browser-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px}
+.desktop-browser-meta span{font-size:11px;color:var(--muted);background:var(--surface-strong);border-radius:9999px;padding:3px 8px;font-variant-numeric:tabular-nums}
+.desktop-token-action{display:inline-flex;align-items:center;gap:7px;margin-top:10px;border:0;border-radius:9999px;background:var(--ink-2);color:var(--on-ink);font-size:13px;font-weight:500;padding:8px 15px;cursor:pointer}
+.desktop-token-reveal{display:flex;flex-direction:column;gap:10px;margin-top:16px;padding:14px;border:1px solid var(--g-mint);border-radius:8px;background:var(--tint-green)}
+.desktop-token-reveal strong{font-size:14px;color:var(--ink)}
+.desktop-token-reveal p{font-size:12px;line-height:1.45;color:var(--body);margin:2px 0 0}
+.desktop-token-reveal code{display:block;overflow-wrap:anywhere;background:var(--surface);border:1px solid var(--hair);border-radius:6px;padding:9px 10px;color:var(--ink);font-family:var(--mono);font-size:12px;user-select:all}
+.desktop-token-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.desktop-token-actions .cancel{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:6px 12px}
+.desktop-sessions-row{margin-top:16px;border-top:1px solid var(--hair);border-bottom:0;padding-bottom:0}
+.desktop-danger-button{flex:none;font-size:13px;color:var(--error);background:var(--surface);border:1px solid var(--error-line);padding:7px 14px;border-radius:9999px;cursor:pointer}
+.desktop-settings-error,.desktop-settings-notice{font-size:13px;line-height:1.5;border-radius:8px;padding:9px 12px}
+.desktop-settings-error{color:var(--error);background:var(--error-soft);border:1px solid var(--error-line)}
+.desktop-settings-notice{color:var(--success);background:var(--tint-green);border:1px solid var(--g-mint)}
+@media (max-width:760px){
+  .desktop-mode-grid{grid-template-columns:1fr}
+  .desktop-setting-row{align-items:flex-start;flex-direction:column}
+}
+
 /* ── Sidebar channel pin button ─────────────────────────────────────────── */
 .chan-row .pinbtn{flex:none;opacity:0;border:0;background:transparent;cursor:pointer;font-size:11px;line-height:1;padding:2px;border-radius:4px;filter:grayscale(1) opacity(.6);transition:opacity .12s}
 .chan-row:hover .pinbtn{opacity:.7}

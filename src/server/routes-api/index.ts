@@ -22,6 +22,7 @@ import type { BaseCtx, HumanCtx, SpaceCtx } from "./ctx.js";
 import { handleAuthedAuth } from "./auth.js";
 import { handleHumanAttachmentGet, handleAttachments } from "./attachments.js";
 import { handleAuthenticatedBrowserAuth, handleDesktopBrowserAccess, handlePublicBrowserAuth } from "./browserAccess.js";
+import { handleDesktopSettings } from "./desktopSettings.js";
 import { handleSpacesHumanScope } from "./spaces.js";
 import { handleLocalRuntimeHumanScope } from "./localRuntime.js";
 import { handleSpacePreferences } from "./spacePreferences.js";
@@ -39,6 +40,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
 
   // ---- gate 0: public / self-authenticating ----
   if (await handleDesktopBrowserAccess(base)) return true;
+  if (await handleDesktopSettings(base)) return true;
   if (await handlePublicBrowserAuth(base)) return true;
 
   // ---- gate 1: require Desktop trust or a persistent browser session ----

@@ -19,6 +19,7 @@ import { shouldServeAppShell } from "./staticRoutes.js";
 import { BrowserAccessPolicy } from "../browser-access/index.js";
 import { assertInternalCredentialsConfigured, isDesktopTrustedRequest } from "../local-runtime/internalCredentials.js";
 import { browserOriginAllowed, requestPeerIsLoopback } from "./browserSessionHttp.js";
+import { resolveCorePort } from "./localEndpoint.js";
 
 assertInternalCredentialsConfigured();
 
@@ -43,13 +44,9 @@ const redirect = (res: import("node:http").ServerResponse, location: string): vo
 
 const accessPolicy = new BrowserAccessPolicy();
 const listenerPolicy = accessPolicy.getListenerPolicy();
-const devPort = process.env.PORT === undefined ? null : Number(process.env.PORT);
-if (devPort !== null && (!Number.isInteger(devPort) || devPort < 1 || devPort > 65535)) {
-  throw new Error("PORT must be an integer from 1 to 65535");
-}
 // Core always needs a private listener for Desktop/Worker. `browserEnabled=false` closes only the ordinary
 // browser product entrance; it does not remove the Desktop's loopback transport.
-const PORT = devPort ?? listenerPolicy.port;
+const PORT = resolveCorePort(process.env, accessPolicy);
 const HOST = listenerPolicy.host;
 const WEBDIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist");
 const DOCSDIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../docs-site/dist");
@@ -151,6 +148,15 @@ attachSocketIO(server); // human-side realtime (socket.io, /socket.io/)
 attachWs(server);       // daemon control plane (raw ws, /daemon/connect)
 startReminderScheduler(); // reminder scheduler: fires at due time, wakes the author
 
+server.on("error", (error: NodeJS.ErrnoException) => {
+  const message = error.code === "EADDRINUSE"
+    ? `Core Service port ${PORT} is already in use`
+    : `Core Service failed to listen on ${HOST}:${PORT}: ${error.message}`;
+  log.error("control plane listen failed", { code: error.code, host: HOST, port: PORT, detail: error.message });
+  process.send?.({ type: "kith:core-error", code: error.code ?? "LISTEN_FAILED", message, port: PORT });
+  setImmediate(() => process.exit(1));
+});
+
 // Durability guard: before accepting traffic, align in-memory seq/task counters to each Space DB maximum.
 // Prevents seq rollback and silent message drops after a process restart.
 reconcileCounters()
@@ -158,4 +164,19 @@ reconcileCounters()
   .catch((e) => log.error("counter reconcile failed (continuing)", { detail: String(e?.message ?? e) }))
   .finally(() => server.listen(PORT, HOST, () => {
     log.info("control plane up", { url: `http://${HOST}:${PORT}`, browserMode: accessPolicy.getSettings().mode, health: `http://${HOST}:${PORT}/health`, logs: "~/.kith-space/logs/" });
+    process.send?.({ type: "kith:core-ready", host: HOST, port: PORT, browserMode: accessPolicy.getSettings().mode });
   }));
+
+let shutdownStarted = false;
+const shutdown = () => {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  const forcedExit = setTimeout(() => process.exit(0), 3_000);
+  forcedExit.unref();
+  server.close(() => process.exit(0));
+};
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+process.on("message", (message: unknown) => {
+  if ((message as { type?: unknown } | null)?.type === "kith:shutdown") shutdown();
+});

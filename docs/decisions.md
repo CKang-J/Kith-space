@@ -240,9 +240,9 @@
 
 **访问安全**：所有浏览器首次访问都输入访问 Token，Electron 内嵌界面免输。Token 可自定义 16-256 字符，留空自动生成 32 字节；app.db 只存 scrypt 哈希与 revision。持久会话的原始随机值只进 HttpOnly、SameSite=Strict Cookie，DB 只存 SHA-256 哈希；写请求同时做 Origin 和 CSRF 校验。Desktop 可轮换 Token 或撤销全部会话，轮换通过 revision 立即使全部旧会话失效。局域网浏览器具有完整产品能力，但 v1 只支持 HTTP 和桌面级浏览器；首次开启必须警告仅限受信任私网、不得端口转发或公网暴露。
 
-**凭据隔离**：浏览器 Access Token、Desktop 私有信任、Local Runtime Worker 控制凭据和 agent session token 四者互不复用。A3 已删除 Human JWT、dev-login、`?as=`、Bearer/localStorage 会话和 URL token；Desktop 管理 API 对普通浏览器返回 404。A4 Electron 将在每次启动为 Desktop/Worker 生成两个独立内部凭据；A4 前的分进程开发仅从环境变量注入这两个凭据。
+**凭据隔离**：浏览器 Access Token、Desktop 私有信任、Local Runtime Worker 控制凭据和 agent session token 四者互不复用。A3 已删除 Human JWT、dev-login、`?as=`、Bearer/localStorage 会话和 URL token；Desktop 管理 API 对普通浏览器返回 404。A4 Electron 已在每次进程组启动/重启时为 Desktop/Worker 生成两个独立内部凭据，并阻止受管子进程从 `.env` 回灌；渲染器 JavaScript 不持有凭据，Vite 子进程环境不包含凭据，agent runtime 环境会剥离全部宿主级 `KITH_SPACE_*` 变量后只注入当前 agent 的短期能力。只有保留给开发调试的手动分进程模式从环境变量注入。
 
-**Desktop 生命周期**：关闭窗口默认隐藏到托盘，服务和 agent 继续运行；显式退出才停止全部进程。可选改为关闭即退出。系统自启动默认关闭，启用后以托盘方式启动。
+**Desktop 生命周期**：关闭窗口默认隐藏到托盘，服务和 agent 继续运行；显式退出才停止全部进程。可选改为关闭即退出。系统自启动默认关闭，启用后以托盘方式启动；A4 已接入 Windows 打包态的 Electron 自启动接口，开发态明确标记 unsupported，正式安装器仍属后续发行工作。
 
 **推理与权衡**：共享 UI/API 避免维护两个产品；Desktop 监督内部进程，消除普通用户的服务配置负担。LAN 入口满足同一局域网内的临时访问需求，但不改变单 Human、本机 agent 和本地数据边界。HTTP 是明确安全债；HTTPS 与 runtime 权限升级是邮箱、浏览器等高风险模块上线前的硬前置。
 
@@ -297,6 +297,8 @@
 **删除不是延后**：多真人、远程 agent 主机、公网托管、SaaS、云数据库、移动 Web、PWA 和推送是永久非目标。邮箱、日历、画布、跨 Space 聚合、HTTPS 安全升级及 macOS/Linux 发行才是延后能力。
 
 **实施方式**：先同步权威文档，再依次完成本地领域与 `app.db`、浏览器访问安全、Electron 宿主、UI/入口清理和继承资产总审计。每阶段独立验证、独立提交。完整规格见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`。
+
+**实施状态（2026-07-11）**：A2 本地域与数据模型、A3 浏览器访问安全、A4 Electron Desktop 宿主均已落地。下一阶段是 A5 首次 Human 初始化和旧界面/登录残留清理；生产 bundle、正式打包与安装器没有在 A4 提前完成。
 
 ---
 

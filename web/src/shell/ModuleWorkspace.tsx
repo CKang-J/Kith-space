@@ -30,7 +30,10 @@ function ModuleContent({ moduleId, route, chatVisible }: { moduleId: WorkspaceMo
       />
     );
   }
-  if (moduleId === "settings") return <Settings sectionOverride={route.resourceId ?? undefined} moduleQuerySuffix={moduleQuerySuffix} />;
+  if (moduleId === "settings") {
+    const section = route.section === "settings" ? route.resourceId ?? undefined : undefined;
+    return <Settings sectionOverride={section} moduleQuerySuffix={moduleQuerySuffix} />;
+  }
   if (moduleId === "search") return <Search />;
   return <Inbox />;
 }

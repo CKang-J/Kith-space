@@ -117,3 +117,33 @@ test("concurrent starts for the same agent are idempotent", async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("Desktop shutdown waits until every runtime reports exit", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-agent-manager-"));
+  let stopped = false;
+  const fakeRuntime: Runtime = {
+    name: "fake",
+    start(_opts: StartOpts, cb: RuntimeCallbacks) {
+      return {
+        deliver: () => {},
+        stop: () => {
+          setTimeout(() => { stopped = true; cb.onExit(0); }, 5);
+        },
+      };
+    },
+  };
+
+  try {
+    const mgr = new AgentManager(() => {}, {
+      dataDir: root,
+      binDir: root,
+      runtimeResolver: () => fakeRuntime,
+    });
+    await mgr.start("agent-shutdown", baseConfig("agent-shutdown", path.join(root, "workspace")));
+    await mgr.stopAllAndWait(100);
+    assert.equal(stopped, true);
+    assert.deepEqual(mgr.running(), []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

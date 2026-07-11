@@ -88,11 +88,19 @@ export function appDataConnection(): Database.Database {
       created_at INTEGER NOT NULL,
       last_seen_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS desktop_settings (
+      singleton_key INTEGER PRIMARY KEY NOT NULL CHECK (singleton_key = 1),
+      close_behavior TEXT NOT NULL DEFAULT 'tray' CHECK (close_behavior IN ('tray', 'quit')),
+      launch_at_login INTEGER NOT NULL DEFAULT 0 CHECK (launch_at_login IN (0, 1))
+    );
     CREATE INDEX IF NOT EXISTS browser_sessions_revision_idx
       ON browser_sessions (token_revision);
     INSERT OR IGNORE INTO browser_access_settings (
       singleton_key, mode, port, access_token_hash, token_revision
     ) VALUES (1, 'off', 7777, NULL, 0);
+    INSERT OR IGNORE INTO desktop_settings (
+      singleton_key, close_behavior, launch_at_login
+    ) VALUES (1, 'tray', 0);
   `);
   connection = { sqlite, dbPath };
   return sqlite;

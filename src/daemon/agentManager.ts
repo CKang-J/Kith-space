@@ -10,6 +10,7 @@ import { getRuntime } from "./runtimes.js";
 import type { Runtime, RuntimeSession, RuntimeCallbacks } from "./runtime.js";
 import { createLogger } from "../log.js";
 import { agentsDir } from "../paths.js";
+import { buildAgentProcessEnv } from "./agentProcessEnv.js";
 
 const DATA_DIR = agentsDir();
 const IDLE_MS = Number(process.env.KITH_SPACE_IDLE_MS ?? 10 * 60 * 1000); // how long before idle sleep (kills process to save memory; next wake uses --resume)
@@ -24,7 +25,7 @@ export interface AgentConfig {
 }
 interface DeliverBuf { count: number; from: string; target: string; targetName: string; firstShort: string; latestShort: string; isTask: boolean; mentioned: boolean; targets: Set<string>; timer: ReturnType<typeof setTimeout>; streamId?: string; }
 export interface DeliverMeta { targetName?: string; msgShort?: string; isTask?: boolean; streamId?: string; }
-interface Running { session: RuntimeSession; config: AgentConfig; sessionId: string | null; idleTimer?: ReturnType<typeof setTimeout>; deliverBuf?: DeliverBuf; }
+interface Running { session: RuntimeSession; config: AgentConfig; sessionId: string | null; exited: Promise<void>; markExited: () => void; idleTimer?: ReturnType<typeof setTimeout>; deliverBuf?: DeliverBuf; }
 interface PendingDeliver { from: string; target: string; mentioned: boolean; meta: DeliverMeta; }
 interface PendingDeliverQueue { items: PendingDeliver[]; timer: ReturnType<typeof setTimeout>; }
 interface ActiveReplyPreview { channelId: string; streamId: string; name: string; }
@@ -61,6 +62,26 @@ export class AgentManager {
 
   running(): string[] { return [...this.agents.keys()]; }
   stopAll(): void { for (const id of [...this.agents.keys()]) this.stop(id); }
+  async stopAllAndWait(timeoutMs = 4_000): Promise<void> {
+    const running = [...this.agents.values()];
+    let firstError: unknown;
+    for (const id of [...this.agents.keys()]) {
+      try { this.stop(id); } catch (error) { firstError ??= error; }
+    }
+    if (firstError) throw firstError;
+    if (running.length === 0) return;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.all(running.map(({ exited }) => exited)),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(() => reject(new Error(`agent runtimes did not exit within ${timeoutMs}ms`)), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  }
   // Tear down process: clear timers + remove from map first (critical: deletion before session.stop() lets the onExit has() guard recognize this as an intentional stop, suppressing unexpected sleeping status) + stop runtime. Returns whether the agent was found.
   private teardown(agentId: string): boolean { this.clearPendingDeliver(agentId); this.finishReplyPreview(agentId); const r = this.agents.get(agentId); if (!r) return false; if (r.idleTimer) clearTimeout(r.idleTimer); if (r.deliverBuf) clearTimeout(r.deliverBuf.timer); this.agents.delete(agentId); r.session.stop(); return true; }
   // User-initiated stop: emits inactive/offline
@@ -167,14 +188,16 @@ export class AgentManager {
       name: config.name, displayName: config.displayName, description: config.description,
       agentId, spaceId: config.spaceId, hostname: os.hostname(), os: `${os.platform()} ${os.arch()}`, workspace: dir, memory,
     });
-    const env: NodeJS.ProcessEnv = {
-      ...process.env, FORCE_COLOR: "0",
-      PATH: `${this.binDir}:${process.env.PATH ?? ""}`,
-      KITH_SPACE_SERVER_URL: config.serverUrl, KITH_SPACE_AGENT_ID: agentId, KITH_SPACE_AGENT_TOKEN: config.agentToken ?? "",
-    };
-    delete env.CLAUDECODE; delete env.CLAUDE_CODE_ENTRYPOINT;
+    const env = buildAgentProcessEnv({
+      binDir: this.binDir,
+      serverUrl: config.serverUrl,
+      agentId,
+      agentToken: config.agentToken ?? "",
+    });
 
-    const running: Running = { session: undefined as unknown as RuntimeSession, config, sessionId: config.sessionId ?? null };
+    let markExited = () => {};
+    const exited = new Promise<void>((resolve) => { markExited = resolve; });
+    const running: Running = { session: undefined as unknown as RuntimeSession, config, sessionId: config.sessionId ?? null, exited, markExited };
     const cb: RuntimeCallbacks = {
       onSession: (sid) => { running.sessionId = sid; this.send({ type: "agent:session", agentId, sessionId: sid }); },
       onActivity: (activity, detail) => {
@@ -184,6 +207,7 @@ export class AgentManager {
       },
       onTrajectory: (entries) => { this.send({ type: "agent:trajectory", agentId, entries }); this.sendReplyPreviewDelta(agentId, entries); },
       onExit: (code) => {
+        running.markExited();
         this.log.info("agent exited", { agentId, code });
         if (!this.agents.has(agentId)) return; // intentional stop/sleep/reset already called teardown (removed from map) — they sent their own status, don't overwrite
         this.agents.delete(agentId);

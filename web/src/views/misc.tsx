@@ -8,6 +8,8 @@ import { IconInbox } from "../icons.tsx";
 import { TaskBoard } from "../TaskBoard.tsx";
 import { PaneEmpty } from "../PaneEmpty.tsx";
 import { useTranslation } from "react-i18next";
+import { getDesktopBridge, resolveSettingsSection } from "../desktopBridge.ts";
+import { DesktopSettings } from "./DesktopSettings.tsx";
 
 interface TasksProps {
   channelIdOverride?: string | null;
@@ -219,7 +221,7 @@ export function Search() {
   );
 }
 
-// Settings sub-pages (account/Space implemented; remaining entries are navigation placeholders)
+// Settings sub-pages. Desktop administration exists only inside the Electron preload boundary.
 // SETTINGS labels are i18n keys; call t(label) at render time
 const SETTINGS: [string, string][] = [
   ["account", "misc.settingsNavAccount"],
@@ -231,20 +233,35 @@ export function Settings({ sectionOverride, moduleQuerySuffix = "" }: { sectionO
   const { slug, spaceId, api } = useStore();
   const nav = useNavigate();
   const { t } = useTranslation();
-  const cur = section || "account";
-  const curLabel = t(SETTINGS.find((s) => s[0] === cur)?.[1] || cur);
+  const desktopBridge = getDesktopBridge();
+  const requestedSection = section || "account";
+  const cur = resolveSettingsSection(section, desktopBridge !== null);
+  const settingsEntries: [string, string][] = desktopBridge
+    ? [...SETTINGS, ["desktop", "misc.settingsNavDesktop"]]
+    : SETTINGS;
+  const curLabel = t(settingsEntries.find((s) => s[0] === cur)?.[1] || cur);
+  useEffect(() => {
+    if (requestedSection !== "desktop" || desktopBridge) return;
+    nav(`/s/${slug}/settings/account${moduleQuerySuffix}`, { replace: true });
+  }, [desktopBridge, moduleQuerySuffix, nav, requestedSection, slug]);
   return (
     <>
       <aside className="sidebar">
         <div className="sb-scroll">
         <div className="sb-title">{t("nav.settings")}</div>
-        <div className="settings-nav">{SETTINGS.map(([k, labelKey]) => <button key={k} className={"item" + (cur === k ? " active" : "")} onClick={() => nav(`/s/${slug}/settings/${k}${moduleQuerySuffix}`)}>{t(labelKey)}</button>)}</div>
+        <div className="settings-nav">{settingsEntries.map(([k, labelKey]) => <button key={k} className={"item" + (cur === k ? " active" : "")} onClick={() => nav(`/s/${slug}/settings/${k}${moduleQuerySuffix}`)}>{t(labelKey)}</button>)}</div>
         </div>
       </aside>
       <main className="content-col">
         <div className="head"><h1>{t("misc.settingsTitle", { section: curLabel })}</h1></div>
         <div className="scroll">
-          {cur === "account" ? <AccountSettings api={api} /> : cur === "space" ? <SpaceSettings api={api} spaceId={spaceId} /> : <div className="empty">{t("misc.settingsWip", { section: cur })}</div>}
+          {cur === "account"
+            ? <AccountSettings api={api} />
+            : cur === "space"
+              ? <SpaceSettings api={api} spaceId={spaceId} />
+              : cur === "desktop" && desktopBridge
+                ? <DesktopSettings bridge={desktopBridge} />
+                : <div className="empty">{t("misc.settingsWip", { section: cur })}</div>}
         </div>
       </main>
     </>

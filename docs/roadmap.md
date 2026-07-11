@@ -58,7 +58,7 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 - Web 模式已落地为关闭（默认）/仅本机/局域网；仅本机绑定 `127.0.0.1`，LAN 绑定 `0.0.0.0`。关闭模式保留 Desktop/Worker 的私有 loopback 传输，但不提供普通浏览器壳。
 - 访问 Token 可设 16-256 字符，留空自动生成 32 字节高强度值；app.db 只存 scrypt 哈希与 revision。
 - 验证成功后建立持久 HttpOnly、SameSite=Strict Cookie 会话，写请求同时校验 Origin 与 CSRF；可单会话退出、Desktop 全量撤销，Token 轮换使全部旧会话失效。
-- Desktop 信任、Worker 控制面和浏览器 Token 凭据已分离；分进程开发暂由环境注入两个独立内部凭据，A4 由 Desktop 每次启动生成。
+- Desktop 信任、Worker 控制面和浏览器 Token 凭据已分离；Desktop 每次启动/重启进程组都会生成新的两份独立内部凭据，分进程调试才由环境注入。
 - Human JWT、dev-login、`?as=`、Bearer 和 URL token 传递已从活跃路径删除。
 - LAN v1 只做 HTTP 且拥有完整产品能力；只限受信任私网，禁止端口转发或公网暴露。
 
@@ -66,15 +66,16 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 
 ### P-A4 Electron Desktop 宿主
 
-状态：下一阶段。
+状态：已完成。
 
-- 增加 `pnpm run desktop:dev`，统一启动 Core Service、Local Runtime Worker、Vite 和 Electron。
-- 实现子进程监督、稳定端口与冲突处理。
-- 默认关闭窗口进入托盘；显式退出停止全部；提供关闭即退出设置。
-- 提供默认关闭的系统自启动，启用后托盘启动。
-- Desktop Settings 管理 Web 模式、端口、Token、托盘和自启动。
+- Electron 43.1.0 与 `pnpm run desktop:dev` 已落地；Desktop 统一启动 Core Service、唯一 Local Runtime Worker、开发期 Vite 和 Electron。
+- Core 从 app.db 取得权威端口并先启动，ready IPC 后才启动 Worker/Vite；端口冲突、ready 超时和子进程异常都有明确诊断与整组清理。
+- 每次进程组启动/重启轮换独立 Desktop/Worker 临时凭据，受管环境阻止 `.env` 回灌；渲染器 JavaScript 不持有私有凭据，Vite 子进程环境不包含私有凭据，agent runtime 只获得当前 agent 的能力。
+- BrowserWindow 使用 sandbox/contextIsolation、关闭 Node 集成、拒绝权限/外部导航/新窗口；preload 只暴露经发送者校验的 Settings 窄桥。
+- 默认关闭窗口进入托盘；显式退出等待 runtime 后停止 Windows process tree/Unix process group，失败时保留句柄供重试；可改为关闭即退出。Windows 打包态预留默认关闭的系统自启动，开发态显示 unsupported。
+- Desktop Settings 管理 Web 模式、端口、Token 轮换、浏览器会话撤销、关闭行为和自启动；LAN 变更前确认 HTTP 风险，一次性 Token 保持显示到主动确认；普通浏览器无管理入口。
 
-验收：Windows 上一次命令启动完整开发宿主；正式形态不要求用户 `.env`；托盘和退出生命周期符合规格。
+验收：Desktop 构建、监督器/安全/IPC/Settings 测试与隔离数据目录的实际 smoke 已通过；一次命令可启动完整 Windows 开发宿主，Desktop 管理进程不依赖用户内部凭据 `.env`。`desktop:build` 仍只是开发 bundle，正式安装器留到后续发行阶段。
 
 ### P-A5 UI 与入口清理
 
@@ -82,14 +83,14 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 - Dock 固定为 `Chat | Inbox | Tasks | Agents | Settings`。
 - `Members` 改为当前 Space 的 `Agents`；Human 资料进入全局 Settings；`Computers` 已在 A2.4 提前删除。
 - 删除 landing、登录、注册、邀请、PWA 和 `?legacy=1`/旧 `Layout`。
-- 浏览器隐藏 Token、端口、监听、进程和系统自启动等 Desktop 专属设置。
+- 延续 A4 的宿主能力边界：Desktop 显示 Web/Token/端口/托盘/自启动设置，普通浏览器无该入口且不能调用管理 API。
 
 验收：所有入口都服务一个 Human 与本机 agent；浏览器和 Desktop 复用工作区 UI，但权限边界不同。
 
 ### P-A6 继承资产清理与总审计
 
 - 删除 Dockerfile、compose、entrypoint、环境样例和远程部署文档。
-- 删除公共 server/daemon npm 发布、独立安装器和 OIDC 发布 workflow。
+- 删除公共 server/daemon npm 发布、它们各自的独立安装器和 OIDC 发布 workflow；完成 Windows Desktop 正式生产 bundle、打包/安装器与发行路径。
 - 审计 Human JWT/dev-login 等 A3 退役路径保持不可达，并删除 Machine/多用户历史术语、PWA 和其他旧领域资产。
 - 保留仓库内部的分进程开发命令与少量测试覆盖环境变量。
 - 完成 typecheck、单元、集成、web build、Electron 冒烟和文档口径审计。

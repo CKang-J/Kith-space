@@ -9,7 +9,8 @@ test("the installation-local Worker cannot be pointed at a remote Core Service",
   assert.match(workerEntry, /const serverUrl = `http:\/\/127\.0\.0\.1:\$\{process\.env\.PORT \?\? 7777\}`/);
   assert.doesNotMatch(workerEntry, /--server-url/);
   assert.match(workerEntry, /case "agent:start": void mgr\.start\(msg\.agentId, msg\.config\);/);
-  assert.match(core, /const SELF_URL = `http:\/\/127\.0\.0\.1:\$\{PORT\}`/);
+  assert.match(core, /import \{ coreLoopbackUrl \} from "\.\/localEndpoint\.js"/);
+  assert.match(core, /serverUrl: coreLoopbackUrl\(\)/);
 });
 
 test("local Worker send helpers carry no retired serverId parameter", () => {

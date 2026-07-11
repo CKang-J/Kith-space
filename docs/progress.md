@@ -8,7 +8,7 @@
 
 - 分支：`feat/p0-foundation`，尚未合并或推送远端。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A3 浏览器访问安全边界已完成**。off/local/lan 三模式、访问 Token、持久 Cookie 会话、Origin/CSRF、Desktop/Worker 独立凭据与前端 Token Gate 均已落地；下一步进入 A4 Electron Desktop 宿主。
+- 当前阶段：**A4 Electron Desktop 宿主已完成**。Electron 43.1.0 已接管 Core Service、唯一 Local Runtime Worker 与开发期 Vite 的启动监督、临时凭据、托盘生命周期和 Desktop Settings；下一步进入 A5 首次 Human 初始化与旧界面/登录残留清理。
 - P4 视觉微调已暂停，等本机化基础收敛后再恢复。
 - 底座为 open-tag 衍生开发副本；`reference/` 只读。OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
 
@@ -60,12 +60,16 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - A2.2b 验证：`pnpm run typecheck` 通过，`pnpm run web:build` 通过（2563 modules），`pnpm test --integration` 全量通过；`pnpm test --unit` 364 项中 363 项通过，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。fresh baseline、legacy schema 拒绝、canonical Space transport、唯一 Human channel state 与 agent-only membership 均有行为或契约测试覆盖。
 - A2 最终验收：`pnpm run typecheck` 通过，`pnpm run web:build` 通过（2563 modules），`pnpm test --integration` 全量通过；`pnpm test --unit` 367 项中 366 项通过，唯一失败仍是同一个既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。Space 隔离附件、未知 Space/路径穿越拒绝、旧 app 级上传配置不生效、Worker loopback-only 与旧 `serverId` 发送参数消失均有回归覆盖。
 - A3 最终验收：`pnpm run typecheck` 通过，`pnpm run web:build` 通过（2559 modules），`pnpm test --integration` 全量通过；`pnpm test --unit` 391 项中 390 项通过，唯一失败仍是同一个既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。Web 三模式、Token/会话轮换、Cookie/CSRF/Origin/限速、Desktop 管理不可从浏览器达到、Worker 私有 header 握手、前端 Token Gate 与旧 JWT/URL token 退役均有行为或契约覆盖。
+- A4 最终验收：`pnpm run typecheck`、`pnpm run desktop:build`、`pnpm run web:build`（2561 modules）和 `pnpm test --integration` 全量通过；`pnpm test --unit` 426 项中 425 项通过，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。使用隔离 `KITH_SPACE_HOME` 的实际 Desktop smoke 已验证 Core ready 后才启动 Worker/Vite，Electron 成功加载共享 UI，退出后测试端口无残留监听。
 - P4 壳位于 `web/src/shell/`。URL 以频道/DM 路径、`?module=<id>` 和 `chat=0` 表达三态；Split 默认 Chat 25%。
 - 产品登录/注册、成员/RBAC/邀请 API、Web Human roster、Human-Human DM、Machines API 和 Computers UI 已删除；Dock/模块使用 Agents，频道成员只增删 agent，Human 资料入口位于 Settings。A3 进一步删除了 Human JWT、dev-login、`?as=`、localStorage/Bearer 会话和附件/Socket URL token；未授权浏览器只看到 Access Token Gate。Landing、`?legacy=1`、Docker/发布等其他继承资产仍待 A5/A6 清理。
 - Core Service 启动时从 app.db 读取 Web 模式：off（默认）与 local 均绑定 `127.0.0.1`，lan 绑定 `0.0.0.0`。off 只留 Desktop/Worker 私有传输，普通浏览器壳被拒绝；LAN 只允许匹配 Host 的 Origin。`/health` 只对 loopback/Desktop 可见并暴露 `workerConnected`。
 - 访问 Token 可自定义 16-256 字符，留空自动生成 32 字节；app.db 只存 scrypt 哈希和 revision。原始 browser session token 只进 HttpOnly、SameSite=Strict Cookie，DB 只存 SHA-256 哈希；写请求同时校验 Origin 和 CSRF。Token 轮换或 Desktop 全量撤销会使旧会话失效。
-- Desktop 管理 API 只认 loopback 请求中的 `x-kith-desktop-token`，浏览器请求得到 404；Worker 只从 loopback 连接 `/daemon/connect` 并用私有 `x-kith-worker-token` header 握手，凭据不进 URL。`generateInternalProcessCredentials` 已提供每次 Desktop 启动的随机凭据生成能力，A4 再接入 Electron 监督器。分进程开发暂从 `.env` 分别注入 `KITH_SPACE_DESKTOP_TOKEN` 与 `KITH_SPACE_WORKER_TOKEN`，不得复用浏览器 Token。
-- `pnpm run browser-access:dev <off|local|lan>` 是 A4 前的开发 Web 管理入口。`dev:e2e:up` 会启用 local、同步 `PORT`、每次轮换随机 Token 并只在启动终端显示一次，然后等待 Worker ready 并 seed dev-bot。
+- `src/desktop/processSupervisor.ts` 先启动 Core，并等待其通过 IPC 报告 app.db 中的实际端口；收到 ready 后才启动唯一 Worker 和可选 Vite。Core 报端口占用、ready 超时或任一关键子进程异常时会给出明确诊断并收掉进程组；显式退出按 Vite、Worker、Core 顺序停止，Worker 等待全部 runtime 报告退出，超时后使用 Windows process tree 或 Unix process group 强制收尾。终止失败会保留句柄和托盘重试入口，不会假装退出成功。
+- Desktop 每次启动或重启进程组都会轮换独立的 Desktop/Worker 32 字节凭据。Core 仅同时持有两者，Worker 只持有 Worker 凭据，Vite 子进程环境不包含两者；`KITH_SPACE_DESKTOP_MANAGED=1` 阻止受管子进程从 `.env` 回灌凭据。agent runtime 环境会大小写无关剥离全部宿主 `KITH_SPACE_*`/IPC/端口变量，只重加当前 agent 的 server URL、id 和 token。渲染器 JavaScript 不接触 Desktop 私有凭据，Electron session 只在允许的 loopback Core/API/socket 请求上附加信任 header，并排除 `/api/desktop/*` 管理路径。
+- `src/desktop/main.ts` 使用 `nodeIntegration: false`、`contextIsolation: true`、`sandbox: true` 的 BrowserWindow，拒绝新窗口、外部导航、webview 与全部权限请求；`src/desktop/preload.ts` 只暴露读取/修改 Desktop Settings 和撤销浏览器会话的窄桥，IPC 同时校验发送者。
+- app.db 现保存 `desktop_settings` 单例（关闭到托盘/关闭即退出、系统自启动）以及既有浏览器访问设置。Desktop Settings 管理 off/local/lan、端口、访问 Token、会话撤销和生命周期；进入 LAN 前先确认明文 HTTP 风险，自动生成的 Token 保持显示到用户主动确认已保存。普通浏览器没有 preload bridge，Desktop 管理 HTTP 路由继续统一返回 404。Windows 打包态使用 Electron 系统自启动接口，开发态明确显示 unsupported。
+- `pnpm run desktop:dev` 是完整开发宿主入口；`desktop:build` 只构建 Electron main/preload，不生成安装器。`server`、`daemon`、`web`、`browser-access:dev` 与 `dev:e2e:up` 继续保留给分进程调试，手动模式仍需独立环境凭据。正式生产子进程 bundle、Windows 安装器和发行流程尚未完成。
 - LAN 浏览器具有完整产品能力，v1 仅支持桌面浏览器和 HTTP；只限受信任私网，禁止端口转发或公网暴露。
 - Message Context Snapshot 仍是设计契约，尚未持久化。
 - token 预算目前以唤醒次数为代理；真实 usage 等待 Runtime 契约 v2。
@@ -73,8 +77,8 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 五、下一步顺序
 
-1. A4：实现 Electron Desktop 宿主，接管设置、内部凭据、子进程、托盘与自启动，并落地 `pnpm run desktop:dev`。
-2. A5-A6：UI/入口清理和继承资产总审计。
+1. A5：实现首次 Human 初始化与 Home 进入流程，彻底删除 Landing、`?legacy=1`、旧 `Layout` 和登录残留；保留 A4 已落地的 Desktop Settings 能力边界。
+2. A6：清理继承的部署/发布资产，完成 Windows 正式打包/安装器和总审计。
 3. 本机化基础稳定后再做 Runtime 契约 v2、生产力模块、Context Snapshot 与 P4 视觉收尾。
 
 每阶段独立验证、独立中文提交。未获得用户明确指示，不合并 main、不推远端、不发布。

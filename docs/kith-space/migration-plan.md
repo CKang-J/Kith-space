@@ -56,7 +56,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 - `AccessTokenService` 负责 16-256 字符自定义 Token、留空时的 32 字节自动生成、scrypt 哈希、revision 轮换与验证。
 - `BrowserSessionService` 只负责持久授权、触碰和撤销；`browserSessionHttp` 集中管理 HttpOnly/Strict Cookie、Origin/CSRF 和公开 Token 验证限速。
 - Desktop 专用 `/api/desktop/browser-access` 管理面只认 `x-kith-desktop-token`，对浏览器统一 404；浏览器只能用 Cookie 会话访问产品 API。
-- `generateInternalProcessCredentials` 可生成独立 Desktop/Worker 凭据；当前分进程开发从 `KITH_SPACE_DESKTOP_TOKEN`/`KITH_SPACE_WORKER_TOKEN` 注入，Worker 用 `/daemon/connect` 的私有 `x-kith-worker-token` header 握手，不把凭据放入 URL；A4 再由 Desktop 每次启动调用。
+- `generateInternalProcessCredentials` 生成独立 Desktop/Worker 凭据；A4 Desktop 已在每次进程组启动/重启时调用并按最小权限注入。手动分进程开发仍从 `KITH_SPACE_DESKTOP_TOKEN`/`KITH_SPACE_WORKER_TOKEN` 注入；Worker 用 `/daemon/connect` 的私有 `x-kith-worker-token` header 握手，不把凭据放入 URL。
 - 前端以 Cookie 会话探测和 Access Token Gate 代替 Human Bearer/localStorage JWT、dev-login、`?as=` 和 URL token。Socket 握手只携带 `spaceId`。
 - LAN 浏览器拥有完整产品能力，v1 仅 HTTP 且只限受信任私网，明确禁止端口转发或公网暴露。
 
@@ -64,18 +64,22 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A4 Electron Desktop 宿主
 
-改动边界：
+当前进度：A4 已完成。Electron 43.1.0 Desktop 已成为完整开发宿主；正式生产 bundle、打包与安装器仍在后续发行阶段。
 
-- Electron main 负责启动顺序、健康检查、异常退出和干净关闭。
-- Settings 持久化端口、Web 模式、关闭行为和自启动。
-- Tray 管理显示主窗口、暂停/恢复可用动作和显式退出。
-- 增加 `pnpm run desktop:dev`；保留 server/daemon/web 分进程命令给开发调试。
+已落地边界：
 
-验证：Windows 开发启动、端口冲突、子进程崩溃、托盘、关闭/退出和自启动冒烟。
+- `DesktopProcessSupervisor` 先启动 Core，等待实际端口 ready IPC 后再启动唯一 Worker 与可选 Vite；端口冲突、ready 超时、关键子进程崩溃和停止失败均有明确诊断与整组收尾。
+- app.db 是 Core 端口与 Web/生命周期设置事实源；每次进程组启动/重启都会轮换相互独立的 Desktop/Worker 凭据，受管子进程阻止 `.env` 回灌，渲染器 JavaScript 不持有凭据，Vite 子进程环境不包含凭据。
+- BrowserWindow 使用 sandbox、contextIsolation 和关闭 Node 集成的安全基线；拒绝权限、外部导航、新窗口与 webview，preload 只暴露经 sender 校验的 Desktop Settings 窄桥。
+- Desktop Settings 管理 off/local/lan、端口、访问 Token/会话、关闭到托盘/关闭即退出和系统自启动；普通浏览器既无入口也不能调用管理 API。
+- Tray 管理显示主窗口和显式退出；显式退出优雅停止 Core/Worker 及整个受管进程组。Windows 打包态使用系统自启动接口，开发态显示 unsupported。
+- 已增加 `pnpm run desktop:dev` 和 `desktop:build`；保留 server/daemon/web 分进程命令给开发调试。
+
+验证：Desktop 构建、监督器/安全策略/IPC/Settings/优雅关闭测试及隔离 `KITH_SPACE_HOME` 的实际 Desktop smoke 已通过。`desktop:build` 尚不生成可分发安装器。
 
 ### A5 UI 与入口清理
 
-改动：Human 首次初始化、Home 入口与 Desktop Settings；完成 Dock `Chat | Inbox | Tasks | Agents | Settings`；删除 Landing、PWA、`?legacy=1` 和旧入口。Agents/Human Settings 表面迁移及登录/注册/邀请 UI/API 已在 A2.3 提前完成，Computers 已在 A2.4 提前删除，相关 `join_links`/Machine 物理表已在 A2.2b 删除。
+下一阶段。改动：Human 首次初始化与 Home 入口；彻底删除 Landing、PWA、`?legacy=1`、旧 `Layout` 和登录残留。延续 A4 已实现的 Desktop Settings 与普通浏览器能力差异；完成 Dock `Chat | Inbox | Tasks | Agents | Settings` 的最终入口收口。Agents/Human Settings 表面迁移及登录/注册/邀请 UI/API 已在 A2.3 提前完成，Computers 已在 A2.4 提前删除，相关 `join_links`/Machine 物理表已在 A2.2b 删除。
 
 验证：路由契约、Dock 状态机、Desktop/Web 设置差异、web build 与浏览器冒烟。
 
@@ -90,8 +94,8 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 - A1 先于任何代码改动，避免继续沿旧路线设计。
 - A2 先于 A3/A4/A5；Token、Desktop 和 UI 都依赖唯一 Human、app.db 与 Space 领域。
 - A3 已在 LAN 绑定前建立 Token/会话/Origin/CSRF 安全门；后续不得绕过该门直接暴露新路由。
-- A4 先于删除用户 `.env` 和手工 daemon key；Desktop 必须先接管配置与内部凭据。
-- A5 在领域/API 稳定后做，避免 UI 同时适配两套命名。
+- A4 已接管配置、内部凭据与受管进程；手动分进程 `.env` 仅保留为仓库调试入口。
+- A5 现在可以在稳定的领域/API/Desktop 能力边界上删除旧入口，不再同时适配两套宿主。
 - A6 最后执行，但每个前置阶段都要清理自己产生的孤立引用。
 
 ## 5. 主要风险
@@ -103,4 +107,4 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 | 删除 Machine 误伤 daemon 进程隔离 | 保留 Local Runtime Worker 进程和内部协议，只删除远程注册/多主机领域 |
 | LAN + 高权限 runtime 扩大攻击面 | 默认关闭、Token、持久会话/撤销、私网警告；高风险模块上线前补 HTTPS 与权限升级 |
 | 大范围命名迁移造成一次性失控 diff | 按 schema、服务、API、前端四个可验证切片推进，不整仓机械替换 |
-| 当前文档与过渡代码暂时不一致 | 明确标注“目标态”和“当前过渡命令”；代码阶段完成后立即删除过渡说明 |
+| Desktop 开发 bundle 被误当正式安装器 | 明确 `desktop:build` 只生成 main/preload；生产子进程 bundle、正式打包和 Windows 安装器留在发行阶段 |

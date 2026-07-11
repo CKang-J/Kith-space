@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述 2026-07-11 个人 AgentOS 转向后的目标模块边界。A2 本地领域与数据模型、A3 浏览器访问安全边界已完成；Electron 宿主、发行和其他继承资产仍按 `migration-plan.md` 分阶段收口。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
+> 本文描述 2026-07-11 个人 AgentOS 转向后的目标模块边界。A2 本地领域与数据模型、A3 浏览器访问安全边界、A4 Electron Desktop 宿主已完成；首次 Human 初始化、旧入口清理、正式打包/安装器和其他继承资产仍按 `migration-plan.md` 分阶段收口。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
 
 ## 1. 架构原则
 
@@ -15,7 +15,7 @@
 
 ### 2.1 Desktop Supervisor
 
-Electron main 是正式入口，职责限制为：
+Electron 43.1.0 main 是正式入口，职责限制为：
 
 - 读取本机 app 设置并决定监听模式/端口。
 - 每次启动生成内部临时凭据。
@@ -23,7 +23,9 @@ Electron main 是正式入口，职责限制为：
 - 创建受控 Electron 窗口，提供 Desktop 信任桥。
 - 管理托盘、关闭行为、系统自启动、端口冲突和显式退出。
 
-业务逻辑不进入 Electron main。Desktop 专属设置通过受限 IPC/本机管理接口访问，普通浏览器不可调用。
+`src/desktop/processSupervisor.ts:34` 先启动 Core 并等待 `src/server/index.ts:167` 的 ready IPC；只有拿到 Core 报告的实际端口后才启动唯一 Worker 和可选 Vite。每次 `start`/`restart` 重新生成一对独立凭据，受管环境固定 `KITH_SPACE_DESKTOP_MANAGED=1`，Core 同时获得 Desktop/Worker 凭据，Worker 只获得 Worker 凭据，Vite 子进程环境不包含两者。端口占用、ready 超时和关键子进程退出都会形成明确诊断并清理整组；显式退出先等待 agent runtime 退出，再用 Windows process tree/Unix process group 作为超时兜底。终止失败时监督器保留子进程句柄，Desktop 留驻托盘供用户重试 Quit。
+
+业务逻辑不进入 Electron main。`src/desktop/main.ts:248` 创建 `nodeIntegration: false`、`contextIsolation: true`、`sandbox: true` 的 BrowserWindow，拒绝权限请求、新窗口、webview 和白名单外导航。`src/desktop/preload.ts:3` 只暴露读取/更新 Desktop Settings 与撤销浏览器会话的窄桥；main 同时校验 IPC sender。Desktop 私有 header 由独立 Electron session 仅附加到允许的 loopback 产品 API/socket 请求，并排除 Desktop 管理路径；渲染器 JavaScript 不持有凭据。普通浏览器既没有 preload bridge，也不能调用 Desktop 管理接口。
 
 ### 2.2 Core Service
 
@@ -35,17 +37,17 @@ Core Service 根据 Web 模式监听：
 - 仅本机：绑定 `127.0.0.1`，普通浏览器经 Access Token 会话访问。
 - 局域网：绑定 `0.0.0.0`，同样强制 Access Token 会话，并只允许与请求 Host 匹配的 Origin。
 
-`src/browser-access/browserAccessPolicy.ts:41` 把模式与监听决策隔离为窄策略；`src/server/index.ts:45` 在进程启动时读取该决策，开发用 `PORT` 仅覆盖端口。模式/端口更改需重启 Core Service 后改变监听。非 Desktop 请求在关闭模式下会被 `src/server/index.ts:73` 的产品壳门拒绝。
+`src/browser-access/browserAccessPolicy.ts:41` 把模式与监听决策隔离为窄策略；`src/server/localEndpoint.ts:8` 让 Desktop 管理的 Core 以 app.db 端口为权威，只有手动分进程开发才允许 `PORT` 覆盖。模式/端口更改后 Desktop 重启整个受管进程组。非 Desktop 请求在关闭模式下会被 `src/server/index.ts:65` 的产品壳门拒绝。
 
 ### 2.3 Local Runtime Worker
 
-现 daemon 保留为独立进程隔离边界，但产品名称改为 Local Runtime Worker。`src/local-runtime/workerHub.ts` 在 Core Service 内维护安装级唯一连接、ready snapshot 与请求/响应；新连接会用专用关闭码替换旧连接，旧进程停止自动重连，generation lease 阻止旧连接的异步 ready、事件、补唤醒或断线回收覆盖新连接状态。它只连接本机 Core Service，承载 runtime 进程、轨迹和 session 生命周期；不再注册 Machine、不被用户手工连接，也不接受远程 worker。过渡 Worker CLI 固定连接 `http://127.0.0.1:$PORT/daemon/connect`，以私有 `x-kith-worker-token` header 握手，凭据不进 URL；不提供 `--server-url` 或其他远程端点覆盖。A4 只接管凭据生成与 Desktop 监督方式，不重新引入远程 Worker。
+现 daemon 保留为独立进程隔离边界，但产品名称改为 Local Runtime Worker。`src/local-runtime/workerHub.ts` 在 Core Service 内维护安装级唯一连接、ready snapshot 与请求/响应；新连接会用专用关闭码替换旧连接，旧进程停止自动重连，generation lease 阻止旧连接的异步 ready、事件、补唤醒或断线回收覆盖新连接状态。它只连接本机 Core Service，承载 runtime 进程、轨迹和 session 生命周期；不再注册 Machine、不被用户手工连接，也不接受远程 worker。Worker 固定连接 Desktop 报告的 `http://127.0.0.1:$PORT/daemon/connect`，以私有 `x-kith-worker-token` header 握手，凭据不进 URL；不提供 `--server-url` 或其他远程端点覆盖。手动分进程命令仅作为调试入口保留，不重新引入远程 Worker。
 
 唯一 Worker 服务所有本机 Space，而不是隶属某个 Space。Worker 消息只携带 installation-unique agentId；`src/local-runtime/agentLocator.ts` 遍历已注册 Space 定位 agent 所属数据库，`src/server/ws.ts` 再把 status/activity/session/trajectory/reply 发布到正确 Space。Worker ready/reconnect 同样遍历所有 Space 做状态对齐和积压补唤醒。
 
 ### 2.4 React UI
 
-Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件。客户端能力由可信宿主信息决定：Desktop 可显示网络/Token/进程/托盘/自启动设置，浏览器必须隐藏并拒绝这些能力。
+Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件。客户端能力由不可伪造的宿主桥决定：`web/src/desktopBridge.ts` 只有检测到窄 preload bridge 时才开放 Desktop 设置区；普通浏览器请求该区会回落到 Human 设置，并且服务端仍拒绝其管理调用。Desktop Settings 已管理 Web 模式、端口、Token 轮换、浏览器会话撤销、关闭行为和自启动。
 
 ## 3. 通信平面
 
@@ -99,7 +101,7 @@ REST、agent API、MCP handler 和 UI 必须调用同一 Task Service，不能�
 
 ### 5.1 app.db
 
-实现状态：A2.1 已落地 `src/app-data/appDatabase.ts`。旧 `registry.db/workspaces` 已被 `app.db/spaces` 取代；Human profile 为单例行。A3 又增加单例 `browser_access_settings` 和 `browser_sessions`（`src/app-data/appDatabase.ts:78`）。A4 才增加托盘、关闭行为和系统自启动等 Desktop 设置。
+实现状态：A2.1 已落地 `src/app-data/appDatabase.ts`。旧 `registry.db/workspaces` 已被 `app.db/spaces` 取代；Human profile 为单例行。A3 增加单例 `browser_access_settings` 和 `browser_sessions`，A4 增加单例 `desktop_settings`（`src/app-data/appDatabase.ts:91`）。
 
 本机应用数据目录中的 `app.db` 保存：
 
@@ -107,7 +109,7 @@ REST、agent API、MCP handler 和 UI 必须调用同一 Task Service，不能�
 - 已实现的 Web 设置：Web 模式和端口。
 - 浏览器访问 Token 哈希与 token revision。
 - 浏览器授权会话和撤销状态。
-- A4 待实现的 Desktop 设置：关闭行为、托盘和系统自启动等。
+- 已实现的 Desktop 设置：关闭到托盘/关闭即退出与系统自启动开关；托盘本身由 Electron 生命周期管理。
 - Space registry：id、slug、rootPath、displayName、最近打开时间。
 
 app.db 不保存 Space 消息、任务或 agent 业务数据。
@@ -156,9 +158,10 @@ A2.2b 已把 workspace.db 重建为单一 19 表 baseline。它包含 `spaces`�
 
 ### 6.3 Desktop 与内部凭据
 
-- `src/local-runtime/internalCredentials.ts:31` 为一次 Desktop 管理的进程组生成两个独立 32 字节凭据；A4 Electron 负责每次启动调用并分别注入子进程。
-- Core Service 当前对 `KITH_SPACE_DESKTOP_TOKEN` 与 `KITH_SPACE_WORKER_TOKEN` 做 fail-fast；前者只接受 loopback 请求中的 `x-kith-desktop-token` 私有管理信任，后者只接受 loopback Worker `/daemon/connect` 的 `x-kith-worker-token` header。分进程开发在 A4 前由 `.env` 注入，两者不得进 URL，也不得与浏览器访问 Token 复用。
-- `/api/desktop/browser-access` 的查询、模式/端口/Token 轮换与会话撤销只对 Desktop 凭据开放；普通浏览器统一收到 404（`src/server/routes-api/browserAccess.ts:125`）。
+- `src/local-runtime/internalCredentials.ts:37` 为一次 Desktop 管理的进程组生成两个独立 32 字节凭据；`src/desktop/processSupervisor.ts:73` 在每次启动/重启调用并按最小权限分别注入子进程。
+- Core Service 对 `KITH_SPACE_DESKTOP_TOKEN` 与 `KITH_SPACE_WORKER_TOKEN` 做 fail-fast；前者只接受 loopback 请求中的 `x-kith-desktop-token` 私有管理信任，后者只接受 loopback Worker `/daemon/connect` 的 `x-kith-worker-token` header。受管进程阻止 `.env` 回灌；只有手动分进程调试从环境注入。两者不得进 URL，也不得与浏览器访问 Token 复用。
+- `src/daemon/agentProcessEnv.ts` 在启动 runtime 前剥离全部宿主级 `KITH_SPACE_*`、IPC 和端口变量，再只注入当前 agent 的 server URL、id 与短期 token；agent 无法取得 Worker/Desktop 控制凭据。
+- `/api/desktop/browser-access` 与 `/api/desktop/settings` 只对 Desktop 凭据开放；前者管理模式/端口/Token/会话，后者管理关闭行为/自启动，普通浏览器统一收到 404（`src/server/routes-api/browserAccess.ts:127`、`src/server/routes-api/desktopSettings.ts:10`）。
 
 ### 6.4 LAN 限制
 
@@ -182,12 +185,12 @@ agent-to-agent 分派继续经过统一 dispatch 收口。现有深度上限、�
 - URL 是模块与 Chat 显隐事实来源；删除 `?legacy=1` 和旧 `Layout`。
 - `MessageContextSnapshot` 在发送时固化 Space、会话、模块、Context Stack 和 focused item，adapter 再编码为各 runtime 所需格式。
 
-Desktop 专属设置通过宿主能力注入，不靠仅隐藏按钮实现安全；服务端必须拒绝普通浏览器调用。
+Desktop 专属设置通过 `window.kithDesktop` 窄桥注入，不靠仅隐藏按钮实现安全；服务端同时拒绝普通浏览器调用。Windows 打包态可调用 Electron 系统自启动接口，开发态通过 `launchAtLoginSupported: false` 明确禁用该控件。
 
 A3 已把 Web bootstrap 改为 Cookie 会话探测（`web/src/browserAuth.ts:20`）；未授权浏览器只渲染 `AccessTokenGate`（`web/src/views/AccessTokenGate.tsx:4`），不先渲染工作区。客户端不保存 Human Bearer/localStorage JWT，Socket 握手只携带 `spaceId`，附件/头像 URL 不携带认证查询参数。
 
 ## 9. 开发与发行
 
-仓库内部保留 `pnpm run server`、`pnpm run daemon`、`pnpm --dir web run dev` 以便调试；其中 daemon 只是 Local Runtime Worker 的过渡代码/命令名。`pnpm run browser-access:dev <off|local|lan>` 是 A4 前唯一显式修改 app.db Web 模式/端口与轮换访问 Token 的开发管理入口；`dev:e2e:up` 会启用 local、同步 `PORT`、每次轮换随机 Token，并只在该启动终端显示一次。A4 新增 `pnpm run desktop:dev` 作为完整开发宿主。正式产品不要求 `.env`，普通设置全部进 app.db。
+Electron 固定为 43.1.0。`pnpm run desktop:dev` 先执行 `desktop:build`，再由 Electron 统一启动 Core、唯一 Worker 和开发期 Vite；它是完整开发宿主。仓库内部仍保留 `pnpm run server`、`pnpm run daemon`、`pnpm --dir web run dev`、`browser-access:dev` 与 `dev:e2e:up` 以便分进程调试，其中 daemon 只是 Local Runtime Worker 的过渡代码/命令名。Desktop 管理的普通配置全部进入 app.db，内部凭据不依赖用户 `.env`。
 
-最终删除 Docker、远程部署、公共 server/daemon npm 发布和 OIDC workflow。Windows Desktop 是 v1 唯一正式发行物；系统能力选型不得无必要绑定 Windows，为 macOS/Linux 留出实现空间。
+`pnpm run desktop:build` 当前只用 esbuild 生成 Electron main/preload 开发 bundle，不是正式产品包。后续阶段仍需删除 Docker、远程部署、公共 server/daemon npm 发布和 OIDC workflow，并完成 Windows production child bundles、正式打包和安装器。Windows Desktop 是 v1 唯一正式发行物；系统能力选型不得无必要绑定 Windows，为 macOS/Linux 留出实现空间。

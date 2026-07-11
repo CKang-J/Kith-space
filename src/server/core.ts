@@ -7,6 +7,7 @@ import { isWorkerConnected, sendToWorker, workerRuntimes } from "../local-runtim
 import { agentHasScope } from "./scopes.js";
 import { newKey, hashToken } from "./auth.js";
 import { createLogger } from "../log.js";
+import { coreLoopbackUrl } from "./localEndpoint.js";
 import { getHumanIdentity, humanIdentityForHandle, humanIdentityForId } from "../human/humanIdentity.js";
 import { followHumanThread, humanChannelState, reactivateFollowedHumanThread, trackHumanDm } from "../human/humanChannelState.js";
 import { canHumanReadChannel } from "./channelAccess.js";
@@ -18,8 +19,6 @@ import { TASK_STATUSES, TaskOperationError, isTaskStatus, type TaskStatus } from
 export { TASK_STATUSES } from "./tasks/taskTypes.js";
 
 const log = createLogger("server:core");
-const PORT = Number(process.env.PORT ?? 7777);
-const SELF_URL = `http://127.0.0.1:${PORT}`;
 // Per-agent raw token cache (server process memory; DB stores hash only). Injected into agent process at spawn; resolveAgent looks up by hash. See slice10.
 const agentRawTokens = new Map<string, string>();
 
@@ -419,7 +418,7 @@ export async function agentConfig(spaceId: string, agentId: string) {
   return {
     name: a.name, displayName: a.displayName, description: a.description,
     model: a.model, runtime: a.runtime, runtimeConfig: a.runtimeConfig, sessionId: a.sessionId ?? undefined,
-    serverUrl: SELF_URL, spaceId: a.spaceId, workspaceRoot: space.rootPath, agentId: a.id, agentToken: token,
+    serverUrl: coreLoopbackUrl(), spaceId: a.spaceId, workspaceRoot: space.rootPath, agentId: a.id, agentToken: token,
   };
 }
 

@@ -45,6 +45,21 @@ conn = new Connection(serverUrl, workerToken, (msg) => {
 
 log.info("Kith-space daemon starting", { serverUrl });
 conn.connect();
-const shutdown = () => { log.info("shutting down"); mgr.stopAll(); conn.close(); process.exit(0); };
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+let shutdownPromise: Promise<void> | null = null;
+const shutdown = () => {
+  if (shutdownPromise) return shutdownPromise;
+  log.info("shutting down");
+  shutdownPromise = mgr.stopAllAndWait().then(() => {
+    conn.close();
+    process.exit(0);
+  }).catch((error) => {
+    conn.close();
+    log.error("agent runtimes did not stop cleanly; waiting for Desktop process-tree cleanup", { detail: String(error) });
+  });
+  return shutdownPromise;
+};
+process.on("SIGINT", () => { void shutdown(); });
+process.on("SIGTERM", () => { void shutdown(); });
+process.on("message", (message: unknown) => {
+  if ((message as { type?: unknown } | null)?.type === "kith:shutdown") void shutdown();
+});

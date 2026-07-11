@@ -12,21 +12,21 @@ Kith 意为"你熟识信任的一圈自己人"——正是这些懂你（有记�
 
 当前最高优先级是 2026-07-11 锁定的本机化转向：正式产品只有 Electron Desktop，一个 Human、一个本机 Local Runtime Worker、多个本地 Space；浏览器入口是 Desktop 可选开放的本机/LAN 附属能力。多真人、多机器、服务器部署、云同步、Docker、账户登录和独立 Web 发行路线已经取消。完整规格见 [`个人 AgentOS 本机化路线设计`](./docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md)。
 
-本机化 A2-A3 已完成：中央 `app.db`、唯一 Human、默认 `Home` Space、canonical Space 契约、安装级唯一 Local Runtime Worker、19 表 workspace.db baseline 与 Space 级附件目录均已落地。浏览器入口已收口为默认关闭/仅本机/局域网三模式，使用独立访问 Token、持久 Cookie 会话和 CSRF/Origin 保护；Human JWT、dev-login、`?as=` 与 URL token 已退役。下一步进入 A4 Electron Desktop 宿主。
+本机化 A2-A4 已完成：中央 `app.db`、唯一 Human、默认 `Home` Space、canonical Space 契约、安装级唯一 Local Runtime Worker、19 表 workspace.db baseline 与 Space 级附件目录均已落地。浏览器入口已收口为默认关闭/仅本机/局域网三模式，使用独立访问 Token、持久 Cookie 会话和 CSRF/Origin 保护；Human JWT、dev-login、`?as=` 与 URL token 已退役。Electron 43.1.0 Desktop 现已成为正式开发宿主，统一监督 Core Service、唯一 Worker 与开发期 Vite，管理托盘、关闭行为、Web 入口和内部凭据。下一步是 A5 首次 Human 初始化与旧界面/登录残留清理；Windows 正式打包和安装器仍属于后续发行阶段。
 
-## 当前过渡开发启动
+## Desktop 开发启动
 
 包管理器是 **pnpm**。完整命令见 [`docs/dev-commands.md`](./docs/dev-commands.md)。
 
-下面命令准确反映**当前代码**。A4 完成后，普通用户将由 Desktop 管理设置和内部凭据，不再维护 `.env`；当前分进程开发仍需两个相互独立的内部凭据。
+推荐由 Desktop 启动完整开发进程组。A5 首次初始化界面尚未落地，因此全新数据目录当前仍先执行一次 `seed`：
 
 ```bash
 pnpm install
-cp .env.example .env        # 填 KITH_SPACE_DESKTOP_TOKEN、KITH_SPACE_WORKER_TOKEN（分别生成）
-pnpm run dev:e2e:up         # 启用 local Web，起 Core Service + Worker + dev-bot，终端一次显示访问 Token
+pnpm run seed
+pnpm run desktop:dev        # 构建 Electron main/preload，并启动 Core + Worker + Vite + Electron
 ```
 
-手动分起：`pnpm run server`、`pnpm run daemon`（唯一 Local Runtime Worker 的过渡命令名）、`pnpm --dir web run dev`（前端热更）。Core Service 根据 app.db 中的 Web 模式选择 loopback/LAN 监听；关闭模式仍保留 Desktop/Worker 所需的私有 loopback 传输，但拒绝普通浏览器壳。完整启动、Web 模式与访问 Token 说明见 [`docs/dev-commands.md`](./docs/dev-commands.md)。测试：`pnpm test --unit` / `pnpm test --integration`。
+Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run desktop:build` 只构建 Electron main/preload，不生成安装器。手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。完整启动、Web 模式与访问 Token 说明见 [`docs/dev-commands.md`](./docs/dev-commands.md)。测试：`pnpm test --unit` / `pnpm test --integration`。
 
 ## 文档
 

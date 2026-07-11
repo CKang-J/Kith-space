@@ -4,23 +4,23 @@
 
 包管理器是 **pnpm**（不是 npm）。pnpm 传参不加 `--`：用 `pnpm test --unit`，不要写 `pnpm test -- --integration`。
 
-> 过渡说明：A3 已删除 Human JWT/dev-login 和共享 daemon key。以下分进程命令仅供仓库开发，仍通过 `.env` 注入两个独立内部凭据；A4 将由 Electron Desktop 每次启动生成凭据并新增 `pnpm run desktop:dev`。正式产品用户不维护 `.env`。
+> A4 已落地 Electron Desktop 宿主。完整开发优先使用 `pnpm run desktop:dev`；它自行生成并隔离 Desktop/Worker 内部凭据。`.env` 中的内部凭据只服务手动分进程调试，不是普通用户配置。
 
 ## 1. 首次准备
 
 ```bash
 pnpm install                      # 安装依赖（workspace：根 + web/ + packages/*）
-cp .env.example .env              # 创建本地环境配置
+cp .env.example .env              # 可选：只为手动分进程调试或覆盖 KITH_SPACE_HOME/VITE_PORT
 ```
 
-当前分进程开发的环境变量（`.env`）：
+手动分进程开发的环境变量（`.env`）：
 
 - `KITH_SPACE_DESKTOP_TOKEN` — Desktop/开发管理请求到 Core Service 的私有信任凭据（必填）。
 - `KITH_SPACE_WORKER_TOKEN` — Local Runtime Worker 控制 WS 的独立凭据（必填）。
-- `PORT` — 开发用监听端口覆盖，默认 `7777`。
+- `PORT` — 手动分进程开发用监听端口覆盖，默认 `7777`；Desktop 管理的 Core 不读取该覆盖，端口以 app.db 为准。
 - `KITH_SPACE_HOME` — app 数据、日志和 agent 工作目录的根目录，默认 `~/.kith-space`（`app.db` 在此；各 Space 的数据库与附件分别在 `<rootPath>/.kith/workspace.db`、`<rootPath>/.kith/uploads`）
 
-两个凭据必须分别用密码学安全随机源生成（例如各执行一次 `openssl rand -hex 32`），不得相同，也不得复用浏览器访问 Token。Core Service 缺任一内部凭据时会 fail-fast。这些是 A4 前的仓库开发覆盖项，不是产品用户设置。
+手动分进程时，两个凭据必须分别用密码学安全随机源生成（例如各执行一次 `openssl rand -hex 32`），不得相同，也不得复用浏览器访问 Token。Core Service 缺任一内部凭据时会 fail-fast。Desktop 管理的进程组不读取这些值，而是在每次启动/重启时自动轮换。
 
 ## 2. 数据库
 
@@ -39,7 +39,7 @@ A2.2b 使用破坏性单一 baseline，不迁移旧开发库。若启动时报 l
 
 ## 3. 配置开发用浏览器入口
 
-Web 模式和端口保存在 `$KITH_SPACE_HOME/app.db`。默认模式是 `off`：Core Service 仍保留 Desktop/Worker 需要的 `127.0.0.1` 私有传输，但普通浏览器无法取得产品壳。仓库开发用管理命令：
+Web 模式和端口保存在 `$KITH_SPACE_HOME/app.db`。默认模式是 `off`：Core Service 仍保留 Desktop/Worker 需要的 `127.0.0.1` 私有传输，但普通浏览器无法取得产品壳。Desktop 运行时应在 Desktop Settings 中管理模式、端口、Token 和会话；以下命令只供手动分进程开发：
 
 ```bash
 pnpm run browser-access:dev off
@@ -57,7 +57,7 @@ pnpm run browser-access:dev lan --port 7777 --token "a-custom-token-at-least-16-
 
 ## 4. 手动起各服务（三个进程，分别开终端）
 
-当前过渡开发由三部分组成：server/Core Service（API + 提供已构建 web）、唯一 Local Runtime Worker（代码/命令名暂为 daemon，承载所有本机 Space 的 agent）、web（开发时的 Vite 热更；不开发前端时可省）。这些分进程命令会作为内部调试入口保留。先用 §3 配置 Web 模式/Token，再启 Core Service。
+手动调试由三部分组成：server/Core Service（API + 提供已构建 web）、唯一 Local Runtime Worker（代码/命令名暂为 daemon，承载所有本机 Space 的 agent）、web（开发时的 Vite 热更；不开发前端时可省）。这些命令是内部调试入口，不代表正式宿主。先用 §3 配置 Web 模式/Token，再启 Core Service。
 
 ```bash
 # 终端 A — server（API + WS），热更监听
@@ -104,6 +104,7 @@ pnpm test                         # 全量（单测 + 集成）
 
 ```bash
 pnpm run web:build                # 构建前端到 web/dist（server 会提供它）
+pnpm run desktop:build            # 用 esbuild 构建 Electron main/preload 到 desktop/dist
 pnpm run pkg:daemon:build         # 打包 daemon 分发件
 pnpm run cli -- <args>            # 运行 CLI（如 pnpm run cli role-template list）
 ```
@@ -119,6 +120,16 @@ pnpm run cli -- <args>            # 运行 CLI（如 pnpm run cli role-template 
 
 `start:prod`、`daemon:prod`、`seed:prod`、`prod:up`、`prod:down`、`.env.prod`、公共 server/daemon 包和 OIDC 发布 workflow 是 open-tag 服务器发行遗留。它们在 A6 删除，不属于 Kith-space 正式产品路线；正式发行物只有 Desktop 安装包。
 
-## 10. 目标 Desktop 开发入口（尚未实现）
+## 10. Electron Desktop 开发入口
 
-A4 完成后新增 `pnpm run desktop:dev`，统一启动 Core Service、Local Runtime Worker、Vite 和 Electron，并使用临时内部凭据。该命令当前不可用；实现时必须同步更新本节、README、AGENTS 和 package scripts。
+```bash
+pnpm run seed                     # A5 首次初始化 UI 落地前，全新数据目录先执行一次
+pnpm run desktop:build            # 仅构建 Electron main/preload，不启动进程、不生成安装器
+pnpm run desktop:dev              # desktop:build 后启动 Electron 管理的完整开发进程组
+```
+
+`desktop:dev` 使用 Electron 43.1.0。Desktop 先启动 Core Service；Core 从 app.db 读取稳定端口并以 IPC 报告 ready 后，监督器才把实际端口注入唯一 Worker 和可选 Vite。端口占用会作为明确启动错误返回，不静默换端口。进程组每次启动或因 Web 设置变更而重启时，都会重新生成相互独立的 Desktop/Worker 凭据；受管子进程带 `KITH_SPACE_DESKTOP_MANAGED=1`，不会从仓库 `.env` 重新载入凭据，Vite 子进程环境不包含任一内部 Token。
+
+开发窗口默认关闭到托盘；可在 Desktop Settings 改为关闭即退出。显式 Quit 会等待 agent runtime 退出，再结束整个进程组；Windows 使用 process-tree 兜底，终止失败时应用保持运行并允许重试。Desktop Settings 还管理 off/local/lan、端口、访问 Token 轮换、浏览器会话撤销与系统自启动。LAN 在改变监听前要求确认 HTTP 风险，自动生成的 Token 会保持显示到用户确认已保存。自启动只在 Windows 正式打包形态启用，开发态会明确显示不支持。
+
+`desktop:build` 当前只是 Electron main/preload 的开发构建。Windows 正式生产子进程 bundle、正式打包、安装器和发行流程仍属于后续阶段，不能把该命令当作可分发应用包。
