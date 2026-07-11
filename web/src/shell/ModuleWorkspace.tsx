@@ -18,7 +18,7 @@ function ModuleContent({ moduleId, route, chatVisible }: { moduleId: WorkspaceMo
   const moduleQuerySuffix = workspaceSearchForLayout("", { activeModule: moduleId, chatVisible });
   const discussionQuerySuffix = workspaceSearchForLayout("", { activeModule: moduleId, chatVisible: true });
   if (moduleId === "tasks") {
-    const channelId = route.section === "tasks" && route.resourceId !== "server" ? route.resourceId : null;
+    const channelId = route.section === "tasks" && route.resourceId !== "space" ? route.resourceId : null;
     return <Tasks channelIdOverride={channelId} moduleQuerySuffix={moduleQuerySuffix} />;
   }
   if (moduleId === "agents") {

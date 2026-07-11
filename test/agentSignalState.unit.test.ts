@@ -22,17 +22,17 @@ test("agent activity detail is forwarded to the UI activity signal", () => {
 test("agent wake delivery handles local worker send failure after preview start", () => {
   assert.match(
     coreSrc,
-    /const startSent = sendAgentStart\(opts\.serverId, target, mem\.id\);/,
+    /const startSent = sendAgentStart\(opts\.spaceId, target, mem\.id\);/,
     "message wake should check whether agent:start was actually sent",
   );
   assert.match(
     coreSrc,
-    /const deliverSent = startSent && sendAgentDeliver\(opts\.serverId, target, \{ agentId: mem\.id,/,
+    /const deliverSent = startSent && sendAgentDeliver\(opts\.spaceId, target, \{ agentId: mem\.id,/,
     "message wake should only deliver after a successful start send",
   );
   assert.match(
     coreSrc,
-    /if \(!deliverSent\) \{[\s\S]*?op: "error", text: "local runtime worker offline"[\s\S]*?await markAgentUnavailable\(opts\.serverId, mem\.id, "local runtime worker offline"\);[\s\S]*?continue;/,
+    /if \(!deliverSent\) \{[\s\S]*?op: "error", text: "local runtime worker offline"[\s\S]*?await markAgentUnavailable\(opts\.spaceId, mem\.id, "local runtime worker offline"\);[\s\S]*?continue;/,
     "send failure should mark the agent unavailable and close the preview instead of leaving a stuck thinking card",
   );
 });
@@ -40,12 +40,12 @@ test("agent wake delivery handles local worker send failure after preview start"
 test("agent lifecycle control targets the one local runtime worker", () => {
   assert.match(
     coreSrc,
-    /async function agentControlTarget\(serverId: string, agentId: string\)/,
+    /async function agentControlTarget\(spaceId: string, agentId: string\)/,
     "stop/reset/profile sync should validate the agent and local worker separately from start config",
   );
   assert.match(
     coreSrc,
-    /function sendAgentControl\(_serverId: string, _target: AgentControlTarget, msg: Record<string, unknown>\): boolean \{[\s\S]*?return sendToWorker\(msg\);/,
+    /function sendAgentControl\([^)]*AgentControlTarget, msg: Record<string, unknown>\): boolean \{[\s\S]*?return sendToWorker\(msg\);/,
     "lifecycle controls should use the installation-local worker",
   );
   assert.match(
@@ -55,17 +55,17 @@ test("agent lifecycle control targets the one local runtime worker", () => {
   );
   assert.match(
     coreSrc,
-    /sendAgentControl\(serverId, target, \{ type: "agent:stop", agentId \}\)/,
+    /sendAgentControl\(spaceId, target, \{ type: "agent:stop", agentId \}\)/,
     "stop should target the local worker",
   );
   assert.match(
     coreSrc,
-    /sendAgentControl\(serverId, target, \{ type: "agent:reset", agentId, wipeWorkspace, clearMemory \}\)/,
+    /sendAgentControl\(spaceId, target, \{ type: "agent:reset", agentId, wipeWorkspace, clearMemory \}\)/,
     "reset should target the local worker",
   );
   assert.match(
     coreSrc,
-    /sendAgentControl\(serverId, target, \{ type: "agent:profile", agentId, displayName, description: description \?\? null \}\)/,
+    /sendAgentControl\(spaceId, target, \{ type: "agent:profile", agentId, displayName, description: description \?\? null \}\)/,
     "profile sync should target the local worker",
   );
 });

@@ -7,7 +7,6 @@ import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import { desc, eq } from "drizzle-orm";
-import { initializeHumanProfile } from "../src/app-data/appDatabase.ts";
 import { createMessage, getOrCreateThread } from "../src/server/core.ts";
 import { signUser } from "../src/server/auth.ts";
 import { handleApi } from "../src/server/routes-api/index.ts";
@@ -15,10 +14,9 @@ import { integrationDatabase } from "./helpers/workspace.ts";
 
 const ts = Date.now();
 const fixture = integrationDatabase("read-remaining-unread");
-const { db, schema, rootPath } = fixture;
+const { db, schema, spaceId, human } = fixture;
 
-let serverId = fixture.serverId;
-let humanId = "";
+const humanId = human.id;
 let agentId = "";
 let channelId = "";
 let humanToken = "";
@@ -38,7 +36,7 @@ function makeReq(options: { method: string; path: string; body?: object }): Inco
     headers: {
       authorization: `Bearer ${humanToken}`,
       "content-type": "application/json",
-      "x-space-id": serverId,
+      "x-space-id": spaceId,
     },
   }) as unknown as IncomingMessage;
 }
@@ -93,22 +91,21 @@ async function latestSeq(containerId: string): Promise<number> {
 }
 
 // Establish a baseline independently of the endpoint under test.
-async function dbMarkRead(containerId: string) {
+async function dbMarkRead(containerId: string, followedThread = false) {
   const lastReadSeq = await latestSeq(containerId);
-  await db.insert(schema.channelMembers).values({
+  await db.insert(schema.humanChannelStates).values({
     channelId: containerId,
-    memberType: "user",
-    memberId: humanId,
     lastReadSeq,
+    ...(followedThread ? { threadFollowedAt: new Date() } : {}),
   }).onConflictDoUpdate({
-    target: [schema.channelMembers.channelId, schema.channelMembers.memberType, schema.channelMembers.memberId],
-    set: { lastReadSeq, threadDoneAt: null },
+    target: schema.humanChannelStates.channelId,
+    set: { lastReadSeq, threadDoneAt: null, ...(followedThread ? { threadFollowedAt: new Date() } : {}) },
   });
 }
 
 async function agentMessage(containerId: string, content: string) {
   return createMessage({
-    serverId,
+    spaceId,
     channelId: containerId,
     senderType: "agent",
     senderId: agentId,
@@ -118,66 +115,47 @@ async function agentMessage(containerId: string, content: string) {
 }
 
 async function setup() {
-  const human = initializeHumanProfile({ name: "Ada", email: `ada-${ts}@test.local` });
-  humanId = human.id;
   humanToken = signUser(humanId);
-  await db.insert(schema.users).values({
-    id: humanId,
-    name: "you",
-    displayName: human.name,
-    email: human.email!,
-  });
-  await db.insert(schema.servers).values({
-    id: serverId,
-    name: "Read Remaining",
-    slug: `read-remaining-${ts}`,
-    ownerId: humanId,
-    rootPath,
-  });
   const [agent] = await db.insert(schema.agents).values({
-    serverId,
+    spaceId,
     name: `researcher_${ts}`,
     displayName: "Researcher",
     creatorId: humanId,
   }).returning();
   agentId = agent!.id;
   const [channel] = await db.insert(schema.channels).values({
-    serverId,
+    spaceId,
     name: `general-${ts}`,
     type: "channel",
   }).returning();
   channelId = channel!.id;
-  await db.insert(schema.channelMembers).values([
-    { channelId, memberType: "user", memberId: humanId },
-    { channelId, memberType: "agent", memberId: agentId },
-  ]);
+  await db.insert(schema.channelAgentMembers).values({ channelId, agentId });
 }
 
 async function cleanup() {
   const channels = await db.select({ id: schema.channels.id }).from(schema.channels)
-    .where(eq(schema.channels.serverId, serverId));
+    .where(eq(schema.channels.spaceId, spaceId));
   const messages = await db.select({ id: schema.messages.id }).from(schema.messages)
-    .where(eq(schema.messages.serverId, serverId));
+    .where(eq(schema.messages.spaceId, spaceId));
   for (const message of messages) {
     await db.delete(schema.messageMentions).where(eq(schema.messageMentions.messageId, message.id));
   }
-  await db.delete(schema.messages).where(eq(schema.messages.serverId, serverId));
+  await db.delete(schema.messages).where(eq(schema.messages.spaceId, spaceId));
   for (const channel of channels) {
-    await db.delete(schema.channelMembers).where(eq(schema.channelMembers.channelId, channel.id));
+    await db.delete(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, channel.id));
+    await db.delete(schema.humanChannelStates).where(eq(schema.humanChannelStates.channelId, channel.id));
   }
-  await db.delete(schema.channels).where(eq(schema.channels.serverId, serverId));
-  await db.delete(schema.agents).where(eq(schema.agents.serverId, serverId));
-  await db.delete(schema.servers).where(eq(schema.servers.id, serverId));
-  await db.delete(schema.users).where(eq(schema.users.id, humanId));
+  await db.delete(schema.channels).where(eq(schema.channels.spaceId, spaceId));
+  await db.delete(schema.agents).where(eq(schema.agents.spaceId, spaceId));
 }
 
 async function main() {
   await setup();
 
   const parent = await agentMessage(channelId, "parent message");
-  const thread = await getOrCreateThread(serverId, parent.id, { type: "user", id: humanId });
+  const thread = await getOrCreateThread(spaceId, parent.id, { type: "human", id: humanId });
   await dbMarkRead(channelId);
-  await dbMarkRead(thread.id);
+  await dbMarkRead(thread.id, true);
   check("caught-up baseline has no unread", await badge(channelId) === 0);
 
   await agentMessage(thread.id, "thread-source unread");

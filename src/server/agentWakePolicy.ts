@@ -1,7 +1,7 @@
-export type MessageSenderType = "user" | "agent" | "system";
+export type MessageSenderType = "human" | "agent" | "system";
 
 export function canAutoJoinMentionedMembers(senderType: MessageSenderType): boolean {
-  return senderType === "user";
+  return senderType === "human";
 }
 
 /** Pure wake criterion shared by live message delivery and reconnect catch-up.

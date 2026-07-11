@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { closeAllDatabases, dbFor, schema } from "../src/db/index.ts";
+import { closeAllDatabases, dbForSpace, schema } from "../src/db/index.ts";
 import { ensurePersonalApp } from "../src/db/personalApp.ts";
 import {
   closeAppDatabase,
@@ -146,7 +146,7 @@ test("ensurePersonalApp creates one Human and one initialized Home Space idempot
   assert.equal(listSpaceRecords().length, 1);
   assert.ok(existsSync(workspaceDbFile(homeRootPath)));
 
-  const homeDb = dbFor(firstHome.id);
+  const homeDb = dbForSpace(firstHome.id);
   const channelsBefore = await homeDb.select().from(schema.channels);
   assert.deepEqual(channelsBefore.map((channel) => channel.name), ["all"]);
 
@@ -160,6 +160,6 @@ test("ensurePersonalApp creates one Human and one initialized Home Space idempot
   assert.deepEqual(getHumanProfile(), firstHuman);
   assert.deepEqual(getSpaceRecordBySlug("home"), firstHome);
   assert.equal(listSpaceRecords().length, 1);
-  const channelsAfter = await dbFor(firstHome.id).select().from(schema.channels);
+  const channelsAfter = await dbForSpace(firstHome.id).select().from(schema.channels);
   assert.deepEqual(channelsAfter.map((channel) => channel.name), ["all"]);
 });

@@ -1,15 +1,15 @@
 // Shared helpers used by ≥2 route modules — verbatim from the former routes-api.ts.
 import { eq, inArray } from "drizzle-orm";
-import { dbFor, schema } from "../../db/index.js";
+import { dbForSpace, schema } from "../../db/index.js";
 import { aggregateReactions } from "../core.js";
 
-export async function attachMentions(serverId: string, msgs: (typeof schema.messages.$inferSelect)[]) {
+export async function attachMentions(spaceId: string, msgs: (typeof schema.messages.$inferSelect)[]) {
   if (!msgs.length) return msgs.map((m) => ({ ...m, mentions: [] as any[], attachments: [] as any[], reactions: [] as any[] }));
-  const db = dbFor(serverId);
+  const db = dbForSpace(spaceId);
   const ids = msgs.map((m) => m.id);
   const mts = await db.select().from(schema.messageMentions).where(inArray(schema.messageMentions.messageId, ids));
   const atts = await db.select().from(schema.attachments).where(inArray(schema.attachments.messageId, ids));
-  const reactions = await aggregateReactions(serverId, ids);
+  const reactions = await aggregateReactions(spaceId, ids);
   return msgs.map((m) => ({
     ...m,
     mentions: mts.filter((x) => x.messageId === m.id).map((x) => ({ type: x.mentionType, id: x.mentionId, name: x.mentionName })),
@@ -17,8 +17,8 @@ export async function attachMentions(serverId: string, msgs: (typeof schema.mess
     reactions: reactions.get(m.id) ?? [],
   }));
 }
-export async function humanChannels(serverId: string) {
-  const db = dbFor(serverId);
-  const chs = await db.select().from(schema.channels).where(eq(schema.channels.serverId, serverId));
+export async function humanChannels(spaceId: string) {
+  const db = dbForSpace(spaceId);
+  const chs = await db.select().from(schema.channels).where(eq(schema.channels.spaceId, spaceId));
   return chs;
 }

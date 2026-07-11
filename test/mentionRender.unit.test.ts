@@ -8,7 +8,7 @@ import { processMessageContent } from "../web/src/messageRender.tsx";
 const ch = [{ name: "general", id: "c-general" }];
 
 test("renders an @ that the server actually recorded as a mention", () => {
-  const out = processMessageContent("hi @alice", { mentions: [{ type: "user", id: "u-alice", name: "alice" }], channels: ch });
+  const out = processMessageContent("hi @alice", { mentions: [{ type: "human", id: "u-alice", name: "alice" }], channels: ch });
   assert.equal(out, "hi [@alice](tag:human:u-alice)");
 });
 
@@ -24,12 +24,12 @@ test("a non-member @ (not in mentions[]) stays plain text — no fake clickable 
 });
 
 test("only the recorded mention is linkified when both a member and a non-member are @-ed", () => {
-  const out = processMessageContent("@alice and @ghost", { mentions: [{ type: "user", id: "u-alice", name: "alice" }], channels: ch });
+  const out = processMessageContent("@alice and @ghost", { mentions: [{ type: "human", id: "u-alice", name: "alice" }], channels: ch });
   assert.equal(out, "[@alice](tag:human:u-alice) and @ghost");
 });
 
 test("mention matching is case-insensitive", () => {
-  const out = processMessageContent("@ALICE", { mentions: [{ type: "user", id: "u-alice", name: "alice" }], channels: ch });
+  const out = processMessageContent("@ALICE", { mentions: [{ type: "human", id: "u-alice", name: "alice" }], channels: ch });
   assert.equal(out, "[@ALICE](tag:human:u-alice)");
 });
 
@@ -54,6 +54,6 @@ test("task references stay task links even when a numeric channel exists", () =>
 });
 
 test("@ inside inline code is not turned into a mention", () => {
-  const out = processMessageContent("use `@alice` literally", { mentions: [{ type: "user", id: "u-alice", name: "alice" }], channels: ch });
+  const out = processMessageContent("use `@alice` literally", { mentions: [{ type: "human", id: "u-alice", name: "alice" }], channels: ch });
   assert.equal(out, "use `@alice` literally");
 });

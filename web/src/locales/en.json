@@ -71,7 +71,7 @@
     "tabIntegrations": "Integrations",
     "tabActivity": "Activity",
     "displayName": "Display name",
-    "agentDescriptionLabel": "Description (shown in server info so colleagues and AI can understand what this agent does)",
+    "agentDescriptionLabel": "Description (shown in Space info so colleagues and AI can understand what this agent does)",
     "agentDescriptionPlaceholder": "e.g. Local full-stack assistant, can read/write files and run commands in the workspace",
     "save": "Save",
     "cancel": "Cancel",

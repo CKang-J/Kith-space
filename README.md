@@ -12,7 +12,7 @@ Kith 意为"你熟识信任的一圈自己人"——正是这些懂你（有记�
 
 当前最高优先级是 2026-07-11 锁定的本机化转向：正式产品只有 Electron Desktop，一个 Human、一个本机 Local Runtime Worker、多个本地 Space；浏览器入口是 Desktop 可选开放的本机/LAN 附属能力。多真人、多机器、服务器部署、云同步、Docker、账户登录和独立 Web 发行路线已经取消。完整规格见 [`个人 AgentOS 本机化路线设计`](./docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md)。
 
-本机化 A2 已完成中央 `app.db`、唯一 Human、默认 `Home` Space、本地附件存储、canonical Space 契约、A2.3 唯一 Human 协作边界，以及 A2.4 Machine/Computer/远程 worker 活跃产品路径删除。当前由安装级唯一 Local Runtime Worker 承载所有本机 Space 的 agent 并跨 Space 路由事件。下一步是 A2.2b 破坏性压平 workspace.db；旧多用户表、`machines`/`agents.machine_id` 物理残留、raw `user` discriminator 和临时 JWT/dev-login 按后续切片处理。
+本机化 A2 已完成中央 `app.db`、唯一 Human、默认 `Home` Space、本地附件存储、canonical Space 契约、A2.3 唯一 Human 协作边界、A2.4 Machine/Computer/远程 worker 活跃路径删除，以及 A2.2b 19 表 workspace.db baseline。当前只有 `spaces/space_id`、agent-only membership 与独立 Human 状态/收藏/偏好；旧多用户/Machine 表、raw `user` 持久 actor、`/api/servers` 和 Space 兼容 facade 已删除。A2 仍未完成，下一步是全局上传目录与残余本地领域资产收口及整阶段验证；A3 尚未开始。
 
 ## 当前过渡开发启动
 

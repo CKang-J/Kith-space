@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述 2026-07-11 个人 AgentOS 转向后的目标模块边界。A2.4 已删除 Machine/Computer/远程 worker 的活跃产品路径；当前代码仍含 open-tag 的 `server`、多用户物理 schema、Machine 物理字段和环境变量遗留，按 `migration-plan.md` 分阶段移除。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
+> 本文描述 2026-07-11 个人 AgentOS 转向后的目标模块边界。A2.4 已删除 Machine/Computer/远程 worker 的活跃产品路径，A2.2b 已删除多用户/Machine 物理 schema 与旧 Space 兼容边界；环境变量、发行和其他继承资产仍按 `migration-plan.md` 分阶段移除。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
 
 ## 1. 架构原则
 
@@ -65,9 +65,9 @@ Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件
 
 ### 4.2 Space
 
-`SpaceService` 管理本地文件夹注册、slug、最近打开记录和 `<space>/.kith/` 初始化。A2.2a 已落地 `src/spaces/spaceService.ts`：Space 列表、创建和修改以 app.db registry 为事实源。过渡创建路径仍写 `users`、`servers.ownerId` 与 Human `channel_members` 会话状态，但 A2.3 起不再写 `server_members`，消息、任务、DM、reaction、提醒和 agent 协议也不再从 legacy user row 解析 Human。产品 schema/API/type 分阶段从 `server/serverId` 迁移为 `space/spaceId`；URL `/s/:slug` 保留。
+`SpaceService` 管理本地文件夹注册、slug、最近打开记录和 `<space>/.kith/` 初始化。Space 列表、创建和修改以 app.db registry 为事实源；每个 workspace.db 另有一行 `spaces` 元数据和 `#all`，由 `dbForSpace` 在 fresh baseline 初始化时保证。产品 schema/API/type 使用 `space/spaceId`，URL `/s/:slug` 保留。
 
-当前 canonical 传输契约是 `/api/spaces`、`x-space-id`、Socket handshake `spaceId` 和 `SpaceCtx`。Web 只使用这套契约；HTTP、公开附件和 Socket 以 app.db 唯一 Human + registered Space 授权，不再依赖 Human Space membership。旧 `/api/servers`、`x-server-id`、Socket `serverId`、`ServerCtx` 与 DB facade 被限制在明确的服务端适配边界（dispatcher、util、socketio、ctx 与 db/index），且新旧 Space ID 同时存在但值不一致时拒绝请求。该兼容层随 A2.2b baseline 压平移除；A2.4 只删除 Machine 路由，不伪装成已完成全部 `serverId` 迁移。
+canonical 传输契约是 `/api/spaces`、`x-space-id`、Socket handshake `spaceId` 和 `SpaceCtx`。Web 只使用这套契约；HTTP、公开附件和 Socket 以 app.db 唯一 Human + registered Space 授权，不依赖 Human Space membership。旧 `/api/servers`、`x-server-id`、Socket `serverId`、`ServerCtx` 与 `dbFor/listWorkspaces/registerWorkspace` 等 DB facade 已删除；Agent CLI 使用 `space info` 和 `space:read`。
 
 每个 Space 拥有频道、消息、任务、agent 队伍和 Space/agent 记忆。Agent membership 只表达“某 agent 是否在频道中并可被唤醒”，不承载 Human 权限。
 
@@ -113,27 +113,27 @@ app.db 不保存 Space 消息、任务或 agent 业务数据。
 
 ### 5.2 workspace.db
 
-过渡状态：A2.3 已让 `server_members` 和 legacy user lookup 退出产品授权/身份路径，删除 Human roster、Human-Human DM 与相关产品 API。A2.4 又让 Machine 退出服务、API、Worker 协议和 UI。`users/server_members/join_links/machines` 物理表与 `agents.machine_id` 仍留到 A2.2b；这些 Machine 字段不再被产品代码读取。legacy user copy 只剩过渡创建/兼容投影。`channel_members.memberType = "user"` 暂时表示唯一 Human 的 read/thread/DM 会话状态，不表示 Space membership；Human 对 Space 内全部 live channel 拥有隐式访问权，频道成员 API 只管理 agent。
+A2.2b 已把 workspace.db 重建为单一 19 表 baseline。它包含 `spaces`、agent、频道、消息/任务、dispatch、附件/提醒/知识/活动，以及分离后的 Human 状态表；所有 Space 外键统一为 `space_id`。`users/server_members/machines/join_links`、`agents.machine_id` 和旧 `servers/server_id` 已删除。
 
 每个 Space 的 `<space>/.kith/workspace.db` 保存：
 
-- Space 内 agent、频道与 agent membership。
+- Space 元数据，以及 Space 内 agent、频道与 agent-only `channel_agent_members`。
 - 消息、thread、任务、任务计数和实时 seq。
-- 过渡期的单 Human read/thread/DM 会话状态；A2.2b 将从多态 membership 中拆出。
-- Space 级 UI/业务偏好中需要随文件夹迁移的部分。
+- 唯一 Human 的 read/DM/thread 状态 `human_channel_states`、收藏 `human_saved_messages` 与 Space 偏好 `human_space_preferences`。
+- 持久 actor 使用 `human | agent | system`（按字段适用）；runtime 协议的 `role: "user"` 是外部协议字面量，不属于数据库 actor。
 
 一个 Space 文件夹可整体复制；Human 资料、浏览器会话和 Desktop 设置不会随之复制。未来本机跨 Space 聚合遍历多个 workspace.db 并在应用层合并，不引入中央云库。
 
 ### 5.3 schema 转向策略
 
-允许清空开发期 app 数据与 `.kith`，不实现旧 schema 数据迁移。领域迁移按以下切片进行：
+允许清空开发期 app 数据与 `.kith`，不实现旧 schema 数据迁移。A2.2b 把 Drizzle 历史压成单一 `0000` baseline；打开旧 schema 时抛出包含数据库路径的可操作错误，要求先备份再显式删除，应用绝不自动迁移或删除旧库。领域迁移状态如下：
 
 1. 建立 app.db 和唯一 Human/Home 初始化。
 2. 将传输、请求上下文、Space API 与 Web 类型改为 `spaceId`，旧名只留服务端兼容边界。
 3. A2.3 已完成：唯一 Human 成为传输 authority，稳定身份为 `@you`，删除产品 membership/RBAC/邀请/Web Human roster/Human-Human DM，频道成员只管理 agent。
 4. A2.4 已完成：删除 Machine 服务/API/UI、machine key/心跳/调度与 agent machine 选择；保留安装级唯一 Worker 进程协议，并让 Worker 事件跨 Space 定位。
-5. 破坏性重建 workspace.db baseline，把保留表的 `servers/server_id` 改为 `spaces/space_id`，拆出单 Human 会话状态，并删除旧物理表与兼容边界。
-6. 在已完成 S3 删除的基础上，把附件目录纳入 Space 根路径并做 A2 总验收。
+5. A2.2b 已完成：破坏性重建 workspace.db baseline，把保留表的 `servers/server_id` 改为 `spaces/space_id`，拆出单 Human 状态/收藏/偏好，并删除旧物理表与兼容边界。
+6. 待 A2 收口：在已完成 S3 删除的基础上，把全局上传目录纳入 Space 根路径，清理残余领域资产并做 A2 总验收。
 
 不执行无边界的整仓替换；每个切片都需 schema、service、route 和 UI 契约测试。
 

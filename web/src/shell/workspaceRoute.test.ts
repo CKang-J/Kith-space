@@ -25,7 +25,7 @@ test("maps detail routes to their workspace module", () => {
   assert.equal(parseWorkspaceRoute("/s/space/human/user-1").moduleId, null);
   assert.equal(parseWorkspaceRoute("/s/space/computer/machine-1").moduleId, null);
   assert.equal(parseWorkspaceRoute("/s/space/settings/notifications").moduleId, "settings");
-  assert.equal(parseWorkspaceRoute("/s/space/tasks/server").moduleId, "tasks");
+  assert.equal(parseWorkspaceRoute("/s/space/tasks/space").moduleId, "tasks");
 });
 
 test("removed Computers URLs and query state fall back to ChatOnly", () => {

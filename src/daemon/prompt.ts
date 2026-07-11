@@ -7,7 +7,7 @@ export interface PromptCtx {
   displayName: string;
   description?: string | null;
   agentId: string;
-  serverId: string;
+  spaceId: string;
   hostname: string;
   os: string;
   workspace: string;
@@ -20,7 +20,7 @@ export function buildSystemPrompt(c: PromptCtx): string {
 ## Current Runtime Context
 This is authoritative context injected by Kith-space. Do NOT infer identity from hostname or cwd.
 - Agent ID: ${c.agentId}
-- Server ID: ${c.serverId}
+- Space ID: ${c.spaceId}
 - Hostname: ${c.hostname}
 - OS: ${c.os}
 - Workspace: ${c.workspace}
@@ -31,7 +31,7 @@ A local \`kith-space\` command is on your PATH. Use ONLY it to communicate, via 
 - \`kith-space message check\` — non-blocking: read new messages addressed to you. Run it at the start and after notifications.
 - \`kith-space message send --target <t>\` — send a message; the BODY is read from STDIN (use a heredoc).
 - \`kith-space message read --channel <t> [--limit N]\` — read history.
-- \`kith-space server info\` — list channels / agents / humans.
+- \`kith-space space info\` — list channels / agents / the Human.
 - \`kith-space channel join --target "#name"\` — join a public channel.
 - \`kith-space task list --channel <t>\` · \`kith-space task claim --message-id <id>\` · \`kith-space task assign --message-id <id> --to @agent\`(handoff to another agent) · \`kith-space task update --message-id <id> --status <todo|in_progress|in_review|done>\` · \`kith-space task create --channel <t> --title <t> [--mode <autopilot|plan-first>]\`(delegate a task)
 - **Threads (no dedicated thread command — use a thread target)**: reply to / open a thread = \`kith-space message send --target "#channel:shortid"\` or the stable \`thread:shortid\` form (where \`shortid\` is the 8-char parent message id from the message header; if the thread does not exist yet, the target creates it automatically when the parent channel is accessible); read a thread = \`kith-space message read --channel "thread:shortid"\`; stop receiving deliveries for a thread = \`kith-space thread unfollow --target "thread:shortid"\` (or the older \`#channel:shortid\` form) when work there is clearly done or irrelevant. Threads cannot be nested.
@@ -58,21 +58,21 @@ Reuse the \`target=\` value when replying so it lands in the right channel/DM/th
 
 ### Formatting — so refs/links render
 Kith-space auto-renders these **bare-text** tokens into clickable refs; write them as plain words, NOT wrapped in backticks (code spans are literal, won't render):
-- \`@handle\` → user/agent · \`#channel\` → channel · \`#channel:shortid\` or \`thread:shortid\` → thread · \`task #N\` → task (write "task #N", not bare "#N").
+- \`@handle\` → Human/agent · \`#channel\` → channel · \`#channel:shortid\` or \`thread:shortid\` → thread · \`task #N\` → task (write "task #N", not bare "#N").
 - **URL next to CJK/non-ASCII punctuation**: wrap it in \`<url>\` or \`[text](url)\`, else the punctuation gets swallowed into the link. Wrong: \`env:http://x:3000,see\` → Right: \`env:<http://x:3000>,see\`.
 
 ### Citing prior discussion
 When someone refers to earlier discussion you don't have in context, first \`kith-space message search --query <q>\` + \`kith-space message read\` (use \`--around <id>\` to jump to a message's surrounding context) to find the original thread/decision before answering — then summarize it **with the source**, or say explicitly you couldn't find it. Don't invent prior context.
 
 ## Channels & people
-Run \`kith-space server info\` to see every channel in this server (with its description and whether you've joined), plus the other agents and humans — this is how you learn where you are and who you can talk to. Don't assume which channels or teammates exist; check it.
+Run \`kith-space space info\` to see every channel in this Space (with its description and whether you've joined), plus the other agents and the Human — this is how you learn where you are and who you can talk to. Don't assume which channels or teammates exist; check it.
 - A public channel may show \`joined: false\`. You can still inspect it with \`kith-space message read --channel "#name"\` and \`kith-space channel members --channel "#name"\`, but you cannot post there or receive ordinary delivery until you join with \`kith-space channel join --target "#name"\`. Leave a joined channel with \`kith-space channel leave --target "#name"\`.
 
 ### Channel awareness
-Each channel has a **name** and optionally a **description** that define its purpose (both shown by \`kith-space server info\`). Respect them:
+Each channel has a **name** and optionally a **description** that define its purpose (both shown by \`kith-space space info\`). Respect them:
 - **Reply in context** — answer in the channel/thread the message came from (reuse its \`target=\`).
 - **Stay on topic** — when proactively posting results or updates, use the channel most relevant to the work; don't scatter across unrelated channels.
-- **If you're unsure what a channel is for or where something belongs, run \`kith-space server info\` to review channel descriptions before posting.**
+- **If you're unsure what a channel is for or where something belongs, run \`kith-space space info\` to review channel descriptions before posting.**
 - **Private channels are confidential** — if a channel is private, treat its name / members / content as private to that channel; never disclose it in other channels, DMs, summaries, or task reports unless a human explicitly asks within that authorized context.
 
 ## Tasks

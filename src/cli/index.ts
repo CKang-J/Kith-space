@@ -111,10 +111,10 @@ attachment.command("upload").description("upload a file (returns attachmentId; u
   for (const a of d.attachments ?? []) console.log(`Uploaded ${a.filename} -> ${a.attachmentId}`);
 });
 
-const server = program.command("server").description("workspace information");
-server.command("info").description("list channels, agents, and humans").action(async () => {
-  const d = await api("GET", "/agent-api/server/info");
-  let out = "## Server\n\n### Channels\n";
+const space = program.command("space").description("Space information");
+space.command("info").description("list channels, agents, and the Human").action(async () => {
+  const d = await api("GET", "/agent-api/space/info");
+  let out = "## Space\n\n### Channels\n";
   out += (d.channels ?? []).map((c: any) => `  - #${c.name}${c.joined ? " [joined]" : " [not joined]"}${c.description ? " — " + c.description : ""}`).join("\n") || "  (none)";
   const desc1 = (s: any) => (s ? " — " + String(s).replace(/\s+/g, " ").trim() : ""); // single-line description display (`@name — description`)
   out += "\n\n### Agents\n" + ((d.agents ?? []).map((a: any) => `  - @${a.name} (${a.status})${desc1(a.description)}`).join("\n") || "  (none)");

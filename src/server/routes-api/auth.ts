@@ -1,6 +1,5 @@
-import type { BaseCtx, UserCtx } from "./ctx.js";
+import type { BaseCtx, HumanCtx } from "./ctx.js";
 import { AppDataError, getHumanProfile, updateHumanProfile } from "../../app-data/appDatabase.js";
-import { findUserById, updateUserCopies } from "../../db/lookup.js";
 import { devLoginEnabled, signUser } from "../auth.js";
 import { DESC_TOO_LONG, descTooLong } from "../core.js";
 import { readJson, sendErr, sendJson } from "../util.js";
@@ -18,25 +17,24 @@ export async function handlePublicAuth(ctx: BaseCtx): Promise<boolean> {
   }), true);
 }
 
-/** Canonical Human profile API. Legacy workspace copies remain only until A2.3b/A2.2b. */
-export async function handleAuthedAuth(ctx: UserCtx): Promise<boolean> {
-  const { req, res, method, p, userId } = ctx;
+/** Canonical Human profile API backed only by app.db. */
+export async function handleAuthedAuth(ctx: HumanCtx): Promise<boolean> {
+  const { req, res, method, p, humanId } = ctx;
   if (p === "/api/auth/me" && method === "GET") {
     const human = getHumanProfile();
-    if (!human || human.id !== userId) return (sendErr(res, 404, "not found"), true);
-    const legacy = (await findUserById(userId))?.value;
+    if (!human || human.id !== humanId) return (sendErr(res, 404, "not found"), true);
     return (sendJson(res, 200, {
       id: human.id,
       name: human.name,
       displayName: human.name,
       email: human.email,
       description: human.description,
-      avatarUrl: legacy?.avatarUrl ?? null,
+      avatarUrl: null,
     }), true);
   }
   if (p === "/api/auth/me" && method === "PATCH") {
     const current = getHumanProfile();
-    if (!current || current.id !== userId) return (sendErr(res, 404, "not found"), true);
+    if (!current || current.id !== humanId) return (sendErr(res, 404, "not found"), true);
     const body = await readJson(req);
     if (descTooLong(body.description)) return (sendErr(res, 400, DESC_TOO_LONG), true);
     let human = current;
@@ -50,21 +48,13 @@ export async function handleAuthedAuth(ctx: UserCtx): Promise<boolean> {
       if (error instanceof AppDataError) return (sendErr(res, 400, error.message, { code: error.code }), true);
       throw error;
     }
-    const legacyPatch: Record<string, unknown> = {
-      displayName: human.name,
-      email: human.email ?? `${human.id}@human.kith-space.invalid`,
-      description: human.description,
-    };
-    if (body.avatarUrl !== undefined) legacyPatch.avatarUrl = body.avatarUrl;
-    await updateUserCopies(userId, legacyPatch);
-    const legacy = (await findUserById(userId))?.value;
     return (sendJson(res, 200, {
       id: human.id,
       name: human.name,
       displayName: human.name,
       email: human.email,
       description: human.description,
-      avatarUrl: legacy?.avatarUrl ?? null,
+      avatarUrl: null,
     }), true);
   }
   return false;

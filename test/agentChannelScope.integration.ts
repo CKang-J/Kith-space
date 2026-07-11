@@ -94,25 +94,24 @@ try {
   });
   const humanToken = signUser(human.id);
   const db = dbForSpace(home.id);
-  await db.delete(schema.serverMembers);
 
   const agents = await db.insert(schema.agents).values([
     {
-      serverId: home.id,
+      spaceId: home.id,
       name: "alpha",
       displayName: "Alpha",
       runtime: "codex",
       creatorId: human.id,
     },
     {
-      serverId: home.id,
+      spaceId: home.id,
       name: "beta",
       displayName: "Beta",
       runtime: "codex",
       creatorId: human.id,
     },
     {
-      serverId: home.id,
+      spaceId: home.id,
       name: "gamma",
       displayName: "Gamma",
       runtime: "codex",
@@ -123,10 +122,10 @@ try {
   assert.ok(alpha && beta && gamma);
 
   const channels = await db.insert(schema.channels).values([
-    { serverId: home.id, name: "scope-public", type: "channel" },
-    { serverId: home.id, name: "scope-private", type: "private" },
+    { spaceId: home.id, name: "scope-public", type: "channel" },
+    { spaceId: home.id, name: "scope-private", type: "private" },
     {
-      serverId: home.id,
+      spaceId: home.id,
       name: `dm:${[alpha.id, beta.id].sort().join(":")}`,
       type: "dm",
     },
@@ -134,14 +133,14 @@ try {
   const [regular, privateChannel, agentDm] = channels;
   assert.ok(regular && privateChannel && agentDm);
 
-  await db.insert(schema.channelMembers).values([
-    { channelId: privateChannel.id, memberType: "agent", memberId: alpha.id },
-    { channelId: agentDm.id, memberType: "agent", memberId: alpha.id },
-    { channelId: agentDm.id, memberType: "agent", memberId: beta.id },
+  await db.insert(schema.channelAgentMembers).values([
+    { channelId: privateChannel.id, agentId: alpha.id },
+    { channelId: agentDm.id, agentId: alpha.id },
+    { channelId: agentDm.id, agentId: beta.id },
   ]);
   const messages = await db.insert(schema.messages).values([
     {
-      serverId: home.id,
+      spaceId: home.id,
       channelId: regular.id,
       seq: 1,
       senderType: "agent",
@@ -150,7 +149,7 @@ try {
       content: "regular message",
     },
     {
-      serverId: home.id,
+      spaceId: home.id,
       channelId: privateChannel.id,
       seq: 2,
       senderType: "agent",
@@ -159,7 +158,7 @@ try {
       content: "private message",
     },
     {
-      serverId: home.id,
+      spaceId: home.id,
       channelId: agentDm.id,
       seq: 3,
       senderType: "agent",
@@ -191,7 +190,7 @@ try {
   assert.ok(betaConfig?.agentToken);
   assert.ok(gammaConfig?.agentToken);
 
-  const info = await agentApi(betaConfig.agentToken, beta.id, "GET", "/agent-api/server/info");
+  const info = await agentApi(betaConfig.agentToken, beta.id, "GET", "/agent-api/space/info");
   assert.equal(info.status, 200);
   assert.equal("humans" in info.body, false);
   assert.deepEqual(info.body.human, {
@@ -266,15 +265,15 @@ try {
   const other = await createLocalSpace({ name: "Other", rootPath: path.join(root, "other") });
   const otherDb = dbForSpace(other.id);
   const [otherChannel] = await otherDb.insert(schema.channels).values({
-    serverId: other.id,
+    spaceId: other.id,
     name: "other-private",
     type: "private",
   }).returning();
   const [otherMessage] = await otherDb.insert(schema.messages).values({
-    serverId: other.id,
+    spaceId: other.id,
     channelId: otherChannel!.id,
     seq: 1,
-    senderType: "user",
+    senderType: "human",
     senderId: human.id,
     senderName: human.name,
     content: "cross-space secret",

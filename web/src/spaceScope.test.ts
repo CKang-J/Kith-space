@@ -29,6 +29,6 @@ test("space-scoped XHR requests use only x-space-id", () => {
   assert.equal(headers.has("x-server-id"), false);
 });
 
-test("workspace URLs keep the /s/:slug contract", () => {
+test("Space URLs keep the /s/:slug contract", () => {
   assert.equal(SPACE_ROUTE_PATTERN, "/s/:slug");
 });

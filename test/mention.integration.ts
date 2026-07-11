@@ -3,18 +3,16 @@
 // - private channels and DMs do not admit an agent outside their current scope
 // - threads inherit the parent channel's mention reach
 import { eq } from "drizzle-orm";
-import { initializeHumanProfile } from "../src/app-data/appDatabase.ts";
-import { createMessage, getOrCreateThread } from "../src/server/core.ts";
+import { createMessage, getOrCreateDM, getOrCreateThread } from "../src/server/core.ts";
 import { integrationDatabase } from "./helpers/workspace.ts";
 
 const ts = Date.now();
 const ghostName = `ghost_${ts}`;
 const outsiderName = `outsider_${ts}`;
 const fixture = integrationDatabase("mention");
-const { db, schema, rootPath } = fixture;
+const { db, schema, spaceId } = fixture;
 
-let serverId = fixture.serverId;
-let humanId = "";
+const humanId = fixture.human.id;
 let ghostId = "";
 let outsiderId = "";
 let publicChannelId = "";
@@ -28,24 +26,23 @@ const check = (label: string, condition: boolean) => {
 };
 
 async function members(channelId: string) {
-  return db.select().from(schema.channelMembers).where(eq(schema.channelMembers.channelId, channelId));
+  return db.select().from(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, channelId));
 }
 
 async function mentionsOf(messageId: string) {
   return db.select().from(schema.messageMentions).where(eq(schema.messageMentions.messageId, messageId));
 }
 
-const inChannel = (rows: any[], type: "user" | "agent", id: string) =>
-  rows.some((row) => row.memberType === type && row.memberId === id);
+const inChannel = (rows: any[], id: string) => rows.some((row) => row.agentId === id);
 
-const mentioned = (rows: any[], type: "user" | "agent", id: string) =>
+const mentioned = (rows: any[], type: "human" | "agent", id: string) =>
   rows.some((row) => row.mentionType === type && row.mentionId === id);
 
 async function humanMessage(channelId: string, content: string) {
   return createMessage({
-    serverId,
+    spaceId,
     channelId,
-    senderType: "user",
+    senderType: "human",
     senderId: humanId,
     senderName: "Ada",
     content,
@@ -53,61 +50,36 @@ async function humanMessage(channelId: string, content: string) {
 }
 
 async function setup() {
-  const human = initializeHumanProfile({ name: "Ada", email: `ada-${ts}@test.local` });
-  humanId = human.id;
-  await db.insert(schema.users).values({
-    id: humanId,
-    name: "you",
-    displayName: human.name,
-    email: human.email!,
-  });
-  await db.insert(schema.servers).values({
-    id: serverId,
-    name: "Mention Scope",
-    slug: `mention-${ts}`,
-    ownerId: humanId,
-    rootPath,
-  });
-
   const [ghost, outsider] = await db.insert(schema.agents).values([
-    { serverId, name: ghostName, displayName: "Ghost", creatorId: humanId },
-    { serverId, name: outsiderName, displayName: "Outsider", creatorId: humanId },
+    { spaceId, name: ghostName, displayName: "Ghost", creatorId: humanId },
+    { spaceId, name: outsiderName, displayName: "Outsider", creatorId: humanId },
   ]).returning();
   ghostId = ghost!.id;
   outsiderId = outsider!.id;
 
-  const [publicChannel, privateChannel, dmChannel] = await db.insert(schema.channels).values([
-    { serverId, name: `public-${ts}`, type: "channel" },
-    { serverId, name: `private-${ts}`, type: "private" },
-    { serverId, name: `dm-${ts}`, type: "dm" },
+  const [publicChannel, privateChannel] = await db.insert(schema.channels).values([
+    { spaceId, name: `public-${ts}`, type: "channel" },
+    { spaceId, name: `private-${ts}`, type: "private" },
   ]).returning();
   publicChannelId = publicChannel!.id;
   privateChannelId = privateChannel!.id;
-  dmChannelId = dmChannel!.id;
-  await db.insert(schema.channelMembers).values([
-    { channelId: publicChannelId, memberType: "user", memberId: humanId },
-    { channelId: privateChannelId, memberType: "user", memberId: humanId },
-    { channelId: dmChannelId, memberType: "user", memberId: humanId },
-    { channelId: dmChannelId, memberType: "agent", memberId: ghostId },
-  ]);
+  dmChannelId = await getOrCreateDM(spaceId, humanId, "human", ghostId, "agent");
 }
 
 async function cleanup() {
   const messages = await db.select({ id: schema.messages.id }).from(schema.messages)
-    .where(eq(schema.messages.serverId, serverId));
+    .where(eq(schema.messages.spaceId, spaceId));
   for (const message of messages) {
     await db.delete(schema.messageMentions).where(eq(schema.messageMentions.messageId, message.id));
   }
-  await db.delete(schema.messages).where(eq(schema.messages.serverId, serverId));
+  await db.delete(schema.messages).where(eq(schema.messages.spaceId, spaceId));
   const channels = await db.select({ id: schema.channels.id }).from(schema.channels)
-    .where(eq(schema.channels.serverId, serverId));
+    .where(eq(schema.channels.spaceId, spaceId));
   for (const channel of channels) {
-    await db.delete(schema.channelMembers).where(eq(schema.channelMembers.channelId, channel.id));
+    await db.delete(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, channel.id));
   }
-  await db.delete(schema.channels).where(eq(schema.channels.serverId, serverId));
-  await db.delete(schema.agents).where(eq(schema.agents.serverId, serverId));
-  await db.delete(schema.servers).where(eq(schema.servers.id, serverId));
-  await db.delete(schema.users).where(eq(schema.users.id, humanId));
+  await db.delete(schema.channels).where(eq(schema.channels.spaceId, spaceId));
+  await db.delete(schema.agents).where(eq(schema.agents.spaceId, spaceId));
 }
 
 async function main() {
@@ -115,7 +87,7 @@ async function main() {
 
   console.log("\n[1] public channel mention auto-joins a local agent");
   const publicMention = await humanMessage(publicChannelId, `@${ghostName} please investigate`);
-  check("addressed agent joined the public channel", inChannel(await members(publicChannelId), "agent", ghostId));
+  check("addressed agent joined the public channel", inChannel(await members(publicChannelId), ghostId));
   check("agent mention was recorded", mentioned(await mentionsOf(publicMention.id), "agent", ghostId));
 
   console.log("\n[2] re-mentioning the joined agent is idempotent");
@@ -125,26 +97,26 @@ async function main() {
 
   console.log("\n[3] private channel mention does not admit an out-of-scope agent");
   const privateMention = await humanMessage(privateChannelId, `@${ghostName} private work`);
-  check("agent was not added to the private channel", !inChannel(await members(privateChannelId), "agent", ghostId));
+  check("agent was not added to the private channel", !inChannel(await members(privateChannelId), ghostId));
   check("out-of-scope private mention was not recorded", !mentioned(await mentionsOf(privateMention.id), "agent", ghostId));
 
   console.log("\n[4] DM mention does not add a third party");
   const dmMention = await humanMessage(dmChannelId, `@${outsiderName} look here`);
-  check("third agent was not added to the DM", !inChannel(await members(dmChannelId), "agent", outsiderId));
+  check("third agent was not added to the DM", !inChannel(await members(dmChannelId), outsiderId));
   check("out-of-scope DM mention was not recorded", !mentioned(await mentionsOf(dmMention.id), "agent", outsiderId));
 
   console.log("\n[5] thread under a public channel inherits public mention reach");
   const publicParent = await humanMessage(publicChannelId, "public thread parent");
-  const publicThread = await getOrCreateThread(serverId, publicParent.id, { type: "user", id: humanId });
+  const publicThread = await getOrCreateThread(spaceId, publicParent.id, { type: "human", id: humanId });
   const publicThreadMention = await humanMessage(publicThread.id, `@${ghostName} pick up this thread`);
-  check("parent-channel agent joined the public thread", inChannel(await members(publicThread.id), "agent", ghostId));
+  check("parent-channel agent joined the public thread", inChannel(await members(publicThread.id), ghostId));
   check("public-thread mention was recorded", mentioned(await mentionsOf(publicThreadMention.id), "agent", ghostId));
 
   console.log("\n[6] thread under a private channel inherits private mention reach");
   const privateParent = await humanMessage(privateChannelId, "private thread parent");
-  const privateThread = await getOrCreateThread(serverId, privateParent.id, { type: "user", id: humanId });
+  const privateThread = await getOrCreateThread(spaceId, privateParent.id, { type: "human", id: humanId });
   const privateThreadMention = await humanMessage(privateThread.id, `@${ghostName} secret thread work`);
-  check("agent was not added to the private thread", !inChannel(await members(privateThread.id), "agent", ghostId));
+  check("agent was not added to the private thread", !inChannel(await members(privateThread.id), ghostId));
   check("out-of-scope private-thread mention was not recorded", !mentioned(await mentionsOf(privateThreadMention.id), "agent", ghostId));
 }
 

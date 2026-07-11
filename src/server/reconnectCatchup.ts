@@ -12,7 +12,7 @@
 // DM/@ wake unconditionally; ambient (non-@) wakes only with the inbox:receive scope. The two stay in sync
 // through agentWakePolicy — see docs/superpowers/specs/2026-06-25-agent-reachability-design.md §5.4.
 import { and, eq, gt, ne, or, isNull, desc } from "drizzle-orm";
-import { dbFor, listSpaces, schema } from "../db/index.js";
+import { dbForSpace, listSpaces, schema } from "../db/index.js";
 import { agentHasScope } from "./scopes.js";
 import {
   isWorkerLeaseCurrent,
@@ -46,18 +46,18 @@ interface Backlog {
 
 /** Does this agent have a wakeable backlog (unread messages that would have woken it)? Returns a small
  *  summary used to build the soft-offline inbox notice, or null when there is nothing wakeable. */
-async function computeBacklog(serverId: string, agentId: string, scopes: Parameters<typeof agentHasScope>[0]): Promise<Backlog | null> {
-  const db = dbFor(serverId);
+async function computeBacklog(spaceId: string, agentId: string, scopes: Parameters<typeof agentHasScope>[0]): Promise<Backlog | null> {
+  const db = dbForSpace(spaceId);
   const hasInbox = agentHasScope(scopes, "inbox:receive");
   const memberships = await db.select({
-    channelId: schema.channelMembers.channelId,
-    lastReadSeq: schema.channelMembers.lastReadSeq,
+    channelId: schema.channelAgentMembers.channelId,
+    lastReadSeq: schema.channelAgentMembers.lastReadSeq,
     type: schema.channels.type,
     name: schema.channels.name,
     parentMessageId: schema.channels.parentMessageId,
-  }).from(schema.channelMembers)
-    .innerJoin(schema.channels, eq(schema.channels.id, schema.channelMembers.channelId))
-    .where(and(eq(schema.channelMembers.memberType, "agent"), eq(schema.channelMembers.memberId, agentId)));
+  }).from(schema.channelAgentMembers)
+    .innerJoin(schema.channels, eq(schema.channels.id, schema.channelAgentMembers.channelId))
+    .where(eq(schema.channelAgentMembers.agentId, agentId));
 
   let count = 0;
   let latest: (Backlog & { seq: number }) | null = null;
@@ -86,7 +86,7 @@ async function computeBacklog(serverId: string, agentId: string, scopes: Paramet
         .where(and(unread, eq(schema.messageMentions.mentionType, "agent"), eq(schema.messageMentions.mentionId, agentId)))
         .orderBy(desc(schema.messages.seq));
       for (const row of mentionedRows) rowsBySeq.set(row.seq, row);
-      if (isWakeable({ channelType: m.type, mentioned: false, hasInboxScope: hasInbox, senderType: "user" })) {
+      if (isWakeable({ channelType: m.type, mentioned: false, hasInboxScope: hasInbox, senderType: "human" })) {
         const ambientRows = await db.select({ id: schema.messages.id, seq: schema.messages.seq, from: schema.messages.senderName, dispatchChainId: schema.messages.dispatchChainId, dispatchDepth: schema.messages.dispatchDepth, threadId: schema.messages.threadId, taskStatus: schema.messages.taskStatus })
           .from(schema.messages)
           .where(and(unread, ne(schema.messages.senderType, "agent"), ne(schema.messages.messageType, "system")))
@@ -142,25 +142,25 @@ export async function catchUpAgentsOnWorker(runningIds: string[], lease: WorkerL
   let scanned = 0;
   for (const space of spaces) {
     if (!isWorkerLeaseCurrent(lease)) return;
-    const serverId = space.id;
-    const db = dbFor(serverId);
+    const spaceId = space.id;
+    const db = dbForSpace(spaceId);
     const list = await db.select({ id: schema.agents.id, name: schema.agents.name, runtime: schema.agents.runtime, scopes: schema.agents.scopes })
       .from(schema.agents)
-      .where(and(eq(schema.agents.serverId, serverId), isNull(schema.agents.deletedAt)));
+      .where(and(eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt)));
     if (!isWorkerLeaseCurrent(lease)) return;
     scanned += list.length;
     for (const a of list) {
       if (!isWorkerLeaseCurrent(lease)) return;
       let backlog: Backlog | null = null;
-      try { backlog = await computeBacklog(serverId, a.id, a.scopes); }
+      try { backlog = await computeBacklog(spaceId, a.id, a.scopes); }
       catch (e: any) { log.warn("backlog scan failed", { agentId: a.id, detail: String(e?.message ?? e) }); continue; }
       if (!isWorkerLeaseCurrent(lease)) return;
       if (!backlog) continue;
       if (!availableRuntimes.has(a.runtime)) {
-        log.warn("catch-up skipped unsupported runtime", { agentId: a.id, spaceId: serverId, runtime: a.runtime });
+        log.warn("catch-up skipped unsupported runtime", { agentId: a.id, spaceId: spaceId, runtime: a.runtime });
         continue;
       }
-      const state = new SqliteDispatchState(serverId);
+      const state = new SqliteDispatchState(spaceId);
       await state.ensureChain({ ...backlog.dispatch, rootMessageId: backlog.messageId, channelId: backlog.channelId });
       if (!isWorkerLeaseCurrent(lease)) return;
       const reservation = await state.reserveWake({
@@ -188,7 +188,7 @@ export async function catchUpAgentsOnWorker(runningIds: string[], lease: WorkerL
       let sent = false;
       if (!runningIds.includes(a.id)) {
         // Hard offline: start with resume; the startup nudge pulls missed messages from the inbox.
-        const cfg = await agentConfig(serverId, a.id);
+        const cfg = await agentConfig(spaceId, a.id);
         if (!isWorkerLeaseCurrent(lease)) {
           await state.releaseWake(reservation.reservationId);
           return;

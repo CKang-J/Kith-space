@@ -1,4 +1,4 @@
-import { and, count, eq, gt, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, count, eq, gt, isNull, ne, or } from "drizzle-orm";
 import {
   getHumanProfile,
   getSpaceRecord,
@@ -8,8 +8,7 @@ import {
   type SpaceRecord,
 } from "../app-data/appDatabase.js";
 import { dbForSpace, schema } from "../db/index.js";
-import { legacyHumanRow } from "../db/personalApp.js";
-import { createWorkspace } from "../db/workspace.js";
+import { createSpace } from "../db/space.js";
 
 export type SpaceServiceErrorCode =
   | "HUMAN_NOT_INITIALIZED"
@@ -69,9 +68,8 @@ export async function createLocalSpace(input: {
   if (!human) throw new SpaceServiceError("HUMAN_NOT_INITIALIZED", "Human profile is not initialized");
   const name = normalizeName(input.name);
   const slug = availableSlug(input.slug ?? name);
-  const created = await createWorkspace(name, slug, human.id, {
+  const created = await createSpace(name, slug, {
     rootPath: input.rootPath,
-    owner: legacyHumanRow(human),
   });
   return getLocalSpace(created.id);
 }
@@ -88,11 +86,10 @@ export async function updateLocalSpace(
     throw new SpaceServiceError("SPACE_SLUG_CONFLICT", `Space slug already exists: ${slug}`);
   }
 
-  // workspace.db keeps this compatibility projection until the destructive A2 schema reset.
   const db = dbForSpace(spaceId);
   const updated = persistSpaceRecord({ ...current, name, slug, lastOpenedAt: new Date() });
   try {
-    await db.update(schema.servers).set({ name, slug }).where(eq(schema.servers.id, spaceId));
+    await db.update(schema.spaces).set({ name, slug }).where(eq(schema.spaces.id, spaceId));
     return updated;
   } catch (error) {
     try {
@@ -112,27 +109,24 @@ export async function localSpaceUnreadSummary(): Promise<Array<{ spaceId: string
   for (const space of listSpaceRecords()) {
     const db = dbForSpace(space.id);
     let unreadCount = 0;
-    const memberships = await db.select().from(schema.channelMembers).where(and(
-      eq(schema.channelMembers.memberType, "user"),
-      eq(schema.channelMembers.memberId, human.id),
-    ));
-    if (memberships.length) {
-      const channels = await db.select({
-        id: schema.channels.id,
-        type: schema.channels.type,
-        deletedAt: schema.channels.deletedAt,
-      }).from(schema.channels).where(inArray(schema.channels.id, memberships.map((membership) => membership.channelId)));
-      const channelById = new Map(channels.filter((channel) => !channel.deletedAt).map((channel) => [channel.id, channel]));
-      for (const membership of memberships) {
-        const channel = channelById.get(membership.channelId);
-        if (!channel || (channel.type === "thread" && membership.threadDoneAt)) continue;
-        const [row] = await db.select({ total: count() }).from(schema.messages).where(and(
-          eq(schema.messages.channelId, membership.channelId),
-          gt(schema.messages.seq, membership.lastReadSeq),
-          or(isNull(schema.messages.senderId), ne(schema.messages.senderId, human.id)),
-        ));
-        unreadCount += Number(row?.total ?? 0);
-      }
+    const states = await db.select().from(schema.humanChannelStates);
+    const stateByChannel = new Map(states.map((state) => [state.channelId, state]));
+    const channels = await db.select({
+      id: schema.channels.id,
+      type: schema.channels.type,
+      deletedAt: schema.channels.deletedAt,
+    }).from(schema.channels).where(eq(schema.channels.spaceId, space.id));
+    for (const channel of channels) {
+      if (channel.deletedAt) continue;
+      const state = stateByChannel.get(channel.id);
+      if (channel.type === "thread" && (!state?.threadFollowedAt || state.threadDoneAt)) continue;
+      if (channel.type === "dm" && !state?.dmAgentId) continue;
+      const [row] = await db.select({ total: count() }).from(schema.messages).where(and(
+        eq(schema.messages.channelId, channel.id),
+        gt(schema.messages.seq, state?.lastReadSeq ?? 0),
+        or(isNull(schema.messages.senderId), ne(schema.messages.senderId, human.id)),
+      ));
+      unreadCount += Number(row?.total ?? 0);
     }
     summary.push({ spaceId: space.id, unreadCount });
   }

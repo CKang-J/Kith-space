@@ -4,19 +4,19 @@ import fs from "node:fs";
 
 const read = (path: string) => fs.readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("active server product paths use the installation-local worker instead of Machine records", () => {
+test("active Core Service paths use the installation-local worker instead of Machine records", () => {
   const core = read("../src/server/core.ts");
   const agents = read("../src/server/routes-api/agents.ts");
-  const servers = read("../src/server/routes-api/servers.ts");
+  const localRuntime = read("../src/server/routes-api/localRuntime.ts");
   const catchup = read("../src/server/reconnectCatchup.ts");
 
   assert.match(core, /isWorkerConnected, sendToWorker, workerRuntimes/);
   assert.doesNotMatch(core, /schema\.machines|schema\.agents\.machineId|sendToMachine|broadcastToDaemons/);
   assert.match(agents, /machineId is no longer supported/);
   assert.doesNotMatch(agents, /schema\.machines|machineId: agent/);
-  assert.match(servers, /const runtimeModels =/);
-  assert.match(servers, /getDynamicModels\(runtime\)/);
-  assert.doesNotMatch(servers, /\/machines|schema\.machines/);
+  assert.match(localRuntime, /const match =/);
+  assert.match(localRuntime, /getDynamicModels\(runtime\)/);
+  assert.doesNotMatch(localRuntime, /\/machines|schema\.machines/);
   assert.match(catchup, /const spaces = listSpaces\(\)/);
   assert.match(catchup, /for \(const space of spaces\)/);
   assert.match(catchup, /sendToWorker/);

@@ -1,7 +1,7 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
-import type { ServerCtx } from "./ctx.js";
+import type { SpaceCtx } from "./ctx.js";
 import { and, asc, desc, eq, gt, like, inArray, isNull, lt } from "drizzle-orm";
-import { dbFor, schema } from "../../db/index.js";
+import { dbForSpace, schema } from "../../db/index.js";
 import { addReaction, checkSaved, createMessage, listSaved, removeReaction, saveMessage, unsaveMessage } from "../core.js";
 import { parseMsgPageParams } from "../messagePage.js";
 import { publish } from "../realtime.js";
@@ -11,9 +11,9 @@ import { canHumanReadChannel } from "../channelAccess.js";
 import { normalizeTaskExecutionMode } from "../dispatchGuard.js";
 import { humanIdentityForId } from "../../human/humanIdentity.js";
 
-export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
-  const { req, res, url, method, p, userId, serverId } = ctx;
-  const db = dbFor(serverId);
+export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
+  const { req, res, url, method, p, humanId, spaceId } = ctx;
+  const db = dbForSpace(spaceId);
   if (p === "/api/mentions" && method === "GET") {
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 30), 100);
     const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
@@ -22,13 +22,13 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
         messageId: schema.messages.id, seq: schema.messages.seq, content: schema.messages.content, createdAt: schema.messages.createdAt,
         senderType: schema.messages.senderType, senderId: schema.messages.senderId, senderName: schema.messages.senderName,
         channelId: schema.channels.id, channelName: schema.channels.name, channelType: schema.channels.type, parentMessageId: schema.channels.parentMessageId,
-        lastReadSeq: schema.channelMembers.lastReadSeq,
+        lastReadSeq: schema.humanChannelStates.lastReadSeq,
       })
       .from(schema.messageMentions)
       .innerJoin(schema.messages, eq(schema.messages.id, schema.messageMentions.messageId))
       .innerJoin(schema.channels, eq(schema.channels.id, schema.messages.channelId))
-      .leftJoin(schema.channelMembers, and(eq(schema.channelMembers.channelId, schema.channels.id), eq(schema.channelMembers.memberType, "user"), eq(schema.channelMembers.memberId, userId)))
-      .where(and(eq(schema.messageMentions.mentionType, "user"), eq(schema.messageMentions.mentionId, userId), eq(schema.channels.serverId, serverId), isNull(schema.channels.deletedAt)))
+      .leftJoin(schema.humanChannelStates, eq(schema.humanChannelStates.channelId, schema.channels.id))
+      .where(and(eq(schema.messageMentions.mentionType, "human"), eq(schema.messageMentions.mentionId, humanId), eq(schema.channels.spaceId, spaceId), isNull(schema.channels.deletedAt)))
       .orderBy(desc(schema.messages.seq))
       .limit(limit + 1).offset(offset); // fetch one extra row to detect a next page without a second COUNT (Saved-style hasMore)
     const hasMore = rows.length > limit;
@@ -60,30 +60,30 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
   if (p === "/api/channels/saved" && method === "GET") {
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 20), 100);
     const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
-    return (sendJson(res, 200, await listSaved(serverId, "user", userId, limit, offset)), true);
+    return (sendJson(res, 200, await listSaved(spaceId, limit, offset)), true);
   }
   // Save: body {messageId}; idempotent (unique index deduplicates).
   if (p === "/api/channels/saved" && method === "POST") {
     const b = await readJson(req).catch(() => ({}));
     const messageId = String(b.messageId ?? "").trim();
     if (!messageId) return (sendErr(res, 400, "messageId required"), true);
-    const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, messageId), eq(schema.messages.serverId, serverId))))[0];
+    const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, messageId), eq(schema.messages.spaceId, spaceId))))[0];
     if (!m) return (sendErr(res, 404, "message not found"), true);
-    if (!(await canHumanReadChannel(serverId, m.channelId))) return (sendErr(res, 404, "message not found"), true);
-    await saveMessage(serverId, messageId, "user", userId);
+    if (!(await canHumanReadChannel(spaceId, m.channelId))) return (sendErr(res, 404, "message not found"), true);
+    await saveMessage(spaceId, messageId);
     return (sendJson(res, 200, { ok: true }), true);
   }
   // Bulk saved check: body {messageIds[]} → {savedIds[]}
   if (p === "/api/channels/saved/check" && method === "POST") {
     const b = await readJson(req).catch(() => ({}));
     const ids = Array.isArray(b.messageIds) ? b.messageIds.map((x: unknown) => String(x)) : [];
-    const savedIds = await checkSaved(serverId, "user", userId, ids);
+    const savedIds = await checkSaved(spaceId, ids);
     return (sendJson(res, 200, { savedIds }), true);
   }
   // Unsave: DELETE /channels/saved/:messageId
   const cunsave = /^\/api\/channels\/saved\/([^/]+)$/.exec(p);
   if (cunsave && method === "DELETE") {
-    await unsaveMessage(serverId, cunsave[1]!, "user", userId);
+    await unsaveMessage(spaceId, cunsave[1]!);
     return (sendJson(res, 200, { ok: true }), true);
   }
   // Contract stub (returns empty response for unbuilt features): active announcements
@@ -92,10 +92,10 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 20), 50);
     const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0));
     if (!q) return (sendJson(res, 200, { hasMore: false, results: [] }), true);
-    const chIds = (await humanChannels(serverId)).filter((channel) => !channel.deletedAt).map((channel) => channel.id);
+    const chIds = (await humanChannels(spaceId)).filter((channel) => !channel.deletedAt).map((channel) => channel.id);
     if (!chIds.length) return (sendJson(res, 200, { hasMore: false, results: [] }), true);
     const rows = await db.select().from(schema.messages)
-      .where(and(eq(schema.messages.serverId, serverId), inArray(schema.messages.channelId, chIds), like(schema.messages.content, `%${q}%`)))
+      .where(and(eq(schema.messages.spaceId, spaceId), inArray(schema.messages.channelId, chIds), like(schema.messages.content, `%${q}%`)))
       .orderBy(desc(schema.messages.seq)).limit(limit + 1).offset(offset);
     const hasMore = rows.length > limit;
     const chs = await db.select().from(schema.channels).where(inArray(schema.channels.id, chIds));
@@ -106,25 +106,25 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
   }
   const cmsg = /^\/api\/messages\/channel\/([^/]+)$/.exec(p);
   if (cmsg && method === "GET") {
-    if (!(await canHumanReadChannel(serverId, cmsg[1]!))) return (sendErr(res, 403, "forbidden"), true);
+    if (!(await canHumanReadChannel(spaceId, cmsg[1]!))) return (sendErr(res, 403, "forbidden"), true);
     const { limit, before } = parseMsgPageParams(url.searchParams); // `before` = keyset cursor on seq → the older page (frontend scroll-to-top "load more")
-    const conds = [eq(schema.messages.serverId, serverId), eq(schema.messages.channelId, cmsg[1]!)]; // serverId scope: a foreign channel UUID must not read another tenant's messages (cross-tenant read)
+    const conds = [eq(schema.messages.spaceId, spaceId), eq(schema.messages.channelId, cmsg[1]!)]; // spaceId scope: a foreign channel UUID must not read another tenant's messages (cross-tenant read)
     if (before != null) conds.push(lt(schema.messages.seq, before)); // hits messages_channel_idx (channelId, seq) — keyset, no offset drift
     const rows = await db.select().from(schema.messages).where(and(...conds)).orderBy(desc(schema.messages.seq)).limit(limit + 1); // +1 sentinel row: detect a further page without the exact-page-boundary false positive (mirrors the search/mentions routes)
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
-    return (sendJson(res, 200, { messages: (await attachMentions(serverId, page.reverse())), hasMore }), true);
+    return (sendJson(res, 200, { messages: (await attachMentions(spaceId, page.reverse())), hasMore }), true);
   }
   if (p === "/api/messages" && method === "POST") {
     const b = await readJson(req);
     const hasAtt = Array.isArray(b.attachmentIds) && b.attachmentIds.length > 0;
     if (!b.channelId || (!b.content && !hasAtt)) return (sendErr(res, 400, "channelId + content (or attachmentIds) required"), true);
-    if (!(await canHumanReadChannel(serverId, b.channelId))) return (sendErr(res, 403, "forbidden"), true);
-    const human = humanIdentityForId(userId);
+    if (!(await canHumanReadChannel(spaceId, b.channelId))) return (sendErr(res, 403, "forbidden"), true);
+    const human = humanIdentityForId(humanId);
     if (!human) return (sendErr(res, 403, "not the local Human"), true);
     const mode = normalizeTaskExecutionMode(b.taskExecutionMode ?? b.executionMode);
     if (b.asTask && !mode) return (sendErr(res, 400, "executionMode must be autopilot or plan-first"), true);
-    const msg = await createMessage({ serverId, channelId: b.channelId, senderType: "user", senderId: userId, senderName: human.displayName, content: b.content || "", asTask: !!b.asTask, taskExecutionMode: mode ?? undefined, attachmentIds: hasAtt ? b.attachmentIds : undefined });
+    const msg = await createMessage({ spaceId, channelId: b.channelId, senderType: "human", senderId: humanId, senderName: human.displayName, content: b.content || "", asTask: !!b.asTask, taskExecutionMode: mode ?? undefined, attachmentIds: hasAtt ? b.attachmentIds : undefined });
     return (sendJson(res, 200, { ok: true, id: msg.id, seq: msg.seq }), true);
   }
   // Emoji reactions: POST to add / DELETE to remove, same path body {emoji}; both broadcast message:updated (full message including reactions[])
@@ -133,11 +133,11 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
     const b = await readJson(req).catch(() => ({}));
     const emoji = String(b.emoji ?? "").trim();
     if (!emoji) return (sendErr(res, 400, "emoji required"), true);
-    const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, react[1]!), eq(schema.messages.serverId, serverId))))[0];
+    const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, react[1]!), eq(schema.messages.spaceId, spaceId))))[0];
     if (!m) return (sendErr(res, 404, "message not found"), true);
     // invariant 3: non-members must not react to messages in private/DM channels (IDOR-B2)
-    if (!(await canHumanReadChannel(serverId, m.channelId))) return (sendErr(res, 404, "message not found"), true);
-    const out = method === "POST" ? await addReaction(serverId, react[1]!, "user", userId, emoji) : await removeReaction(serverId, react[1]!, "user", userId, emoji);
+    if (!(await canHumanReadChannel(spaceId, m.channelId))) return (sendErr(res, 404, "message not found"), true);
+    const out = method === "POST" ? await addReaction(spaceId, react[1]!, "human", humanId, emoji) : await removeReaction(spaceId, react[1]!, "human", humanId, emoji);
     return (sendJson(res, 200, out), true);
   }
   // Mark action card as executed (POST /actions/:messageId/mark-executed).
@@ -145,25 +145,25 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
   const amark = /^\/api\/actions\/([^/]+)\/mark-executed$/.exec(p);
   if (amark && method === "POST") {
     const b = await readJson(req).catch(() => ({}));
-    const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, amark[1]!), eq(schema.messages.serverId, serverId))))[0];
+    const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, amark[1]!), eq(schema.messages.spaceId, spaceId))))[0];
     if (!m) return (sendErr(res, 404, "action not found"), true);
-    if (!(await canHumanReadChannel(serverId, m.channelId))) return (sendErr(res, 404, "action not found"), true);
+    if (!(await canHumanReadChannel(spaceId, m.channelId))) return (sendErr(res, 404, "action not found"), true);
     const meta = m.actionMetadata as any;
     if (!meta || meta.kind !== "action-card") return (sendErr(res, 400, "not an action card"), true);
     if (meta.state === "executed") return (sendJson(res, 200, { ok: true, already: true }), true); // idempotent
-    const human = humanIdentityForId(userId);
-    const updated = { ...meta, state: "executed", executedAt: new Date().toISOString(), executedByUserId: userId, executedByUserName: human?.displayName ?? "someone", result: b.result ?? null };
+    const human = humanIdentityForId(humanId);
+    const updated = { ...meta, state: "executed", executedAt: new Date().toISOString(), executedByUserId: humanId, executedByUserName: human?.displayName ?? "someone", result: b.result ?? null };
     await db.update(schema.messages).set({ actionMetadata: updated, updatedAt: new Date() }).where(eq(schema.messages.id, m.id));
-    const [serialized] = await attachMentions(serverId, [{ ...m, actionMetadata: updated }]);
-    await publish(serverId, { type: "message:updated", message: serialized });
+    const [serialized] = await attachMentions(spaceId, [{ ...m, actionMetadata: updated }]);
+    await publish(spaceId, { type: "message:updated", message: serialized });
     return (sendJson(res, 200, { ok: true }), true);
   }
   if (p === "/api/messages/sync" && method === "GET") {
     const since = Number(url.searchParams.get("since") ?? 0);
-    const chIds = (await humanChannels(serverId)).filter((c) => !c.deletedAt).map((c) => c.id);
+    const chIds = (await humanChannels(spaceId)).filter((c) => !c.deletedAt).map((c) => c.id);
     if (!chIds.length) return (sendJson(res, 200, { messages: [], maxSeq: since }), true);
-    const msgs = await db.select().from(schema.messages).where(and(eq(schema.messages.serverId, serverId), gt(schema.messages.seq, since), inArray(schema.messages.channelId, chIds))).orderBy(asc(schema.messages.seq)).limit(500);
-    const withM = await attachMentions(serverId, msgs);
+    const msgs = await db.select().from(schema.messages).where(and(eq(schema.messages.spaceId, spaceId), gt(schema.messages.seq, since), inArray(schema.messages.channelId, chIds))).orderBy(asc(schema.messages.seq)).limit(500);
+    const withM = await attachMentions(spaceId, msgs);
     return (sendJson(res, 200, { messages: withM, maxSeq: msgs.length ? msgs[msgs.length - 1]!.seq : since }), true);
   }
   // Single message by id (serialized like the channel feed). Lets the client open a thread panel whose parent
@@ -171,10 +171,10 @@ export async function handleMessages(ctx: ServerCtx): Promise<boolean> {
   // the bare-id regex never shadows them. Tenant-scoped + channel-read gated (invariant 3).
   const cone = /^\/api\/messages\/([^/]+)$/.exec(p);
   if (cone && method === "GET") {
-    const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, cone[1]!), eq(schema.messages.serverId, serverId))))[0];
+    const m = (await db.select().from(schema.messages).where(and(eq(schema.messages.id, cone[1]!), eq(schema.messages.spaceId, spaceId))))[0];
     if (!m) return (sendErr(res, 404, "message not found"), true);
-    if (!(await canHumanReadChannel(serverId, m.channelId))) return (sendErr(res, 404, "message not found"), true);
-    const [serialized] = await attachMentions(serverId, [m]);
+    if (!(await canHumanReadChannel(spaceId, m.channelId))) return (sendErr(res, 404, "message not found"), true);
+    const [serialized] = await attachMentions(spaceId, [m]);
     return (sendJson(res, 200, { message: serialized }), true);
   }
   return false;

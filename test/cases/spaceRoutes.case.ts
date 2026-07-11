@@ -6,7 +6,7 @@ import { closeAllDatabases, dbForSpace, schema } from "../../src/db/index.ts";
 import { ensurePersonalApp } from "../../src/db/personalApp.ts";
 import { signUser, verifyUser } from "../../src/server/auth.ts";
 import { handleApi } from "../../src/server/routes-api/index.ts";
-import { handleSpacesUserScope } from "../../src/server/routes-api/spaces.ts";
+import { handleSpacesHumanScope } from "../../src/server/routes-api/spaces.ts";
 
 type CapturedResponse = { status: number; body: any };
 
@@ -27,15 +27,15 @@ function jsonRequest(body?: unknown): any {
   return req;
 }
 
-async function request(method: string, pathname: string, userId: string, body?: unknown) {
+async function request(method: string, pathname: string, humanId: string, body?: unknown) {
   const capture = responseCapture();
-  const handled = await handleSpacesUserScope({
+  const handled = await handleSpacesHumanScope({
     req: jsonRequest(body),
     res: capture.res,
     url: new URL(`http://localhost${pathname}`),
     method,
     p: pathname,
-    userId,
+    humanId,
   });
   return { handled, ...capture.response };
 }
@@ -62,7 +62,10 @@ try {
   assert.equal(created.status, 201);
   assert.equal(created.body.slug, "research-lab");
   assert.equal(getSpaceRecordBySlug("research-lab")?.id, created.body.id);
-  assert.deepEqual(await dbForSpace(created.body.id).select().from(schema.serverMembers), []);
+  assert.deepEqual(
+    (await dbForSpace(created.body.id).select().from(schema.spaces)).map((space) => space.id),
+    [created.body.id],
+  );
 
   const updated = await request("PATCH", `/api/spaces/${created.body.id}`, human.id, {
     name: "Writing Lab",
@@ -82,28 +85,25 @@ try {
   assert.ok(unread.body.every((item: any) => item.unreadCount === 0));
 
   const token = signUser(human.id);
-  await dbForSpace(home.id).delete(schema.serverMembers);
-  for (const scopeHeaders of [
-    { "x-space-id": home.id },
-    { "x-server-id": home.id },
-  ]) {
-    const scopedRequest = jsonRequest();
-    scopedRequest.headers = { authorization: `Bearer ${token}`, ...scopeHeaders };
-    const scopedCapture = responseCapture();
-    await handleApi(scopedRequest, scopedCapture.res, new URL("http://localhost/api/channels"), "GET");
-    assert.equal(scopedCapture.response.status, 200);
-  }
+  const scopedRequest = jsonRequest();
+  scopedRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+  const scopedCapture = responseCapture();
+  await handleApi(scopedRequest, scopedCapture.res, new URL("http://localhost/api/channels"), "GET");
+  assert.equal(scopedCapture.response.status, 200);
 
-  for (const path of [
-    "/api/agents",
-    "/api/local-runtime/models/claude",
-  ]) {
+  for (const path of ["/api/agents"]) {
     const scopedRequest = jsonRequest();
     scopedRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
     const scopedCapture = responseCapture();
     await handleApi(scopedRequest, scopedCapture.res, new URL(`http://localhost${path}`), "GET");
     assert.equal(scopedCapture.response.status, 200, path);
   }
+
+  const modelsRequest = jsonRequest();
+  modelsRequest.headers = { authorization: `Bearer ${token}` };
+  const modelsCapture = responseCapture();
+  await handleApi(modelsRequest, modelsCapture.res, new URL("http://localhost/api/local-runtime/models/claude"), "GET");
+  assert.equal(modelsCapture.response.status, 200);
 
   const retiredMachinesRequest = jsonRequest();
   retiredMachinesRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
@@ -173,23 +173,19 @@ try {
   }
 
   const legacyPatchRequest = jsonRequest({ name: "Renamed Home", slug: "renamed-home" });
-  legacyPatchRequest.headers = { authorization: `Bearer ${token}`, "x-server-id": home.id };
+  legacyPatchRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
   const legacyPatchCapture = responseCapture();
   const legacyPatchPath = `/api/servers/${home.id}`;
   await handleApi(legacyPatchRequest, legacyPatchCapture.res, new URL(`http://localhost${legacyPatchPath}`), "PATCH");
-  assert.equal(legacyPatchCapture.response.status, 200);
-  assert.equal(getSpaceRecordBySlug("renamed-home")?.id, home.id);
+  assert.equal(legacyPatchCapture.response.status, 404);
+  assert.equal(getSpaceRecordBySlug("renamed-home"), undefined);
 
-  const conflictingRequest = jsonRequest();
-  conflictingRequest.headers = {
-    authorization: `Bearer ${token}`,
-    "x-space-id": home.id,
-    "x-server-id": created.body.id,
-  };
-  const conflictingCapture = responseCapture();
-  await handleApi(conflictingRequest, conflictingCapture.res, new URL("http://localhost/api/channels"), "GET");
-  assert.equal(conflictingCapture.response.status, 400);
-  assert.match(conflictingCapture.response.body.error, /headers disagree/);
+  const legacyHeaderRequest = jsonRequest();
+  legacyHeaderRequest.headers = { authorization: `Bearer ${token}`, "x-server-id": home.id };
+  const legacyHeaderCapture = responseCapture();
+  await handleApi(legacyHeaderRequest, legacyHeaderCapture.res, new URL("http://localhost/api/channels"), "GET");
+  assert.equal(legacyHeaderCapture.response.status, 400);
+  assert.match(legacyHeaderCapture.response.body.error, /x-space-id header required/);
 
   const pathMismatchRequest = jsonRequest();
   pathMismatchRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };

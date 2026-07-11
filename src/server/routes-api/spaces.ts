@@ -10,24 +10,24 @@ import {
   SpaceServiceError,
   updateLocalSpace,
 } from "../../spaces/spaceService.js";
-import type { UserCtx } from "./ctx.js";
+import type { HumanCtx } from "./ctx.js";
 
 async function serializeSpace(space: ReturnType<typeof getLocalSpace>) {
-  const [legacyPresentation] = await dbForSpace(space.id)
-    .select({ avatarUrl: schema.servers.avatarUrl })
-    .from(schema.servers)
-    .where(eq(schema.servers.id, space.id));
+  const [presentation] = await dbForSpace(space.id)
+    .select({ avatarUrl: schema.spaces.avatarUrl })
+    .from(schema.spaces)
+    .where(eq(schema.spaces.id, space.id));
   return {
     id: space.id,
     name: space.name,
     slug: space.slug,
     rootPath: space.rootPath,
     lastOpenedAt: space.lastOpenedAt.toISOString(),
-    avatarUrl: legacyPresentation?.avatarUrl ?? null,
+    avatarUrl: presentation?.avatarUrl ?? null,
   };
 }
 
-function sendSpaceError(res: UserCtx["res"], error: unknown): true {
+function sendSpaceError(res: HumanCtx["res"], error: unknown): true {
   if (!(error instanceof SpaceServiceError)) throw error;
   const status = error.code === "SPACE_NOT_FOUND"
     ? 404
@@ -38,12 +38,11 @@ function sendSpaceError(res: UserCtx["res"], error: unknown): true {
   return true;
 }
 
-/** Canonical single-Human Space API. Legacy /api/servers stays isolated in servers.ts until A2.3/A2.4. */
-export async function handleSpacesUserScope(ctx: UserCtx): Promise<boolean> {
-  const { req, res, method, p, userId } = ctx;
+export async function handleSpacesHumanScope(ctx: HumanCtx): Promise<boolean> {
+  const { req, res, method, p, humanId } = ctx;
   if (p !== "/api/spaces" && !p.startsWith("/api/spaces/")) return false;
   const human = getHumanProfile();
-  if (!human || human.id !== userId) return (sendErr(res, 403, "not the local Human"), true);
+  if (!human || human.id !== humanId) return (sendErr(res, 403, "not the local Human"), true);
 
   if (p === "/api/spaces" && method === "GET") {
     return (sendJson(res, 200, await Promise.all(listLocalSpaces().map(serializeSpace))), true);

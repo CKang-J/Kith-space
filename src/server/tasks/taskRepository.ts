@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import { allocateTaskNumber, taskNumberKey } from "../../counters.js";
-import { dbFor, schema } from "../../db/index.js";
+import { allocateTaskNumber, taskNumberKey, type SpaceTransaction } from "../../counters.js";
+import { dbForSpace, schema } from "../../db/index.js";
 import { assertTaskTransition } from "./taskPolicy.js";
 import { isTaskStatus, TaskOperationError, type TaskStatus } from "./taskTypes.js";
 
@@ -39,45 +39,55 @@ function checkExpected(task: Message, expectedRevision?: number, expectedStatus?
 }
 
 function insertThread(
-  tx: Parameters<Parameters<ReturnType<typeof dbFor>["transaction"]>[0]>[0],
-  task: { id: string; serverId: string; senderType: string; senderId?: string | null },
+  tx: SpaceTransaction,
+  task: { id: string; spaceId: string; senderType: string; senderId?: string | null },
 ): string {
   const threadId = randomUUID();
   tx.insert(schema.channels).values({
     id: threadId,
-    serverId: task.serverId,
+    spaceId: task.spaceId,
     type: "thread",
     parentMessageId: task.id,
     name: `thread-${task.id.slice(0, 8)}`,
   }).run();
-  if (task.senderId && (task.senderType === "user" || task.senderType === "agent")) {
-    tx.insert(schema.channelMembers).values({ channelId: threadId, memberType: task.senderType, memberId: task.senderId }).onConflictDoNothing().run();
+  if (task.senderType === "human") {
+    const followedAt = new Date();
+    tx.insert(schema.humanChannelStates).values({
+      channelId: threadId,
+      threadFollowedAt: followedAt,
+      updatedAt: followedAt,
+    }).onConflictDoUpdate({
+      target: schema.humanChannelStates.channelId,
+      set: { threadFollowedAt: followedAt, updatedAt: followedAt },
+    }).run();
+  } else if (task.senderType === "agent" && task.senderId) {
+    tx.insert(schema.channelAgentMembers).values({ channelId: threadId, agentId: task.senderId }).onConflictDoNothing().run();
   }
   return threadId;
 }
 
 export function createTaskRecord(input: {
-  serverId: string;
+  spaceId: string;
   channel: Channel;
   message: MessageInsert;
   parentTaskId?: string | null;
 }): Message {
-  const db = dbFor(input.serverId);
+  const db = dbForSpace(input.spaceId);
   let created!: Message;
   db.transaction((tx) => {
     if (input.parentTaskId) {
       const parent = tx.select({ id: schema.messages.id, channelId: schema.messages.channelId }).from(schema.messages).where(and(
         eq(schema.messages.id, input.parentTaskId),
-        eq(schema.messages.serverId, input.serverId),
+        eq(schema.messages.spaceId, input.spaceId),
         isNotNull(schema.messages.taskStatus),
       )).get();
       if (!parent) throw new TaskOperationError("INVALID_ARGUMENT", "parent task not found");
       if (parent.channelId !== input.channel.id) throw new TaskOperationError("INVALID_ARGUMENT", "parent and child tasks must use the same channel");
     }
-    const taskNumber = allocateTaskNumber(tx, taskNumberKey(input.serverId, input.channel));
+    const taskNumber = allocateTaskNumber(tx, taskNumberKey(input.spaceId, input.channel));
     const threadId = insertThread(tx, {
       id: String(input.message.id),
-      serverId: input.serverId,
+      spaceId: input.spaceId,
       senderType: input.message.senderType,
       senderId: input.message.senderId,
     });
@@ -96,25 +106,25 @@ export function createTaskRecord(input: {
 class ConversionLost extends Error {}
 
 export function convertMessageRecord(input: {
-  serverId: string;
+  spaceId: string;
   messageId: string;
   executionMode: "autopilot" | "plan-first";
 }): TaskMutationResult | null {
-  const db = dbFor(input.serverId);
+  const db = dbForSpace(input.spaceId);
   let result: TaskMutationResult | null = null;
   try {
     db.transaction((tx) => {
       const current = tx.select().from(schema.messages).where(and(
         eq(schema.messages.id, input.messageId),
-        eq(schema.messages.serverId, input.serverId),
+        eq(schema.messages.spaceId, input.spaceId),
       )).get();
       if (!current) return;
       if (current.taskStatus) { result = { task: current, changed: false }; return; }
       const channel = tx.select().from(schema.channels).where(eq(schema.channels.id, current.channelId)).get();
       if (!channel) throw new TaskOperationError("INVALID_ARGUMENT", "task channel not found");
-      const taskNumber = allocateTaskNumber(tx, taskNumberKey(input.serverId, channel));
+      const taskNumber = allocateTaskNumber(tx, taskNumberKey(input.spaceId, channel));
       const existingThread = tx.select().from(schema.channels).where(and(
-        eq(schema.channels.serverId, input.serverId),
+        eq(schema.channels.spaceId, input.spaceId),
         eq(schema.channels.type, "thread"),
         eq(schema.channels.parentMessageId, current.id),
       )).get();
@@ -128,7 +138,7 @@ export function convertMessageRecord(input: {
         updatedAt: new Date(),
       }).where(and(
         eq(schema.messages.id, current.id),
-        eq(schema.messages.serverId, input.serverId),
+        eq(schema.messages.spaceId, input.spaceId),
         isNull(schema.messages.taskStatus),
       )).returning().get();
       if (!updated) throw new ConversionLost();
@@ -138,7 +148,7 @@ export function convertMessageRecord(input: {
     if (!(error instanceof ConversionLost)) throw error;
     const current = db.select().from(schema.messages).where(and(
       eq(schema.messages.id, input.messageId),
-      eq(schema.messages.serverId, input.serverId),
+      eq(schema.messages.spaceId, input.spaceId),
       isNotNull(schema.messages.taskStatus),
     )).get();
     return current ? { task: current, changed: false } : null;
@@ -147,18 +157,18 @@ export function convertMessageRecord(input: {
 }
 
 export function claimTaskRecord(input: {
-  serverId: string;
+  spaceId: string;
   messageId: string;
-  assigneeType: "user" | "agent";
+  assigneeType: "human" | "agent";
   assigneeId: string;
   expectedRevision?: number;
 }): TaskMutationResult | null {
-  const db = dbFor(input.serverId);
+  const db = dbForSpace(input.spaceId);
   let result: TaskMutationResult | null = null;
   db.transaction((tx) => {
     const current = tx.select().from(schema.messages).where(and(
       eq(schema.messages.id, input.messageId),
-      eq(schema.messages.serverId, input.serverId),
+      eq(schema.messages.spaceId, input.spaceId),
       isNotNull(schema.messages.taskStatus),
     )).get();
     if (!current) return;
@@ -182,7 +192,7 @@ export function claimTaskRecord(input: {
       updatedAt: new Date(),
     }).where(and(
       eq(schema.messages.id, current.id),
-      eq(schema.messages.serverId, input.serverId),
+      eq(schema.messages.spaceId, input.spaceId),
       eq(schema.messages.taskRevision, current.taskRevision),
       eq(schema.messages.taskStatus, status),
       isNull(schema.messages.taskAssigneeId),
@@ -194,17 +204,17 @@ export function claimTaskRecord(input: {
 }
 
 export function unclaimTaskRecord(input: {
-  serverId: string;
+  spaceId: string;
   messageId: string;
-  by?: { type: "user" | "agent"; id: string };
+  by?: { type: "human" | "agent"; id: string };
   expectedRevision?: number;
 }): TaskMutationResult | null {
-  const db = dbFor(input.serverId);
+  const db = dbForSpace(input.spaceId);
   let result: TaskMutationResult | null = null;
   db.transaction((tx) => {
     const current = tx.select().from(schema.messages).where(and(
       eq(schema.messages.id, input.messageId),
-      eq(schema.messages.serverId, input.serverId),
+      eq(schema.messages.spaceId, input.spaceId),
       isNotNull(schema.messages.taskStatus),
     )).get();
     if (!current) return;
@@ -223,7 +233,7 @@ export function unclaimTaskRecord(input: {
       updatedAt: new Date(),
     }).where(and(
       eq(schema.messages.id, current.id),
-      eq(schema.messages.serverId, input.serverId),
+      eq(schema.messages.spaceId, input.spaceId),
       eq(schema.messages.taskRevision, current.taskRevision),
       eq(schema.messages.taskStatus, status),
     )).returning().get();
@@ -234,18 +244,18 @@ export function unclaimTaskRecord(input: {
 }
 
 export function assignTaskRecord(input: {
-  serverId: string;
+  spaceId: string;
   messageId: string;
   assigneeId: string;
-  by?: { type: "user" | "agent"; id: string };
+  by?: { type: "human" | "agent"; id: string };
   expectedRevision?: number;
 }): TaskMutationResult | null {
-  const db = dbFor(input.serverId);
+  const db = dbForSpace(input.spaceId);
   let result: TaskMutationResult | null = null;
   db.transaction((tx) => {
     const current = tx.select().from(schema.messages).where(and(
       eq(schema.messages.id, input.messageId),
-      eq(schema.messages.serverId, input.serverId),
+      eq(schema.messages.spaceId, input.spaceId),
       isNotNull(schema.messages.taskStatus),
     )).get();
     if (!current) return;
@@ -271,7 +281,7 @@ export function assignTaskRecord(input: {
       updatedAt: new Date(),
     }).where(and(
       eq(schema.messages.id, current.id),
-      eq(schema.messages.serverId, input.serverId),
+      eq(schema.messages.spaceId, input.spaceId),
       eq(schema.messages.taskRevision, current.taskRevision),
       eq(schema.messages.taskStatus, status),
       current.taskAssigneeId == null
@@ -285,19 +295,19 @@ export function assignTaskRecord(input: {
 }
 
 export function transitionTaskRecord(input: {
-  serverId: string;
+  spaceId: string;
   messageId: string;
   to: TaskStatus;
   from?: TaskStatus;
   expectedRevision?: number;
   audit?: MessageInsert;
 }): TaskMutationResult | null {
-  const db = dbFor(input.serverId);
+  const db = dbForSpace(input.spaceId);
   let result: TaskMutationResult | null = null;
   db.transaction((tx) => {
     const current = tx.select().from(schema.messages).where(and(
       eq(schema.messages.id, input.messageId),
-      eq(schema.messages.serverId, input.serverId),
+      eq(schema.messages.spaceId, input.spaceId),
       isNotNull(schema.messages.taskStatus),
     )).get();
     if (!current) return;
@@ -313,7 +323,7 @@ export function transitionTaskRecord(input: {
       updatedAt: new Date(),
     }).where(and(
       eq(schema.messages.id, current.id),
-      eq(schema.messages.serverId, input.serverId),
+      eq(schema.messages.spaceId, input.spaceId),
       eq(schema.messages.taskRevision, current.taskRevision),
       eq(schema.messages.taskStatus, status),
     )).returning().get();

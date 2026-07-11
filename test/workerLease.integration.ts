@@ -25,7 +25,7 @@ try {
   const agentId = randomUUID();
   await db.insert(schema.agents).values({
     id: agentId,
-    serverId: home.id,
+    spaceId: home.id,
     name: "lease-agent",
     displayName: "Lease Agent",
     status: "inactive",

@@ -27,10 +27,16 @@
 **Human**
 : 一个 Kith-space 安装实例中唯一的真人使用者。名称必填，邮箱和描述选填；这是给 agent 使用的本地资料，不是账户、登录身份、成员或权限角色。
 
-过渡实现中 raw `"user"` 仍表示该唯一 Human 的 actor 或持久状态，不表示多用户账户或 Human membership；`channel_members` 的 Human 行暂存 read/thread/DM 状态，agent 行才是长期领域 membership。物理拆分与 `human` 命名切换统一归 A2.2b，runtime 协议中的 `role: "user"` 不属于此迁移。
+持久化 actor 使用 `human` 表示该唯一 Human；runtime 自身协议中的 `role: "user"` 是外部协议字面量，不代表多用户账户，也不属于数据库 actor 命名。
 
 **工作区 / Space（空间）**
-: 一个根植于本地文件夹、自包含、可移植的协作单元，装着自己的 agent 队伍、频道、消息、任务和记忆；一个文件夹对应一个 Space。open-tag 的 `server/serverId` 是待迁移的底座术语，目标代码统一为 `space/spaceId`。
+: 一个根植于本地文件夹、自包含、可移植的协作单元，装着自己的 agent 队伍、频道、消息、任务和记忆；一个文件夹对应一个 Space。产品 schema、API、Socket、CLI 与类型统一使用 `space/spaceId`；`server` 只可描述 Core Service 等技术进程或保留在历史研究原文中。
+
+**Agent membership**
+: agent 与频道的长期成员关系，物理表为 `channel_agent_members`。它决定 agent 可读取、接收和被唤醒的频道范围，不承载 Human 权限；唯一 Human 对本机 Space 拥有隐式完整访问。
+
+**Human channel state**
+: 唯一 Human 在频道中的 read cursor、Human-Agent DM 对端和 thread follow/done 状态，物理表为 `human_channel_states`。它是会话状态而非 membership；收藏和 Space 偏好分别存于 `human_saved_messages` 与 `human_space_preferences`。
 
 **频道**
 : 工作区内的多方对话空间，人与多个 agent 在此对话、@唤醒、派活、汇报。是空间内部态的 C 位（见"群聊 C 位"）。
@@ -150,7 +156,7 @@
 : 普通浏览器首次进入 Kith-space 时验证的共享访问秘密。服务端只保存哈希，验证后建立可撤销的持久浏览器会话；它与 Desktop 信任、Worker 内部凭据和 agent session token 相互独立。
 
 **每工作区独立 SQLite 文件**
-: 每个 Space 把自己的消息、任务、频道、agent 和 agent membership 存进 `<folder>/.kith/workspace.db`；Human 资料和 Desktop 设置不随 Space 复制。
+: 每个 Space 把自己的 `spaces` 元数据、消息、任务、频道、agent、agent membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前是单一 19 表 baseline，所有领域外键使用 `space_id`；Human 资料和 Desktop 设置不随 Space 复制。
 
 **`.kith/`**
 : 工作区文件夹下承载其全部状态的目录：`workspace.db`（结构化数据）、`agents/`（agent 阵容配置，明文）、`memory/`（空间级 + agent 级记忆，一事一文件）。
@@ -159,7 +165,7 @@
 : 应用数据目录中的中央 SQLite 库，保存唯一 Human、Desktop/Web 设置、访问 Token 哈希、浏览器会话、Space registry 和最近打开记录；不保存 Space 消息或任务。
 
 **Machine / Computer / serverId（退役术语）**
-: open-tag 遗留的多主机和工作区领域命名。A2.4 已从服务、API、Worker 协议与 UI 删除 Machine/Computer 产品概念；`machines` 表与 `agents.machine_id` 只是 A2.2b 待删物理残留。产品 `server/serverId` 改为 `space/spaceId`；其兼容边界同样在 A2.2b 清理。HTTP 技术进程统一称 Core Service。
+: open-tag 遗留的多主机和工作区领域命名。Machine/Computer 已从服务、API、Worker 协议、UI 和物理 schema 删除；产品 `server/serverId` 兼容边界也已删除并统一为 `space/spaceId`。HTTP 技术进程称 Core Service；历史研究文档可保留原术语，但不代表当前产品能力。
 
 **进程内替代 Redis**
 : 单机单进程下用内存计数器 / EventEmitter 取代 Redis。核实后 Redis 运行时只余两个单调计数器（seq、任务号），pub/sub 与 agent 唤醒已分别由 socket.io 直发和 daemon WS 承担，故 `redis.ts` 可整体删除。

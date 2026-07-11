@@ -10,7 +10,7 @@ import { localHumanForSubject } from "../human/humanAuthority.js";
 import { canHumanReadChannel } from "./channelAccess.js";
 import { verifyUser } from "./auth.js";
 import { createLogger } from "../log.js";
-import { resolveSpaceId, spaceRoom } from "./util.js";
+import { spaceRoom } from "./util.js";
 
 const log = createLogger("server:io");
 let io: IOServer | null = null;
@@ -34,31 +34,30 @@ function socketIoCorsOrigin(): string | ((origin: string | undefined, cb: (err: 
 export function attachSocketIO(server: Server): void {
   io = new IOServer(server, { cors: { origin: socketIoCorsOrigin() }, path: "/socket.io/" });
   io.on("connection", async (socket: Socket) => {
-    const auth = (socket.handshake.auth || {}) as { token?: string; spaceId?: string; serverId?: string };
+    const auth = (socket.handshake.auth || {}) as { token?: string; spaceId?: string };
     const subjectId = verifyUser(auth.token ?? null);
     const human = localHumanForSubject(subjectId);
-    const resolvedSpace = resolveSpaceId(auth.spaceId, auth.serverId);
-    const spaceId = resolvedSpace.spaceId;
-    if (!human || !spaceId || resolvedSpace.conflict || !spaceRecord(spaceId)) { socket.disconnect(true); return; }
-    const uid = human.id;
+    const spaceId = auth.spaceId?.trim() || null;
+    if (!human || !spaceId || !spaceRecord(spaceId)) { socket.disconnect(true); return; }
+    const humanId = human.id;
     let db: ReturnType<typeof dbForSpace>;
     try { db = dbForSpace(spaceId); } catch { socket.disconnect(true); return; }
-    socket.data.uid = uid; socket.data.spaceId = spaceId;
+    socket.data.humanId = humanId; socket.data.spaceId = spaceId;
     socket.join(spaceRoom(spaceId));
     // The canonical Human owns the Space, so realtime follows every live
     // container. Agent membership remains isolated on the agent data plane.
     const myChans = await db.select({ channelId: schema.channels.id }).from(schema.channels)
-      .where(and(eq(schema.channels.serverId, spaceId), isNull(schema.channels.deletedAt)));
+      .where(and(eq(schema.channels.spaceId, spaceId), isNull(schema.channels.deletedAt)));
     for (const c of myChans) socket.join(`channel:${c.channelId}`);
     socket.emit("rooms:joined");
-    log.debug("socket connected", { uid, spaceId, channels: myChans.length });
+    log.debug("socket connected", { humanId, spaceId, channels: myChans.length });
     // Mid-session join covers containers created after the socket connected.
     socket.on("join:channel", async (channelId: string) => {
       if (!channelId || typeof channelId !== "string") return;
       if (await canHumanReadChannel(spaceId, channelId)) socket.join(`channel:${channelId}`);
     });
     socket.on("leave:channel", (channelId: string) => { if (typeof channelId === "string") socket.leave(`channel:${channelId}`); });
-    socket.on("disconnect", (reason) => log.debug("socket disconnected", { uid, reason }));
+    socket.on("disconnect", (reason) => log.debug("socket disconnected", { humanId, reason }));
   });
   log.info("socket.io attached", { path: "/socket.io/" });
 }

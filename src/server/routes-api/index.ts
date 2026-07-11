@@ -2,7 +2,7 @@
 //
 // Thin dispatcher. It owns ONLY the three auth gates and the dispatch order; the actual route
 // logic lives in the per-domain handlers in this directory. Each gate widens the context
-// (public → +userId → +spaceId, see ./ctx.ts) and then delegates to the handlers registered
+// (public → +humanId → +spaceId, see ./ctx.ts) and then delegates to the handlers registered
 // behind that gate. A handler returns `true` once it has matched a route and written the
 // response, `false` to let the next handler try.
 //
@@ -18,11 +18,12 @@ import { spaceRecord, touchSpace } from "../../db/index.js";
 import { localHumanForSubject } from "../../human/humanAuthority.js";
 import { sendErr, bearer, spaceIdHeader } from "../util.js";
 import { verifyUser } from "../auth.js";
-import type { BaseCtx, UserCtx, ServerCtx } from "./ctx.js";
+import type { BaseCtx, HumanCtx, SpaceCtx } from "./ctx.js";
 import { handlePublicAuth, handleAuthedAuth } from "./auth.js";
 import { handlePublicAttachmentGet, handleAttachments } from "./attachments.js";
-import { handleSpacesUserScope } from "./spaces.js";
-import { handleServersUserScope, handleServersServerScope } from "./servers.js";
+import { handleSpacesHumanScope } from "./spaces.js";
+import { handleLocalRuntimeHumanScope } from "./localRuntime.js";
+import { handleSpacePreferences } from "./spacePreferences.js";
 import { handleAgents } from "./agents.js";
 import { handleReminders } from "./reminders.js";
 import { handleChannels } from "./channels.js";
@@ -44,33 +45,29 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (!subjectId) return (sendErr(res, 401, "unauthorized"), true);
   const human = localHumanForSubject(subjectId);
   if (!human) return (sendErr(res, 403, "not the local Human"), true);
-  const userId = human.id;
-  const user: UserCtx = { ...base, userId };
-  if (await handleAuthedAuth(user)) return true;
-  if (await handleSpacesUserScope(user)) return true;
-  if (await handleServersUserScope(user)) return true;
+  const humanId = human.id;
+  const humanCtx: HumanCtx = { ...base, humanId };
+  if (await handleAuthedAuth(humanCtx)) return true;
+  if (await handleLocalRuntimeHumanScope(humanCtx)) return true;
+  if (await handleSpacesHumanScope(humanCtx)) return true;
 
   // ---- gate 2: require a registered local Space context ----
-  const resolvedSpace = spaceIdHeader(req);
-  if (resolvedSpace.conflict) return (sendErr(res, 400, "x-space-id and x-server-id headers disagree"), true);
-  const spaceId = resolvedSpace.spaceId;
+  const spaceId = spaceIdHeader(req);
   if (!spaceId) return (sendErr(res, 400, "x-space-id header required"), true);
   const pathSpaceId = /^\/api\/spaces\/([^/]+)(?:\/|$)/.exec(p)?.[1];
   if (pathSpaceId && pathSpaceId !== spaceId) return (sendErr(res, 400, "path Space and x-space-id disagree"), true);
   if (!spaceRecord(spaceId)) return (sendErr(res, 404, "Space not found"), true);
   touchSpace(spaceId);
-  // New clients use /api/spaces. Legacy handlers keep their old path matchers until A2.3/A2.4 removes them.
-  const legacyPath = p.replace(/^\/api\/spaces(?=\/)/, "/api/servers");
-  const sctx: ServerCtx = { ...user, p: legacyPath, spaceId, serverId: spaceId };
+  const spaceCtx: SpaceCtx = { ...humanCtx, spaceId };
 
-  if (await handleAgents(sctx)) return true;
-  if (await handleReminders(sctx)) return true;
-  if (await handleChannels(sctx)) return true;
-  if (await handleMessages(sctx)) return true;
-  if (await handleAttachments(sctx)) return true;
-  if (await handleServersServerScope(sctx)) return true;
-  if (await handleDispatch(sctx)) return true;
-  if (await handleTasks(sctx)) return true;
+  if (await handleAgents(spaceCtx)) return true;
+  if (await handleReminders(spaceCtx)) return true;
+  if (await handleChannels(spaceCtx)) return true;
+  if (await handleMessages(spaceCtx)) return true;
+  if (await handleAttachments(spaceCtx)) return true;
+  if (await handleSpacePreferences(spaceCtx)) return true;
+  if (await handleDispatch(spaceCtx)) return true;
+  if (await handleTasks(spaceCtx)) return true;
 
   return (sendErr(res, 404, "not found"), true);
 }

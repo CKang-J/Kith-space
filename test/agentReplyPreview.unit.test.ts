@@ -435,7 +435,7 @@ test("empty agent reply start previews render a visible thinking state", () => {
 test("server starts agent reply previews as soon as a message wakes an agent", () => {
   const coreSrc = fs.readFileSync(new URL("../src/server/core.ts", import.meta.url), "utf8");
   assert.match(coreSrc, /const replyStreamId = agentReplyStreamId\(msg!\.id, mem\.id\);/, "createMessage should derive a stable preview stream id from trigger message + agent");
-  assert.match(coreSrc, /await publish\(opts\.serverId, \{ type: "agent:reply", agentId: mem\.id, channelId: opts\.channelId, streamId: replyStreamId,[\s\S]*?op: "start"/, "createMessage should publish preview start before waiting for daemon runtime output");
+  assert.match(coreSrc, /await publish\(opts\.spaceId, \{ type: "agent:reply", agentId: mem\.id, channelId: opts\.channelId, streamId: replyStreamId,[\s\S]*?op: "start"/, "createMessage should publish preview start before waiting for daemon runtime output");
   assert.match(coreSrc, /streamId: replyStreamId/, "agent:deliver payload should pass the same stream id through to the daemon");
 });
 

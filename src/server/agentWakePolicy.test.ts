@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { canAutoJoinMentionedMembers, isWakeable } from "./agentWakePolicy.js";
 
 test("only human-authored mentions auto-join non-members", () => {
-  assert.equal(canAutoJoinMentionedMembers("user"), true);
+  assert.equal(canAutoJoinMentionedMembers("human"), true);
   assert.equal(canAutoJoinMentionedMembers("agent"), false);
   assert.equal(canAutoJoinMentionedMembers("system"), false);
 });
@@ -33,7 +33,7 @@ test("orchestration loop wakes leader to dev/tester and explicit reports back to
 });
 
 test("human and system ambient messages keep inbox-scope wake behavior", () => {
-  assert.equal(isWakeable({ channelType: "channel", mentioned: false, hasInboxScope: true, senderType: "user" }), true);
+  assert.equal(isWakeable({ channelType: "channel", mentioned: false, hasInboxScope: true, senderType: "human" }), true);
   assert.equal(isWakeable({ channelType: "channel", mentioned: false, hasInboxScope: true, senderType: "system" }), true);
-  assert.equal(isWakeable({ channelType: "channel", mentioned: false, hasInboxScope: false, senderType: "user" }), false);
+  assert.equal(isWakeable({ channelType: "channel", mentioned: false, hasInboxScope: false, senderType: "human" }), false);
 });

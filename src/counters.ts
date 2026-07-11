@@ -1,28 +1,28 @@
 import { eq, max, sql } from "drizzle-orm";
-import { dbFor, listWorkspaces, schema, type WorkspaceDb } from "./db/index.js";
+import { dbForSpace, listSpaces, schema, type SpaceDb } from "./db/index.js";
 
 const seqCounters = new Map<string, number>();
 const aligned = new Set<string>();
 const aligning = new Map<string, Promise<{ seqFixed: number; taskFixed: number }>>();
 
-export type WorkspaceTransaction = Parameters<Parameters<WorkspaceDb["transaction"]>[0]>[0];
+export type SpaceTransaction = Parameters<Parameters<SpaceDb["transaction"]>[0]>[0];
 
-/** Pure task-number scope selection: DMs count independently; all other channel types share the workspace counter. */
-export function taskNumberKey(workspaceId: string, channel?: { type: string; id: string } | null): string {
-  return channel?.type === "dm" ? `tasknum:dm:${channel.id}` : `tasknum:${workspaceId}`;
+/** Pure task-number scope selection: DMs count independently; all other channel types share the Space counter. */
+export function taskNumberKey(spaceId: string, channel?: { type: string; id: string } | null): string {
+  return channel?.type === "dm" ? `tasknum:dm:${channel.id}` : `tasknum:${spaceId}`;
 }
 
-async function alignWorkspace(workspaceId: string): Promise<{ seqFixed: number; taskFixed: number }> {
-  if (aligned.has(workspaceId)) return { seqFixed: 0, taskFixed: 0 };
-  const pending = aligning.get(workspaceId);
+async function alignSpace(spaceId: string): Promise<{ seqFixed: number; taskFixed: number }> {
+  if (aligned.has(spaceId)) return { seqFixed: 0, taskFixed: 0 };
+  const pending = aligning.get(spaceId);
   if (pending) return pending;
   const run = (async () => {
-    const db = dbFor(workspaceId);
+    const db = dbForSpace(spaceId);
     const [seqRow] = await db.select({ m: max(schema.messages.seq) }).from(schema.messages);
     const dbSeq = Number(seqRow?.m ?? 0);
-    const currentSeq = seqCounters.get(workspaceId) ?? 0;
+    const currentSeq = seqCounters.get(spaceId) ?? 0;
     const seqFixed = dbSeq > currentSeq ? 1 : 0;
-    seqCounters.set(workspaceId, Math.max(currentSeq, dbSeq));
+    seqCounters.set(spaceId, Math.max(currentSeq, dbSeq));
 
     const rows = await db
       .select({ channelId: schema.messages.channelId, type: schema.channels.type, m: max(schema.messages.taskNumber) })
@@ -34,7 +34,7 @@ async function alignWorkspace(workspaceId: string): Promise<{ seqFixed: number; 
     for (const row of rows) {
       const dbMax = Number(row.m ?? 0);
       if (!dbMax) continue;
-      const key = taskNumberKey(workspaceId, { type: row.type, id: row.channelId });
+      const key = taskNumberKey(spaceId, { type: row.type, id: row.channelId });
       maxima.set(key, Math.max(maxima.get(key) ?? 0, dbMax));
     }
     for (const [scopeKey, dbMax] of maxima) {
@@ -45,44 +45,44 @@ async function alignWorkspace(workspaceId: string): Promise<{ seqFixed: number; 
         set: { lastNumber: sql`max(${schema.taskNumberCounters.lastNumber}, ${dbMax})` },
       }).run();
     }
-    aligned.add(workspaceId);
+    aligned.add(spaceId);
     return { seqFixed, taskFixed };
-  })().finally(() => aligning.delete(workspaceId));
-  aligning.set(workspaceId, run);
+  })().finally(() => aligning.delete(spaceId));
+  aligning.set(spaceId, run);
   return run;
 }
 
 /** Align in-memory counters to persisted maxima before traffic is accepted. Safe to call repeatedly. */
-export async function reconcileCounters(): Promise<{ servers: number; seqFixed: number; taskFixed: number }> {
-  const workspaces = listWorkspaces();
+export async function reconcileCounters(): Promise<{ spaces: number; seqFixed: number; taskFixed: number }> {
+  const spaces = listSpaces();
   let seqFixed = 0;
   let taskFixed = 0;
-  for (const workspace of workspaces) {
-    const result = await alignWorkspace(workspace.id);
+  for (const space of spaces) {
+    const result = await alignSpace(space.id);
     seqFixed += result.seqFixed;
     taskFixed += result.taskFixed;
   }
-  return { servers: workspaces.length, seqFixed, taskFixed };
+  return { spaces: spaces.length, seqFixed, taskFixed };
 }
 
-/** Monotonic sequence number within one workspace database. */
-export async function nextSeq(workspaceId: string): Promise<number> {
-  await alignWorkspace(workspaceId);
-  const next = (seqCounters.get(workspaceId) ?? 0) + 1;
-  seqCounters.set(workspaceId, next);
+/** Monotonic sequence number within one Space database. */
+export async function nextSeq(spaceId: string): Promise<number> {
+  await alignSpace(spaceId);
+  const next = (seqCounters.get(spaceId) ?? 0) + 1;
+  seqCounters.set(spaceId, next);
   return next;
 }
 
-/** Monotonic task number, scoped per DM or per workspace. */
-export async function nextTaskNumber(workspaceId: string, channel?: { type: string; id: string } | null): Promise<number> {
-  await alignWorkspace(workspaceId);
+/** Monotonic task number, scoped per DM or per Space. */
+export async function nextTaskNumber(spaceId: string, channel?: { type: string; id: string } | null): Promise<number> {
+  await alignSpace(spaceId);
   let next = 0;
-  dbFor(workspaceId).transaction((tx) => { next = allocateTaskNumber(tx, taskNumberKey(workspaceId, channel)); });
+  dbForSpace(spaceId).transaction((tx) => { next = allocateTaskNumber(tx, taskNumberKey(spaceId, channel)); });
   return next;
 }
 
 /** Reserve a task number inside the caller's transaction so counter + task message commit together. */
-export function allocateTaskNumber(tx: WorkspaceTransaction, scopeKey: string): number {
+export function allocateTaskNumber(tx: SpaceTransaction, scopeKey: string): number {
   const row = tx.insert(schema.taskNumberCounters).values({ scopeKey, lastNumber: 1 }).onConflictDoUpdate({
     target: schema.taskNumberCounters.scopeKey,
     set: { lastNumber: sql`${schema.taskNumberCounters.lastNumber} + 1` },
@@ -90,8 +90,8 @@ export function allocateTaskNumber(tx: WorkspaceTransaction, scopeKey: string): 
   return row.value;
 }
 
-export function forgetWorkspaceCounters(workspaceId: string): void {
-  aligned.delete(workspaceId);
-  aligning.delete(workspaceId);
-  seqCounters.delete(workspaceId);
+export function forgetSpaceCounters(spaceId: string): void {
+  aligned.delete(spaceId);
+  aligning.delete(spaceId);
+  seqCounters.delete(spaceId);
 }

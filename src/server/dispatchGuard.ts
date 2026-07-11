@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { dbFor, schema } from "../db/index.js";
+import { dbForSpace, schema } from "../db/index.js";
 
 export const DEFAULT_MAX_DISPATCH_DEPTH = 4;
 export const DEFAULT_MAX_DISPATCH_WAKES = 16;
@@ -115,21 +115,21 @@ export interface DispatchScopeStatus {
 export class SqliteDispatchState {
   readonly limits: DispatchLimits;
 
-  constructor(readonly serverId: string, limits: DispatchLimits = readDispatchLimits()) {
+  constructor(readonly spaceId: string, limits: DispatchLimits = readDispatchLimits()) {
     this.limits = limits;
   }
 
   async resolveMessageContext(input: {
     messageId: string;
     channelId: string;
-    senderType: "user" | "agent" | "system";
+    senderType: "human" | "agent" | "system";
     senderId: string | null;
     taskMessageId?: string | null;
   }): Promise<DispatchMessageContext> {
-    const db = dbFor(this.serverId);
+    const db = dbForSpace(this.spaceId);
     if (input.senderType === "agent" && input.senderId) {
       const context = db.select().from(schema.dispatchContexts).where(and(
-        eq(schema.dispatchContexts.serverId, this.serverId),
+        eq(schema.dispatchContexts.spaceId, this.spaceId),
         eq(schema.dispatchContexts.agentId, input.senderId),
         eq(schema.dispatchContexts.channelId, input.channelId),
       )).get();
@@ -148,10 +148,10 @@ export class SqliteDispatchState {
   }
 
   async ensureChain(input: EnsureChainInput): Promise<void> {
-    const db = dbFor(this.serverId);
+    const db = dbForSpace(this.spaceId);
     db.insert(schema.dispatchChains).values({
       id: input.chainId,
-      serverId: this.serverId,
+      spaceId: this.spaceId,
       rootMessageId: input.rootMessageId,
       taskMessageId: input.taskMessageId,
       channelId: input.channelId,
@@ -166,22 +166,22 @@ export class SqliteDispatchState {
   }
 
   async reserveWake(input: ReserveWakeInput): Promise<WakeReservation> {
-    const db = dbFor(this.serverId);
+    const db = dbForSpace(this.spaceId);
     let result: WakeReservation = { allowed: false, code: "WAKE_BUDGET", reason: "dispatch chain not found", wakeCount: 0 };
     db.transaction((tx) => {
       const chain = tx.select().from(schema.dispatchChains).where(and(
         eq(schema.dispatchChains.id, input.chainId),
-        eq(schema.dispatchChains.serverId, this.serverId),
+        eq(schema.dispatchChains.spaceId, this.spaceId),
       )).get();
       if (!chain) return;
       const spaceStopped = !!tx.select().from(schema.dispatchStops).where(and(
-        eq(schema.dispatchStops.serverId, this.serverId),
+        eq(schema.dispatchStops.spaceId, this.spaceId),
         eq(schema.dispatchStops.scopeType, "space"),
-        eq(schema.dispatchStops.scopeId, this.serverId),
+        eq(schema.dispatchStops.scopeId, this.spaceId),
       )).get();
       const taskMessageId = input.taskMessageId ?? chain.taskMessageId;
       const taskStopped = !!(taskMessageId && tx.select().from(schema.dispatchStops).where(and(
-        eq(schema.dispatchStops.serverId, this.serverId),
+        eq(schema.dispatchStops.spaceId, this.spaceId),
         eq(schema.dispatchStops.scopeType, "task"),
         eq(schema.dispatchStops.scopeId, taskMessageId),
       )).get());
@@ -211,7 +211,7 @@ export class SqliteDispatchState {
       }).where(eq(schema.dispatchChains.id, input.chainId)).run();
       tx.insert(schema.dispatchWakes).values({
         id: reservationId,
-        serverId: this.serverId,
+        spaceId: this.spaceId,
         chainId: input.chainId,
         messageId: input.messageId,
         targetAgentId: input.targetAgentId,
@@ -224,32 +224,32 @@ export class SqliteDispatchState {
   }
 
   async commitWake(reservationId: string, context: CommitWakeContext): Promise<void> {
-    const db = dbFor(this.serverId);
+    const db = dbForSpace(this.spaceId);
     db.transaction((tx) => {
       tx.update(schema.dispatchWakes).set({ status: "success" }).where(and(
         eq(schema.dispatchWakes.id, reservationId),
-        eq(schema.dispatchWakes.serverId, this.serverId),
+        eq(schema.dispatchWakes.spaceId, this.spaceId),
       )).run();
       tx.insert(schema.dispatchContexts).values({
-        serverId: this.serverId,
+        spaceId: this.spaceId,
         agentId: context.agentId,
         channelId: context.channelId,
         chainId: context.chainId,
         dispatchDepth: context.dispatchDepth,
         updatedAt: new Date(),
       }).onConflictDoUpdate({
-        target: [schema.dispatchContexts.serverId, schema.dispatchContexts.agentId, schema.dispatchContexts.channelId],
+        target: [schema.dispatchContexts.spaceId, schema.dispatchContexts.agentId, schema.dispatchContexts.channelId],
         set: { chainId: context.chainId, dispatchDepth: context.dispatchDepth, updatedAt: new Date() },
       }).run();
     });
   }
 
   async releaseWake(reservationId: string): Promise<void> {
-    const db = dbFor(this.serverId);
+    const db = dbForSpace(this.spaceId);
     db.transaction((tx) => {
       const wake = tx.select().from(schema.dispatchWakes).where(and(
         eq(schema.dispatchWakes.id, reservationId),
-        eq(schema.dispatchWakes.serverId, this.serverId),
+        eq(schema.dispatchWakes.spaceId, this.spaceId),
       )).get();
       if (!wake) return;
       tx.delete(schema.dispatchWakes).where(eq(schema.dispatchWakes.id, reservationId)).run();
@@ -269,11 +269,11 @@ export class SqliteDispatchState {
   }
 
   async stopSpace(reason?: string): Promise<void> {
-    this.setStop("space", this.serverId, reason);
+    this.setStop("space", this.spaceId, reason);
   }
 
   async resumeSpace(): Promise<void> {
-    this.clearStop("space", this.serverId);
+    this.clearStop("space", this.spaceId);
   }
 
   async taskStatus(taskMessageId: string): Promise<DispatchScopeStatus> {
@@ -281,55 +281,55 @@ export class SqliteDispatchState {
   }
 
   async spaceStatus(): Promise<DispatchScopeStatus> {
-    return this.scopeStatus("space", this.serverId);
+    return this.scopeStatus("space", this.spaceId);
   }
 
   async agentsForTask(taskMessageId: string): Promise<string[]> {
-    const db = dbFor(this.serverId);
+    const db = dbForSpace(this.spaceId);
     const chains = db.select({ id: schema.dispatchChains.id }).from(schema.dispatchChains).where(and(
-      eq(schema.dispatchChains.serverId, this.serverId),
+      eq(schema.dispatchChains.spaceId, this.spaceId),
       eq(schema.dispatchChains.taskMessageId, taskMessageId),
     )).all();
     if (!chains.length) return [];
     const wakes = db.select({ agentId: schema.dispatchWakes.targetAgentId }).from(schema.dispatchWakes).where(and(
-      eq(schema.dispatchWakes.serverId, this.serverId),
+      eq(schema.dispatchWakes.spaceId, this.spaceId),
       inArray(schema.dispatchWakes.chainId, chains.map((chain) => chain.id)),
     )).all();
     return [...new Set(wakes.map((wake) => wake.agentId))];
   }
 
   private setStop(scopeType: "space" | "task", scopeId: string, reason?: string): void {
-    const db = dbFor(this.serverId);
+    const db = dbForSpace(this.spaceId);
     const now = new Date();
-    db.insert(schema.dispatchStops).values({ serverId: this.serverId, scopeType, scopeId, reason: reason ?? null, stoppedAt: now, updatedAt: now })
+    db.insert(schema.dispatchStops).values({ spaceId: this.spaceId, scopeType, scopeId, reason: reason ?? null, stoppedAt: now, updatedAt: now })
       .onConflictDoUpdate({
-        target: [schema.dispatchStops.serverId, schema.dispatchStops.scopeType, schema.dispatchStops.scopeId],
+        target: [schema.dispatchStops.spaceId, schema.dispatchStops.scopeType, schema.dispatchStops.scopeId],
         set: { reason: reason ?? null, stoppedAt: now, updatedAt: now },
       }).run();
   }
 
   private clearStop(scopeType: "space" | "task", scopeId: string): void {
-    dbFor(this.serverId).delete(schema.dispatchStops).where(and(
-      eq(schema.dispatchStops.serverId, this.serverId),
+    dbForSpace(this.spaceId).delete(schema.dispatchStops).where(and(
+      eq(schema.dispatchStops.spaceId, this.spaceId),
       eq(schema.dispatchStops.scopeType, scopeType),
       eq(schema.dispatchStops.scopeId, scopeId),
     )).run();
   }
 
   private async scopeStatus(scope: "space" | "task", scopeId: string): Promise<DispatchScopeStatus> {
-    const db = dbFor(this.serverId);
+    const db = dbForSpace(this.spaceId);
     const stop = db.select().from(schema.dispatchStops).where(and(
-      eq(schema.dispatchStops.serverId, this.serverId),
+      eq(schema.dispatchStops.spaceId, this.spaceId),
       eq(schema.dispatchStops.scopeType, scope),
       eq(schema.dispatchStops.scopeId, scopeId),
     )).get();
     const chainRows = scope === "task"
-      ? db.select().from(schema.dispatchChains).where(and(eq(schema.dispatchChains.serverId, this.serverId), eq(schema.dispatchChains.taskMessageId, scopeId))).all()
-      : db.select().from(schema.dispatchChains).where(eq(schema.dispatchChains.serverId, this.serverId)).all();
+      ? db.select().from(schema.dispatchChains).where(and(eq(schema.dispatchChains.spaceId, this.spaceId), eq(schema.dispatchChains.taskMessageId, scopeId))).all()
+      : db.select().from(schema.dispatchChains).where(eq(schema.dispatchChains.spaceId, this.spaceId)).all();
     const chainIds = chainRows.map((chain) => chain.id);
     const wakes = chainIds.length
       ? db.select({ agentId: schema.dispatchWakes.targetAgentId }).from(schema.dispatchWakes).where(and(
-        eq(schema.dispatchWakes.serverId, this.serverId),
+        eq(schema.dispatchWakes.spaceId, this.spaceId),
         inArray(schema.dispatchWakes.chainId, chainIds),
       )).all()
       : [];

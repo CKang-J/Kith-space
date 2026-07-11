@@ -276,7 +276,7 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
     // eslint-disable-next-line
   }, [agentPanelReq]);
   useEffect(() => onEvent((e) => {
-    if (e.type === "message" && e.channelId === cur?.id) { if (e.message.senderType === "user" && e.message.senderId === me?.id) forceBottomPinRef.current = true; setMsgs((m) => { const preview = absorbPersistedAgentMessagePreview(m, e.message); if (preview.consumed) { forceBottomPinRef.current = true; newMsgOrderRef.current.delete(e.message.id); return preview.messages; } const idx = Math.min(burstCountRef.current, 7); newMsgOrderRef.current.set(e.message.id, idx); burstCountRef.current += 1; if (burstTimerRef.current) clearTimeout(burstTimerRef.current); burstTimerRef.current = setTimeout(() => { burstCountRef.current = 0; burstTimerRef.current = null; }, 600); const { next, trimmed } = appendWithCap(dropAgentReplyPreviewsForMessage(m, e.message), e.message, atBottomRef.current && !loadingOlderRef.current); if (trimmed) trimmedRef.current = true; return next; }); markRead(cur.id); } // don't trim mid-pagination: a trim's setHasMore(true) would race the in-flight loadOlder's setHasMore — suppressing it closes the window (the next message trims instead)
+    if (e.type === "message" && e.channelId === cur?.id) { if (e.message.senderType === "human" && e.message.senderId === me?.id) forceBottomPinRef.current = true; setMsgs((m) => { const preview = absorbPersistedAgentMessagePreview(m, e.message); if (preview.consumed) { forceBottomPinRef.current = true; newMsgOrderRef.current.delete(e.message.id); return preview.messages; } const idx = Math.min(burstCountRef.current, 7); newMsgOrderRef.current.set(e.message.id, idx); burstCountRef.current += 1; if (burstTimerRef.current) clearTimeout(burstTimerRef.current); burstTimerRef.current = setTimeout(() => { burstCountRef.current = 0; burstTimerRef.current = null; }, 600); const { next, trimmed } = appendWithCap(dropAgentReplyPreviewsForMessage(m, e.message), e.message, atBottomRef.current && !loadingOlderRef.current); if (trimmed) trimmedRef.current = true; return next; }); markRead(cur.id); } // don't trim mid-pagination: a trim's setHasMore(true) would race the in-flight loadOlder's setHasMore — suppressing it closes the window (the next message trims instead)
     else if (e.type === "message:updated" && e.message) setMsgs((m) => m.map((x) => (x.id === e.message.id ? { ...x, ...e.message } : x))); // sync reactions and task fields
     else if (e.type === "agent:reply" && e.channelId === cur?.id) { forceBottomPinRef.current = true; setMsgs((m) => applyAgentReplyPreview(m, e as AgentReplyEvent, agents.find((a) => a.id === e.agentId))); }
     else if (e.type === "thread:updated" && e.parentMessageId) setThreadMeta((tm) => ({ // live reply count update; unreadCount is approximated from the replyCount delta (the authoritative value is corrected on channel switch via GET)
@@ -389,7 +389,7 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
       const num = Number(args[0]);
       const local = msgs.find((x) => x.taskNumber === num);
       if (local && cur) return nav(`/s/${slug}/channel/${cur.id}?msg=${local.id}`);
-      try { const r = await api("GET", "/api/tasks/server"); const tk = (r?.tasks ?? r ?? []).find((x: any) => x.taskNumber === num); if (tk) nav(`/s/${slug}/channel/${tk.channelId}?msg=${tk.id}`); } catch { /* */ }
+      try { const r = await api("GET", "/api/tasks/space"); const tk = (r?.tasks ?? r ?? []).find((x: any) => x.taskNumber === num); if (tk) nav(`/s/${slug}/channel/${tk.channelId}?msg=${tk.id}`); } catch { /* */ }
     }
   };
 
@@ -642,7 +642,7 @@ function ThreadPanel({ channelId, parent, onClose, onOpenAgent }: { channelId: s
     if (type === "human") return nav(`/s/${slug}/settings/account`);
     if (type === "channel") return nav(`/s/${slug}/channel/${args[0]}`);
     if (type === "thread") return nav(`/s/${slug}/channel/${args[0]}?thread=${args[0]}:${args[1]}`);
-    if (type === "task") { try { const r = await api("GET", "/api/tasks/server"); const tk = (r?.tasks ?? r ?? []).find((x: any) => x.taskNumber === Number(args[0])); if (tk) nav(`/s/${slug}/channel/${tk.channelId}?msg=${tk.id}`); } catch { /* */ } }
+    if (type === "task") { try { const r = await api("GET", "/api/tasks/space"); const tk = (r?.tasks ?? r ?? []).find((x: any) => x.taskNumber === Number(args[0])); if (tk) nav(`/s/${slug}/channel/${tk.channelId}?msg=${tk.id}`); } catch { /* */ } }
   };
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);

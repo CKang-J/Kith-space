@@ -1,30 +1,48 @@
 import "../env.js";
-import { randomUUID } from "node:crypto";
-import { closeAllDatabases, schema } from "./index.js";
-import { findServerBySlug, findUserByName } from "./lookup.js";
-import { createWorkspace } from "./workspace.js";
+import { getHumanProfile, getSpaceRecordBySlug } from "../app-data/appDatabase.js";
+import { closeAllDatabases, dbForSpace, schema } from "./index.js";
+import { createSpace } from "./space.js";
 
 async function main() {
-  if (await findServerBySlug("qa")) {
-    console.log("[qa-seed] QA workspace already exists; remove it before resetting");
+  if (getSpaceRecordBySlug("qa")) {
+    console.log("[qa-seed] QA Space already exists; remove it before resetting");
     return;
   }
-  const existing = (await findUserByName("qa"))?.value;
-  const qa = existing ?? { id: randomUUID(), name: "qa", displayName: "QA", email: "qa@dev.local" };
-  const server = await createWorkspace("QA Workspace", "qa", qa.id, { owner: qa });
-  const found = (await findServerBySlug("qa"))!;
-  const db = found.db;
-  const [cody] = await db.insert(schema.agents).values({ serverId: server.id, name: "cody", displayName: "Cody", description: "Local full-stack assistant that can edit workspace files and run commands.", model: "sonnet", runtime: "claude" }).returning();
-  const [ada] = await db.insert(schema.agents).values({ serverId: server.id, name: "ada", displayName: "Ada", description: "Research and writing assistant.", model: "sonnet", runtime: "claude" }).returning();
-  const [general] = await db.insert(schema.channels).values({ serverId: server.id, name: "general", description: "Main collaboration channel", type: "channel" }).returning();
-  await db.insert(schema.channelMembers).values([
-    { channelId: general!.id, memberType: "user", memberId: qa.id },
-    { channelId: general!.id, memberType: "agent", memberId: cody!.id },
-    { channelId: general!.id, memberType: "agent", memberId: ada!.id },
+  const human = getHumanProfile();
+  if (!human) throw new Error("[qa-seed] initialize the Human with `pnpm run seed` first");
+  const space = await createSpace("QA Space", "qa");
+  const db = dbForSpace(space.id);
+  const [cody] = await db.insert(schema.agents).values({
+    spaceId: space.id,
+    name: "cody",
+    displayName: "Cody",
+    description: "Local full-stack assistant that can edit Space files and run commands.",
+    model: "sonnet",
+    runtime: "claude",
+    creatorId: human.id,
+  }).returning();
+  const [ada] = await db.insert(schema.agents).values({
+    spaceId: space.id,
+    name: "ada",
+    displayName: "Ada",
+    description: "Research and writing assistant.",
+    model: "sonnet",
+    runtime: "claude",
+    creatorId: human.id,
+  }).returning();
+  const [general] = await db.insert(schema.channels).values({
+    spaceId: space.id,
+    name: "general",
+    description: "Main collaboration channel",
+    type: "channel",
+  }).returning();
+  await db.insert(schema.channelAgentMembers).values([
+    { channelId: general!.id, agentId: cody!.id },
+    { channelId: general!.id, agentId: ada!.id },
   ]);
   console.log("[qa-seed] done:");
-  console.log("  server  :", server.id, "(slug=qa, name='QA Workspace')");
-  console.log("  user    :", qa.id, "(qa, owner)");
+  console.log("  Space   :", space.id, "(slug=qa, name='QA Space')");
+  console.log("  Human   :", human.id);
   console.log("  agents  : cody/ada (claude)");
   console.log("  channel : #general");
 }

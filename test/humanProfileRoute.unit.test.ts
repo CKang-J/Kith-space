@@ -4,9 +4,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { eq } from "drizzle-orm";
 import { getHumanProfile } from "../src/app-data/appDatabase.ts";
-import { closeAllDatabases, dbFor, schema } from "../src/db/index.ts";
+import { closeAllDatabases } from "../src/db/index.ts";
 import { ensurePersonalApp } from "../src/db/personalApp.ts";
 
 type CapturedResponse = {
@@ -31,7 +30,7 @@ function jsonRequest(body?: unknown): any {
   return req;
 }
 
-test("/api/auth/me reads app.db as canonical Human profile and writes legacy rows as projections", async () => {
+test("/api/auth/me reads and updates the canonical app.db Human profile", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "kith-human-route-"));
   const previousHome = process.env.KITH_SPACE_HOME;
   const previousJwt = process.env.JWT_SECRET;
@@ -40,9 +39,7 @@ test("/api/auth/me reads app.db as canonical Human profile and writes legacy row
   process.env.JWT_SECRET = "human-route-jwt-secret-for-tests";
   process.env.DAEMON_BOOTSTRAP_KEY = "human-route-daemon-secret-for-tests";
   try {
-    const { human, home } = await ensurePersonalApp({ name: "Ada", homeRootPath: path.join(root, "home-space") });
-    const db = dbFor(home.id);
-    await db.update(schema.users).set({ name: "legacy-drift", displayName: "Legacy drift" }).where(eq(schema.users.id, human.id));
+    const { human } = await ensurePersonalApp({ name: "Ada", homeRootPath: path.join(root, "home-space") });
     const { handleAuthedAuth } = await import("../src/server/routes-api/auth.ts");
 
     const getCapture = responseCapture();
@@ -52,7 +49,7 @@ test("/api/auth/me reads app.db as canonical Human profile and writes legacy row
       url: new URL("http://localhost/api/auth/me"),
       method: "GET",
       p: "/api/auth/me",
-      userId: human.id,
+      humanId: human.id,
     });
     assert.equal(getCapture.response.status, 200);
     assert.equal(getCapture.response.body.name, "Ada");
@@ -65,7 +62,7 @@ test("/api/auth/me reads app.db as canonical Human profile and writes legacy row
       url: new URL("http://localhost/api/auth/me"),
       method: "PATCH",
       p: "/api/auth/me",
-      userId: human.id,
+      humanId: human.id,
     });
     assert.equal(patchCapture.response.status, 200);
     assert.equal(patchCapture.response.body.name, "Grace");
@@ -74,11 +71,6 @@ test("/api/auth/me reads app.db as canonical Human profile and writes legacy row
       { name: getHumanProfile()?.name, email: getHumanProfile()?.email, description: getHumanProfile()?.description },
       { name: "Grace", email: "grace@example.test", description: "Local Human" },
     );
-    const legacy = (await db.select().from(schema.users).where(eq(schema.users.id, human.id)))[0];
-    assert.equal(legacy?.displayName, "Grace");
-    assert.equal(legacy?.email, "grace@example.test");
-    assert.equal(legacy?.description, "Local Human");
-
     const clearEmailCapture = responseCapture();
     await handleAuthedAuth({
       req: jsonRequest({ email: null }),
@@ -86,12 +78,10 @@ test("/api/auth/me reads app.db as canonical Human profile and writes legacy row
       url: new URL("http://localhost/api/auth/me"),
       method: "PATCH",
       p: "/api/auth/me",
-      userId: human.id,
+      humanId: human.id,
     });
     assert.equal(clearEmailCapture.response.status, 200);
     assert.equal(getHumanProfile()?.email, null);
-    const clearedLegacy = (await db.select().from(schema.users).where(eq(schema.users.id, human.id)))[0];
-    assert.equal(clearedLegacy?.email, `${human.id}@human.kith-space.invalid`);
   } finally {
     closeAllDatabases();
     if (previousHome === undefined) delete process.env.KITH_SPACE_HOME;

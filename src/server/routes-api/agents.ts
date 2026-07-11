@@ -1,22 +1,22 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
-import type { ServerCtx } from "./ctx.js";
+import type { SpaceCtx } from "./ctx.js";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { ROLE_TEMPLATES, resolveRoleDescription } from "../../agents/roleTemplates.js";
-import { dbFor, schema } from "../../db/index.js";
+import { dbForSpace, schema } from "../../db/index.js";
 import { DESC_TOO_LONG, INVALID_AGENT_NAME, addChannelMembers, descTooLong, invalidAgentName, resetAgent, startAgent, stopAgent, syncAgentProfile } from "../core.js";
 import { requestWorker } from "../../local-runtime/workerHub.js";
 import { publish } from "../realtime.js";
 import { ALL_SCOPE_KEYS, SCOPES, effectiveScopes, isScopeLiteral } from "../scopes.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 
-export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
-  const { req, res, url, method, p, userId, serverId } = ctx;
-  const db = dbFor(serverId);
+export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
+  const { req, res, url, method, p, humanId, spaceId } = ctx;
+  const db = dbForSpace(spaceId);
   if (p === "/api/agent-role-templates" && method === "GET") {
     return (sendJson(res, 200, ROLE_TEMPLATES), true);
   }
   if (p === "/api/agents" && method === "GET") {
-    const agents = await db.select().from(schema.agents).where(and(eq(schema.agents.serverId, serverId), isNull(schema.agents.deletedAt)));
+    const agents = await db.select().from(schema.agents).where(and(eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt)));
     // creatorType lets the client distinguish system-seeded showcase agents (creatorType="system") from
     // real members — they stay in the store so #showcase history renders their avatar/name, but are filtered
     // out of member rosters and agent pickers (see web/src/store.tsx visibleAgents).
@@ -37,27 +37,27 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
     // race-proof (no SELECT-then-INSERT gap): a duplicate live name inserts no row → friendly 409. Soft-deleted
     // names are excluded by the index predicate, so a deleted agent's name can be reused.
     const [agent] = await db.insert(schema.agents).values({
-      serverId, name: b.name, displayName: b.displayName || b.name, description,
+      spaceId, name: b.name, displayName: b.displayName || b.name, description,
       model: b.model || null, runtime: b.runtime || "claude",
       runtimeConfig: { provider: b.provider ?? "default", model: b.model ?? null, reasoningEffort: b.reasoning ?? null, mode: b.fastMode ? "fast" : "default" },
-      envVars: b.envVars ?? {}, executionMode: b.fastMode ? "fast" : "auto", creatorType: "user", creatorId: userId,
+      envVars: b.envVars ?? {}, executionMode: b.fastMode ? "fast" : "auto", creatorType: "human", creatorId: humanId,
     }).onConflictDoNothing().returning();
     if (!agent) return (sendErr(res, 409, `an agent named "${b.name}" already exists`), true);
-    const all = (await db.select().from(schema.channels).where(and(eq(schema.channels.serverId, serverId), eq(schema.channels.name, "all"))))[0];
+    const all = (await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.name, "all"))))[0];
     // Join #all at the channel watermark, NOT lastReadSeq=0 — a newly created agent must not have its first
     // `message check` flooded with the channel's entire pre-existing history (it only needs messages from now on).
-    if (all) await addChannelMembers(serverId, all.id, [{ type: "agent", id: agent!.id }]);
-    await publish(serverId, { type: "agent:created", agent: { id: agent!.id, name: agent!.name, displayName: agent!.displayName, description: agent!.description, status: agent!.status, activity: agent!.activity, model: agent!.model, runtime: agent!.runtime } });
+    if (all) await addChannelMembers(spaceId, all.id, [{ type: "agent", id: agent!.id }]);
+    await publish(spaceId, { type: "agent:created", agent: { id: agent!.id, name: agent!.name, displayName: agent!.displayName, description: agent!.description, status: agent!.status, activity: agent!.activity, model: agent!.model, runtime: agent!.runtime } });
     // Start immediately on create: the client only POSTs /agents. If the local Worker is offline,
     // startAgent returns ok:false without blocking creation.
-    const started = await startAgent(serverId, agent!.id);
+    const started = await startAgent(spaceId, agent!.id);
     return (sendJson(res, 200, { id: agent!.id, name: agent!.name, started: started.ok }), true);
   }
   const am = /^\/api\/agents\/([^/]+)$/.exec(p);
   if (am && method === "GET") {
-    const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.serverId, serverId))))[0];
+    const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.spaceId, spaceId))))[0];
     return (a ? sendJson(res, 200, {
-      id: a.id, serverId: a.serverId, name: a.name, displayName: a.displayName,
+      id: a.id, spaceId: a.spaceId, name: a.name, displayName: a.displayName,
       avatarUrl: a.avatarUrl, description: a.description, status: a.status, activity: a.activity,
       sessionId: a.sessionId, model: a.model, runtime: a.runtime, runtimeConfig: a.runtimeConfig,
       executionMode: a.executionMode, envVars: a.envVars, scopes: a.scopes,
@@ -70,30 +70,30 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
     if (descTooLong(b.description)) return (sendErr(res, 400, DESC_TOO_LONG), true);
     for (const k of ["displayName", "description", "model", "runtime", "avatarUrl"]) if (b[k] !== undefined) patch[k] = b[k];
     if (b.envVars !== undefined) patch.envVars = b.envVars;
-    await db.update(schema.agents).set(patch).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.serverId, serverId)));
+    await db.update(schema.agents).set(patch).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.spaceId, spaceId)));
     // Title/role changed → push the current profile to the daemon so it syncs the workspace MEMORY.md.
     if (patch.displayName !== undefined || patch.description !== undefined) {
-      const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.serverId, serverId))))[0];
-      if (a) await syncAgentProfile(serverId, am[1]!, a.displayName, a.description);
+      const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.spaceId, spaceId))))[0];
+      if (a) await syncAgentProfile(spaceId, am[1]!, a.displayName, a.description);
     }
     return (sendJson(res, 200, { ok: true }), true);
   }
   if (am && method === "DELETE") {
-    await stopAgent(serverId, am[1]!).catch(() => {}); // stop the local process before deleting
-    await db.delete(schema.channelMembers).where(and(eq(schema.channelMembers.memberType, "agent"), eq(schema.channelMembers.memberId, am[1]!)));
-    await db.update(schema.agents).set({ deletedAt: new Date(), status: "inactive", activity: "offline", agentTokenHash: null }).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.serverId, serverId))); // soft delete: row is kept so historical messages/DM names remain resolvable by id, no orphans; clear the token hash so a still-running deleted agent can no longer authenticate (C4, with resolveAgent's deletedAt filter)
-    await publish(serverId, { type: "agent:deleted", id: am[1]! });
+    await stopAgent(spaceId, am[1]!).catch(() => {}); // stop the local process before deleting
+    await db.delete(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.agentId, am[1]!));
+    await db.update(schema.agents).set({ deletedAt: new Date(), status: "inactive", activity: "offline", agentTokenHash: null }).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.spaceId, spaceId))); // soft delete: row is kept so historical messages/DM names remain resolvable by id, no orphans; clear the token hash so a still-running deleted agent can no longer authenticate (C4, with resolveAgent's deletedAt filter)
+    await publish(spaceId, { type: "agent:deleted", id: am[1]! });
     return (sendJson(res, 200, { ok: true }), true);
   }
   // Agent lifecycle: start / stop / reset
   const alc = /^\/api\/agents\/([^/]+)\/(start|stop|reset|restart)$/.exec(p);
   if (alc && method === "POST") {
     const [, agId, action] = alc;
-    if (action === "start") { const r = await startAgent(serverId, agId!); return (r.ok ? sendJson(res, 200, { ok: true }) : sendErr(res, 503, r.reason ?? "cannot start")), true; }
-    if (action === "stop") { await stopAgent(serverId, agId!); return (sendJson(res, 200, { ok: true }), true); }
-    if (action === "restart") { await stopAgent(serverId, agId!); const r = await startAgent(serverId, agId!); return (r.ok ? sendJson(res, 200, { ok: true }) : sendErr(res, 503, r.reason ?? "cannot start")), true; } // preserves session and workspace; restarts only the process
-    const b = await readJson(req).catch(() => ({})); await resetAgent(serverId, agId!, !!b?.wipeWorkspace, !!b?.clearMemory);
-    if (b?.restart) await startAgent(serverId, agId!); // reset & restart: restart after clearing; all three reset tiers support "& Restart"
+    if (action === "start") { const r = await startAgent(spaceId, agId!); return (r.ok ? sendJson(res, 200, { ok: true }) : sendErr(res, 503, r.reason ?? "cannot start")), true; }
+    if (action === "stop") { await stopAgent(spaceId, agId!); return (sendJson(res, 200, { ok: true }), true); }
+    if (action === "restart") { await stopAgent(spaceId, agId!); const r = await startAgent(spaceId, agId!); return (r.ok ? sendJson(res, 200, { ok: true }) : sendErr(res, 503, r.reason ?? "cannot start")), true; } // preserves session and workspace; restarts only the process
+    const b = await readJson(req).catch(() => ({})); await resetAgent(spaceId, agId!, !!b?.wipeWorkspace, !!b?.clearMemory);
+    if (b?.restart) await startAgent(spaceId, agId!); // reset & restart: restart after clearing; all three reset tiers support "& Restart"
     return (sendJson(res, 200, { ok: true }), true);
   }
   // Agent workspace file browser (reads local disk via daemon WS-RPC)
@@ -101,7 +101,7 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
   const awsFile = /^\/api\/agents\/([^/]+)\/workspace-files\/read$/.exec(p);
   if ((awsList || awsFile) && method === "GET") {
     const agId = (awsList || awsFile)![1]!;
-    const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, agId), eq(schema.agents.serverId, serverId))))[0];
+    const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, agId), eq(schema.agents.spaceId, spaceId))))[0];
     if (!a) return (sendErr(res, 404, "agent not found"), true);
     if (awsList) {
       const r = await requestWorker({ type: "agent:workspace:list", agentId: agId });
@@ -114,14 +114,14 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
   const alog = /^\/api\/agents\/([^/]+)\/activity-log$/.exec(p);
   if (alog && method === "GET") {
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 200);
-    const rows = await db.select().from(schema.agentActivityLog).where(and(eq(schema.agentActivityLog.agentId, alog[1]!), eq(schema.agentActivityLog.serverId, serverId))).orderBy(desc(schema.agentActivityLog.ts)).limit(limit); // serverId scope: never leak another tenant's agent activity by raw agentId
+    const rows = await db.select().from(schema.agentActivityLog).where(and(eq(schema.agentActivityLog.agentId, alog[1]!), eq(schema.agentActivityLog.spaceId, spaceId))).orderBy(desc(schema.agentActivityLog.ts)).limit(limit); // spaceId scope: never leak another tenant's agent activity by raw agentId
     return (sendJson(res, 200, rows.reverse().map((r) => ({ timestamp: r.ts, entry: { kind: r.kind === "tool" ? "tool_start" : r.kind, activity: r.activity, detail: r.detail, text: r.text, toolName: r.toolName, toolInput: r.toolInput } }))), true);
   }
   // ── Agent Permissions (scopes) ── GET to read / PUT to replace entirely. Default mode = grant all.
   const ascope = /^\/api\/agents\/([^/]+)\/scopes$/.exec(p);
   if (ascope && (method === "GET" || method === "PUT")) {
     const agId = ascope[1]!;
-    const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, agId), eq(schema.agents.serverId, serverId))))[0];
+    const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, agId), eq(schema.agents.spaceId, spaceId))))[0];
     if (!a) return (sendErr(res, 404, "agent not found"), true);
     if (method === "GET") { const eff = effectiveScopes(a.scopes); return (sendJson(res, 200, { agentId: agId, ...eff, catalog: SCOPES }), true); }
     const b = await readJson(req);
@@ -135,7 +135,7 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
   // (claude → ~/.claude/skills, codex → ~/.codex/skills, …) + the matching dir in the workspace.
   const askill = /^\/api\/agents\/([^/]+)\/skills$/.exec(p);
   if (askill && method === "GET") {
-    const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, askill[1]!), eq(schema.agents.serverId, serverId))))[0];
+    const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, askill[1]!), eq(schema.agents.spaceId, spaceId))))[0];
     if (!a) return (sendErr(res, 404, "agent not found"), true);
     try { const r = await requestWorker({ type: "agent:skills:list", agentId: askill[1]!, runtime: a.runtime }); return (sendJson(res, 200, { global: r.global ?? [], workspace: r.workspace ?? [] }), true); }
     catch { return (sendJson(res, 200, { global: [], workspace: [] }), true); }
@@ -147,21 +147,21 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
   const adms = /^\/api\/agents\/([^/]+)\/agent-dms$/.exec(p);
   if (adms && method === "GET") {
     const agId = adms[1]!;
-    // serverId scope: confirm the agent belongs to this tenant before fanning out over its memberships
-    // (the inner channel query already filters by serverId, but pre-checking 404s a foreign agent id and
+    // spaceId scope: confirm the agent belongs to this tenant before fanning out over its memberships
+    // (the inner channel query already filters by spaceId, but pre-checking 404s a foreign agent id and
     // avoids a cross-tenant channel_members scan). Mirrors the workspace-files / scopes ownership pre-check.
-    const own = (await db.select({ id: schema.agents.id }).from(schema.agents).where(and(eq(schema.agents.id, agId), eq(schema.agents.serverId, serverId))))[0];
+    const own = (await db.select({ id: schema.agents.id }).from(schema.agents).where(and(eq(schema.agents.id, agId), eq(schema.agents.spaceId, spaceId))))[0];
     if (!own) return (sendErr(res, 404, "agent not found"), true);
-    const mine = await db.select().from(schema.channelMembers).where(and(eq(schema.channelMembers.memberType, "agent"), eq(schema.channelMembers.memberId, agId)));
+    const mine = await db.select().from(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.agentId, agId));
     const out: any[] = [];
     for (const cm of mine) {
-      const ch = (await db.select().from(schema.channels).where(and(eq(schema.channels.id, cm.channelId), eq(schema.channels.type, "dm"), eq(schema.channels.serverId, serverId))))[0]; // serverId scope: don't surface another tenant's DM channels for this agent id
+      const ch = (await db.select().from(schema.channels).where(and(eq(schema.channels.id, cm.channelId), eq(schema.channels.type, "dm"), eq(schema.channels.spaceId, spaceId))))[0]; // spaceId scope: don't surface another tenant's DM channels for this agent id
       if (!ch) continue;
-      const peers = (await db.select().from(schema.channelMembers).where(eq(schema.channelMembers.channelId, ch.id))).filter((m) => !(m.memberType === "agent" && m.memberId === agId));
-      const peer = peers.find((m) => m.memberType === "agent"); // only include agent↔agent DMs
+      const peers = (await db.select().from(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, ch.id))).filter((member) => member.agentId !== agId);
+      const peer = peers[0]; // Human DMs contain only this agent, so only agent-agent DMs have a peer row.
       if (!peer) continue;
-      const pa = (await db.select().from(schema.agents).where(eq(schema.agents.id, peer.memberId)))[0];
-      out.push({ id: ch.id, name: pa?.name ?? "agent", peerId: peer.memberId, peerType: "agent", lastMessageAt: ch.lastMessageAt });
+      const pa = (await db.select().from(schema.agents).where(eq(schema.agents.id, peer.agentId)))[0];
+      out.push({ id: ch.id, name: pa?.name ?? "agent", peerId: peer.agentId, peerType: "agent", lastMessageAt: ch.lastMessageAt });
     }
     return (sendJson(res, 200, out), true);
   }

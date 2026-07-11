@@ -2,7 +2,7 @@
 import { WebSocketServer, type WebSocket } from "ws";
 import type { Server } from "node:http";
 import { and, desc, eq, isNull, notInArray } from "drizzle-orm";
-import { allSpaceDbs, dbFor, schema } from "../db/index.js";
+import { allSpaceDbs, dbForSpace, schema } from "../db/index.js";
 import { BOOTSTRAP_KEY, safeEqual } from "./auth.js";
 import { publish } from "./realtime.js";
 import { createLogger } from "../log.js";
@@ -171,23 +171,23 @@ async function onAgentUpdate(msg: any, lease: WorkerLease): Promise<void> {
 export const ACTIVITY_LOG_CAP = 500;
 
 // Delete all but the newest ACTIVITY_LOG_CAP rows (by ts) for one agent. Uses the (agentId, ts) index.
-export async function pruneAgentActivityLog(serverId: string, agentId: string): Promise<void> {
-  const db = dbFor(serverId);
+export async function pruneAgentActivityLog(spaceId: string, agentId: string): Promise<void> {
+  const db = dbForSpace(spaceId);
   const keep = db.select({ id: schema.agentActivityLog.id }).from(schema.agentActivityLog)
     .where(eq(schema.agentActivityLog.agentId, agentId)).orderBy(desc(schema.agentActivityLog.ts)).limit(ACTIVITY_LOG_CAP);
   await db.delete(schema.agentActivityLog).where(and(eq(schema.agentActivityLog.agentId, agentId), notInArray(schema.agentActivityLog.id, keep)));
 }
 
 // Persist activity to the DB (daemon-pushed status/trajectory entries → agent_activity_log, feeds the activity facet history + timeline)
-export async function logActivity(serverId: string, agentId: string, e: any): Promise<void> {
-  const db = dbFor(serverId);
+export async function logActivity(spaceId: string, agentId: string, e: any): Promise<void> {
+  const db = dbForSpace(spaceId);
   const kind = e.kind === "tool" ? "tool_start" : (e.kind || (e.toolName ? "tool_start" : "text"));
   try {
     await db.insert(schema.agentActivityLog).values({
-      serverId, agentId, ts: Date.now(), kind,
+      spaceId, agentId, ts: Date.now(), kind,
       activity: e.activity ?? null, detail: e.detail ?? null, text: e.text ?? null,
       toolName: e.toolName ?? null, toolInput: e.toolInput ?? null,
     });
-    await pruneAgentActivityLog(serverId, agentId); // keep the table bounded per agent (newest ACTIVITY_LOG_CAP)
+    await pruneAgentActivityLog(spaceId, agentId); // keep the table bounded per agent (newest ACTIVITY_LOG_CAP)
   } catch { /* logging failure must not block */ }
 }

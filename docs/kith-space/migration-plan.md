@@ -26,22 +26,24 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A2 本地领域与数据模型
 
-当前进度：A2.1 已完成 `app.db`、唯一 Human、幂等 `Home` 初始化；A2.5 已删除 S3；A2.2a 已完成 canonical Space 契约；A2.3 已完成唯一 Human 协作边界；A2.4 已删除 Machine/Computer/远程 worker 活跃产品路径，并建立安装级唯一、跨 Space 路由的 Local Runtime Worker。下一切片 A2.2b 负责旧 `/api/servers` 边界、workspace.db 多用户/Machine 物理旧表与 `server_id` 压平；全局上传目录仍待 A2 收口。
+当前进度：A2.1 已完成 `app.db`、唯一 Human、幂等 `Home` 初始化；A2.5 已删除 S3；A2.2a 已完成 canonical Space 契约；A2.3 已完成唯一 Human 协作边界；A2.4 已删除 Machine/Computer/远程 worker 活跃产品路径并建立安装级唯一 Worker；A2.2b 已完成 canonical Space 传输/CLI/DB 边界与 19 表 workspace.db baseline。A2 仍在进行，下一步是全局上传目录与残余本地领域资产收口及整阶段验证。
 
 改动边界：
 
 - 新建 app 数据层，中央 registry 扩展/更名为 `app.db`。
 - 唯一 Human、首次资料初始化和默认 `Home`。
-- `server/serverId` 到 `space/spaceId` 的领域/schema/API/类型迁移；`/s/:slug` 保留。
+- 已完成 `server/serverId` 到 `space/spaceId` 的领域/schema/API/类型迁移；`/s/:slug` 保留。
 - Human membership/RBAC/邀请/Human-Human DM 删除；Space 内 agent membership 保留。
 - Machine/Computer/远程 daemon 注册删除；内部 daemon 变为安装级唯一 Local Runtime Worker，并以 agentId 跨 Space 路由。
 - S3/对象存储删除，本地文件服务保留。
 
-实施顺序补充：A2.2a 后的 A2.3 authority/identity/UI 与 A2.4 Machine 产品路径删除均已完成。现在用允许的破坏性重置一次性把保留表的 `servers/server_id` 压平为 `spaces/space_id`，删除 `machines`/`agents.machine_id` 等无消费者物理字段，并把 raw `user` actor 与 Human 会话状态统一切到目标模型。这样避免迁移即将删除的表和字段两次。
+实施顺序补充：A2.2b 已用允许的破坏性重置一次性把保留表的 `servers/server_id` 压平为 `spaces/space_id`，删除 `users/server_members/machines/join_links` 与 `agents.machine_id`，拆出 agent-only channel membership、Human 会话状态/收藏/Space 偏好，并把持久 actor 切到 `human`。旧 `/api/servers`、`x-server-id`、Socket `serverId`、`ServerCtx` 和 DB workspace facade 同时删除；Agent CLI 使用 `space info` 与 `space:read`。
+
+旧 workspace.db 不做自动迁移或删除：打开时明确报错并给出数据库路径，要求用户先备份再显式删除。Drizzle 使用单一 `0000` baseline，fresh DB 初始化 `spaces` 元数据与 `#all`。
 
 模块边界建议：`src/app-data/` 负责 app.db；`src/spaces/` 负责 Space registry/生命周期；`src/human/` 负责唯一 Human；`src/local-runtime/` 负责 Desktop 与 worker 内部协议。实际命名在落地前按现有结构核对，不为目录整齐而搬动无关文件。
 
-验证：schema/服务单测、全新目录初始化、唯一 Worker 替换与跨 Space 事件路由、Machine API/UI 不可达契约、typecheck、现有任务/消息回归。A3 前另验证 Core Service 仅绑定 loopback，`dev:e2e:up` 等待 `/health.workerConnected`。
+验证：A2.2b 已通过 typecheck、web build 和完整 integration；unit 364 项中 363 项通过，唯一失败仍是既有 `publicNavContract` 缺 `docs-site/src/pages/index.astro`。fresh baseline、legacy schema 拒绝、唯一 Worker 与跨 Space 路由、Machine/旧 Space 契约不可达、Human channel state 和任务/消息回归均有覆盖。A2 最终收口后仍需重跑整阶段验收；A3 前继续验证 Core Service 仅绑定 loopback，`dev:e2e:up` 等待 `/health.workerConnected`。
 
 ### A3 浏览器访问安全边界
 
@@ -68,7 +70,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A5 UI 与入口清理
 
-改动：Human 首次初始化、Home 入口与 Desktop Settings；完成 Dock `Chat | Inbox | Tasks | Agents | Settings`；删除 Landing、PWA、`?legacy=1` 和旧入口。Agents/Human Settings 表面迁移及登录/注册/邀请 UI/API 已在 A2.3 提前完成，Computers 已在 A2.4 提前删除；物理 `join_links`/Machine 表仍归 A2.2b。
+改动：Human 首次初始化、Home 入口与 Desktop Settings；完成 Dock `Chat | Inbox | Tasks | Agents | Settings`；删除 Landing、PWA、`?legacy=1` 和旧入口。Agents/Human Settings 表面迁移及登录/注册/邀请 UI/API 已在 A2.3 提前完成，Computers 已在 A2.4 提前删除，相关 `join_links`/Machine 物理表已在 A2.2b 删除。
 
 验证：路由契约、Dock 状态机、Desktop/Web 设置差异、web build 与浏览器冒烟。
 

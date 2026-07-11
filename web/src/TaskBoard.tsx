@@ -55,7 +55,7 @@ export function TaskBoard({ channelId, onOpenThread }: { channelId: string | nul
   const boardRef = useRef<HTMLDivElement>(null);
   const prevRects = useRef<Map<string, DOMRect>>(new Map()); // last-known card positions, for the FLIP move animation
 
-  const path = channelId ? `/api/tasks/channel/${channelId}` : "/api/tasks/server";
+  const path = channelId ? `/api/tasks/channel/${channelId}` : "/api/tasks/space";
   const load = async () => { const d = await api("GET", path); setTasks(d.tasks || []); };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [channelId]);
   useEffect(() => onEvent((e) => {
@@ -236,7 +236,7 @@ export function TaskBoard({ channelId, onOpenThread }: { channelId: string | nul
           </div>
         )}
         <Select ariaLabel={t("tasks.filterByCreator")} value={creatorKey} onChange={setCreatorKey}
-          options={[{ value: "", label: t("tasks.allCreators") }, ...(me ? [{ value: "me", label: t("tasks.myTasks") }] : []), ...creators.filter((c) => c.key !== `user:${me?.id}`).map((c) => ({ value: c.key, label: c.name }))]} />
+          options={[{ value: "", label: t("tasks.allCreators") }, ...(me ? [{ value: "me", label: t("tasks.myTasks") }] : []), ...creators.filter((c) => c.key !== `human:${me?.id}`).map((c) => ({ value: c.key, label: c.name }))]} />
         <Select ariaLabel={t("tasks.filterByAssignee")} value={assigneeKey} onChange={setAssigneeKey}
           options={[{ value: "", label: t("tasks.allAssignees") }, { value: "unclaimed", label: t("tasks.unclaimed") }, ...assignees.map((a) => ({ value: a.key, label: a.name }))]} />
         <span className="grow" />

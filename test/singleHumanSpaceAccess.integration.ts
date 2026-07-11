@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { closeAllDatabases, dbForSpace, schema } from "../src/db/index.ts";
 import { ensurePersonalApp } from "../src/db/personalApp.ts";
 import { signUser } from "../src/server/auth.ts";
@@ -40,22 +40,21 @@ try {
   const { human, home } = await ensurePersonalApp({ name: "Ada", homeRootPath: path.join(root, "home") });
   const token = signUser(human.id);
   const db = dbForSpace(home.id);
-  await db.delete(schema.serverMembers);
 
   const [agent] = await db.insert(schema.agents).values({
-    serverId: home.id,
+    spaceId: home.id,
     name: "researcher",
     displayName: "Researcher",
     runtime: "codex",
     creatorId: human.id,
   }).returning();
   const [privateChannel] = await db.insert(schema.channels).values({
-    serverId: home.id,
+    spaceId: home.id,
     name: "private-lab",
     type: "private",
   }).returning();
   const [privateMessage] = await db.insert(schema.messages).values({
-    serverId: home.id,
+    spaceId: home.id,
     channelId: privateChannel!.id,
     seq: 1,
     senderType: "agent",
@@ -77,7 +76,7 @@ try {
   assert.deepEqual(members.body, { agents: [] });
 
   const mentionedHuman = await createMessage({
-    serverId: home.id,
+    spaceId: home.id,
     channelId: privateChannel!.id,
     senderType: "agent",
     senderId: agent!.id,
@@ -85,7 +84,7 @@ try {
     content: "@you please review",
   });
   const mentioned = await api(home.id, token, "GET", `/api/messages/${mentionedHuman.id}`);
-  assert.deepEqual(mentioned.body.message.mentions, [{ type: "user", id: human.id, name: "you" }]);
+  assert.deepEqual(mentioned.body.message.mentions, [{ type: "human", id: human.id, name: "you" }]);
 
   const addHuman = await api(home.id, token, "POST", `/api/channels/${privateChannel!.id}/members`, { userId: human.id });
   assert.equal(addHuman.status, 400);
@@ -105,21 +104,19 @@ try {
 
   const read = await api(home.id, token, "POST", `/api/channels/${privateChannel!.id}/read`);
   assert.equal(read.status, 200);
-  const humanState = (await db.select().from(schema.channelMembers).where(and(
-    eq(schema.channelMembers.channelId, privateChannel!.id),
-    eq(schema.channelMembers.memberType, "user"),
-    eq(schema.channelMembers.memberId, human.id),
-  )))[0];
+  const humanState = (await db.select().from(schema.humanChannelStates).where(
+    eq(schema.humanChannelStates.channelId, privateChannel!.id),
+  ))[0];
   assert.equal(humanState?.lastReadSeq, mentionedHuman.seq);
 
   const other = await createLocalSpace({ name: "Other", rootPath: path.join(root, "other") });
   const otherDb = dbForSpace(other.id);
-  const [otherChannel] = await otherDb.insert(schema.channels).values({ serverId: other.id, name: "other", type: "channel" }).returning();
+  const [otherChannel] = await otherDb.insert(schema.channels).values({ spaceId: other.id, name: "other", type: "channel" }).returning();
   const [otherMessage] = await otherDb.insert(schema.messages).values({
-    serverId: other.id,
+    spaceId: other.id,
     channelId: otherChannel!.id,
     seq: 1,
-    senderType: "user",
+    senderType: "human",
     senderId: human.id,
     senderName: human.name,
     content: "other space",

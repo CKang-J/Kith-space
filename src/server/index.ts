@@ -106,7 +106,7 @@ const server = http.createServer(async (req, res) => {
     res.setHeader("access-control-allow-origin", allowedOrigin);
     res.setHeader("vary", "Origin");
   }
-  res.setHeader("access-control-allow-headers", "authorization,content-type,x-space-id,x-server-id,x-agent-id");
+  res.setHeader("access-control-allow-headers", "authorization,content-type,x-space-id,x-agent-id");
   res.setHeader("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS");
   if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
 
@@ -123,7 +123,7 @@ const server = http.createServer(async (req, res) => {
     if (isRead && url.pathname === "/docs") return redirect(res, "/docs/");
     if (isRead && url.pathname.startsWith("/docs/") && await serveDocs(res, url.pathname, method === "GET")) return;
     if (isRead && url.pathname.startsWith("/_astro/") && await serveDocsAsset(res, url.pathname, method === "GET")) return;
-    // Static frontend (web/dist) + SPA fallback (client-side routing /s/:server/*)
+    // Static frontend (web/dist) + SPA fallback (client-side routing /s/:space/*)
     if (method === "GET" && await serveStatic(res, url.pathname)) return;
     sendErr(res, 404, "not found");
   } catch (e: any) {
@@ -136,7 +136,7 @@ attachSocketIO(server); // human-side realtime (socket.io, /socket.io/)
 attachWs(server);       // daemon control plane (raw ws, /daemon/connect)
 startReminderScheduler(); // reminder scheduler: fires at due time, wakes the author
 
-// Durability guard: before accepting traffic, align in-memory seq/task counters to each workspace DB maximum.
+// Durability guard: before accepting traffic, align in-memory seq/task counters to each Space DB maximum.
 // Prevents seq rollback and silent message drops after a process restart.
 reconcileCounters()
   .then((r) => log.info("counters reconciled", r))

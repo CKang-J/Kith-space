@@ -20,7 +20,7 @@ const PENDING_DELIVER_TTL_MS = Number(process.env.KITH_SPACE_PENDING_DELIVER_TTL
 export interface AgentConfig {
   name: string; displayName: string; description?: string | null;
   model?: string; runtime?: string; runtimeConfig?: Record<string, unknown> | null; sessionId?: string;
-  serverUrl: string; serverId: string; workspaceRoot: string; agentId: string; agentToken?: string; // per-agent token (slice10); re-sent start for a running agent may omit it (daemon ignores)
+  serverUrl: string; spaceId: string; workspaceRoot: string; agentId: string; agentToken?: string; // per-agent token (slice10); re-sent start for a running agent may omit it (daemon ignores)
 }
 interface DeliverBuf { count: number; from: string; target: string; targetName: string; firstShort: string; latestShort: string; isTask: boolean; mentioned: boolean; targets: Set<string>; timer: ReturnType<typeof setTimeout>; streamId?: string; }
 export interface DeliverMeta { targetName?: string; msgShort?: string; isTask?: boolean; streamId?: string; }
@@ -165,7 +165,7 @@ export class AgentManager {
 
     const systemPrompt = buildSystemPrompt({
       name: config.name, displayName: config.displayName, description: config.description,
-      agentId, serverId: config.serverId, hostname: os.hostname(), os: `${os.platform()} ${os.arch()}`, workspace: dir, memory,
+      agentId, spaceId: config.spaceId, hostname: os.hostname(), os: `${os.platform()} ${os.arch()}`, workspace: dir, memory,
     });
     const env: NodeJS.ProcessEnv = {
       ...process.env, FORCE_COLOR: "0",

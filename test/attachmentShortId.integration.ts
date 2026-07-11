@@ -8,7 +8,7 @@
 //
 //   Case                                                  | BEFORE fix      | AFTER fix
 //   ----------------------------------------------------- | --------------- | ---------
-//   Cases run against a PRIVATE channel (public channels are readable by any server agent, core.ts
+//   Cases run against a PRIVATE channel (public channels are readable by any Space agent, core.ts
 //   canAgentReadChannel — so only a private channel exercises the ACL boundary):
 //
 //   member agent, full uuid                               | 200             | 200
@@ -25,7 +25,6 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { eq } from "drizzle-orm";
-import { initializeHumanProfile } from "../src/app-data/appDatabase.ts";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { handleAgentApi } from "../src/server/routes-agent.ts";
 import { hashToken } from "../src/server/auth.ts";
@@ -33,8 +32,7 @@ import { saveObject } from "../src/server/storage.ts";
 
 const ts = Date.now();
 const fixture = integrationDatabase("attachment-short-id");
-const { db, schema, rootPath } = fixture;
-let serverId = fixture.serverId, ownerId = "";
+const { db, schema, spaceId } = fixture;
 let channelId = "", attachmentId = "";
 let uploaderId = "", viewerId = "", outsiderId = "";
 const viewerToken = `sk_agent_test_viewer_${ts}`;
@@ -83,45 +81,37 @@ async function view(id: string, opts: { token: string; agentId: string }): Promi
 }
 
 async function setup() {
-  const human = initializeHumanProfile({ name: "Ada", email: `ada-${ts}@test.local` });
-  ownerId = human.id;
-  await db.insert(schema.users).values({ id: ownerId, name: "you", displayName: human.name, email: human.email! });
-  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "TATT", slug: `tatt-${ts}`, ownerId, rootPath }).returning();
-  serverId = srv!.id;
-
-  const [ch] = await db.insert(schema.channels).values({ serverId, name: `att-${ts}`, type: "private" }).returning();
+  const [ch] = await db.insert(schema.channels).values({ spaceId, name: `att-${ts}`, type: "private" }).returning();
   channelId = ch!.id;
 
   const mkAgent = async (name: string, token: string | null) => {
     const [a] = await db.insert(schema.agents).values({
-      serverId, name: `${name}_${ts}`, displayName: name, agentTokenHash: token ? hashToken(token) : null,
+      spaceId, name: `${name}_${ts}`, displayName: name, agentTokenHash: token ? hashToken(token) : null,
     }).returning();
     return a!.id;
   };
   uploaderId = await mkAgent("uploader", null);
   viewerId = await mkAgent("viewer", viewerToken);
   outsiderId = await mkAgent("outsider", outsiderToken);
-  await db.insert(schema.channelMembers).values([
-    { channelId, memberType: "agent", memberId: uploaderId },
-    { channelId, memberType: "agent", memberId: viewerId },
+  await db.insert(schema.channelAgentMembers).values([
+    { channelId, agentId: uploaderId },
+    { channelId, agentId: viewerId },
   ]);
 
   // Prod shape: uploaded to a channel (channelId recorded at upload), not yet attached to a message.
   const saved = await saveObject(`short-id-${ts}.txt`, Readable.from([Buffer.from("short id resolution test payload")]));
   const [att] = await db.insert(schema.attachments).values({
-    serverId, channelId, uploaderType: "agent", uploaderId,
+    spaceId, channelId, uploaderType: "agent", uploaderId,
     filename: `short-id-${ts}.txt`, mimeType: "text/plain", sizeBytes: saved.size, storageKey: saved.key,
   }).returning();
   attachmentId = att!.id;
 }
 
 async function cleanup() {
-  await db.delete(schema.attachments).where(eq(schema.attachments.serverId, serverId));
-  await db.delete(schema.channelMembers).where(eq(schema.channelMembers.channelId, channelId));
-  await db.delete(schema.channels).where(eq(schema.channels.serverId, serverId));
-  await db.delete(schema.agents).where(eq(schema.agents.serverId, serverId));
-  await db.delete(schema.servers).where(eq(schema.servers.id, serverId));
-  await db.delete(schema.users).where(eq(schema.users.id, ownerId));
+  await db.delete(schema.attachments).where(eq(schema.attachments.spaceId, spaceId));
+  await db.delete(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, channelId));
+  await db.delete(schema.channels).where(eq(schema.channels.spaceId, spaceId));
+  await db.delete(schema.agents).where(eq(schema.agents.spaceId, spaceId));
 }
 
 async function main() {

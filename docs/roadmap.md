@@ -36,13 +36,15 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 
 ### P-A2 本地领域与数据模型
 
-状态：进行中。已完成中央 `app.db`、唯一 Human、默认 `Home`、本地-only 附件、Space 契约、A2.3 唯一 Human 协作边界，以及 A2.4 Machine/Computer/远程 worker 活跃产品路径删除。下一步是 A2.2b 破坏性重建 workspace.db baseline；其中的 `machines` 与 `agents.machine_id` 仅是待删物理残留。
+状态：进行中。已完成中央 `app.db`、唯一 Human、默认 `Home`、本地-only 附件、Space 契约、A2.3 唯一 Human 协作边界、A2.4 Machine/Computer/远程 worker 活跃路径删除，以及 A2.2b workspace.db 破坏性 baseline。下一步是 A2 收口：把全局上传目录纳入 Space 根路径、清理残余本地领域资产并完成整阶段验证；A3 尚未开始。
 
 - 把中央 registry 扩展并更名为 `app.db`。
 - 实现唯一 Human 和首次资料初始化；自动创建 `Home` Space。
-- 把产品领域中的 `server/serverId` 收敛为 `space/spaceId`，保留 `/s/:slug` URL。
+- 已把产品领域中的 `server/serverId` 收敛为 `space/spaceId`，保留 `/s/:slug` URL。
 - 保留 Space 内 agent membership，删除 Human membership、邀请、RBAC 和 Human-Human DM。
 - 已删除 Machine/Computer、远程 daemon 注册和多主机调度；内部 daemon 已收敛为安装级唯一 Local Runtime Worker，并跨本机 Space 路由 agent 事件。
+- workspace.db 已重建为单一 19 表 baseline：使用 `spaces/space_id`，删除 `users/server_members/machines/join_links` 与 `agents.machine_id`，分离 agent membership、唯一 Human 会话状态/收藏/Space 偏好，并把持久 actor 统一为 `human`。
+- 已删除 `/api/servers`、`x-server-id`、Socket `serverId`、`ServerCtx` 和 DB workspace facade；Agent CLI 使用 `space info` 与 `space:read`。
 - 删除 S3/对象存储，附件只走本地磁盘。
 
 允许破坏性重置当前开发数据，不做旧 `.kith` 数据迁移。
@@ -85,7 +87,7 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 
 - 删除 Dockerfile、compose、entrypoint、环境样例和远程部署文档。
 - 删除公共 server/daemon npm 发布、独立安装器和 OIDC 发布 workflow。
-- 删除残余 JWT 账户认证、A2.2b 后可能残留的 Machine/多用户术语、PWA 和其他旧领域资产。
+- 删除残余 JWT 账户认证、Machine/多用户历史术语、PWA 和其他旧领域资产。
 - 保留仓库内部的分进程开发命令与少量测试覆盖环境变量。
 - 完成 typecheck、单元、集成、web build、Electron 冒烟和文档口径审计。
 

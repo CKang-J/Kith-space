@@ -37,6 +37,8 @@ pnpm run db:studio                # 可选：Drizzle Studio 查那个 scratch db
 
 数据层是 SQLite：中央 `app.db` + 每 Space 独立 workspace.db，无需 Postgres/Redis。附件固定使用本地磁盘，不支持 S3。详见 `docs/kith-space/architecture-proposal.md §5`。
 
+A2.2b 使用破坏性单一 baseline，不迁移旧开发库。若启动时报 legacy workspace database，先备份报错路径指向的 `<space>/.kith/workspace.db`，再由开发者显式删除并重新 seed；应用不会自动迁移或删除旧库。
+
 ## 3. 手动起各服务（三个进程，分别开终端）
 
 当前过渡开发由三部分组成：server/Core Service（API + 提供已构建 web）、唯一 Local Runtime Worker（代码/命令名暂为 daemon，承载所有本机 Space 的 agent）、web（开发时的 Vite 热更；不开发前端时可省）。这些分进程命令会作为内部调试入口保留。Core Service 当前固定监听 `127.0.0.1`；A3 Token/浏览器会话完成前没有 LAN 开发入口。
@@ -95,7 +97,7 @@ pnpm run cli -- <args>            # 运行 CLI（如 pnpm run cli role-template 
 - `KITH_SPACE_MAX_DISPATCH_DEPTH` — agent→agent 分派链最大深度，默认 4
 - `KITH_SPACE_MAX_DISPATCH_WAKES` — 每链最大成功唤醒次数，默认 16
 
-急停等运行时控制走 `/api/tasks/:id/dispatch/*` 与 `/api/servers/:id/dispatch/*`，详见 `docs/kith-space/architecture-proposal.md §6`。
+急停等运行时控制走 `/api/tasks/:id/dispatch/*` 与 `/api/spaces/:id/dispatch/*`，详见 `docs/kith-space/architecture-proposal.md §6`。
 
 ## 8. 待删除的继承命令
 

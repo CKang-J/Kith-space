@@ -71,7 +71,7 @@
     "tabIntegrations": "集成",
     "tabActivity": "活动",
     "displayName": "显示名",
-    "agentDescriptionLabel": "描述(给同事/AI 看这个 agent 是干嘛的——会出现在 server info,供协作者了解)",
+    "agentDescriptionLabel": "描述(给同事/AI 看这个 agent 是干嘛的——会出现在 Space info,供协作者了解)",
     "agentDescriptionPlaceholder": "如:本机全栈助手,能在工作区读写文件、跑命令",
     "save": "保存",
     "cancel": "取消",

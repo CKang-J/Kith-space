@@ -5,22 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1783654913582,
-      "tag": "0000_p0_sqlite",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1783659589777,
-      "tag": "0001_p1_dispatch_guard",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1783664977502,
-      "tag": "0002_p3_task_hardening",
+      "when": 1783764218492,
+      "tag": "0000_personal_agent_os",
       "breakpoints": true
     }
   ]

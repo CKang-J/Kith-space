@@ -15,12 +15,12 @@ interface TasksProps {
 }
 export function Tasks({ channelIdOverride, moduleQuerySuffix = "" }: TasksProps = {}) {
   const { channels, slug } = useStore();
-  const { channelId: routeChannelId } = useParams(); // "server" = all channels; otherwise a specific channelId
+  const { channelId: routeChannelId } = useParams(); // "space" = all channels; otherwise a specific channelId
   const nav = useNavigate();
   const { t } = useTranslation();
   const channelId = channelIdOverride === undefined ? routeChannelId : channelIdOverride ?? undefined;
-  const scope = channelId || "server";
-  const cur = scope === "server" ? null : channels.find((c) => c.id === scope);
+  const scope = channelId || "space";
+  const cur = scope === "space" ? null : channels.find((c) => c.id === scope);
 
   return (
     <>
@@ -28,14 +28,14 @@ export function Tasks({ channelIdOverride, moduleQuerySuffix = "" }: TasksProps 
         <div className="sb-scroll">
         <div className="sb-title">{t("nav.tasks")}</div>
         <div className="sec">{t("misc.tasksScope")}</div>
-        <button className={"item" + (scope === "server" ? " active" : "")} onClick={() => nav(`/s/${slug}/tasks/server${moduleQuerySuffix}`)}><Star size={14} /><span className="grow">{t("misc.tasksAll")}</span></button>
+        <button className={"item" + (scope === "space" ? " active" : "")} onClick={() => nav(`/s/${slug}/tasks/space${moduleQuerySuffix}`)}><Star size={14} /><span className="grow">{t("misc.tasksAll")}</span></button>
         <div className="sec">{t("common.channels")}</div>
         {channels.filter((c) => c.type !== "dm").map((c) => <button key={c.id} className={"item" + (c.id === scope ? " active" : "")} onClick={() => nav(`/s/${slug}/tasks/${c.id}${moduleQuerySuffix}`)}># {c.name}</button>)}
         </div>
       </aside>
       <main className="content-col">
-        <div className="head"><h1>{t("nav.tasks")}</h1><small>{scope === "server" ? t("misc.tasksAllCross") : cur ? "# " + cur.name : ""}</small></div>
-        <TaskBoard channelId={scope === "server" ? null : scope} />
+        <div className="head"><h1>{t("nav.tasks")}</h1><small>{scope === "space" ? t("misc.tasksAllCross") : cur ? "# " + cur.name : ""}</small></div>
+        <TaskBoard channelId={scope === "space" ? null : scope} />
       </main>
     </>
   );
@@ -362,7 +362,7 @@ export function Saved({ embedded = false }: { embedded?: boolean } = {}) {
                   <span className="ib-name">{source(it)}</span>
                   <span className="ib-time">{relTime(it.createdAt, t)}</span>
                 </span>
-                <span className="ib-preview"><b>{it.senderName ?? (it.senderType === "agent" ? "agent" : "user")}</b>: {it.content}</span>
+                <span className="ib-preview"><b>{it.senderName ?? (it.senderType === "agent" ? "agent" : "human")}</b>: {it.content}</span>
               </span>
               <span className="ib-save on" title={t("misc.savedUnsave")} onClick={(e) => unsave(e, it)}><Bookmark size={15} fill="currentColor" /></span>
             </button>

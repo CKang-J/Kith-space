@@ -1,11 +1,10 @@
 // Internal thread channels are not ordinary top-level channel resources:
-// - agent server/info must not expose them in its channel list
+// - agent space/info must not expose them in its channel list
 // - Human channel lifecycle endpoints must not rename, archive, or delete them
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { and, eq } from "drizzle-orm";
-import { initializeHumanProfile } from "../src/app-data/appDatabase.ts";
 import { createMessage, getOrCreateThread } from "../src/server/core.ts";
 import { handleAgentApi } from "../src/server/routes-agent.ts";
 import { handleChannels } from "../src/server/routes-api/channels.ts";
@@ -13,11 +12,10 @@ import { integrationDatabase } from "./helpers/workspace.ts";
 
 const ts = Date.now();
 const fixture = integrationDatabase("thread-channel-guards");
-const { db, schema, rootPath } = fixture;
+const { db, schema, spaceId, human } = fixture;
 const rawAgentToken = `sk_agent_test_${ts}`;
 
-let serverId = fixture.serverId;
-let humanId = "";
+const humanId = human.id;
 let agentId = "";
 let publicChannelId = "";
 let failures = 0;
@@ -69,29 +67,14 @@ function ctx(method: string, pathname: string, req: IncomingMessage, res: Server
     url: new URL(`http://localhost${pathname}`),
     method,
     p: pathname,
-    userId: humanId,
-    serverId,
+    humanId,
+    spaceId,
   };
 }
 
 async function setup() {
-  const human = initializeHumanProfile({ name: "Ada", email: `ada-${ts}@test.local` });
-  humanId = human.id;
-  await db.insert(schema.users).values({
-    id: humanId,
-    name: "you",
-    displayName: human.name,
-    email: human.email!,
-  });
-  await db.insert(schema.servers).values({
-    id: serverId,
-    name: "Thread Guards",
-    slug: `thread-guards-${ts}`,
-    ownerId: humanId,
-    rootPath,
-  });
   const [agent] = await db.insert(schema.agents).values({
-    serverId,
+    spaceId,
     name: `agent_${ts}`,
     displayName: "Agent",
     creatorId: humanId,
@@ -99,63 +82,54 @@ async function setup() {
   }).returning();
   agentId = agent!.id;
   const [channel] = await db.insert(schema.channels).values({
-    serverId,
+    spaceId,
     name: `channel-${ts}`,
     type: "channel",
   }).returning();
   publicChannelId = channel!.id;
-  await db.insert(schema.channelMembers).values({
-    channelId: publicChannelId,
-    memberType: "user",
-    memberId: humanId,
-  });
+  await db.insert(schema.channelAgentMembers).values({ channelId: publicChannelId, agentId });
 }
 
 async function cleanup() {
   const channels = await db.select({ id: schema.channels.id }).from(schema.channels)
-    .where(eq(schema.channels.serverId, serverId));
+    .where(eq(schema.channels.spaceId, spaceId));
   const messages = await db.select({ id: schema.messages.id }).from(schema.messages)
-    .where(eq(schema.messages.serverId, serverId));
+    .where(eq(schema.messages.spaceId, spaceId));
   for (const message of messages) {
     await db.delete(schema.messageMentions).where(eq(schema.messageMentions.messageId, message.id));
   }
-  await db.delete(schema.messages).where(eq(schema.messages.serverId, serverId));
+  await db.delete(schema.messages).where(eq(schema.messages.spaceId, spaceId));
   for (const channel of channels) {
-    await db.delete(schema.channelMembers).where(eq(schema.channelMembers.channelId, channel.id));
+    await db.delete(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, channel.id));
+    await db.delete(schema.humanChannelStates).where(eq(schema.humanChannelStates.channelId, channel.id));
   }
-  await db.delete(schema.channels).where(eq(schema.channels.serverId, serverId));
-  await db.delete(schema.agents).where(eq(schema.agents.serverId, serverId));
-  await db.delete(schema.servers).where(eq(schema.servers.id, serverId));
-  await db.delete(schema.users).where(eq(schema.users.id, humanId));
+  await db.delete(schema.channels).where(eq(schema.channels.spaceId, spaceId));
+  await db.delete(schema.agents).where(eq(schema.agents.spaceId, spaceId));
 }
 
 async function main() {
   await setup();
   const parent = await createMessage({
-    serverId,
+    spaceId,
     channelId: publicChannelId,
-    senderType: "user",
+    senderType: "human",
     senderId: humanId,
     senderName: "Ada",
     content: "parent message",
   });
-  const thread = await getOrCreateThread(serverId, parent.id, { type: "agent", id: agentId });
-  await db.insert(schema.channelMembers).values({
-    channelId: thread.id,
-    memberType: "agent",
-    memberId: agentId,
-  }).onConflictDoNothing();
+  const thread = await getOrCreateThread(spaceId, parent.id, { type: "agent", id: agentId });
+  await db.insert(schema.channelAgentMembers).values({ channelId: thread.id, agentId }).onConflictDoNothing();
 
-  console.log("\n[1] agent server/info excludes internal thread channels");
+  console.log("\n[1] agent space/info excludes internal thread channels");
   const info = mockRes();
   await handleAgentApi(
     mockAgentReq("GET"),
     info.res,
-    new URL("http://localhost/agent-api/server/info"),
+    new URL("http://localhost/agent-api/space/info"),
     "GET",
   );
   const visibleChannels: { name: string }[] = info.body().channels ?? [];
-  check("server/info returns 200", info.status() === 200);
+  check("space/info returns 200", info.status() === 200);
   check("thread channel is not listed", !visibleChannels.some((channel) => channel.name === thread.name));
   check("ordinary public channel remains listed", visibleChannels.some((channel) => channel.name === `channel-${ts}`));
 

@@ -6,7 +6,6 @@
 // Fix: fmt() emits `:<m.id8>` (the anchor message id = the thread's parent) so the round-trip resolves.
 // Runs against an isolated SQLite workspace; no external services required.
 import { and, eq } from "drizzle-orm";
-import { initializeHumanProfile } from "../src/app-data/appDatabase.ts";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { createMessage, resolveTarget } from "../src/server/core.ts";
 import { addressableTarget, fmt } from "../src/server/routes-agent.ts";
@@ -14,62 +13,58 @@ import { addressableTarget, fmt } from "../src/server/routes-agent.ts";
 const ts = Date.now();
 const chName = `tr-${ts}`;
 const fixture = integrationDatabase("thread-target-roundtrip");
-const { db, schema, rootPath } = fixture;
-let serverId = fixture.serverId, ownerId = "", agentId = "", channelId = "";
+const { db, schema, spaceId, human } = fixture;
+const ownerId = human.id;
+let agentId = "", channelId = "";
 let failures = 0;
 const check = (label: string, cond: boolean) => { console.log(`  ${cond ? "✔" : "✗ FAIL"} ${label}`); if (!cond) failures++; };
 
 const targetOf = async (messageId: string): Promise<string> => {
   const row = (await db.select().from(schema.messages).where(eq(schema.messages.id, messageId)))[0]!;
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, row.channelId)))[0]!;
-  const header = fmt(row, await addressableTarget(serverId, ch, agentId));
+  const header = fmt(row, await addressableTarget(spaceId, ch, agentId));
   return header.match(/\[target=(\S+)/)![1]!; // the exact string an agent is told to reuse
 };
 
 async function setup() {
-  const human = initializeHumanProfile({ name: "Ada", email: `ada-${ts}@test.local` });
-  ownerId = human.id;
-  await db.insert(schema.users).values({ id: ownerId, name: "you", displayName: human.name, email: human.email! });
-  const [srv] = await db.insert(schema.servers).values({ id: serverId, name: "T", slug: `t-${ts}`, ownerId, rootPath }).returning();
-  serverId = srv!.id;
-  const [ag] = await db.insert(schema.agents).values({ serverId, name: `agent_${ts}`, displayName: "Agent" }).returning();
+  const [ag] = await db.insert(schema.agents).values({ spaceId, name: `agent_${ts}`, displayName: "Agent" }).returning();
   agentId = ag!.id;
-  const [c] = await db.insert(schema.channels).values({ serverId, name: chName, type: "channel" }).returning();
+  const [c] = await db.insert(schema.channels).values({ spaceId, name: chName, type: "channel" }).returning();
   channelId = c!.id;
-  await db.insert(schema.channelMembers).values({ channelId, memberType: "user", memberId: ownerId });
-  await db.insert(schema.channelMembers).values({ channelId, memberType: "agent", memberId: agentId });
+  await db.insert(schema.channelAgentMembers).values({ channelId, agentId });
 }
 
 async function cleanup() {
-  const msgs = await db.select({ id: schema.messages.id }).from(schema.messages).where(eq(schema.messages.serverId, serverId));
+  const msgs = await db.select({ id: schema.messages.id }).from(schema.messages).where(eq(schema.messages.spaceId, spaceId));
   for (const m of msgs) await db.delete(schema.messageMentions).where(eq(schema.messageMentions.messageId, m.id));
-  await db.delete(schema.messages).where(eq(schema.messages.serverId, serverId));
-  const chans = await db.select({ id: schema.channels.id }).from(schema.channels).where(eq(schema.channels.serverId, serverId));
-  for (const c of chans) await db.delete(schema.channelMembers).where(eq(schema.channelMembers.channelId, c.id));
-  await db.delete(schema.channels).where(eq(schema.channels.serverId, serverId));
-  await db.delete(schema.agents).where(eq(schema.agents.serverId, serverId));
-  await db.delete(schema.servers).where(eq(schema.servers.id, serverId));
-  await db.delete(schema.users).where(eq(schema.users.id, ownerId));
+  await db.delete(schema.messages).where(eq(schema.messages.spaceId, spaceId));
+  const chans = await db.select({ id: schema.channels.id }).from(schema.channels).where(eq(schema.channels.spaceId, spaceId));
+  for (const c of chans) {
+    await db.delete(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, c.id));
+    await db.delete(schema.humanChannelStates).where(eq(schema.humanChannelStates.channelId, c.id));
+  }
+  await db.delete(schema.channels).where(eq(schema.channels.spaceId, spaceId));
+  await db.delete(schema.agents).where(eq(schema.agents.spaceId, spaceId));
 }
 
 async function main() {
   await setup();
 
   console.log("\n[1] a task (thread-anchor) message's shown target round-trips to its thread");
-  const task = await createMessage({ serverId, channelId, senderType: "user", senderId: ownerId, senderName: "owner", content: "please do the thing", asTask: true });
+  const task = await createMessage({ spaceId, channelId, senderType: "human", senderId: ownerId, senderName: "owner", content: "please do the thing", asTask: true });
   const taskRow = (await db.select().from(schema.messages).where(eq(schema.messages.id, task.id)))[0]!;
   check("task message has a thread (threadId set)", !!taskRow.threadId);
   const shown = await targetOf(task.id);
   console.log(`     shown target = ${shown}`);
-  const resolved = await resolveTarget(serverId, shown, agentId);
+  const resolved = await resolveTarget(spaceId, shown, agentId);
   check("shown target RESOLVES (not null) — the bug returned null", resolved !== null);
   check("shown target resolves to the message's OWN thread", resolved?.channelId === taskRow.threadId);
 
   console.log("\n[2] regression: a plain (non-thread) message's target resolves to its channel");
-  const plain = await createMessage({ serverId, channelId, senderType: "user", senderId: ownerId, senderName: "owner", content: "just a message" });
+  const plain = await createMessage({ spaceId, channelId, senderType: "human", senderId: ownerId, senderName: "owner", content: "just a message" });
   const shownPlain = await targetOf(plain.id);
   console.log(`     shown target = ${shownPlain}`);
-  const resolvedPlain = await resolveTarget(serverId, shownPlain, agentId);
+  const resolvedPlain = await resolveTarget(spaceId, shownPlain, agentId);
   check("plain target resolves to the base channel", resolvedPlain?.channelId === channelId && resolvedPlain?.threadId === null);
 }
 

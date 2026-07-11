@@ -6,46 +6,29 @@ import {
   type HumanProfile,
 } from "../app-data/appDatabase.js";
 import { defaultWorkspaceRoot } from "../paths.js";
-import { dbFor, schema } from "./index.js";
-import { createWorkspace } from "./workspace.js";
+import { dbForSpace, schema } from "./index.js";
+import { createSpace } from "./space.js";
 
 const HOME_SLUG = "home";
 
-/** Temporary workspace.db projection; remove with Human membership in A2.3. */
-export function legacyHumanRow(human: HumanProfile): typeof schema.users.$inferInsert {
-  return {
-    id: human.id,
-    name: "you",
-    displayName: human.name,
-    email: human.email ?? `${human.id}@human.kith-space.invalid`,
-    description: human.description,
-  };
-}
-
-/**
- * Transitional A2 bootstrap: app.db is the canonical Human/Space registry, while
- * workspace.db still receives one compatibility user/owner row until A2.3 removes
- * the inherited multi-human schema.
- */
+/** Initialize the installation-level Human and its idempotent Home Space. */
 export async function ensurePersonalApp(input: {
   name: string;
   email?: string | null;
   description?: string | null;
   homeRootPath?: string;
-}): Promise<{ human: HumanProfile; home: typeof schema.servers.$inferSelect }> {
+}): Promise<{ human: HumanProfile; home: typeof schema.spaces.$inferSelect }> {
   const human = getHumanProfile() ?? initializeHumanProfile(input);
   const registeredHome = getSpaceRecordBySlug(HOME_SLUG);
   if (registeredHome) {
-    const db = dbFor(registeredHome.id);
-    const home = (await db.select().from(schema.servers).where(eq(schema.servers.id, registeredHome.id)))[0];
+    const db = dbForSpace(registeredHome.id);
+    const home = db.select().from(schema.spaces).where(eq(schema.spaces.id, registeredHome.id)).get();
     if (!home) throw new Error(`Home Space registry is inconsistent: ${registeredHome.id}`);
-    if (home.ownerId !== human.id) throw new Error(`Home Space owner is inconsistent: ${registeredHome.id}`);
     return { human, home };
   }
 
-  const home = await createWorkspace("Home", HOME_SLUG, human.id, {
+  const home = await createSpace("Home", HOME_SLUG, {
     rootPath: input.homeRootPath ?? defaultWorkspaceRoot(HOME_SLUG),
-    owner: legacyHumanRow(human),
   });
   return { human, home };
 }

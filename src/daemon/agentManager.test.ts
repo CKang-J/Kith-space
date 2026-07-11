@@ -14,7 +14,7 @@ const baseConfig = (agentId: string, workspaceRoot: string): AgentConfig => ({
   runtime: "fake",
   model: "default",
   serverUrl: "http://localhost:7777",
-  serverId: "server-1",
+  spaceId: "space-1",
   workspaceRoot,
   agentToken: "test-token",
 });

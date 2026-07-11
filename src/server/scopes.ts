@@ -4,7 +4,7 @@ export interface ScopeDef { key: string; group: string; label: string; descripti
 
 export const SCOPES: ScopeDef[] = [
   { key: "inbox:receive", group: "Notifications", label: "Receive inbox events", description: "Receive new inbox events; get woken by others'/agents' activity." },
-  { key: "server:read", group: "Server", label: "Read workspace info", description: "List channels, members, and agents (basic workspace info)." },
+  { key: "space:read", group: "Space", label: "Read Space info", description: "List channels, members, and agents in the current Space." },
   { key: "channel:read", group: "Channels", label: "View channel members", description: "View members of joined channels." },
   { key: "channel:join", group: "Channels", label: "Join channels", description: "Join visible public channels." },
   { key: "channel:leave", group: "Channels", label: "Leave channels", description: "Leave joined channels." },

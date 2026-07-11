@@ -1,8 +1,8 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
-import type { BaseCtx, ServerCtx } from "./ctx.js";
+import type { BaseCtx, SpaceCtx } from "./ctx.js";
 import { and, eq } from "drizzle-orm";
-import { dbFor, schema } from "../../db/index.js";
-import { findAttachmentById, updateUserCopies } from "../../db/lookup.js";
+import { dbForSpace, schema } from "../../db/index.js";
+import { findAttachmentById } from "../../db/lookup.js";
 import { parseUpload } from "../attachments.js";
 import { verifyUser } from "../auth.js";
 import { localHumanForSubject } from "../../human/humanAuthority.js";
@@ -102,12 +102,11 @@ export async function handlePublicAttachmentGet(ctx: BaseCtx): Promise<boolean> 
     const found = await findAttachmentById(adl[1]!);
     const a = found?.value;
     if (!a) return (sendErr(res, 404, "attachment not found"), true);
-    // Channel/server access gate — invariant 3: non-members of private/DM channels must not
-    // access their attachments via direct UUID (IDOR-B3). Use 404 (not 403) to avoid leaking
-    // whether the attachment exists at all.
+    // Channel/Space access gate: direct attachment ids must not bypass channel visibility.
+    // Use 404 (not 403) to avoid leaking whether the attachment exists at all.
     if (a.channelId) {
       // Attachment linked to a channel: apply the same channel-visibility logic as message reads.
-      if (!(await canHumanReadChannel(a.serverId, a.channelId))) return (sendErr(res, 404, "attachment not found"), true);
+      if (!(await canHumanReadChannel(a.spaceId, a.channelId))) return (sendErr(res, 404, "attachment not found"), true);
     }
     let data: Buffer;
     try { data = await readObject(a.storageKey); } catch { return (sendErr(res, 404, "file missing"), true); }
@@ -121,14 +120,14 @@ export async function handlePublicAttachmentGet(ctx: BaseCtx): Promise<boolean> 
   return false;
 }
 
-export async function handleAttachments(ctx: ServerCtx): Promise<boolean> {
-  const { req, res, method, p, userId, serverId } = ctx;
-  const db = dbFor(serverId);
+export async function handleAttachments(ctx: SpaceCtx): Promise<boolean> {
+  const { req, res, method, p, humanId, spaceId } = ctx;
+  const db = dbForSpace(spaceId);
   if (p === "/api/attachments/upload" && method === "POST") {
     const { fields, files } = await parseUpload(req);
     const out: any[] = [];
     for (const f of files) {
-      const [a] = await db.insert(schema.attachments).values({ serverId, channelId: fields.channelId || null, uploaderType: "user", uploaderId: userId, filename: f.filename, mimeType: f.mimeType, sizeBytes: f.size, storageKey: f.storageKey }).returning();
+      const [a] = await db.insert(schema.attachments).values({ spaceId, channelId: fields.channelId || null, uploaderType: "human", uploaderId: humanId, filename: f.filename, mimeType: f.mimeType, sizeBytes: f.size, storageKey: f.storageKey }).returning();
       out.push({ attachmentId: a!.id, id: a!.id, filename: a!.filename, mimeType: a!.mimeType, sizeBytes: a!.sizeBytes });
     }
     return (sendJson(res, 200, { attachments: out, attachmentId: out[0]?.attachmentId }), true);
@@ -141,34 +140,23 @@ export async function handleAttachments(ctx: ServerCtx): Promise<boolean> {
     const f = files[0];
     if (!f) return (sendErr(res, 400, "no file"), true);
     if (!(f.mimeType || "").startsWith("image/")) return (sendErr(res, 400, "avatar must be an image"), true);
-    const [att] = await db.insert(schema.attachments).values({ serverId, channelId: null, uploaderType: "user", uploaderId: userId, filename: f.filename, mimeType: f.mimeType, sizeBytes: f.size, storageKey: f.storageKey }).returning();
+    const [att] = await db.insert(schema.attachments).values({ spaceId, channelId: null, uploaderType: "human", uploaderId: humanId, filename: f.filename, mimeType: f.mimeType, sizeBytes: f.size, storageKey: f.storageKey }).returning();
     const avatarUrl = `/api/attachments/${att!.id}`;
-    await db.update(schema.agents).set({ avatarUrl }).where(and(eq(schema.agents.id, agentId), eq(schema.agents.serverId, serverId)));
+    await db.update(schema.agents).set({ avatarUrl }).where(and(eq(schema.agents.id, agentId), eq(schema.agents.spaceId, spaceId)));
     return (sendJson(res, 200, { avatarUrl }), true);
   }
-  // Current user avatar upload → stored as attachment → users.avatarUrl
-  if (p === "/api/auth/me/avatar" && method === "POST") {
-    const { files } = await parseUpload(req);
-    const f = files[0];
-    if (!f) return (sendErr(res, 400, "no file"), true);
-    if (!(f.mimeType || "").startsWith("image/")) return (sendErr(res, 400, "avatar must be an image"), true);
-    const [att] = await db.insert(schema.attachments).values({ serverId, channelId: null, uploaderType: "user", uploaderId: userId, filename: f.filename, mimeType: f.mimeType, sizeBytes: f.size, storageKey: f.storageKey }).returning();
-    const avatarUrl = `/api/attachments/${att!.id}`;
-    await updateUserCopies(userId, { avatarUrl });
-    return (sendJson(res, 200, { avatarUrl }), true);
-  }
-  // Space avatar upload → stored as attachment → servers.avatarUrl
-  const savatar = /^\/api\/servers\/([^/]+)\/avatar$/.exec(p);
+  // Space avatar upload → stored as attachment → spaces.avatarUrl
+  const savatar = /^\/api\/spaces\/([^/]+)\/avatar$/.exec(p);
   if (savatar && method === "POST") {
     const sid = savatar[1]!;
-    if (sid !== serverId) return (sendErr(res, 404, "Space not found"), true);
+    if (sid !== spaceId) return (sendErr(res, 404, "Space not found"), true);
     const { files } = await parseUpload(req);
     const f = files[0];
     if (!f) return (sendErr(res, 400, "no file"), true);
     if (!(f.mimeType || "").startsWith("image/")) return (sendErr(res, 400, "avatar must be an image"), true);
-    const [a] = await db.insert(schema.attachments).values({ serverId: sid, channelId: null, uploaderType: "user", uploaderId: userId, filename: f.filename, mimeType: f.mimeType, sizeBytes: f.size, storageKey: f.storageKey }).returning();
+    const [a] = await db.insert(schema.attachments).values({ spaceId: sid, channelId: null, uploaderType: "human", uploaderId: humanId, filename: f.filename, mimeType: f.mimeType, sizeBytes: f.size, storageKey: f.storageKey }).returning();
     const avatarUrl = `/api/attachments/${a!.id}`;
-    await db.update(schema.servers).set({ avatarUrl }).where(eq(schema.servers.id, sid));
+    await db.update(schema.spaces).set({ avatarUrl }).where(eq(schema.spaces.id, sid));
     return (sendJson(res, 200, { avatarUrl }), true);
   }
   // Channel file list (attachments linked to messages)

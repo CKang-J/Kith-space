@@ -3,7 +3,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { dbFor, registerWorkspace, schema } from "../db/index.js";
+import { eq } from "drizzle-orm";
+import { dbForSpace, registerSpace, schema } from "../db/index.js";
 import { kithSpaceHome } from "../paths.js";
 import {
   DEFAULT_MAX_DISPATCH_DEPTH,
@@ -15,7 +16,7 @@ import {
 } from "./dispatchGuard.js";
 
 // The unit runner executes files concurrently against one parent KITH_SPACE_HOME. Give this
-// DB-backed unit its own registry so listWorkspaces assertions in unrelated tests stay isolated.
+// DB-backed unit its own registry so listSpaces assertions in unrelated tests stay isolated.
 process.env.KITH_SPACE_HOME = path.join(process.env.KITH_SPACE_HOME ?? tmpdir(), `dispatch-guard-unit-${process.pid}`);
 
 test("dispatch depth allows 0..4 and rejects the next agent hop", () => {
@@ -48,41 +49,36 @@ test("task mode defaults to autopilot and accepts only the two approved values",
 });
 
 test("SQLite adapter persists budget, same-channel context, and task/space emergency stops", async () => {
-  const serverId = randomUUID();
-  const rootPath = path.join(kithSpaceHome(), "dispatch-guard-test", serverId);
-  registerWorkspace({ id: serverId, name: "Dispatch guard", rootPath });
-  const db = dbFor(serverId);
-  const ownerId = randomUUID();
-  const channelId = randomUUID();
+  const spaceId = randomUUID();
+  const rootPath = path.join(kithSpaceHome(), "dispatch-guard-test", spaceId);
+  registerSpace({ id: spaceId, name: "Dispatch guard", rootPath });
+  const db = dbForSpace(spaceId);
+  const humanId = randomUUID();
+  const channelId = (await db.select().from(schema.channels).where(eq(schema.channels.name, "all")))[0]!.id;
   const threadId = randomUUID();
   const taskId = randomUUID();
   const leaderId = randomUUID();
-  await db.insert(schema.users).values({ id: ownerId, name: "owner", displayName: "Owner", email: `${serverId}@test.local` });
-  await db.insert(schema.servers).values({ id: serverId, name: "Dispatch guard", slug: serverId, ownerId, rootPath });
-  await db.insert(schema.channels).values([
-    { id: channelId, serverId, name: "all", type: "channel" },
-    { id: threadId, serverId, name: `thread-${taskId}`, type: "thread", parentMessageId: taskId },
-  ]);
+  await db.insert(schema.channels).values({ id: threadId, spaceId, name: `thread-${taskId}`, type: "thread", parentMessageId: taskId });
   await db.insert(schema.messages).values({
     id: taskId,
     seq: 1,
-    serverId,
+    spaceId,
     channelId,
-    senderType: "user",
-    senderId: ownerId,
-    senderName: "owner",
+    senderType: "human",
+    senderId: humanId,
+    senderName: "you",
     content: "Coordinate delivery",
     threadId,
     taskStatus: "todo",
     taskNumber: 1,
   });
 
-  const state = new SqliteDispatchState(serverId);
+  const state = new SqliteDispatchState(spaceId);
   const root = await state.resolveMessageContext({
     messageId: taskId,
     channelId,
-    senderType: "user",
-    senderId: ownerId,
+    senderType: "human",
+    senderId: humanId,
     taskMessageId: taskId,
   });
   assert.deepEqual(root, { chainId: taskId, dispatchDepth: 0, taskMessageId: taskId });
@@ -110,7 +106,7 @@ test("SQLite adapter persists budget, same-channel context, and task/space emerg
   assert.equal(delegated.dispatchDepth, 1);
   assert.equal((await state.taskStatus(taskId)).wakeCount, 1);
 
-  await state.stopTask(taskId, "user stop");
+  await state.stopTask(taskId, "human stop");
   const taskStopped = await state.reserveWake({ ...delegated, messageId: randomUUID(), targetAgentId: randomUUID() });
   assert.equal(taskStopped.allowed ? null : taskStopped.code, "TASK_STOPPED");
   await state.resumeTask(taskId);

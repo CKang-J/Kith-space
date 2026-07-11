@@ -7,7 +7,7 @@ test("system prompt teaches the plan-first confirmation protocol and orchestrati
     name: "leader",
     displayName: "Leader",
     agentId: "leader-id",
-    serverId: "workspace-id",
+    spaceId: "space-id",
     hostname: "test-host",
     os: "test-os",
     workspace: "test-workspace",
@@ -24,6 +24,9 @@ test("system prompt teaches the plan-first confirmation protocol and orchestrati
   assert.match(prompt, /do not run `task assign`/);
   assert.match(prompt, /delegated agents to @mention you when reporting/);
   assert.match(prompt, /soft guard/);
+  assert.match(prompt, /Space ID: space-id/);
+  assert.match(prompt, /kith-space space info/);
+  assert.doesNotMatch(prompt, /kith-space server info|Server ID:/);
   const user = prompt.indexOf("/memory/user/MEMORY.md");
   const space = prompt.indexOf("/memory/space/MEMORY.md");
   const agent = prompt.indexOf("/memory/agent/MEMORY.md");

@@ -6,7 +6,6 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { and, eq } from "drizzle-orm";
-import { initializeHumanProfile } from "../src/app-data/appDatabase.ts";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { handleAgentApi } from "../src/server/routes-agent.ts";
 import { agentConfig, createMessage, convertMessageToTask } from "../src/server/core.ts";
@@ -16,11 +15,10 @@ let failures = 0;
 const check = (label: string, cond: boolean) => { console.log(`  ${cond ? "✔" : "✗ FAIL"} ${label}`); if (!cond) failures++; };
 
 const fixture = integrationDatabase("task-assign-agent");
-const { db, schema, rootPath } = fixture;
-let ownerId = "";
-let serverId = fixture.serverId;
-let channelId = "";
-let channelName = "";
+const { db, schema, spaceId, human, all } = fixture;
+const ownerId = human.id;
+const channelId = all.id;
+const channelName = all.name;
 let privateChannelId = "";
 let privateChannelName = "";
 let dmChannelId = "";
@@ -65,95 +63,84 @@ async function call(path: string, token: string, agentId: string, body?: unknown
 }
 
 async function setup() {
-  const human = initializeHumanProfile({ name: "Ada", email: `ada-${ts}@agent-route.local` });
-  ownerId = human.id;
-  await db.insert(schema.users).values({ id: ownerId, name: "you", displayName: human.name, email: human.email! });
-
-  await db.insert(schema.servers).values({ id: serverId, name: `task-assign-agent-${ts}`, slug: `task-assign-agent-${ts}`, ownerId, rootPath });
-  const [ch] = await db.insert(schema.channels).values({ serverId, name: "all", type: "channel" }).returning();
-  await db.insert(schema.channelMembers).values({ channelId: ch!.id, memberType: "user", memberId: ownerId });
-  channelId = ch.id;
-  channelName = ch.name;
-  const [priv] = await db.insert(schema.channels).values({ serverId, name: `priv_${ts}`, type: "private" }).returning();
+  const [priv] = await db.insert(schema.channels).values({ spaceId, name: `priv_${ts}`, type: "private" }).returning();
   privateChannelId = priv!.id;
   privateChannelName = priv!.name;
 
   const [assigner] = await db.insert(schema.agents).values({
-    serverId,
+    spaceId,
     name: `assigner_${ts}`,
     displayName: "Assigner",
     runtime: "claude",
     model: "sonnet",
-    creatorType: "user",
+    creatorType: "human",
     creatorId: ownerId,
   }).returning();
   assignerId = assigner!.id;
 
   const [assignee] = await db.insert(schema.agents).values({
-    serverId,
+    spaceId,
     name: `assignee_${ts}`,
     displayName: "Assignee",
     runtime: "claude",
     model: "sonnet",
-    creatorType: "user",
+    creatorType: "human",
     creatorId: ownerId,
   }).returning();
   assigneeId = assignee!.id;
 
-  await db.insert(schema.channelMembers).values([
-    { channelId, memberType: "agent", memberId: assignerId },
-    { channelId, memberType: "agent", memberId: assigneeId },
-    { channelId: privateChannelId, memberType: "agent", memberId: assignerId },
+  await db.insert(schema.channelAgentMembers).values([
+    { channelId, agentId: assignerId },
+    { channelId, agentId: assigneeId },
+    { channelId: privateChannelId, agentId: assignerId },
   ]).onConflictDoNothing();
 
-  const [dm] = await db.insert(schema.channels).values({ serverId, name: `dm:${[ownerId, assignerId].sort().join(":")}`, type: "dm" }).returning();
+  const [dm] = await db.insert(schema.channels).values({ spaceId, name: `dm:${[ownerId, assignerId].sort().join(":")}`, type: "dm" }).returning();
   dmChannelId = dm!.id;
-  await db.insert(schema.channelMembers).values([
-    { channelId: dmChannelId, memberType: "user", memberId: ownerId },
-    { channelId: dmChannelId, memberType: "agent", memberId: assignerId },
-  ]).onConflictDoNothing();
+  await db.insert(schema.channelAgentMembers).values({ channelId: dmChannelId, agentId: assignerId }).onConflictDoNothing();
+  await db.insert(schema.humanChannelStates).values({ channelId: dmChannelId, dmAgentId: assignerId }).onConflictDoNothing();
 
-  const cfg = await agentConfig(serverId, assignerId);
+  const cfg = await agentConfig(spaceId, assignerId);
   if (!cfg?.agentToken) throw new Error("assigner token was not minted");
   assignerToken = cfg.agentToken;
-  const fresh = (await db.select().from(schema.agents).where(eq(schema.agents.id, assignerId)))[0]!;
 }
 
 async function cleanup() {
-  const msgs = await db.select({ id: schema.messages.id }).from(schema.messages).where(eq(schema.messages.serverId, serverId));
+  const msgs = await db.select({ id: schema.messages.id }).from(schema.messages).where(eq(schema.messages.spaceId, spaceId));
   for (const m of msgs) await db.delete(schema.messageMentions).where(eq(schema.messageMentions.messageId, m.id));
-  await db.delete(schema.messages).where(eq(schema.messages.serverId, serverId));
+  await db.delete(schema.messages).where(eq(schema.messages.spaceId, spaceId));
 
-  const chans = await db.select({ id: schema.channels.id }).from(schema.channels).where(eq(schema.channels.serverId, serverId));
-  for (const c of chans) await db.delete(schema.channelMembers).where(eq(schema.channelMembers.channelId, c.id));
-  await db.delete(schema.channels).where(eq(schema.channels.serverId, serverId));
+  const chans = await db.select({ id: schema.channels.id }).from(schema.channels).where(eq(schema.channels.spaceId, spaceId));
+  for (const c of chans) {
+    await db.delete(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, c.id));
+    await db.delete(schema.humanChannelStates).where(eq(schema.humanChannelStates.channelId, c.id));
+  }
+  await db.delete(schema.channels).where(eq(schema.channels.spaceId, spaceId));
 
-  await db.delete(schema.agents).where(and(eq(schema.agents.serverId, serverId), eq(schema.agents.id, assignerId)));
-  await db.delete(schema.agents).where(and(eq(schema.agents.serverId, serverId), eq(schema.agents.id, assigneeId)));
-  await db.delete(schema.servers).where(eq(schema.servers.id, serverId));
-  await db.delete(schema.users).where(eq(schema.users.id, ownerId));
+  await db.delete(schema.agents).where(and(eq(schema.agents.spaceId, spaceId), eq(schema.agents.id, assignerId)));
+  await db.delete(schema.agents).where(and(eq(schema.agents.spaceId, spaceId), eq(schema.agents.id, assigneeId)));
 }
 
 async function main() {
   await setup();
   console.log("\n[1] /agent-api/task/assign by message id");
-  const msg1 = await createMessage({ serverId, channelId, senderType: "user", senderId: ownerId, senderName: `owner_assign_${ts}`, content: "assign by id" });
-  const task1 = await convertMessageToTask(serverId, msg1.id, { type: "user", id: ownerId });
+  const msg1 = await createMessage({ spaceId, channelId, senderType: "human", senderId: ownerId, senderName: `owner_assign_${ts}`, content: "assign by id" });
+  const task1 = await convertMessageToTask(spaceId, msg1.id, { type: "human", id: ownerId });
   const byId = await call("/agent-api/task/assign", assignerToken, assignerId, { messageId: task1!.id, to: `@assignee_${ts}` });
   check("assign by message id returns 200", byId.status === 200);
 
   console.log("\n[2] /agent-api/task/assign by channel + task number");
-  const msg2 = await createMessage({ serverId, channelId, senderType: "user", senderId: ownerId, senderName: `owner_assign_${ts}`, content: "assign by number" });
-  const task2 = await convertMessageToTask(serverId, msg2.id, { type: "user", id: ownerId });
+  const msg2 = await createMessage({ spaceId, channelId, senderType: "human", senderId: ownerId, senderName: `owner_assign_${ts}`, content: "assign by number" });
+  const task2 = await convertMessageToTask(spaceId, msg2.id, { type: "human", id: ownerId });
   const byNumber = await call("/agent-api/task/assign", assignerToken, assignerId, { channel: `#${channelName}`, number: task2!.taskNumber, to: `assignee_${ts}` });
   check("assign by channel + task number returns 200", byNumber.status === 200);
 
   console.log("\n[3] returned threadTarget is readable by assignee in private threads");
-  const privMsg = await createMessage({ serverId, channelId: privateChannelId, senderType: "user", senderId: ownerId, senderName: `owner_assign_${ts}`, content: "private handoff" });
-  const privTask = await convertMessageToTask(serverId, privMsg.id, { type: "user", id: ownerId });
+  const privMsg = await createMessage({ spaceId, channelId: privateChannelId, senderType: "human", senderId: ownerId, senderName: `owner_assign_${ts}`, content: "private handoff" });
+  const privTask = await convertMessageToTask(spaceId, privMsg.id, { type: "human", id: ownerId });
   const privAssign = await call("/agent-api/task/assign", assignerToken, assignerId, { messageId: privTask!.id, to: `assignee_${ts}` });
   check("private assign returns 200", privAssign.status === 200);
-  const assigneeCfg = await agentConfig(serverId, assigneeId);
+  const assigneeCfg = await agentConfig(spaceId, assigneeId);
   if (!assigneeCfg?.agentToken) throw new Error("assignee token was not minted");
   const privReadReq = Object.assign(Readable.from([] as Buffer[]), {
     method: "GET",
@@ -166,8 +153,8 @@ async function main() {
   check("assignee can read thread via returned private threadTarget", privReadRes.status() === 200);
 
   console.log("\n[4] returned threadTarget is readable by assignee in DM threads");
-  const dmMsg = await createMessage({ serverId, channelId: dmChannelId, senderType: "user", senderId: ownerId, senderName: `owner_assign_${ts}`, content: "dm handoff" });
-  const dmTask = await convertMessageToTask(serverId, dmMsg.id, { type: "user", id: ownerId });
+  const dmMsg = await createMessage({ spaceId, channelId: dmChannelId, senderType: "human", senderId: ownerId, senderName: `owner_assign_${ts}`, content: "dm handoff" });
+  const dmTask = await convertMessageToTask(spaceId, dmMsg.id, { type: "human", id: ownerId });
   const dmAssign = await call("/agent-api/task/assign", assignerToken, assignerId, { messageId: dmTask!.id, to: `assignee_${ts}` });
   check("dm assign returns 200", dmAssign.status === 200);
   const dmReadReq = Object.assign(Readable.from([] as Buffer[]), {

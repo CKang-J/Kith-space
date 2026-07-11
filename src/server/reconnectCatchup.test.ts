@@ -7,7 +7,7 @@ import { isWakeable } from "./agentWakePolicy.js";
 
 test("DM always wakes, regardless of mention or scope", () => {
   assert.equal(isWakeable({ channelType: "dm", mentioned: false, hasInboxScope: false, senderType: "agent" }), true);
-  assert.equal(isWakeable({ channelType: "dm", mentioned: true, hasInboxScope: true, senderType: "user" }), true);
+  assert.equal(isWakeable({ channelType: "dm", mentioned: true, hasInboxScope: true, senderType: "human" }), true);
 });
 
 test("@-mention always wakes in a plain channel, even without inbox scope", () => {
@@ -15,9 +15,9 @@ test("@-mention always wakes in a plain channel, even without inbox scope", () =
 });
 
 test("human/system ambient (no @) wakes only with the inbox:receive scope", () => {
-  assert.equal(isWakeable({ channelType: "channel", mentioned: false, hasInboxScope: true, senderType: "user" }), true);
+  assert.equal(isWakeable({ channelType: "channel", mentioned: false, hasInboxScope: true, senderType: "human" }), true);
   assert.equal(isWakeable({ channelType: "channel", mentioned: false, hasInboxScope: true, senderType: "system" }), true);
-  assert.equal(isWakeable({ channelType: "channel", mentioned: false, hasInboxScope: false, senderType: "user" }), false);
+  assert.equal(isWakeable({ channelType: "channel", mentioned: false, hasInboxScope: false, senderType: "human" }), false);
 });
 
 test("agent ambient chatter does not wake peers even with inbox scope", () => {
@@ -26,6 +26,6 @@ test("agent ambient chatter does not wake peers even with inbox scope", () => {
 
 test("a thread behaves like a plain channel, not a DM", () => {
   assert.equal(isWakeable({ channelType: "thread", mentioned: true, hasInboxScope: false, senderType: "agent" }), true);
-  assert.equal(isWakeable({ channelType: "thread", mentioned: false, hasInboxScope: true, senderType: "user" }), true);
-  assert.equal(isWakeable({ channelType: "thread", mentioned: false, hasInboxScope: false, senderType: "user" }), false);
+  assert.equal(isWakeable({ channelType: "thread", mentioned: false, hasInboxScope: true, senderType: "human" }), true);
+  assert.equal(isWakeable({ channelType: "thread", mentioned: false, hasInboxScope: false, senderType: "human" }), false);
 });
