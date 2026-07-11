@@ -280,19 +280,15 @@ test("composer removes the hard divider and aligns its input with the message co
   assert.match(meta, /margin-top\s*:\s*4px\b/, `reaction footer should sit closer to the last text line: ${meta}`);
 });
 
-test("composer uses reachability as placeholder instead of a separate wake hint row", () => {
+test("composer uses agent lifecycle reachability as the placeholder", () => {
   const composerSrc = fs.readFileSync(new URL("../web/src/views/Composer.tsx", import.meta.url), "utf8");
   const css = fs.readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
   const en = fs.readFileSync(new URL("../web/src/locales/en.json", import.meta.url), "utf8");
   const zh = fs.readFileSync(new URL("../web/src/locales/zh.json", import.meta.url), "utf8");
   assert.doesNotMatch(composerSrc, /className="wake-hint/, "wake state should no longer render as a separate row above the composer");
   assert.match(composerSrc, /const reachPlaceholder = reach \?/, "reachability state should feed the textarea placeholder");
-  assert.match(composerSrc, /reach\.kind === "off" \? t\("chat\.machineOfflineComposerPlaceholder"/, "offline machine hint should have a composer placeholder");
-  assert.match(composerSrc, /const reachStatusChip = reach\?\.kind === "off" \?/, "offline/runtime unavailable state should also get a persistent low-noise chip");
-  assert.match(composerSrc, /className="composer-status-chip" role="status"/, "offline/runtime unavailable chip should be visible outside placeholder text");
-  assert.doesNotMatch(composerSrc, /const reachStatusChip = reach \?/, "non-blocking sleeping/online/working states should not get a persistent chip");
-  assert.match(css, /\.composer-status-chip\{[^}]*font-size\s*:\s*12px/, "composer status chip should stay compact");
-  assert.match(css, /\.composer-status-chip\{[^}]*background\s*:\s*var\(--status-badge-bg\)/, "composer status chip should reuse the quiet status badge surface");
+  assert.doesNotMatch(composerSrc, /machineOfflineComposerPlaceholder|reachStatusChip|composer-status-chip/, "the composer should not expose retired Machine reachability UI");
+  assert.doesNotMatch(css, /\.composer-status-chip\b/, "retired Machine status-chip styling should be removed");
   assert.match(composerSrc, /t\("chat\.agentSleepingComposerPlaceholder"/, "sleeping agent hint should have a composer placeholder");
   assert.match(composerSrc, /agentOnlineComposerPlaceholder/, "online DM agent state should have a composer placeholder");
   assert.match(composerSrc, /agentWorkingComposerPlaceholder/, "working DM agent state should have a composer placeholder");

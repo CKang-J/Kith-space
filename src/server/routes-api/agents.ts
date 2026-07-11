@@ -4,7 +4,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { ROLE_TEMPLATES, resolveRoleDescription } from "../../agents/roleTemplates.js";
 import { dbFor, schema } from "../../db/index.js";
 import { DESC_TOO_LONG, INVALID_AGENT_NAME, addChannelMembers, descTooLong, invalidAgentName, resetAgent, startAgent, stopAgent, syncAgentProfile } from "../core.js";
-import { requestDaemon } from "../daemonHub.js";
+import { requestWorker } from "../../local-runtime/workerHub.js";
 import { publish } from "../realtime.js";
 import { ALL_SCOPE_KEYS, SCOPES, effectiveScopes, isScopeLiteral } from "../scopes.js";
 import { readJson, sendErr, sendJson } from "../util.js";
@@ -16,13 +16,11 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
     return (sendJson(res, 200, ROLE_TEMPLATES), true);
   }
   if (p === "/api/agents" && method === "GET") {
-    const machineId = url.searchParams.get("machineId"); // computer page filters by machine
-    let agents = await db.select().from(schema.agents).where(and(eq(schema.agents.serverId, serverId), isNull(schema.agents.deletedAt)));
-    if (machineId) agents = agents.filter((a) => a.machineId === machineId);
+    const agents = await db.select().from(schema.agents).where(and(eq(schema.agents.serverId, serverId), isNull(schema.agents.deletedAt)));
     // creatorType lets the client distinguish system-seeded showcase agents (creatorType="system") from
     // real members — they stay in the store so #showcase history renders their avatar/name, but are filtered
     // out of member rosters and agent pickers (see web/src/store.tsx visibleAgents).
-    return (sendJson(res, 200, agents.map((a) => ({ id: a.id, name: a.name, displayName: a.displayName, description: a.description, status: a.status, activity: a.activity, model: a.model, runtime: a.runtime, machineId: a.machineId, avatarUrl: a.avatarUrl, creatorType: a.creatorType }))), true);
+    return (sendJson(res, 200, agents.map((a) => ({ id: a.id, name: a.name, displayName: a.displayName, description: a.description, status: a.status, activity: a.activity, model: a.model, runtime: a.runtime, avatarUrl: a.avatarUrl, creatorType: a.creatorType }))), true);
   }
   if (p === "/api/agents" && method === "POST") {
     const b = await readJson(req);
@@ -32,21 +30,15 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
     try { description = resolveRoleDescription(b.description, b.roleTemplate); }
     catch (error) { return (sendErr(res, 400, (error as Error).message), true); }
     if (descTooLong(description)) return (sendErr(res, 400, DESC_TOO_LONG), true);
-    // A new agent must be created bound to a machine — an unbound (machineId=null) agent can only run via the
-    // legacy broadcastToDaemons fallback (any daemon connected to the server may pick it up), which is a
-    // one-way door (no rebind API yet, see tech-debt I77) and non-deterministic once >1 machine is connected.
-    // The web client's create modal now requires picking one; enforce it here too so no caller can slip past it.
-    if (!b.machineId) return (sendErr(res, 400, "machineId required"), true);
-    const machine = (await db.select({ id: schema.machines.id }).from(schema.machines)
-      .where(and(eq(schema.machines.id, b.machineId), eq(schema.machines.serverId, serverId))))[0];
-    if (!machine) return (sendErr(res, 404, "machine not found"), true); // 404, not 400: existence-hiding for a cross-tenant/bogus id, consistent with this repo's other ownership pre-checks
+    // Machine assignment is retired. Reject the old field explicitly so stale clients do not appear to succeed.
+    if (Object.prototype.hasOwnProperty.call(b, "machineId")) return (sendErr(res, 400, "machineId is no longer supported"), true);
     // A live agent name must be unique per server — it is the @mention / dm:@<name> routing key, so a duplicate
     // becomes an unreachable routing blind spot. ON CONFLICT against the agents_name_uniq partial index is
     // race-proof (no SELECT-then-INSERT gap): a duplicate live name inserts no row → friendly 409. Soft-deleted
     // names are excluded by the index predicate, so a deleted agent's name can be reused.
     const [agent] = await db.insert(schema.agents).values({
       serverId, name: b.name, displayName: b.displayName || b.name, description,
-      model: b.model || null, runtime: b.runtime || "claude", machineId: b.machineId,
+      model: b.model || null, runtime: b.runtime || "claude",
       runtimeConfig: { provider: b.provider ?? "default", model: b.model ?? null, reasoningEffort: b.reasoning ?? null, mode: b.fastMode ? "fast" : "default" },
       envVars: b.envVars ?? {}, executionMode: b.fastMode ? "fast" : "auto", creatorType: "user", creatorId: userId,
     }).onConflictDoNothing().returning();
@@ -55,18 +47,26 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
     // Join #all at the channel watermark, NOT lastReadSeq=0 — a newly created agent must not have its first
     // `message check` flooded with the channel's entire pre-existing history (it only needs messages from now on).
     if (all) await addChannelMembers(serverId, all.id, [{ type: "agent", id: agent!.id }]);
-    await publish(serverId, { type: "agent:created", agent: { id: agent!.id, name: agent!.name, displayName: agent!.displayName, description: agent!.description, status: agent!.status, activity: agent!.activity, model: agent!.model, runtime: agent!.runtime, machineId: agent!.machineId } });
-    // Start immediately on create: the client only POSTs /agents (no separate start call); the "start after create" logic lives in the backend. If no daemon is online startAgent returns ok:false and does not block creation. A successful startAgent calls publishAgentState to push status to active.
+    await publish(serverId, { type: "agent:created", agent: { id: agent!.id, name: agent!.name, displayName: agent!.displayName, description: agent!.description, status: agent!.status, activity: agent!.activity, model: agent!.model, runtime: agent!.runtime } });
+    // Start immediately on create: the client only POSTs /agents. If the local Worker is offline,
+    // startAgent returns ok:false without blocking creation.
     const started = await startAgent(serverId, agent!.id);
     return (sendJson(res, 200, { id: agent!.id, name: agent!.name, started: started.ok }), true);
   }
   const am = /^\/api\/agents\/([^/]+)$/.exec(p);
   if (am && method === "GET") {
     const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.serverId, serverId))))[0];
-    return (a ? sendJson(res, 200, a) : sendErr(res, 404, "agent not found"), true);
+    return (a ? sendJson(res, 200, {
+      id: a.id, serverId: a.serverId, name: a.name, displayName: a.displayName,
+      avatarUrl: a.avatarUrl, description: a.description, status: a.status, activity: a.activity,
+      sessionId: a.sessionId, model: a.model, runtime: a.runtime, runtimeConfig: a.runtimeConfig,
+      executionMode: a.executionMode, envVars: a.envVars, scopes: a.scopes,
+      creatorType: a.creatorType, creatorId: a.creatorId, createdAt: a.createdAt,
+    }) : sendErr(res, 404, "agent not found"), true);
   }
   if (am && method === "PATCH") {
     const b = await readJson(req); const patch: Record<string, unknown> = {};
+    if (Object.prototype.hasOwnProperty.call(b, "machineId")) return (sendErr(res, 400, "machineId is no longer supported"), true);
     if (descTooLong(b.description)) return (sendErr(res, 400, DESC_TOO_LONG), true);
     for (const k of ["displayName", "description", "model", "runtime", "avatarUrl"]) if (b[k] !== undefined) patch[k] = b[k];
     if (b.envVars !== undefined) patch.envVars = b.envVars;
@@ -104,10 +104,10 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
     const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, agId), eq(schema.agents.serverId, serverId))))[0];
     if (!a) return (sendErr(res, 404, "agent not found"), true);
     if (awsList) {
-      const r = await requestDaemon(serverId, { type: "agent:workspace:list", agentId: agId });
+      const r = await requestWorker({ type: "agent:workspace:list", agentId: agId });
       return (sendJson(res, 200, r.error ? { error: r.error } : { files: r.files ?? [], root: r.root }), true);
     }
-    const r = await requestDaemon(serverId, { type: "agent:workspace:read", agentId: agId, path: url.searchParams.get("path") ?? "" });
+    const r = await requestWorker({ type: "agent:workspace:read", agentId: agId, path: url.searchParams.get("path") ?? "" });
     return (sendJson(res, 200, r.error ? { error: r.error } : { path: r.path, content: r.content }), true);
   }
   // Agent activity log: chronological [{timestamp, entry}]
@@ -131,13 +131,13 @@ export async function handleAgents(ctx: ServerCtx): Promise<boolean> {
     await db.update(schema.agents).set({ scopes: next }).where(eq(schema.agents.id, agId));
     return (sendJson(res, 200, { agentId: agId, ...next }), true);
   }
-  // Agent Skills (used by Profile tab): daemon reads the runtime's own skills dir on the machine
+  // Agent Skills (used by Profile tab): the local worker reads the runtime's own skills directory
   // (claude → ~/.claude/skills, codex → ~/.codex/skills, …) + the matching dir in the workspace.
   const askill = /^\/api\/agents\/([^/]+)\/skills$/.exec(p);
   if (askill && method === "GET") {
     const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, askill[1]!), eq(schema.agents.serverId, serverId))))[0];
     if (!a) return (sendErr(res, 404, "agent not found"), true);
-    try { const r = await requestDaemon(serverId, { type: "agent:skills:list", agentId: askill[1]!, runtime: a.runtime }); return (sendJson(res, 200, { global: r.global ?? [], workspace: r.workspace ?? [] }), true); }
+    try { const r = await requestWorker({ type: "agent:skills:list", agentId: askill[1]!, runtime: a.runtime }); return (sendJson(res, 200, { global: r.global ?? [], workspace: r.workspace ?? [] }), true); }
     catch { return (sendJson(res, 200, { global: [], workspace: [] }), true); }
   }
   // Apps tab (connected third-party integrations): no integrations implemented yet, returns empty array

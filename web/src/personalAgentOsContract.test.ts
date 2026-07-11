@@ -14,6 +14,30 @@ test("the frontend Store exposes one Human and agent-only collaboration", () => 
   assert.match(store, /\{ agentId \}/);
 });
 
+test("Machine and Computers are absent from the frontend product surface", () => {
+  const store = source("./store.tsx");
+  const main = source("./main.tsx");
+  const chat = source("./views/Chat.tsx");
+  const agents = source("./views/Members.tsx");
+  const misc = source("./views/misc.tsx");
+  const modules = source("./shell/workspaceModules.tsx");
+  const dock = source("./shell/WorkspaceDock.tsx");
+
+  assert.doesNotMatch(store, /interface Machine\b|\bmachines\b|latestDaemonVersion|machine:status|\/machines/);
+  assert.doesNotMatch(main, /\bComputers\b|path="computer/);
+  assert.doesNotMatch(chat, /ConnectComputerWizard/);
+  assert.doesNotMatch(agents, /\bmachineId\b|\bmachines\b|\/machines\/|computerLabel|byMachine/);
+  assert.doesNotMatch(misc, /export function Computers|ConnectComputerWizard|sk_machine|DaemonUpdateModal/);
+  assert.doesNotMatch(modules, /computers|Monitor/);
+  assert.deepEqual(
+    [...modules.matchAll(/\{ id: "([^"]+)",[^\n]+dock: true \}/g)].map((match) => match[1]),
+    ["inbox", "tasks", "agents", "settings"],
+  );
+  assert.match(dock, /<MessageCircle size=\{18\} \/>/);
+  assert.match(agents, /\/api\/local-runtime\/models\/\$\{runtime\}/);
+  assert.match(agents, /api\("POST", "\/api\/agents", \{ name:/);
+});
+
 test("Human membership, invite, and profile surfaces are absent", () => {
   const main = source("./main.tsx");
   const agents = source("./views/Members.tsx");
@@ -46,7 +70,8 @@ test("channel copy describes Human authority separately from agent membership", 
 test("marketing copy presents the desktop-first Personal AgentOS route", () => {
   const landing = source("./views/Landing.tsx");
   const features = source("./views/Features.tsx");
-  const marketing = `${landing}\n${features}`;
+  const index = source("../index.html");
+  const marketing = `${landing}\n${features}\n${index}`;
 
   assert.match(marketing, /desktop-first Personal AgentOS/i);
   assert.match(marketing, /one Human/);
@@ -55,5 +80,5 @@ test("marketing copy presents the desktop-first Personal AgentOS route", () => {
   assert.match(marketing, /trusted LAN desktop browsers/);
   assert.match(marketing, /Access Token[^\n]+(?:planned|路线)/i);
   assert.match(marketing, /cross-Space aggregation[^\n]+(?:roadmap|路线)/i);
-  assert.doesNotMatch(marketing, /An open, self-hostable|可自托管的团队工作区|humans and agents collaborate|4 agents active across 2 machines|4 个 agent 活跃在 2 台机器|Self-hosted execution|执行自托管/);
+  assert.doesNotMatch(marketing, /An open, self-hostable|self-hosted multi-agent|teams and AI agents collaborate|可自托管的团队工作区|humans and agents collaborate|4 agents active across 2 machines|4 个 agent 活跃在 2 台机器|Self-hosted execution|执行自托管/);
 });

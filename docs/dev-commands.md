@@ -16,20 +16,20 @@ cp .env.example .env              # 创建本地环境配置
 当前过渡实现的必填环境变量（`.env`，缺了 Core Service 起不来）：
 
 - `JWT_SECRET` — 人类会话 token 签名密钥。生成：`openssl rand -hex 32`
-- `DAEMON_BOOTSTRAP_KEY` — daemon↔server 握手预共享密钥。生成：`openssl rand -hex 32`
+- `DAEMON_BOOTSTRAP_KEY` — Local Runtime Worker↔Core Service 过渡握手预共享密钥。生成：`openssl rand -hex 32`
 - `PORT` — 服务端口，默认 `7777`
 - `KITH_SPACE_HOME` — app 数据/日志/上传根目录，默认 `~/.kith-space`（`app.db` 在此，各 Space 库在 `<rootPath>/.kith/workspace.db`）
 
 本地便利项（仅过渡开发）：`ALLOW_DEV_LOGIN=true` 可用用户名签发 JWT。账户/JWT/dev login 将在 A2/A3 删除，不得用于新的浏览器 Token 设计。
 
-> daemon 与 server 的密钥必须一致。手动起 daemon 时，`pnpm run daemon` 内置的 `--api-key` 是 `poc-secret-key`；因此本地要么把 `.env` 的 `DAEMON_BOOTSTRAP_KEY=poc-secret-key`，要么手动用匹配的 key 起 daemon（见 §3）。用 `pnpm run dev:e2e:up`（§4）则会自动读 `.env` 的 key，无需对齐。
+> Worker 与 Core Service 的密钥必须一致。过渡命令仍名为 `pnpm run daemon`，其内置 `--api-key` 是 `poc-secret-key`；因此本地要么把 `.env` 的 `DAEMON_BOOTSTRAP_KEY=poc-secret-key`，要么手动用匹配的 key 起 Worker（见 §3）。用 `pnpm run dev:e2e:up`（§4）则会自动读 `.env` 的 key，无需对齐。
 
 ## 2. 数据库
 
 **不需要单独 `db:push`**：每个 Space db 在连接时自动迁移（`src/db/index.ts` 的 `migrate()`）；`pnpm run seed` 初始化唯一 Human 与默认 `Home` Space，并建好 schema。分段起时**先 `seed` 即可**。
 
 ```bash
-pnpm run seed                     # 建唯一 Human + Home Space 并自动迁移 schema（幂等）；当前 daemon bootstrap 靠 slug=home 找到它
+pnpm run seed                     # 建唯一 Human + Home Space 并自动迁移 schema（幂等）
 pnpm run seed:dev                 # 追加开发用 dev-bot agent
 pnpm run db:push                  # 可选/遗留：仅把 schema 推到一个 scratch db（./.kith-space-dev.db），供 drizzle-kit 迭代/studio 用，非应用运行所需
 pnpm run db:studio                # 可选：Drizzle Studio 查那个 scratch db
@@ -39,13 +39,13 @@ pnpm run db:studio                # 可选：Drizzle Studio 查那个 scratch db
 
 ## 3. 手动起各服务（三个进程，分别开终端）
 
-当前过渡开发由三部分组成：server/Core Service（API + 提供已构建 web）、daemon/未来 Local Runtime Worker（承载 agent）、web（开发时的 Vite 热更；不开发前端时可省）。这些分进程命令会作为内部调试入口保留。
+当前过渡开发由三部分组成：server/Core Service（API + 提供已构建 web）、唯一 Local Runtime Worker（代码/命令名暂为 daemon，承载所有本机 Space 的 agent）、web（开发时的 Vite 热更；不开发前端时可省）。这些分进程命令会作为内部调试入口保留。Core Service 当前固定监听 `127.0.0.1`；A3 Token/浏览器会话完成前没有 LAN 开发入口。
 
 ```bash
 # 终端 A — server（API + WS），热更监听
 pnpm run server                   # = tsx watch src/server/index.ts，监听 $PORT
 
-# 终端 B — daemon（承载本机 agent）
+# 终端 B — Local Runtime Worker（承载所有本机 Space 的 agent；命令名暂为 daemon）
 pnpm run daemon                   # 内置 --api-key poc-secret-key（需与 .env 的 DAEMON_BOOTSTRAP_KEY 一致）
 # 或指定自己的 key：
 pnpm exec tsx src/daemon/index.ts --api-key "$DAEMON_BOOTSTRAP_KEY"
@@ -61,14 +61,14 @@ pnpm --dir web run dev            # Vite dev server
 
 ## 4. 一键起本地全栈（推荐）
 
-`dev:e2e:up` 会幂等地建 schema、种子、构建站点，然后后台起 server + daemon + dev-bot，日志写到 `$KITH_SPACE_HOME/logs/`：
+`dev:e2e:up` 会幂等地建 schema、种子、构建站点，然后后台起 Core Service + 唯一 Local Runtime Worker + dev-bot，日志写到 `$KITH_SPACE_HOME/logs/`。脚本先等 `/health` 可用，再等 `/health` 返回 `"workerConnected": true`，不会在 Worker 尚未 ready 时继续：
 
 ```bash
-pnpm run dev:e2e:up               # 起：server(:$PORT) + daemon + dev-bot（读 .env，自动对齐 key）
+pnpm run dev:e2e:up               # 起：Core Service(127.0.0.1:$PORT) + Worker + dev-bot（读 .env，自动对齐 key）
 pnpm run dev:e2e:down             # 停整套
 ```
 
-前置：`.env` 需含 `PORT`、`DAEMON_BOOTSTRAP_KEY`；本机需有已登录的 `claude` CLI。起来后浏览器开 `http://localhost:$PORT`。
+前置：`.env` 需含 `PORT`、`DAEMON_BOOTSTRAP_KEY`；本机需有已登录的 `claude` CLI。起来后浏览器开 `http://127.0.0.1:$PORT`。
 
 ## 5. 测试与类型检查
 

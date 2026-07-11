@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述 2026-07-11 个人 AgentOS 转向后的目标模块边界。当前代码仍含 open-tag 的 `server`、Machine、多用户和环境变量遗留，按 `migration-plan.md` 分阶段移除。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
+> 本文描述 2026-07-11 个人 AgentOS 转向后的目标模块边界。A2.4 已删除 Machine/Computer/远程 worker 的活跃产品路径；当前代码仍含 open-tag 的 `server`、多用户物理 schema、Machine 物理字段和环境变量遗留，按 `migration-plan.md` 分阶段移除。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
 
 ## 1. 架构原则
 
@@ -35,9 +35,13 @@ Core Service 根据 Web 模式监听：
 - 仅本机：绑定 loopback。
 - 局域网：显式绑定 LAN 可达地址，并强制浏览器 Token 会话。
 
+当前实现尚未进入 A3：`src/server/index.ts:60` 固定 `HOST = "127.0.0.1"`。只有 Access Token、持久浏览器会话和监听策略同时落地后，才能启用 LAN 绑定。
+
 ### 2.3 Local Runtime Worker
 
-现 daemon 保留为独立进程隔离边界，但产品名称改为 Local Runtime Worker。它只连接本机 Core Service，承载 runtime 进程、轨迹和 session 生命周期；不再注册 Machine、不被用户手工连接，也不接受远程 worker。
+现 daemon 保留为独立进程隔离边界，但产品名称改为 Local Runtime Worker。`src/local-runtime/workerHub.ts` 在 Core Service 内维护安装级唯一连接、ready snapshot 与请求/响应；新连接会用专用关闭码替换旧连接，旧进程停止自动重连，generation lease 阻止旧连接的异步 ready、事件、补唤醒或断线回收覆盖新连接状态。它只连接本机 Core Service，承载 runtime 进程、轨迹和 session 生命周期；不再注册 Machine、不被用户手工连接，也不接受远程 worker。
+
+唯一 Worker 服务所有本机 Space，而不是隶属某个 Space。Worker 消息只携带 installation-unique agentId；`src/local-runtime/agentLocator.ts` 遍历已注册 Space 定位 agent 所属数据库，`src/server/ws.ts` 再把 status/activity/session/trajectory/reply 发布到正确 Space。Worker ready/reconnect 同样遍历所有 Space 做状态对齐和积压补唤醒。
 
 ### 2.4 React UI
 
@@ -63,7 +67,7 @@ Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件
 
 `SpaceService` 管理本地文件夹注册、slug、最近打开记录和 `<space>/.kith/` 初始化。A2.2a 已落地 `src/spaces/spaceService.ts`：Space 列表、创建和修改以 app.db registry 为事实源。过渡创建路径仍写 `users`、`servers.ownerId` 与 Human `channel_members` 会话状态，但 A2.3 起不再写 `server_members`，消息、任务、DM、reaction、提醒和 agent 协议也不再从 legacy user row 解析 Human。产品 schema/API/type 分阶段从 `server/serverId` 迁移为 `space/spaceId`；URL `/s/:slug` 保留。
 
-当前 canonical 传输契约是 `/api/spaces`、`x-space-id`、Socket handshake `spaceId` 和 `SpaceCtx`。Web 只使用这套契约；HTTP、公开附件和 Socket 以 app.db 唯一 Human + registered Space 授权，不再依赖 Human Space membership。旧 `/api/servers`、`x-server-id`、Socket `serverId`、`ServerCtx` 与 DB facade 被限制在明确的服务端适配边界（dispatcher、util、socketio、ctx 与 db/index），且新旧 Space ID 同时存在但值不一致时拒绝请求。兼容层在 A2.3/A2.4 删除旧路由后移除。
+当前 canonical 传输契约是 `/api/spaces`、`x-space-id`、Socket handshake `spaceId` 和 `SpaceCtx`。Web 只使用这套契约；HTTP、公开附件和 Socket 以 app.db 唯一 Human + registered Space 授权，不再依赖 Human Space membership。旧 `/api/servers`、`x-server-id`、Socket `serverId`、`ServerCtx` 与 DB facade 被限制在明确的服务端适配边界（dispatcher、util、socketio、ctx 与 db/index），且新旧 Space ID 同时存在但值不一致时拒绝请求。该兼容层随 A2.2b baseline 压平移除；A2.4 只删除 Machine 路由，不伪装成已完成全部 `serverId` 迁移。
 
 每个 Space 拥有频道、消息、任务、agent 队伍和 Space/agent 记忆。Agent membership 只表达“某 agent 是否在频道中并可被唤醒”，不承载 Human 权限。
 
@@ -109,7 +113,7 @@ app.db 不保存 Space 消息、任务或 agent 业务数据。
 
 ### 5.2 workspace.db
 
-过渡状态：A2.3 已让 `server_members` 和 legacy user lookup 退出产品授权/身份路径，删除 Human roster、Human-Human DM 与相关产品 API。`users/server_members/join_links` 物理表仍留到 A2.2b；legacy user copy 只剩过渡创建/兼容投影。`channel_members.memberType = "user"` 暂时表示唯一 Human 的 read/thread/DM 会话状态，不表示 Space membership；Human 对 Space 内全部 live channel 拥有隐式访问权，频道成员 API 只管理 agent。
+过渡状态：A2.3 已让 `server_members` 和 legacy user lookup 退出产品授权/身份路径，删除 Human roster、Human-Human DM 与相关产品 API。A2.4 又让 Machine 退出服务、API、Worker 协议和 UI。`users/server_members/join_links/machines` 物理表与 `agents.machine_id` 仍留到 A2.2b；这些 Machine 字段不再被产品代码读取。legacy user copy 只剩过渡创建/兼容投影。`channel_members.memberType = "user"` 暂时表示唯一 Human 的 read/thread/DM 会话状态，不表示 Space membership；Human 对 Space 内全部 live channel 拥有隐式访问权，频道成员 API 只管理 agent。
 
 每个 Space 的 `<space>/.kith/workspace.db` 保存：
 
@@ -127,7 +131,7 @@ app.db 不保存 Space 消息、任务或 agent 业务数据。
 1. 建立 app.db 和唯一 Human/Home 初始化。
 2. 将传输、请求上下文、Space API 与 Web 类型改为 `spaceId`，旧名只留服务端兼容边界。
 3. A2.3 已完成：唯一 Human 成为传输 authority，稳定身份为 `@you`，删除产品 membership/RBAC/邀请/Web Human roster/Human-Human DM，频道成员只管理 agent。
-4. 删除 Machine 数据与远程 worker 路径，保留本机 worker 进程协议。
+4. A2.4 已完成：删除 Machine 服务/API/UI、machine key/心跳/调度与 agent machine 选择；保留安装级唯一 Worker 进程协议，并让 Worker 事件跨 Space 定位。
 5. 破坏性重建 workspace.db baseline，把保留表的 `servers/server_id` 改为 `spaces/space_id`，拆出单 Human 会话状态，并删除旧物理表与兼容边界。
 6. 在已完成 S3 删除的基础上，把附件目录纳入 Space 根路径并做 A2 总验收。
 
@@ -166,7 +170,7 @@ agent-to-agent 分派继续经过统一 dispatch 收口。现有深度上限、�
 - `WorkspaceFrame` 组合路由、响应式约束和三态布局，不承载任务或 agent 业务逻辑。
 - `workspaceLayout.ts` 只表达 ChatOnly/Split/ModuleOnly 状态机。
 - `paneConstraints.ts` 只计算面板最小宽度与单 Pane 降级。
-- `workspaceModules.tsx` 当前注册 Inbox、Tasks、Agents、Computers、Settings；Computers 在 A2.4/A5 删除。
+- `workspaceModules.tsx` 当前注册 Inbox、Tasks、Agents、Settings 与非 Dock 的 Search；Computers/Machines 已退出模块注册和路由。
 - `ChatWorkspace` 管理会话列表、Chat 和实时轨迹；业务模块不能直接操控 Chat 内部状态。
 - URL 是模块与 Chat 显隐事实来源；删除 `?legacy=1` 和旧 `Layout`。
 - `MessageContextSnapshot` 在发送时固化 Space、会话、模块、Context Stack 和 focused item，adapter 再编码为各 runtime 所需格式。
@@ -175,6 +179,6 @@ Desktop 专属设置通过宿主能力注入，不靠仅隐藏按钮实现安全
 
 ## 9. 开发与发行
 
-仓库内部保留 `pnpm run server`、`pnpm run daemon`、`pnpm --dir web run dev` 以便调试；新增 `pnpm run desktop:dev` 作为完整开发宿主。正式产品不要求 `.env`，普通设置全部进 app.db。
+仓库内部保留 `pnpm run server`、`pnpm run daemon`、`pnpm --dir web run dev` 以便调试；其中 daemon 只是 Local Runtime Worker 的过渡代码/命令名。A4 新增 `pnpm run desktop:dev` 作为完整开发宿主。正式产品不要求 `.env`，普通设置全部进 app.db。
 
 最终删除 Docker、远程部署、公共 server/daemon npm 发布和 OIDC workflow。Windows Desktop 是 v1 唯一正式发行物；系统能力选型不得无必要绑定 Windows，为 macOS/Linux 留出实现空间。

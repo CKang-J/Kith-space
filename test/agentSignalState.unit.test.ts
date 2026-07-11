@@ -9,8 +9,8 @@ const coreSrc = fs.readFileSync(new URL("../src/server/core.ts", import.meta.url
 test("agent activity detail is forwarded to the UI activity signal", () => {
   assert.match(
     wsSrc,
-    /publish\(serverId!?, \{ type: "agent", id: a\.id, name: a\.name, status: a\.status, activity: a\.activity, detail: msg\.detail \?\? "" \}\)/,
-    "daemon activity detail should be included in the server-level agent event",
+    /publish\(located\.spaceId, \{ type: "agent", id: agent\.id, name: agent\.name, status: agent\.status, activity: agent\.activity, detail: msg\.detail \?\? "" \}\)/,
+    "worker activity detail should be included in the Space-level agent event",
   );
   assert.match(
     socketSrc,
@@ -19,7 +19,7 @@ test("agent activity detail is forwarded to the UI activity signal", () => {
   );
 });
 
-test("agent wake delivery handles machine send failure after preview start", () => {
+test("agent wake delivery handles local worker send failure after preview start", () => {
   assert.match(
     coreSrc,
     /const startSent = sendAgentStart\(opts\.serverId, target, mem\.id\);/,
@@ -32,40 +32,40 @@ test("agent wake delivery handles machine send failure after preview start", () 
   );
   assert.match(
     coreSrc,
-    /if \(!deliverSent\) \{[\s\S]*?op: "error", text: "machine offline"[\s\S]*?await markAgentUnavailable\(opts\.serverId, mem\.id, "machine offline"\);[\s\S]*?continue;/,
+    /if \(!deliverSent\) \{[\s\S]*?op: "error", text: "local runtime worker offline"[\s\S]*?await markAgentUnavailable\(opts\.serverId, mem\.id, "local runtime worker offline"\);[\s\S]*?continue;/,
     "send failure should mark the agent unavailable and close the preview instead of leaving a stuck thinking card",
   );
 });
 
-test("agent lifecycle control targets bound machines and preserves unbound broadcast fallback", () => {
+test("agent lifecycle control targets the one local runtime worker", () => {
   assert.match(
     coreSrc,
     /async function agentControlTarget\(serverId: string, agentId: string\)/,
-    "stop/reset/profile sync should resolve the agent's bound machine separately from start config",
+    "stop/reset/profile sync should validate the agent and local worker separately from start config",
   );
   assert.match(
     coreSrc,
-    /function sendAgentControl\(serverId: string, target: AgentControlTarget, msg: Record<string, unknown>\): boolean \{[\s\S]*?if \(target\.machineId\) return sendToMachine\(target\.machineId, msg\);[\s\S]*?broadcastToDaemons\(serverId, msg\);[\s\S]*?return true;/,
-    "lifecycle controls should use one helper that targets bound agents and broadcasts legacy unbound agents",
+    /function sendAgentControl\(_serverId: string, _target: AgentControlTarget, msg: Record<string, unknown>\): boolean \{[\s\S]*?return sendToWorker\(msg\);/,
+    "lifecycle controls should use the installation-local worker",
   );
   assert.match(
     coreSrc,
-    /if \(!a\.machineId\) \{[\s\S]*?if \(daemonCount\(serverId\) === 0\) return \{ ok: false, reason: "no daemon online" \};[\s\S]*?return \{ ok: true, machineId: null \};[\s\S]*?\}/,
-    "legacy unbound agents should remain controllable through the broadcast daemon fallback",
+    /if \(!isWorkerConnected\(\)\) return \{ ok: false, reason: "local runtime worker offline" \};/,
+    "lifecycle controls should report the local worker boundary explicitly",
   );
   assert.match(
     coreSrc,
     /sendAgentControl\(serverId, target, \{ type: "agent:stop", agentId \}\)/,
-    "stop should target the bound machine daemon",
+    "stop should target the local worker",
   );
   assert.match(
     coreSrc,
     /sendAgentControl\(serverId, target, \{ type: "agent:reset", agentId, wipeWorkspace, clearMemory \}\)/,
-    "reset should target the bound machine daemon",
+    "reset should target the local worker",
   );
   assert.match(
     coreSrc,
     /sendAgentControl\(serverId, target, \{ type: "agent:profile", agentId, displayName, description: description \?\? null \}\)/,
-    "profile sync should target the bound machine daemon",
+    "profile sync should target the local worker",
   );
 });

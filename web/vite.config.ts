@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 // Load ports and proxy target from the root .env so parallel worktrees can use distinct ports.
 // Vite runs from web/, and loadEnvFile intentionally preserves values already exported by the shell.
 try { (process as { loadEnvFile?: (p?: string) => void }).loadEnvFile?.("../.env"); } catch { /* use defaults when .env is absent */ }
-const API = `http://localhost:${process.env.PORT ?? 7777}`;
+const API = `http://127.0.0.1:${process.env.PORT ?? 7777}`;
 export default defineConfig({
   plugins: [react()],
   server: {

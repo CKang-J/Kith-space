@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { Connection, type WsLike } from "./connection.js";
-import { MACHINE_REJECTED_CODE } from "../daemonProtocol.js";
+import { WORKER_REJECTED_CODE, WORKER_REPLACED_CODE } from "../daemonProtocol.js";
 
 // Minimal stand-in for the `ws` WebSocket: Connection only uses .on/.send/.close/.readyState.
 class FakeWs extends EventEmitter {
@@ -50,17 +50,28 @@ test("backoff does not reset on a raw open — message-less attempts grow expone
   assert.equal(created.length, 3, "attempt #3 fires only at 2000ms");
 });
 
-test("a fatal machine-rejected close backs off to the 30s cap instead of a 1s tight loop", (t) => {
+test("a rejected worker bootstrap key backs off to the 30s cap instead of a 1s tight loop", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { created, conn } = harness();
   conn.connect();
   created[0]!.emit("open");
-  created[0]!.emit("close", MACHINE_REJECTED_CODE, Buffer.from("unknown or removed machine key"));
+  created[0]!.emit("close", WORKER_REJECTED_CODE, Buffer.from("invalid local worker bootstrap key"));
 
   t.mock.timers.tick(29999);
   assert.equal(created.length, 1, "fatal rejection must not retry within 30s");
   t.mock.timers.tick(1);
   assert.equal(created.length, 2, "fatal rejection retries at the 30s cap");
+});
+
+test("a Worker replaced by a newer connection permanently stops automatic reconnect", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { created, conn } = harness();
+  conn.connect();
+  created[0]!.emit("open");
+  created[0]!.emit("close", WORKER_REPLACED_CODE, Buffer.from("replaced by a newer local runtime worker"));
+
+  t.mock.timers.tick(10 * 60_000);
+  assert.equal(created.length, 1, "a superseded Worker must never reconnect and evict its replacement");
 });
 
 test("backoff resets to 1s once the server proves it accepted us (sent a message)", (t) => {

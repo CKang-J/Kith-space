@@ -66,26 +66,6 @@ button{font-family:inherit}
 .rail a.t:hover{background:var(--canvas-soft);color:var(--ink)}
 .rail a.t.active{background:var(--surface);border-color:var(--hair-strong);color:var(--ink);box-shadow:0 1px 2px var(--shadow-1)}
 .rail .spacer{flex:1}
-.rail a.t.alert-tab{color:var(--amber)} /* warning button stands out from the neutral nav icons */
-.rail a.t.alert-tab.active{color:var(--ink)} /* open state matches the other tabs' active ink (same specificity as .alert-tab but declared after, so it wins) */
-/* System alert center (alerts.tsx): rail warning button → fixed notification popover. Editorial style (our tokens),
-   mirroring .sw-pop's rail-anchored overlay; deliberately not a brutalist black-border card. */
-.alert-backdrop{position:fixed;inset:0;z-index:40}
-.alert-pop{position:fixed;z-index:41;width:320px;max-height:60vh;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--hair-strong);border-radius:12px;box-shadow:0 12px 36px var(--shadow-4);overflow:hidden}
-.alert-pop-head{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--hair);flex:none}
-.alert-pop-title{font-size:11px;font-weight:600;letter-spacing:.9px;text-transform:uppercase;color:var(--muted)}
-.alert-pop-count{margin-left:auto;font-size:12px;color:var(--muted-soft)}
-.alert-list{list-style:none;margin:0;padding:0;overflow-y:auto;min-height:0}
-.alert-item{display:flex;gap:10px;padding:12px 14px;border-bottom:1px solid var(--hair)}
-.alert-item:last-child{border-bottom:0}
-.alert-ic{flex:none;width:24px;height:24px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--mention);color:var(--amber)}
-.alert-body{min-width:0;flex:1}
-.alert-item-title{font-size:14px;font-weight:600;color:var(--ink);line-height:1.35}
-.alert-item-desc{font-size:13px;color:var(--body);margin-top:2px;line-height:1.4}
-.alert-acts{display:flex;align-items:center;gap:8px;margin-top:9px}
-.alert-dismiss{border:0;background:transparent;color:var(--muted);font-size:11px;padding:3px 6px;cursor:pointer;border-radius:6px}
-.alert-dismiss:hover{color:var(--ink);background:var(--surface-strong)}
-
 /* sidebar = flex column: .sb-scroll (scrolls) above a pinned .live-bar footer. Height comes from the .app grid cell (desktop) or the fixed drawer's top/bottom:0 (mobile @820), so .sb-scroll needs no own height. */
 .sidebar{background:var(--canvas-soft);border-right:1px solid var(--hair);display:flex;flex-direction:column;min-height:0}
 .sb-scroll{flex:1;min-height:0;overflow:auto;padding:18px 14px}
@@ -96,7 +76,6 @@ button{font-family:inherit}
 .sec .cnt{color:var(--muted-soft);font-weight:500}
 .sec .addbtn{margin-left:auto}
 .addbtn{border:1px solid var(--hair-strong);background:var(--surface);color:var(--muted);border-radius:6px;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;line-height:1;cursor:pointer}
-.machine{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted-soft);margin:8px 8px 2px}
 .item{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:8px;color:var(--body);cursor:pointer;text-decoration:none;width:100%;border:0;background:transparent;font-size:16px;text-align:left}
 .item:hover{background:var(--surface-strong)}
 .item.active{background:var(--surface-strong);color:var(--ink)}
@@ -203,13 +182,6 @@ mark{background:var(--g-peach);color:var(--ink);padding:0 2px;border-radius:4px}
 .ch-menu button{text-align:left;border:0;background:transparent;cursor:pointer;padding:7px 10px;border-radius:6px;font-size:13px;color:var(--ink)}
 .ch-menu button:hover{background:var(--surface)}
 .ch-menu button.danger{color:var(--error)}
-/* Add-computer onboarding modal (replaces the old persistent onboard-banner): icon + lead text; the opt-out checkbox shares the .acts footer row, pushed to the left of the buttons via margin-right:auto */
-.onboard-lead{display:flex;gap:14px;align-items:flex-start;margin:2px 0 12px}
-.onboard-ico{flex:0 0 auto;width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:var(--surface-strong);color:var(--ink-2)}
-.onboard-lead p{margin:0;font-size:14px;line-height:1.6;color:var(--body)}
-.modal .onboard-optout{margin:0 auto 0 0;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;text-transform:none;letter-spacing:normal}
-.rt-list{display:flex;flex-wrap:wrap;gap:6px;margin:2px 4px 6px}
-.rt-chip{font-size:12px;padding:3px 10px;border:1px solid var(--hair-strong);border-radius:9999px;background:var(--surface);color:var(--body)}
 .item .meta{font-size:12px;color:var(--muted-soft);flex:none}
 
 main.content-col{display:flex;flex-direction:column;height:100vh;background:var(--surface);overflow:hidden;position:relative}
@@ -324,7 +296,6 @@ main.content-col > .composer{position:absolute;left:0;right:var(--scrollbar-gutt
 .composer-box{width:100%;max-width:var(--chat-card-width);margin:0 auto;border:0;border-radius:12px;background:var(--surface);padding:10px 14px 10px;transition:box-shadow .5s ease;box-shadow:inset 0 0 0 .5px var(--card-line-strong),0 10px 30px rgba(15,23,42,.055)}
 .composer-box:hover{box-shadow:inset 0 0 0 .5px var(--card-line-strong),0 10px 30px rgba(15,23,42,.055)}
 .composer-box:focus-within{box-shadow:inset 0 0 0 .5px var(--card-line-strong),0 12px 34px rgba(15,23,42,.065)}
-.composer-status-chip{display:inline-flex;align-items:center;width:max-content;max-width:100%;margin:0 0 6px 2px;padding:2px 6px;border-radius:6px;background:var(--status-badge-bg);color:var(--muted);font-size:12px;line-height:1.35;white-space:normal}
 .composer-input{display:block;width:100%;border:0;outline:none;resize:none;background:transparent;font-family:var(--sans);font-size:14px;line-height:1.5;color:var(--ink);min-height:26px;max-height:160px;overflow-y:auto;padding:3px 2px}
 .composer-input::placeholder{color:var(--muted-soft)}
 .composer-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;min-height:30px}
@@ -473,7 +444,7 @@ main.content-col > .composer{position:absolute;left:0;right:var(--scrollbar-gutt
 /* .empty: inline placeholder for sidebar lists / sub-section bodies. Uses --muted (not --muted-soft) so
    the message clears WCAG AA on the off-white canvas; --muted-soft stays for tertiary metadata only. */
 .empty{color:var(--muted);font-size:14px;padding:8px 4px}
-/* Centered empty state for a primary full content pane (Inbox / Saved / Tasks / empty channel / no machine
+/* Centered empty state for a primary full content pane (Inbox / Saved / Tasks / empty channel
    / activity): a calm, editorial moment (serif headline, optional sub-line) instead of a small grey line
    pinned top-left. Secondary sub-section empties keep the inline .empty above. See <PaneEmpty>. */
 .pane-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:62vh;padding:48px 24px;text-align:center;color:var(--muted)}
@@ -666,22 +637,7 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .rem-badge.scheduled{background:var(--tint-blue);border-color:var(--g-sky);color:var(--ink)}
 .rem-badge.fired{background:var(--tint-green);border-color:var(--g-mint);color:var(--ink)}
 .rem-badge.cancelled{background:var(--surface-strong);color:var(--muted-soft)}
-/* Connect machine modal: description + code box */
 .modal-note{font-size:13px;line-height:1.6;color:var(--muted);margin:0 0 4px}
-.modal-note code{font-family:ui-monospace,monospace;font-size:12px;background:var(--surface-strong);padding:1px 5px;border-radius:4px;color:var(--ink-2)}
-.update-steps{display:grid;gap:8px;margin:14px 0;color:var(--body);font-size:14px;line-height:1.55}
-.update-steps p{margin:0;padding:9px 11px;border:1px solid var(--hair);border-radius:8px;background:var(--canvas-soft)}
-.codebox{display:flex;align-items:center;gap:10px;background:var(--surface-strong);border:1px solid var(--hair-strong);border-radius:8px;padding:9px 12px;margin-top:2px}
-.codebox code{font-family:ui-monospace,monospace;font-size:12.5px;color:var(--ink);overflow-x:auto;white-space:nowrap;word-break:keep-all}
-.codebox .joinbtn{flex:none}
-/* Connect-computer wizard: connected success card + waiting row (reuses palette tokens) */
-.wiz-ok{display:flex;align-items:center;gap:12px;border:1px solid var(--success);background:var(--tint-green);border-radius:8px;padding:12px 14px;margin:4px 0 14px}
-.wiz-ok .wiz-ok-ico{color:var(--success);flex:none}
-.wiz-ok .wiz-ok-meta{font-family:ui-monospace,monospace;font-size:12px;color:var(--muted);margin-top:2px}
-.wiz-wait{display:flex;align-items:center;gap:9px;margin:12px 0;font-size:13px;color:var(--body)}
-.wiz-wait .wiz-pulse{width:9px;height:9px;border-radius:50%;background:var(--amber);animation:wizPulse 1.1s var(--ease-decel) infinite}
-@keyframes wizPulse{0%,100%{opacity:1}50%{opacity:.3}}
-.wiz-hint{font-size:12px;color:var(--muted);margin:4px 0 0}
 /* Custom dropdown Select (replaces native select). Trigger matches .modal input style; menu uses fixed positioning to escape overflow clipping */
 .sel{position:relative;width:100%}
 .sel-trigger{display:flex;align-items:center;gap:8px;width:100%;font-family:var(--sans);font-size:16px;color:var(--ink);background:var(--surface);border:1px solid var(--hair-strong);border-radius:8px;padding:9px 12px;cursor:pointer;text-align:left;transition:border-color .12s}
@@ -703,13 +659,6 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .modal input[type=checkbox],.modal input[type=radio]{width:16px;height:16px;flex:none;margin:0;accent-color:var(--ink-2);cursor:pointer}
 .modal .ck-row{display:flex;align-items:center;gap:10px;margin-top:16px;font-size:14px;color:var(--body);cursor:pointer}
 .form-err{margin-top:12px;font-size:13px;color:var(--error);background:var(--error-soft);border:1px solid var(--error-line);border-radius:8px;padding:8px 11px}
-.danger-btn{font-size:13px;color:var(--muted);background:var(--surface);border:1px solid var(--hair-strong);border-radius:9999px;padding:6px 14px;cursor:pointer;transition:all .12s}
-.danger-btn:hover{color:var(--error);border-color:var(--error-line);background:var(--error-soft)}
-.danger-btn:disabled{opacity:.5;cursor:default}
-/* Neutral pill action button (same shape as .danger-btn, non-destructive) — e.g. Reconnect a machine */
-.action-btn{font-size:13px;color:var(--ink);background:var(--surface);border:1px solid var(--hair-strong);border-radius:9999px;padding:6px 14px;cursor:pointer;transition:all .12s}
-.action-btn:hover{border-color:var(--ink-2)}
-.action-btn:disabled{opacity:.5;cursor:default}
 /* Edit-channel modal secondary action buttons */
 .modal .ch-act{width:100%;display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;border:1px solid var(--hair-strong);background:var(--surface);color:var(--ink);font-size:14px;cursor:pointer;font-family:inherit;text-align:left;transition:background .1s}
 .modal .ch-act:hover{background:var(--surface-strong)}

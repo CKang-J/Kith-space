@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import type { WebSocket } from "ws";
 import { dbFor, registerWorkspace, schema } from "../db/index.js";
 import { kithSpaceHome } from "../paths.js";
-import { registerDaemon, unregisterDaemon } from "./daemonHub.js";
+import { registerWorker, unregisterWorker } from "../local-runtime/workerHub.js";
 import { resumeSpaceDispatch, resumeTaskDispatch, stopSpaceDispatch, stopTaskDispatch } from "./dispatchControl.js";
 import { SqliteDispatchState } from "./dispatchGuard.js";
 
@@ -35,7 +35,7 @@ test("task stop interrupts involved agents while space stop interrupts every liv
     readyState: 1,
     send(data: string) { sent.push(JSON.parse(data)); },
   } as unknown as WebSocket;
-  registerDaemon(socket, serverId);
+  const workerLease = registerWorker(socket);
   try {
     const state = new SqliteDispatchState(serverId);
     await state.ensureChain({ chainId: taskId, dispatchDepth: 0, taskMessageId: taskId, rootMessageId: taskId, channelId });
@@ -57,6 +57,6 @@ test("task stop interrupts involved agents while space stop interrupts every liv
     assert.deepEqual(new Set(sent.filter((msg) => msg.type === "agent:stop").map((msg) => msg.agentId)), new Set([involvedAgentId, otherAgentId]));
     assert.equal((await resumeSpaceDispatch(serverId)).stopped, false);
   } finally {
-    unregisterDaemon(socket);
+    unregisterWorker(workerLease);
   }
 });

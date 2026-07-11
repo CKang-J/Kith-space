@@ -20,7 +20,7 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
   className?: string;        // extra class on the .composer root (threads pass "thread-composer")
 }) {
   const { t } = useTranslation();
-  const { api, visibleAgents: agents, machines, uploadOne, attachmentUrl } = useStore(); // visibleAgents: only real agents are @-mention candidates / reachability targets (not showcase demo props)
+  const { api, visibleAgents: agents, uploadOne, attachmentUrl } = useStore(); // visibleAgents: only real agents are @-mention candidates / reachability targets (not showcase demo props)
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
   const [text, setText] = useState("");
   const [asTask, setAsTask] = useState(false);
@@ -34,37 +34,25 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { const el = inputRef.current; if (!el) return; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 160) + "px"; }, [text]); // textarea auto-grows up to 160px
 
-  // Reachability hint as the input placeholder. Targets a message will reach = the DM peer (if any) + agents
-  // @-mentioned in the current draft. Surfaces when a target's machine is offline (the message is saved but the
-  // agent can't see it until its machine reconnects — at which point reconnect catch-up wakes it to process the
-  // backlog), or, for a DM (single peer), when the peer is merely sleeping (sending wakes it). Channels have no
-  // single peer, so they only get the offline hint, keyed off whoever is @-mentioned in the draft.
-  const reach = useMemo<{ kind: "off" | "sleep" | "work" | "on"; names: string } | null>(() => {
+  // Reachability hint as the input placeholder. Targets are the DM peer plus agents @-mentioned in the draft;
+  // availability comes from agent lifecycle/activity, independent of the removed Machine product model.
+  const reach = useMemo<{ kind: "sleep" | "work" | "on"; names: string } | null>(() => {
     const targets = new Map<string, Agent>();
     if (dmAgent) targets.set(dmAgent.id, dmAgent);
     for (const m of text.matchAll(/@([\p{L}\p{N}_-]+)/gu)) { const a = agents.find((x) => x.name === m[1]); if (a) targets.set(a.id, a); }
     const allTargets = [...targets.values()];
-    const offline = allTargets.filter((a) => {
-      if (!a.machineId) return true;
-      const machine = machines.find((mc) => mc.id === a.machineId);
-      if (machine?.status !== "online") return true;
-      return !(machine.runtimes ?? []).includes(a.runtime);
-    });
-    if (offline.length) return { kind: "off", names: offline.map((a) => a.displayName || a.name).join(", ") };
     const working = allTargets.filter((a) => { const st = a.activity || a.status; return st === "working" || st === "thinking"; });
     if (working.length) return { kind: "work", names: working.map((a) => a.displayName || a.name).join(", ") };
     const sleeping = allTargets.filter((a) => { const st = a.activity || a.status; return st === "sleeping" || st === "inactive" || st === "offline"; });
     if (sleeping.length) return { kind: "sleep", names: sleeping.map((a) => a.displayName || a.name).join(", ") };
     if (allTargets.length) return { kind: "on", names: allTargets.map((a) => a.displayName || a.name).join(", ") };
     return null;
-  }, [text, dmAgent, agents, machines]);
+  }, [text, dmAgent, agents]);
   const reachPlaceholder = reach ? (
-    reach.kind === "off" ? t("chat.machineOfflineComposerPlaceholder", { names: reach.names }) :
     reach.kind === "work" ? t("chat.agentWorkingComposerPlaceholder", { name: reach.names }) :
     reach.kind === "on" ? t("chat.agentOnlineComposerPlaceholder", { name: reach.names }) :
     t("chat.agentSleepingComposerPlaceholder", { name: reach.names })
   ) : null;
-  const reachStatusChip = reach?.kind === "off" ? t("chat.machineOfflineComposerPlaceholder", { names: reach.names }) : "";
   const effectivePlaceholder = reachPlaceholder ?? (allowAsTask && asTask ? t("chat.taskPlaceholder") : placeholder);
 
   const send = async (forceTask?: boolean) => {
@@ -142,7 +130,6 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
       <input type="file" ref={imgRef} accept="image/*" multiple style={{ display: "none" }} onChange={onPickFiles} />
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={onPickFiles} />
       <div className="composer-box" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
-        {reachStatusChip && <div className="composer-status-chip" role="status">{reachStatusChip}</div>}
         <textarea className="composer-input" ref={inputRef} rows={1} value={text} onChange={onInput} onPaste={onPaste}
           placeholder={effectivePlaceholder}
           onKeyDown={(e) => {

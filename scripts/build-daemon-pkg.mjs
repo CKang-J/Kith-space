@@ -1,4 +1,4 @@
-// Bundle the publishable @fancyboi999/kith-space-daemon package, so `npx @fancyboi999/kith-space-daemon` runs on any machine
+// Legacy public Worker package build; A6 replaces this with an Electron-internal resource bundle.
 // without a repo clone, node_modules, or tsx. Produces TWO self-contained ESM bundles in
 // packages/daemon/dist/:
 //   • cli.mjs       — the daemon entry (src/daemon/index.ts); the `kith-space-daemon` bin.

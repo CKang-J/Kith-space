@@ -23,9 +23,23 @@ test("maps detail routes to their workspace module", () => {
     isChannelRoute: false,
   });
   assert.equal(parseWorkspaceRoute("/s/space/human/user-1").moduleId, null);
-  assert.equal(parseWorkspaceRoute("/s/space/computer/machine-1").moduleId, "computers");
+  assert.equal(parseWorkspaceRoute("/s/space/computer/machine-1").moduleId, null);
   assert.equal(parseWorkspaceRoute("/s/space/settings/notifications").moduleId, "settings");
   assert.equal(parseWorkspaceRoute("/s/space/tasks/server").moduleId, "tasks");
+});
+
+test("removed Computers URLs and query state fall back to ChatOnly", () => {
+  const removedRoute = parseWorkspaceRoute("/s/space/computer/machine-1");
+  const channel = parseWorkspaceRoute("/s/space/channel/ch-1");
+
+  assert.deepEqual(workspaceLayoutFromRoute(removedRoute, ""), {
+    activeModule: null,
+    chatVisible: true,
+  });
+  assert.deepEqual(workspaceLayoutFromRoute(channel, "?module=computers&chat=0"), {
+    activeModule: null,
+    chatVisible: true,
+  });
 });
 
 test("unknown routes do not activate a module", () => {

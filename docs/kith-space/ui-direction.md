@@ -146,7 +146,7 @@ Composer
 
 ## 7. 当前实现边界
 
-当前生产壳仍处于本机化转向的过渡期：Agents 模块与 Human Settings 资料入口已落地，登录/注册入口已删除；Computers、Landing、旧深链与 `?legacy=1` 仍待 A4/A5 删除，不是可继续扩展的兼容承诺。
+当前生产壳仍处于本机化转向的过渡期：Agents 模块与 Human Settings 资料入口已落地，登录/注册和 Computers 入口已删除；旧 `/computer/*` 深链与 `?module=computers` 不再打开模块，而是回到 ChatOnly。Landing、其他旧深链与 `?legacy=1` 仍待 A4/A5 删除，不是可继续扩展的兼容承诺。
 
 单窗口壳按职责拆在 `web/src/shell/`：
 
@@ -154,13 +154,13 @@ Composer
 - `workspaceLayout.ts`：无 React 依赖的三态状态机。
 - `paneConstraints.ts`：集中计算 Chat 响应式下限、各模块下限、单 Pane 阈值和比例到像素的夹取结果。
 - `shellStore.ts`：`useSyncExternalStore` 保存版本化模块宽度比例，并按 Space 持久化最近 Chat 位置；模块与 Chat 显隐由 URL 表达，避免双重状态源。
-- `workspaceRoute.ts`：解析父壳拿不到的频道/agent/设置子路由参数，并把 URL 映射回三态；Human profile 路由已不再映射模块，机器路由仍待删除。
+- `workspaceRoute.ts`：解析父壳拿不到的频道/agent/设置子路由参数，并把 URL 映射回三态；Human profile 与机器旧路由均不再映射模块。
 - `ChatWorkspace.tsx`：全宽三区与紧凑抽屉形态。
 - `ModuleWorkspace.tsx`：现有业务视图薄适配。
 - `WorkspaceDock.tsx` / `WorkspaceTopBar.tsx`：Dock 与顶部工具组。
 - `workspaceModules.tsx`：模块注册、路由和图标元数据。
 
-复用 `Chat.tsx`、`ChatSidebar.tsx`、`LiveTrace.tsx`、`TaskBoard.tsx`、Inbox、Settings 与现有 agent 列表能力，不整块重写大文件。产品模块已从 Members 收敛为 Agents（内部文件名 `Members.tsx` 暂留）；Computers 与旧 `Layout` 仍待删除。旧 `OverviewShell`、`SpaceShell`、`IconRail`、`RightDock` 和 `ChatSlot` 已被新壳取代。
+复用 `Chat.tsx`、`ChatSidebar.tsx`、`LiveTrace.tsx`、`TaskBoard.tsx`、Inbox、Settings 与现有 agent 列表能力，不整块重写大文件。产品模块已从 Members 收敛为 Agents（内部文件名 `Members.tsx` 暂留）；Computers 已删除，旧 `Layout` 仍待删除。旧 `OverviewShell`、`SpaceShell`、`IconRail`、`RightDock` 和 `ChatSlot` 已被新壳取代。
 
 ## 8. 初始化与 Settings 边界
 

@@ -36,18 +36,20 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 
 ### P-A2 本地领域与数据模型
 
-状态：进行中。已完成中央 `app.db`、唯一 Human、默认 `Home`、本地-only 附件、Space 契约，以及 A2.3 的唯一 Human authority/identity、产品 RBAC/邀请删除、agent-only membership、Human-agent DM 和 Agents UI。旧物理表与 Machine 仍未完成。
+状态：进行中。已完成中央 `app.db`、唯一 Human、默认 `Home`、本地-only 附件、Space 契约、A2.3 唯一 Human 协作边界，以及 A2.4 Machine/Computer/远程 worker 活跃产品路径删除。下一步是 A2.2b 破坏性重建 workspace.db baseline；其中的 `machines` 与 `agents.machine_id` 仅是待删物理残留。
 
 - 把中央 registry 扩展并更名为 `app.db`。
 - 实现唯一 Human 和首次资料初始化；自动创建 `Home` Space。
 - 把产品领域中的 `server/serverId` 收敛为 `space/spaceId`，保留 `/s/:slug` URL。
 - 保留 Space 内 agent membership，删除 Human membership、邀请、RBAC 和 Human-Human DM。
-- 删除 Machine/Computer、远程 daemon 注册和多主机调度；内部 daemon 收敛为唯一 Local Runtime Worker。
+- 已删除 Machine/Computer、远程 daemon 注册和多主机调度；内部 daemon 已收敛为安装级唯一 Local Runtime Worker，并跨本机 Space 路由 agent 事件。
 - 删除 S3/对象存储，附件只走本地磁盘。
 
 允许破坏性重置当前开发数据，不做旧 `.kith` 数据迁移。
 
 验收：全新目录可初始化一个 Human、`Home` 和多个文件夹 Space；无需登录、邀请、机器注册、Postgres、Redis 或对象存储。
+
+当前安全过渡：A3 前 Core Service 固定监听 `127.0.0.1`，健康检查用 `workerConnected` 表示唯一 Worker 是否 ready；不得把尚无 Token 保护的服务绑定到 LAN。
 
 ### P-A3 浏览器访问安全边界
 
@@ -73,7 +75,7 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 
 - 首次启动收集 Human 名称、可选邮箱和描述，然后进入 `Home`。
 - Dock 固定为 `Chat | Inbox | Tasks | Agents | Settings`。
-- `Members` 改为当前 Space 的 `Agents`；Human 资料进入全局 Settings；删除 `Computers`。
+- `Members` 改为当前 Space 的 `Agents`；Human 资料进入全局 Settings；`Computers` 已在 A2.4 提前删除。
 - 删除 landing、登录、注册、邀请、PWA 和 `?legacy=1`/旧 `Layout`。
 - 浏览器隐藏 Token、端口、监听、进程和系统自启动等 Desktop 专属设置。
 
@@ -83,7 +85,7 @@ P4 的视觉微调暂停。先清除底座中与新定位冲突的领域和运�
 
 - 删除 Dockerfile、compose、entrypoint、环境样例和远程部署文档。
 - 删除公共 server/daemon npm 发布、独立安装器和 OIDC 发布 workflow。
-- 删除残余 JWT 账户认证、Machine、多用户、S3、PWA 和旧领域术语。
+- 删除残余 JWT 账户认证、A2.2b 后可能残留的 Machine/多用户术语、PWA 和其他旧领域资产。
 - 保留仓库内部的分进程开发命令与少量测试覆盖环境变量。
 - 完成 typecheck、单元、集成、web build、Electron 冒烟和文档口径审计。
 

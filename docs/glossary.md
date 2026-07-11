@@ -61,7 +61,7 @@
 : 把某个 runtime CLI 接入统一 `Runtime` 接口的适配层，负责启动进程、驱动一轮对话、解析其输出、回吐 session/活动/轨迹。新增一个 runtime = 实现一个 `Runtime` 对象并注册。注册表已带 8 条，v1 只把三条做稳。
 
 **Local Runtime Worker**
-: Desktop 自动管理的唯一内部 daemon 进程，负责启动和驱动本机 runtime。它是进程隔离边界，不是 Machine/Computer，不支持远程注册或多主机调度。
+: Desktop 自动管理的安装级唯一内部 daemon 进程，负责启动和驱动所有本机 Space 的 runtime。它是进程隔离边界，不隶属某个 Space；Core Service 以 installation-unique agentId 把它的状态、轨迹、session 和回复路由回 agent 所属 Space。它不是 Machine/Computer，不支持远程注册或多主机调度。
 
 ---
 
@@ -144,7 +144,7 @@
 : Desktop 管理的本机单实例 HTTP/socket.io/业务服务。名称只描述技术进程，不是公开部署的 server 产品，也不等于 Space。
 
 **Web 模式**
-: Desktop 设置中的浏览器入口策略：关闭（默认）、仅本机、局域网。浏览器访问依附 Desktop 生命周期，不形成独立 Web 产品；LAN v1 仅限受信任私网的 HTTP。
+: Desktop 设置中的浏览器入口策略：关闭（默认）、仅本机、局域网。浏览器访问依附 Desktop 生命周期，不形成独立 Web 产品；LAN v1 仅限受信任私网的 HTTP。A3 尚未落地前，Core Service 强制 loopback-only，不能从 LAN 访问。
 
 **访问 Token**
 : 普通浏览器首次进入 Kith-space 时验证的共享访问秘密。服务端只保存哈希，验证后建立可撤销的持久浏览器会话；它与 Desktop 信任、Worker 内部凭据和 agent session token 相互独立。
@@ -159,7 +159,7 @@
 : 应用数据目录中的中央 SQLite 库，保存唯一 Human、Desktop/Web 设置、访问 Token 哈希、浏览器会话、Space registry 和最近打开记录；不保存 Space 消息或任务。
 
 **Machine / Computer / serverId（退役术语）**
-: open-tag 遗留的多主机和工作区领域命名。Machine/Computer 产品概念删除；产品 `server/serverId` 改为 `space/spaceId`。HTTP 技术进程统一称 Core Service。
+: open-tag 遗留的多主机和工作区领域命名。A2.4 已从服务、API、Worker 协议与 UI 删除 Machine/Computer 产品概念；`machines` 表与 `agents.machine_id` 只是 A2.2b 待删物理残留。产品 `server/serverId` 改为 `space/spaceId`；其兼容边界同样在 A2.2b 清理。HTTP 技术进程统一称 Core Service。
 
 **进程内替代 Redis**
 : 单机单进程下用内存计数器 / EventEmitter 取代 Redis。核实后 Redis 运行时只余两个单调计数器（seq、任务号），pub/sub 与 agent 唤醒已分别由 socket.io 直发和 daemon WS 承担，故 `redis.ts` 可整体删除。

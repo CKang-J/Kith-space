@@ -3,7 +3,7 @@ import type { WebSocket } from "ws";
 import { initializeHumanProfile } from "../src/app-data/appDatabase.ts";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { createMessage } from "../src/server/core.ts";
-import { registerDaemon, unregisterDaemon } from "../src/server/daemonHub.ts";
+import { registerWorker, unregisterWorker, updateWorkerSnapshot } from "../src/local-runtime/workerHub.ts";
 import { SqliteDispatchState } from "../src/server/dispatchGuard.ts";
 
 let failures = 0;
@@ -34,7 +34,8 @@ async function main() {
 
   const sent: Record<string, unknown>[] = [];
   const socket = { readyState: 1, send(data: string) { sent.push(JSON.parse(data)); } } as unknown as WebSocket;
-  registerDaemon(socket, serverId);
+  const workerLease = registerWorker(socket);
+  updateWorkerSnapshot(workerLease, { runtimes: ["claude"], runningAgents: [] });
   try {
     const root = await createMessage({ serverId, channelId: channel!.id, senderType: "user", senderId: owner!.id, senderName: owner!.name, content: "@leader coordinate this" });
     const delegated = await createMessage({ serverId, channelId: channel!.id, senderType: "agent", senderId: leader!.id, senderName: leader!.name, content: "@dev implement; @tester verify" });
@@ -53,7 +54,7 @@ async function main() {
     const status = await new SqliteDispatchState(serverId).spaceStatus();
     check("successful wake budget records the four deliveries", status.wakeCount === 4);
   } finally {
-    unregisterDaemon(socket);
+    unregisterWorker(workerLease);
   }
 }
 

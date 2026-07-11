@@ -51,14 +51,14 @@ test("Chat button is a no-op without a module", () => {
 });
 
 test("Chat button toggles between Split and ModuleOnly with a module", () => {
-  const split = openRouteModule("computers", { chatVisible: true });
+  const split = openRouteModule("settings", { chatVisible: true });
   const moduleOnly = toggleChat(split);
 
-  assert.deepEqual(moduleOnly, { activeModule: "computers", chatVisible: false });
+  assert.deepEqual(moduleOnly, { activeModule: "settings", chatVisible: false });
   assert.equal(deriveWorkspaceMode(moduleOnly), "module-only");
 
   const restored = toggleChat(moduleOnly);
-  assert.deepEqual(restored, { activeModule: "computers", chatVisible: true });
+  assert.deepEqual(restored, { activeModule: "settings", chatVisible: true });
   assert.equal(deriveWorkspaceMode(restored), "split");
 });
 

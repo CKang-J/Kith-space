@@ -1,15 +1,23 @@
-// daemon control plane: WS /daemon/connect?key= (ServerToMachine / MachineToServer)
+// Installation-local runtime worker control plane: WS /daemon/connect?key=.
 import { WebSocketServer, type WebSocket } from "ws";
 import type { Server } from "node:http";
-import { and, desc, eq, notInArray } from "drizzle-orm";
-import { allWorkspaceDbs, dbFor, schema } from "../db/index.js";
-import { BOOTSTRAP_KEY, hashToken, safeEqual } from "./auth.js";
-import { registerDaemon, unregisterDaemon, resolveDaemonRequest, registerMachineConn, unregisterMachineConn, isCurrentMachineConn } from "./daemonHub.js";
+import { and, desc, eq, isNull, notInArray } from "drizzle-orm";
+import { allSpaceDbs, dbFor, schema } from "../db/index.js";
+import { BOOTSTRAP_KEY, safeEqual } from "./auth.js";
 import { publish } from "./realtime.js";
 import { createLogger } from "../log.js";
-import { MACHINE_REJECTED_CODE } from "../daemonProtocol.js";
-import { catchUpAgentsOnMachine } from "./reconnectCatchup.js";
-import { markMachineAgentsOffline } from "./machineLiveness.js";
+import { catchUpAgentsOnWorker } from "./reconnectCatchup.js";
+import { WORKER_REJECTED_CODE } from "../daemonProtocol.js";
+import { locateAgent } from "../local-runtime/agentLocator.js";
+import {
+  isWorkerLeaseCurrent,
+  isWorkerLeaseLatest,
+  registerWorker,
+  resolveWorkerRequest,
+  unregisterWorker,
+  updateWorkerSnapshot,
+  type WorkerLease,
+} from "../local-runtime/workerHub.js";
 
 const log = createLogger("server:ws");
 
@@ -20,132 +28,140 @@ export function attachWs(server: Server): void {
     if (url.pathname !== "/daemon/connect") return; // pass through: /socket.io/ etc. are handled by socket.io's own upgrade handler
     const key = url.searchParams.get("key");
     if (!key) { socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n"); return socket.destroy(); }
-    wss.handleUpgrade(req, socket, head, (ws) => void onDaemon(ws, key));
+    wss.handleUpgrade(req, socket, head, (ws) => void onWorker(ws, key));
   });
 }
 
-async function onDaemon(ws: WebSocket, key: string): Promise<void> {
-  let serverId: string | null = null;
-  let machineId: string | null = null;
-  for (const candidate of allWorkspaceDbs()) {
-    const found = safeEqual(key, BOOTSTRAP_KEY)
-      ? (await candidate.db.select().from(schema.servers).where(eq(schema.servers.slug, "home")))[0]
-      : (await candidate.db.select().from(schema.machines).where(eq(schema.machines.apiKeyHash, hashToken(key))))[0];
-    if (found) { serverId = candidate.workspace.id; break; }
-  }
-  if (!serverId) {
-    // A missing sk_machine_* row is a permanent rejection (key deleted or never existed) → signal the daemon
-    // to stop hammering and tell its operator. A missing bootstrap server row is a not-yet-seeded race, so a
-    // plain close lets the daemon retry on its normal backoff once seeding completes.
-    if (!safeEqual(key, BOOTSTRAP_KEY)) ws.close(MACHINE_REJECTED_CODE, "unknown or removed machine key");
-    else ws.close();
+async function onWorker(ws: WebSocket, key: string): Promise<void> {
+  if (!safeEqual(key, BOOTSTRAP_KEY)) {
+    ws.close(WORKER_REJECTED_CODE, "invalid local worker bootstrap key");
     return;
   }
-  const db = dbFor(serverId);
-  registerDaemon(ws, serverId); // register by serverId → broadcastToDaemons only reaches this server's daemons (multi-tenant isolation, routed by connection)
-  log.info("daemon connected", { serverId });
-  const ping = setInterval(() => { try { ws.send(JSON.stringify({ type: "ping" })); } catch { /* */ } }, 30000);
+  const lease = registerWorker(ws);
+  log.info("local runtime worker connected");
+  const ping = setInterval(() => {
+    if (!isWorkerLeaseCurrent(lease)) return;
+    try { ws.send(JSON.stringify({ type: "ping" })); } catch { /* close/error handles the connection */ }
+  }, 30000);
 
   ws.on("message", async (data) => {
+    if (!isWorkerLeaseCurrent(lease)) return;
     let msg: any; try { msg = JSON.parse(data.toString()); } catch { return; }
     try {
-      if (msg.type === "ready") { machineId = await onReady(serverId!, key, msg); registerMachineConn(machineId, ws); try { ws.send(JSON.stringify({ type: "ready:ack", machineId })); } catch { /* */ } }
-      else if (msg.type === "agent:status" || msg.type === "agent:activity") await onAgentUpdate(serverId!, msg);
-      else if (msg.type === "agent:session" && msg.agentId) { await db.update(schema.agents).set({ sessionId: msg.sessionId }).where(eq(schema.agents.id, msg.agentId)); await publish(serverId!, { type: "agent:session", agentId: msg.agentId, sessionId: msg.sessionId }); } // forward to the frontend
+      if (msg.type === "ready") {
+        const runtimes = stringList(msg.runtimes);
+        const runningAgents = stringList(msg.runningAgents);
+        if (!updateWorkerSnapshot(lease, { runtimes, runningAgents })) return;
+        if (!await reconcileWorkerReady(runningAgents, lease)) return;
+        if (!isWorkerLeaseCurrent(lease)) return;
+        try { ws.send(JSON.stringify({ type: "ready:ack" })); } catch { /* */ }
+        void catchUpAgentsOnWorker(runningAgents, lease)
+          .catch((e: any) => log.error("worker reconnect catch-up failed", { detail: String(e?.message ?? e) }));
+        log.info("local runtime worker ready", { runtimes, runningAgents: runningAgents.length, daemonVersion: msg.daemonVersion });
+      }
+      else if (msg.type === "agent:status" || msg.type === "agent:activity") await onAgentUpdate(msg, lease);
+      else if (msg.type === "agent:session" && msg.agentId) {
+        const located = await locateAgent(msg.agentId);
+        if (!located || !isWorkerLeaseCurrent(lease)) return;
+        await located.db.update(schema.agents).set({ sessionId: msg.sessionId }).where(eq(schema.agents.id, msg.agentId));
+        if (!isWorkerLeaseCurrent(lease)) return;
+        await publish(located.spaceId, { type: "agent:session", agentId: msg.agentId, sessionId: msg.sessionId });
+      }
       else if (msg.type === "agent:trajectory" && msg.agentId) {
-        const a = (await db.select().from(schema.agents).where(eq(schema.agents.id, msg.agentId)))[0];
-        await publish(serverId!, { type: "trajectory", agentId: msg.agentId, name: a?.name, entries: msg.entries ?? [] });
-        for (const e of msg.entries ?? []) await logActivity(serverId!, msg.agentId, e); // persist to the activity log
+        const located = await locateAgent(msg.agentId);
+        if (!located || !isWorkerLeaseCurrent(lease)) return;
+        await publish(located.spaceId, { type: "trajectory", agentId: msg.agentId, name: located.agent.name, entries: msg.entries ?? [] });
+        if (!isWorkerLeaseCurrent(lease)) return;
+        for (const e of msg.entries ?? []) {
+          if (!isWorkerLeaseCurrent(lease)) return;
+          await logActivity(located.spaceId, msg.agentId, e);
+          if (!isWorkerLeaseCurrent(lease)) return;
+        }
       }
       else if (msg.type === "agent:reply" && msg.agentId && msg.channelId && msg.streamId) {
-        const a = (await db.select().from(schema.agents).where(eq(schema.agents.id, msg.agentId)))[0];
-        await publish(serverId!, { type: "agent:reply", agentId: msg.agentId, channelId: msg.channelId, streamId: msg.streamId, name: msg.name ?? a?.displayName ?? a?.name, op: msg.op, text: msg.text ?? "" });
+        const located = await locateAgent(msg.agentId);
+        if (!located || !isWorkerLeaseCurrent(lease)) return;
+        await publish(located.spaceId, { type: "agent:reply", agentId: msg.agentId, channelId: msg.channelId, streamId: msg.streamId, name: msg.name ?? located.agent.displayName ?? located.agent.name, op: msg.op, text: msg.text ?? "" });
       }
-      else if (msg.type === "pong" && machineId) {
-        // Heartbeat: the daemon replies pong to our 30s ping. Keep lastHeartbeat fresh so the
-        // liveness sweeper never offlines a live machine; if the sweeper raced ahead and offlined
-        // us (e.g. a transient DB error aged the heartbeat), flip back online — the link is clearly up.
-        const prev = (await db.select({ status: schema.machines.status }).from(schema.machines).where(eq(schema.machines.id, machineId)))[0];
-        await db.update(schema.machines).set({ lastHeartbeat: new Date(), status: "online" }).where(eq(schema.machines.id, machineId));
-        if (prev && prev.status !== "online") await publish(serverId!, { type: "machine", online: true, machineId });
-      }
-      else if ((msg.type === "workspace:file_tree" || msg.type === "workspace:file_content" || msg.type === "skills:list" || msg.type === "models") && msg.requestId) resolveDaemonRequest(msg.requestId, msg);
+      else if ((msg.type === "workspace:file_tree" || msg.type === "workspace:file_content" || msg.type === "skills:list" || msg.type === "models") && msg.requestId) resolveWorkerRequest(msg.requestId, msg);
     } catch (e: any) { log.error("ws handler error", { type: msg?.type, detail: String(e?.message ?? e) }); }
   });
   ws.on("close", async () => {
     clearInterval(ping);
-    const wasCurrent = machineId ? isCurrentMachineConn(machineId, ws) : false;
-    unregisterDaemon(ws); unregisterMachineConn(ws);
-    // daemon disconnected → mark this machine offline (otherwise the list keeps showing it online)
-    if (machineId && wasCurrent) {
-      await db.update(schema.machines).set({ status: "offline" }).where(eq(schema.machines.id, machineId)).catch(() => {});
-      await publish(serverId!, { type: "machine", online: false, machineId });
-      await markMachineAgentsOffline(serverId!, machineId).catch((e: any) => log.error("agent offline reconcile failed", { machineId, detail: String(e?.message ?? e) }));
-    }
-    log.info("daemon disconnected", { serverId, machineId });
+    const wasCurrent = unregisterWorker(lease);
+    if (wasCurrent) await markAllAgentsOffline(lease).catch((e: any) => log.error("agent offline reconcile failed", { detail: String(e?.message ?? e) }));
+    log.info("local runtime worker disconnected", { wasCurrent });
   });
   ws.on("error", () => { /* close will follow */ });
 }
 
-async function onReady(serverId: string, key: string, msg: any): Promise<string> {
-  const db = dbFor(serverId);
-  const hostname = msg.hostname ?? "unknown";
-  // "Connect a machine": the machine key pre-creates a row, claimed by apiKeyHash (keeps the user-chosen machine name).
-  // The bootstrap key is shared by multiple machines, so apiKeyHash collides → prefer claiming by the daemon's persisted stable machineId (persisted via ready:ack),
-  // falling back to hostname (os.hostname() flips between .local and IP on macOS, so it can't be the sole key, otherwise a restart spawns an orphan machine).
-  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  let existing: typeof schema.machines.$inferSelect | undefined;
-  if (safeEqual(key, BOOTSTRAP_KEY)) {
-    if (typeof msg.machineId === "string" && uuidRe.test(msg.machineId)) {
-      existing = (await db.select().from(schema.machines).where(and(eq(schema.machines.serverId, serverId), eq(schema.machines.id, msg.machineId))))[0];
-    }
-    if (!existing) existing = (await db.select().from(schema.machines).where(and(eq(schema.machines.serverId, serverId), eq(schema.machines.name, hostname))))[0];
-  } else {
-    existing = (await db.select().from(schema.machines).where(eq(schema.machines.apiKeyHash, hashToken(key))))[0];
-  }
-  const vals = {
-    serverId, name: existing?.name ?? hostname, hostname, os: msg.os ?? null, runtimes: (msg.runtimes ?? []) as string[],
-    daemonVersion: msg.daemonVersion ?? null, status: "online", lastHeartbeat: new Date(),
-    apiKeyHash: hashToken(key), apiKeyPrefix: key.slice(0, 14),
-  };
-  let machineId: string;
-  if (existing) { await db.update(schema.machines).set(vals).where(eq(schema.machines.id, existing.id)); machineId = existing.id; }
-  else {
-    const owner = (await db.select().from(schema.servers).where(eq(schema.servers.id, serverId)))[0];
-    const [ins] = await db.insert(schema.machines).values({ ...vals, userId: owner!.ownerId }).returning();
-    machineId = ins!.id;
-  }
-  log.info("machine ready", { hostname, os: msg.os, runtimes: msg.runtimes ?? [], daemonVersion: msg.daemonVersion });
-  await publish(serverId, { type: "machine", online: true, machineId, hostname, runtimes: msg.runtimes ?? [] }); // machineId in the machine:status payload
-  // Stale-agent reconciliation: on (re)connect the daemon reports the agents it is actually running (ready.runningAgents). An agent marked active in the DB but absent from that list = process is dead
-  // (the case where both server and daemon restarted) → set inactive, so the next spawn lets agentConfig re-mint the token normally (otherwise a stale active leaves agentToken undefined → agent 401).
-  // When only the server restarts and the daemon stays alive → runningAgents includes the live agent → no false reset (keeps zero-desync).
-  const runningIds: string[] = Array.isArray(msg.runningAgents) ? msg.runningAgents : [];
-  const onMachine = await db.select().from(schema.agents).where(and(eq(schema.agents.machineId, machineId), eq(schema.agents.status, "active")));
-  for (const a of onMachine) {
-    if (runningIds.includes(a.id)) continue;
-    await db.update(schema.agents).set({ status: "inactive", activity: "offline" }).where(eq(schema.agents.id, a.id));
-    await publish(serverId, { type: "agent", id: a.id, name: a.name, status: "inactive", activity: "offline" });
-    log.info("reconciled stale-active agent → inactive", { agentId: a.id, machineId });
-  }
-  // Reconnect catch-up: wake agents on this machine that accumulated a wakeable backlog while it was offline,
-  // so missed @/DM messages get processed instead of sitting unread forever (the symmetric counterpart to the
-  // human side's reconnect message-sync). Fire-and-forget — it must not delay the ready:ack the caller sends
-  // right after, and any failure must never break the connection.
-  void catchUpAgentsOnMachine(serverId, machineId, runningIds).catch((e: any) => log.error("catch-up failed", { machineId, detail: String(e?.message ?? e) }));
-  return machineId;
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-async function onAgentUpdate(serverId: string, msg: any): Promise<void> {
+export async function reconcileWorkerReady(runningIds: string[], lease: WorkerLease): Promise<boolean> {
+  if (!isWorkerLeaseCurrent(lease)) return false;
+  const running = new Set(runningIds);
+  for (const { space, db } of allSpaceDbs()) {
+    if (!isWorkerLeaseCurrent(lease)) return false;
+    const agents = await db.select().from(schema.agents).where(isNull(schema.agents.deletedAt));
+    if (!isWorkerLeaseCurrent(lease)) return false;
+    for (const agent of agents) {
+      if (!isWorkerLeaseCurrent(lease)) return false;
+      if (running.has(agent.id)) {
+        const activity = agent.activity === "offline" || agent.activity === "sleeping" ? "online" : agent.activity;
+        if (agent.status === "active" && activity === agent.activity) continue;
+        await db.update(schema.agents).set({ status: "active", activity }).where(eq(schema.agents.id, agent.id));
+        if (!isWorkerLeaseCurrent(lease)) return false;
+        await publish(space.id, { type: "agent", id: agent.id, name: agent.name, status: "active", activity });
+        if (!isWorkerLeaseCurrent(lease)) return false;
+        continue;
+      }
+      if (agent.status === "sleeping" || agent.activity === "sleeping") continue;
+      if (agent.status === "inactive" && agent.activity === "offline") continue;
+      await db.update(schema.agents).set({ status: "inactive", activity: "offline" }).where(eq(schema.agents.id, agent.id));
+      if (!isWorkerLeaseCurrent(lease)) return false;
+      await publish(space.id, { type: "agent", id: agent.id, name: agent.name, status: "inactive", activity: "offline" });
+      if (!isWorkerLeaseCurrent(lease)) return false;
+    }
+  }
+  return isWorkerLeaseCurrent(lease);
+}
+
+export async function markAllAgentsOffline(lease: WorkerLease): Promise<boolean> {
+  if (!isWorkerLeaseLatest(lease)) return false;
+  for (const { space, db } of allSpaceDbs()) {
+    if (!isWorkerLeaseLatest(lease)) return false;
+    const agents = await db.select().from(schema.agents)
+      .where(and(isNull(schema.agents.deletedAt), eq(schema.agents.status, "active")));
+    if (!isWorkerLeaseLatest(lease)) return false;
+    for (const agent of agents) {
+      if (!isWorkerLeaseLatest(lease)) return false;
+      await db.update(schema.agents).set({ status: "inactive", activity: "offline" }).where(eq(schema.agents.id, agent.id));
+      if (!isWorkerLeaseLatest(lease)) return false;
+      await publish(space.id, { type: "agent", id: agent.id, name: agent.name, status: "inactive", activity: "offline" });
+      if (!isWorkerLeaseLatest(lease)) return false;
+    }
+  }
+  return isWorkerLeaseLatest(lease);
+}
+
+async function onAgentUpdate(msg: any, lease: WorkerLease): Promise<void> {
   if (!msg.agentId) return;
-  const db = dbFor(serverId);
+  const located = await locateAgent(msg.agentId);
+  if (!located || !isWorkerLeaseCurrent(lease)) return;
   const patch: Record<string, unknown> = {};
   if (msg.type === "agent:status") patch.status = msg.status;
   if (msg.type === "agent:activity") patch.activity = msg.activity;
-  await db.update(schema.agents).set(patch).where(eq(schema.agents.id, msg.agentId));
-  const a = (await db.select().from(schema.agents).where(eq(schema.agents.id, msg.agentId)))[0];
-  if (a) await publish(serverId, { type: "agent", id: a.id, name: a.name, status: a.status, activity: a.activity, detail: msg.detail ?? "" });
-  if (msg.type === "agent:activity") await logActivity(serverId, msg.agentId, { kind: "status", activity: msg.activity, detail: msg.detail }); // status goes into the activity log
+  await located.db.update(schema.agents).set(patch).where(eq(schema.agents.id, msg.agentId));
+  if (!isWorkerLeaseCurrent(lease)) return;
+  const agent = (await located.db.select().from(schema.agents).where(eq(schema.agents.id, msg.agentId)))[0];
+  if (!isWorkerLeaseCurrent(lease)) return;
+  if (agent) await publish(located.spaceId, { type: "agent", id: agent.id, name: agent.name, status: agent.status, activity: agent.activity, detail: msg.detail ?? "" });
+  if (!isWorkerLeaseCurrent(lease)) return;
+  if (msg.type === "agent:activity") {
+    await logActivity(located.spaceId, msg.agentId, { kind: "status", activity: msg.activity, detail: msg.detail });
+  }
 }
 
 // Per-agent retention cap for the activity log. Agents stream trajectory entries continuously, so this

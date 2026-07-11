@@ -1,7 +1,7 @@
 // Control-plane WebSocket client with exponential-backoff reconnection.
 import WebSocket from "ws";
 import { createLogger } from "../log.js";
-import { MACHINE_REJECTED_CODE } from "../daemonProtocol.js";
+import { WORKER_REJECTED_CODE, WORKER_REPLACED_CODE } from "../daemonProtocol.js";
 
 const INITIAL_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 30000;
@@ -64,12 +64,23 @@ export class Connection {
     });
     this.ws.on("close", (code: number, reason: any) => {
       if (this.watchdog) { clearTimeout(this.watchdog); this.watchdog = null; }
-      if (code === MACHINE_REJECTED_CODE) {
+      if (code === WORKER_REPLACED_CODE) {
+        // Another installation-local Worker is now authoritative. Retrying from this superseded
+        // process would evict it and make both processes alternate forever, so stop automatically.
+        this.should = false;
+        if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+        this.log.warn("local runtime worker was replaced by a newer connection; automatic reconnect stopped", {
+          code,
+          reason: reason?.toString?.() ?? String(reason ?? ""),
+        });
+        return;
+      }
+      if (code === WORKER_REJECTED_CODE) {
         // Permanent: this key will never be accepted again. Jump to the max backoff and tell the operator
         // exactly what to do, instead of looping silently every second.
         this.delay = MAX_BACKOFF_MS;
         this.log.error(
-          "server rejected this machine: its connection key is unknown or was removed. Re-issue the connect command (workspace → Computers → this machine → Reconnect), then restart the daemon with the new key.",
+          "server rejected the local runtime worker bootstrap key. Ensure DAEMON_BOOTSTRAP_KEY matches the server, then restart the worker.",
           { code, reason: reason?.toString?.() ?? String(reason ?? "") },
         );
       } else {

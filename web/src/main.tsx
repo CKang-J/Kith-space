@@ -9,7 +9,7 @@ import { App } from "./App.tsx";
 import { Chat } from "./views/Chat.tsx";
 import { Showcase } from "./views/Showcase.tsx";
 import { Agents } from "./views/Members.tsx";
-import { Tasks, Computers, Search, Settings, Inbox, Saved } from "./views/misc.tsx";
+import { Tasks, Search, Settings, Inbox, Saved } from "./views/misc.tsx";
 import { Landing } from "./views/Landing.tsx";
 import { Features } from "./views/Features.tsx";
 import { homeRoute } from "./routing.ts";
@@ -79,8 +79,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="agent/:agentId" element={<Agents />} />
             <Route path="tasks" element={<Tasks />} />
             <Route path="tasks/:channelId" element={<Tasks />} />
-            <Route path="computer" element={<Computers />} />
-            <Route path="computer/:machineId" element={<Computers />} />
             <Route path="search" element={<Search />} />
             <Route path="settings" element={<Settings />} />
             <Route path="settings/:section" element={<Settings />} />

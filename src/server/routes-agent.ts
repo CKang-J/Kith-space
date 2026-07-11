@@ -180,7 +180,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
       let description: string | null;
       try { description = resolveRoleDescription(action.description, action.roleTemplate); }
       catch (error) { return (sendErr(res, 400, (error as Error).message, { code: "BAD_ACTION" }), true); }
-      norm = { type: ty, name: String(action.name).trim().replace(/^@/, ""), description, roleTemplate: action.roleTemplate ?? "blank", requiredComputer: action.requiredComputer ?? null, suggestedComputer: action.suggestedComputer ?? null };
+      norm = { type: ty, name: String(action.name).trim().replace(/^@/, ""), description, roleTemplate: action.roleTemplate ?? "blank" };
     }
     const actionMetadata = { kind: "action-card", state: "prepared", action: norm, executedAt: null, executedByUserId: null, executedByUserName: null, result: null };
     const msg = await createMessage({ serverId, channelId: tgt.channelId, senderType: "agent", senderId: agent.id, senderName: agent.name, content: "", messageType: "action", threadId: tgt.threadId, actionMetadata });
@@ -537,7 +537,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     try {
       const buf = await readObject(a.storageKey);
       // Return bytes (base64) → CLI saves to agent's local workspace, agent inspects with its own tools.
-      // File lives on the server disk; agent may be on a remote machine, so bytes must be delivered to the agent locally for inspection.
+      // File lives in the Core Service data area; return bytes through the agent data plane for inspection.
       const TOO_BIG = 12 * 1024 * 1024; // 12MB raw limit (base64 +33%); oversized files are not inlined
       const isText = !buf.includes(0) && ((a.mimeType ?? "").startsWith("text") || buf.length < 65536);
       const body: Record<string, unknown> = { id: a.id, filename: a.filename, mimeType: a.mimeType, sizeBytes: a.sizeBytes };

@@ -96,7 +96,7 @@ try {
 
   for (const path of [
     "/api/agents",
-    `/api/spaces/${home.id}/machines`,
+    "/api/local-runtime/models/claude",
   ]) {
     const scopedRequest = jsonRequest();
     scopedRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
@@ -104,6 +104,13 @@ try {
     await handleApi(scopedRequest, scopedCapture.res, new URL(`http://localhost${path}`), "GET");
     assert.equal(scopedCapture.response.status, 200, path);
   }
+
+  const retiredMachinesRequest = jsonRequest();
+  retiredMachinesRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };
+  const retiredMachinesCapture = responseCapture();
+  const retiredMachinesPath = `/api/spaces/${home.id}/machines`;
+  await handleApi(retiredMachinesRequest, retiredMachinesCapture.res, new URL(`http://localhost${retiredMachinesPath}`), "GET");
+  assert.equal(retiredMachinesCapture.response.status, 404);
 
   const channelRequest = jsonRequest({ name: "human-authority" });
   channelRequest.headers = { authorization: `Bearer ${token}`, "x-space-id": home.id };

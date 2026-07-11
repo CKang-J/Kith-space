@@ -1,11 +1,8 @@
 import "../env.js";
 import { randomUUID } from "node:crypto";
-import { hashToken } from "../server/auth.js";
 import { closeAllDatabases, schema } from "./index.js";
 import { findServerBySlug, findUserByName } from "./lookup.js";
 import { createWorkspace } from "./workspace.js";
-
-export const QA_KEY = "qa-machine-key";
 
 async function main() {
   if (await findServerBySlug("qa")) {
@@ -17,12 +14,8 @@ async function main() {
   const server = await createWorkspace("QA Workspace", "qa", qa.id, { owner: qa });
   const found = (await findServerBySlug("qa"))!;
   const db = found.db;
-  const [machine] = await db.insert(schema.machines).values({
-    serverId: server.id, userId: qa.id, name: "qa-local",
-    apiKeyHash: hashToken(QA_KEY), apiKeyPrefix: QA_KEY.slice(0, 14), runtimes: ["claude", "codex"],
-  }).returning();
-  const [cody] = await db.insert(schema.agents).values({ serverId: server.id, machineId: machine!.id, name: "cody", displayName: "Cody", description: "Local full-stack assistant that can edit workspace files and run commands.", model: "sonnet", runtime: "claude" }).returning();
-  const [ada] = await db.insert(schema.agents).values({ serverId: server.id, machineId: machine!.id, name: "ada", displayName: "Ada", description: "Research and writing assistant.", model: "sonnet", runtime: "claude" }).returning();
+  const [cody] = await db.insert(schema.agents).values({ serverId: server.id, name: "cody", displayName: "Cody", description: "Local full-stack assistant that can edit workspace files and run commands.", model: "sonnet", runtime: "claude" }).returning();
+  const [ada] = await db.insert(schema.agents).values({ serverId: server.id, name: "ada", displayName: "Ada", description: "Research and writing assistant.", model: "sonnet", runtime: "claude" }).returning();
   const [general] = await db.insert(schema.channels).values({ serverId: server.id, name: "general", description: "Main collaboration channel", type: "channel" }).returning();
   await db.insert(schema.channelMembers).values([
     { channelId: general!.id, memberType: "user", memberId: qa.id },
@@ -32,7 +25,6 @@ async function main() {
   console.log("[qa-seed] done:");
   console.log("  server  :", server.id, "(slug=qa, name='QA Workspace')");
   console.log("  user    :", qa.id, "(qa, owner)");
-  console.log("  machine :", machine!.id, "(key=" + QA_KEY + ")");
   console.log("  agents  : cody/ada (claude)");
   console.log("  channel : #general");
 }

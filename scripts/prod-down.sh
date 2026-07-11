@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stop the kith-space production control plane: the server LISTENER + the kith-space prod daemon.
-# Daemons for other workspaces (machine-key daemons from a separate repo) are left alone.
+# Workers from other checkouts are left alone.
 # Usage: pnpm run prod:down
 set -euo pipefail
 [ -f .env.prod ] || { echo "✗ no .env.prod in $(pwd)"; exit 1; }

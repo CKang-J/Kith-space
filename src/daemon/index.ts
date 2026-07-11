@@ -1,17 +1,13 @@
 #!/usr/bin/env node
-// kith-space local daemon: connects to the control-plane WS and spawns locally-installed CLI agents (claude/codex) on demand.
-// Usage: kith-space-daemon --server-url http://localhost:7777 --api-key <machineKey>
+// Kith-space local runtime worker: one installation-level connection that hosts local CLI agents.
+// Usage: kith-space-daemon --server-url http://127.0.0.1:7777 --api-key <DAEMON_BOOTSTRAP_KEY>
 import "../env.js"; // must be first: loads project root .env (does not override shell env vars like OPENAI_API_KEY)
-import os from "node:os";
-import fs from "node:fs";
-import path from "node:path";
 import { Connection } from "./connection.js";
 import { AgentManager } from "./agentManager.js";
 import { listWorkspace, readWorkspaceFile, listSkills } from "./workspace.js";
 import { detectRuntimes } from "./runtimes.js";
 import { listModels } from "./listModels.js";
 import { createLogger } from "../log.js";
-import { machineIdFile } from "../paths.js";
 
 const log = createLogger("daemon");
 const args = process.argv.slice(2);
@@ -21,22 +17,14 @@ for (let i = 0; i < args.length; i++) {
   if (args[i] === "--api-key" && args[i + 1]) apiKey = args[++i]!;
 }
 // Default: connect to the server port from .env (worktree/prod each have their own .env port; --server-url overrides).
-if (!serverUrl) serverUrl = `http://localhost:${process.env.PORT ?? 7777}`;
-// Machine daemon connection key fallback. This is the same sk_machine_* value accepted by
-// --api-key; it is not an agent token, user token, or provider credential.
-if (!apiKey) apiKey = process.env.KITH_SPACE_DAEMON_API_KEY ?? "";
+if (!serverUrl) serverUrl = `http://127.0.0.1:${process.env.PORT ?? 7777}`;
+// A3/A4 replace this development bootstrap secret with an internal short-lived credential.
+if (!apiKey) apiKey = process.env.DAEMON_BOOTSTRAP_KEY ?? "";
 if (!apiKey) {
-  console.error("Usage: kith-space-daemon [--server-url <url>] --api-key <machineKey>");
-  console.error("   or: KITH_SPACE_DAEMON_API_KEY=<machineKey> kith-space-daemon [--server-url <url>]");
+  console.error("Usage: kith-space-daemon [--server-url <url>] --api-key <DAEMON_BOOTSTRAP_KEY>");
+  console.error("   or: DAEMON_BOOTSTRAP_KEY=<key> kith-space-daemon [--server-url <url>]");
   process.exit(1);
 }
-
-// Stable machine identity: on first connection the server assigns machine.id via ready:ack, persisted to ~/.kith-space/machine-id.
-// Subsequent connections include it so the server can recognize the same machine across restarts,
-// avoiding orphan machine rows from unstable hostnames.
-const MID_FILE = machineIdFile();
-const readMachineId = (): string | undefined => { try { return fs.readFileSync(MID_FILE, "utf8").trim() || undefined; } catch { return undefined; } };
-const saveMachineId = (id: string): void => { try { fs.mkdirSync(path.dirname(MID_FILE), { recursive: true }); fs.writeFileSync(MID_FILE, id); } catch { /* */ } };
 
 let conn: Connection;
 const mgr = new AgentManager((m) => conn.send(m));
@@ -44,7 +32,7 @@ const mgr = new AgentManager((m) => conn.send(m));
 conn = new Connection(serverUrl, apiKey, (msg) => {
   if (msg.type !== "ping") log.debug("recv", { type: msg.type, agentId: msg.agentId });
   switch (msg.type) {
-    case "ready:ack": if (typeof msg.machineId === "string" && msg.machineId) saveMachineId(msg.machineId); break;
+    case "ready:ack": break;
     // Agent dials the same server URL this daemon connected with (proven reachable), overriding the
     // server-reported config.serverUrl (SELF_URL = localhost:PORT on the server box — wrong whenever the
     // daemon runs on a different host than the server, e.g. local daemon ↔ getopentag.com).
@@ -62,11 +50,10 @@ conn = new Connection(serverUrl, apiKey, (msg) => {
   }
 }, () => {
   const runtimes = detectRuntimes();
-  log.info("ready", { runtimes, hostname: os.hostname() });
+  log.info("ready", { runtimes });
   conn.send({
     type: "ready", capabilities: ["agent:start", "agent:stop", "agent:sleep", "agent:reset", "agent:profile", "agent:deliver", "agent:workspace"],
-    runtimes, runningAgents: mgr.running(), hostname: os.hostname(), os: `${os.platform()} ${os.arch()}`, daemonVersion: process.env.DAEMON_VERSION ?? "dev",
-    machineId: readMachineId(), // Stable identity: empty on first connection; server sends it back via ready:ack for persistence.
+    runtimes, runningAgents: mgr.running(), daemonVersion: process.env.DAEMON_VERSION ?? "dev",
   });
 });
 

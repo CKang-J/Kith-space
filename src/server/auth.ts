@@ -43,7 +43,7 @@ export const hashToken = (t: string) => crypto.createHash("sha256").update(t).di
 
 /** agent-api auth: Bearer = the agent's own per-agent token (`sk_agent_*`, injected by daemon at spawn, see slice10) + x-agent-id header.
  *  Identity is resolved by hashing the token and looking it up: the token must belong to the agent named in x-agent-id, which prevents cross-agent and cross-server impersonation.
- *  No shared bootstrap key; machine keys are not accepted as agent credentials (machine keys are used only for daemon WS connections, see ws.ts). */
+ *  The Local Runtime Worker bootstrap key is never accepted as an agent credential. */
 export async function resolveAgent(token: string | null, agentId: string | null) {
   if (!token || !agentId) return null;
   // Reject soft-deleted agents: a deleted row keeps its id but must not authenticate (its token is cleared on

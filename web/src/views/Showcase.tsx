@@ -8,7 +8,7 @@
 //
 // Reuses the Chat message/thread styles (.msg / .msg-col / .mbody / .msg-meta / .task-pill / .thread-pill /
 // .thread-panel / .thread-head / .thread-sep / Avatar / MessageContent). Agent avatars/names are
-// intentionally NON-clickable and trigger no profile/API: the old DB-channel showcase leaked host-machine
+// intentionally NON-clickable and trigger no profile/API: the old DB-channel showcase leaked host details and
 // skills on avatar click, so this static page never makes an avatar interactive. Thread open/close is pure
 // useState over static data — never openThread/startThread (those hit the server).
 import { useState } from "react";

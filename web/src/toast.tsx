@@ -1,7 +1,7 @@
 // Lightweight global toast notifications. Mirrors ConfirmModal's context-provider shape (no third-party lib).
 // Usage: `const toast = useToast(); toast.error(t("..."))` / `toast.info(...)`. Callers pass already-translated
 // strings (the toast layer stays i18n-agnostic). Used for one-shot operation feedback (e.g. start/create an
-// agent while its machine is offline) where an inline banner would not fit.
+// agent while its Local Runtime is unavailable) where an inline banner would not fit.
 import { createContext, useContext, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
 
 type ToastKind = "error" | "info";

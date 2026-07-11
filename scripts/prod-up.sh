@@ -32,6 +32,6 @@ cat <<EOF
 
 ✅ prod up on http://localhost:$PORT  (server + kith-space daemon)
    logs: $LOGDIR/prod-{server,daemon}.out
-   note: a daemon for any OTHER workspace (a machine-key daemon, e.g. from a separate repo) is not
+   note: a worker from any OTHER checkout is not
          managed here — start that one yourself if you use it.
 EOF

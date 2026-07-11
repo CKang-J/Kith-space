@@ -9,7 +9,6 @@ const MODULE_PANE_MIN: Record<WorkspaceModuleId, number> = {
   inbox: 640,
   tasks: 560,
   agents: 640,
-  computers: 640,
   settings: 640,
   search: 560,
 };

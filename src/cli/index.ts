@@ -9,12 +9,16 @@ import { ROLE_TEMPLATES } from "../agents/roleTemplates.js";
 import { createLogger } from "../log.js";
 
 const log = createLogger("cli");
-const BASE = process.env.KITH_SPACE_SERVER_URL ?? "http://localhost:7777";
-const KEY = process.env.KITH_SPACE_AGENT_TOKEN ?? process.env.KITH_SPACE_MACHINE_KEY ?? process.env.KITH_SPACE_API_KEY ?? "poc-secret-key"; // per-agent token takes priority (slice10)
+const BASE = process.env.KITH_SPACE_SERVER_URL ?? "http://127.0.0.1:7777";
+const KEY = process.env.KITH_SPACE_AGENT_TOKEN;
 const AGENT = process.env.KITH_SPACE_AGENT_ID ?? "";
 const TURN_FILE = process.env.KITH_SPACE_TURN_FILE ?? "";
 
 function headers() {
+  if (!KEY) {
+    console.error("Error: KITH_SPACE_AGENT_TOKEN is required");
+    process.exit(1);
+  }
   return { authorization: `Bearer ${KEY}`, "x-agent-id": AGENT, "content-type": "application/json" };
 }
 async function api(method: string, path: string, body?: unknown): Promise<any> {

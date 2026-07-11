@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Agents } from "../views/Members.tsx";
-import { Computers, Inbox, Search, Settings, Tasks } from "../views/misc.tsx";
+import { Inbox, Search, Settings, Tasks } from "../views/misc.tsx";
 import { getWorkspaceModule } from "./workspaceModules.tsx";
 import type { WorkspaceModuleId } from "./workspaceLayout.ts";
 import { workspaceSearchForLayout, type WorkspaceRouteMatch } from "./workspaceRoute.ts";
@@ -30,7 +30,6 @@ function ModuleContent({ moduleId, route, chatVisible }: { moduleId: WorkspaceMo
       />
     );
   }
-  if (moduleId === "computers") return <Computers machineIdOverride={route.resourceId ?? undefined} moduleQuerySuffix={moduleQuerySuffix} />;
   if (moduleId === "settings") return <Settings sectionOverride={route.resourceId ?? undefined} moduleQuerySuffix={moduleQuerySuffix} />;
   if (moduleId === "search") return <Search />;
   return <Inbox />;

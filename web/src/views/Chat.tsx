@@ -20,7 +20,6 @@ import { PaneEmpty } from "../PaneEmpty.tsx";
 import { ChatSkeleton } from "./Skeleton.tsx";
 import { AgentProfile, CreateAgentModal } from "./Members.tsx";
 import { ChatSidebar, CreateChannelModal, channelCreateErrorMsg } from "./ChatSidebar.tsx";
-import { ConnectComputerWizard } from "./ConnectComputerWizard.tsx";
 import { Composer } from "./Composer.tsx";
 import { LiveTrace } from "./LiveTrace.tsx";
 import { useConfirm, useEscClose } from "../ConfirmModal.tsx";
@@ -532,7 +531,6 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
         : thread
         ? <ThreadPanel channelId={thread.channelId} parent={thread.parent} onClose={() => setThread(null)} onOpenAgent={(id) => setProfile({ id })} />
         : !embedded && <aside className="traj-col"><LiveTrace /></aside>}
-      <ConnectComputerWizard mode="onboard" />
       {showMembers && cur && <ChannelMembersModal channelId={cur.id} channelName={cur.name} onClose={() => setShowMembers(false)} />}
       {showEdit && cur && <EditChannelModal channel={cur} onClose={() => setShowEdit(false)} onDone={async () => { setShowEdit(false); await reload(); }} onDeleted={() => { setShowEdit(false); reload(); nav(`/s/${slug}/channel`); }} />}
       {ctxMenu && (() => {

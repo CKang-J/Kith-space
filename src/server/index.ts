@@ -12,7 +12,7 @@ import { attachSocketIO } from "./socketio.js";
 import { initRealtime } from "./realtime.js";
 import { startReminderScheduler } from "./reminders.js";
 import { reconcileCounters } from "../counters.js";
-import { reconcileMachinesOnBoot, startMachineSweeper } from "./machineLiveness.js";
+import { isWorkerConnected } from "../local-runtime/workerHub.js";
 import { sendJson, sendErr } from "./util.js";
 import { createLogger } from "../log.js";
 import { shouldServeAppShell } from "./staticRoutes.js";
@@ -57,6 +57,7 @@ function corsOriginHeader(reqOrigin: string | undefined): string | null {
 }
 
 const PORT = Number(process.env.PORT ?? 7777);
+const HOST = "127.0.0.1";
 const WEBDIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist");
 const DOCSDIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../docs-site/dist");
 const log = createLogger("server");
@@ -115,7 +116,7 @@ const server = http.createServer(async (req, res) => {
   const t0 = Date.now();
   res.on("finish", () => log.debug("req", { method, path: url.pathname, status: res.statusCode, ms: Date.now() - t0 }));
   try {
-    if (url.pathname === "/health") return sendJson(res, 200, { ok: true, service: "kith-space", time: new Date().toISOString() });
+    if (url.pathname === "/health") return sendJson(res, 200, { ok: true, service: "kith-space", workerConnected: isWorkerConnected(), time: new Date().toISOString() });
     if (await handleAgentApi(req, res, url, method)) return;
     if (await handleApi(req, res, url, method)) return;
     const isRead = method === "GET" || method === "HEAD";
@@ -140,10 +141,6 @@ startReminderScheduler(); // reminder scheduler: fires at due time, wakes the au
 reconcileCounters()
   .then((r) => log.info("counters reconciled", r))
   .catch((e) => log.error("counter reconcile failed (continuing)", { detail: String(e?.message ?? e) }))
-  // Before listening (so no daemon can reconnect first), flip stale "online" machines to offline —
-  // a fresh server instance has zero daemons connected; they re-mark online on reconnect.
-  .then(() => reconcileMachinesOnBoot().catch((e) => log.error("machine reconcile failed (continuing)", { detail: String(e?.message ?? e) })))
-  .finally(() => server.listen(PORT, () => {
-    log.info("control plane up", { url: `http://localhost:${PORT}`, logs: "~/.kith-space/logs/" });
-    startMachineSweeper(); // backstop: offline machines whose daemon died without a clean WS close
+  .finally(() => server.listen(PORT, HOST, () => {
+    log.info("control plane up", { url: `http://${HOST}:${PORT}`, health: `http://${HOST}:${PORT}/health`, logs: "~/.kith-space/logs/" });
   }));

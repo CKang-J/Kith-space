@@ -1,7 +1,7 @@
 {
   "name": "@fancyboi999/kith-space-daemon",
   "version": "0.8.3",
-  "description": "Kith-space compute-plane daemon — connect a machine to a Kith-space server so its agents can run there. No repo clone needed.",
+  "description": "Retired remote-daemon package retained temporarily for A6 cleanup; Kith-space now uses one installation-local runtime worker.",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
@@ -17,8 +17,7 @@
   "keywords": [
     "kith-space",
     "ai-agents",
-    "daemon",
-    "self-hosted"
+    "local-runtime"
   ],
   "repository": {
     "type": "git",

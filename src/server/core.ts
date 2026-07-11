@@ -4,7 +4,7 @@ import { and, eq, ne, desc, gt, inArray, like, or, isNull, isNotNull, sql } from
 import { dbFor, schema } from "../db/index.js";
 import { createWorkspace } from "../db/workspace.js";
 import { nextSeq, publish } from "./realtime.js";
-import { broadcastToDaemons, daemonCount, isMachineConnected, sendToMachine } from "./daemonHub.js";
+import { isWorkerConnected, sendToWorker, workerRuntimes } from "../local-runtime/workerHub.js";
 import { agentHasScope } from "./scopes.js";
 import { newKey, hashToken } from "./auth.js";
 import { createLogger } from "../log.js";
@@ -19,7 +19,7 @@ export { TASK_STATUSES } from "./tasks/taskTypes.js";
 
 const log = createLogger("server:core");
 const PORT = Number(process.env.PORT ?? 7777);
-const SELF_URL = `http://localhost:${PORT}`;
+const SELF_URL = `http://127.0.0.1:${PORT}`;
 // Per-agent raw token cache (server process memory; DB stores hash only). Injected into agent process at spawn; resolveAgent looks up by hash. See slice10.
 const agentRawTokens = new Map<string, string>();
 
@@ -29,7 +29,7 @@ export const DESC_TOO_LONG = `Description must be at most ${MAX_DESCRIPTION} cha
 export const descTooLong = (s: unknown): boolean => typeof s === "string" && s.length > MAX_DESCRIPTION;
 
 // Agent name is the @mention handle: used directly as @<name> (parseMentions re, CLI, web) and as the
-// dm:@<name> lookup key (resolveTarget). It must be a machine-safe identifier — spaces / punctuation /
+// dm:@<name> lookup key (resolveTarget). It must be a protocol-safe identifier — spaces / punctuation /
 // emoji / leading digits break mention parsing and DM target resolution. Display-friendly text (Chinese,
 // spaces, emoji) belongs in displayName, which is unconstrained and drives all human-facing rendering.
 // `agents.name` is an unbounded `text` column, so the length cap is enforced here, not by the DB.
@@ -124,7 +124,7 @@ export async function workspaceMembers(serverId: string): Promise<Member[]> {
   // Exclude system-seeded showcase demo agents (creatorType="system"): they are display-only props for the
   // read-only #showcase channel, NOT @-reachable members. This pool feeds @-mention auto-join in public
   // channels — without the filter, @-ing a word that happens to match a prop's name (e.g. "Pat") would
-  // auto-join it into a real channel and fire a no-op wake (it has no machine). Message rendering resolves a
+  // auto-join it into a real channel and fire a no-op wake (it has no runtime process). Message rendering resolves a
   // sender by id elsewhere, so props still render correctly in #showcase history.
   const ags = await db.select().from(schema.agents).where(and(eq(schema.agents.serverId, serverId), isNull(schema.agents.deletedAt), ne(schema.agents.creatorType, "system")));
   for (const a of ags) out.push({ type: "agent", id: a.id, name: a.name, displayName: a.displayName });
@@ -557,8 +557,8 @@ export async function createMessage(opts: {
     const deliverSent = startSent && sendAgentDeliver(opts.serverId, target, { agentId: mem.id, seq, from: opts.senderName, target: opts.channelId, targetName, msgShort, isTask: !!opts.asTask, message: { content: opts.content }, mentioned, streamId: replyStreamId });
     if (!deliverSent) {
       await dispatchState.releaseWake(reservation.reservationId);
-      await publish(opts.serverId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, op: "error", text: "machine offline" });
-      await markAgentUnavailable(opts.serverId, mem.id, "machine offline");
+      await publish(opts.serverId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, op: "error", text: "local runtime worker offline" });
+      await markAgentUnavailable(opts.serverId, mem.id, "local runtime worker offline");
       continue;
     }
     await dispatchState.commitWake(reservation.reservationId, {
@@ -928,7 +928,7 @@ export async function assignTask(
     });
     if (!deliverSent) {
       await action.state.releaseWake(reservation.reservationId);
-      await markAgentUnavailable(serverId, assigneeId, "machine offline");
+      await markAgentUnavailable(serverId, assigneeId, "local runtime worker offline");
     } else {
       await action.state.commitWake(reservation.reservationId, {
         agentId: assigneeId,
@@ -1031,7 +1031,7 @@ export async function setTaskStatus(
       const deliverSent = startSent && sendAgentDeliver(serverId, target, { type: "agent:deliver", agentId: upd.taskAssigneeId, seq: sysMsg.seq, from: actor, target: threadCh, targetName: `task #${upd.taskNumber}`, msgShort: sysMsg.id.slice(0, 8), isTask: true, message: { content: `#${upd.taskNumber} → ${label}` }, mentioned: true });
       if (!deliverSent) {
         await action.state.releaseWake(reservation.reservationId);
-        await markAgentUnavailable(serverId, upd.taskAssigneeId, "machine offline");
+        await markAgentUnavailable(serverId, upd.taskAssigneeId, "local runtime worker offline");
       } else {
         await action.state.commitWake(reservation.reservationId, {
           agentId: upd.taskAssigneeId,
@@ -1061,7 +1061,7 @@ export async function deleteTask(serverId: string, messageId: string) {
   return upd;
 }
 
-// ── Agent lifecycle: start/stop/reset (target bound machine + update status + emit socket events) ──
+// ── Agent lifecycle: start/stop/reset through the one installation-local runtime worker ──
 async function publishAgentState(serverId: string, agentId: string, detail = ""): Promise<void> {
   const db = dbFor(serverId);
   const a = (await db.select().from(schema.agents).where(eq(schema.agents.id, agentId)))[0];
@@ -1073,73 +1073,45 @@ async function markAgentUnavailable(serverId: string, agentId: string, reason: s
   await publishAgentState(serverId, agentId, reason);
   log.warn("agent unavailable", { agentId, reason });
 }
-type AgentStartTarget = { ok: true; machineId: string | null; cfg: NonNullable<Awaited<ReturnType<typeof agentConfig>>> };
-type AgentControlTarget = { ok: true; machineId: string | null };
+type AgentStartTarget = { ok: true; cfg: NonNullable<Awaited<ReturnType<typeof agentConfig>>> };
+type AgentControlTarget = { ok: true };
 
-function sendAgentStart(serverId: string, target: AgentStartTarget, agentId: string): boolean {
+function sendAgentStart(_serverId: string, target: AgentStartTarget, agentId: string): boolean {
   const msg = { type: "agent:start", agentId, config: target.cfg };
-  if (target.machineId) return sendToMachine(target.machineId, msg);
-  if (daemonCount(serverId) === 0) return false;
-  broadcastToDaemons(serverId, msg);
-  return true;
+  return sendToWorker(msg);
 }
 
-function sendAgentDeliver(serverId: string, target: AgentStartTarget, msg: Record<string, unknown>): boolean {
-  if (target.machineId) return sendToMachine(target.machineId, { type: "agent:deliver", ...msg });
-  if (daemonCount(serverId) === 0) return false;
-  broadcastToDaemons(serverId, { type: "agent:deliver", ...msg });
-  return true;
+function sendAgentDeliver(_serverId: string, _target: AgentStartTarget, msg: Record<string, unknown>): boolean {
+  return sendToWorker({ type: "agent:deliver", ...msg });
 }
 
-function sendAgentControl(serverId: string, target: AgentControlTarget, msg: Record<string, unknown>): boolean {
-  if (target.machineId) return sendToMachine(target.machineId, msg);
-  if (daemonCount(serverId) === 0) return false;
-  broadcastToDaemons(serverId, msg);
-  return true;
+function sendAgentControl(_serverId: string, _target: AgentControlTarget, msg: Record<string, unknown>): boolean {
+  return sendToWorker(msg);
 }
 
 async function agentStartTarget(serverId: string, agentId: string): Promise<AgentStartTarget | { ok: false; reason: string }> {
   const db = dbFor(serverId);
   const a = (await db.select({
-    machineId: schema.agents.machineId,
     runtime: schema.agents.runtime,
-    machineStatus: schema.machines.status,
-    machineRuntimes: schema.machines.runtimes,
   }).from(schema.agents)
-    .leftJoin(schema.machines, eq(schema.agents.machineId, schema.machines.id))
     .where(and(eq(schema.agents.id, agentId), eq(schema.agents.serverId, serverId), isNull(schema.agents.deletedAt))))[0];
   if (!a) return { ok: false, reason: "agent not found" };
-  if (!a.machineId) {
-    if (daemonCount(serverId) === 0) return { ok: false, reason: "no daemon online" };
-    const cfg = await agentConfig(serverId, agentId);
-    if (!cfg) return { ok: false, reason: "agent not found" };
-    return { ok: true, machineId: null, cfg };
-  }
-  if (a.machineStatus !== "online" || !isMachineConnected(a.machineId)) return { ok: false, reason: "machine offline" };
+  if (!isWorkerConnected()) return { ok: false, reason: "local runtime worker offline" };
   const runtime = a.runtime ?? "claude";
-  const runtimes = Array.isArray(a.machineRuntimes) ? a.machineRuntimes : [];
-  if (!runtimes.includes(runtime)) return { ok: false, reason: `runtime unavailable: ${runtime}` };
+  if (!workerRuntimes().includes(runtime)) return { ok: false, reason: `runtime unavailable: ${runtime}` };
   const cfg = await agentConfig(serverId, agentId);
   if (!cfg) return { ok: false, reason: "agent not found" };
-  return { ok: true, machineId: a.machineId, cfg };
+  return { ok: true, cfg };
 }
 async function agentControlTarget(serverId: string, agentId: string): Promise<AgentControlTarget | { ok: false; reason: string }> {
   const db = dbFor(serverId);
-  const a = (await db.select({
-    machineId: schema.agents.machineId,
-    machineStatus: schema.machines.status,
-  }).from(schema.agents)
-    .leftJoin(schema.machines, eq(schema.agents.machineId, schema.machines.id))
+  const a = (await db.select({ id: schema.agents.id }).from(schema.agents)
     .where(and(eq(schema.agents.id, agentId), eq(schema.agents.serverId, serverId), isNull(schema.agents.deletedAt))))[0];
   if (!a) return { ok: false, reason: "agent not found" };
-  if (!a.machineId) {
-    if (daemonCount(serverId) === 0) return { ok: false, reason: "no daemon online" };
-    return { ok: true, machineId: null };
-  }
-  if (a.machineStatus !== "online" || !isMachineConnected(a.machineId)) return { ok: false, reason: "machine offline" };
-  return { ok: true, machineId: a.machineId };
+  if (!isWorkerConnected()) return { ok: false, reason: "local runtime worker offline" };
+  return { ok: true };
 }
-/** Start an agent (requires local daemon to be online). */
+/** Start an agent (requires the installation-local runtime worker to be online). */
 export async function startAgent(serverId: string, agentId: string): Promise<{ ok: boolean; reason?: string }> {
   const db = dbFor(serverId);
   const target = await agentStartTarget(serverId, agentId);
@@ -1148,8 +1120,8 @@ export async function startAgent(serverId: string, agentId: string): Promise<{ o
     return { ok: false, reason: target.reason };
   }
   if (!sendAgentStart(serverId, target, agentId)) {
-    await markAgentUnavailable(serverId, agentId, "machine offline");
-    return { ok: false, reason: "machine offline" };
+    await markAgentUnavailable(serverId, agentId, "local runtime worker offline");
+    return { ok: false, reason: "local runtime worker offline" };
   }
   await db.update(schema.agents).set({ status: "active", activity: "working" }).where(eq(schema.agents.id, agentId));
   await publishAgentState(serverId, agentId);
@@ -1159,7 +1131,7 @@ export async function stopAgent(serverId: string, agentId: string): Promise<bool
   const db = dbFor(serverId);
   const target = await agentControlTarget(serverId, agentId);
   if (target.ok) {
-    if (!sendAgentControl(serverId, target, { type: "agent:stop", agentId })) log.warn("agent stop target unavailable", { agentId, reason: "machine offline" });
+    if (!sendAgentControl(serverId, target, { type: "agent:stop", agentId })) log.warn("agent stop target unavailable", { agentId, reason: "local runtime worker offline" });
   } else if (target.reason !== "agent not found") {
     log.warn("agent stop target unavailable", { agentId, reason: target.reason });
   }
@@ -1171,7 +1143,7 @@ export async function resetAgent(serverId: string, agentId: string, wipeWorkspac
   const db = dbFor(serverId);
   const target = await agentControlTarget(serverId, agentId);
   if (target.ok) {
-    if (!sendAgentControl(serverId, target, { type: "agent:reset", agentId, wipeWorkspace, clearMemory })) log.warn("agent reset target unavailable", { agentId, reason: "machine offline" });
+    if (!sendAgentControl(serverId, target, { type: "agent:reset", agentId, wipeWorkspace, clearMemory })) log.warn("agent reset target unavailable", { agentId, reason: "local runtime worker offline" });
   } else if (target.reason !== "agent not found") {
     log.warn("agent reset target unavailable", { agentId, reason: target.reason });
   }
@@ -1184,7 +1156,7 @@ export async function resetAgent(serverId: string, agentId: string, wipeWorkspac
 export async function syncAgentProfile(serverId: string, agentId: string, displayName: string, description?: string | null): Promise<void> {
   const target = await agentControlTarget(serverId, agentId);
   if (target.ok) {
-    if (!sendAgentControl(serverId, target, { type: "agent:profile", agentId, displayName, description: description ?? null })) log.warn("agent profile target unavailable", { agentId, reason: "machine offline" });
+    if (!sendAgentControl(serverId, target, { type: "agent:profile", agentId, displayName, description: description ?? null })) log.warn("agent profile target unavailable", { agentId, reason: "local runtime worker offline" });
   } else if (target.reason !== "agent not found") {
     log.warn("agent profile target unavailable", { agentId, reason: target.reason });
   }

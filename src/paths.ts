@@ -17,7 +17,6 @@ export const userMemoryDir = (): string => path.join(kithSpaceHome(), "memory");
 export const workspaceMemoryDir = (rootPath: string): string => path.join(rootPath, ".kith", "memory");
 export const agentsDir = (): string => path.join(kithSpaceHome(), "agents");
 export const binDir = (): string => path.join(kithSpaceHome(), "bin");
-export const machineIdFile = (): string => path.join(kithSpaceHome(), "machine-id");
 // Specific overrides keep precedence over the HOME-derived default.
 export const logsDir = (): string => process.env.KITH_SPACE_LOG_DIR ?? path.join(kithSpaceHome(), "logs");
 export const uploadsDir = (): string => process.env.KITH_SPACE_UPLOAD_DIR ?? path.join(kithSpaceHome(), "uploads");

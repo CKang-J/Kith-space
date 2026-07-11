@@ -127,7 +127,6 @@ export function WorkspaceFrame({ legacyHref }: WorkspaceFrameProps) {
     <main className="shell-workspace-frame" data-layout-mode={mode} data-visual-mode={visualMode}>
       <WorkspaceTopBar
         activeModule={activeModule}
-        chatVisible={chatVisible}
         channelId={currentChannelId}
         layoutSearch={layoutSearch}
         legacyHref={legacyHref}

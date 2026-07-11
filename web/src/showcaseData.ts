@@ -2,9 +2,9 @@
 // (no DB channel, no API, no live agents). Content is copied verbatim from the original server
 // seed (src/server/showcaseSeed.ts) so the demo reads exactly like the real product.
 //
-// AGENTS are demo props: name/displayName/description only — no ids, tokens, machines, or skills.
+// AGENTS are demo props: name/displayName/description only — no ids, tokens, host details, or skills.
 // The Showcase view renders these names/avatars as NON-clickable (no agent profile, no API),
-// which is the whole point: the old DB-channel showcase leaked host-machine skills on avatar click.
+// which is the whole point: the old DB-channel showcase leaked host details and skills on avatar click.
 
 export type ShowcaseLine = { agent: string | null; content: string };
 export type ShowcaseAttachment = { filename: string; kind: "csv" | "image"; href: string };

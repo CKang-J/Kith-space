@@ -88,7 +88,6 @@ export function emitMapped(spaceId: string, event: any): void {
     case "thread:updated": room.emit("thread:updated", { threadChannelId: event.threadChannelId, parentMessageId: event.parentMessageId, parentChannelId: event.parentChannelId, replyCount: event.replyCount, participantIds: event.participantIds, senderId: event.senderId, senderType: event.senderType }); break;
     case "agent:created": room.emit("agent:created", event.agent); break;
     case "agent:deleted": room.emit("agent:deleted", { id: event.id }); break;
-    case "machine": room.emit("machine:status", { machineId: event.machineId, status: event.online ? "online" : "offline", online: event.online, hostname: event.hostname, runtimes: event.runtimes }); break; // machine status payload: machineId + status ("online"/"offline")
     default: if (event?.type) room.emit(String(event.type), event);
   }
 }

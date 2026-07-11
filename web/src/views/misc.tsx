@@ -1,17 +1,13 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Star, Bookmark, AlertTriangle, Lock, MessageCircle, Eye, Plus } from "lucide-react";
+import { Star, Bookmark, Lock, MessageCircle, Eye } from "lucide-react";
 import { useStore } from "../store.tsx";
 import { fmtDateTime } from "../format";
-import { Avatar, resolveAvatar } from "../Avatar.tsx";
 import { ChatSidebar } from "./ChatSidebar.tsx";
-import { IconMonitor, IconInbox } from "../icons.tsx";
+import { IconInbox } from "../icons.tsx";
 import { TaskBoard } from "../TaskBoard.tsx";
 import { PaneEmpty } from "../PaneEmpty.tsx";
-import { ConnectComputerWizard } from "./ConnectComputerWizard.tsx";
-import { useConfirm, useEscClose } from "../ConfirmModal.tsx";
 import { useTranslation } from "react-i18next";
-import { daemonUpdateCommandTemplate, isDaemonUpdateAvailable } from "../machineUi.ts";
 
 interface TasksProps {
   channelIdOverride?: string | null;
@@ -187,113 +183,6 @@ export function Inbox({ embedded = false, onNavigate }: { embedded?: boolean; on
   );
 }
 
-// Runtime name → display label mapping
-const RT_LABEL: Record<string, string> = { claude: "Claude Code", codex: "Codex CLI", opencode: "OpenCode", copilot: "Copilot CLI", cursor: "Cursor CLI", gemini: "Gemini CLI", kimi: "Kimi", hermes: "Hermes" };
-export function Computers({ machineIdOverride, moduleQuerySuffix = "" }: { machineIdOverride?: string; moduleQuerySuffix?: string } = {}) {
-  const { machines, agents, slug, api, spaceId, reload, attachmentUrl, latestDaemonVersion } = useStore();
-  const confirm = useConfirm();
-  const { t } = useTranslation();
-  const { machineId: routeMachineId } = useParams();
-  const machineId = machineIdOverride ?? routeMachineId;
-  const nav = useNavigate();
-  const [connect, setConnect] = useState(false);
-  const [reconnect, setReconnect] = useState<{ id: string; name: string } | null>(null);
-  const [updateGuide, setUpdateGuide] = useState<{ id: string; name: string; currentVersion: string; latestVersion: string; apiKeyPrefix?: string } | null>(null);
-  const [delErr, setDelErr] = useState("");
-  const [deleting, setDeleting] = useState(false);
-  const cur = machines.find((m) => m.id === machineId) || machines[0];
-  const onMachine = agents.filter((a) => a.machineId === cur?.id);
-  const canUpdateDaemon = isDaemonUpdateAvailable(cur, latestDaemonVersion);
-  const removeMachine = async () => {
-    if (!cur) return;
-    setDelErr("");
-    if (onMachine.length) { setDelErr(t("misc.computersAgentsBlocked", { count: onMachine.length })); return; }
-    if (!(await confirm({ title: t("misc.computersDeleteTitle", { name: cur.name || cur.hostname }), message: t("misc.computersDeleteMessage"), confirmLabel: t("misc.computersDeleteConfirm"), danger: true }))) return;
-    setDeleting(true);
-    try {
-      const r = await api("DELETE", `/api/spaces/${spaceId}/machines/${cur.id}`);
-      if (r?.error) { setDelErr(r.error); return; }
-      await reload(); nav(`/s/${slug}/computer${moduleQuerySuffix}`);
-    } finally { setDeleting(false); }
-  };
-  return (
-    <>
-      <aside className="sidebar">
-        <div className="sb-scroll">
-        <div className="sb-title">{t("misc.computersTitle")}</div>
-        <div className="sec">{t("misc.computersMachines")} <span className="cnt">{machines.length}</span><button className="addbtn" title={t("misc.computersConnectBtn")} onClick={() => setConnect(true)}>+</button></div>
-        {machines.length ? machines.map((m) => (
-          <button key={m.id} className={"item" + (m.id === cur?.id ? " active" : "")} onClick={() => nav(`/s/${slug}/computer/${m.id}${moduleQuerySuffix}`)}>
-            <IconMonitor size={15} /><span className="grow">{m.name || m.hostname}</span><span className={"dot " + (m.status === "online" ? "online" : "")} />
-          </button>
-        )) : <div className="empty">{t("misc.computersNoMachine")}</div>}
-        </div>
-      </aside>
-      <main className="content-col">
-        {!cur ? <><div className="head"><h1>{t("misc.computersTitle")}</h1></div><div className="scroll"><PaneEmpty icon={<IconMonitor size={30} />} title={t("misc.computersNoMachine")} sub={t("misc.computersNoMachineHint")} action={<button className="pe-cta" onClick={() => setConnect(true)}><Plus size={15} /> {t("misc.computersConnectBtn")}</button>} /></div></>
-          : <>
-            <div className="head"><h1>{cur.name || cur.hostname}</h1><small>{cur.status === "online" ? t("misc.computersOnline") : t("misc.computersOffline")} · {t("misc.computersDaemonLabel")} {cur.daemonVersion || "?"}</small>
-              <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                {canUpdateDaemon && <button className="action-btn" onClick={() => setUpdateGuide({ id: cur.id, name: cur.name || cur.hostname || "", currentVersion: cur.daemonVersion || "?", latestVersion: latestDaemonVersion, apiKeyPrefix: cur.apiKeyPrefix })}>{t("misc.computersUpdateDaemonBtn")}</button>}
-                {cur.status !== "online" && <button className="action-btn" onClick={() => setReconnect({ id: cur.id, name: cur.name || cur.hostname || "" })}>{t("misc.computersReconnectBtn")}</button>}
-                <button className="danger-btn" onClick={removeMachine} disabled={deleting}>{deleting ? t("misc.computersDeleting") : t("misc.computersDeleteBtn")}</button>
-              </div>
-            </div>
-            <div className="scroll">
-              {delErr && <div className="form-err" style={{ marginBottom: 14 }}>{delErr}</div>}
-              <div className="card">
-                <div className="kv"><b>{t("common.hostname")}</b> {cur.hostname || ""}</div>
-                <div className="kv"><b>OS</b> {cur.os || ""}</div>
-                <div className="kv"><b>{t("misc.computersTypeLabel")}</b> {cur.isComputer ? t("misc.computersTypeSandbox") : t("misc.computersTypeDaemon")}</div>
-                <div className="kv"><b>{t("misc.computersStatusLabel")}</b> <span className={"dot " + (cur.status === "online" ? "online" : "")} style={{ display: "inline-block", verticalAlign: "middle" }} /> {cur.status}</div>
-              </div>
-              <div className="sec">{t("common.detectedRuntimes")} <span className="cnt">{(cur.runtimes || []).length}</span></div>
-              <div className="rt-list">{(cur.runtimes || []).length ? (cur.runtimes || []).map((r) => <span key={r} className="rt-chip">{RT_LABEL[r] || r}</span>) : <span className="empty">{t("misc.computersNoRuntime")}</span>}</div>
-              <div className="sec">{t("misc.computersAgentsSection")} <span className="cnt">{onMachine.length}</span></div>
-              {onMachine.length ? onMachine.map((a) => (
-                <button key={a.id} className="item" onClick={() => nav(`/s/${slug}/agent/${a.id}${moduleQuerySuffix}`)}>
-                  <Avatar seed={a.name} url={resolveAvatar(a.avatarUrl, attachmentUrl)} size={20} /><span className="grow">{a.displayName || a.name}</span><span className="meta">{a.runtime}</span><span className={"dot " + (a.activity || a.status)} />
-                </button>
-              )) : <div className="empty">{t("misc.computersNoAgent")}</div>}
-            </div>
-          </>}
-      </main>
-      {connect && <ConnectComputerWizard mode="add" onClose={() => setConnect(false)} />}
-      {reconnect && <ConnectComputerWizard mode="reconnect" machine={reconnect} onClose={() => setReconnect(null)} />}
-      {updateGuide && <DaemonUpdateModal machine={updateGuide} onClose={() => setUpdateGuide(null)} />}
-    </>
-  );
-}
-
-function DaemonUpdateModal({ onClose, machine }: { onClose: () => void; machine: { id: string; name: string; currentVersion: string; latestVersion: string; apiKeyPrefix?: string } }) {
-  useEscClose(onClose);
-  const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
-  const cmd = daemonUpdateCommandTemplate(window.location.origin);
-  const copy = () => { navigator.clipboard?.writeText(cmd); setCopied(true); setTimeout(() => setCopied(false), 1500); };
-  return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{t("misc.updateDaemonModalTitle", { name: machine.name })}</h3>
-        <p className="modal-note"><AlertTriangle size={14} /> {t("misc.updateDaemonModalNote", { current: machine.currentVersion, latest: machine.latestVersion })}</p>
-        <div className="update-steps">
-          <p>{t("misc.updateDaemonModalSavedKeyPath")}</p>
-          <p>{t("misc.updateDaemonModalLostKeyPath")}</p>
-          {machine.apiKeyPrefix && <p>{t("misc.updateDaemonModalKeyPrefix", { prefix: machine.apiKeyPrefix })}</p>}
-        </div>
-        <label>{t("misc.updateDaemonModalCmdLabel")}</label>
-        <div className="codebox"><code className="grow">{cmd}</code><button className="joinbtn" onClick={copy}>{copied ? t("misc.connectModalCopied") : t("misc.connectModalCopyBtn")}</button></div>
-        <p className="modal-note">{t("misc.updateDaemonModalPlaceholderNote")}</p>
-        <div className="acts"><button className="ok" onClick={onClose}>{t("misc.connectModalDone")}</button></div>
-      </div>
-    </div>
-  );
-}
-
-// Add-a-computer flows now live in ConnectComputerWizard.tsx (one multi-step modal for the
-// onboard / add / reconnect entry points). The old ConnectMachineModal + AddComputerModal were
-// removed in favor of it.
-
 const escHtml = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
 const hilite = (s: string, q: string) => { const e = escHtml(s); if (!q) return e; const re = new RegExp("(" + q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "ig"); return e.replace(re, "<mark>$1</mark>"); };
 
@@ -335,7 +224,7 @@ export function Search() {
 const SETTINGS: [string, string][] = [
   ["account", "misc.settingsNavAccount"],
   ["space", "misc.settingsNavSpace"],
-]; // Machine/Daemon management lives in the Computers view, not duplicated here
+];
 export function Settings({ sectionOverride, moduleQuerySuffix = "" }: { sectionOverride?: string; moduleQuerySuffix?: string } = {}) {
   const { section: routeSection } = useParams();
   const section = sectionOverride ?? routeSection;

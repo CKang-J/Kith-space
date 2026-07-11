@@ -5,7 +5,7 @@
 // The count counts what the label names, so it must hug its label; only the add affordance floats to the
 // right edge. The previous `justify-content:space-between` flung a lone count to the far edge of wide
 // panes and — when both a count and a button were present (the Machines header) — stranded the count in
-// the dead centre between label and button. See web/src/views/misc.tsx (Computers) + Members roster.
+// the dead centre between label and button. See the module and Agents section headers.
 //
 // Content-pane empty states (.pane-empty) must centre their message rather than pin a small grey line to
 // the top-left of an otherwise blank pane (the Inbox "No messages" complaint).
