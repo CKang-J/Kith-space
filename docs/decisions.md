@@ -2,7 +2,7 @@
 
 ## 前言
 
-这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。当前结论以每条决策中的最新修正和决策 21 为准。
+这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）。当前结论以每条决策中的最新修正和决策 21-23 为准。
 
 盘问的方式是一次给一个决策、每次给一个明确建议，让用户在 either/or 之间做取舍。会话过程中有几条决策被推翻或修正过（底座、runtime、Redis 的真实用途、聊天历史随文件夹走的成本），这些演化本身是理解项目为什么长成现在这样的关键，因此单列一节保留。
 
@@ -25,16 +25,18 @@
 | 9 | 记忆 | 三层文件式，读用原生文件工具，写工具延后 |
 | 10 | 角色模板 | 空白职责 + 少量可选起点模板，不绑定流程 |
 | 11 | UI 投入 | 信息架构现在定死，视觉学 OpenLoaf，豁免"去 AI 味"清单 |
-| 12 | 壳形态 | 单窗口工作区；启动直接进入当前 Space，旧双壳被推翻 |
+| 12 | 壳形态 | 单窗口工作区；普通冷启动进入 Home，旧双壳被推翻 |
 | 13 | Chat 地位 | Chat 是默认基础工作面；仅在模块已打开时可收起 |
-| 14 | Dock 与模块 | `Chat | Inbox | Tasks | Agents | Settings`，删除 Computers |
+| 14 | Dock 与模块 | Home 增加 Spaces；普通 Space 保持 `Chat | Inbox | Tasks | Agents | Settings` |
 | 15 | 布局能力 | ChatOnly / Split / ModuleOnly 三态，可拖拽分隔 |
-| 16 | 跨 Space 视角 | v1 移除薄总览页；未来聚合/双窗口仅预留接口 |
+| 16 | 跨 Space 视角 | 不恢复薄总览壳；Home Spaces 先落真实目录，聚合能力渐进实现 |
 | 17 | 宿主形态 | Desktop 是唯一正式宿主，可选本机/LAN 浏览器入口 |
 | 18 | 数据层 | 迁移到 SQLite + 进程内替代 Redis |
-| 19 | 工作区 | 根植文件夹、每工作区独立 db、自包含可移植 |
+| 19 | 工作区 | 根植用户文件夹、共享 Space cwd、每 Space 独立 db 和记忆 |
 | 20 | 包管理 | 仓库统一从 npm 迁移到 pnpm |
 | 21 | 个人 AgentOS 本机化 | 删除服务器部署、多真人、多机器、账户体系和云端路线 |
+| 22 | Agent 首轮 | 创建问候、空启动静默、真实投递按原目标回复 |
+| 23 | Home 与 Space 根目录 | Home 是总控 Space；app data、Space 数据和 runtime 状态分离 |
 
 ---
 
@@ -128,7 +130,7 @@
 
 ## 决策 8：工具权限两轴——模块工具按风险分级，外接 runtime 沿用 bypass 并记账为债
 
-**结论**：权限分两条轴。(a) 自建模块工具按风险分级：可逆/本地操作自动放行（v1 记忆/任务基本全自动），不可逆/外部操作（发邮件、删除、日历邀约）需审批。(b) 外接 runtime 的原生文件/shell 全权：v1 沿用 open-tag 现状（bypassPermissions）+ 每 agent 独立工作目录隔离，但这是**明确记账的技术债**。
+**当前结论（2026-07-12 修正）**：权限分两条轴。(a) 自建模块工具按风险分级：可逆/本地操作自动放行（v1 记忆/任务基本全自动），不可逆/外部操作（发邮件、删除、日历邀约）需审批。(b) 外接 runtime 的原生文件/shell 全权：v1 沿用 open-tag 现状（bypassPermissions），这是**明确记账的技术债**。同一 Space 的 agent 以后都以 Space 根目录为 cwd；cwd 只提供默认文件上下文，不是安全沙箱或 per-agent 隔离。
 
 **背景**：agent 既调用我们的模块工具，也拥有 runtime 赋予的本机文件/shell 能力。这两类权限性质完全不同，要分开处理。
 
@@ -136,13 +138,13 @@
 
 **推理与权衡**：模块工具按风险分级是常识取舍：可逆的自动放行保丝滑，不可逆的要审批防误伤（这些不可逆操作 v1 多在范围外，规则先锁定）。runtime 全权是更重的取舍——当前接受 bypassPermissions 是因为单机 + 单 Human + 仅本机可信内容的前提下风险可控，且能保住外接 runtime 的操作丝滑。但代价被明确记账：**升级的硬触发点是邮箱/浏览器等“摄入不可信外部内容”的模块上线之前**，届时必须先用审批路由或沙箱切断“prompt 注入到破坏性 shell”的攻击链。LAN 浏览器入口已由决策 17/21 限定为显式启用的受信任私网 HTTP + Token，它不能替代该 runtime 权限升级。
 
-**已核实源码事实**：open-tag 以 `--dangerously-skip-permissions --permission-mode bypassPermissions` 启动 Claude Code（`daemon/claudeRuntime.ts:31`–`:33` 的 `buildClaudeArgs`），即对本机不受限访问。v1 缓解仅两层：目录隔离（每 agent 独立 cwd，约定 `~/.open-tag/agents/<id>`，`db/schema.ts:61`，是进程 cwd 级隔离而非安全沙箱）、工具能力裁剪（同一 argv 禁用 plan/cron/ask 类工具，`daemon/claudeRuntime.ts:33` 的 `--disallowed-tools`，但不限制文件/shell）。
+**已核实源码事实与目标差距**：open-tag 以 `--dangerously-skip-permissions --permission-mode bypassPermissions` 启动 Claude Code，即对本机不受限访问。Kith-space 当前仍把 `<KITH_SPACE_HOME>/agents/<id>` 作为 cwd，但它从来不能阻止 runtime 用绝对路径访问其他文件；把它称为隔离会产生错误安全感。决策 23 要求改为 Space root cwd，并把真正的 Agent Memory、runtime state 与安全审批边界分别建模。工具能力裁剪仍不能限制任意文件/shell。
 
 ---
 
 ## 决策 9：记忆是三层文件式，读用原生文件工具，写工具延后
 
-**结论**：记忆分三层（用户级 / 空间级 / agent 级）。读 = runtime 原生文件工具（不做读 MCP）；结构 = OpenLoaf 式"一事一文件 + 自动维护 MEMORY.md 索引"约定，写进 system prompt 强制执行（不是工具）；写 MCP 工具延后。空间层：agent 可写、用户策展。
+**当前结论（2026-07-12 路径补充）**：记忆分三层（用户级 / 空间级 / agent 级）。读 = runtime 原生文件工具（不做读 MCP）；结构 = OpenLoaf 式"一事一文件 + 自动维护 MEMORY.md 索引"约定，写进 system prompt 强制执行（不是工具）；写 MCP 工具延后。用户层位于 app data，Space 层位于 `<space>/.kith/memory/`，Agent 层位于 `<space>/.kith/agents/<agentId>/`，随所属 Space 搬迁。空间层 agent 可写、用户策展。
 
 **背景**：agent 要从一次性问答工具变成有记忆的团队成员，需要一套记忆系统。OpenLoaf 有跨会话记忆设计可参考，openagents 没有真正的记忆系统。
 
@@ -150,7 +152,7 @@
 
 **推理与权衡**：三层是从 OpenLoaf 设计重构而来。关键取舍是**不把记忆做成 v1 的从零模块**——open-tag 已有一套 per-agent 文件记忆，直接复用，只在其上加两个目录层级（用户级/空间级）+ 在 system prompt 补两段索引约定。读用原生文件工具而非 MCP，是因为读操作 runtime 天然会做，包成 MCP 反而多一层。写工具延后，是先看 agent 用原生文件写会不会乱——若乱再提升为 `memory_save` 之类 MCP 工具（最小必要，不预先造）。空间层"agent 可写、用户策展"是自主与秩序的折中：agent 能沉淀团队知识，用户保留最终编辑权。结果：**v1 从零造的模块只有任务一个**（呼应决策 6）。
 
-**已核实源码事实**：每 agent 独立 workspace 目录（`db/schema.ts:61` 注释 `~/.open-tag/agents/<id>`）。seed 首启写出记忆骨架（`daemon/memory.ts:5` 的 `seedMemory`）。profile 同步是外科手术式改写——只改 H1 与 `## Role` 段，保留 agent 自写内容（`daemon/memory.ts:20` 的 `applyProfileToMemory`，触发点 `server/core.ts:920` 的 `syncAgentProfile`）。启动读/睡前写由 prompt 驱动（`daemon/prompt.ts:91` 起 startup sequence、`daemon/prompt.ts:120` 的 Compaction safety，`:104` 起要求 MEMORY.md 作自足索引）。
+**已核实源码事实与目标差距**：当前 `resolveMemoryLayerPaths` 已把 User Memory 放在 app data、Space Memory 放在 `<space>/.kith/memory/`，但 Agent Memory 仍与旧 per-agent cwd 共用 `<KITH_SPACE_HOME>/agents/<id>`，复制 Space 时不会随行。seed、profile 外科式同步和 prompt 驱动的索引约定继续复用；实现决策 23 时只迁移路径职责，不重造记忆系统。
 
 ---
 
@@ -182,13 +184,13 @@
 
 ## 决策 12：壳形态改为单窗口工作区
 
-**当前结论（2026-07-10 修正）**：v1 采用一个 `WorkspaceFrame`，启动后直接进入当前或上次使用的 Space。Chat 是默认主页，功能模块在同一窗口中与 Chat 分屏或独占，不再经过独立空间总览页。
+**当前结论（2026-07-12 再修正）**：v1 采用一个 `WorkspaceFrame`。普通冷启动且没有显式深链接时进入唯一 `Home` Space；显式 Space 深链接继续直达目标，托盘重新显示未销毁窗口时保留现场。Chat 是默认主页，功能模块在同一窗口中与 Chat 分屏或独占，不再经过独立空间总览壳。
 
 **原决定**：最初选择“空间总览态 ↔ 空间内部态”双壳，并做过薄版总览骨架。P4 联调后用户确认该方向偏离实际使用意图，明确要求移除总览页，旧决定由本条修正取代。
 
 **选项与选择**：当前阶段做 OpenLoaf 式主窗口 + 项目窗口 / 先做单窗口工作区（选中）。未来跨 Space 聚合或双窗口能力可以演化，但不得让当前壳为未实现的全局视角承担复杂度。
 
-**推理与权衡**：单窗口把最常用的“对话 + 模块”放在一个稳定骨架中，减少进入空间、收起导航和切换壳的额外步骤，也能直接复用 open-tag 的空间路由与业务视图。代价是当前没有跨 Space 驾驶舱；这被明确延后，而不是用一个数据不真实的薄总览页占位。
+**推理与权衡**：单窗口把最常用的“对话 + 模块”放在一个稳定骨架中，减少进入空间、收起导航和切换壳的额外步骤，也能直接复用当前 Space 路由与业务视图。Home 的 Spaces 模块仍服从同一个壳和真实 registry 数据，因此不是被推翻的 OverviewShell；真正聚合 Inbox/Tasks 等能力继续等真实数据契约。
 
 ---
 
@@ -204,7 +206,7 @@
 
 ## 决策 14：底部 Dock 是工作姿态与模块切换的统一控制器
 
-**当前结论（2026-07-11 修正）**：Dock 常驻于当前主要工作面板底部，为 `Chat | Inbox | Tasks | Agents | Settings`。`Members` 收敛为当前 Space 的 `Agents`，`Computers` 删除，唯一 Human 的资料移入全局 Settings。Search 位于顶部入口。一次只打开一个模块；当前模块从纯图标横向展开并显示名称，Chat 始终只显示图标。模块不拥有独立 pathname，而是在当前频道、DM 或收藏会话路径上使用 `?module=<id>`；合法 resource query 分别为 Tasks 的 `taskScope`、Agents 的 `agent`/`agentTab` 与 Settings 的 `settings`。切换会话保留当前模块及其 resource，切换模块则清除不属于新模块的 resource。
+**当前结论（2026-07-12 再修正）**：Dock 常驻于当前主要工作面板底部。Home 为 `Chat | Spaces | Inbox | Tasks | Agents | Settings`；普通 Space 为 `Chat | Inbox | Tasks | Agents | Settings`。`Spaces` 是只在 Home 有效的真实 registry 模块，不是全局聚合占位。`Members` 收敛为当前 Space 的 `Agents`，`Computers` 删除，唯一 Human 的资料移入全局 Settings。Search 位于顶部入口。一次只打开一个模块；当前模块从纯图标横向展开并显示名称，Chat 始终只显示图标。模块不拥有独立 pathname，而是在当前频道、DM 或收藏会话路径上使用 `?module=<id>`；合法 resource query 分别为 Tasks 的 `taskScope`、Agents 的 `agent`/`agentTab` 与 Settings 的 `settings`。切换会话保留当前模块及其 resource，切换模块则清除不属于新模块的 resource。
 
 **原决定**：Dock 曾被限定为“窄右栏容器自身的底部导航”，实时轨迹也曾作为右栏模块之一。新方向取消固定窄右栏：模块是可伸缩、可全宽的第二工作面；实时轨迹回到 Chat 工作面的伴随区域，在紧凑态以抽屉出现。
 
@@ -224,15 +226,15 @@
 
 ---
 
-## 决策 16：v1 移除空间总览页，未来跨 Space 视角只预留接口
+## 决策 16：不恢复薄总览壳；Home 先提供真实 Spaces 目录
 
-**当前结论（2026-07-10 修正）**：当前产品没有独立空间总览页，也不展示伪全局 Inbox 或 Tasks。应用通过顶部 Space 入口切换工作区；所有 Chat 与模块默认明确服从当前 Space。
+**当前结论（2026-07-12 再修正）**：产品没有独立空间总览壳，也不展示伪全局 Inbox 或 Tasks。唯一 Home 在同一个 WorkspaceFrame 中提供 Home-only `Spaces` 模块，读取 app.db 的真实 Space registry，负责创建、接入、搜索和打开普通 Space；所有 Chat、Inbox、Tasks、Agents 与 Settings 仍明确服从当前 Space。
 
 **原决定**：曾计划 v1 用“空间列表 + 全局收件箱 + 聚合待办”组成薄版 bento 驾驶舱。实际接线时全局收件箱只能复用当前 Space 数据，既增加壳复杂度又产生错误语义，因此用户明确要求移除。
 
-**未来接口**：模块契约预留 `scope = current | all`，长期可增加真正的跨 Space 聚合主窗口，甚至演化为 OpenLoaf 式全局窗口 + Space 窗口；在数据和交互闭环成熟前不展示空入口，也不把未来形态硬编码进当前壳。
+**未来接口**：Spaces 目录先形成真实全局入口；跨 Space Inbox、Tasks、Calendar 和信息流继续基于 `scope = current | all` 逐项实现。Home agent 的跨 Space task/message/dispatch 必须经过受审计的服务。没有真实聚合数据前不展示对应空入口，也不引入第二窗口。
 
-**推理与权衡**：诚实的当前 Space 作用域优于看似完整、实际不聚合的总览页。代价是 v1 暂时缺少个人 OS 的全局门面，但避免为未来能力过度设计，并为后续 B 方案保留了清晰扩展点。
+**推理与权衡**：诚实的当前 Space 作用域优于看似完整、实际不聚合的总览页；但 Space registry 已是真实全局事实，不需要继续隐藏。把它放进 Home 的 Module Pane，既补足个人 OS 的总入口，又不恢复被删除的双壳或伪聚合。
 
 ---
 
@@ -270,13 +272,13 @@
 
 ## 决策 19：工作区根植文件夹、每工作区独立 db、自包含可移植
 
-**结论**：Space 根植于一个本地文件夹、自包含、可移植（option C，升级为"每 Space 独立 SQLite 文件"）。创建 Space = 选择本地文件夹（或创建默认 `Home`），每个 Space 保留自己的频道、消息、任务、agent 和记忆。一个文件夹对应一个 Space。中央库扩展并更名为 `app.db`，保存唯一 Human、Desktop/Web 设置、访问 Token 哈希、浏览器会话、Space registry 与最近打开记录。
+**当前结论（2026-07-12 路径补充）**：Space 根植于一个用户可见的本地文件夹、自包含、可移植（option C，升级为“每 Space 独立 SQLite 文件”）。默认 Space 容器为 `~/Kith-space`，唯一 Home 位于 `~/Kith-space/Home`，普通 Space 可由用户选择任意本机文件夹。每个 Space 保留自己的频道、消息、任务、agent、Space Memory 和 Agent Memory；同一 Space 的 agent 共享该 Space 根目录作为 cwd。中央 app data 默认 `~/.kith-space`，保存 app.db、User Memory、runtime state、日志与 CLI wrapper，不作为业务文件 cwd。
 
 **背景**：这是一条**在 SQLite 决策下被重新评估成本**的决策（演化详见后文专节）。工作区数据怎么存、能不能随文件夹搬走？openagents 用中心存储，OpenLoaf 用文件夹根植（`<proj>/.openloaf/`，可移植）。
 
 **选项与选择**：中心库存全部 / 文件夹根植可移植（option C，选中，并升级为每工作区独立 db 文件）。选文件夹根植。
 
-**推理与权衡**："聊天历史随文件夹走"一度被判为大改——但那是在 Postgres 语境下（消息都在一个中心 PG 库里）。在 SQLite 决策（决策 18）下这个判断被修正：**SQLite 本身就是文件**，所以把整个 Space 的库做成 `<folder>/.kith/workspace.db` 即可，不需要改存储格式。拆分原则是：需要随 Space 走的 agent 配置与记忆进入文件夹；需要高效查询和高频写入的消息、任务、频道与 agent 进入该 Space 自己的 db；安装实例级数据进入 `app.db`。结果是复制 Space 文件夹即可带走 Space 内容，而 Human 资料和宿主设置不会被错误复制。
+**推理与权衡**："聊天历史随文件夹走"一度被判为大改，但 SQLite 使 `<folder>/.kith/workspace.db` 成为有界方案。进一步验收发现，旧 per-agent cwd 把 Agent Memory 和业务输出留在 app data，实际破坏了自包含承诺。目标拆分因此固定为：用户文件与 runtime cwd 在 Space root；频道、消息、任务和 agent 配置在 workspace.db；Space/Agent Memory 与附件在 `.kith`；Human 资料、User Memory、宿主设置和 runtime 临时状态在 app data。复制 Space 文件夹即可带走 Space 内容，而 Human 与安装设置不会被错误复制。
 
 **已核实源码事实**：两个现状事实让这条低成本——open-tag 的 seq 计数器本就按工作区分（`redis.ts` 的 `seq:${serverId}`），每工作区一库时 seq 天然在各自库内单调、`reconcileCounters` 语义照搬即可；24 个 import `db` 单例的文件查询语句与 schema 完全不变，只是把"全局 db"换成"当前工作区的 db"。
 
@@ -294,7 +296,7 @@
 
 **结论（2026-07-11）**：Kith-space 的长期边界是一个 Human、一台物理电脑、多个本地 Space 和一组本机 agent。Windows 是 v1 正式平台，macOS/Linux 后续支持。正式发行只有 Desktop 安装包；可选浏览器入口依附 Desktop 生命周期。删除服务器部署、多真人、多机器、账户体系、云同步、对象存储、PWA 和独立 Web 发行路线。
 
-**领域收敛**：产品术语统一为 `Space`；schema、API 和类型中的 `server/serverId` 分阶段改为 `space/spaceId`，URL `/s/:slug` 保留。对外删除 `machine/machineId`，内部 daemon 称为 Local Runtime Worker。`Members` 改为 `Agents`，Human 资料位于 Settings，Dock 固定为 `Chat | Inbox | Tasks | Agents | Settings`。
+**领域收敛**：产品术语统一为 `Space`；schema、API 和类型中的 `server/serverId` 分阶段改为 `space/spaceId`，URL `/s/:slug` 保留。对外删除 `machine/machineId`，内部 daemon 称为 Local Runtime Worker。`Members` 改为 `Agents`，Human 资料位于 Settings；普通 Space Dock 为五项，Home 按决策 23 增加 `Spaces`。
 
 **数据与配置**：允许破坏性重置当前开发数据，不编写旧 `.kith` 迁移。正式产品不要求 `.env`；端口、Web 模式、访问 Token、托盘和自启动由 Desktop 设置管理。文件与附件只存本地磁盘，未来备份采用显式导出/导入。
 
@@ -304,7 +306,7 @@
 
 **Windows 发行姿态**：Desktop 是唯一正式发行路径，但“有安装器文件”和“已公开发行”必须分开。A6 锁定 x64、per-user、assisted NSIS；本地/CI 产物默认未签名，CI 只上传 artifact。代码签名证书是公开分发的硬前置，真实安装/卸载测试也是正式发布验收的一部分。该约束不改变未来 macOS/Linux 路线，只规定当前 Windows v1 的可验证边界。
 
-**实施状态（2026-07-11）**：A2 本地域与数据模型、A3 浏览器访问安全、A4 Electron Desktop 宿主、A5 首次 Human 初始化和旧界面/登录残留清理、A6 继承资产清理与 Windows 打包均已落地。Landing、PWA、旧 `Layout`、账户入口、Docker/Railway、环境样例、公共 daemon/npm/OIDC/docs-site 发布路径已删除；Human 资料收口到 `/api/human/profile` 与 `settings=human`。生产 bundle、unpacked 包、未签名 NSIS 安装器、packaged Desktop/Core smoke 与 449/449 单测已通过。下一阶段是 Runtime 契约 v2，之后进入生产力模块、Context Snapshot 与 P4 视觉收尾。
+**实施状态（2026-07-12）**：A2-A6 的原定代码切片已落地，但用户验收发现 app data/Space root 仍被 `KITH_SPACE_HOME` 耦合、runtime cwd 仍是旧 per-agent 目录、Agent Memory 未随 Space 搬迁，且 Home 尚无 Spaces 模块。决策 23 的 H1-H4 被列为 A1-A6 验收前置修复；完成前 Runtime 契约 v2 继续暂停。
 
 ---
 
@@ -315,6 +317,22 @@
 **推理与权衡**：一次入职问候能把配置项变成有身份的团队成员，同时验证 runtime、Agent CLI 和 Human-Agent DM 整条链路。但不能用“有人给你发了消息”伪造触发原因，否则不同 runtime 会产生不一致行为：Codex 会严格执行“停止前必须回复”并发送无工作汇报，Claude Code/opencode 则可能静默。显式 `create | manual | wake` 原因让三种 adapter 共享同一产品语义，不依赖模型猜测。Core 为候选 introduction turn 生成一次性 token，只有 Worker 实际选择 introduction prompt 时才把 token 注入该 runtime 进程；CLI 也只有创建提示明确调用 `message send --introduction` 时才附带 token，普通 wake/后续回复不会被旧 token 污染。Human DM 发送在全部异步目标校验后、数据库事务前同步校验并消费 token；已撤销 token 的迟到问候和已完成 token 的重复问候都会被拒绝，普通消息因不携带 token 而不受影响。介绍消息与 `agents.introduced_at` 在同一事务提交，避免把普通回复、runtime online 或 turn 结束误判为 Human 已收到问候，也避免消息已出现但状态未写入后重复问候。
 
 **边界**：问候限制为 2-3 句、只发一次 Human DM，不读取频道历史、不广播、不写记忆。schema v3 会把升级前已有 agent 回填为已介绍；普通 reset 保留介绍状态，完整 wipe 清空它并视为重新入职。真实投递在启动准备期间到达时合并进同一个 wake turn，避免“先问候、再处理通知”的双 turn。
+
+---
+
+## 决策 23：Home 是总控 Space，Space root 是 agent 共享工作目录
+
+**结论（2026-07-12）**：每个安装实例有且只有一个稳定 Home Space。普通冷启动进入 Home Chat；Home 在同一个 WorkspaceFrame 的 Dock 中增加 `Spaces` 模块，用真实 app.db registry 创建、接入、搜索和打开普通 Space。应用内部数据默认位于 `~/.kith-space`，默认用户 Space 容器位于 `~/Kith-space`，Home 位于 `~/Kith-space/Home`；用户可把普通 Space 接入任意本机文件夹。所有属于某 Space 的 agent 都以该 Space root 为 runtime cwd，Agent Memory 位于 `<space>/.kith/agents/<agentId>`，runtime 临时状态位于 app data。
+
+**背景**：A1-A6 验收实例通过 `KITH_SPACE_HOME` 把 Home 落在系统 Temp，并继承 open-tag 的 `<appData>/agents/<id>` cwd。agent 因而把用户要求生成的业务文件写进隐藏验收目录，`<space>/.kith` 也没有包含 Agent Memory。这与“用户选择一个文件夹作为 Space”“复制文件夹即可带走完整 Space”的锁定承诺冲突。与此同时，用户确认 Home 不是可删除的空默认项目，而是个人 AgentOS 的总控空间。
+
+**选项与选择**：继续 per-agent cwd / 使用 Space root 作为共享 cwd（选中）；Home 放 app data / 放用户可见 `~/Kith-space/Home`（选中）；恢复独立总览壳 / 在 Home 单窗口中增加 Spaces 模块（选中）；跨 Space 写操作冒充 Human / 保留真实 Home agent 与 Human 委派审计（选中后者）。
+
+**推理与权衡**：Space root cwd 让 Claude Code、Codex、opencode 的体验等价于用户在目标文件夹启动 CLI，多个 agent 也能对同一项目文件协作。代价是失去本就不可靠的 per-agent cwd 心理隔离，因此安全文档必须明确 cwd 不是沙箱。把 Agent Memory 放回 `.kith` 恢复可移植性，把 prompt 临时文件和 adapter 状态留在 app data 则避免污染用户项目。Home 的 Spaces 模块基于真实 registry，不重犯伪全局 Inbox 的错误；跨 Space task/message/dispatch 通过 Core 领域服务按 targetSpaceId 执行、幂等并审计，不直接写其他 SQLite，也不假装是 Human 亲自发送。
+
+**实施边界**：H1-H4（路径、cwd/记忆、文件夹接入、Home Spaces UI）属于 A1-A6 验收前置修复。跨 Space 写编排 H5 后续渐进实现，先只读真实摘要，再接 task/message/dispatch；没有真实数据前不做占位视图。完整规格见 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
+
+**已核实源码差距**：`src/desktop/managedChildEnv.ts` 始终向受管子进程注入 `KITH_SPACE_HOME`，而 `src/paths.ts` 在该变量存在时把默认 Space 放进 `<appData>/workspaces`；`src/daemon/agentManager.ts` 仍把 `<appData>/agents/<id>` 同时作为 cwd 和 Agent Memory；前端 `SpaceSwitcher` 创建请求尚不提交 rootPath。上述均是待实现差距，不是当前能力。
 
 ---
 
@@ -348,6 +366,12 @@ Redis 一度被描述为"做三件事"：全局 seq 计数器、SSE pub/sub、ag
 
 SQLite 决策（决策 18）落定后这个成本被**修正**：SQLite 本身就是文件，把整个工作区的库做成 `<folder>/.kith/workspace.db` 即可，不改存储格式。于是"随文件夹走"从大改降为**中等、有界**的改动（每工作区一个 db 文件，趁 P0 数据迁移一起做）。这条修正是决策 18 和决策 19 联动的结果——一个地基决策（换 SQLite）顺带把另一条决策（可移植工作区）的成本大幅拉低。
 
+### 五、per-agent cwd 隔离 -> Space root 共享 cwd（修正）
+
+open-tag 的每 agent 私有 cwd 曾被沿用为默认工作空间，并在权限决策中被描述成一层目录隔离。A1-A6 实际验收证明它会把用户业务文件生成进隐藏 app data，并让 Agent Memory 脱离所属 Space；同时 cwd 从来不能阻止高权限 runtime 访问绝对路径，因此不是安全边界。
+
+决策 23 修正为同一 Space 的 agent 共享 Space root cwd。隔离职责拆开：Agent Memory 以 `<space>/.kith/agents/<id>` 区分，runtime 临时状态以 app data 下的 `<spaceId>/<agentId>` 区分，真正的风险控制仍由工具审批、runtime 权限与未来沙箱承担。
+
 ---
 
 ## 尚未决定 / 刻意留白
@@ -355,7 +379,7 @@ SQLite 决策（决策 18）落定后这个成本被**修正**：SQLite 本身�
 以下几项要么已定、要么被有意推后，记录在此以免将来误以为遗漏。
 
 - **项目名**：已定 **Kith-space**。Kith = 你信任的一圈熟人（对应 agent 作为有身份/记忆的团队成员这一核心），-space = 人与 agent 共处的空间 + 开发者对 namespace/workspace 的语感。可用性已核查：npm 无 `kith-space` 包（registry 返回 404）、GitHub 无同名项目，仅存在拼写近似的 `kitspace`（无 h，电子元件分享站）需留意混淆风险。
-- **dock 具体图标集**：右栏底部 dock 切换哪些模块的结构已定（决策 14），但具体图标集属便宜改、UI 收尾项，暂不锁定。
+- **Dock 具体图标集**：Home/普通 Space 的模块结构已定（决策 14/23），但具体图标集属便宜改、UI 收尾项，暂不锁定。
 - **起步角色模板内容**：模板的机制已定（空白职责 + 少量可选起点，决策 10），但模板具体写什么内容留待后填，随时可微调。
 - **HTTPS 与 runtime 权限升级细节**：v1 的 LAN 浏览器入口只做 HTTP + 访问 Token，并明确限于受信任私网。HTTPS 和更细权限是邮箱、浏览器等高风险模块上线前的硬前置，具体实现将在对应阶段单独设计。
 

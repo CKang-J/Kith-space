@@ -1,6 +1,6 @@
 # Kith-space 产品路线图
 
-> 路线基线：2026-07-11 个人 AgentOS 本机化转向。完整边界见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，当前工程状态见 `docs/progress.md`。
+> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计。完整边界见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md` 与 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`，当前工程状态见 `docs/progress.md`。
 
 ## 1. 产品终点与永久边界
 
@@ -13,7 +13,7 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 - 公网部署、SaaS、云同步、云数据库和独立 Web 发行。
 - 移动 Web、PWA、push、Docker 部署和公共 server/daemon 包。
 
-仍在长期路线中的能力包括：本机跨 Space 聚合、邮箱、日历、画布、记忆增强、编排成熟化、HTTPS 与 runtime 权限升级、macOS/Linux 发行。
+当前必须补齐的本机地基是 Home 总控 Space、用户可见 Space root、文件夹接入、Space root cwd 和 Agent Memory 可移植性。长期路线还包括跨 Space 聚合/委派成熟化、邮箱、日历、画布、记忆增强、编排成熟化、HTTPS 与 runtime 权限升级、macOS/Linux 发行。
 
 ## 2. 已完成基础
 
@@ -24,7 +24,7 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 - P4：单窗口 ChatOnly / Split / ModuleOnly 工作区、可拖拽面板、常驻 Dock、任务范围侧栏。
 - Runtime 调研：Claude Code、Codex、opencode 适配边界与 Runtime 契约 v2 草案。
 
-P4 的视觉微调暂缓。本机化 A1-A6 已收口，下一步先完成 Runtime 契约 v2，再进入生产力模块、Context Snapshot 与视觉收尾。
+P4 的视觉微调暂缓。A1-A6 原定代码切片已完成，但用户验收发现 Home/Space root 语义尚未真正落地；先完成 P-A7 的 H1-H4，再决定 Runtime 契约 v2 与 H5 跨 Space 编排的顺序。
 
 ## 3. 当前路线：个人 AgentOS 本机化
 
@@ -36,7 +36,7 @@ P4 的视觉微调暂缓。本机化 A1-A6 已收口，下一步先完成 Runtim
 
 ### P-A2 本地领域与数据模型
 
-状态：已完成。中央 `app.db`、唯一 Human、默认 `Home`、canonical Space 契约、唯一 Local Runtime Worker、19 表 workspace.db 破坏性 baseline 与 Space 级附件目录均已落地；旧多用户/Machine/Space 兼容和失效本地域资产已收口。
+状态：原定切片已完成，但验收发现路径/cwd/Agent Memory 仍有 P-A7 前置修复。中央 `app.db`、唯一 Human、默认 `Home`、canonical Space 契约、唯一 Local Runtime Worker、19 表 workspace.db baseline 与 Space 级附件目录已落地；稳定 homeSpaceId、用户可见 Home root 和 Space root cwd 尚未落地。
 
 - 把中央 registry 扩展并更名为 `app.db`。
 - 实现唯一 Human 和首次资料初始化；自动创建 `Home` Space。
@@ -82,7 +82,7 @@ P4 的视觉微调暂缓。本机化 A1-A6 已收口，下一步先完成 Runtim
 状态：已完成。
 
 - Desktop 首次启动通过仅 Desktop 私有信任可达的 setup API 收集 Human 名称、可选邮箱和描述，幂等初始化唯一 Human 与 `Home`；普通浏览器不会探测或调用该入口。全新 Desktop 目录不再要求 seed。
-- Dock 已固定为 `Chat | Inbox | Tasks | Agents | Settings`。
+- 普通 Space Dock 已固定为 `Chat | Inbox | Tasks | Agents | Settings`；Home-only Spaces 由 P-A7 H4 补充。
 - `Members` 改为当前 Space 的 `Agents`；Human 资料进入全局 Settings；`Computers` 已在 A2.4 提前删除。
 - 已删除 landing、登录、注册、邀请、PWA 和 `?legacy=1`/旧 `Layout`，静态路由只提供产品壳与 canonical Space 路径。
 - 模块统一挂在当前 Chat/收藏等会话 pathname 上，以 `?module=<id>` 和模块专属 resource query 表达；切换频道、DM 或收藏时保留当前模块及其合法 resource，不再生成 `/tasks`、`/agent`、`/settings` 等旧模块 pathname。
@@ -104,6 +104,20 @@ P4 的视觉微调暂缓。本机化 A1-A6 已收口，下一步先完成 Runtim
 
 验收：Windows Desktop 是唯一正式发行路径，仓库没有仍可启用的旧产品路线。typecheck、449/449 unit、完整 integration、2564-module Web build、production bundle/pack/dist、生产依赖高危审计与 packaged Desktop/Core fresh smoke 全部通过；最终 unpacked smoke Exit 0、`app.db` 创建、残留进程 0、端口监听 0。安装器 `Kith-space-Setup-0.1.0-x64.exe` 为 113625983 bytes，SHA-256 `D314DAE15A8E9AB598901D2E3DF8B90DE1C7B46E79824CC8575BD4C742B89646`，Authenticode `NotSigned`；它是可复现的本地/CI 未签名产物，不是已签名或已发布版本，公开分发前仍需代码签名，且尚未执行真实 NSIS 安装/卸载验收。
 
+### P-A7 Home 总控 Space 与 Space root 归位
+
+状态：设计已确认，代码尚未开始。它是 A1-A6 用户验收的前置修复，不属于 Runtime 契约 v2。
+
+- H1 路径地基：分离 `~/.kith-space` app data 与 `~/Kith-space` 默认 Space 容器；建立稳定 homeSpaceId 和 `~/Kith-space/Home`。
+- H2 runtime cwd/记忆：三家 runtime 都以 Space root 为 cwd；Agent Memory 移到 `<space>/.kith/agents/<agentId>`；adapter 临时状态移到 app data runtime 目录。
+- H3 文件夹接入：Desktop 目录选择器，默认位置新建、已有文件夹接入、移动后重连、重复路径/Space ID 与不兼容 `.kith` 校验。
+- H4 Home UI：普通冷启动进入 Home Chat；Home Dock 增加 Spaces 卡片模块；点击卡片在同窗进入普通 Space，不恢复 OverviewShell。
+- H5 跨 Space 编排：后续先做真实只读摘要，再做受审计、幂等且不冒充 Human 的 task/message/agent dispatch。
+
+H1-H4 验收：agent 相对业务文件写入所属 Space root；复制 Space 带走 workspace.db、Space/Agent Memory、附件和用户文件；Home Spaces 只读真实 registry，普通 Space 不出现该模块；测试隔离不会污染真实 `~/Kith-space`。
+
+完整规格：`docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
+
 ## 4. 本机化基础完成后的能力路线
 
 ### 4.1 Runtime 契约 v2
@@ -120,11 +134,11 @@ P4 的视觉微调暂缓。本机化 A1-A6 已收口，下一步先完成 Runtim
 
 ### 4.4 本机跨 Space 聚合
 
-在真实 `scope = current | all` 数据契约上提供跨 Space Inbox、Tasks、Calendar 和信息流。聚合遍历本机 Space 数据库，不引入云端或多用户语义。
+以 Home Spaces 目录和 SpaceDirectoryService 为地基，在真实 `scope = current | all` 数据契约上提供跨 Space Inbox、Tasks、Calendar 和信息流。聚合遍历本机 Space 数据库，不引入云端或多用户语义。
 
 ### 4.5 编排成熟化
 
-完善 leader 拆解、依赖图、预算、计划审批、暂停/恢复、恢复策略与交付汇总。继续坚持 harness 优先，不把开发或其他具体场景写成硬流程。
+实现 Home agent 受审计的跨 Space task/message/agent dispatch，并完善 leader 拆解、依赖图、预算、计划审批、暂停/恢复、恢复策略与交付汇总。继续坚持 harness 优先，不把开发或其他具体场景写成硬流程。
 
 ### 4.6 平台扩展
 

@@ -12,7 +12,7 @@ Kith 意为"你熟识信任的一圈自己人"——正是这些懂你（有记�
 
 当前最高优先级是 2026-07-11 锁定的本机化转向：正式产品只有 Electron Desktop，一个 Human、一个本机 Local Runtime Worker、多个本地 Space；浏览器入口是 Desktop 可选开放的本机/LAN 附属能力。多真人、多机器、服务器部署、云同步、Docker、账户登录和独立 Web 发行路线已经取消。完整规格见 [`个人 AgentOS 本机化路线设计`](./docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md)。
 
-本机化 A2-A6 已完成并进入用户验收：中央 `app.db`、唯一 Human、默认 `Home` Space、canonical Space 契约、安装级唯一 Local Runtime Worker、19 表 workspace.db 产品 baseline 与 Space 级附件目录均已落地。浏览器入口已收口为默认关闭/仅本机/局域网三模式，使用独立访问 Token、持久 Cookie 会话和 CSRF/Origin 保护；Human JWT、dev-login、`?as=` 与 URL token 已退役。Electron 43.1.0 Desktop 统一监督 Core Service、唯一 Worker 与开发期 Vite，管理托盘、关闭行为、Web 入口和内部凭据。全新目录不再需要 seed：Desktop 首次初始化界面收集本地 Human 资料并创建 `Home`。Windows runtime 的 `.exe`/npm `.cmd` 现通过统一跨平台边界发现和启动；Agent CLI 按宿主生成 `.cmd` 或 POSIX wrapper，PowerShell/sh 提示与 stdin/stdout UTF-8 流也已分平台收口。新建 agent 会向唯一 Human 私信一次简短自我介绍，普通启动空收件箱静默，真实消息唤醒只回复原目标。Runtime 契约 v2 在 A1-A6 验收通过前保持暂停。
+本机化 A2-A6 原定代码切片已完成并进入用户验收：中央 `app.db`、唯一 Human、canonical Space 契约、安装级唯一 Local Runtime Worker、19 表 workspace.db baseline、浏览器 Token/Cookie 安全边界和 Electron Desktop 宿主均已落地。验收进一步锁定了 P-A7：Home 是普通冷启动进入的总控 Space，目标路径为用户可见的 `~/Kith-space/Home`，Home Dock 增加真实 Spaces 目录；普通 Space 由用户选择文件夹，所属 agent 共享 Space root cwd，Agent Memory 随 `.kith` 搬迁。该补充设计已经写入文档但代码尚未开始，因此当前 Temp/app data cwd 行为仍是已知差距；H1-H4 完成前 Runtime 契约 v2 继续暂停。完整补充规格见 [`Home 与 Space root 设计`](./docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md)。
 
 ## Desktop 开发启动
 
@@ -41,6 +41,7 @@ pnpm run desktop:dist        # x64、per-user、assisted NSIS 安装器
 ## 文档
 
 - 当前进度与续接指南（新会话先读）：[`docs/progress.md`](./docs/progress.md)
+- Home 总控 Space、路径/cwd/记忆与跨 Space 委派：[`2026-07-12-home-space-and-space-root-design.md`](./docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md)
 - 日常开发命令（启动/测试/打包）：[`docs/dev-commands.md`](./docs/dev-commands.md)
 - 高级开发与调试（Token/Web/数据库/E2E）：[`docs/dev-debugging.md`](./docs/dev-debugging.md)
 - 理念与长远愿景：[`docs/vision.md`](./docs/vision.md)

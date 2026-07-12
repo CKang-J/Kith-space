@@ -1,6 +1,6 @@
 # Kith-space 产品定位
 
-> 本文负责回答“这是什么、给谁用、明确不是什么”。完整本机化规格见 `../superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`。
+> 本文负责回答“这是什么、给谁用、明确不是什么”。完整本机化规格见 `../superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，Home/Space root 补充见 `../superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
 
 ## 一句话定位
 
@@ -10,7 +10,9 @@ agent 由用户电脑上已有的 Claude Code、Codex、opencode 等 runtime 承
 
 ## 目标用户与核心场景
 
-Kith-space 只服务当前电脑的使用者。这个 Human 可以创建多个根植本地文件夹的 Space；每个 Space 有自己的频道、任务、agent 队伍和记忆。Human 可以 @leader 提需求，也可以直接与任意 agent 私聊；agent 能拆解、分派、汇报并经 MCP 操作任务、记忆，以及未来的日历、画布和邮箱。
+Kith-space 只服务当前电脑的使用者。安装实例有一个 `Home` 总控 Space，普通冷启动进入 Home Chat；Human 从 Home 的 Spaces 模块创建、接入并打开多个根植本地文件夹的普通 Space。每个 Space 有自己的用户文件、频道、任务、agent 队伍和记忆，所属 agent 以该 Space 根目录为 cwd。Human 可以 @leader 提需求，也可以直接与任意 agent 私聊；agent 能拆解、分派、汇报并经 MCP 操作任务、记忆，以及未来的日历、画布和邮箱。
+
+Home agent 长期承担跨 Space 协调：它可以通过受审计的服务读取目标摘要、创建任务、发消息或调度目标 agent；操作保留真实 acting agent 和 Human 委派，不冒充 Human，也不直接写其他 Space 数据库。
 
 角色是通用职责，不是固定岗位。leader、research、writing、testing 只是可选起点；开发、研究、写作和生活管理在产品里地位相同。
 
@@ -36,7 +38,7 @@ Windows 是 v1 正式平台，macOS 和 Linux 后续支持。局域网 v1 只做
 
 ### local-first
 
-中央 `app.db` 保存唯一 Human、Desktop/Web 设置和 Space registry；每个 Space 的业务数据保存在 `<space>/.kith/workspace.db`，文件和附件只落本地磁盘。本机跨 Space 聚合属于长期路线，云同步不属于路线。
+中央 `app.db` 保存唯一 Human、稳定 Home 身份、Desktop/Web 设置和 Space registry；应用内部数据默认位于 `~/.kith-space`。默认 Home 位于用户可见的 `~/Kith-space/Home`，普通 Space 可以选择任意本机文件夹；每个 Space 的业务数据和三层记忆中属于它的部分保存在 `<space>/.kith/`。Spaces 目录是当前地基，本机跨 Space Inbox/Tasks 等真实聚合属于后续路线，云同步不属于路线。
 
 ## 明确非目标
 
@@ -48,7 +50,7 @@ Windows 是 v1 正式平台，macOS 和 Linux 后续支持。局域网 v1 只做
 - Docker 部署、公共 server/daemon 包、PWA、push 和移动 Web。
 - 自研 agent runtime。
 
-邮箱、日历、画布、记忆增强、本机跨 Space 聚合、HTTPS、macOS/Linux 属于后续能力，不应与上述永久非目标混淆。
+邮箱、日历、画布、记忆增强、本机跨 Space 聚合与委派成熟化、HTTPS、macOS/Linux 属于后续能力，不应与上述永久非目标混淆。Home、Spaces 目录、用户选择 Space 文件夹和 Space root cwd 不属于延后能力，是当前本机地基。
 
 ## 源项目关系与许可证
 

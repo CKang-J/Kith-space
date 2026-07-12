@@ -4,7 +4,7 @@
 
 这份文档承载 Kith-space 的理念与长远方向，是项目的北极星。它写给一个可能完全没有当前上下文的未来读者——无论是接手的人，还是需要理解项目意图的 AI。读完它，你应该能明白 Kith-space 是什么、为什么这样设计、最终要去哪里。
 
-具体的锁定决策见 `decisions.md`，阶段划分见 `roadmap.md`，术语见 `glossary.md`，各专项设计见 `docs/kith-space/*.md`（product-brief / mvp-spec / architecture-proposal / ui-direction / migration-plan）。本文引用它们，不重复展开。
+具体的锁定决策见 `decisions.md`，阶段划分见 `roadmap.md`，术语见 `glossary.md`，Home/Space root 规格见 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`，各专项设计见 `docs/kith-space/*.md`（product-brief / mvp-spec / architecture-proposal / ui-direction / migration-plan）。本文引用它们，不重复展开。
 
 ## 一句话愿景
 
@@ -52,7 +52,9 @@ Kith-space 不造自己的 agent 执行内核。所有 agent 都外接你本机�
 
 ### 四、local-first、桌面优先，一个人的工作生活 OS
 
-Kith-space 首先服务一个人，根植于本地。工作区是一个本地文件夹，自包含、可移植——复制这个文件夹，就复制了整个工作区，包括聊天记录、agent 名册和记忆。你的数据在你自己的机器上，不经过任何强制的云端。
+Kith-space 首先服务一个人，根植于本地。每个安装实例有一个用户可见的 `Home` 总控 Space；普通冷启动从这里进入，Human 可在 Home 的 Spaces 模块中接入散落在本机不同位置的 Space。每个 Space 都是一个本地文件夹、自包含、可移植——复制这个文件夹，就复制了它的用户文件、聊天记录、agent 名册、Space Memory 和 Agent Memory。Home 是逻辑总控入口，不要求普通 Space 成为它的物理子目录。
+
+应用内部数据与用户工作目录严格分开：app.db、User Memory、runtime 临时状态和日志属于 `~/.kith-space`；默认 Home 和用户未指定路径时创建的 Space 属于用户可见的 `~/Kith-space`。外接 runtime 在所属 Space 根目录启动，多个 agent 共享项目文件树，但各自保留独立 Agent Memory。cwd 提供工作上下文，不作为安全沙箱。
 
 形态上，Desktop 是唯一正式宿主。Electron 负责管理本机 Core Service、Local Runtime Worker 和 React UI；浏览器访问只是 Desktop 运行期间可选开放的同一套界面，不是独立 Web 产品。产品始终服务一个 Human 和这台电脑上的 agent，不向多真人、远程 agent 主机或服务器部署演进。
 
@@ -82,7 +84,7 @@ MVP 的范围划分见 roadmap.md 和 mvp-spec.md，本文不展开“做什么�
 
 **Desktop 与可选浏览器入口共享同一本机核心。** Desktop 是进程监督者和唯一正式发行物；用户可选择关闭浏览器入口、只允许本机浏览器，或在受信任局域网内开放完整产品能力。浏览器只是在访问同一位 Human、同一批本地数据和同一队本机 agent，不形成第二身份或第二产品。
 
-**多个本地 Space 与真正的跨 Space 视角。** 一个 Human 可以管理多个根植本地文件夹的 Space。每个 Space 保持自己的频道、消息、任务、agent 和记忆；中央 `app.db` 管理 Human、Desktop 设置和 Space registry。长期可以在本机长出跨 Space 收件箱、任务、日历与信息流，但不为此引入云端控制面。
+**Home 总控 Space 与真正的跨 Space 视角。** 一个 Human 通过唯一 Home 管理多个根植本地文件夹的普通 Space。Home 本身也是有 Chat、任务、agent 和记忆的真实 Space；其 Spaces 模块先提供真实 registry 目录、创建和切换，长期再在本机长出跨 Space 收件箱、任务、日历与信息流。Home agent 可以经受审计的领域服务给目标 Space 创建任务、发消息或调度目标 agent，但不能冒充 Human、直接写其他 SQLite，或把所有 Space 内容无界注入上下文。
 
 **写记忆的 MCP 工具。** MVP 阶段，agent 通过原生文件操作来写记忆（遵循“一事一文件 + 自动维护索引”的约定）。当自由写变得杂乱时，会提升为一个专门的 `memory_save` MCP 工具，让记忆的写入更结构化、更可控。
 
@@ -96,7 +98,7 @@ MVP 的范围划分见 roadmap.md 和 mvp-spec.md，本文不展开“做什么�
 
 **控制复杂度，逐层解锁。** 有些能力有明确的工程坑或前置条件，硬提前只会拖垮整体质量：邮箱涉及 OAuth / IMAP，画布对流畅度敏感；而 HTTP 局域网入口与拥有本机工具权限的 agent 组合后，安全边界必须特别清楚。v1 只允许用户显式开启受信任局域网访问，并要求访问 Token；HTTPS 与更细的 runtime 权限是邮箱、浏览器等高风险模块上线前的硬前置。
 
-需要区分“延后能力”和“永久边界”：邮箱、日历、画布、跨 Space 聚合、macOS/Linux 支持属于延后；多真人、多 agent 主机、公网托管、云同步和独立 Web 发行属于明确非目标。架构不再为后者保留休眠机制。
+需要区分“当前地基、延后能力”和“永久边界”：Home、Spaces 目录、用户选择 Space 文件夹以及 Space root cwd 属于当前地基；跨 Space Inbox/Tasks 等聚合、跨 Space agent 写编排、邮箱、日历、画布、macOS/Linux 支持属于延后；多真人、多 agent 主机、公网托管、云同步和独立 Web 发行属于明确非目标。架构不再为后者保留休眠机制。
 
 ## 非目标与反模式
 

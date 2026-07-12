@@ -1,15 +1,15 @@
 # Kith-space 目标架构
 
-> 本文描述 2026-07-11 个人 AgentOS 转向后的目标模块边界。A2 本地领域与数据模型、A3 浏览器访问安全边界、A4 Electron Desktop 宿主、A5 首次初始化与旧入口清理、A6 继承资产清理与 Windows 打包均已完成；下一工程阶段是 Runtime 契约 v2。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
+> 本文描述个人 AgentOS 的目标模块边界。A2-A6 原定代码切片已完成，但 2026-07-12 用户验收确认 Home/Space root 仍需 H1-H4 前置修复；完成前不进入 Runtime 契约 v2。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`，完整补充设计见 `../superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
 
 ## 1. 架构原则
 
 - Desktop 是唯一正式宿主和进程监督者，浏览器入口依附 Desktop 生命周期。
-- 一个安装实例只有一个 Human、一个 Local Runtime Worker，可注册多个本地 Space。
+- 一个安装实例只有一个 Human、一个 Home Space、一个 Local Runtime Worker，可注册多个普通本地 Space。
 - 不自研 runtime；Claude Code、Codex、opencode 通过 adapter 接入。
 - 模块能力经 MCP 暴露，UI、HTTP、agent data plane 和 MCP handler 复用同一领域服务。
-- app 级数据与 Space 级数据分库；文件和附件只存本地磁盘。
-- 保留进程隔离、Space/路径边界、浏览器鉴权和 runtime 权限；删除多租户/RBAC 和远程主机抽象。
+- app data、Space 自包含数据和 runtime state 分层；应用内部根默认 `~/.kith-space`，用户 Space 容器默认 `~/Kith-space`。
+- Space root 是所属 agent 的共享 cwd，但不是安全沙箱；保留 Space 作用域、路径校验、浏览器鉴权和 runtime 权限边界，删除多租户/RBAC 和远程主机抽象。
 
 ## 2. 进程与信任边界
 
@@ -69,21 +69,27 @@ Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件
 
 `src/app-data/appDatabase.ts` 管理唯一 Human 的名称、可选邮箱和描述；`src/human/humanIdentity.ts` 把协作寻址固定为稳定的 `@you`，展示名始终读取 app.db。REST 和 socket.io 的 Human authority 只来自 Desktop 私有信任或已验证的浏览器 Cookie 会话（`src/server/humanRequestAuth.ts:18`），不存在 Human JWT、Bearer 登录或 dev-login。唯一资料接口是 `handleHumanProfile`（`src/server/routes-api/humanProfile.ts:7`）提供的 `GET/PATCH /api/human/profile`；旧 `/api/auth/me` 在同一 handler 的 `:9` 显式 404。前端 Human Settings 在 `web/src/views/misc.tsx:289` 读取该接口，规范 query 是 `settings=human`，不提供账户、密码、角色或成员关系。
 
-首次初始化是 Desktop 应用生命周期的一部分。`PersonalSetupService`（`src/personal-setup/personalSetupService.ts:68`）读取唯一 Human 与 `Home` 的组合状态；两者都存在时重复初始化直接返回原结果，只有 Human 的中断态则返回该资料供界面预填恢复。初始化只接受 `name/email/description`，并通过既有 `ensurePersonalApp` 幂等补齐默认 `Home`，客户端不能提交 rootPath 或选择另一个首次 Space。`GET /api/setup/status` 与 `POST /api/setup/initialize` 集中在 `src/server/routes-api/setup.ts:12`，虽然挂在鉴权前的 gate 0（`src/server/routes-api/index.ts:43`），路由自身仍先校验 Desktop 私有信任；普通浏览器、Worker、错误凭据和远程请求统一得到 404。全新数据目录因此直接运行 Desktop 即可完成初始化，不再要求先执行 seed。
+首次初始化是 Desktop 应用生命周期的一部分。当前 `PersonalSetupService` 读取唯一 Human 与 slug 为 `home` 的 Space 组合状态，幂等补齐默认 Home；setup 路由只接受 Desktop 私有信任。H1 目标是在 app.db 持久化稳定 `homeSpaceId`，并在独立于 app data 的 `~/Kith-space/Home` 创建或接入 Home。初始化仍只收集 `name/email/description`，不让用户把另一个普通 Space 冒充 Home；已有不兼容 `.kith` 时停止并给出可操作错误，不能自动覆盖。
 
 旧 `initialHumans` bootstrap/产品契约已在 A6 退役；测试 fixture 中为构造特定频道状态保留的同名字面量不构成 HTTP、UI 或持久领域入口。
 
 ### 4.2 Space
 
-`SpaceService` 管理本地文件夹注册、slug、最近打开记录和 `<space>/.kith/` 初始化。Space 列表、创建和修改以 app.db registry 为事实源；每个 workspace.db 另有一行 `spaces` 元数据和 `#all`，由 `dbForSpace` 在 fresh baseline 初始化时保证。产品 schema/API/type 使用 `space/spaceId`，URL `/s/:slug` 保留。
+`SpaceService` 当前管理本地文件夹注册、slug、最近打开记录和 `<space>/.kith/` 初始化。H1-H3 把路径职责收口为三个边界：`HomeSpaceService` 维护稳定 homeSpaceId 和 Home 不变量；`SpaceRootService` 负责路径规范化、创建、接入、重连与 `.kith` 校验；`SpaceDirectoryService` 向 UI 和 agent 提供 registry 与真实摘要。具体类名可按代码风格调整，但职责不得重新堆回 Core 大文件。
+
+默认 app data 为 `~/.kith-space`，默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`；普通 Space 可以位于任意本机磁盘。`KITH_SPACE_HOME` 只覆盖 app data，开发/测试若要隔离默认 Space 必须使用独立覆盖或显式 rootPath。当前 `src/paths.ts` 用 `KITH_SPACE_HOME` 的存在隐式改写默认 Space 目录，而 Desktop 总会注入该变量，这是已知目标差距。
+
+Space 列表、创建和修改以 app.db registry 为事实源；每个 workspace.db 另有一行 `spaces` 元数据和 `#all`。同一规范 rootPath 或同一稳定 Space ID 不得重复注册；已有兼容 `.kith` 时接入/重连，不兼容或损坏时拒绝并提示备份，绝不自动删除。产品 schema/API/type 使用 `space/spaceId`，URL `/s/:slug` 保留。
 
 canonical 传输契约是 `/api/spaces`、`x-space-id`、Socket handshake `spaceId` 和 `SpaceCtx`。Web 只使用这套契约；HTTP、公开附件和 Socket 以 app.db 唯一 Human + registered Space 授权，不依赖 Human Space membership。旧 `/api/servers`、`x-server-id`、Socket `serverId`、`ServerCtx` 与 `dbFor/listWorkspaces/registerWorkspace` 等 DB facade 已删除；Agent CLI 使用 `space info` 和 `space:read`。
 
-每个 Space 拥有频道、消息、任务、agent 队伍和 Space/agent 记忆。Agent membership 只表达“某 agent 是否在频道中并可被唤醒”，不承载 Human 权限。
+每个 Space 拥有用户文件、频道、消息、任务、agent 队伍和 Space/Agent Memory。Home 是其中唯一带总控能力的真实 Space；普通 Space 是 registry 中除 homeSpaceId 外的条目，不要求成为 Home 的物理子目录。Agent membership 只表达“某 agent 是否在频道中并可被唤醒”，不承载 Human 权限。
 
 ### 4.3 Runtime
 
 继续复用窄 `Runtime.start(opts, callbacks): RuntimeSession` 适配契约（当前定义在 `src/daemon/runtime.ts`）。v1 只稳定 Claude Code、Codex、opencode；其他 adapter 隐藏或标 experimental。Runtime 契约 v2 统一 usage、完成、取消和 MCP bootstrap，但不把工具循环搬入 Kith-space。
+
+H2 在不扩大 Runtime 接口业务职责的前提下，为每次 agent start 解析三个路径：`workspaceRoot = Space root`、`agentMemoryDir = <space>/.kith/agents/<agentId>`、`runtimeStateDir = <appData>/runtime/<spaceId>/<agentId>`。三家 runtime 的 cwd 都是 workspaceRoot；system prompt 临时文件等 adapter 产物写 runtimeStateDir。当前 `AgentManager` 仍以 `<appData>/agents/<agentId>` 同时作为 cwd 和 Agent Memory，这是待修复的 open-tag 遗留。
 
 Agent 首轮驱动明确分为三种原因，Core 通过 `src/local-runtime/agentStart.ts:1` 的 `create | manual | wake` 随 `agent:start` 传给 Worker，Worker 再由 `src/daemon/agentLifecycle.ts:9` 选择提示：新建 agent 执行一次 `dm:@you` 自我介绍；已有 agent 手动启动/恢复只检查一次收件箱，无消息必须静默；真实频道、DM、任务或 reconnect backlog 唤醒时处理持久化消息，并在每个原目标回复。启动准备期间收到的投递已经在数据库中，因此合并进同一个 wake turn，不再追加第二次 inbox notice。Core 为未介绍 agent 的候选创建/重试 turn 生成一次性 token；Worker 只有实际选择 introduction prompt 时才把它注入 runtime 环境（`src/daemon/agentManager.ts:207`），因此对已运行 agent 被忽略的 start 不会授权其普通回复。CLI 只有创建提示要求的 `message send --introduction` 才附带 token，普通 send 不带 token（`src/cli/index.ts:79`-`:85`）；服务端在全部异步 Human-Agent DM 校验后、数据库事务前同步消费匹配 token。真实 wake 会撤销 active token，撤销后迟到的 introduction 请求返回 409，completed token 的重复 introduction 同样返回 409，而同一进程不带 token 的普通 wake 回复不受影响（`src/server/agentIntroduction.ts:15`-`:30`）。随后介绍消息与 `agents.introduced_at` 在同一数据库事务提交（`src/server/core.ts:477`-`:507`）。停止、reset 或删除会清除该 agent 的全部进程 token；普通 reset 保留持久介绍状态，完整 wipe 清除它并重新进入首次介绍。
 
@@ -103,15 +109,21 @@ REST、agent API、MCP handler 和 UI 必须调用同一 Task Service，不能�
 
 记忆保持三层：
 
-- Human 层：跨 Space 偏好和长期背景，位于 app 本地数据区。
+- User 层：唯一 Human 的跨 Space 偏好和长期背景，位于 `<appData>/memory/`。
 - Space 层：当前 Space 规则与背景，位于 `<space>/.kith/memory/`。
-- Agent 层：当前 Space 内 agent 的 `MEMORY.md` 与 notes。
+- Agent 层：当前 Space 内 agent 的工作知识与恢复上下文，位于 `<space>/.kith/agents/<agentId>/`。
 
-读取继续使用 runtime 原生文件工具；写入先遵循“一事一文件 + 索引”提示词约定，后续再增加结构化 `memory_save` MCP 工具。
+Home Space Memory 承载跨 Space 协调背景和组合计划，不替代 User Memory；普通 Space Memory 只承载该 Space 的共享知识。读取继续使用 runtime 原生文件工具；写入先遵循“一事一文件 + 索引”提示词约定，后续再增加结构化 `memory_save` MCP 工具。当前 Agent Memory 仍在 app data 下，H2 迁移后才达到本段目标态。
 
 ### 4.6 Files
 
-文件和附件只使用本地磁盘服务。S3 driver、SDK 依赖、bucket 配置和 app 级上传目录均已删除；storage key 必须是平面文件名。`src/server/storage.ts` 接收 `spaceId`，通过 app.db registry 解析已注册 Space 的 rootPath，并只读写 `<spaceRoot>/.kith/uploads`。Public download 以附件记录的 `spaceId` 为准，agent plane 以认证 `spaceId` 为准；请求和调用方都不能用字符串路径绕过 registry。
+文件和附件只使用本地磁盘服务。用户业务文件位于 Space root 的普通文件树，agent 相对文件操作默认落在这里；产品状态位于 `.kith`，runtime prompt/临时状态位于 app data。S3 driver、SDK 依赖、bucket 配置和 app 级上传目录均已删除；storage key 必须是平面文件名。`src/server/storage.ts` 接收 `spaceId`，通过 app.db registry 解析已注册 Space 的 rootPath，并只读写 `<spaceRoot>/.kith/uploads`。Public download 以附件记录的 `spaceId` 为准，agent plane 以认证 `spaceId` 为准；请求和调用方都不能用字符串路径绕过 registry。
+
+### 4.7 Home 与跨 Space 委派
+
+Home 的 Spaces 模块只读取 app.db registry 和真实摘要。未来 Home agent 的 `list/get/task-create/message-send/agent-dispatch` 通过 `CrossSpaceCommandService` 或等价领域边界执行：请求显式携带 sourceSpaceId、actingAgentId、requestedBy、targetSpaceId、目标资源和 idempotency key；Core 从 registry 解析目标并复用目标 Space 的 Task/Message/Agent 服务。
+
+跨 Space 操作不直接读写目标 SQLite，也不能依赖跨数据库事务。实现必须以幂等请求和可查询审计状态处理重试。目标消息保留真实 Home agent，并显示其代表唯一 Human 从 Home 发起；不能持久化成 Human actor。需要修改目标文件时默认创建任务并调度目标 Space agent，让后者在目标 Space root cwd 中执行。Home agent 只按需读取相关摘要和资源，不无界预加载所有 Space 的消息与记忆。
 
 ## 5. 数据拓扑
 
@@ -119,13 +131,25 @@ REST、agent API、MCP handler 和 UI 必须调用同一 Task Service，不能�
 
 实现状态：A2.1 已落地 `src/app-data/appDatabase.ts`。旧 `registry.db/workspaces` 已被 `app.db/spaces` 取代；Human profile 为单例行。A3 增加单例 `browser_access_settings` 和 `browser_sessions`，A4 增加单例 `desktop_settings`（`src/app-data/appDatabase.ts:91`）。
 
-本机应用数据目录中的 `app.db` 保存：
+本机 app data root 默认 `~/.kith-space`，目标结构为：
+
+```text
+~/.kith-space/
+  app.db
+  memory/
+  runtime/<spaceId>/<agentId>/
+  bin/
+  logs/
+```
+
+其中 `app.db` 保存：
 
 - 唯一 Human profile 与初始化状态。
 - 已实现的 Web 设置：Web 模式和端口。
 - 浏览器访问 Token 哈希与 token revision。
 - 浏览器授权会话和撤销状态。
 - 已实现的 Desktop 设置：关闭到托盘/关闭即退出与系统自启动开关；托盘本身由 Electron 生命周期管理。
+- 稳定 homeSpaceId。
 - Space registry：id、slug、rootPath、displayName、最近打开时间。
 
 app.db 不保存 Space 消息、任务或 agent 业务数据。
@@ -141,7 +165,7 @@ A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Driz
 - 唯一 Human 的 read/DM/thread 状态 `human_channel_states`、收藏 `human_saved_messages` 与 Space 偏好 `human_space_preferences`。
 - 持久 actor 使用 `human | agent | system`（按字段适用）；runtime 协议的 `role: "user"` 是外部协议字面量，不属于数据库 actor。
 
-一个 Space 文件夹可整体复制；Human 资料、浏览器会话和 Desktop 设置不会随之复制。未来本机跨 Space 聚合遍历多个 workspace.db 并在应用层合并，不引入中央云库。
+同一个 `.kith` 还包含 `<space>/.kith/memory/`、`<space>/.kith/agents/<agentId>/` 和 `<space>/.kith/uploads/`。一个 Space 文件夹可整体复制，带走用户文件、workspace.db、Space Memory、Agent Memory 与附件；Human 资料、User Memory、浏览器会话、Desktop 设置和 runtime state 不随之复制。未来本机跨 Space 聚合遍历多个 workspace.db 并在应用层合并，不引入中央云库。
 
 ### 5.3 schema 转向策略
 
@@ -153,6 +177,7 @@ A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Driz
 4. A2.4 已完成：删除 Machine 服务/API/UI、machine key/心跳/调度与 agent machine 选择；保留安装级唯一 Worker 进程协议，并让 Worker 事件跨 Space 定位。
 5. A2.2b 已完成：破坏性重建 workspace.db baseline，把保留表的 `servers/server_id` 改为 `spaces/space_id`，拆出单 Human 状态/收藏/偏好，并删除旧物理表与兼容边界。
 6. A2 已完成：附件目录纳入 Space 根路径，旧 app 级上传配置、命名 facade 与不兼容维护脚本已删除，并完成整阶段验收。
+7. H1-H4 待实现：稳定 homeSpaceId，分离 app data/默认 Space 容器，把 runtime cwd 与 Agent Memory 归位到所属 Space，补文件夹接入/重连和 Home Spaces 模块。
 
 不执行无边界的整仓替换；每个切片都需 schema、service、route 和 UI 契约测试。
 
@@ -196,11 +221,13 @@ agent-to-agent 分派继续经过统一 dispatch 收口。现有深度上限、�
 - `WorkspaceFrame` 组合路由、响应式约束和三态布局，不承载任务或 agent 业务逻辑。
 - `workspaceLayout.ts` 只表达 ChatOnly/Split/ModuleOnly 状态机。
 - `paneConstraints.ts` 只计算面板最小宽度与单 Pane 降级。
-- `workspaceModules.tsx` 当前注册 Inbox、Tasks、Agents、Settings 与非 Dock 的 Search；Computers/Machines 已退出模块注册和路由。
+- `workspaceModules.tsx` 当前注册 Inbox、Tasks、Agents、Settings 与非 Dock 的 Search；H4 将增加 Home-only `spaces`，普通 Space 仍只显示现有五项 Dock。Computers/Machines 已退出模块注册和路由。
 - `ChatWorkspace` 管理会话列表、Chat 和实时轨迹；业务模块不能直接操控 Chat 内部状态。
 - URL 是模块与 Chat 显隐事实来源。会话始终使用规范 `/s/:slug/channel[/<channelId>]`、`saved` 或 `showcase` 路径；`module`/`chat` 表达工作区布局，`taskScope`、`agent`/`agentTab`、`settings` 分别表达 Tasks、Agents、Settings 的模块资源（`web/src/shell/workspaceRoute.ts:65`、`:128`）。模块切换由 `workspaceLocationForModule`（`:143`）生成 query，不再生成 `/tasks`、`/agent`、`/settings` 等模块实体路径；Settings 未指定或传入旧/未知资源时统一归一为 `human`（`:138`）。
 - 切换频道或 Human-Agent DM 时保留当前 active module、Chat 显隐和该模块拥有的 resource query，同时丢弃旧会话的 `msg`/`thread` 等临时聚焦参数（`web/src/shell/workspaceRoute.ts:180`）。这样模块上下文跨会话导航保持稳定，旧消息焦点不会泄漏到新会话。
 - `MessageContextSnapshot` 在发送时固化 Space、会话、模块、Context Stack 和 focused item，adapter 再编码为各 runtime 所需格式。
+
+Home Spaces UI 只负责卡片、搜索、创建入口和同窗导航；路径规范化、`.kith` 校验、homeSpaceId 与 registry 摘要属于领域服务。规范 URL 是 Home 当前会话路径上的 `?module=spaces`；普通 Space 收到该 query 时移除它。从任意 Space 打开全局空间入口时导航到 Home Spaces，而不是创建第二壳。
 
 Desktop 专属设置通过 `window.kithDesktop` 窄桥注入，不靠仅隐藏按钮实现安全；服务端同时拒绝普通浏览器调用。Windows 打包态可调用 Electron 系统自启动接口，开发态通过 `launchAtLoginSupported: false` 明确禁用该控件。
 
@@ -210,7 +237,7 @@ A5 后 `web/src/App.tsx:4` 只渲染 `WorkspaceFrame`。Landing、Features、旧
 
 ## 9. 开发与发行
 
-Electron 固定为 43.1.0，electron-builder 固定为 26.15.3，`@electron/rebuild` 固定为 4.2.0（`package.json:122`、`:128`-`:129`）。`pnpm run desktop:dev` 先执行 `desktop:build`，再由 Electron 统一启动 Core、唯一 Worker 和开发期 Vite；它是完整开发宿主。全新 `KITH_SPACE_HOME` 会在 Electron 内显示首次初始化页，完成后进入 `Home`，正常 Desktop 开发启动不再以 `pnpm run seed` 为前置。仓库内部仍保留 `pnpm run server`、`pnpm run daemon`、`pnpm --dir web run dev`、`browser-access:dev` 与 `dev:e2e:up` 以便分进程调试，其中 daemon 只是 Local Runtime Worker 的过渡代码/命令名。`src/env.ts:1`-`:11` 仍允许源码调试加载可选本地 `.env`；受管/打包 Desktop 不加载它，普通配置全部进入 app.db。
+Electron 固定为 43.1.0，electron-builder 固定为 26.15.3，`@electron/rebuild` 固定为 4.2.0（`package.json:122`、`:128`-`:129`）。`pnpm run desktop:dev` 先执行 `desktop:build`，再由 Electron 统一启动 Core、唯一 Worker 和开发期 Vite；它是完整开发宿主。全新 app data 会在 Electron 内显示首次初始化页，完成后进入 Home，正常 Desktop 开发启动不再以 `pnpm run seed` 为前置。H1 后 `KITH_SPACE_HOME` 只隔离 app data；测试若不能显式提供 Space root，必须同时使用独立的默认 Space 容器覆盖，绝不能在真实 `~/Kith-space` 生成 fixture。仓库内部仍保留 `server`、`daemon`、`web`、`browser-access:dev` 与 `dev:e2e:up` 作为分进程调试入口。
 
 发行脚本在 `package.json:43`-`:46` 固定为四层：
 

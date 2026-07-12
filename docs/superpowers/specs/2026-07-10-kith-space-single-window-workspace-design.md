@@ -1,6 +1,6 @@
 # Kith-space 单窗口工作区前端架构设计
 
-> 2026-07-11 路线修正：本文的单窗口、三态、Dock 交互和面板视觉继续有效；产品模块与宿主边界以 `2026-07-11-personal-agent-os-local-pivot-design.md` 为准。`Members` 已改为 `Agents`，`Computers` 删除，旧 `Layout` 不再保留。
+> 2026-07-12 路线修正：本文的单窗口、三态、Dock 交互和面板视觉继续有效；产品模块与宿主边界以 `2026-07-11-personal-agent-os-local-pivot-design.md` 和 `2026-07-12-home-space-and-space-root-design.md` 为准。普通冷启动进入 Home，Home Dock 增加 Spaces；`Members` 已改为 `Agents`，`Computers` 删除，旧 `Layout` 不再保留。
 
 - 日期：2026-07-10
 - 状态：设计与线框已确认，生产壳第一版联调中
@@ -9,7 +9,7 @@
 
 ## 1. 决策摘要
 
-Kith-space 不再继续当前“空间总览壳 + 空间内部壳”的双壳方案。新的目标是一个桌面优先的单窗口工作区：应用启动后自动进入上次使用的 Space，Chat 是默认主页与基础工作面，底部 Dock 常驻；点击 Dock 模块后，Chat 与模块按状态机在 Chat 全宽、Chat + 模块分屏、模块全宽三种形态之间切换。
+Kith-space 不再继续当前“空间总览壳 + 空间内部壳”的双壳方案。新的目标是一个桌面优先的单窗口工作区：普通冷启动进入唯一 Home Space，显式深链接仍可进入目标 Space；Chat 是默认主页与基础工作面，底部 Dock 常驻；点击 Dock 模块后，Chat 与模块按状态机在 Chat 全宽、Chat + 模块分屏、模块全宽三种形态之间切换。Home 的 Spaces 是同一个壳中的真实模块，不恢复双壳。
 
 本设计借鉴 OpenLoaf 的布局关系、Dock 迁移感和界面状态自动感知思想，但不复制 OpenLoaf 的 AGPL 源码或具体实现。
 
@@ -25,7 +25,7 @@ Kith-space 不再继续当前“空间总览壳 + 空间内部壳”的双壳方
 - Chat 是人和 agent 协作的核心工作面。
 - 模块通过 MCP 和统一上下文与 Chat 联动。
 - 当前阶段所有界面与模块默认服从当前 Space。
-- 未来可增加跨 Space 聚合，但不在本阶段实现。
+- Home Spaces 目录是已确认的当前补充；跨 Space Inbox/Tasks 等真实聚合仍不在本阶段实现。
 
 ## 2. 目标与非目标
 
@@ -66,10 +66,10 @@ Kith-space 不再继续当前“空间总览壳 + 空间内部壳”的双壳方
 ### 3.1 顶部栏
 
 - 左侧展示当前 Space 名称。
-- 点击 Space 名称打开切换、新建和管理菜单。
-- 应用启动时自动进入上次使用的 Space。
+- 点击 Space 名称打开快速切换；完整新建和管理进入 Home Spaces 模块。
+- 普通冷启动进入 Home；显式深链接进入目标 Space，托盘恢复保留当前窗口。
 - Search 不占 Dock，通过顶部入口和 `Cmd/Ctrl + K` 提供。
-- 没有 Space 时，主体区域显示创建或连接 Space 的轻量引导，不恢复独立总览页。
+- Home 缺失属于初始化恢复错误，不用“没有 Space”空页替代；普通 Space 创建和接入由 Home Spaces 承担。
 
 ### 3.2 主体区域
 
@@ -184,7 +184,8 @@ Composer + msg-context
 ### 7.1 第一阶段 Dock
 
 ```text
-Chat | Inbox | Tasks | Agents | Settings
+Home:         Chat | Spaces | Inbox | Tasks | Agents | Settings
+普通 Space:  Chat | Inbox | Tasks | Agents | Settings
 ```
 
 - Chat 可见时 Chat 按钮激活。
@@ -308,7 +309,7 @@ Composer 上方展示紧凑标签，例如：
 
 ### 10.2 本地持久化
 
-- 上次使用的 Space。
+- 最近打开的 Space 记录，用于卡片排序、快速切换和未销毁窗口恢复；不覆盖普通冷启动进入 Home 的规则。
 - 每个 Space 上次使用的频道或 DM。
 - Chat 会话列表和实时轨迹的手动显隐与宽度。
 - Chat/Module 分隔比例。

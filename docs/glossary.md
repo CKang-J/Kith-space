@@ -36,7 +36,22 @@
 : 唯一 Human 在全局 Settings 中查看和修改本地资料的入口，规范 URL resource 为 `settings=human`，数据接口为 `GET/PATCH /api/human/profile`。它不是账户页；旧 `settings=account` 与 `/api/auth/me` 已退役，`initialHumans` 也不是当前产品入口。
 
 **工作区 / Space（空间）**
-: 一个根植于本地文件夹、自包含、可移植的协作单元，装着自己的 agent 队伍、频道、消息、任务和记忆；一个文件夹对应一个 Space。产品 schema、API、Socket、CLI 与类型统一使用 `space/spaceId`；`server` 只可描述 Core Service 等技术进程或保留在历史研究原文中。
+: 一个根植于用户可见本地文件夹、自包含、可移植的协作单元，装着自己的 agent 队伍、频道、消息、任务和记忆；一个文件夹对应一个 Space，所属 agent 共享该文件夹作为 runtime cwd。产品 schema、API、Socket、CLI 与类型统一使用 `space/spaceId`；`server` 只可描述 Core Service 等技术进程或保留在历史研究原文中。
+
+**Home Space（总控 Space）**
+: 每个安装实例唯一、由稳定 `homeSpaceId` 标识的特殊 Space；普通冷启动进入它，它既有自己的 Chat/任务/agent/记忆，也通过 Home-only `Spaces` 模块管理本机普通 Space。它是逻辑总控入口，不是普通 Space 的物理父目录，也不是旧 Overview 壳。
+
+**普通 Space / Regular Space**
+: Home 之外、由用户新建文件夹或接入已有文件夹形成的 Space。普通 Space 可位于任意本机磁盘，不形成递归子 Space 层级。
+
+**Space root（Space 根目录）**
+: 用户为某个 Space 选择的本地文件夹，也是该 Space 全部 agent 的 runtime cwd；用户文件位于根目录普通文件树，产品自包含状态位于其 `.kith/`。cwd 是默认文件上下文，不是安全沙箱。
+
+**应用数据根 / App data root**
+: 安装实例内部数据目录，默认 `~/.kith-space`，保存 app.db、User Memory、runtime state、日志和 CLI wrapper；它不等于默认 Space 容器，也不是 agent 生成业务文件的 cwd。
+
+**默认 Space 容器**
+: 未手动选路径时创建 Home 和普通 Space 的用户可见父目录，默认 `~/Kith-space`；Home 的默认根目录为 `~/Kith-space/Home`。它与 app data root 必须独立配置和测试。
 
 **Agent membership**
 : agent 与频道的长期成员关系，物理表为 `channel_agent_members`。它决定 agent 可读取、接收和被唤醒的频道范围，不承载 Human 权限；唯一 Human 对本机 Space 拥有隐式完整访问。
@@ -61,7 +76,7 @@
 ## Agent 与 Runtime
 
 **Agent**
-: 有身份、职责与记忆的团队成员，跑在本机已有的 runtime 上，通过 @提及被唤醒，可领任务、互相分派、交付结果，并经统一工具层操作模块。身份字段（name/displayName/avatar/职责提示词/runtime/model/scopes）复用 open-tag 的 agents 表。
+: 有身份、职责与记忆的团队成员，跑在本机已有的 runtime 上，通过 @提及被唤醒，可领任务、互相分派、交付结果，并经统一工具层操作模块。agent 在所属 Space root 中工作，个人语义记忆位于该 Space 的 `.kith/agents/<agentId>/`，runtime 临时状态位于 app data。
 
 **原生 agent vs 外接 agent（术语澄清）**
 : 早期设想里"原生 agent"指跑在自研 runtime 内、操控更丝滑的 agent。本项目 v1 已锁定**不自研 runtime**，所有 agent 均为**外接**——连接本机已有 runtime。所谓"原生丝滑"改由 MCP 工具层 + UI 桥实现，而非 in-app runtime。故在 Kith-space 语境中不存在"原生 agent"，只有外接 agent；提到"原生"多指复用 runtime 的原生文件/工具能力。
@@ -93,7 +108,7 @@
 ## 记忆
 
 **三层记忆**
-: 用户级（跨空间偏好，用户策展）、空间级（团队规则/项目背景，agent 可写、用户策展）、agent 级（每个 agent 自己维护的 `MEMORY.md` + `notes/`）。读取一律用 runtime 原生文件工具，不做读 MCP 工具。
+: 用户级（app data 中的跨 Space 偏好，Human 策展）、Space 级（`<space>/.kith/memory/` 的共享规则和背景，agent 可写、Human 策展）、Agent 级（`<space>/.kith/agents/<agentId>/` 中由 agent 维护的 `MEMORY.md` + `notes/`）。读取一律用 runtime 原生文件工具，不做读 MCP 工具。
 
 **一事一文件 + 索引约定**
 : 借鉴 OpenLoaf 的记忆结构——每个知识点一个文件，`MEMORY.md` 作自足索引指向 `notes/` 里的细节，compaction 前后以 `MEMORY.md` 为恢复点。它是写进 system prompt 强制执行的**约定**，不是工具。写记忆的 MCP 工具（如 `memory_save`）v1 延后，agent 先用原生文件操作写。
@@ -137,7 +152,10 @@
 : Inbox、Tasks、Agents、Settings 等功能模块的第二工作面。一次只打开一个模块，可与 Chat 分屏或独占窗口；当前阶段全部服从当前 Space。
 
 **Dock**
-: 当前主要工作面板底部的统一控制器，固定为 Chat、Inbox、Tasks、Agents、Settings；当前模块横向展开，Chat 始终只显示图标。它同时负责模块切换与 Chat 显隐。
+: 当前主要工作面板底部的统一控制器。Home 为 Chat、Spaces、Inbox、Tasks、Agents、Settings，普通 Space 为 Chat、Inbox、Tasks、Agents、Settings；当前模块横向展开，Chat 始终只显示图标。它同时负责模块切换与 Chat 显隐。
+
+**Spaces 模块 / 空间模块**
+: 只在 Home Dock 出现的真实 Space registry 页面，用卡片提供搜索、创建、接入和同窗打开普通 Space；规范 module id 为 `spaces`。它不聚合尚未实现的 Inbox/Tasks，也不是旧空间总览壳。
 
 **规范工作区 URL**
 : 用当前 Space 的会话 pathname 表达频道或 Human-Agent DM，用 `module`/`chat` 表达工作区三态，并由 `taskScope`、`agent`/`agentTab`、`settings` 分别表达模块资源的唯一 URL 形式。切换会话时保留 active module 及其资源，替换旧 `msg`/`thread` 临时焦点；旧模块实体路径不属于规范 URL。
@@ -149,7 +167,10 @@
 : 消息发送时固化的结构化界面上下文，包含 Space、会话、当前模块、Context Stack 与 focused item。Kith-space 保存自己的结构，不把 OpenLoaf `<stack>` XML 硬编码进核心模型；当前仍是待实现契约。
 
 **跨 Space 视角**
-: 未来基于 `scope = current | all` 的真实聚合能力，可演化为全局窗口或驾驶舱。v1 不提供数据不真实的薄总览页。
+: 以 Home 为入口的本机全局视角：当前先由 Spaces 模块展示真实 registry，后续再基于 `scope = current | all` 增加 Inbox、Tasks、Calendar 和信息流聚合；不提供数据不真实的薄总览页，也不引入云端控制面。
+
+**跨 Space 委派 / Cross-Space Delegation**
+: Home agent 代表唯一 Human 对指定目标 Space 发起 task、message 或 agent dispatch 的受审计操作。记录真实 acting agent、Home 来源、Human 委派和目标资源，不冒充 Human，也不直接写目标 SQLite。
 
 ---
 
@@ -189,10 +210,10 @@
 : 每个 Space 把自己的 `spaces` 元数据、消息、任务、频道、agent、agent membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 baseline 有 19 张产品表；连同 Drizzle 的 `__drizzle_migrations` 是 20 张物理表，`PRAGMA user_version=3`。所有领域外键使用 `space_id`；Human 资料和 Desktop 设置不随 Space 复制。
 
 **`.kith/`**
-: 工作区文件夹下承载其全部状态的目录：`workspace.db`（结构化数据）、`agents/`（agent 阵容配置，明文）、`memory/`（空间级 + agent 级记忆，一事一文件）、`uploads/`（该 Space 的附件对象）。
+: Space root 下承载其可移植状态的目录：`workspace.db`（Space 元数据、agent 阵容、频道、消息和任务）、`memory/`（Space Memory）、`agents/<agentId>/`（Agent Memory）和 `uploads/`（附件对象）。runtime prompt、日志和宿主临时状态不放在这里。
 
 **app.db**
-: 应用数据目录中的中央 SQLite 库，保存唯一 Human、Desktop/Web 设置、访问 Token 哈希、浏览器会话、Space registry 和最近打开记录；不保存 Space 消息或任务。
+: app data root 中的中央 SQLite 库，保存唯一 Human、稳定 homeSpaceId、Desktop/Web 设置、访问 Token 哈希、浏览器会话、Space registry 和最近打开记录；不保存 Space 消息或任务。
 
 **Machine / Computer / serverId（退役术语）**
 : open-tag 遗留的多主机和工作区领域命名。Machine/Computer 已从服务、API、Worker 协议、UI 和物理 schema 删除；产品 `server/serverId` 兼容边界也已删除并统一为 `space/spaceId`。HTTP 技术进程称 Core Service；历史研究文档可保留原术语，但不代表当前产品能力。

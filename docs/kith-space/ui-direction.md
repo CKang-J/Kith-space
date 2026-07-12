@@ -1,8 +1,8 @@
 # Kith-space UI 方向
 
-本文是 Kith-space 当前 UI 信息架构与视觉语言的权威说明。单窗口交互契约见 `docs/superpowers/specs/2026-07-10-kith-space-single-window-workspace-design.md`，个人 AgentOS 宿主与产品边界见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，可交互线框见 `docs/prototypes/kith-space-single-window-flow.html`。
+本文是 Kith-space 当前 UI 信息架构与视觉语言的权威说明。单窗口交互契约见 `docs/superpowers/specs/2026-07-10-kith-space-single-window-workspace-design.md`，个人 AgentOS 宿主与产品边界见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，Home/Space root 补充设计见 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。现有可交互线框 `docs/prototypes/kith-space-single-window-flow.html` 只覆盖基础三态壳，尚未补 Home Spaces 页面。
 
-结论前置：Kith-space 采用**单窗口工作区**。首次启动先初始化唯一 Human，随后直接进入 `Home` 或最近 Space；Chat 是默认主页与基础工作面，底部 Dock 常驻；功能模块打开后，界面只在 Chat 全宽、Chat + 模块分屏、模块全宽三种形态间切换。此前的“空间总览壳 + 空间内部壳”、旧 `Layout` 回退、Landing 与 PWA 入口均已删除。
+结论前置：Kith-space 采用**单窗口工作区**。首次启动先初始化唯一 Human，普通冷启动随后进入 `Home` Chat；Home 是真实总控 Space，并在同一个 Dock 增加 Spaces 模块。Chat 是默认主页与基础工作面，功能模块打开后，界面只在 Chat 全宽、Chat + 模块分屏、模块全宽三种形态间切换。此前的“空间总览壳 + 空间内部壳”、旧 `Layout` 回退、Landing 与 PWA 入口均保持删除。
 
 ---
 
@@ -35,8 +35,8 @@
 └────────────────────────────────────────────────────────────┘
 ```
 
-- 未初始化时进入本地 Human 资料页；初始化后进入上次使用的 Space，没有记录时进入自动创建的 `Home`，不经过独立总览页。
-- Space 名称承担切换与管理入口。
+- 未初始化时进入本地 Human 资料页；普通冷启动进入自动创建的 Home Chat，显式 Space 深链接直达目标，托盘恢复保留现有窗口现场。
+- Space 名称保留快速切换入口；完整创建、接入和管理位于 Home 的 Spaces 模块。
 - Search 位于顶部工具组，通过按钮和 `Cmd/Ctrl + K` 进入，不占 Dock 槽位。
 - 同时最多显示一个 Chat Pane 和一个 Module Pane。
 - Split 默认让 Chat 占可用工作区的 25%、Module 占其余空间；Chat 下限为 `max(360px, 25%)`。Tasks / Search 的模块下限为 560px，其余现有模块为 640px；模块不再使用固定 960px 上限。
@@ -72,7 +72,10 @@ ModuleOnly = Chat 隐藏，Module 可见
 
 ### 3.2 Dock
 
-Dock 固定为：`Chat | Inbox | Tasks | Agents | Settings`。
+Dock 按 Space 类型固定：
+
+- Home：`Chat | Spaces | Inbox | Tasks | Agents | Settings`。
+- 普通 Space：`Chat | Inbox | Tasks | Agents | Settings`。
 
 - Dock 始终属于当前主要工作面板：ChatOnly 在 Chat 底部，Split 和 ModuleOnly 在模块底部。
 - Chat 按钮始终只显示图标，用激活底色表达 Chat 是否可见，不因激活而展开。
@@ -82,11 +85,11 @@ Dock 固定为：`Chat | Inbox | Tasks | Agents | Settings`。
 - 未激活项用 `#fafafa`，激活项用 `#f5f5f5`，不使用高饱和强调色。
 - Dock 所在面板预留底部空间，不覆盖 Composer 或模块内容。
 
-Agents 只显示当前 Space 的 agent 队伍；唯一 Human 的资料位于全局 Settings。Calendar、Canvas 等真实能力成熟后插入模块区；当前不展示无功能的空入口。
+Spaces 只在 Home 出现；Agents 只显示当前 Space 的 agent 队伍；唯一 Human 的资料位于全局 Settings。Calendar、Canvas 等真实能力成熟后插入模块区；当前不展示无功能的空入口。
 
 创建 Agent 时，Runtime 选择器读取 Local Runtime Worker 的实际 availability，而不是使用前端硬编码的可用状态。完整 runtime 目录始终展示：已安装项排序在前并标注“已安装”，未安装项排序在后、标注“未安装”且不可选择；默认选中第一个已安装项。OpenCode 模型选择器只展示 `opencode models` 返回并去重后的真实 `provider/model`；探测失败时显示错误、提供重试并禁止创建，不回退到虚假的 `Default`。
 
-创建成功后，agent 只向唯一 Human 的 `dm:@you` 发送一次 2-3 句自我介绍，内容包含身份、职责/擅长能力和如何派活；不扫描频道历史、不汇报“没有消息”，也不向公共频道广播。只有创建/重试 introduction turn 的介绍私信成功进入对应 Human-Agent DM 后才视为完成；若真实消息先到，agent 先按 wake 语义回复原目标，该普通回复不算自我介绍。后续手动启动、重启和恢复只检查真实待处理消息，空收件箱保持静默；由频道、DM、任务或 backlog 触发的唤醒必须在每个原会话目标处理和回复。完整擦除 agent 工作区视为重新入职，可再次介绍。
+创建成功后，agent 只向唯一 Human 的 `dm:@you` 发送一次 2-3 句自我介绍，内容包含身份、职责/擅长能力和如何派活；不扫描频道历史、不汇报“没有消息”，也不向公共频道广播。只有创建/重试 introduction turn 的介绍私信成功进入对应 Human-Agent DM 后才视为完成；若真实消息先到，agent 先按 wake 语义回复原目标，该普通回复不算自我介绍。后续手动启动、重启和恢复只检查真实待处理消息，空收件箱保持静默；由频道、DM、任务或 backlog 触发的唤醒必须在每个原会话目标处理和回复。显式清除 agent 记忆与入职状态后才视为重新入职；不得把删除共享 Space 文件树当成普通 reset。
 
 ---
 
@@ -124,16 +127,25 @@ Composer
 
 ## 5. 模块工作面与作用域
 
-- 当前模块包括 Inbox、Tasks、Agents、Settings；Search 由顶部入口打开。Computers/Machines 不再是产品模块。
+- 当前模块包括 Inbox、Tasks、Agents、Settings；Home 另有 Spaces；Search 由顶部入口打开。Computers/Machines 不再是产品模块。
 - 一次只显示一个 Module Pane，切换 Dock 项直接替换模块。
-- 当前阶段所有模块只读取当前 Space 数据；切换 Space 时 Chat 与模块数据源一起切换。
+- Inbox、Tasks、Agents、Settings 只读取当前 Space 数据；Spaces 只读取 app.db registry 和真实摘要。切换 Space 时 Chat 与普通模块数据源一起切换。
 - Web Store 与路由状态只使用 `SpaceInfo/spaceId/spaces` 和 `/s/:slug`；请求只发送 `x-space-id`，不得在前端保留旧 Server 双命名。
 - Tasks 保留旧布局的范围侧栏，可在当前 Space 的全部任务与指定频道任务之间切换；切换范围不得改变当前 Split / ModuleOnly 姿态。
 - 模块加载失败或空状态只在自身面板处理，Chat 保持可用。
 - 模块不得直接控制 Chat 内部组件；Chat 也不得依赖具体模块的数据结构。
-- 模块契约为未来的 `scope = current | all` 预留语义，但当前不显示尚不可用的跨 Space 开关。
+- 普通模块契约为未来的 `scope = current | all` 预留语义，但当前不显示尚不可用的跨 Space 开关。
 
-未来可增加真正的跨 Space 主窗口或聚合视图，但它是后续能力，不恢复当前已移除的薄总览页。
+### 5.1 Home Spaces 模块
+
+- 规范 module id 为 `spaces`，URL 是 Home 当前会话 pathname 上的 `?module=spaces`。
+- 顶部提供搜索、刷新和“新建空间”；主体使用与现有面板语言一致的 Space 卡片网格。
+- 卡片至少显示名称、宿主路径和最近打开信息；Home 自身不在列表中重复展示。
+- 点击卡片在当前窗口进入目标 Space 的默认 Chat，不打开新窗口。
+- 新建流程提供“在默认位置新建文件夹”和“使用已有文件夹”；Desktop 使用原生目录选择器，授权浏览器使用 Desktop 主机路径输入并由 Core 校验。
+- 普通 Space 的 `module=spaces` 是无效状态并被规范化；从顶部全局空间入口打开时导航到 Home Spaces。
+
+未来可在 Home 增加真正的跨 Space Inbox/Tasks/Calendar 聚合，但它们是后续真实能力，不恢复已移除的薄总览页。
 
 ---
 
@@ -152,7 +164,7 @@ A5 已完成工作区入口与规范 URL 收口，但 `MessageContextSnapshot`�
 
 ## 7. 当前实现边界
 
-当前生产壳已完成 A5 入口收口：`App` 只渲染 `WorkspaceFrame`；Agents、Human Settings 与 Desktop Settings 已落地，登录/注册/邀请、Computers、Landing、Features、PWA、SSR/prerender、旧 `Layout` 与 `?legacy=1` 均已退出活跃代码。旧 `/computer/*`、`/tasks`、`/agent`、`/settings` 和未知 Space 子路径都不再激活对应模块；模块只由当前会话 pathname 上的规范 query 表达。
+当前生产壳已完成 A5 入口收口：`App` 只渲染 `WorkspaceFrame`；Agents、Human Settings 与 Desktop Settings 已落地，登录/注册/邀请、Computers、Landing、Features、PWA、SSR/prerender、旧 `Layout` 与 `?legacy=1` 均已退出活跃代码。Home Spaces 模块、普通冷启动强制进入 Home 和文件夹选择器仍是 H3-H4 待实现目标，不能误写为当前 UI 能力。
 
 单窗口壳按职责拆在 `web/src/shell/`：
 
@@ -170,7 +182,7 @@ A5 已完成工作区入口与规范 URL 收口，但 `MessageContextSnapshot`�
 
 ## 8. 初始化与 Settings 边界
 
-- 首次启动页只收集 Human 名称、可选邮箱和描述，文案不得使用“注册”“账户”或“加入团队”。默认 `Home` 与根路径由应用创建，界面不要求用户选择。
+- 首次启动页只收集 Human 名称、可选邮箱和描述，文案不得使用“注册”“账户”或“加入团队”。默认 Home 在用户可见的 `~/Kith-space/Home` 由应用创建，首次初始化不要求用户选择；普通 Space 之后从 Spaces 模块选择路径。
 - 首次初始化只在检测到完整 Electron preload bridge 时运行，并先于 `StoreProvider`/Space bootstrap。若上次写入 Human 后中断，页面用 status 返回的 partial Human 预填恢复；重复提交保持幂等。初始化完成后挂载正常产品树并自动进入 `Home`；Human 资料在全局 Settings 以 `settings=human` 表达，并通过 `GET/PATCH /api/human/profile` 修改，不使用账户页或 `/api/auth/me`。
 - 普通本机/LAN 浏览器从不探测 setup API，也不显示首次启动页；未授权时只显示 Access Token Gate，已授权后进入共享工作区。
 - Desktop Settings 已包含 Web 模式、端口、访问 Token、撤销浏览器会话、托盘关闭行为和系统自启动；系统自启动在开发态明确显示 unsupported，在 Windows packaged Desktop 中启用。

@@ -35,6 +35,8 @@ $env:KITH_SPACE_HOME = Join-Path $env:TEMP ("kith-space-dev-" + [guid]::NewGuid(
 pnpm run desktop:dev
 ```
 
+这会为本次终端创建一套带随机 GUID 的一次性数据 profile，不是一台电脑唯一的正式目录。P-A7 H1 尚未落地前，受管 Desktop 还会把默认 Home、agent cwd 和 Agent Memory 一并放到这个临时根；它只适合隔离验收，不应保存正式工作文件。目标路径分层见 [`Home 与 Space root 设计`](./superpowers/specs/2026-07-12-home-space-and-space-root-design.md)。
+
 关闭窗口默认只是进入托盘。彻底停止时使用托盘菜单的 **Quit**，或在启动终端按 `Ctrl+C`。
 
 ## 3. 分进程启动

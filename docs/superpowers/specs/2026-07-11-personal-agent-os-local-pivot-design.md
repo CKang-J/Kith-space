@@ -2,6 +2,8 @@
 
 状态：已确认，作为 2026-07-11 起产品路线与后续实现的权威规格。
 
+> 2026-07-12 补充：Home 总控 Space、用户可见 Space root、agent cwd/记忆归属和跨 Space 委派已在 `2026-07-12-home-space-and-space-root-design.md` 锁定。本文的 A1-A6 产品边界继续有效；两文冲突时，以新补充设计对 Home、路径、Dock 和 cwd 的修正为准。
+
 ## 1. 目标
 
 Kith-space 定位为桌面优先、单人使用的个人 AgentOS。一个 Human 与本机的一组 agent 在多个本地 Space 中协作。agent 继续由本机 Claude Code、Codex、opencode 等 runtime 承载，Kith-space 不自研 runtime。
@@ -72,13 +74,13 @@ v1 的局域网访问只支持 HTTP。首次启用时必须明确提示：传输
 
 Human 在整个安装实例中唯一，对全部本地 Space 拥有完整权限。删除账户、所有者、管理员、成员、邀请、注册、密码和 RBAC 概念。保留真实安全边界：Space 归属与作用域校验、路径隔离、浏览器访问 Token、CSRF/会话保护和 runtime 权限控制。
 
-初始化 Human 后自动创建默认 `Home` Space。之后可以把任意本地文件夹注册为新 Space。
+初始化 Human 后，在用户可见的 `~/Kith-space/Home` 自动创建唯一 Home Space，并在 app.db 以稳定 homeSpaceId 标识。普通冷启动进入 Home；之后可以把任意本地文件夹注册为普通 Space。
 
 ### 6.2 Space
 
 `Space` 是唯一产品术语。产品领域、schema、API 和类型中的 `server` / `serverId` 分阶段迁移为 `space` / `spaceId`。URL 保留 `/s/:slug`，其中 `s` 明确表示 Space。
 
-每个 Space 有自己的频道、消息、任务、agent 队伍和分层记忆。Agent 频道成员关系保留，用于上下文与唤醒语义；它不再与 Human 成员或 RBAC 混合。
+每个 Space 有自己的用户文件、频道、消息、任务、agent 队伍和分层记忆。所属 agent 共享 Space root 作为 runtime cwd，Agent Memory 位于 `<space>/.kith/agents/<agentId>`；cwd 不是安全沙箱。Agent 频道成员关系保留，用于上下文与唤醒语义；它不再与 Human 成员或 RBAC 混合。
 
 ### 6.3 Local Runtime Worker
 
@@ -88,8 +90,9 @@ Human 在整个安装实例中唯一，对全部本地 Space 拥有完整权限�
 
 本次转向允许破坏性 schema 重置，不迁移当前开发期 `.kith` 数据。
 
-- 中央数据库改为本机 `app.db`，保存唯一 Human、Desktop/Web 设置、访问 Token 哈希、浏览器会话、Space registry 和最近打开的 Space。
-- 每个 Space 继续使用 `<space>/.kith/workspace.db`，保存频道、消息、任务、agent 和 Space 记忆。
+- app data 默认 `~/.kith-space`，保存 `app.db`、User Memory、runtime state、日志与 CLI wrapper；`app.db` 保存唯一 Human、稳定 homeSpaceId、Desktop/Web 设置、访问 Token 哈希、浏览器会话和 Space registry。
+- 默认 Space 容器为用户可见的 `~/Kith-space`，Home 位于 `~/Kith-space/Home`；普通 Space 可选择任意本机文件夹。
+- 每个 Space 使用 `<space>/.kith/workspace.db`，并在 `.kith/memory`、`.kith/agents` 和 `.kith/uploads` 保存 Space/Agent Memory 与附件。
 - 文件和附件只存本地磁盘，删除 S3 和对象存储路径。
 - 未来备份采用显式本地导出/导入，不规划云同步和云数据库。
 
@@ -97,19 +100,19 @@ Human 在整个安装实例中唯一，对全部本地 Space 拥有完整权限�
 
 保留已确认的单窗口 ChatOnly / Split / ModuleOnly 工作区和面板式视觉语言。停止旧双壳和旧 `Layout` 回退。
 
-Dock 固定为：`Chat | Inbox | Tasks | Agents | Settings`。
+Dock 按 Space 类型固定：Home 为 `Chat | Spaces | Inbox | Tasks | Agents | Settings`，普通 Space 为 `Chat | Inbox | Tasks | Agents | Settings`。
 
 - `Members` 更名为 `Agents`，只展示当前 Space 的 agent 队伍。
 - 删除 `Computers`。
 - 唯一 Human 的资料放入全局 Settings。
 - 网络、Token、端口、托盘、自启动和进程设置只在 Electron Desktop 中显示。
 - 浏览器 Settings 只显示可安全远程操作的产品设置。
-- 根路径进入首次初始化，完成后进入最近使用的 Space；没有最近记录时进入 `Home`。
+- 根路径进入首次初始化；普通冷启动完成后进入 Home，显式 Space 深链接仍可直达目标。
 - 删除公共首页、登录、注册、邀请、加入链接、PWA 和旧界面回退入口。
 
 ## 9. 环境、发行与删除范围
 
-正式产品不需要 `.env`。端口、浏览器访问模式和 Token 由 Desktop 设置管理。只保留少量内部开发/测试覆盖项，例如 `KITH_SPACE_HOME`、日志级别和 runtime 测试开关；它们不进入普通用户文档。
+正式产品不需要 `.env`。端口、浏览器访问模式和 Token 由 Desktop 设置管理。只保留少量内部开发/测试覆盖项，例如只覆盖 app data 的 `KITH_SPACE_HOME`、独立的默认 Space 容器覆盖、日志级别和 runtime 测试开关；它们不进入普通用户文档，也不能让测试污染真实 `~/Kith-space`。
 
 删除以下继承资产：
 
@@ -159,6 +162,12 @@ Dock 固定为：`Chat | Inbox | Tasks | Agents | Settings`。
 删除 Docker、远程发布/部署、公共 server/daemon 发行、遗留环境样例和残余旧术语；运行类型、单元、集成、构建和桌面冒烟验证。
 
 验收：仓库没有对已删除路线的可执行入口或误导性权威文档；Windows Desktop 是唯一正式发行路径。
+
+### 阶段 7：Home 总控 Space 与 Space root 验收修复
+
+分离 app data 与默认 Space 容器；建立稳定 homeSpaceId 和用户可见 Home；把 runtime cwd 与 Agent Memory 归位到所属 Space；补 Desktop 文件夹接入和 Home-only Spaces 模块。跨 Space 写编排在路径与 UI 地基验收后渐进实现。
+
+验收：普通冷启动进入 Home Chat；用户可创建或接入文件夹 Space；agent 相对业务文件写入 Space root；复制 Space 带走 workspace.db、Space/Agent Memory、附件和用户文件；Home Spaces 使用真实 registry 且不恢复旧 OverviewShell。完整切片见 `2026-07-12-home-space-and-space-root-design.md`。
 
 ## 11. 实施约束
 
