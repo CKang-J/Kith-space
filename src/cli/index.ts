@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// kith-space CLI — agent-side communication layer. runtimes invoke it via their bash tools.
+// kith-space CLI — agent-side communication layer. runtimes invoke it via their native command tools.
 // Auth/routing via env vars injected by daemon at spawn time:
 //   KITH_SPACE_SERVER_URL, KITH_SPACE_AGENT_TOKEN (per-agent token, injected by daemon), KITH_SPACE_AGENT_ID (or --agent-id)
 import { Command } from "commander";
@@ -7,6 +7,7 @@ import { readFile, writeFile, mkdir, appendFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { ROLE_TEMPLATES } from "../agents/roleTemplates.js";
 import { createLogger } from "../log.js";
+import { readUtf8Stdin } from "./readStdin.js";
 
 const log = createLogger("cli");
 const BASE = process.env.KITH_SPACE_SERVER_URL ?? "http://127.0.0.1:7777";
@@ -42,12 +43,6 @@ async function api(method: string, path: string, body?: unknown): Promise<any> {
     process.exit(1);
   }
 }
-function readStdin(): Promise<string> {
-  return new Promise((resolve) => {
-    if (process.stdin.isTTY) return resolve("");
-    let d = ""; process.stdin.on("data", (c) => (d += c)); process.stdin.on("end", () => resolve(d));
-  });
-}
 function targetFromText(text: string): string | null {
   const m = /^\[target=([^\s\]]+)/.exec(text);
   return m?.[1] ?? null;
@@ -77,9 +72,9 @@ message.command("check").description("non-blocking check for new messages").acti
 });
 message.command("send").description("send a message (body read from stdin); if new messages arrived since last read the message is freshness-held as a draft — revise it or use --send-draft to submit as-is").requiredOption("--target <target>", "#channel / dm:@name / #channel:shortid / thread:shortid").option("--attach <ids>", "attachment ids, comma-separated").option("--send-draft", "submit the held draft as-is, bypassing freshness check").action(async (opts) => {
   const sendDraft = !!opts.sendDraft;
-  const content = sendDraft ? "" : (await readStdin()).trim();
+  const content = sendDraft ? "" : (await readUtf8Stdin()).trim();
   const attachmentIds = opts.attach ? String(opts.attach).split(",").map((s: string) => s.trim()).filter(Boolean) : [];
-  if (!sendDraft && !content && !attachmentIds.length) { console.error("Error: empty content"); console.error("Next action: pipe body via heredoc on stdin, or use --attach to include attachments"); process.exit(1); }
+  if (!sendDraft && !content && !attachmentIds.length) { console.error("Error: empty content"); console.error("Next action: pipe the body as UTF-8 stdin using host-native syntax, or use --attach"); process.exit(1); }
   const d = await api("POST", "/agent-api/message/send", { target: opts.target, content, attachmentIds, sendDraft });
   if (d.held) { await recordTurnEvent({ type: "held", target: opts.target }); return console.log(d.text); } // freshness-hold: prints bounded context + two options, letting the agent revise or use --send-draft
   await recordTurnEvent({ type: "send", target: opts.target, id: d.id, seq: d.seq });
@@ -200,8 +195,8 @@ program.command("search").description("= message search (backward-compat alias)"
 
 const thread = program.command("thread").description("threads");
 thread.command("reply").description("start or reply to a thread under a message (body read from stdin)").requiredOption("--parent <msgId>", "parent message id or the 8-character short id from the message header").option("--channel <channel>", "channel containing the parent message (used for disambiguation)").action(async (opts) => {
-  const content = (await readStdin()).trim();
-  if (!content) { console.error("Error: empty content"); console.error("Next action: pipe body via heredoc on stdin"); process.exit(1); }
+  const content = (await readUtf8Stdin()).trim();
+  if (!content) { console.error("Error: empty content"); console.error("Next action: pipe the body as UTF-8 stdin using host-native syntax"); process.exit(1); }
   const d = await api("POST", "/agent-api/thread/reply", { parent: opts.parent, channel: opts.channel, content });
   console.log(`Replied in thread (thread ${String(d.threadChannelId).slice(0, 8)}, msg ${String(d.id).slice(0, 8)})`);
 });
@@ -278,8 +273,8 @@ reminder.command("snooze").description("postpone a reminder").requiredOption("--
 const action = program.command("action").description("prepare human-in-the-loop action cards (human commit)");
 action.command("prepare").description("prepare an action card (action JSON from stdin; variants: channel:create / agent:create)")
   .requiredOption("--target <ch>", "#channel / dm:@name").action(async (opts) => {
-    const raw = (await readStdin()).trim();
-    if (!raw) { console.error("Error: action JSON required on stdin"); console.error('Next action: echo \'{"type":"channel:create","name":"x","description":"…"}\' | kith-space action prepare --target "#general"'); process.exit(1); }
+    const raw = (await readUtf8Stdin()).trim();
+    if (!raw) { console.error("Error: action JSON required on stdin"); console.error("Next action: provide UTF-8 JSON via stdin using the host-native syntax from the system prompt"); process.exit(1); }
     let actionObj: unknown;
     try { actionObj = JSON.parse(raw); } catch { console.error("Error: invalid JSON on stdin"); process.exit(1); }
     const d = await api("POST", "/agent-api/action/prepare", { target: opts.target, action: actionObj });

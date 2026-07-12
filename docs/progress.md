@@ -8,7 +8,7 @@
 
 - 分支：`feat/p0-foundation`，尚未合并或推送远端。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A1-A6 已完成，正在由用户验收**。验收期已修复 Windows runtime 发现/启动问题；Runtime 契约 v2 暂停，只有用户确认 A1-A6 验收通过后才进入下一阶段。
+- 当前阶段：**A1-A6 已完成，正在由用户验收**。验收期已修复 Windows runtime 发现/启动、宿主原生 CLI wrapper 与 UTF-8 中英文流问题；Runtime 契约 v2 暂停，只有用户确认 A1-A6 验收通过后才进入下一阶段。
 - P4 视觉微调已暂停，等本机化基础收敛后再恢复。
 - 底座为 open-tag 衍生开发副本；`reference/` 只读。OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
 
@@ -91,6 +91,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - `pnpm run desktop:dev` 是完整开发宿主入口；fresh Desktop 不再要求 seed，首次窗口通过 Desktop-only setup 完成 Human/Home 初始化。`desktop:build`、`desktop:bundle`、`desktop:pack`、`desktop:dist` 分别承担开发构建、生产 bundle、unpacked 包和 NSIS 安装器。`seed`、`server`、`daemon`、`web`、`browser-access:dev` 与 `dev:e2e:up` 继续保留给 fixture 或分进程调试，手动模式仍需独立环境凭据。
 - A1-A6 验收期修复了 Windows runtime 启动链：旧 `detectRuntimes` 使用 Unix 专用 `command -v`，导致已安装 Claude/Codex/opencode 时 Worker 仍上报空列表，Core 因 `runtime unavailable` 拒绝 agent start；Codex/opencode 的 npm shim 还会被原生 `child_process.spawn` 以 `EPERM`/`ENOENT` 拒绝。`src/daemon/runtimeProcess.ts` 现在以直接依赖 `cross-spawn` 统一探测和启动全部 adapter。真实机器反馈环检测到 `claude/codex/kimi/opencode`，Codex shim 启动 Exit 0；typecheck、451/451 单测、全量集成和 `desktop:bundle` 均通过。隔离数据目录的 `desktop:dev` smoke 同样由 Worker/Core 上报这四个 runtime 并 Exit 0，退出后 Electron 残留与 7777/5273 监听均为 0。
 - OpenCode 模型发现也已接入统一进程边界：本机 `opencode models` 与 Worker 探测现在一致返回 17 个真实 `provider/model`，创建 Agent 不再回退到 `Default`。Core 新增完整 runtime availability，已安装项前置，未安装项保留展示但禁用；OpenCode 改用官方 `--auto` 并强制显式模型，模型列表去重且失败可直接重试，JSON provider error 与进程退出不会再形成第二条空白错误，旧版 error+exit 0 也不会被覆盖为 online。针对性 18/18、全量单测 463/463、全量集成、typecheck、Web build 与 `desktop:bundle` 已通过；浏览器渲染交互验收因当前页面要求 Access Token 未执行，未读取或代填用户 Token。
+- Windows agent 命令/编码链已按宿主收口：`ensureKithSpaceBin` 在 Windows 开发态与打包态只保留可执行 `kith-space.cmd` 并清理会触发“选择打开方式”的旧 POSIX 文件，Linux/macOS 继续生成可执行 `#!/bin/sh` wrapper；system prompt 在 Windows 明确 `.cmd` 与 UTF-8 `$OutputEncoding`，优先给出 PowerShell 写法但允许 runtime 明确提供的 POSIX shell，在 Linux/macOS 使用 POSIX sh/heredoc。`spawnRuntimeProcess` 对全部 runtime stdout/stderr 启用有状态 UTF-8 解码，CLI 的 message/thread/action stdin 也经独立 `readUtf8Stdin` 模块解码。真实 Windows PowerShell 5.1 探针从默认 `????` 恢复为 UTF-8 字节，生成的 `.cmd` 也已从 Git Bash smoke 成功执行；针对性 26/26、typecheck、全量单测 470/470、全量集成、Web build（2566 modules）与 `desktop:bundle` 均通过。
 - LAN 浏览器具有完整产品能力，v1 仅支持桌面浏览器和 HTTP；只限受信任私网，禁止端口转发或公网暴露。
 - Message Context Snapshot 仍是设计契约，尚未持久化。
 - token 预算目前以唤醒次数为代理；真实 usage 等待 Runtime 契约 v2。
@@ -109,7 +110,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - 包管理使用 pnpm；脚本参数直接跟在后面，例如 `pnpm test --unit`。
 - 常规验证：`pnpm run typecheck`、`pnpm test --unit`、`pnpm test --integration`、`pnpm --dir web run build`。
 - 测试把 `KITH_SPACE_HOME` 指向仓库内或系统临时目录，绝不在用户 home 生成测试数据。
-- 当前验收单测基线为 463/463；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6 小节里的旧数字只描述当时检查点，不是当前基线。
+- 当前验收单测基线为 470/470；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6 小节里的旧数字只描述当时检查点，不是当前基线。
 - 新功能优先拆到职责清楚的模块；不整块重写 `src/server/core.ts` 或大型 React 组件。
 - 代码、命令、架构、UI、术语或阶段变化时，同一提交同步相应文档。
 - 用户未要求时不修改或提交 `.agents/`、`.claude/`、`.codegraph/daemon.pid`、`skills-lock.json` 等外部/个人工具文件。

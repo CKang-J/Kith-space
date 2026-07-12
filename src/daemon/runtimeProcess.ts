@@ -7,7 +7,12 @@ export function spawnRuntimeProcess(
   args: readonly string[],
   options: SpawnOptions,
 ): ChildProcess {
-  return crossSpawn(command, args, options);
+  const child = crossSpawn(command, args, options);
+  // Runtime protocols are UTF-8 text streams. Let Node keep decoder state across arbitrary pipe
+  // chunks so a multibyte character split by the OS is not replaced before JSON/JSONL parsing.
+  child.stdout?.setEncoding("utf8");
+  child.stderr?.setEncoding("utf8");
+  return child;
 }
 
 /** Probe the same launch path used by adapters instead of shell-specific command discovery. */

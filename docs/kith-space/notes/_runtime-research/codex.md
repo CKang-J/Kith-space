@@ -5,6 +5,8 @@
 > 本地基线：只读 `reference/open-tag/src/daemon/codexRuntime.ts`、`reference/open-tag/src/daemon/runtime.ts` 与 `docs/kith-space/notes/runtime-adapters-current-state.md`。  
 > 证据口径：产品能力以 OpenAI 官方最新文档为主；公开文档未给出精确 wire shape 时，补充引用 OpenAI 官方 `openai/codex` 仓库的当前协议源码。每条外部结论均标注“已证实 / 部分已证实 / 未证实”与查阅日期。
 
+> 2026-07-12 落地注记：Codex 的 Windows npm shim 已与其他 runtime 一样经过统一 `cross-spawn` 边界启动；app-server stdout/stderr 现由该边界做有状态 UTF-8 解码，跨数据块的中文 JSON-RPC fixture 已回归覆盖。Windows agent CLI 只保留 `.cmd` wrapper，system prompt 明确使用 PowerShell 和 UTF-8 stdin。usage、MCP bootstrap、版本 schema 与审批策略仍属于后续 Runtime 契约 v2，本次验收修复没有提前宣称完成。
+
 ## 结论摘要
 
 Kith-space 当前选择 `codex app-server --listen stdio://` 的总体方向是对的。OpenAI 现在明确把 app-server 定位为“把 Codex 深度嵌入自己的产品”时使用的接口，覆盖认证、会话历史、审批和流式 agent 事件；`codex exec` 更适合一次性脚本/CI，Codex SDK 更适合不想直接维护 wire protocol 的程序化调用。Kith-space 需要持续多轮、审批接管、完整轨迹、MCP 就绪检查，因此 app-server 比每轮 spawn `codex exec` 更贴合。（已证实；[Codex App Server](https://developers.openai.com/codex/app-server/)、[Codex SDK](https://developers.openai.com/codex/codex-sdk/)、[Non-interactive mode](https://developers.openai.com/codex/noninteractive/)，查阅：2026-07-10）

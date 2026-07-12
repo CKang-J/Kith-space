@@ -12,7 +12,7 @@ Kith 意为"你熟识信任的一圈自己人"——正是这些懂你（有记�
 
 当前最高优先级是 2026-07-11 锁定的本机化转向：正式产品只有 Electron Desktop，一个 Human、一个本机 Local Runtime Worker、多个本地 Space；浏览器入口是 Desktop 可选开放的本机/LAN 附属能力。多真人、多机器、服务器部署、云同步、Docker、账户登录和独立 Web 发行路线已经取消。完整规格见 [`个人 AgentOS 本机化路线设计`](./docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md)。
 
-本机化 A2-A6 已完成并进入用户验收：中央 `app.db`、唯一 Human、默认 `Home` Space、canonical Space 契约、安装级唯一 Local Runtime Worker、19 表 workspace.db 产品 baseline 与 Space 级附件目录均已落地。浏览器入口已收口为默认关闭/仅本机/局域网三模式，使用独立访问 Token、持久 Cookie 会话和 CSRF/Origin 保护；Human JWT、dev-login、`?as=` 与 URL token 已退役。Electron 43.1.0 Desktop 统一监督 Core Service、唯一 Worker 与开发期 Vite，管理托盘、关闭行为、Web 入口和内部凭据。全新目录不再需要 seed：Desktop 首次初始化界面收集本地 Human 资料并创建 `Home`。Windows runtime 的 `.exe`/npm `.cmd` 现通过统一跨平台边界发现和启动。Runtime 契约 v2 在 A1-A6 验收通过前保持暂停。
+本机化 A2-A6 已完成并进入用户验收：中央 `app.db`、唯一 Human、默认 `Home` Space、canonical Space 契约、安装级唯一 Local Runtime Worker、19 表 workspace.db 产品 baseline 与 Space 级附件目录均已落地。浏览器入口已收口为默认关闭/仅本机/局域网三模式，使用独立访问 Token、持久 Cookie 会话和 CSRF/Origin 保护；Human JWT、dev-login、`?as=` 与 URL token 已退役。Electron 43.1.0 Desktop 统一监督 Core Service、唯一 Worker 与开发期 Vite，管理托盘、关闭行为、Web 入口和内部凭据。全新目录不再需要 seed：Desktop 首次初始化界面收集本地 Human 资料并创建 `Home`。Windows runtime 的 `.exe`/npm `.cmd` 现通过统一跨平台边界发现和启动；Agent CLI 按宿主生成 `.cmd` 或 POSIX wrapper，PowerShell/sh 提示与 stdin/stdout UTF-8 流也已分平台收口。Runtime 契约 v2 在 A1-A6 验收通过前保持暂停。
 
 ## Desktop 开发启动
 
@@ -25,7 +25,7 @@ pnpm install
 pnpm run desktop:dev        # 构建 Electron main/preload，并启动 Core + Worker + Vite + Electron
 ```
 
-Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。日常启动见 [`docs/dev-commands.md`](./docs/dev-commands.md)，Web 模式、访问 Token 与低频联调见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。测试：`pnpm test --unit` / `pnpm test --integration`；当前验收单测基线为 463/463。
+Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。日常启动见 [`docs/dev-commands.md`](./docs/dev-commands.md)，Web 模式、访问 Token 与低频联调见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。测试：`pnpm test --unit` / `pnpm test --integration`；当前验收单测基线为 470/470。
 
 Windows 构建分为四层：
 

@@ -204,3 +204,52 @@ test("OpenCode keeps an error terminal when an older CLI exits zero after an err
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("OpenCode preserves UTF-8 text split across stdout chunks", { skip: process.platform !== "win32" }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-opencode-utf8-"));
+  const fixture = path.join(root, "opencode-fixture.mjs");
+  writeFileSync(fixture, String.raw`
+const bytes = Buffer.from(JSON.stringify({ type: "text", sessionID: "ses_utf8", part: { text: "中文测试" } }) + "\n", "utf8");
+const start = bytes.indexOf(Buffer.from("中", "utf8"));
+process.stdout.write(bytes.subarray(0, start + 1), () => {
+  setTimeout(() => process.stdout.write(bytes.subarray(start + 1), () => process.exit(0)), 20);
+});
+`);
+  writeFileSync(path.join(root, "opencode.cmd"), `@echo off\r\n"${process.execPath}" "${fixture}" %*\r\n`);
+  let resolveText!: (text: string) => void;
+  const received = new Promise<string>((resolve) => { resolveText = resolve; });
+  let resolveDone!: () => void;
+  const done = new Promise<void>((resolve) => { resolveDone = resolve; });
+
+  try {
+    const session = opencodeRuntime.start({
+      cwd: root,
+      env: { ...process.env, PATH: root },
+      model: "test/model",
+      systemPrompt: "system",
+      initialPrompt: "start",
+    }, {
+      onSession: () => {},
+      onActivity: (activity) => { if (activity === "online") resolveDone(); },
+      onTrajectory: (entries) => {
+        const text = entries.find((entry) => entry.kind === "text")?.text;
+        if (text) resolveText(text);
+      },
+      onExit: () => {},
+      log: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } as any,
+    });
+
+    const text = await Promise.race([
+      received,
+      new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("OpenCode UTF-8 fixture timed out")), 1_000)),
+    ]);
+    await Promise.race([
+      done,
+      new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("OpenCode UTF-8 fixture did not finish")), 1_000)),
+    ]);
+    session.stop();
+    assert.equal(text, "中文测试");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -79,8 +79,8 @@ test("one-shot runtime start with pending delivery uses wake nudge without a sec
     await start;
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    assert.match(initialPrompt ?? "", /kith-space message check/);
-    assert.match(initialPrompt ?? "", /kith-space message send/);
+    assert.match(initialPrompt ?? "", /host-native Kith-space CLI/);
+    assert.match(initialPrompt ?? "", /message send command/);
     assert.equal(delivered.length, 0);
     mgr.stopAll();
   } finally {

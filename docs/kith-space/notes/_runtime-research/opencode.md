@@ -6,7 +6,7 @@
 > 本地基线：只读 `reference/open-tag/src/daemon/opencodeRuntime.ts`、`reference/open-tag/src/daemon/runtime.ts`、`docs/kith-space/notes/runtime-adapters-current-state.md`、`docs/kith-space/notes/opencode-agent-model.md`。  
 > 证据口径：“已证实”表示当前官方文档或官方源码明确支持；“未证实”表示官方公开资料没有给出稳定承诺，不能由本地注释或训练记忆外推。
 
-> 2026-07-12 落地注记：Kith-space 已让 `opencode models --verbose` 经过统一的 `cross-spawn` 进程边界，Windows npm shim 可以返回用户真实的 `provider/model` 列表；创建时不再提供虚假的 `Default`。启动参数已从隐藏兼容别名迁到官方 `--auto`，并强制显式 `--model provider/model`。JSON error 与非零退出的重复上报已去重，错误会携带当前模型 ID。Provider 凭据仍完全由 OpenCode 管理。本文建议的 usage、child-only prompt/MCP bootstrap、版本 gate 等仍属于后续 Runtime 契约 v2，不能因本次修复而标记完成。
+> 2026-07-12 落地注记：Kith-space 已让 `opencode models --verbose` 经过统一的 `cross-spawn` 进程边界，Windows npm shim 可以返回用户真实的 `provider/model` 列表；创建时不再提供虚假的 `Default`。启动参数已从隐藏兼容别名迁到官方 `--auto`，并强制显式 `--model provider/model`。JSON error 与非零退出的重复上报已去重，错误会携带当前模型 ID。随后又在同一公共进程边界启用有状态 UTF-8 stdout/stderr 解码，并用跨字节块的中文 JSONL fixture 锁定回归；Windows 的 agent CLI 改为 `.cmd`，PowerShell 5.1 的 UTF-8 stdin 规则由平台化 prompt 注入。Provider 凭据仍完全由 OpenCode 管理。本文建议的 usage、child-only prompt/MCP bootstrap、版本 gate 等仍属于后续 Runtime 契约 v2，不能因本次修复而标记完成。
 
 ## 结论摘要
 

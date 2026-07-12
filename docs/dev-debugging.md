@@ -55,7 +55,7 @@ pnpm run db:studio  # 打开 scratch 库的 Drizzle Studio
 
 应用运行时会自动迁移当前 baseline，不需要 `db:push`。若旧开发库被识别为 legacy workspace database，应先备份报错路径中的 `<space>/.kith/workspace.db`，再由开发者显式删除并重新初始化；应用不会自动删除旧库。
 
-## 4. Runtime CLI 检测
+## 4. Runtime CLI 检测与 Windows 编码
 
 Worker 启动日志的 `ready` 事件会列出实际可启动的 runtimes。Windows 下 Claude 的 `.exe` 与 Codex/opencode 等 npm `.cmd` shim 都经过同一个跨平台启动边界；安装或升级 CLI 后需要重启 Desktop/Worker 才会刷新列表。
 
@@ -64,6 +64,19 @@ PowerShell 可先确认宿主能找到命令：
 ```powershell
 Get-Command claude, codex, opencode
 ```
+
+Windows 上 Worker 会在开发态和打包态生成 `~/.kith-space/bin/kith-space.cmd`，并清理旧版本遗留的无扩展名 `#!/bin/sh` wrapper。升级到包含该修复的代码后必须重启 Desktop/Worker；若系统弹出“选择用什么软件打开 kith-space”，不要为该文件关联编辑器，先确认 Worker 已重启且 bin 目录中只剩可执行的 `.cmd` wrapper。
+
+Windows PowerShell 5.1 向原生命令管道发送字符串时默认为 ASCII，中文会在到达 CLI 前变成 `?`。Agent 的平台化 system prompt 已自动使用下面的 UTF-8 约定；开发者手工复现 `message send`、`thread reply` 或 `action prepare` 时也应先设置：
+
+```powershell
+$OutputEncoding = [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+@'
+中文测试
+'@ | kith-space.cmd message send --target "#all"
+```
+
+Runtime stdout/stderr 与 `kith-space` CLI stdin 都使用有状态 UTF-8 解码，可正确处理一个汉字被 OS 拆到两个数据块的情况。不要用 `chcp`、`shell: true` 或强制模型“只说中文”替代这些边界；`chcp 65001` 只用于 `.cmd` 自身，无法恢复已经被 PowerShell ASCII 管道替换的字符。
 
 如果命令存在但 Worker 的 `runtimes` 仍为空，运行 `pnpm run typecheck` 并检查 Desktop 启动终端中的 Worker 日志；不要通过 `shell: true` 或硬编码绝对路径绕过统一启动边界。
 

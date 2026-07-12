@@ -35,3 +35,49 @@ test("system prompt teaches the plan-first confirmation protocol and orchestrati
   assert.match(prompt, /update that layer's `MEMORY\.md` index in the same operation/);
   assert.match(prompt, /no memory read\/write MCP tool/);
 });
+
+test("Windows system prompt uses PowerShell-native commands instead of POSIX shell syntax", () => {
+  const prompt = buildSystemPrompt({
+    name: "windows-agent",
+    displayName: "Windows Agent",
+    agentId: "windows-id",
+    spaceId: "space-id",
+    hostname: "windows-host",
+    os: "win32 x64",
+    workspace: "C:\\Kith Space\\agent",
+    memory: {
+      user: { root: "C:\\memory\\user", indexFile: "C:\\memory\\user\\MEMORY.md", notesDir: "C:\\memory\\user\\notes" },
+      space: { root: "C:\\memory\\space", indexFile: "C:\\memory\\space\\MEMORY.md", notesDir: "C:\\memory\\space\\notes" },
+      agent: { root: "C:\\memory\\agent", indexFile: "C:\\memory\\agent\\MEMORY.md", notesDir: "C:\\memory\\agent\\notes" },
+    },
+  });
+
+  assert.match(prompt, /Windows/);
+  assert.match(prompt, /PowerShell/);
+  assert.match(prompt, /kith-space\.cmd/);
+  assert.match(prompt, /\$OutputEncoding/);
+  assert.doesNotMatch(prompt, /shell\/bash tool/);
+  assert.doesNotMatch(prompt, /```bash/);
+  assert.doesNotMatch(prompt, /<<'MSG'/);
+});
+
+test("Linux system prompt keeps the POSIX CLI example", () => {
+  const prompt = buildSystemPrompt({
+    name: "linux-agent",
+    displayName: "Linux Agent",
+    agentId: "linux-id",
+    spaceId: "space-id",
+    hostname: "linux-host",
+    os: "linux x64",
+    workspace: "/home/kith/agent",
+    memory: {
+      user: { root: "/memory/user", indexFile: "/memory/user/MEMORY.md", notesDir: "/memory/user/notes" },
+      space: { root: "/memory/space", indexFile: "/memory/space/MEMORY.md", notesDir: "/memory/space/notes" },
+      agent: { root: "/memory/agent", indexFile: "/memory/agent/MEMORY.md", notesDir: "/memory/agent/notes" },
+    },
+  });
+
+  assert.match(prompt, /POSIX/);
+  assert.match(prompt, /```(?:sh|bash)/);
+  assert.match(prompt, /<<'MSG'/);
+});
