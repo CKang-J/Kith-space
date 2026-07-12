@@ -20,7 +20,8 @@ Kith-space 是一个**桌面优先、单人使用的个人 AgentOS**：一个 Hu
   - `product-brief.md` 产品定位；`mvp-spec.md` v1 范围与验收；
   - `architecture-proposal.md` 目标架构（模块边界 / 信任边界 / runtime / 数据层 / 护栏）；
   - `ui-direction.md` 界面信息架构；`migration-plan.md` 从 open-tag fork 的分阶段工程步骤。
-- `docs/dev-commands.md` — **开发命令权威来源**：环境准备、服务启动、测试、数据库、护栏环境变量。跑起项目看这里。
+- `docs/dev-commands.md` — **日常开发命令权威来源**：Desktop/分进程启动、测试与打包。跑起项目先看这里。
+- `docs/dev-debugging.md` — 低频高级调试：内部凭据、浏览器模式、数据库、E2E 联调、护栏与打包细节。
 - `docs/agent-collaboration-project-exploration.md` — 最初对四个源项目的探索报告（背景参考）。
 
 ## 不可动摇的核心原则
@@ -58,7 +59,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 - 包管理：**pnpm**（workspace 仅根目录 + `web/`，`pnpm-lock.yaml`）。安装 `pnpm install`。注意 pnpm 的传参约定：脚本参数**直接跟在后面、不加 `--`**——用 `pnpm test --unit` / `pnpm test --integration`，**不要**写 `pnpm test -- --integration`。公共 daemon 包与 npm/OIDC 发布 workflow 已在 A6 删除；仓库不再维护公共 npm 发行路线。
 - 数据层：**SQLite**。每 Space 一个 `<folder>/.kith/workspace.db`；中央 `app.db` 保存唯一 Human、Space registry、Web 模式、访问 Token 哈希/版本、浏览器会话与 Desktop 关闭/自启动设置。A2.2b 已落地单一 19 表 baseline：`spaces/space_id`、agent-only `channel_agent_members`、独立的 `human_channel_states`/`human_saved_messages`/`human_space_preferences`，持久 actor 使用 `human`；`users/server_members/machines/join_links`、`agents.machine_id` 和 DB workspace facade 已删除。旧 schema 不自动迁移或删除，打开时会要求先备份再显式删除。非 open-tag 原来的 Postgres+Redis。详见 `architecture-proposal.md §5`。
 - 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。跑测试时把 `KITH_SPACE_HOME` 指向临时目录，零 Postgres/Redis 即可全绿；A6 当前单测基线为 449/449，旧 `publicNavContract` 失败已随失效的 public landing 路线删除。改动配套跑测试再提交。
-- 启动与发行：推荐 `pnpm install` → `pnpm run desktop:dev`。全新数据目录由 Desktop 首次初始化界面收集 Human 名称（必填）、邮箱和描述（选填），并创建 `Home`，不再要求预先执行 `seed`；`pnpm run seed` 只保留为手动分进程调试或 fixture 辅助。Desktop 统一启动 Core Service、唯一 Local Runtime Worker、开发期 Vite 与 Electron；每次进程组启动/重启生成相互独立的 Desktop/Worker 临时凭据，普通用户和渲染器都不接触它们。`desktop:build` 只构建 Electron main/preload；`desktop:bundle` 生成 Web + Core/Worker/agent CLI 生产 bundle；`desktop:pack` 生成 Windows unpacked 目录；`desktop:dist` 生成 x64、per-user、assisted NSIS 安装器，输出在 `dist/desktop/`。当前安装器是可复现的本地/CI **未签名**产物，公开分发前必须配置 Windows 代码签名证书；尚未完成真实 NSIS 安装/卸载验收。`server`、`daemon`、`web`、`browser-access:dev` 和 `dev:e2e:up` 继续作为分进程调试入口；只有这类手动调试才从可选本地 `.env` 或进程环境注入独立内部凭据。**完整命令以 `docs/dev-commands.md` 为准。**
+- 启动与发行：推荐 `pnpm install` → `pnpm run desktop:dev`。全新数据目录由 Desktop 首次初始化界面收集 Human 名称（必填）、邮箱和描述（选填），并创建 `Home`，不再要求预先执行 `seed`；`pnpm run seed` 只保留为手动分进程调试或 fixture 辅助。Desktop 统一启动 Core Service、唯一 Local Runtime Worker、开发期 Vite 与 Electron；每次进程组启动/重启生成相互独立的 Desktop/Worker 临时凭据，普通用户和渲染器都不接触它们。`desktop:build` 只构建 Electron main/preload；`desktop:bundle` 生成 Web + Core/Worker/agent CLI 生产 bundle；`desktop:pack` 生成 Windows unpacked 目录；`desktop:dist` 生成 x64、per-user、assisted NSIS 安装器，输出在 `dist/desktop/`。当前安装器是可复现的本地/CI **未签名**产物，公开分发前必须配置 Windows 代码签名证书；尚未完成真实 NSIS 安装/卸载验收。`server`、`daemon`、`web`、`browser-access:dev` 和 `dev:e2e:up` 继续作为分进程调试入口；只有这类手动调试才从可选本地 `.env` 或进程环境注入独立内部凭据。日常命令以 `docs/dev-commands.md` 为准，低频参数以 `docs/dev-debugging.md` 为准。
 - 提交：中文提交信息，列要点变更；只在用户明确要求时提交；先分支不直推主干。
 - 安全：外接 runtime 的高权限是追踪中的技术债。LAN 浏览器 v1 使用 HTTP + 访问 Token且仅限受信任私网；邮箱/浏览器等不可信内容模块上线前，必须先完成 HTTPS 与审批/沙箱权限升级（见 `decisions.md` 决策 8/17/21）。
 
@@ -66,7 +67,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 代码/命令/架构/决策一旦变更，**必须在同一次改动里同步更新相应文档**，不留旧内容误导后来者：
 
-- 改了**启动/测试/构建等命令**或脚本 → 更新 `docs/dev-commands.md`，并检查 `README.md`、本文件里引用的命令是否还准。
+- 改了**启动/测试/构建等命令**或脚本 → 更新 `docs/dev-commands.md`；涉及低频调试参数时同步 `docs/dev-debugging.md`，并检查 `README.md`、本文件里引用的命令是否还准。
 - 做了**新决策**或推翻旧决策 → 记入 `docs/decisions.md`（含推理与被推翻项）；影响长远方向的同步 `docs/vision.md`、`docs/roadmap.md`。
 - 改了**架构/数据模型/接口/护栏** → 更新 `docs/kith-space/architecture-proposal.md`（引用带 `文件:行号`）。
 - 改了 **UI 信息架构** → 更新 `docs/kith-space/ui-direction.md`。

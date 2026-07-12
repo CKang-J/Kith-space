@@ -26,3 +26,5 @@ _vendor/
 *.db-shm
 *.db-wal
 .kith/
+
+.agents/skills/

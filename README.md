@@ -16,7 +16,7 @@ Kith 意为"你熟识信任的一圈自己人"——正是这些懂你（有记�
 
 ## Desktop 开发启动
 
-包管理器是 **pnpm**。完整命令见 [`docs/dev-commands.md`](./docs/dev-commands.md)。
+包管理器是 **pnpm**。日常命令见 [`docs/dev-commands.md`](./docs/dev-commands.md)，低频调试见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。
 
 推荐由 Desktop 启动完整开发进程组。全新数据目录无需预先 seed，首次窗口会要求填写 Human 名称（必填）、邮箱和描述（选填），随后进入 `Home`：
 
@@ -25,7 +25,7 @@ pnpm install
 pnpm run desktop:dev        # 构建 Electron main/preload，并启动 Core + Worker + Vite + Electron
 ```
 
-Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。完整启动、Web 模式与访问 Token 说明见 [`docs/dev-commands.md`](./docs/dev-commands.md)。测试：`pnpm test --unit` / `pnpm test --integration`；A6 当前单测基线为 449/449。
+Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。日常启动见 [`docs/dev-commands.md`](./docs/dev-commands.md)，Web 模式、访问 Token 与低频联调见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。测试：`pnpm test --unit` / `pnpm test --integration`；A6 当前单测基线为 449/449。
 
 Windows 构建分为四层：
 
@@ -41,7 +41,8 @@ pnpm run desktop:dist        # x64、per-user、assisted NSIS 安装器
 ## 文档
 
 - 当前进度与续接指南（新会话先读）：[`docs/progress.md`](./docs/progress.md)
-- 开发命令（启动/测试/数据库）：[`docs/dev-commands.md`](./docs/dev-commands.md)
+- 日常开发命令（启动/测试/打包）：[`docs/dev-commands.md`](./docs/dev-commands.md)
+- 高级开发与调试（Token/Web/数据库/E2E）：[`docs/dev-debugging.md`](./docs/dev-debugging.md)
 - 理念与长远愿景：[`docs/vision.md`](./docs/vision.md)
 - 全部设计决策与推理：[`docs/decisions.md`](./docs/decisions.md)
 - 能力路线图（MVP 与之后）：[`docs/roadmap.md`](./docs/roadmap.md)

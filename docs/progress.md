@@ -122,5 +122,5 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - `docs/kith-space/architecture-proposal.md`：目标模块与信任边界。
 - `docs/kith-space/ui-direction.md`：单窗口 UI 与 Desktop/Web 设置边界。
 - `docs/kith-space/migration-plan.md`：A1-A6 工程实施顺序。
-- `docs/dev-commands.md`：当前可运行的开发命令；以代码现状为准持续更新。
+- `docs/dev-commands.md`：日常启动、测试与打包命令；`docs/dev-debugging.md`：低频环境、Web、数据库与 E2E 调试。
 - `docs/glossary.md`：术语正典。
