@@ -123,7 +123,7 @@ try {
   assert.equal(spaces.status, 200);
   const home = spaces.body.find((space: any) => space.id === initialized.body.home.id);
   assert.ok(home);
-  assert.equal(home.rootPath, defaultSpaceRoot("home"));
+  assert.equal(home.rootPath, defaultSpaceRoot("Home"));
 
   const repeated = await api({
     method: "POST",

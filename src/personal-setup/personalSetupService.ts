@@ -1,12 +1,11 @@
 import {
+  getHomeSpaceRecord,
   getHumanProfile,
-  getSpaceRecordBySlug,
   type HumanProfile,
   type SpaceRecord,
 } from "../app-data/appDatabase.js";
 import { ensurePersonalApp } from "../db/personalApp.js";
 
-const HOME_SLUG = "home";
 const ALLOWED_FIELDS = new Set(["name", "email", "description"]);
 
 export interface PersonalSetupHuman {
@@ -68,7 +67,7 @@ function requireInitializeInput(input: unknown): {
 export class PersonalSetupService {
   getStatus(): PersonalSetupStatus {
     const human = getHumanProfile();
-    const home = getSpaceRecordBySlug(HOME_SLUG);
+    const home = getHomeSpaceRecord();
     if (human && home) {
       return { initialized: true, human: setupHuman(human), home: setupHome(home) };
     }

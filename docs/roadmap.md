@@ -36,7 +36,7 @@ P4 的视觉微调暂缓。A1-A6 原定代码切片已完成，但用户验收�
 
 ### P-A2 本地领域与数据模型
 
-状态：原定切片已完成，但验收发现路径/cwd/Agent Memory 仍有 P-A7 前置修复。中央 `app.db`、唯一 Human、默认 `Home`、canonical Space 契约、唯一 Local Runtime Worker、19 表 workspace.db baseline 与 Space 级附件目录已落地；稳定 homeSpaceId、用户可见 Home root 和 Space root cwd 尚未落地。
+状态：原定切片已完成，但验收发现路径/cwd/Agent Memory 仍有 P-A7 前置修复。中央 `app.db`、唯一 Human、默认 `Home`、canonical Space 契约、唯一 Local Runtime Worker、19 表 workspace.db baseline 与 Space 级附件目录已落地；H1 已补齐稳定 homeSpaceId 和用户可见 Home root，Space root cwd 仍待 H2。
 
 - 把中央 registry 扩展并更名为 `app.db`。
 - 实现唯一 Human 和首次资料初始化；自动创建 `Home` Space。
@@ -106,9 +106,9 @@ P4 的视觉微调暂缓。A1-A6 原定代码切片已完成，但用户验收�
 
 ### P-A7 Home 总控 Space 与 Space root 归位
 
-状态：设计已确认，代码尚未开始。它是 A1-A6 用户验收的前置修复，不属于 Runtime 契约 v2。
+状态：设计已确认，H1 已完成，下一步是 H2。它是 A1-A6 用户验收的前置修复，不属于 Runtime 契约 v2。
 
-- H1 路径地基：分离 `~/.kith-space` app data 与 `~/Kith-space` 默认 Space 容器；建立稳定 homeSpaceId 和 `~/Kith-space/Home`。
+- H1 路径地基（已完成）：分离 `~/.kith-space` app data 与 `~/Kith-space` 默认 Space 容器；建立稳定 homeSpaceId 和 `~/Kith-space/Home`，并以 `KITH_SPACE_SPACES_DIR` 隔离开发/测试 Space 容器。
 - H2 runtime cwd/记忆：三家 runtime 都以 Space root 为 cwd；Agent Memory 移到 `<space>/.kith/agents/<agentId>`；adapter 临时状态移到 app data runtime 目录。
 - H3 文件夹接入：Desktop 目录选择器，默认位置新建、已有文件夹接入、移动后重连、重复路径/Space ID 与不兼容 `.kith` 校验。
 - H4 Home UI：普通冷启动进入 Home Chat；Home Dock 增加 Spaces 卡片模块；点击卡片在同窗进入普通 Space，不恢复 OverviewShell。

@@ -1,18 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { closeAllDatabases, dbForSpace, schema } from "../src/db/index.ts";
 import { ensurePersonalApp } from "../src/db/personalApp.ts";
 import {
   closeAppDatabase,
+  getHomeSpaceId,
+  getHomeSpaceRecord,
   getHumanProfile,
   getSpaceRecord,
   getSpaceRecordBySlug,
   initializeHumanProfile,
   listSpaceRecords,
   registerSpace,
+  unregisterSpace,
   updateHumanProfile,
 } from "../src/app-data/appDatabase.ts";
 import { appDbFile, workspaceDbFile } from "../src/paths.ts";
@@ -123,6 +127,26 @@ test("Space registry persists slug, root path, and last-opened time through its 
   assert.deepEqual(listed.get(writing.id), writing);
 });
 
+test("opening a legacy app.db records its existing home slug as the stable Home identity", () => {
+  mkdirSync(appHome, { recursive: true });
+  const legacy = new Database(appDbFile());
+  legacy.exec(`
+    CREATE TABLE spaces (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      root_path TEXT NOT NULL UNIQUE,
+      last_opened_at INTEGER NOT NULL
+    );
+    INSERT INTO spaces (id, name, slug, root_path, last_opened_at)
+    VALUES ('legacy-home', 'Home', 'home', '${path.join(sandboxRoot, "legacy-home").replaceAll("'", "''")}', 1);
+  `);
+  legacy.close();
+
+  assert.equal(getHomeSpaceId(), "legacy-home");
+  assert.equal(getHomeSpaceRecord()?.id, "legacy-home");
+});
+
 test("ensurePersonalApp creates one Human and one initialized Home Space idempotently", async () => {
   const homeRootPath = path.join(sandboxRoot, "spaces", "home");
 
@@ -143,6 +167,8 @@ test("ensurePersonalApp creates one Human and one initialized Home Space idempot
   assert.equal(firstHome.slug, "home");
   assert.equal(firstHome.name, "Home");
   assert.equal(firstHome.rootPath, homeRootPath);
+  assert.equal(getHomeSpaceId(), firstHome.id);
+  assert.deepEqual(getHomeSpaceRecord(), firstHome);
   assert.equal(listSpaceRecords().length, 1);
   assert.ok(existsSync(workspaceDbFile(homeRootPath)));
 
@@ -159,6 +185,8 @@ test("ensurePersonalApp creates one Human and one initialized Home Space idempot
 
   assert.deepEqual(getHumanProfile(), firstHuman);
   assert.deepEqual(getSpaceRecordBySlug("home"), firstHome);
+  assert.equal(getHomeSpaceId(), firstHome.id);
+  assert.throws(() => unregisterSpace(firstHome.id), /Home Space/i);
   assert.equal(listSpaceRecords().length, 1);
   const channelsAfter = await dbForSpace(firstHome.id).select().from(schema.channels);
   assert.deepEqual(channelsAfter.map((channel) => channel.name), ["all"]);

@@ -28,7 +28,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A2 本地领域与数据模型
 
-当前进度：A2 原定切片已完成。`app.db`、唯一 Human、幂等 `Home`、canonical Space 契约、安装级唯一 Worker、19 表 workspace.db baseline 与 `<spaceRoot>/.kith/uploads` 已落地；但 stable homeSpaceId、用户可见 Home root、Agent Memory 可移植性与 Space root cwd 由 A7 修复。
+当前进度：A2 原定切片已完成。`app.db`、唯一 Human、幂等 `Home`、canonical Space 契约、安装级唯一 Worker、19 表 workspace.db baseline 与 `<spaceRoot>/.kith/uploads` 已落地；A7 H1 已补 stable homeSpaceId 和用户可见 Home root，Agent Memory 可移植性与 Space root cwd 由 H2 修复。
 
 改动边界：
 
@@ -114,11 +114,11 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A7 Home 总控 Space 与 Space root 归位
 
-当前进度：产品与架构设计已确认，代码尚未开始。A7 是 A1-A6 用户验收前置修复。
+当前进度：产品与架构设计已确认，H1 已完成，下一步是 H2。A7 是 A1-A6 用户验收前置修复。
 
 实施顺序：
 
-1. H1 路径地基：拆开 app data 和默认 Space 容器；稳定 homeSpaceId；Home 默认根目录改为 `~/Kith-space/Home`；测试同时隔离两类根目录。
+1. H1 路径地基（已完成）：拆开 app data 和默认 Space 容器；稳定 homeSpaceId；Home 默认根目录改为 `~/Kith-space/Home`；测试同时隔离两类根目录。
 2. H2 cwd/记忆：引入 workspaceRoot、agentMemoryDir、runtimeStateDir 三路径契约；三家 adapter 使用 Space root cwd；Agent Memory 移入 `.kith/agents`；prompt 临时文件移出用户根目录；重做 reset/wipe 语义测试。
 3. H3 文件夹接入：Desktop 原生目录选择、默认位置创建、已有 `.kith` 接入、路径失效重连、重复 root/Space ID 和不兼容 schema 拒绝。授权浏览器使用 Desktop 主机绝对路径并由 Core 校验。
 4. H4 Home UI：普通冷启动进入 Home；Home Dock 注册 `spaces`；卡片搜索/创建/同窗进入普通 Space；普通 Space 深链接不能激活该模块。

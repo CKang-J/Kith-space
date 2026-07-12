@@ -8,7 +8,7 @@
 
 - 分支：`feat/p0-foundation`，尚未合并或推送远端。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A1-A6 原定代码切片已完成，正在由用户验收**。验收已确认 P-A7 Home/Space root 补充设计，代码尚未开始；H1-H4 完成前 Runtime 契约 v2 继续暂停。
+- 当前阶段：**A1-A6 原定代码切片已完成，正在由用户验收；P-A7 H1 已完成，下一步是 H2**。H1-H4 完成前 Runtime 契约 v2 继续暂停。
 - P4 视觉微调已暂停，等本机化基础收敛后再恢复。
 - 底座为 open-tag 衍生开发副本；`reference/` 只读。OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
 
@@ -21,7 +21,7 @@
 - Desktop 是唯一正式宿主和发行物；浏览器入口依附 Desktop，可关闭、仅本机或 LAN。
 - LAN 浏览器拥有完整产品能力，v1 使用 HTTP + 访问 Token，只限受信任私网。
 - 删除多真人、邀请/RBAC、Machines/Computers、远程 daemon、服务器部署、云同步、S3、Docker、PWA 和独立 Web 发行路线。
-- 中央 registry 已扩展并更名为 `app.db`；每个 Space 继续使用 `<space>/.kith/workspace.db`。目标态把 app data 固定为 `~/.kith-space`、默认 Space 容器固定为 `~/Kith-space`，但代码尚未分离二者。
+- 中央 registry 已扩展并更名为 `app.db`；每个 Space 继续使用 `<space>/.kith/workspace.db`。app data 默认 `~/.kith-space`，默认 Space 容器独立为 `~/Kith-space`，Home 默认根为 `~/Kith-space/Home`。
 - 普通 Space Dock 为 `Chat | Inbox | Tasks | Agents | Settings`；目标 Home Dock 增加 `Spaces`。旧 `Layout` 回退、Landing 与 PWA 保持删除，Spaces 不是旧 OverviewShell。
 - 允许破坏性重置当前开发数据，不做旧 `.kith` schema 迁移。
 
@@ -53,9 +53,10 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 四、当前代码事实与过渡债
 
-- **已确认但尚未实现的验收差距**：Desktop 始终向子进程注入 `KITH_SPACE_HOME`，`src/paths.ts` 因而把正式默认 Space 也放进 `<appData>/workspaces`；A6 验收实例又把 app data 指向系统 Temp，所以当前 Home 位于 `Temp/.../workspaces/home`。目标是 `~/.kith-space` app data 与 `~/Kith-space/Home` 用户 Space 物理分离。
+- **H1 已完成**：`src/paths.ts` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，并新增独立 `KITH_SPACE_SPACES_DIR` 开发/测试覆盖；全新安装的默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`。`app.db` 的 `installation_state.home_space_id` 保存稳定 Home 身份，旧开发库只在首次升级时由既有 `slug=home` 回填且不会自动搬动其已有 rootPath；Home 不能取消注册，并发首次初始化会原子复用同一个 Home。
+- H1 验证：`pnpm run typecheck`、478/478 单测与完整集成测试通过；单路轻量独立复核未发现代码阻塞，指出的规格状态/切片测试口径已修正。
 - **已确认但尚未实现的 cwd/记忆差距**：`AgentManager` 当前仍以 `<KITH_SPACE_HOME>/agents/<agentId>` 同时作为 runtime cwd 和 Agent Memory，所以 agent 相对业务文件写入隐藏 app data，复制 Space 也不会带走 Agent Memory。H2 要改为 Space root cwd、`<space>/.kith/agents/<agentId>` Agent Memory 和 `<appData>/runtime/<spaceId>/<agentId>` runtime state；cwd 不再描述为安全隔离。
-- **已确认但尚未实现的 Home/UI 差距**：当前 Home 仍由 slug 查找，没有稳定 homeSpaceId；`/api/spaces` 虽接受 rootPath，但 SpaceSwitcher 只提交 name/slug，没有 Desktop 文件夹选择器；Home 尚无 `spaces` 模块或跨 Space command service。
+- **仍待实现的 Home/UI 差距**：`/api/spaces` 虽接受 rootPath，但 SpaceSwitcher 只提交 name/slug，没有 Desktop 文件夹选择器；Home 尚无 `spaces` 模块或跨 Space command service。
 - 数据层是 SQLite：中央 `app.db` 保存唯一 Human 与 `spaces` registry；每 Space 使用 `<rootPath>/.kith/workspace.db`。canonical 连接入口为 `dbForSpace(spaceId)` / `listSpaces()`；`dbFor`、`listWorkspaces`、`registerWorkspace` 等 workspace facade 已删除。
 - `src/app-data/appDatabase.ts` 是 app.db 事实源：除唯一 Human/Space registry 外，A3 增加单例 `browser_access_settings` 与 `browser_sessions`。REST、附件读取和 Socket 的 Human authority 只来自 Desktop 私有信任或已验证的浏览器 Cookie 会话，不再查询 `server_members`，也不存在 Human JWT/Bearer/dev-login。`src/human/humanIdentity.ts` 继续提供稳定 `@you` handle 与 app.db 展示名。
 - A2.2b 已把 workspace.db 压成单一 19 表 baseline：`spaces/space_id` 是唯一领域命名；`users/server_members/machines/join_links` 与 `agents.machine_id` 已删除。`channel_agent_members` 只表达 agent membership；唯一 Human 的 read/DM/thread、收藏与 Space 偏好分别落在 `human_channel_states`、`human_saved_messages`、`human_space_preferences`。持久 actor discriminator 使用 `human`，runtime 协议自身的 `role: "user"` 不受影响。
@@ -103,10 +104,9 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 五、下一步顺序
 
-1. P-A7 H1：分离 app data/默认 Space 容器，建立稳定 homeSpaceId 和 `~/Kith-space/Home`。
-2. P-A7 H2：三家 runtime 改用 Space root cwd，Agent Memory/runtime state 分别归位。
-3. P-A7 H3-H4：补文件夹创建/接入/重连与 Home-only Spaces 模块，完成用户验收。
-4. H1-H4 验收后决定 Runtime 契约 v2 与 H5 跨 Space 编排的顺序；生产力模块、Message Context Snapshot 与 P4 视觉收尾继续在后。
+1. P-A7 H2：三家 runtime 改用 Space root cwd，Agent Memory/runtime state 分别归位。
+2. P-A7 H3-H4：补文件夹创建/接入/重连与 Home-only Spaces 模块，完成用户验收。
+3. H1-H4 验收后决定 Runtime 契约 v2 与 H5 跨 Space 编排的顺序；生产力模块、Message Context Snapshot 与 P4 视觉收尾继续在后。
 
 每阶段独立验证、独立中文提交。未获得用户明确指示，不合并 main、不推远端、不发布。
 
@@ -114,8 +114,8 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 - 包管理使用 pnpm；脚本参数直接跟在后面，例如 `pnpm test --unit`。
 - 常规验证：`pnpm run typecheck`、`pnpm test --unit`、`pnpm test --integration`、`pnpm --dir web run build`。
-- 当前测试把 `KITH_SPACE_HOME` 指向仓库内或系统临时目录。H1 分离路径后，测试还必须显式覆盖默认 Space 容器或直接传 rootPath，绝不在真实 `~/Kith-space` 生成 fixture。
-- 当前验收单测基线为 476/476；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6 小节里的旧数字只描述当时检查点，不是当前基线。
+- 测试 runner 同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向同一个随机临时 profile 的不同子目录；手写测试若绕过 runner，必须显式覆盖默认 Space 容器或直接传 rootPath，绝不在真实 `~/Kith-space` 生成 fixture。
+- 当前验收单测基线为 478/478；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6 小节里的旧数字只描述当时检查点，不是当前基线。
 - 新功能优先拆到职责清楚的模块；不整块重写 `src/server/core.ts` 或大型 React 组件。
 - 代码、命令、架构、UI、术语或阶段变化时，同一提交同步相应文档。
 - 用户未要求时不修改或提交 `.agents/`、`.claude/`、`.codegraph/daemon.pid`、`skills-lock.json` 等外部/个人工具文件。

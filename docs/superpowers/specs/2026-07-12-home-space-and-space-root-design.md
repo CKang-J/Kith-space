@@ -1,6 +1,6 @@
 # Home 总控 Space、Space 根目录与跨 Space 编排设计
 
-状态：已确认设计，尚未实现。
+状态：已确认设计；H1 已完成，H2-H4 待实施，H5 为后续能力。
 确认日期：2026-07-12。
 适用范围：A1-A6 用户验收后的前置修复；完成前不进入 Runtime 契约 v2。
 
@@ -88,7 +88,7 @@ Linux Spaces:      /home/<user>/Kith-space
 Linux Home:        /home/<user>/Kith-space/Home
 ```
 
-`KITH_SPACE_HOME` 只覆盖内部 app data。开发和测试需要隔离默认 Space 时，必须使用另一个明确的默认 Space 容器覆盖项，或在创建 fixture 时显式传入 rootPath；不能再靠“设置过 KITH_SPACE_HOME”改变产品路径语义。
+`KITH_SPACE_HOME` 只覆盖内部 app data。开发和测试需要隔离默认 Space 时，必须使用 `KITH_SPACE_SPACES_DIR` 覆盖默认 Space 容器，或在创建 fixture 时显式传入 rootPath；不能再靠“设置过 KITH_SPACE_HOME”改变产品路径语义。
 
 ### 4.2 应用内部数据
 
@@ -233,11 +233,11 @@ idempotency key
 
 ## 9. 实施切片
 
-### H1 路径地基
+### H1 路径地基（已完成）
 
 - 分离 app data 与默认 Space 容器。
 - 为 Home 建立稳定 homeSpaceId 和 `~/Kith-space/Home` 根路径。
-- 补路径、重复注册、已有 `.kith` 和重连测试。
+- 补路径分离、旧 app.db Home 身份回填、并发初始化与 Home 不可注销测试。
 
 ### H2 runtime cwd 与记忆归位
 
@@ -282,10 +282,10 @@ H1-H4 是 A1-A6 验收前置修复；H5 是其上后续能力，不能用假数�
 
 截至设计确认时，代码仍有以下差距，不能误写成已完成：
 
-- Desktop 会向子进程始终注入 KITH_SPACE_HOME，`defaultSpacesDir()` 因而把正式 Home 也落到 app data 下的 `workspaces/home`。
+- H1 已消除路径绑定：`KITH_SPACE_HOME` 只覆盖 app data，`KITH_SPACE_SPACES_DIR` 独立覆盖默认 Space 容器，正式 Home 默认为 `~/Kith-space/Home`。
 - AgentManager 仍以 `<KITH_SPACE_HOME>/agents/<agentId>` 为 runtime cwd。
 - Agent Memory 仍和 cwd 共用该目录，复制 Space 时不会随 `.kith` 搬迁。
 - `/api/spaces` 已接受 rootPath，但现有创建 UI 只提交 name/slug，没有 Desktop 文件夹选择器。
-- Home 尚无稳定 homeSpaceId、Home-only Spaces 模块或跨 Space command service。
+- Home 已通过 `installation_state.home_space_id` 获得稳定身份；Home-only Spaces 模块与跨 Space command service 尚未实现。
 
 这些差距属于已确认目标态与现有代码之间的验收修复，不代表设计尚未决定。

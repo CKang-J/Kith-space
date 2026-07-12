@@ -332,7 +332,7 @@
 
 **实施边界**：H1-H4（路径、cwd/记忆、文件夹接入、Home Spaces UI）属于 A1-A6 验收前置修复。跨 Space 写编排 H5 后续渐进实现，先只读真实摘要，再接 task/message/dispatch；没有真实数据前不做占位视图。完整规格见 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
 
-**已核实源码差距**：`src/desktop/managedChildEnv.ts` 始终向受管子进程注入 `KITH_SPACE_HOME`，而 `src/paths.ts` 在该变量存在时把默认 Space 放进 `<appData>/workspaces`；`src/daemon/agentManager.ts` 仍把 `<appData>/agents/<id>` 同时作为 cwd 和 Agent Memory；前端 `SpaceSwitcher` 创建请求尚不提交 rootPath。上述均是待实现差距，不是当前能力。
+**实施状态**：P-A7 H1 已完成。`src/paths.ts` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，并以 `KITH_SPACE_SPACES_DIR` 独立隔离默认 Space 容器；app.db 已保存稳定 homeSpaceId，Home 默认根为 `~/Kith-space/Home`。`src/daemon/agentManager.ts` 仍把 `<appData>/agents/<id>` 同时作为 cwd 和 Agent Memory，前端 `SpaceSwitcher` 创建请求也尚不提交 rootPath；后两项分别由 H2、H3 修复。
 
 ---
 

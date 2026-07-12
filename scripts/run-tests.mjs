@@ -27,6 +27,7 @@ function testEnv() {
       KITH_SPACE_DESKTOP_TOKEN: process.env.KITH_SPACE_DESKTOP_TOKEN ?? "kith-space-test-desktop-token",
       KITH_SPACE_WORKER_TOKEN: process.env.KITH_SPACE_WORKER_TOKEN ?? "kith-space-test-worker-token",
       KITH_SPACE_HOME: home,
+      KITH_SPACE_SPACES_DIR: path.join(home, "spaces"),
     },
   };
 }

@@ -9,12 +9,14 @@
 ```dotenv
 PORT=7777
 KITH_SPACE_HOME=C:/path/to/kith-space-data
+KITH_SPACE_SPACES_DIR=C:/path/to/kith-space-spaces
 KITH_SPACE_DESKTOP_TOKEN=<独立随机值>
 KITH_SPACE_WORKER_TOKEN=<另一个独立随机值>
 ```
 
 - `PORT`：手动 Core Service 端口，默认 `7777`。
-- `KITH_SPACE_HOME`：当前代码中的 app.db、日志和本地 agent 数据根目录，默认 `~/.kith-space`。P-A7 H1-H2 将把它收窄为 app data，并以独立默认 Space 容器承载 `~/Kith-space/Home` 与普通 Space；在此之前把它指向 Temp 会连同 Home 和 agent cwd 一起隔离。
+- `KITH_SPACE_HOME`：app.db、日志和当前 runtime 内部数据根目录，默认 `~/.kith-space`；它不再改变默认 Space 容器。
+- `KITH_SPACE_SPACES_DIR`：开发/测试专用的默认 Space 容器覆盖，正式默认值为 `~/Kith-space`。隔离验收时应与 `KITH_SPACE_HOME` 一起指向临时 profile 的不同子目录。
 - `KITH_SPACE_DESKTOP_TOKEN`：手动开发管理请求到 Core 的内部凭据。
 - `KITH_SPACE_WORKER_TOKEN`：Worker 控制 WebSocket 的独立凭据。
 

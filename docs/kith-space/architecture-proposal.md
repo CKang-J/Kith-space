@@ -69,7 +69,7 @@ Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件
 
 `src/app-data/appDatabase.ts` 管理唯一 Human 的名称、可选邮箱和描述；`src/human/humanIdentity.ts` 把协作寻址固定为稳定的 `@you`，展示名始终读取 app.db。REST 和 socket.io 的 Human authority 只来自 Desktop 私有信任或已验证的浏览器 Cookie 会话（`src/server/humanRequestAuth.ts:18`），不存在 Human JWT、Bearer 登录或 dev-login。唯一资料接口是 `handleHumanProfile`（`src/server/routes-api/humanProfile.ts:7`）提供的 `GET/PATCH /api/human/profile`；旧 `/api/auth/me` 在同一 handler 的 `:9` 显式 404。前端 Human Settings 在 `web/src/views/misc.tsx:289` 读取该接口，规范 query 是 `settings=human`，不提供账户、密码、角色或成员关系。
 
-首次初始化是 Desktop 应用生命周期的一部分。当前 `PersonalSetupService` 读取唯一 Human 与 slug 为 `home` 的 Space 组合状态，幂等补齐默认 Home；setup 路由只接受 Desktop 私有信任。H1 目标是在 app.db 持久化稳定 `homeSpaceId`，并在独立于 app data 的 `~/Kith-space/Home` 创建或接入 Home。初始化仍只收集 `name/email/description`，不让用户把另一个普通 Space 冒充 Home；已有不兼容 `.kith` 时停止并给出可操作错误，不能自动覆盖。
+首次初始化是 Desktop 应用生命周期的一部分。`PersonalSetupService` 读取唯一 Human 与稳定 Home 记录，幂等补齐默认 Home；setup 路由只接受 Desktop 私有信任。`src/app-data/appDatabase.ts:81` 的单例 `installation_state.home_space_id` 保存 Home 身份，`registerHomeSpace`（`:281`）在 app.db 事务中原子注册并认领 Home，`unregisterSpace`（`:335`）拒绝移除 Home；旧 app.db 仅在该字段为空时由既有 `slug=home` 一次性回填，并保留已有 rootPath，不自动搬动用户数据。`src/db/personalApp.ts:36` 默认在独立于 app data 的 `~/Kith-space/Home` 初始化全新 Home。初始化仍只收集 `name/email/description`，不让用户把另一个普通 Space 冒充 Home；已有不兼容 `.kith` 时停止并给出可操作错误，不能自动覆盖。
 
 旧 `initialHumans` bootstrap/产品契约已在 A6 退役；测试 fixture 中为构造特定频道状态保留的同名字面量不构成 HTTP、UI 或持久领域入口。
 
@@ -77,7 +77,7 @@ Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件
 
 `SpaceService` 当前管理本地文件夹注册、slug、最近打开记录和 `<space>/.kith/` 初始化。H1-H3 把路径职责收口为三个边界：`HomeSpaceService` 维护稳定 homeSpaceId 和 Home 不变量；`SpaceRootService` 负责路径规范化、创建、接入、重连与 `.kith` 校验；`SpaceDirectoryService` 向 UI 和 agent 提供 registry 与真实摘要。具体类名可按代码风格调整，但职责不得重新堆回 Core 大文件。
 
-默认 app data 为 `~/.kith-space`，默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`；普通 Space 可以位于任意本机磁盘。`KITH_SPACE_HOME` 只覆盖 app data，开发/测试若要隔离默认 Space 必须使用独立覆盖或显式 rootPath。当前 `src/paths.ts` 用 `KITH_SPACE_HOME` 的存在隐式改写默认 Space 目录，而 Desktop 总会注入该变量，这是已知目标差距。
+默认 app data 为 `~/.kith-space`，默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`；普通 Space 可以位于任意本机磁盘。`src/paths.ts:9` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，`KITH_SPACE_SPACES_DIR` 独立覆盖默认 Space 容器；开发/测试必须使用后者或显式 rootPath 隔离 Space fixture。
 
 Space 列表、创建和修改以 app.db registry 为事实源；每个 workspace.db 另有一行 `spaces` 元数据和 `#all`。同一规范 rootPath 或同一稳定 Space ID 不得重复注册；已有兼容 `.kith` 时接入/重连，不兼容或损坏时拒绝并提示备份，绝不自动删除。产品 schema/API/type 使用 `space/spaceId`，URL `/s/:slug` 保留。
 
@@ -129,7 +129,7 @@ Home 的 Spaces 模块只读取 app.db registry 和真实摘要。未来 Home ag
 
 ### 5.1 app.db
 
-实现状态：A2.1 已落地 `src/app-data/appDatabase.ts`。旧 `registry.db/workspaces` 已被 `app.db/spaces` 取代；Human profile 为单例行。A3 增加单例 `browser_access_settings` 和 `browser_sessions`，A4 增加单例 `desktop_settings`（`src/app-data/appDatabase.ts:91`）。
+实现状态：A2.1 已落地 `src/app-data/appDatabase.ts`。旧 `registry.db/workspaces` 已被 `app.db/spaces` 取代；Human profile 为单例行。A3 增加单例 `browser_access_settings` 和 `browser_sessions`，A4 增加单例 `desktop_settings`，P-A7 H1 增加单例 `installation_state.home_space_id`（`src/app-data/appDatabase.ts:81`）。
 
 本机 app data root 默认 `~/.kith-space`，目标结构为：
 
@@ -177,7 +177,7 @@ A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Driz
 4. A2.4 已完成：删除 Machine 服务/API/UI、machine key/心跳/调度与 agent machine 选择；保留安装级唯一 Worker 进程协议，并让 Worker 事件跨 Space 定位。
 5. A2.2b 已完成：破坏性重建 workspace.db baseline，把保留表的 `servers/server_id` 改为 `spaces/space_id`，拆出单 Human 状态/收藏/偏好，并删除旧物理表与兼容边界。
 6. A2 已完成：附件目录纳入 Space 根路径，旧 app 级上传配置、命名 facade 与不兼容维护脚本已删除，并完成整阶段验收。
-7. H1-H4 待实现：稳定 homeSpaceId，分离 app data/默认 Space 容器，把 runtime cwd 与 Agent Memory 归位到所属 Space，补文件夹接入/重连和 Home Spaces 模块。
+7. H1 已完成：稳定 homeSpaceId，并分离 app data/默认 Space 容器；H2-H4 继续把 runtime cwd 与 Agent Memory 归位到所属 Space，补文件夹接入/重连和 Home Spaces 模块。
 
 不执行无边界的整仓替换；每个切片都需 schema、service、route 和 UI 契约测试。
 
@@ -237,7 +237,7 @@ A5 后 `web/src/App.tsx:4` 只渲染 `WorkspaceFrame`。Landing、Features、旧
 
 ## 9. 开发与发行
 
-Electron 固定为 43.1.0，electron-builder 固定为 26.15.3，`@electron/rebuild` 固定为 4.2.0（`package.json:122`、`:128`-`:129`）。`pnpm run desktop:dev` 先执行 `desktop:build`，再由 Electron 统一启动 Core、唯一 Worker 和开发期 Vite；它是完整开发宿主。全新 app data 会在 Electron 内显示首次初始化页，完成后进入 Home，正常 Desktop 开发启动不再以 `pnpm run seed` 为前置。H1 后 `KITH_SPACE_HOME` 只隔离 app data；测试若不能显式提供 Space root，必须同时使用独立的默认 Space 容器覆盖，绝不能在真实 `~/Kith-space` 生成 fixture。仓库内部仍保留 `server`、`daemon`、`web`、`browser-access:dev` 与 `dev:e2e:up` 作为分进程调试入口。
+Electron 固定为 43.1.0，electron-builder 固定为 26.15.3，`@electron/rebuild` 固定为 4.2.0（`package.json:122`、`:128`-`:129`）。`pnpm run desktop:dev` 先执行 `desktop:build`，再由 Electron 统一启动 Core、唯一 Worker 和开发期 Vite；它是完整开发宿主。全新 app data 会在 Electron 内显示首次初始化页，完成后进入 Home，正常 Desktop 开发启动不再以 `pnpm run seed` 为前置。`KITH_SPACE_HOME` 只隔离 app data；测试若不能显式提供 Space root，必须同时设置 `KITH_SPACE_SPACES_DIR` 或直接提供 rootPath，绝不能在真实 `~/Kith-space` 生成 fixture。仓库内部仍保留 `server`、`daemon`、`web`、`browser-access:dev` 与 `dev:e2e:up` 作为分进程调试入口。
 
 发行脚本在 `package.json:43`-`:46` 固定为四层：
 

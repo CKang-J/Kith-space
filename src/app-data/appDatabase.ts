@@ -14,7 +14,10 @@ export type AppDataErrorCode =
   | "HUMAN_NOT_INITIALIZED"
   | "HUMAN_NAME_INVALID"
   | "HUMAN_EMAIL_INVALID"
-  | "HUMAN_DESCRIPTION_INVALID";
+  | "HUMAN_DESCRIPTION_INVALID"
+  | "HOME_SPACE_NOT_FOUND"
+  | "HOME_SPACE_ALREADY_INITIALIZED"
+  | "HOME_SPACE_CANNOT_UNREGISTER";
 
 export class AppDataError extends Error {
   constructor(public readonly code: AppDataErrorCode, message: string) {
@@ -75,6 +78,10 @@ export function appDataConnection(): Database.Database {
       root_path TEXT NOT NULL UNIQUE,
       last_opened_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS installation_state (
+      singleton_key INTEGER PRIMARY KEY NOT NULL CHECK (singleton_key = 1),
+      home_space_id TEXT REFERENCES spaces(id) ON DELETE RESTRICT
+    );
     CREATE TABLE IF NOT EXISTS browser_access_settings (
       singleton_key INTEGER PRIMARY KEY NOT NULL CHECK (singleton_key = 1),
       mode TEXT NOT NULL DEFAULT 'off' CHECK (mode IN ('off', 'local', 'lan')),
@@ -101,6 +108,14 @@ export function appDataConnection(): Database.Database {
     INSERT OR IGNORE INTO desktop_settings (
       singleton_key, close_behavior, launch_at_login
     ) VALUES (1, 'tray', 0);
+    INSERT OR IGNORE INTO installation_state (
+      singleton_key, home_space_id
+    ) VALUES (1, NULL);
+    UPDATE installation_state
+    SET home_space_id = (SELECT id FROM spaces WHERE slug = 'home')
+    WHERE singleton_key = 1
+      AND home_space_id IS NULL
+      AND EXISTS (SELECT 1 FROM spaces WHERE slug = 'home');
   `);
   connection = { sqlite, dbPath };
   return sqlite;
@@ -231,6 +246,56 @@ export function getSpaceRecordBySlug(slug: string): SpaceRecord | undefined {
   return row ? mapSpace(row) : undefined;
 }
 
+export function getHomeSpaceId(): string | undefined {
+  const row = appDataConnection().prepare(`
+    SELECT home_space_id FROM installation_state WHERE singleton_key = 1
+  `).get() as { home_space_id: string | null } | undefined;
+  return row?.home_space_id ?? undefined;
+}
+
+export function getHomeSpaceRecord(): SpaceRecord | undefined {
+  const homeSpaceId = getHomeSpaceId();
+  return homeSpaceId ? getSpaceRecord(homeSpaceId) : undefined;
+}
+
+export function setHomeSpaceId(spaceId: string): SpaceRecord {
+  const home = getSpaceRecord(spaceId);
+  if (!home) {
+    throw new AppDataError("HOME_SPACE_NOT_FOUND", `Home Space is not registered: ${spaceId}`);
+  }
+  const currentHomeSpaceId = getHomeSpaceId();
+  if (currentHomeSpaceId && currentHomeSpaceId !== spaceId) {
+    throw new AppDataError(
+      "HOME_SPACE_ALREADY_INITIALIZED",
+      `Home Space is already initialized: ${currentHomeSpaceId}`,
+    );
+  }
+  if (!currentHomeSpaceId) {
+    appDataConnection().prepare(`
+      UPDATE installation_state SET home_space_id = ? WHERE singleton_key = 1
+    `).run(spaceId);
+  }
+  return home;
+}
+
+export function registerHomeSpace(record: {
+  id: string;
+  name: string;
+  slug: string;
+  rootPath: string;
+  lastOpenedAt?: Date;
+}): SpaceRecord {
+  const sqlite = appDataConnection();
+  const claimHome = sqlite.transaction(() => {
+    const currentHome = getHomeSpaceRecord();
+    if (currentHome) return currentHome;
+    const home = registerSpace(record);
+    setHomeSpaceId(home.id);
+    return home;
+  });
+  return claimHome.immediate();
+}
+
 export function listSpaceRecords(): SpaceRecord[] {
   const rows = appDataConnection().prepare(`
     SELECT id, name, slug, root_path, last_opened_at FROM spaces ORDER BY last_opened_at DESC
@@ -268,6 +333,9 @@ export function renameSpace(spaceId: string, name: string): void {
 }
 
 export function unregisterSpace(spaceId: string): void {
+  if (getHomeSpaceId() === spaceId) {
+    throw new AppDataError("HOME_SPACE_CANNOT_UNREGISTER", "Home Space cannot be unregistered");
+  }
   appDataConnection().prepare("DELETE FROM spaces WHERE id = ?").run(spaceId);
 }
 

@@ -32,10 +32,11 @@ pnpm run desktop:dev
 
 ```powershell
 $env:KITH_SPACE_HOME = Join-Path $env:TEMP ("kith-space-dev-" + [guid]::NewGuid().ToString("N"))
+$env:KITH_SPACE_SPACES_DIR = Join-Path $env:KITH_SPACE_HOME "spaces"
 pnpm run desktop:dev
 ```
 
-这会为本次终端创建一套带随机 GUID 的一次性数据 profile，不是一台电脑唯一的正式目录。P-A7 H1 尚未落地前，受管 Desktop 还会把默认 Home、agent cwd 和 Agent Memory 一并放到这个临时根；它只适合隔离验收，不应保存正式工作文件。目标路径分层见 [`Home 与 Space root 设计`](./superpowers/specs/2026-07-12-home-space-and-space-root-design.md)。
+这会为本次终端创建一套带随机 GUID 的一次性 app data 与 Space 容器，不是一台电脑唯一的正式目录。正式默认值分别是 `~/.kith-space` 与 `~/Kith-space`；H2 完成前 agent cwd 和 Agent Memory 仍在 app data 下，因此这套临时 profile 只适合隔离验收，不应保存正式工作文件。路径分层见 [`Home 与 Space root 设计`](./superpowers/specs/2026-07-12-home-space-and-space-root-design.md)。
 
 关闭窗口默认只是进入托盘。彻底停止时使用托盘菜单的 **Quit**，或在启动终端按 `Ctrl+C`。
 
@@ -79,7 +80,7 @@ pnpm test --integration  # 集成测试
 pnpm test                # 全量测试
 ```
 
-测试建议使用临时 `KITH_SPACE_HOME`，避免污染真实数据。
+测试 runner 会同时生成临时 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR`，避免污染真实 app data 和 `~/Kith-space`。手工直跑单个测试时也应同时设置两者，或为 fixture 显式传入 rootPath。
 
 ## 5. 构建与打包
 
