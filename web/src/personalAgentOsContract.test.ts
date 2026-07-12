@@ -32,7 +32,7 @@ test("Machine and Computers are absent from the frontend product surface", () =>
   assert.doesNotMatch(modules, /computers|Monitor/);
   assert.deepEqual(
     [...modules.matchAll(/\{ id: "([^"]+)",[^\n]+dock: true \}/g)].map((match) => match[1]),
-    ["inbox", "tasks", "agents", "settings"],
+    ["spaces", "inbox", "tasks", "agents", "settings"],
   );
   assert.match(modules, /\{ id: "search",[^\n]+dock: false \}/);
   assert.match(dock, /<MessageCircle size=\{18\} \/>/);

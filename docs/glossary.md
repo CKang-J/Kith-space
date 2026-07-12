@@ -155,7 +155,7 @@
 : 当前主要工作面板底部的统一控制器。Home 为 Chat、Spaces、Inbox、Tasks、Agents、Settings，普通 Space 为 Chat、Inbox、Tasks、Agents、Settings；当前模块横向展开，Chat 始终只显示图标。它同时负责模块切换与 Chat 显隐。
 
 **Spaces 模块 / 空间模块**
-: 只在 Home Dock 出现的真实 Space registry 页面，用卡片提供搜索、创建、接入和同窗打开普通 Space；规范 module id 为 `spaces`。它不聚合尚未实现的 Inbox/Tasks，也不是旧空间总览壳。
+: 只在 Home Dock 出现的真实 Space registry 页面，用卡片提供搜索、刷新、创建、接入、失联重连和同窗打开普通 Space；规范 module id 为 `spaces`。它不聚合尚未实现的 Inbox/Tasks，也不是旧空间总览壳。
 
 **规范工作区 URL**
 : 用当前 Space 的会话 pathname 表达频道或 Human-Agent DM，用 `module`/`chat` 表达工作区三态，并由 `taskScope`、`agent`/`agentTab`、`settings` 分别表达模块资源的唯一 URL 形式。切换会话时保留 active module 及其资源，替换旧 `msg`/`thread` 临时焦点；旧模块实体路径不属于规范 URL。

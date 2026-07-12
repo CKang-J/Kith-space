@@ -1,4 +1,5 @@
 export type WorkspaceModuleId =
+  | "spaces"
   | "inbox"
   | "tasks"
   | "agents"
@@ -17,6 +18,10 @@ export const INITIAL_WORKSPACE_LAYOUT: WorkspaceLayoutState = {
   activeModule: null,
   chatVisible: true,
 };
+
+export function workspaceLayoutForSpace(state: WorkspaceLayoutState, isHome: boolean): WorkspaceLayoutState {
+  return state.activeModule === "spaces" && !isHome ? INITIAL_WORKSPACE_LAYOUT : state;
+}
 
 export function deriveWorkspaceMode(state: WorkspaceLayoutState): WorkspaceMode {
   if (state.activeModule === null) return "chat-only";

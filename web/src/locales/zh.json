@@ -1,5 +1,6 @@
 {
   "nav": {
+    "spaces": "空间",
     "search": "搜索",
     "inbox": "收件箱",
     "channel": "对话",
@@ -394,7 +395,25 @@
     "recoveryIntro": "Kith-space 当前无法打开任何已注册空间。请先选择一个空间，再选择它现在所在的文件夹。",
     "recoveryListLabel": "需要重新连接的空间",
     "noRecoverableSpace": "没有可重新连接的已注册空间。请恢复 app.db，或重新初始化 Kith-space。",
-    "operationFailed": "空间操作失败"
+    "operationFailed": "空间操作失败",
+    "manageSpaces": "管理空间"
+  },
+  "spacesModule": {
+    "title": "空间",
+    "searchPlaceholder": "搜索空间",
+    "refresh": "刷新",
+    "refreshFailed": "无法刷新空间列表。",
+    "createDefault": "新建空间",
+    "attachExisting": "使用现有文件夹",
+    "emptyTitle": "没有匹配的空间",
+    "emptyDescription": "新建一个空间，或调整搜索条件。",
+    "reconnect": "重新连接目录",
+    "statusReady": "可用",
+    "statusMissing": "目录已失联",
+    "statusError": "需要处理",
+    "lastOpened": "最近打开于 {{time}}",
+    "neverOpened": "尚未打开",
+    "pathLabel": "目录"
   },
   "select": {
     "placeholder": "选择…",

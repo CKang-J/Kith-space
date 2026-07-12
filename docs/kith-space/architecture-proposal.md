@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述个人 AgentOS 的目标模块边界。A2-A6 原定代码切片已完成，但 2026-07-12 用户验收确认 Home/Space root 仍需 H1-H4 前置修复；完成前不进入 Runtime 契约 v2。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`，完整补充设计见 `../superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
+> 本文描述个人 AgentOS 的目标模块边界。A2-A6 原定代码切片与 Home/Space root 的 H1-H4 前置修复均已完成，当前等待用户验收；验收前不进入 H5 或 Runtime 契约 v2。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`，完整补充设计见 `../superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
 
 ## 1. 架构原则
 
@@ -75,7 +75,7 @@ Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件
 
 ### 4.2 Space
 
-`SpaceService` 当前管理本地文件夹注册、slug、最近打开记录和 `<space>/.kith/` 初始化。H1-H3 把路径职责收口为三个边界：Home 身份服务维护稳定 homeSpaceId 和 Home 不变量；Space root 服务负责路径规范化、创建、接入、重连与 `.kith` 校验；Space directory 服务向 UI 和 agent 提供 registry 与真实摘要。具体类名可按代码风格调整，但职责不得重新堆回 Core 大文件。
+`SpaceService` 当前管理本地文件夹注册、slug、最近打开记录和 `<space>/.kith/` 初始化。H1-H4 把职责收口为三个边界：Home 身份服务维护稳定 homeSpaceId 和 Home 不变量；Space root 服务负责路径规范化、创建、接入、重连与 `.kith` 校验；Space route/目录层向 UI 提供 registry、稳定 `isHome`、状态与最近打开信息。具体类名可按代码风格调整，但职责不得重新堆回 Core 大文件。
 
 默认 app data 为 `~/.kith-space`，默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`；普通 Space 可以位于任意本机磁盘。`src/paths.ts:9` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，`KITH_SPACE_SPACES_DIR` 独立覆盖默认 Space 容器；开发/测试必须使用后者或显式 rootPath 隔离 Space fixture。
 
@@ -154,7 +154,7 @@ Home 的 Spaces 模块只读取 app.db registry 和真实摘要。未来 Home ag
 
 app.db 不保存 Space 消息、任务或 agent 业务数据。
 
-P-A7 H3 已把 Space root 生命周期收口到 `src/spaces/spaceRootService.ts` 与 `src/spaces/spaceService.ts`：默认创建只接受新的默认路径；显式接入可初始化普通目录，或从兼容 `.kith/workspace.db` 读取并复用稳定 Space ID；移动后的目录必须用 relocate 更新同一个 registry 记录。规范 root 或 Space ID 重复、损坏/不兼容数据库、`.kith`/workspace.db symlink、身份不匹配均返回可操作错误且不删除用户文件；已有数据库的 slug 只作本机路由别名，默认冲突时自动取唯一值，不改变稳定 Space ID。`src/db/spaceDatabaseCompatibility.ts` 由接入探测和 `dbForSpace` 共用，在迁移/打开前执行 SQLite `quick_check`、版本及全产品表/列校验，迁移后再验证当前 schema。`GET /api/spaces` 返回 `ready | missing | error` 与错误码，relocate 由 `POST /api/spaces/:id/relocate` 执行；目标打开失败时恢复旧 registry root。注册后的普通数据库访问会先校验 root、`.kith` 与 workspace.db，缺失时明确失败而不隐式重建。
+P-A7 H3-H4 已把 Space root 生命周期收口到 `src/spaces/spaceRootService.ts` 与 `src/spaces/spaceService.ts`：默认创建只接受新的默认路径；显式接入可初始化普通目录，或从兼容 `.kith/workspace.db` 读取并复用稳定 Space ID；移动后的目录必须用 relocate 更新同一个 registry 记录。规范 root 或 Space ID 重复、损坏/不兼容数据库、`.kith`/workspace.db symlink、身份不匹配均返回可操作错误且不删除用户文件；已有数据库的 slug 只作本机路由别名，默认冲突时自动取唯一值，不改变稳定 Space ID。`src/db/spaceDatabaseCompatibility.ts` 由接入探测和 `dbForSpace` 共用，在迁移/打开前执行 SQLite `quick_check`、版本及全产品表/列校验，迁移后再验证当前 schema。`GET /api/spaces` 返回 `ready | missing | error`、稳定 `isHome`、`lastOpenedAt` 与错误码；relocate 由 `POST /api/spaces/:id/relocate` 执行，显式打开由 `POST /api/spaces/:id/open` 记录最近打开时间且只接受 ready root。目标打开失败时恢复旧 registry root；注册后的普通数据库访问会先校验 root、`.kith` 与 workspace.db，缺失时明确失败而不隐式重建。
 
 ### 5.2 workspace.db
 
@@ -179,7 +179,7 @@ A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Driz
 4. A2.4 已完成：删除 Machine 服务/API/UI、machine key/心跳/调度与 agent machine 选择；保留安装级唯一 Worker 进程协议，并让 Worker 事件跨 Space 定位。
 5. A2.2b 已完成：破坏性重建 workspace.db baseline，把保留表的 `servers/server_id` 改为 `spaces/space_id`，拆出单 Human 状态/收藏/偏好，并删除旧物理表与兼容边界。
 6. A2 已完成：附件目录纳入 Space 根路径，旧 app 级上传配置、命名 facade 与不兼容维护脚本已删除，并完成整阶段验收。
-7. H1-H3 已完成：稳定 homeSpaceId，分离 app data/默认 Space 容器，把主要 runtime cwd、Agent Memory 与 runtime state 归入三路径契约，并完成默认创建、文件夹接入、失联状态与重新定位；H4 继续补 Home Spaces 模块。
+7. H1-H4 已完成：稳定 homeSpaceId，分离 app data/默认 Space 容器，把主要 runtime cwd、Agent Memory 与 runtime state 归入三路径契约，完成默认创建、文件夹接入、失联重连，并交付 Home-only Spaces 模块、默认 Home 启动和同窗切换。当前等待用户验收。
 
 不执行无边界的整仓替换；每个切片都需 schema、service、route 和 UI 契约测试。
 
@@ -223,7 +223,7 @@ agent-to-agent 分派继续经过统一 dispatch 收口。现有深度上限、�
 - `WorkspaceFrame` 组合路由、响应式约束和三态布局，不承载任务或 agent 业务逻辑。
 - `workspaceLayout.ts` 只表达 ChatOnly/Split/ModuleOnly 状态机。
 - `paneConstraints.ts` 只计算面板最小宽度与单 Pane 降级。
-- `workspaceModules.tsx` 当前注册 Inbox、Tasks、Agents、Settings 与非 Dock 的 Search；H4 将增加 Home-only `spaces`，普通 Space 仍只显示现有五项 Dock。Computers/Machines 已退出模块注册和路由。
+- `workspaceModules.tsx` 当前注册 Home-only Spaces、Inbox、Tasks、Agents、Settings 与非 Dock 的 Search；`dockModulesForSpace` 用稳定 `isHome` 选择 Home/普通 Dock，普通 Space 仍只显示五项。Computers/Machines 已退出模块注册和路由。
 - `ChatWorkspace` 管理会话列表、Chat 和实时轨迹；业务模块不能直接操控 Chat 内部状态。
 - URL 是模块与 Chat 显隐事实来源。会话始终使用规范 `/s/:slug/channel[/<channelId>]`、`saved` 或 `showcase` 路径；`module`/`chat` 表达工作区布局，`taskScope`、`agent`/`agentTab`、`settings` 分别表达 Tasks、Agents、Settings 的模块资源（`web/src/shell/workspaceRoute.ts:65`、`:128`）。模块切换由 `workspaceLocationForModule`（`:143`）生成 query，不再生成 `/tasks`、`/agent`、`/settings` 等模块实体路径；Settings 未指定或传入旧/未知资源时统一归一为 `human`（`:138`）。
 - 切换频道或 Human-Agent DM 时保留当前 active module、Chat 显隐和该模块拥有的 resource query，同时丢弃旧会话的 `msg`/`thread` 等临时聚焦参数（`web/src/shell/workspaceRoute.ts:180`）。这样模块上下文跨会话导航保持稳定，旧消息焦点不会泄漏到新会话。
@@ -231,7 +231,7 @@ agent-to-agent 分派继续经过统一 dispatch 收口。现有深度上限、�
 
 Home Spaces UI 只负责卡片、搜索、创建入口和同窗导航；路径规范化、`.kith` 校验、homeSpaceId 与 registry 摘要属于领域服务。规范 URL 是 Home 当前会话路径上的 `?module=spaces`；普通 Space 收到该 query 时移除它。从任意 Space 打开全局空间入口时导航到 Home Spaces，而不是创建第二壳。
 
-H3 已先在现有 `SpaceSwitcher` 提供最小创建、接入和失联重连入口，并在展开时刷新 registry root 状态。Desktop 表单通过 sender 校验后的 preload 窄桥调用 Electron 原生 `openDirectory` 对话框；授权浏览器不使用浏览器文件选择器，而提交 Desktop 主机绝对路径交给 Core 校验。路由只激活 `ready` Space：失联深链规范化到可用 Space；如果全部注册项都失联，Store 外壳内的 `SpaceRecovery` 仍可调用同一 relocate 服务，避免 skeleton 死锁。卡片网格、搜索和 Home-only Dock 项仍属于 H4，不能把当前最小入口描述为完整 Spaces 模块。
+H4 已把完整生命周期入口移入 `web/src/spaces/SpacesModule.tsx`：它过滤稳定 Home 身份，展示真实普通 Space 卡片，并提供搜索、刷新、默认创建、已有目录接入、失联重连和同窗导航。`SpaceSwitcher` 只保留快速切换、应急重连和进入 Home Spaces；展开时继续刷新 registry root 状态。Desktop 表单通过 sender 校验后的 preload 窄桥调用 Electron 原生 `openDirectory` 对话框；授权浏览器不使用浏览器文件选择器，而提交 Desktop 主机绝对路径交给 Core 校验。路由只激活 `ready` Space：失联深链规范化到可用 Space；如果全部注册项都失联，Store 外壳内的 `SpaceRecovery` 仍可调用同一 relocate 服务，避免 skeleton 死锁。普通 Space 的 `module=spaces` 会被规范化回 Chat。
 
 Desktop 专属设置通过 `window.kithDesktop` 窄桥注入，不靠仅隐藏按钮实现安全；服务端同时拒绝普通浏览器调用。Windows 打包态可调用 Electron 系统自启动接口，开发态通过 `launchAtLoginSupported: false` 明确禁用该控件。
 

@@ -6,16 +6,27 @@ import {
   openRouteModule,
   selectWorkspaceModule,
   toggleChat,
+  workspaceLayoutForSpace,
   type DockModuleId,
 } from "./workspaceLayout.ts";
-import { DOCK_MODULES, WORKSPACE_MODULES } from "./workspaceModules.tsx";
+import { DOCK_MODULES, HOME_DOCK_MODULES, WORKSPACE_MODULES } from "./workspaceModules.tsx";
 
-test("Dock is fixed to Chat, Inbox, Tasks, Agents, and Settings", () => {
+test("ordinary and Home Docks expose their fixed module sets", () => {
   assert.deepEqual(
     ["chat", ...DOCK_MODULES.map((module) => module.id)],
     ["chat", "inbox", "tasks", "agents", "settings"],
   );
+  assert.deepEqual(
+    ["chat", ...HOME_DOCK_MODULES.map((module) => module.id)],
+    ["chat", "spaces", "inbox", "tasks", "agents", "settings"],
+  );
   assert.equal(WORKSPACE_MODULES.find((module) => module.id === "search")?.dock, false);
+});
+
+test("Spaces layout is valid only inside stable Home", () => {
+  const spaces = openRouteModule("spaces", { chatVisible: true });
+  assert.equal(workspaceLayoutForSpace(spaces, true), spaces);
+  assert.equal(workspaceLayoutForSpace(spaces, false), INITIAL_WORKSPACE_LAYOUT);
 });
 
 test("initial layout is ChatOnly", () => {

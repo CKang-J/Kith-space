@@ -2,7 +2,7 @@
 
 本文记录从当前 open-tag 衍生实现收敛到本机个人 AgentOS 的工程顺序。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`，权威转向规格见 `../superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，Home/Space root 补充见 `../superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
 
-截至 2026-07-12，A1-A6 原定代码切片已完成，但用户验收确认 A7 的 H1-H4 必须先修复 Home、Space root、cwd、记忆和创建入口；H1-H3 已完成，下一步为 H4，Runtime 契约 v2 继续暂停。
+截至 2026-07-12，A1-A6 原定代码切片与 A7 H1-H4 已完成，当前等待用户验收；H5 与 Runtime 契约 v2 继续暂停。
 
 ## 1. 已完成基线
 
@@ -28,7 +28,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A2 本地领域与数据模型
 
-当前进度：A2 原定切片已完成。`app.db`、唯一 Human、幂等 `Home`、canonical Space 契约、安装级唯一 Worker、19 表 workspace.db baseline 与 `<spaceRoot>/.kith/uploads` 已落地；A7 H1-H3 已补 stable homeSpaceId、用户可见 Home root、Agent Memory 可移植性、主要 runtime 的 Space root cwd，以及安全的本机文件夹创建/接入/重连契约。
+当前进度：A2 原定切片已完成。`app.db`、唯一 Human、幂等 `Home`、canonical Space 契约、安装级唯一 Worker、19 表 workspace.db baseline 与 `<spaceRoot>/.kith/uploads` 已落地；A7 H1-H4 已补 stable homeSpaceId、用户可见 Home root、Agent Memory 可移植性、主要 runtime 的 Space root cwd、安全的本机文件夹创建/接入/重连契约与 Home-only Spaces 目录。
 
 改动边界：
 
@@ -88,7 +88,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 - `PersonalSetupService` 以“唯一 Human + `Home`”判断完成态。重复初始化幂等返回；若中断后只有 Human，则 status 返回 partial Human 供表单预填恢复。请求仅接受 Human 名称、可选邮箱和描述，不能提交 rootPath 或改变默认首次 Space。
 - Desktop-only `GET /api/setup/status` 与 `POST /api/setup/initialize` 位于普通产品鉴权之前，但仍要求 loopback Desktop 私有信任；普通浏览器、Worker、错误凭据和远程请求统一不可见。
 - `DesktopSetupBoundary` 位于 `StoreProvider` 外，先完成 setup 再挂载产品 bootstrap。只有完整 preload bridge 会探测 setup API；普通浏览器始终沿用 Cookie 会话探测与 Access Token Gate，不会看到首次初始化页。
-- 删除 Landing、Features、旧 `Layout`、`?legacy=1`、SSR/prerender、PWA manifest、公开营销元数据和营销图片；`App` 只渲染 `WorkspaceFrame`，普通 Space Dock 固定为 `Chat | Inbox | Tasks | Agents | Settings`，Search 仍是顶部工具入口。Home-only Spaces 由 A7 补充，不恢复旧壳。
+- 删除 Landing、Features、旧 `Layout`、`?legacy=1`、SSR/prerender、PWA manifest、公开营销元数据和营销图片；`App` 只渲染 `WorkspaceFrame`，普通 Space Dock 固定为 `Chat | Inbox | Tasks | Agents | Settings`，Search 仍是顶部工具入口。A7 H4 已在同一壳补充 Home-only Spaces，不恢复旧壳。
 - 会话路径成为唯一规范 pathname；模块和资源统一进入 `module`/`chat`/`taskScope`/`agent`/`agentTab`/`settings` query。切换频道或 Human-Agent DM 时保留 active module 与其资源，清掉旧 `msg`/`thread` 焦点，不再生成 `/tasks`、`/agent`、`/settings` 等旧模块实体路径。
 - 浏览器自身授权使用 `DELETE /api/browser-auth/session` 撤销并清 Cookie，前端和 Settings 均使用“撤销浏览器访问”语义，不再借用 Human logout 概念。
 - 正常 `pnpm run desktop:dev` 在 fresh `KITH_SPACE_HOME` 下不再要求先运行 seed；seed 只保留给手动 fixture/debug 流程。
@@ -114,19 +114,19 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A7 Home 总控 Space 与 Space root 归位
 
-当前进度：产品与架构设计已确认，H1-H3 已完成，下一步是 H4。A7 是 A1-A6 用户验收前置修复。
+当前进度：产品与架构设计、H1-H4 代码切片和自动验证已完成，等待用户进行实际 UI/目录验收。A7 是 A1-A6 用户验收前置修复；当前不要启动 H5。
 
 实施顺序：
 
 1. H1 路径地基（已完成）：拆开 app data 和默认 Space 容器；稳定 homeSpaceId；Home 默认根目录改为 `~/Kith-space/Home`；测试同时隔离两类根目录。
 2. H2 cwd/记忆（已完成）：引入 workspaceRoot、agentMemoryDir、runtimeStateDir 三路径契约；Claude Code、Codex、opencode 使用 Space root cwd；Agent Memory 移入 `.kith/agents`；prompt 临时文件移出用户根目录；文件树/skills/profile 同步改用 registry root；reset 只清 runtime state 或当前 Agent Memory，不删除共享 Space 文件。
-3. H3 文件夹接入（已完成）：Desktop 原生目录选择；授权浏览器提交 Desktop 主机绝对路径；默认位置创建、普通目录初始化、已有兼容 `.kith/workspace.db` 稳定 ID 接入和路径失效重新定位。重复规范 root/Space ID、损坏/不兼容数据库、symlink 和身份不匹配被拒绝；冲突 slug 自动生成本机唯一别名，接入与正式打开共用 SQLite 完整性/表列校验。列表显式返回 `ready | missing | error`，普通 API 不隐式重建缺失 root，relocate 失败回滚 registry；失联深链回退到可用 Space，全失联显示恢复页。SpaceSwitcher 提供最小创建/接入/重连入口。
-4. H4 Home UI：普通冷启动进入 Home；Home Dock 注册 `spaces`；卡片搜索/创建/同窗进入普通 Space；普通 Space 深链接不能激活该模块。
+3. H3 文件夹接入（已完成）：Desktop 原生目录选择；授权浏览器提交 Desktop 主机绝对路径；默认位置创建、普通目录初始化、已有兼容 `.kith/workspace.db` 稳定 ID 接入和路径失效重新定位。重复规范 root/Space ID、损坏/不兼容数据库、symlink 和身份不匹配被拒绝；冲突 slug 自动生成本机唯一别名，接入与正式打开共用 SQLite 完整性/表列校验。列表显式返回 `ready | missing | error`，普通 API 不隐式重建缺失 root，relocate 失败回滚 registry；失联深链回退到可用 Space，全失联显示恢复页。
+4. H4 Home UI（已完成）：普通冷启动进入 stable Home，显式 ready 深链接仍优先；Home Dock 注册 `spaces`；卡片支持搜索、刷新、创建/接入/重连和同窗进入普通 Space；普通 Space 深链接不能激活该模块。SpaceSwitcher 收敛为快速切换、应急重连与 Home Spaces 入口。
 5. H5 跨 Space 编排：先只读真实摘要，后续通过独立服务实现幂等、受审计且不冒充 Human 的 task/message/agent dispatch。
 
 模块边界：优先新增职责清楚的路径/Home/目录/跨 Space service 与薄 UI module，不整块重写 `src/server/core.ts`、Electron main 或 `WorkspaceFrame`。实现细节以补充规格为准。
 
-验证：每个 H 切片独立测试和中文提交。H1-H4 必须以 fresh 默认目录、隔离验收目录、已有文件夹接入、三家 runtime cwd 探针、Agent Memory 搬迁、浏览器/URL 契约和真实 Desktop UI smoke 验收；不得用单测替代 cwd 实际观察。
+验证：每个 H 切片独立测试和中文提交。H1-H4 自动验证已通过 typecheck、502/502 unit、完整 integration、2571-module Web build 与 Desktop build；此前 cwd/目录探针已覆盖 H1-H3。H4 真实 Desktop/Web 交互与视觉仍由用户验收，不得用单测替代实际观察。
 
 ## 4. 强制依赖
 
@@ -135,7 +135,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 - A3 已在 LAN 绑定前建立 Token/会话/Origin/CSRF 安全门；后续不得绕过该门直接暴露新路由。
 - A4 已接管配置、内部凭据与受管进程；手动分进程 `.env` 仅保留为仓库调试入口。
 - A5 已在稳定的领域/API/Desktop 能力边界上删除旧入口；A6 没有恢复旧兼容面，只保留内部开发调试入口。
-- A6 已完成旧路线与发行面收口；A7 H1-H4 是当前验收前置。完成后 Runtime 契约 v2 才成为生产力模块、可靠 usage 预算和统一 MCP bootstrap 的直接前置；H5 与 Runtime v2 的先后在 H1-H4 后决定。
+- A6 已完成旧路线与发行面收口；A7 H1-H4 代码已完成但尚待用户验收。验收通过后 Runtime 契约 v2 才成为生产力模块、可靠 usage 预算和统一 MCP bootstrap 的直接前置；H5 与 Runtime v2 的先后由用户决定。
 
 ## 5. 主要风险
 

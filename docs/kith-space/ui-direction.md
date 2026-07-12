@@ -36,7 +36,7 @@
 ```
 
 - 未初始化时进入本地 Human 资料页；普通冷启动进入自动创建的 Home Chat，显式 Space 深链接直达目标，托盘恢复保留现有窗口现场。
-- Space 名称保留快速切换入口；H3 已在该入口提供最小的默认创建、已有文件夹接入和失联重连，H4 再把完整目录管理移入 Home 的 Spaces 模块。
+- Space 名称保留快速切换入口；H4 已把默认创建、已有文件夹接入和完整目录管理移入 Home 的 Spaces 模块。顶部入口只保留快速切换、失联重连和“管理空间”跳转。
 - Search 位于顶部工具组，通过按钮和 `Cmd/Ctrl + K` 进入，不占 Dock 槽位。
 - 同时最多显示一个 Chat Pane 和一个 Module Pane。
 - Split 默认让 Chat 占可用工作区的 25%、Module 占其余空间；Chat 下限为 `max(360px, 25%)`。Tasks / Search 的模块下限为 560px，其余现有模块为 640px；模块不再使用固定 960px 上限。
@@ -145,7 +145,7 @@ Composer
 - 新建流程提供“在默认位置新建文件夹”和“使用已有文件夹”；Desktop 使用原生目录选择器，授权浏览器使用 Desktop 主机路径输入并由 Core 校验。
 - 普通 Space 的 `module=spaces` 是无效状态并被规范化；从顶部全局空间入口打开时导航到 Home Spaces。
 
-H3 已在现有 SpaceSwitcher 交付上述两种创建路径和失联 Space 的“重新定位文件夹”表单：Desktop 调用原生目录选择器，浏览器显示 Desktop 主机绝对路径输入。列表在每次展开时刷新并区分 `ready | missing | error`，不可用 Space 不会被当作可打开项目；路径或数据库错误留在表单中供用户修正。失联深链会进入可用 Space，全部 Space 失联则展示同一视觉语言的恢复页并保持 relocate 可达。H4 将复用这些领域/API 能力实现本节的卡片网格、搜索、Home-only Dock 和同窗导航，不重写路径校验。
+H4 已复用 H3 领域/API 能力交付本节：Home Spaces 提供卡片网格、搜索、刷新、两种创建路径、失联 Space 的“重新定位文件夹”和同窗导航；Desktop 调用原生目录选择器，浏览器显示 Desktop 主机绝对路径输入。卡片与顶部列表区分 `ready | missing | error`，不可用 Space 不会被当作可打开项目；路径或数据库错误留在表单中供用户修正。失联深链会进入可用 Space，全部 Space 失联则展示同一视觉语言的恢复页并保持 relocate 可达。页面不承载路径或数据库校验，也没有 H5 伪聚合。
 
 未来可在 Home 增加真正的跨 Space Inbox/Tasks/Calendar 聚合，但它们是后续真实能力，不恢复已移除的薄总览页。
 
@@ -166,7 +166,7 @@ A5 已完成工作区入口与规范 URL 收口，但 `MessageContextSnapshot`�
 
 ## 7. 当前实现边界
 
-当前生产壳已完成 A5 入口收口：`App` 只渲染 `WorkspaceFrame`；Agents、Human Settings 与 Desktop Settings 已落地，登录/注册/邀请、Computers、Landing、Features、PWA、SSR/prerender、旧 `Layout` 与 `?legacy=1` 均已退出活跃代码。Agent Overview/Workspace 通过现有 workspace-files API 展示 registry 中真实 Space root，不再拼出旧 app data agent 路径。H3 已完成 SpaceSwitcher 最小创建/接入/重连入口、Desktop 原生目录选择和浏览器 Desktop 主机路径输入；Home Spaces 模块与普通冷启动强制进入 Home 仍是 H4 待实现目标，不能误写为当前 UI 能力。
+当前生产壳已完成 A5 入口收口与 P-A7 H4：`App` 只渲染 `WorkspaceFrame`；Agents、Human Settings、Desktop Settings 与 Home-only Spaces 已落地，登录/注册/邀请、Computers、Landing、Features、PWA、SSR/prerender、旧 `Layout` 与 `?legacy=1` 均已退出活跃代码。Agent Overview/Workspace 通过现有 workspace-files API 展示 registry 中真实 Space root，不再拼出旧 app data agent 路径。普通冷启动进入 stable Home，显式 ready 深链接仍优先；普通 Space 不显示也不能激活 Spaces。最终视觉与实际交互仍由用户在 H1-H4 验收中确认。
 
 单窗口壳按职责拆在 `web/src/shell/`：
 

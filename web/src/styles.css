@@ -51,6 +51,9 @@ button{font-family:inherit}
 .sw-warning{color:var(--error);flex:0 0 auto}
 .sw-add{display:flex;align-items:center;gap:7px;width:100%;border:0;border-top:1px solid var(--hair);background:transparent;cursor:pointer;padding:9px 8px 5px;margin-top:5px;color:var(--muted);font-size:13px}
 .sw-add:hover{color:var(--ink)}
+.sw-manage{display:flex;align-items:center;gap:7px;width:100%;border:0;border-top:1px solid var(--hair);background:transparent;cursor:pointer;padding:9px 8px 5px;margin-top:5px;color:var(--muted);font-size:13px}
+.sw-manage:hover{color:var(--ink)}
+.sw-manage:disabled{cursor:default;opacity:.45}
 .sw-create{display:flex;gap:6px;margin-top:6px;padding:2px}
 .sw-create input{flex:1;min-width:0;font-size:13px;padding:6px 9px;border:1px solid var(--hair-strong);border-radius:8px;outline:none;background:var(--canvas);color:var(--ink);font-family:inherit}
 .sw-create-options{display:flex;flex-direction:column;gap:5px;border-top:1px solid var(--hair);margin-top:5px;padding:7px 2px 2px}

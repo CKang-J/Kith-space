@@ -24,7 +24,7 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 - P4：单窗口 ChatOnly / Split / ModuleOnly 工作区、可拖拽面板、常驻 Dock、任务范围侧栏。
 - Runtime 调研：Claude Code、Codex、opencode 适配边界与 Runtime 契约 v2 草案。
 
-P4 的视觉微调暂缓。A1-A6 原定代码切片已完成，但用户验收发现 Home/Space root 语义尚未真正落地；先完成 P-A7 的 H1-H4，再决定 Runtime 契约 v2 与 H5 跨 Space 编排的顺序。
+P4 的视觉微调暂缓。A1-A6 原定代码切片与 P-A7 H1-H4 已完成，当前等待用户验收；验收前不进入 Runtime 契约 v2 或 H5 跨 Space 编排。
 
 ## 3. 当前路线：个人 AgentOS 本机化
 
@@ -36,7 +36,7 @@ P4 的视觉微调暂缓。A1-A6 原定代码切片已完成，但用户验收�
 
 ### P-A2 本地领域与数据模型
 
-状态：原定切片已完成，但验收发现路径/cwd/Agent Memory 与文件夹接入仍有 P-A7 前置修复。中央 `app.db`、唯一 Human、默认 `Home`、canonical Space 契约、唯一 Local Runtime Worker、19 表 workspace.db baseline 与 Space 级附件目录已落地；H1-H3 已补齐稳定 homeSpaceId、用户可见 Home root、Space root cwd、可移植 Agent Memory，以及文件夹创建/接入/重连契约。
+状态：原定切片与 P-A7 H1-H4 已完成并等待用户验收。中央 `app.db`、唯一 Human、默认 `Home`、canonical Space 契约、唯一 Local Runtime Worker、19 表 workspace.db baseline 与 Space 级附件目录已落地；H1-H4 已补齐稳定 homeSpaceId、用户可见 Home root、Space root cwd、可移植 Agent Memory、文件夹创建/接入/重连契约，以及 Home-only Spaces 目录。
 
 - 把中央 registry 扩展并更名为 `app.db`。
 - 实现唯一 Human 和首次资料初始化；自动创建 `Home` Space。
@@ -82,7 +82,7 @@ P4 的视觉微调暂缓。A1-A6 原定代码切片已完成，但用户验收�
 状态：已完成。
 
 - Desktop 首次启动通过仅 Desktop 私有信任可达的 setup API 收集 Human 名称、可选邮箱和描述，幂等初始化唯一 Human 与 `Home`；普通浏览器不会探测或调用该入口。全新 Desktop 目录不再要求 seed。
-- 普通 Space Dock 已固定为 `Chat | Inbox | Tasks | Agents | Settings`；Home-only Spaces 由 P-A7 H4 补充。
+- 普通 Space Dock 固定为 `Chat | Inbox | Tasks | Agents | Settings`；P-A7 H4 已把 Home Dock 固定为 `Chat | Spaces | Inbox | Tasks | Agents | Settings`。
 - `Members` 改为当前 Space 的 `Agents`；Human 资料进入全局 Settings；`Computers` 已在 A2.4 提前删除。
 - 已删除 landing、登录、注册、邀请、PWA 和 `?legacy=1`/旧 `Layout`，静态路由只提供产品壳与 canonical Space 路径。
 - 模块统一挂在当前 Chat/收藏等会话 pathname 上，以 `?module=<id>` 和模块专属 resource query 表达；切换频道、DM 或收藏时保留当前模块及其合法 resource，不再生成 `/tasks`、`/agent`、`/settings` 等旧模块 pathname。
@@ -106,15 +106,15 @@ P4 的视觉微调暂缓。A1-A6 原定代码切片已完成，但用户验收�
 
 ### P-A7 Home 总控 Space 与 Space root 归位
 
-状态：设计已确认，H1-H3 已完成，下一步是 H4。它是 A1-A6 用户验收的前置修复，不属于 Runtime 契约 v2。
+状态：设计与 H1-H4 代码切片已完成，当前停在用户验收；H5 和 Runtime 契约 v2 都未开始。
 
 - H1 路径地基（已完成）：分离 `~/.kith-space` app data 与 `~/Kith-space` 默认 Space 容器；建立稳定 homeSpaceId 和 `~/Kith-space/Home`，并以 `KITH_SPACE_SPACES_DIR` 隔离开发/测试 Space 容器。
 - H2 runtime cwd/记忆（已完成）：Claude Code、Codex、opencode 以 Space root 为 cwd；Agent Memory 移到 `<space>/.kith/agents/<agentId>`；adapter 临时状态移到 app data runtime 目录；文件树、skills、profile 与 reset 同步采用带防逃逸校验的三路径契约，同 agent reset/start 串行且 reset 不删除共享 Space 文件。OpenCode prompt 通过 child-only inline config 隔离，不覆盖用户 `AGENTS.md`；Copilot/Kimi/Cursor 仍标 experimental，并暂用 runtime state cwd 避免其 `AGENTS.md` 注入覆盖用户文件。
-- H3 文件夹接入（已完成）：Desktop 原生目录选择器；浏览器提交 Desktop 主机绝对路径；默认位置新建、普通文件夹接入、兼容 workspace.db 稳定 ID 复用和移动后重新定位；重复 root/Space ID、损坏/不兼容数据库、symlink 与身份不匹配拒绝，冲突 slug 自动取本机唯一别名。接入与正式打开共用 SQLite 完整性/版本/产品表列校验。失联 Space 以 `ready | missing | error` 显示，普通 API 不会隐式重建缺失 root，relocate 失败回滚 registry；失联深链与全失联恢复不会卡在 skeleton。SpaceSwitcher 已提供最小创建/接入/重连入口，完整卡片目录留给 H4。
-- H4 Home UI：普通冷启动进入 Home Chat；Home Dock 增加 Spaces 卡片模块；点击卡片在同窗进入普通 Space，不恢复 OverviewShell。
+- H3 文件夹接入（已完成）：Desktop 原生目录选择器；浏览器提交 Desktop 主机绝对路径；默认位置新建、普通文件夹接入、兼容 workspace.db 稳定 ID 复用和移动后重新定位；重复 root/Space ID、损坏/不兼容数据库、symlink 与身份不匹配拒绝，冲突 slug 自动取本机唯一别名。接入与正式打开共用 SQLite 完整性/版本/产品表列校验。失联 Space 以 `ready | missing | error` 显示，普通 API 不会隐式重建缺失 root，relocate 失败回滚 registry；失联深链与全失联恢复不会卡在 skeleton。
+- H4 Home UI（已完成）：普通冷启动进入稳定 Home Chat，显式 ready 深链接仍优先；Home Dock 增加真实 registry 驱动的 Spaces 卡片模块，支持搜索、刷新、默认创建、已有文件夹接入、失联重连和同窗进入，并记录 ready Space 的最近打开时间。普通 Space 不显示该 Dock 项且会移除无效 query；SpaceSwitcher 收敛为快速切换、应急重连与 Home Spaces 入口，不恢复 OverviewShell。
 - H5 跨 Space 编排：后续先做真实只读摘要，再做受审计、幂等且不冒充 Human 的 task/message/agent dispatch。
 
-H1-H4 验收：agent 相对业务文件写入所属 Space root；复制 Space 带走 workspace.db、Space/Agent Memory、附件和用户文件；Home Spaces 只读真实 registry，普通 Space 不出现该模块；测试隔离不会污染真实 `~/Kith-space`。
+H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integration、2571-module Web build 与 Desktop build；仍由用户实际验收 Home/普通 Dock、Spaces 卡片、文件夹操作与同窗切换。agent 相对业务文件写入所属 Space root；复制 Space 带走 workspace.db、Space/Agent Memory、附件和用户文件；Home Spaces 只使用真实 registry，普通 Space 不出现该模块；测试隔离不会污染真实 `~/Kith-space`。
 
 完整规格：`docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
 

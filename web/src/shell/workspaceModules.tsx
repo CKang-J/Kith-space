@@ -1,4 +1,4 @@
-import { Inbox, ListTodo, Search, Settings, Users, type LucideIcon } from "lucide-react";
+import { FolderKanban, Inbox, ListTodo, Search, Settings, Users, type LucideIcon } from "lucide-react";
 import type { DockModuleId, WorkspaceModuleId } from "./workspaceLayout.ts";
 
 export interface WorkspaceModuleDefinition {
@@ -9,6 +9,7 @@ export interface WorkspaceModuleDefinition {
 }
 
 export const WORKSPACE_MODULES: readonly WorkspaceModuleDefinition[] = [
+  { id: "spaces", labelKey: "nav.spaces", Icon: FolderKanban, dock: true },
   { id: "inbox", labelKey: "nav.inbox", Icon: Inbox, dock: true },
   { id: "tasks", labelKey: "nav.tasks", Icon: ListTodo, dock: true },
   { id: "agents", labelKey: "nav.agents", Icon: Users, dock: true },
@@ -17,8 +18,14 @@ export const WORKSPACE_MODULES: readonly WorkspaceModuleDefinition[] = [
 ];
 
 export const DOCK_MODULES = WORKSPACE_MODULES.filter(
+  (module): module is WorkspaceModuleDefinition & { id: DockModuleId } => module.dock && module.id !== "spaces",
+);
+
+export const HOME_DOCK_MODULES = WORKSPACE_MODULES.filter(
   (module): module is WorkspaceModuleDefinition & { id: DockModuleId } => module.dock,
 );
+
+export const dockModulesForSpace = (isHome: boolean) => isHome ? HOME_DOCK_MODULES : DOCK_MODULES;
 
 export function getWorkspaceModule(moduleId: WorkspaceModuleId) {
   return WORKSPACE_MODULES.find((module) => module.id === moduleId) ?? WORKSPACE_MODULES[0]!;

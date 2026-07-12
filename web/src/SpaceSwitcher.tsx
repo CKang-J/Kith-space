@@ -1,23 +1,24 @@
-// Top-left brand button = Space switcher. It also hosts the minimal H3 create/attach/reconnect entry.
+// Top-left brand button = quick Space switching. Full lifecycle management lives in Home > Spaces.
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, Check, FolderOpen, FolderPlus, Plus } from "lucide-react";
+import { AlertTriangle, Check, FolderKanban } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { SpaceFolderForm, type SpaceFolderIntent } from "./spaces/SpaceFolderForm.tsx";
+import { SpaceFolderForm } from "./spaces/SpaceFolderForm.tsx";
 import { useStore, type SpaceInfo } from "./store.tsx";
 
-type SwitcherFlow = "choose" | SpaceFolderIntent | null;
+type SwitcherFlow = "relocate" | null;
 
 export function SpaceSwitcher({ targetPathForSlug }: { targetPathForSlug?: (slug: string) => string } = {}) {
   const { t } = useTranslation();
   const nav = useNavigate();
-  const { spaces, slug, spaceAvatar, createSpace, relocateSpace, refreshSpaces } = useStore();
+  const { spaces, slug, spaceAvatar, relocateSpace, refreshSpaces } = useStore();
   const [open, setOpen] = useState(false);
   const [flow, setFlow] = useState<SwitcherFlow>(null);
   const [relocateTargetId, setRelocateTargetId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const cur = spaces.find((space) => space.slug === slug);
+  const home = spaces.find((space) => space.isHome);
 
   const resetFlow = () => {
     setFlow(null);
@@ -49,13 +50,11 @@ export function SpaceSwitcher({ targetPathForSlug }: { targetPathForSlug?: (slug
     if (space.slug !== slug) nav(targetPathForSlug?.(space.slug) ?? `/s/${space.slug}/channel`);
   };
   const submit = async (input: { name?: string; rootPath?: string }) => {
-    if (busy || flow === null || flow === "choose") return;
+    if (busy || flow !== "relocate" || !relocateTargetId) return;
     setBusy(true);
     setError("");
     try {
-      const result = flow === "relocate" && relocateTargetId
-        ? await relocateSpace(relocateTargetId, input.rootPath || "")
-        : await createSpace(input);
+      const result = await relocateSpace(relocateTargetId, input.rootPath || "");
       if (!result.space) {
         setError(result.error || t("space.operationFailed"));
         return;
@@ -67,6 +66,11 @@ export function SpaceSwitcher({ targetPathForSlug }: { targetPathForSlug?: (slug
     } finally {
       setBusy(false);
     }
+  };
+  const manageSpaces = () => {
+    if (!home || home.status !== "ready") return;
+    close();
+    nav(`/s/${home.slug}/channel?module=spaces`);
   };
 
   return (
@@ -98,20 +102,18 @@ export function SpaceSwitcher({ targetPathForSlug }: { targetPathForSlug?: (slug
             );
           })}
 
-          {flow === "choose" && (
-            <div className="sw-create-options">
-              <button type="button" onClick={() => setFlow("default")}><FolderPlus size={15} /><span><strong>{t("space.createDefault")}</strong><small>{t("space.createDefaultHint")}</small></span></button>
-              <button type="button" onClick={() => setFlow("attach")}><FolderOpen size={15} /><span><strong>{t("space.attachExisting")}</strong><small>{t("space.attachExistingHint")}</small></span></button>
-              <button type="button" className="sw-cancel" onClick={resetFlow}>{t("confirm.cancel")}</button>
-            </div>
-          )}
-          {(flow === "default" || flow === "attach" || flow === "relocate") && (
-            <SpaceFolderForm intent={flow} busy={busy} error={error} onCancel={resetFlow} onSubmit={submit} />
-          )}
+          {flow === "relocate" && <SpaceFolderForm intent="relocate" busy={busy} error={error} onCancel={resetFlow} onSubmit={submit} />}
           {flow === null && (
             <>
               {error && <div className="sw-form-error" role="alert">{error}</div>}
-              <button className="sw-add" onClick={() => setFlow("choose")}><Plus size={14} /> {t("space.createSpace")}</button>
+              <button
+                type="button"
+                className="sw-manage"
+                disabled={!home || home.status !== "ready"}
+                onClick={manageSpaces}
+              >
+                <FolderKanban size={14} /> {t("space.manageSpaces")}
+              </button>
             </>
           )}
         </div>

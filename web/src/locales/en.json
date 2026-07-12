@@ -1,5 +1,6 @@
 {
   "nav": {
+    "spaces": "Spaces",
     "search": "Search",
     "inbox": "Inbox",
     "channel": "Chat",
@@ -394,7 +395,25 @@
     "recoveryIntro": "Kith-space cannot open any registered Space. Select one below, then choose its current folder.",
     "recoveryListLabel": "Spaces that need reconnection",
     "noRecoverableSpace": "No registered Space is available to reconnect. Restore app.db or initialize Kith-space again.",
-    "operationFailed": "The Space operation failed"
+    "operationFailed": "The Space operation failed",
+    "manageSpaces": "Manage Spaces"
+  },
+  "spacesModule": {
+    "title": "Spaces",
+    "searchPlaceholder": "Search Spaces",
+    "refresh": "Refresh",
+    "refreshFailed": "Could not refresh Spaces.",
+    "createDefault": "New Space",
+    "attachExisting": "Use existing folder",
+    "emptyTitle": "No matching Spaces",
+    "emptyDescription": "Create a Space or change your search.",
+    "reconnect": "Reconnect folder",
+    "statusReady": "Ready",
+    "statusMissing": "Folder missing",
+    "statusError": "Needs attention",
+    "lastOpened": "Last opened {{time}}",
+    "neverOpened": "Not opened yet",
+    "pathLabel": "Folder"
   },
   "select": {
     "placeholder": "Select…",

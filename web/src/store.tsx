@@ -5,13 +5,14 @@ import { loadBrowserSession, revokeBrowserSession } from "./browserAuth.ts";
 import { appendCapped, type TrajItem } from "./trajBuffer.ts";
 import { messageUnreadDelta, threadUnreadDelta } from "./threadUnread";
 import { initialAuthState, type AuthState } from "./routing.ts";
+import { initialReadySpace } from "./spaces/spaceAvailability.ts";
 import { applySpaceScopeHeaders, spaceScopeHeaders } from "./spaceScope.ts";
 
 export interface Channel { id: string; name: string; description?: string; type: string; lastMessageAt?: string; archivedAt?: string | null }
 export interface Dm { id: string; name: string; type: string; description?: string; lastMessageAt?: string; peerId?: string | null; peerName?: string | null; peerDisplayName?: string | null; peerType?: string | null; peerAvatarUrl?: string | null }
 export interface Agent { id: string; name: string; displayName: string; description?: string; status: string; activity?: string; activityDetail?: string; model?: string; runtime: string; avatarUrl?: string | null; creatorType?: string }
 export type SpaceRootStatus = "ready" | "missing" | "error";
-export interface SpaceInfo { id: string; name: string; slug: string; rootPath?: string; status: SpaceRootStatus; rootError?: string | null; code?: string; avatarUrl?: string | null }
+export interface SpaceInfo { id: string; name: string; slug: string; rootPath?: string; status: SpaceRootStatus; rootError?: string | null; code?: string; avatarUrl?: string | null; isHome: boolean; lastOpenedAt?: string }
 export interface SpaceMutationResult { space?: SpaceInfo; error?: string; code?: string }
 export interface Me { id: string; name: string; email?: string | null; description?: string | null }
 export interface Att { id: string; filename: string; mimeType?: string; sizeBytes?: number }
@@ -122,10 +123,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     rootError: typeof raw.rootError === "string" ? raw.rootError : null,
     code: typeof raw.code === "string" ? raw.code : undefined,
     avatarUrl: typeof raw.avatarUrl === "string" ? raw.avatarUrl : null,
+    isHome: raw.isHome === true,
+    lastOpenedAt: typeof raw.lastOpenedAt === "string" ? raw.lastOpenedAt : undefined,
   });
   const rememberSpace = (raw: any): SpaceInfo => {
     const info = toSpaceInfo(raw);
-    const next = [...spacesRef.current.filter((s) => s.id !== info.id), info];
+    const next = [info, ...spacesRef.current.filter((s) => s.id !== info.id)];
     spacesRef.current = next; setSpaces(next);
     return info;
   };
@@ -158,6 +161,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const r = await mutateSpaceDirectory(`/api/spaces/${targetSpaceId}/relocate`, { rootPath });
     if (!r?.id) return { error: r?.error || "Space relocation failed", code: r?.code };
     return { space: rememberSpace(r) };
+  };
+  const markSpaceOpened = async (targetSpaceId: string) => {
+    const opened = await mutateSpaceDirectory(`/api/spaces/${targetSpaceId}/open`, {});
+    if (opened?.id) rememberSpace(opened);
   };
   // Client-side Space switch: re-point the active Space by slug. The activation effect (keyed on activeSpaceId) resets
   // per-Space state and reconnects the socket. No-op if the target is unknown or already active.
@@ -255,8 +262,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const spaceList = await refreshSpaces();
         if (cancelled) return;
         const urlSlug = location.pathname.match(/\/s\/([^/]+)/)?.[1];
-        const requested = spaceList.find((space) => space.slug === urlSlug);
-        const cur = (requested?.status === "ready" ? requested : undefined) || spaceList.find((space) => space.status === "ready");
+        const cur = initialReadySpace(spaceList, urlSlug);
         if (!cur) { setReady(true); return; }
         setActiveSpaceId(cur.id);
       } catch {
@@ -306,6 +312,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try { const s = await api("GET", "/api/messages/sync?since=0"); lastSeq = s?.maxSeq ?? 0; } catch { /* */ }
       if (cancelled) return;
       setReady(true);
+      void markSpaceOpened(cur.id).catch(() => { /* opening remains usable even if recency metadata fails */ });
       // The HttpOnly session Cookie rides the same-origin handshake; auth carries only Space scope.
       sock = io("/", { auth: { spaceId: spaceIdRef.current }, transports: ["websocket"], withCredentials: true });
       if (cancelled) { sock.close(); sock = null; return; } // late connect after unmount/switch → close immediately

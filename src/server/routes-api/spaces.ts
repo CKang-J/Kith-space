@@ -1,10 +1,11 @@
 import { readJson, sendErr, sendJson } from "../util.js";
-import { getHumanProfile } from "../../app-data/appDatabase.js";
+import { getHomeSpaceId, getHumanProfile } from "../../app-data/appDatabase.js";
 import {
   createLocalSpace,
   getLocalSpace,
   listLocalSpaces,
   localSpaceUnreadSummary,
+  openLocalSpace,
   relocateLocalSpace,
   SpaceServiceError,
   updateLocalSpace,
@@ -12,10 +13,14 @@ import {
 import { inspectRegisteredSpaceRoot, SpaceRootError } from "../../spaces/spaceRootService.js";
 import type { HumanCtx } from "./ctx.js";
 
-async function serializeSpace(space: ReturnType<typeof getLocalSpace>) {
+async function serializeSpace(
+  space: ReturnType<typeof getLocalSpace>,
+  homeSpaceId = getHomeSpaceId(),
+) {
   const root = inspectRegisteredSpaceRoot(space);
   return {
     id: space.id,
+    isHome: space.id === homeSpaceId,
     name: space.name,
     slug: space.slug,
     rootPath: space.rootPath,
@@ -53,7 +58,12 @@ export async function handleSpacesHumanScope(ctx: HumanCtx): Promise<boolean> {
   if (!human || human.id !== humanId) return (sendErr(res, 403, "not the local Human"), true);
 
   if (p === "/api/spaces" && method === "GET") {
-    return (sendJson(res, 200, await Promise.all(listLocalSpaces().map(serializeSpace))), true);
+    const homeSpaceId = getHomeSpaceId();
+    return (sendJson(
+      res,
+      200,
+      await Promise.all(listLocalSpaces().map((space) => serializeSpace(space, homeSpaceId))),
+    ), true);
   }
 
   if (p === "/api/spaces" && method === "POST") {
@@ -84,6 +94,15 @@ export async function handleSpacesHumanScope(ctx: HumanCtx): Promise<boolean> {
     try {
       const space = await relocateLocalSpace(relocateMatch[1]!, await readJson(req));
       return (sendJson(res, 200, await serializeSpace(space)), true);
+    } catch (error) {
+      return sendSpaceError(res, error);
+    }
+  }
+
+  const openMatch = /^\/api\/spaces\/([^/]+)\/open$/.exec(p);
+  if (openMatch && method === "POST") {
+    try {
+      return (sendJson(res, 200, await serializeSpace(openLocalSpace(openMatch[1]!))), true);
     } catch (error) {
       return sendSpaceError(res, error);
     }

@@ -16,6 +16,7 @@ test("Chat minimum follows 25 percent with a 360px floor", () => {
 
 test("modules expose content-specific minimum widths", () => {
   assert.equal(modulePaneMin("inbox"), 640);
+  assert.equal(modulePaneMin("spaces"), 640);
   assert.equal(modulePaneMin("agents"), 640);
   assert.equal(modulePaneMin("tasks"), 560);
   assert.equal(modulePaneMin("search"), 560);

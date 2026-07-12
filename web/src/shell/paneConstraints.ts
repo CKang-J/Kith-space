@@ -6,6 +6,7 @@ export const DEFAULT_MODULE_RATIO = 0.75;
 export const WORKSPACE_PANE_GAP = 10;
 
 const MODULE_PANE_MIN: Record<WorkspaceModuleId, number> = {
+  spaces: 640,
   inbox: 640,
   tasks: 560,
   agents: 640,

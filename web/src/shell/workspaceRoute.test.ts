@@ -70,6 +70,10 @@ test("URL can encode a channel and module at the same time", () => {
     activeModule: null,
     chatVisible: true,
   });
+  assert.deepEqual(workspaceLayoutFromRoute(channel, "?module=spaces"), {
+    activeModule: "spaces",
+    chatVisible: true,
+  });
 });
 
 test("module state is accepted only from the query contract", () => {

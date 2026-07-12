@@ -6,6 +6,7 @@ import {
   getSpaceRecordBySlug,
   listSpaceRecords,
   registerSpace as persistSpaceRecord,
+  touchSpace,
   updateSpaceRootPath,
   type SpaceRecord,
 } from "../app-data/appDatabase.js";
@@ -18,6 +19,7 @@ import {
   createDefaultSpaceRoot,
   initializeAttachedSpaceRoot,
   inspectAttachedSpaceRoot,
+  inspectRegisteredSpaceRoot,
   SpaceRootError,
 } from "./spaceRootService.js";
 
@@ -69,6 +71,17 @@ export function getLocalSpace(spaceId: string): SpaceRecord {
   const space = getSpaceRecord(spaceId);
   if (!space) throw new SpaceServiceError("SPACE_NOT_FOUND", `Space not found: ${spaceId}`);
   return space;
+}
+
+/** Record an explicit user open only after the registered Space root is usable. */
+export function openLocalSpace(spaceId: string): SpaceRecord {
+  const space = getLocalSpace(spaceId);
+  const root = inspectRegisteredSpaceRoot(space);
+  if (root.status !== "ready") {
+    throw new SpaceRootError(root.rootError.code, root.rootError.message);
+  }
+  touchSpace(space.id);
+  return getLocalSpace(space.id);
 }
 
 export async function createLocalSpace(input: {

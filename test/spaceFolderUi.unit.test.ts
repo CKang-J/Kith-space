@@ -13,17 +13,18 @@ test("Desktop chooses a host directory through the preload bridge while browser 
   assert.doesNotMatch(formSource, /type=["']file["']/i);
 });
 
-test("Space switcher exposes default, attach, and reconnect flows", () => {
-  assert.match(switcherSource, /setFlow\("default"\)/);
-  assert.match(switcherSource, /setFlow\("attach"\)/);
+test("Space switcher stays a quick switcher with Home management and emergency reconnect", () => {
+  assert.doesNotMatch(switcherSource, /setFlow\("default"\)/);
+  assert.doesNotMatch(switcherSource, /setFlow\("attach"\)/);
   assert.match(switcherSource, /setFlow\("relocate"\)/);
   assert.match(switcherSource, /space\.status !== "ready"/);
+  assert.match(switcherSource, /space\.isHome/);
+  assert.match(switcherSource, /module=spaces/);
   assert.match(switcherSource, /refreshSpaces\(\)/);
 });
 
 test("relocating a Space uses the dedicated identity-preserving endpoint", () => {
   assert.match(storeSource, /mutateSpaceDirectory\(`\/api\/spaces\/\$\{targetSpaceId\}\/relocate`/);
-  assert.match(storeSource, /space\.status === "ready"/);
 });
 
 test("relocation stays reachable when no Space can be activated", () => {

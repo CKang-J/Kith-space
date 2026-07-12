@@ -23,6 +23,7 @@ const KNOWN_SECTIONS = new Set<Exclude<WorkspaceRouteSection, null>>([
 ]);
 
 const MODULE_IDS = new Set<WorkspaceModuleId>([
+  "spaces",
   "inbox",
   "tasks",
   "agents",
@@ -48,7 +49,7 @@ const RESOURCE_PARAMS_BY_MODULE: Partial<Record<WorkspaceModuleId, readonly stri
 const ALL_MODULE_RESOURCE_PARAMS = Object.values(RESOURCE_PARAMS_BY_MODULE).flat();
 
 export type WorkspaceModuleTarget =
-  | { moduleId: "inbox" | "search" }
+  | { moduleId: "spaces" | "inbox" | "search" }
   | { moduleId: "tasks"; taskScope?: string | null }
   | { moduleId: "agents"; agent?: string | null; agentTab?: string | null }
   | { moduleId: "settings"; settings?: string | null };

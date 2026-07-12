@@ -1,12 +1,13 @@
 import { MessageCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { DOCK_MODULES } from "./workspaceModules.tsx";
+import { dockModulesForSpace } from "./workspaceModules.tsx";
 import type { DockModuleId, WorkspaceModuleId } from "./workspaceLayout.ts";
 
 interface WorkspaceDockProps {
   activeModule: WorkspaceModuleId | null;
   chatVisible: boolean;
   unreadCount: number;
+  isHome: boolean;
   onChatToggle: () => void;
   onModuleSelect: (moduleId: DockModuleId) => void;
 }
@@ -15,6 +16,7 @@ export function WorkspaceDock({
   activeModule,
   chatVisible,
   unreadCount,
+  isHome,
   onChatToggle,
   onModuleSelect,
 }: WorkspaceDockProps) {
@@ -33,7 +35,7 @@ export function WorkspaceDock({
       >
         <MessageCircle size={18} />
       </button>
-      {DOCK_MODULES.map((module) => {
+      {dockModulesForSpace(isHome).map((module) => {
         const active = activeModule === module.id;
         const ModuleIcon = module.Icon;
         return (

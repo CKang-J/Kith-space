@@ -21,6 +21,7 @@ import {
   deriveWorkspaceMode,
   selectWorkspaceModule,
   toggleChat,
+  workspaceLayoutForSpace,
   type DockModuleId,
   type WorkspaceLayoutState,
   type WorkspaceModuleId,
@@ -30,12 +31,14 @@ import { parseWorkspaceRoute, workspaceLayoutFromRoute, workspaceSearchForLayout
 export function WorkspaceFrame() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { channels, dms, slug, unread } = useStore();
+  const { channels, dms, slug, spaceId, spaces, unread } = useStore();
   const { moduleRatio } = useShellStore();
   const workspaceRef = useRef<HTMLDivElement>(null);
   const [workspaceWidth, setWorkspaceWidth] = useState(() => typeof window === "undefined" ? 1280 : window.innerWidth);
   const route = parseWorkspaceRoute(location.pathname);
-  const layoutState: WorkspaceLayoutState = workspaceLayoutFromRoute(route, location.search);
+  const requestedLayoutState: WorkspaceLayoutState = workspaceLayoutFromRoute(route, location.search);
+  const isHome = spaces.some((space) => space.id === spaceId && space.isHome);
+  const layoutState = workspaceLayoutForSpace(requestedLayoutState, isHome);
   const { activeModule, chatVisible } = layoutState;
   const routeChannelId = route.isChannelRoute ? route.resourceId : null;
   const previousActiveModuleRef = useRef<WorkspaceModuleId | null>(activeModule);
@@ -61,6 +64,11 @@ export function WorkspaceFrame() {
       shellActions.rememberChatLocation(`${location.pathname}${conversationSearch}`, routeChannelId ?? null);
     }
   }, [location.pathname, location.search, route.isChannelRoute, routeChannelId]);
+
+  useEffect(() => {
+    if (requestedLayoutState.activeModule !== "spaces" || isHome) return;
+    navigate(`${location.pathname}${workspaceSearchForLayout(location.search, INITIAL_WORKSPACE_LAYOUT)}`, { replace: true });
+  }, [isHome, location.pathname, location.search, navigate, requestedLayoutState.activeModule]);
 
   useEffect(() => {
     const previousModule = previousActiveModuleRef.current;
@@ -114,6 +122,7 @@ export function WorkspaceFrame() {
       activeModule={activeModule}
       chatVisible={chatVisible}
       unreadCount={unreadCount}
+      isHome={isHome}
       onChatToggle={toggleChatPane}
       onModuleSelect={(moduleId: DockModuleId) => selectModule(moduleId)}
     />

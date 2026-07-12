@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
+import { SpacesModule } from "../spaces/SpacesModule.tsx";
 import { Agents } from "../views/Members.tsx";
 import { Inbox, Search, Settings, Tasks } from "../views/misc.tsx";
 import { getWorkspaceModule } from "./workspaceModules.tsx";
@@ -16,6 +17,7 @@ interface ModuleWorkspaceProps {
 function ModuleContent({ moduleId }: { moduleId: WorkspaceModuleId }) {
   const location = useLocation();
   const resourceId = workspaceModuleResourceFromSearch(location.search, moduleId);
+  if (moduleId === "spaces") return <SpacesModule />;
   if (moduleId === "tasks") {
     return <Tasks channelIdOverride={resourceId && resourceId !== "space" ? resourceId : null} />;
   }
