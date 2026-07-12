@@ -46,6 +46,9 @@ test("CLI and QA seed no longer carry Machine credentials or records", () => {
   const cli = read("../src/cli/index.ts");
   const qaSeed = read("../src/db/qa-seed.ts");
   assert.match(cli, /const KEY = process\.env\.KITH_SPACE_AGENT_TOKEN;/);
+  assert.match(cli, /\.option\("--introduction"/);
+  assert.match(cli, /opts\.introduction && INTRODUCTION_TOKEN \? \{ "x-kith-introduction-token": INTRODUCTION_TOKEN \} : undefined/);
+  assert.doesNotMatch(cli, /function headers\(\)[\s\S]*x-kith-introduction-token/);
   assert.doesNotMatch(cli, /KITH_SPACE_MACHINE_KEY|KITH_SPACE_API_KEY|poc-secret-key/);
   assert.doesNotMatch(qaSeed, /schema\.machines|machineId|QA_KEY/);
 });

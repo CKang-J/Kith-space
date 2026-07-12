@@ -29,7 +29,8 @@ const spaceConnections = new Map<string, SpaceConnection>();
 
 const migrationsFolder = process.env.KITH_SPACE_MIGRATIONS_DIR
   ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../drizzle");
-const SPACE_DATABASE_SCHEMA_VERSION = 2;
+const SPACE_DATABASE_SCHEMA_VERSION = 3;
+const MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION = 2;
 
 export class LegacySpaceDatabaseError extends Error {
   constructor(public readonly dbPath: string, tables: string[]) {
@@ -51,7 +52,10 @@ function existingProductTables(sqlite: Database.Database): string[] {
 function assertCompatibleBaseline(sqlite: Database.Database, dbPath: string): void {
   const version = Number(sqlite.pragma("user_version", { simple: true }));
   const tables = existingProductTables(sqlite);
-  if (version === SPACE_DATABASE_SCHEMA_VERSION || tables.length === 0) return;
+  if (
+    tables.length === 0
+    || (version >= MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION && version <= SPACE_DATABASE_SCHEMA_VERSION)
+  ) return;
   throw new LegacySpaceDatabaseError(dbPath, tables);
 }
 

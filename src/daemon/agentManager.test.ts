@@ -19,12 +19,14 @@ const baseConfig = (agentId: string, workspaceRoot: string): AgentConfig => ({
   agentToken: "test-token",
 });
 
-test("deliver received during async start is flushed to runtime session", async () => {
+test("deliver received during async start becomes the single wake turn", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "kith-space-agent-manager-"));
   const delivered: string[] = [];
+  let initialPrompt = "";
   const fakeRuntime: Runtime = {
     name: "fake",
-    start(_opts: StartOpts, cb: RuntimeCallbacks) {
+    start(opts: StartOpts, cb: RuntimeCallbacks) {
+      initialPrompt = opts.initialPrompt;
       cb.onSession("fake-session");
       return { deliver: (text) => delivered.push(text), stop: () => {} };
     },
@@ -42,9 +44,83 @@ test("deliver received during async start is flushed to runtime session", async 
     await start;
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    assert.equal(delivered.length, 1);
-    assert.match(delivered[0]!, /User/);
-    assert.match(delivered[0]!, /dm:Agent/);
+    assert.match(initialPrompt, /new Kith-space delivery/);
+    assert.doesNotMatch(initialPrompt, /one-time introduction/);
+    assert.equal(delivered.length, 0);
+    mgr.stopAll();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("explicit wake start handles the delivery instead of introducing the agent", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-agent-manager-"));
+  let initialPrompt = "";
+  let introductionToken: string | undefined;
+  const fakeRuntime: Runtime = {
+    name: "fake",
+    start(opts: StartOpts) {
+      initialPrompt = opts.initialPrompt;
+      introductionToken = opts.env.KITH_SPACE_INTRODUCTION_TOKEN;
+      return { deliver: () => {}, stop: () => {} };
+    },
+  };
+
+  try {
+    const mgr = new AgentManager(() => {}, {
+      dataDir: root,
+      binDir: root,
+      runtimeResolver: () => fakeRuntime,
+    });
+    await mgr.start("agent-wake", { ...baseConfig("agent-wake", path.join(root, "workspace")), introductionToken: "must-not-leak" }, "wake");
+
+    assert.match(initialPrompt, /new Kith-space delivery/);
+    assert.doesNotMatch(initialPrompt, /one-time introduction/);
+    assert.equal(introductionToken, undefined);
+    mgr.stopAll();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("new agent stays introduction-pending until the Human DM is persisted", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-agent-manager-"));
+  const prompts: string[] = [];
+  const introductionTokens: Array<string | undefined> = [];
+  let callbacks: RuntimeCallbacks | undefined;
+  const fakeRuntime: Runtime = {
+    name: "fake",
+    start(opts: StartOpts, cb: RuntimeCallbacks) {
+      prompts.push(opts.initialPrompt);
+      introductionTokens.push(opts.env.KITH_SPACE_INTRODUCTION_TOKEN);
+      callbacks = cb;
+      return { deliver: () => {}, stop: () => {} };
+    },
+  };
+
+  try {
+    const mgr = new AgentManager(() => {}, {
+      dataDir: root,
+      binDir: root,
+      runtimeResolver: () => fakeRuntime,
+    });
+    const config = { ...baseConfig("agent-intro", path.join(root, "workspace")), introductionToken: "intro-token" };
+    await mgr.start("agent-intro", config, "create");
+
+    assert.match(prompts[0]!, /one-time introduction/);
+    assert.match(prompts[0]!, /dm:@you/);
+    assert.equal(introductionTokens[0], "intro-token");
+    callbacks!.onActivity("online", "");
+    mgr.stop("agent-intro");
+
+    await mgr.start("agent-intro", config, "manual");
+    assert.match(prompts[1]!, /one-time introduction/);
+    mgr.stop("agent-intro");
+
+    await mgr.start("agent-intro", { ...config, introduced: true }, "manual");
+    assert.match(prompts[2]!, /If the inbox is empty, remain silent/);
+    assert.doesNotMatch(prompts[2]!, /one-time introduction/);
+    assert.equal(introductionTokens[2], undefined);
     mgr.stopAll();
   } finally {
     rmSync(root, { recursive: true, force: true });

@@ -26,6 +26,7 @@ export const agents = sqliteTable("agents", {
   description: text("description"),
   status: text("status").default("inactive").notNull(),
   activity: text("activity").default("offline").notNull(),
+  introducedAt: timestamp("introduced_at"),
   sessionId: text("session_id"),
   model: text("model"),
   runtime: text("runtime").default("claude").notNull(),

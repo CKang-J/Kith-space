@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildSystemPrompt } from "./prompt.js";
+import { buildSystemPrompt, CREATION_NUDGE } from "./prompt.js";
 
 test("system prompt teaches the plan-first confirmation protocol and orchestration return mention", () => {
   const prompt = buildSystemPrompt({
@@ -34,6 +34,31 @@ test("system prompt teaches the plan-first confirmation protocol and orchestrati
   assert.match(prompt, /one durable topic per file/);
   assert.match(prompt, /update that layer's `MEMORY\.md` index in the same operation/);
   assert.match(prompt, /no memory read\/write MCP tool/);
+});
+
+test("system prompt distinguishes creation, quiet startup, and delivery wake turns", () => {
+  const prompt = buildSystemPrompt({
+    name: "helper",
+    displayName: "Helper",
+    agentId: "helper-id",
+    spaceId: "space-id",
+    hostname: "test-host",
+    os: "linux x64",
+    workspace: "/agents/helper",
+    memory: {
+      user: { root: "/memory/user", indexFile: "/memory/user/MEMORY.md", notesDir: "/memory/user/notes" },
+      space: { root: "/memory/space", indexFile: "/memory/space/MEMORY.md", notesDir: "/memory/space/notes" },
+      agent: { root: "/memory/agent", indexFile: "/memory/agent/MEMORY.md", notesDir: "/memory/agent/notes" },
+    },
+  });
+
+  assert.match(prompt, /Creation turn/);
+  assert.match(prompt, /one concise introduction to `dm:@you`/);
+  assert.match(CREATION_NUDGE, /message send --introduction/);
+  assert.match(prompt, /Start or resume turn/);
+  assert.match(prompt, /If nothing is waiting, stay silent/);
+  assert.match(prompt, /Delivery wake turn/);
+  assert.match(prompt, /must send a reply in each original target/);
 });
 
 test("Windows system prompt uses PowerShell-native commands instead of POSIX shell syntax", () => {

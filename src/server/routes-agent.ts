@@ -3,10 +3,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { and, eq, ne, gt, lt, inArray, asc, desc, like, isNull, isNotNull } from "drizzle-orm";
 import { resolveRoleDescription } from "../agents/roleTemplates.js";
 import { dbForSpace, schema } from "../db/index.js";
-import { sendJson, sendErr, readJson, bearer, agentIdHeader } from "./util.js";
+import { sendJson, sendErr, readJson, bearer, agentIdHeader, agentIntroductionTokenHeader } from "./util.js";
 import { resolveAgent } from "./auth.js";
-import { createMessage, resolveTarget, channelMembers, addChannelMembers, addReaction, removeReaction, getOrCreateThread, unclaimTask, claimTask, setTaskStatus, convertMessageToTask, TASK_STATUSES, resolveMessageId, canAgentReadChannel, descTooLong, DESC_TOO_LONG, assignTask, resolveIdOrPrefix } from "./core.js";
+import { AgentIntroductionTokenRejectedError, createMessage, resolveTarget, channelMembers, addChannelMembers, addReaction, removeReaction, getOrCreateThread, unclaimTask, claimTask, setTaskStatus, convertMessageToTask, TASK_STATUSES, resolveMessageId, canAgentReadChannel, descTooLong, DESC_TOO_LONG, assignTask, resolveIdOrPrefix } from "./core.js";
 import { agentHasScope } from "./scopes.js";
+import { agentIntroductionTokenStatus } from "./agentIntroduction.js";
 import { parseUpload } from "./attachments.js";
 import { readObject } from "./storage.js";
 import { normalizeTaskExecutionMode } from "./dispatchGuard.js";
@@ -137,8 +138,22 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     const draftKey = `${agent.id}:${tgt.channelId}`;
     const post = async (content: string, attachmentIds: string[]) => {
       drafts.delete(draftKey);
-      const msg = await createMessage({ spaceId, channelId: tgt.channelId, senderType: "agent", senderId: agent.id, senderName: agent.name, content, threadId: tgt.threadId, attachmentIds: attachmentIds.length ? attachmentIds : undefined });
-      return (sendJson(res, 200, { ok: true, id: msg.id, seq: msg.seq, target: b.target }), true);
+      const humanDm = tgt.threadId == null
+        && (await db.select({ dmAgentId: schema.humanChannelStates.dmAgentId }).from(schema.humanChannelStates)
+          .where(and(eq(schema.humanChannelStates.channelId, tgt.channelId), eq(schema.humanChannelStates.dmAgentId, agent.id))).limit(1)).length > 0;
+      const introductionToken = agentIntroductionTokenHeader(req);
+      const introductionStatus = introductionToken ? agentIntroductionTokenStatus(spaceId, agent.id, introductionToken) : null;
+      if (introductionToken && (introductionStatus !== "active" || !humanDm)) {
+        return (sendErr(res, 409, "introduction turn is no longer active; restart the agent to retry"), true);
+      }
+      const introductionTurn = humanDm && introductionStatus === "active";
+      try {
+        const msg = await createMessage({ spaceId, channelId: tgt.channelId, senderType: "agent", senderId: agent.id, senderName: agent.name, content, threadId: tgt.threadId, attachmentIds: attachmentIds.length ? attachmentIds : undefined, introductionAgentId: introductionTurn ? agent.id : undefined, introductionToken: introductionTurn ? introductionToken! : undefined });
+        return (sendJson(res, 200, { ok: true, id: msg.id, seq: msg.seq, target: b.target }), true);
+      } catch (error) {
+        if (error instanceof AgentIntroductionTokenRejectedError) return (sendErr(res, 409, "introduction turn is no longer active; restart the agent to retry"), true);
+        throw error;
+      }
     };
     // --send-draft: submit existing draft as-is, bypassing freshness check
     if (b.sendDraft) {

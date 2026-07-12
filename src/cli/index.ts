@@ -14,18 +14,24 @@ const BASE = process.env.KITH_SPACE_SERVER_URL ?? "http://127.0.0.1:7777";
 const KEY = process.env.KITH_SPACE_AGENT_TOKEN;
 const AGENT = process.env.KITH_SPACE_AGENT_ID ?? "";
 const TURN_FILE = process.env.KITH_SPACE_TURN_FILE ?? "";
+const INTRODUCTION_TOKEN = process.env.KITH_SPACE_INTRODUCTION_TOKEN ?? "";
 
-function headers() {
+function headers(extra: Record<string, string> = {}) {
   if (!KEY) {
     console.error("Error: KITH_SPACE_AGENT_TOKEN is required");
     process.exit(1);
   }
-  return { authorization: `Bearer ${KEY}`, "x-agent-id": AGENT, "content-type": "application/json" };
+  return {
+    authorization: `Bearer ${KEY}`,
+    "x-agent-id": AGENT,
+    "content-type": "application/json",
+    ...extra,
+  };
 }
-async function api(method: string, path: string, body?: unknown): Promise<any> {
+async function api(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<any> {
   const t0 = Date.now();
   try {
-    const res = await fetch(BASE + path, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined });
+    const res = await fetch(BASE + path, { method, headers: headers(extraHeaders), body: body ? JSON.stringify(body) : undefined });
     const text = await res.text();
     let data: any = {}; try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
     log.debug("api", { method, path, status: res.status, ms: Date.now() - t0 });
@@ -70,12 +76,13 @@ message.command("check").description("non-blocking check for new messages").acti
   for (const m of d.messages) console.log(m.text);
   console.log("No more new messages."); // termination sentinel
 });
-message.command("send").description("send a message (body read from stdin); if new messages arrived since last read the message is freshness-held as a draft — revise it or use --send-draft to submit as-is").requiredOption("--target <target>", "#channel / dm:@name / #channel:shortid / thread:shortid").option("--attach <ids>", "attachment ids, comma-separated").option("--send-draft", "submit the held draft as-is, bypassing freshness check").action(async (opts) => {
+message.command("send").description("send a message (body read from stdin); if new messages arrived since last read the message is freshness-held as a draft — revise it or use --send-draft to submit as-is").requiredOption("--target <target>", "#channel / dm:@name / #channel:shortid / thread:shortid").option("--attach <ids>", "attachment ids, comma-separated").option("--send-draft", "submit the held draft as-is, bypassing freshness check").option("--introduction", "identify the one-time creation introduction").action(async (opts) => {
   const sendDraft = !!opts.sendDraft;
   const content = sendDraft ? "" : (await readUtf8Stdin()).trim();
   const attachmentIds = opts.attach ? String(opts.attach).split(",").map((s: string) => s.trim()).filter(Boolean) : [];
   if (!sendDraft && !content && !attachmentIds.length) { console.error("Error: empty content"); console.error("Next action: pipe the body as UTF-8 stdin using host-native syntax, or use --attach"); process.exit(1); }
-  const d = await api("POST", "/agent-api/message/send", { target: opts.target, content, attachmentIds, sendDraft });
+  const d = await api("POST", "/agent-api/message/send", { target: opts.target, content, attachmentIds, sendDraft },
+    opts.introduction && INTRODUCTION_TOKEN ? { "x-kith-introduction-token": INTRODUCTION_TOKEN } : undefined);
   if (d.held) { await recordTurnEvent({ type: "held", target: opts.target }); return console.log(d.text); } // freshness-hold: prints bounded context + two options, letting the agent revise or use --send-draft
   await recordTurnEvent({ type: "send", target: opts.target, id: d.id, seq: d.seq });
   console.log(`Sent to ${opts.target} (msg ${String(d.id).slice(0, 8)}, seq ${d.seq})`);

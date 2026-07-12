@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
@@ -49,6 +49,7 @@ test("fresh Space database uses the Personal AgentOS baseline and seeds its Spac
       assert.ok(!names.includes(removed), `legacy table remains: ${removed}`);
 
     assert.deepEqual(columns(sqlite, "spaces"), ["id", "name", "slug", "avatar_url", "created_at"]);
+    assert.ok(columns(sqlite, "agents").includes("introduced_at"), "agents must persist successful Human introduction");
     for (const table of names) {
       const fields = columns(sqlite, table);
       assert.ok(!fields.includes("server_id"), `${table} still has server_id`);
@@ -65,7 +66,39 @@ test("fresh Space database uses the Personal AgentOS baseline and seeds its Spac
       type: "channel",
       space_id: spaceId,
     }]);
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 2);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 3);
+  } finally {
+    sqlite.close();
+    unregisterSpace(spaceId);
+  }
+});
+
+test("schema version 2 Space database migrates to version 3 without being rejected as legacy", () => {
+  const spaceId = randomUUID();
+  const rootPath = path.join(kithSpaceHome(), "workspace-v2-migration-test", spaceId);
+  const dbPath = workspaceDbFile(rootPath);
+  mkdirSync(path.dirname(dbPath), { recursive: true });
+  const version2 = new Database(dbPath);
+  version2.exec(readFileSync(new URL("../drizzle/0000_personal_agent_os.sql", import.meta.url), "utf8"));
+  version2.exec(`
+    CREATE TABLE __drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric);
+    INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('version-2-baseline', 1783764218492);
+    INSERT INTO spaces (id, name, slug, created_at) VALUES ('${spaceId}', 'Migrated', 'migrated-${spaceId}', 1700000000000);
+    INSERT INTO agents (id, space_id, name, display_name, created_at) VALUES ('legacy-agent', '${spaceId}', 'legacy', 'Legacy', 1700000000123);
+  `);
+  version2.close();
+  registerSpace({ id: spaceId, name: "Migrated", slug: `migrated-${spaceId}`, rootPath });
+
+  dbForSpace(spaceId);
+  closeSpaceDb(spaceId);
+
+  const sqlite = new Database(dbPath);
+  try {
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 3);
+    assert.ok(columns(sqlite, "agents").includes("introduced_at"));
+    assert.equal(sqlite.prepare("SELECT introduced_at FROM agents WHERE id = 'legacy-agent'").pluck().get(), 1700000000123);
+    sqlite.prepare("INSERT INTO agents (id, space_id, name, display_name) VALUES ('new-agent', ?, 'new', 'New')").run(spaceId);
+    assert.equal(sqlite.prepare("SELECT introduced_at FROM agents WHERE id = 'new-agent'").pluck().get(), null);
   } finally {
     sqlite.close();
     unregisterSpace(spaceId);

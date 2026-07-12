@@ -3,8 +3,8 @@
 // symmetric counterpart to the human side — the browser's socket reconnect path (store.tsx) re-syncs missed
 // messages, but agents had no equivalent, so an @ sent while the worker was offline sat unread forever.
 //
-// "Backfilling" missed messages is NOT message replay: a woken agent's STARTUP_NUDGE / RESUME_NUDGE
-// (daemon/prompt.ts) drives it to run `kith-space message check`, which pulls every unread (seq > lastReadSeq)
+// "Backfilling" missed messages is NOT message replay: the explicit wake reason selects WAKE_NUDGE
+// (daemon/prompt.ts), which drives `kith-space message check` and pulls every unread (seq > lastReadSeq)
 // including the ones missed while offline. So catch-up only needs to wake the right agents — the agent
 // pulls the rest itself.
 //
@@ -13,6 +13,7 @@
 // through agentWakePolicy — see docs/superpowers/specs/2026-06-25-agent-reachability-design.md §5.4.
 import { and, eq, gt, ne, or, isNull, desc } from "drizzle-orm";
 import { dbForSpace, listSpaces, schema } from "../db/index.js";
+import { setAgentIntroductionTurn } from "./agentIntroduction.js";
 import { agentHasScope } from "./scopes.js";
 import {
   isWorkerLeaseCurrent,
@@ -186,6 +187,7 @@ export async function catchUpAgentsOnWorker(runningIds: string[], lease: WorkerL
         continue;
       }
       let sent = false;
+      setAgentIntroductionTurn(spaceId, a.id, null);
       if (!runningIds.includes(a.id)) {
         // Hard offline: start with resume; the startup nudge pulls missed messages from the inbox.
         const cfg = await agentConfig(spaceId, a.id);
@@ -193,7 +195,7 @@ export async function catchUpAgentsOnWorker(runningIds: string[], lease: WorkerL
           await state.releaseWake(reservation.reservationId);
           return;
         }
-        sent = !!cfg && sendToWorkerForLease(lease, { type: "agent:start", agentId: a.id, config: cfg });
+        sent = !!cfg && sendToWorkerForLease(lease, { type: "agent:start", agentId: a.id, config: cfg, reason: "wake" });
       } else {
         // Soft offline: the process survived, so inject a body-free notice that drives `message check`.
         sent = sendToWorkerForLease(lease, {

@@ -8,7 +8,7 @@ const core = fs.readFileSync(new URL("../src/server/core.ts", import.meta.url), 
 test("the installation-local Worker cannot be pointed at a remote Core Service", () => {
   assert.match(workerEntry, /const serverUrl = `http:\/\/127\.0\.0\.1:\$\{process\.env\.PORT \?\? 7777\}`/);
   assert.doesNotMatch(workerEntry, /--server-url/);
-  assert.match(workerEntry, /case "agent:start": void mgr\.start\(msg\.agentId, msg\.config\);/);
+  assert.match(workerEntry, /case "agent:start": void mgr\.start\(msg\.agentId, msg\.config, msg\.reason \?\? "manual"\);/);
   assert.match(core, /import \{ coreLoopbackUrl \} from "\.\/localEndpoint\.js"/);
   assert.match(core, /serverUrl: coreLoopbackUrl\(\)/);
 });

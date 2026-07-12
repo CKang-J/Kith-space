@@ -85,6 +85,8 @@ canonical 传输契约是 `/api/spaces`、`x-space-id`、Socket handshake `space
 
 继续复用窄 `Runtime.start(opts, callbacks): RuntimeSession` 适配契约（当前定义在 `src/daemon/runtime.ts`）。v1 只稳定 Claude Code、Codex、opencode；其他 adapter 隐藏或标 experimental。Runtime 契约 v2 统一 usage、完成、取消和 MCP bootstrap，但不把工具循环搬入 Kith-space。
 
+Agent 首轮驱动明确分为三种原因，Core 通过 `src/local-runtime/agentStart.ts:1` 的 `create | manual | wake` 随 `agent:start` 传给 Worker，Worker 再由 `src/daemon/agentLifecycle.ts:9` 选择提示：新建 agent 执行一次 `dm:@you` 自我介绍；已有 agent 手动启动/恢复只检查一次收件箱，无消息必须静默；真实频道、DM、任务或 reconnect backlog 唤醒时处理持久化消息，并在每个原目标回复。启动准备期间收到的投递已经在数据库中，因此合并进同一个 wake turn，不再追加第二次 inbox notice。Core 为未介绍 agent 的候选创建/重试 turn 生成一次性 token；Worker 只有实际选择 introduction prompt 时才把它注入 runtime 环境（`src/daemon/agentManager.ts:207`），因此对已运行 agent 被忽略的 start 不会授权其普通回复。CLI 只有创建提示要求的 `message send --introduction` 才附带 token，普通 send 不带 token（`src/cli/index.ts:79`-`:85`）；服务端在全部异步 Human-Agent DM 校验后、数据库事务前同步消费匹配 token。真实 wake 会撤销 active token，撤销后迟到的 introduction 请求返回 409，completed token 的重复 introduction 同样返回 409，而同一进程不带 token 的普通 wake 回复不受影响（`src/server/agentIntroduction.ts:15`-`:30`）。随后介绍消息与 `agents.introduced_at` 在同一数据库事务提交（`src/server/core.ts:477`-`:507`）。停止、reset 或删除会清除该 agent 的全部进程 token；普通 reset 保留持久介绍状态，完整 wipe 清除它并重新进入首次介绍。
+
 Runtime 命令发现与启动统一经过 `src/daemon/runtimeProcess.ts:5`。Worker ready 不再调用 Unix 专用的 `command -v`，而是通过 `runtimeCommandAvailable` 使用与 adapter 相同的 `cross-spawn` 边界执行轻量 `--version` 探测；全部 adapter 同样通过该边界启动 CLI。这样 Windows 上的原生 `.exe` 与 npm `.cmd` shim 具有一致语义，避免 Worker 错报 `runtimes=[]`，也避免 Codex/opencode 在检测通过后仍因原生 `child_process.spawn` 的 `EPERM`/`ENOENT` 启动失败。该边界同时对 runtime 的 stdout/stderr 启用 Node 有状态 UTF-8 解码，禁止 adapter 对任意 Buffer 分块分别 `toString()`；否则一个跨块汉字会在 JSON/JSONL 解析前不可逆地变成替换字符。Core 仍以 Worker ready snapshot 为权威，在 `src/server/core.ts` 的启动 guard 中拒绝真正不可用的 runtime。
 
 Agent CLI wrapper 由 `src/daemon/kithSpaceBin.ts:22` 按宿主平台生成：Windows 开发态和打包态都只保留 `~/.kith-space/bin/kith-space.cmd`，启动时清除旧的无扩展名 POSIX wrapper；Linux/macOS 只生成带 `#!/bin/sh` 且可执行的 `kith-space`。`src/daemon/prompt.ts:17` 根据 `win32` 与 POSIX 环境注入宿主命令约定：Windows 明确调用 `.cmd`、禁止照抄 shebang/bash/chmod，优先给出 PowerShell 写法；若 runtime 明确提供 POSIX shell 才允许使用该 shell 的语法。在 Windows PowerShell 5.1 向原生命令管道发送非 ASCII 文本前必须把 `$OutputEncoding` 切到 UTF-8。CLI 的消息、线程与 action STDIN 共用 `src/cli/readStdin.ts:5` 的有状态 UTF-8 读取边界。因此中文正确性由 wrapper、输入流和输出流共同保证，而不是依赖“请用中文回复”的提示词。
@@ -130,7 +132,7 @@ app.db 不保存 Space 消息、任务或 agent 业务数据。
 
 ### 5.2 workspace.db
 
-A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Drizzle 内部的 `__drizzle_migrations`，fresh 数据库共有 20 张物理表，`PRAGMA user_version=2`（`src/db/index.ts:32`、`:124`-`:127`）。它包含 `spaces`、agent、频道、消息/任务、dispatch、附件/提醒/知识/活动，以及分离后的 Human 状态表；所有 Space 外键统一为 `space_id`。`users/server_members/machines/join_links`、`agents.machine_id` 和旧 `servers/server_id` 已删除。
+A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Drizzle 内部的 `__drizzle_migrations`，fresh 数据库共有 20 张物理表；当前 `PRAGMA user_version=3`，v2 数据库会自动增加 `agents.introduced_at` 并把已有 agent 回填为已介绍（`src/db/index.ts:32`-`:59`、`drizzle/0001_agent_introduction.sql:1`）。它包含 `spaces`、agent、频道、消息/任务、dispatch、附件/提醒/知识/活动，以及分离后的 Human 状态表；所有 Space 外键统一为 `space_id`。`users/server_members/machines/join_links`、`agents.machine_id` 和旧 `servers/server_id` 已删除。
 
 每个 Space 的 `<space>/.kith/workspace.db` 保存：
 

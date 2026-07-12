@@ -23,6 +23,7 @@ export const spaceRoom = (spaceId: string) => `space:${spaceId}`;
 
 export const spaceIdHeader = (req: IncomingMessage): string | null => header(req, "x-space-id")?.trim() || null;
 export const agentIdHeader = (req: IncomingMessage) => header(req, "x-agent-id");
+export const agentIntroductionTokenHeader = (req: IncomingMessage) => header(req, "x-kith-introduction-token")?.trim() || null;
 export function bearer(req: IncomingMessage): string | null {
   const v = header(req, "authorization");
   if (!v) return null;

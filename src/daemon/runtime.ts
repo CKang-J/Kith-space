@@ -24,7 +24,7 @@ export interface StartOpts {
   sessionId?: string | null;       // for session resume
   systemPrompt: string;            // injected system prompt (claude=--append-system-prompt; codex=developerInstructions)
   env: NodeJS.ProcessEnv;          // includes PATH injection for kith-space + KITH_SPACE_* env vars
-  initialPrompt: string;           // first drive message (new session="Start."; resume=RESUME_NUDGE)
+  initialPrompt: string;           // lifecycle drive message selected for create, manual start, or delivery wake
 }
 
 export interface RuntimeSession {

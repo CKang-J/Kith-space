@@ -4,10 +4,12 @@ import { and, eq, ne, desc, gt, inArray, like, or, isNull, isNotNull, sql } from
 import { dbForSpace, schema, spaceRecord } from "../db/index.js";
 import { nextSeq, publish } from "./realtime.js";
 import { isWorkerConnected, sendToWorker, workerRuntimes } from "../local-runtime/workerHub.js";
+import type { AgentStartReason } from "../local-runtime/agentStart.js";
 import { agentHasScope } from "./scopes.js";
 import { newKey, hashToken } from "./auth.js";
 import { createLogger } from "../log.js";
 import { coreLoopbackUrl } from "./localEndpoint.js";
+import { clearAgentIntroductionTurns, completeAgentIntroductionTurn, consumeAgentIntroductionTurn, restoreAgentIntroductionTurn, setAgentIntroductionTurn } from "./agentIntroduction.js";
 import { getHumanIdentity, humanIdentityForHandle, humanIdentityForId } from "../human/humanIdentity.js";
 import { followHumanThread, humanChannelState, reactivateFollowedHumanThread, trackHumanDm } from "../human/humanChannelState.js";
 import { canHumanReadChannel } from "./channelAccess.js";
@@ -17,6 +19,20 @@ import { assignTaskRecord, claimTaskRecord, convertMessageRecord, createTaskReco
 import { TASK_STATUSES, TaskOperationError, isTaskStatus, type TaskStatus } from "./tasks/taskTypes.js";
 
 export { TASK_STATUSES } from "./tasks/taskTypes.js";
+
+export class AgentIntroductionAlreadyCompletedError extends Error {
+  constructor(public readonly agentId: string) {
+    super(`agent introduction already completed: ${agentId}`);
+    this.name = "AgentIntroductionAlreadyCompletedError";
+  }
+}
+
+export class AgentIntroductionTokenRejectedError extends Error {
+  constructor(public readonly agentId: string) {
+    super(`agent introduction token is no longer active: ${agentId}`);
+    this.name = "AgentIntroductionTokenRejectedError";
+  }
+}
 
 const log = createLogger("server:core");
 // Per-agent raw token cache (server process memory; DB stores hash only). Injected into agent process at spawn; resolveAgent looks up by hash. See slice10.
@@ -417,7 +433,7 @@ export async function agentConfig(spaceId: string, agentId: string) {
   }
   return {
     name: a.name, displayName: a.displayName, description: a.description,
-    model: a.model, runtime: a.runtime, runtimeConfig: a.runtimeConfig, sessionId: a.sessionId ?? undefined,
+    model: a.model, runtime: a.runtime, runtimeConfig: a.runtimeConfig, sessionId: a.sessionId ?? undefined, introduced: a.introducedAt != null,
     serverUrl: coreLoopbackUrl(), spaceId: a.spaceId, workspaceRoot: space.rootPath, agentId: a.id, agentToken: token,
   };
 }
@@ -428,6 +444,8 @@ export async function createMessage(opts: {
   content: string; messageType?: string; threadId?: string | null; asTask?: boolean; attachmentIds?: string[];
   taskExecutionMode?: TaskExecutionMode;
   taskParentId?: string | null;
+  introductionAgentId?: string;
+  introductionToken?: string;
   actionMetadata?: unknown; // action-card and other platform action payloads (slice09)
 }) {
   const db = dbForSpace(opts.spaceId);
@@ -464,7 +482,29 @@ export async function createMessage(opts: {
         message: messageValues,
         parentTaskId: opts.taskParentId,
       })
-    : (await db.insert(schema.messages).values(messageValues).returning())[0]!;
+    : opts.introductionAgentId && opts.introductionToken
+      ? (() => {
+          if (!consumeAgentIntroductionTurn(opts.spaceId, opts.introductionAgentId!, opts.introductionToken!)) {
+            throw new AgentIntroductionTokenRejectedError(opts.introductionAgentId!);
+          }
+          try {
+            const introduction = db.transaction((tx) => {
+              const claimed = tx.update(schema.agents).set({ introducedAt: new Date() }).where(and(
+                eq(schema.agents.id, opts.introductionAgentId!),
+                eq(schema.agents.spaceId, opts.spaceId),
+                isNull(schema.agents.introducedAt),
+              )).returning({ id: schema.agents.id }).get();
+              if (!claimed) throw new AgentIntroductionAlreadyCompletedError(opts.introductionAgentId!);
+              return tx.insert(schema.messages).values(messageValues).returning().get();
+            });
+            completeAgentIntroductionTurn(opts.spaceId, opts.introductionAgentId!, opts.introductionToken!);
+            return introduction;
+          } catch (error) {
+            restoreAgentIntroductionTurn(opts.spaceId, opts.introductionAgentId!, opts.introductionToken!);
+            throw error;
+          }
+        })()
+      : (await db.insert(schema.messages).values(messageValues).returning())[0]!;
   await dispatchState.ensureChain({ ...dispatch, rootMessageId: messageId, channelId: opts.channelId });
 
   // auto-follow: reply to thread → sender auto-joins; replying after done clears done and brings thread back to inbox
@@ -545,7 +585,7 @@ export async function createMessage(opts: {
     }
     const replyStreamId = agentReplyStreamId(msg!.id, mem.id);
     await publish(opts.spaceId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, triggerMessageId: msg.id, op: "start" });
-    const startSent = sendAgentStart(target, mem.id);
+    const startSent = sendAgentStart(target, mem.id, "wake");
     const deliverSent = startSent && sendAgentDeliver(target, { agentId: mem.id, seq, from: opts.senderName, target: opts.channelId, targetName, msgShort, isTask: !!opts.asTask, message: { content: opts.content }, mentioned, streamId: replyStreamId });
     if (!deliverSent) {
       await dispatchState.releaseWake(reservation.reservationId);
@@ -919,7 +959,7 @@ export async function assignTask(
   if (!reservation) return upd;
   const startTarget = await agentStartTarget(spaceId, assigneeId);
   if (startTarget.ok) {
-    const startSent = sendAgentStart(startTarget, assigneeId);
+    const startSent = sendAgentStart(startTarget, assigneeId, "wake");
     const deliverSent = startSent && sendAgentDeliver(startTarget, {
       agentId: assigneeId,
       seq: sysMsg.seq,
@@ -1032,7 +1072,7 @@ export async function setTaskStatus(
     if (!reservation) return upd;
     const target = await agentStartTarget(spaceId, upd.taskAssigneeId);
     if (target.ok) {
-      const startSent = sendAgentStart(target, upd.taskAssigneeId);
+      const startSent = sendAgentStart(target, upd.taskAssigneeId, "wake");
       const deliverSent = startSent && sendAgentDeliver(target, { type: "agent:deliver", agentId: upd.taskAssigneeId, seq: sysMsg.seq, from: actor, target: threadCh, targetName: `task #${upd.taskNumber}`, msgShort: sysMsg.id.slice(0, 8), isTask: true, message: { content: `#${upd.taskNumber} → ${label}` }, mentioned: true });
       if (!deliverSent) {
         await action.state.releaseWake(reservation.reservationId);
@@ -1081,9 +1121,13 @@ async function markAgentUnavailable(spaceId: string, agentId: string, reason: st
 type AgentStartTarget = { ok: true; cfg: NonNullable<Awaited<ReturnType<typeof agentConfig>>> };
 type AgentControlTarget = { ok: true };
 
-function sendAgentStart(target: AgentStartTarget, agentId: string): boolean {
-  const msg = { type: "agent:start", agentId, config: target.cfg };
-  return sendToWorker(msg);
+function sendAgentStart(target: AgentStartTarget, agentId: string, reason: AgentStartReason): boolean {
+  const introductionToken = reason !== "wake" && !target.cfg.introduced ? randomUUID() : null;
+  const msg = { type: "agent:start", agentId, config: { ...target.cfg, introductionToken: introductionToken ?? undefined }, reason };
+  setAgentIntroductionTurn(target.cfg.spaceId, agentId, introductionToken);
+  const sent = sendToWorker(msg);
+  if (!sent) setAgentIntroductionTurn(target.cfg.spaceId, agentId, null);
+  return sent;
 }
 
 function sendAgentDeliver(_target: AgentStartTarget, msg: Record<string, unknown>): boolean {
@@ -1117,14 +1161,14 @@ async function agentControlTarget(spaceId: string, agentId: string): Promise<Age
   return { ok: true };
 }
 /** Start an agent (requires the installation-local runtime worker to be online). */
-export async function startAgent(spaceId: string, agentId: string): Promise<{ ok: boolean; reason?: string }> {
+export async function startAgent(spaceId: string, agentId: string, reason: AgentStartReason = "manual"): Promise<{ ok: boolean; reason?: string }> {
   const db = dbForSpace(spaceId);
   const target = await agentStartTarget(spaceId, agentId);
   if (!target.ok) {
     if (target.reason !== "agent not found") await markAgentUnavailable(spaceId, agentId, target.reason);
     return { ok: false, reason: target.reason };
   }
-  if (!sendAgentStart(target, agentId)) {
+  if (!sendAgentStart(target, agentId, reason)) {
     await markAgentUnavailable(spaceId, agentId, "local runtime worker offline");
     return { ok: false, reason: "local runtime worker offline" };
   }
@@ -1134,6 +1178,7 @@ export async function startAgent(spaceId: string, agentId: string): Promise<{ ok
 }
 export async function stopAgent(spaceId: string, agentId: string): Promise<boolean> {
   const db = dbForSpace(spaceId);
+  clearAgentIntroductionTurns(spaceId, agentId);
   const target = await agentControlTarget(spaceId, agentId);
   if (target.ok) {
     if (!sendAgentControl(target, { type: "agent:stop", agentId })) log.warn("agent stop target unavailable", { agentId, reason: "local runtime worker offline" });
@@ -1146,13 +1191,19 @@ export async function stopAgent(spaceId: string, agentId: string): Promise<boole
 }
 export async function resetAgent(spaceId: string, agentId: string, wipeWorkspace = false, clearMemory = false): Promise<boolean> {
   const db = dbForSpace(spaceId);
+  clearAgentIntroductionTurns(spaceId, agentId);
   const target = await agentControlTarget(spaceId, agentId);
   if (target.ok) {
     if (!sendAgentControl(target, { type: "agent:reset", agentId, wipeWorkspace, clearMemory })) log.warn("agent reset target unavailable", { agentId, reason: "local runtime worker offline" });
   } else if (target.reason !== "agent not found") {
     log.warn("agent reset target unavailable", { agentId, reason: target.reason });
   }
-  await db.update(schema.agents).set({ status: "inactive", activity: "offline", sessionId: null }).where(and(eq(schema.agents.id, agentId), eq(schema.agents.spaceId, spaceId)));
+  await db.update(schema.agents).set({
+    status: "inactive",
+    activity: "offline",
+    sessionId: null,
+    ...(wipeWorkspace ? { introducedAt: null } : {}),
+  }).where(and(eq(schema.agents.id, agentId), eq(schema.agents.spaceId, spaceId)));
   await publishAgentState(spaceId, agentId);
   return true;
 }

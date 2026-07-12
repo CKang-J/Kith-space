@@ -8,6 +8,13 @@
       "when": 1783764218492,
       "tag": "0000_personal_agent_os",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1783850095957,
+      "tag": "0001_agent_introduction",
+      "breakpoints": true
     }
   ]
 }

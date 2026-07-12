@@ -6,6 +6,7 @@ import { dbForSpace, schema } from "../../db/index.js";
 import { DESC_TOO_LONG, INVALID_AGENT_NAME, addChannelMembers, descTooLong, invalidAgentName, resetAgent, startAgent, stopAgent, syncAgentProfile } from "../core.js";
 import { requestWorker } from "../../local-runtime/workerHub.js";
 import { publish } from "../realtime.js";
+import { clearAgentIntroductionTurns } from "../agentIntroduction.js";
 import { ALL_SCOPE_KEYS, SCOPES, effectiveScopes, isScopeLiteral } from "../scopes.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { validateRuntimeModel } from "../../local-runtime/runtimeCatalog.js";
@@ -53,7 +54,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     await publish(spaceId, { type: "agent:created", agent: { id: agent!.id, name: agent!.name, displayName: agent!.displayName, description: agent!.description, status: agent!.status, activity: agent!.activity, model: agent!.model, runtime: agent!.runtime } });
     // Start immediately on create: the client only POSTs /agents. If the local Worker is offline,
     // startAgent returns ok:false without blocking creation.
-    const started = await startAgent(spaceId, agent!.id);
+    const started = await startAgent(spaceId, agent!.id, "create");
     return (sendJson(res, 200, { id: agent!.id, name: agent!.name, started: started.ok }), true);
   }
   const am = /^\/api\/agents\/([^/]+)$/.exec(p);
@@ -85,6 +86,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     await stopAgent(spaceId, am[1]!).catch(() => {}); // stop the local process before deleting
     await db.delete(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.agentId, am[1]!));
     await db.update(schema.agents).set({ deletedAt: new Date(), status: "inactive", activity: "offline", agentTokenHash: null }).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.spaceId, spaceId))); // soft delete: row is kept so historical messages/DM names remain resolvable by id, no orphans; clear the token hash so a still-running deleted agent can no longer authenticate (C4, with resolveAgent's deletedAt filter)
+    clearAgentIntroductionTurns(spaceId, am[1]!);
     await publish(spaceId, { type: "agent:deleted", id: am[1]! });
     return (sendJson(res, 200, { ok: true }), true);
   }

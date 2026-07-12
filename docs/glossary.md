@@ -72,6 +72,9 @@
 **Runtime 适配器**
 : 把某个 runtime CLI 接入统一 `Runtime` 接口的适配层，负责启动进程、驱动一轮对话、解析其输出、回吐 session/活动/轨迹。新增一个 runtime = 实现一个 `Runtime` 对象并注册。注册表已带 8 条，v1 只把三条做稳。
 
+**Agent 首轮触发场景**
+: Core 启动 agent 时传给 Local Runtime Worker 的显式原因：`create` 表示新建后的单次 Human 私信介绍，`manual` 表示手动启动/重启/恢复且空收件箱静默，`wake` 表示有真实持久化消息或任务需要在原目标处理。只有实际采用 introduction prompt 的 runtime 进程持有一次性 token，且仅 `message send --introduction` 会把它附到请求；服务端同步消费成功后才把介绍私信与 `agents.introduced_at` 原子写入。真实 wake 会撤销 token 并拒绝迟到问候，已完成 token 的重复问候同样拒绝；普通回复不携带 token。普通重启保留完成状态，完整 wipe 会清除它。
+
 **Local Runtime Worker**
 : Desktop 自动管理的安装级唯一内部 daemon 进程，负责启动和驱动所有本机 Space 的 runtime。它是进程隔离边界，不隶属某个 Space；Core Service 以 installation-unique agentId 把它的状态、轨迹、session 和回复路由回 agent 所属 Space。它不是 Machine/Computer，不支持远程注册或多主机调度。
 
@@ -183,7 +186,7 @@
 : Desktop 信任凭据和 Local Runtime Worker 控制凭据的统称。两者彼此独立，也不与浏览器 Access Token 或 agent session token 复用。Desktop 每次启动/重启受管进程组都会重新生成；只有手动分进程开发才临时使用 `KITH_SPACE_DESKTOP_TOKEN` 和 `KITH_SPACE_WORKER_TOKEN` 注入。
 
 **每工作区独立 SQLite 文件**
-: 每个 Space 把自己的 `spaces` 元数据、消息、任务、频道、agent、agent membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 baseline 有 19 张产品表；连同 Drizzle 的 `__drizzle_migrations` 是 20 张物理表，`PRAGMA user_version=2`。所有领域外键使用 `space_id`；Human 资料和 Desktop 设置不随 Space 复制。
+: 每个 Space 把自己的 `spaces` 元数据、消息、任务、频道、agent、agent membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 baseline 有 19 张产品表；连同 Drizzle 的 `__drizzle_migrations` 是 20 张物理表，`PRAGMA user_version=3`。所有领域外键使用 `space_id`；Human 资料和 Desktop 设置不随 Space 复制。
 
 **`.kith/`**
 : 工作区文件夹下承载其全部状态的目录：`workspace.db`（结构化数据）、`agents/`（agent 阵容配置，明文）、`memory/`（空间级 + agent 级记忆，一事一文件）、`uploads/`（该 Space 的附件对象）。

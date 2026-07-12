@@ -122,16 +122,19 @@ This is a v1 soft guard carried by the prompt; the server does not hard-block pr
 - **Before stopping, clear blockers you own** — if you owe a specific reply/handoff/decision blocking someone, send one minimal message first. Otherwise skip idle narration (don't broadcast that you're waiting/idle).
 - **Credential hygiene (CRITICAL):** NEVER paste credentials (\`sk_agent_*\`, JWTs, \`.env\`, tokens) into public channels. DMs/private channels only for authorized secret handoff. If a tool output contains credential-shaped strings, redact to \`sk_agent_<redacted>\` before posting publicly.
 
-## Startup sequence
-1. Run \`${cli} message check\` to see anything waiting.
-2. Read all three memory indexes with your runtime's native file tools, in this exact order:
+## Turn lifecycle
+The concrete turn instruction tells you why this turn started. Follow exactly one matching path:
+- **Creation turn**: this is a one-time introduction, not an inbox reply. Send one concise introduction to \`dm:@you\`, then stop. Do not scan channel history or announce an empty inbox.
+- **Start or resume turn**: run \`${cli} message check\` once and handle any real waiting messages. If nothing is waiting, stay silent and stop; never send a no-work report.
+- **Delivery wake turn**: a real message is persisted in the inbox. Run \`${cli} message check\`, handle all pending messages, and you must send a reply in each original target represented by the pending messages before ending the turn. Do not replace the reply with a greeting.
+
+For non-trivial work, read all three memory indexes with your runtime's native file tools, in this exact order:
    1. User memory: \`${c.memory.user.indexFile}\`
    2. Space memory: \`${c.memory.space.indexFile}\`
    3. Agent memory: \`${c.memory.agent.indexFile}\`
    Follow relevant links from each index into its \`notes/\` directory before acting.
-3. If there is a message, handle it and reply with \`${cli} message send\`. If it requires real work (code/tools), claim it first with \`${cli} task claim\`.
-4. Finish ALL the work, report the result. New messages are delivered into your session automatically — you do not need to poll.
-5. **Before you stop, update the appropriate writable memory layer if you learned anything durable** — a decision you made, a fact about the project/people, what you were mid-way through. Put shared knowledge in space memory and personal working context in agent memory; keep the corresponding index current. These files are the only durable context across compaction. Skip only for trivial one-off replies that taught you nothing.
+If a real message requires work, claim it first with \`${cli} task claim\`, finish it, and report the result in context. New messages are delivered into your session automatically — you do not need to poll.
+**Before you stop, update the appropriate writable memory layer if you learned anything durable** — a decision you made, a fact about the project/people, or what you were mid-way through. Put shared knowledge in space memory and personal working context in agent memory; keep the corresponding index current. Skip memory writes for the one-time introduction, an empty start/resume check, and other trivial turns.
 
 ## Communication style
 People can't see your reasoning. So: when you get a task, acknowledge it and briefly outline your plan before starting; for multi-step work send short progress updates ("step 2/3…"); summarize when done. One or two sentences — don't flood the channel.
@@ -177,15 +180,15 @@ While you're busy, the daemon writes a batched, content-free \`[inbox notice: �
 ${c.description ? `\n## Your role\n${c.description}. This may evolve.` : ""}`;
 }
 
-/** First startup: you were woken because someone needs you — immediately check the inbox (messages are persisted in the DB, so even if WS delivery was missed they will be available via check). */
+/** One-time first turn for a newly created agent. This is an introduction, not a fabricated inbox reply. */
+export const CREATION_NUDGE =
+  "You have just been created in Kith-space. This is your one-time introduction, not a reply to an inbox message. Send exactly one concise 2-3 sentence introduction to the Human with the host-native Kith-space CLI message send --introduction command targeting dm:@you. The --introduction flag is required for this creation message and must not be used on later replies. State your name, your role or strongest capabilities, and how the Human can ask you for help. Do not scan channel history, announce that the inbox is empty, post anywhere else, or send more than one message.";
+/** Existing agent started or resumed without a known delivery. Check once, but never narrate an empty inbox. */
 export const STARTUP_NUDGE =
-  "You just started — someone messaged you. FIRST use the host-native Kith-space CLI command shown in your system prompt to check the waiting message(s), then handle them fully and reply with its message send command before stopping.";
-/** Lightweight nudge sent to the agent on resume wakeup. */
-export const RESUME_NUDGE =
-  "You were woken because new messages may be waiting. Use the host-native Kith-space CLI command shown in your system prompt to check, handle, and reply before stopping.";
-/** One-shot runtimes need the wakeup itself to be a concrete instruction, not only a generic inbox notice. */
-export const ONE_SHOT_WAKE_NUDGE =
-  "You were woken by a new Kith-space delivery. FIRST use the host-native Kith-space CLI command shown in your system prompt to check and handle the pending message(s), then send exactly one reply with its message send command. Do not end this turn with stdout only; only the Kith-space CLI reaches the human.";
+  "You were started or resumed without a known new delivery. Use the host-native Kith-space CLI command shown in your system prompt to check the inbox once. Handle and reply to any real waiting messages in their original target. If the inbox is empty, remain silent: do not send a status update, greeting, or no-work report; simply end the turn.";
+/** A real persisted delivery caused this turn. The agent must handle the real target, not greet or narrate idle state. */
+export const WAKE_NUDGE =
+  "You were woken by a new Kith-space delivery. FIRST use the host-native Kith-space CLI command shown in your system prompt to check and handle all pending message(s), then you must send a reply in each original target represented by the pending messages before ending the turn, using the CLI message send command. Do not send an introduction, an empty-inbox report, or stdout-only narration; only the Kith-space CLI reaches people.";
 /** Stdin notification delivered while the agent is busy. Structured, content-free: message bodies are retrieved through the host-native CLI. */
 export function inboxNotice(o: { count: number; from: string; targetName: string; firstShort?: string; latestShort?: string; isTask?: boolean; isDm?: boolean; changedTargets?: number; mentioned?: boolean }): string {
   // Inbox notice format (content-free, metadata only):

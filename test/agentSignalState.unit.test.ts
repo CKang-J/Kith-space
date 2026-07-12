@@ -22,7 +22,7 @@ test("agent activity detail is forwarded to the UI activity signal", () => {
 test("agent wake delivery handles local worker send failure after preview start", () => {
   assert.match(
     coreSrc,
-    /const startSent = sendAgentStart\(target, mem\.id\);/,
+    /const startSent = sendAgentStart\(target, mem\.id, "wake"\);/,
     "message wake should check whether agent:start was actually sent",
   );
   assert.match(

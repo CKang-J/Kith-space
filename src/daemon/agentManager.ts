@@ -2,7 +2,9 @@
 import { mkdir, writeFile, readFile, access, rm } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { buildSystemPrompt, STARTUP_NUDGE, RESUME_NUDGE, ONE_SHOT_WAKE_NUDGE, inboxNotice } from "./prompt.js";
+import { buildSystemPrompt, inboxNotice } from "./prompt.js";
+import { selectAgentInitialTurn } from "./agentLifecycle.js";
+import type { AgentStartReason } from "../local-runtime/agentStart.js";
 import { seedMemory, applyProfileToMemory } from "./memory.js";
 import { ensureSharedMemoryLayers, resolveMemoryLayerPaths } from "./memoryLayers.js";
 import { ensureKithSpaceBin } from "./kithSpaceBin.js";
@@ -20,7 +22,7 @@ const PENDING_DELIVER_TTL_MS = Number(process.env.KITH_SPACE_PENDING_DELIVER_TTL
 
 export interface AgentConfig {
   name: string; displayName: string; description?: string | null;
-  model?: string; runtime?: string; runtimeConfig?: Record<string, unknown> | null; sessionId?: string;
+  model?: string; runtime?: string; runtimeConfig?: Record<string, unknown> | null; sessionId?: string; introduced?: boolean; introductionToken?: string;
   serverUrl: string; spaceId: string; workspaceRoot: string; agentId: string; agentToken?: string; // per-agent token (slice10); re-sent start for a running agent may omit it (daemon ignores)
 }
 interface DeliverBuf { count: number; from: string; target: string; targetName: string; firstShort: string; latestShort: string; isTask: boolean; mentioned: boolean; targets: Set<string>; timer: ReturnType<typeof setTimeout>; streamId?: string; }
@@ -156,16 +158,16 @@ export class AgentManager {
     this.send({ type: "agent:reply", agentId, channelId: preview.channelId, streamId: preview.streamId, name: preview.name, op });
   }
 
-  async start(agentId: string, config: AgentConfig): Promise<void> {
+  async start(agentId: string, config: AgentConfig, reason: AgentStartReason = "manual"): Promise<void> {
     if (this.agents.has(agentId)) return;
     const existing = this.starting.get(agentId);
     if (existing) return existing;
-    const pending = this.startNow(agentId, config).finally(() => this.starting.delete(agentId));
+    const pending = this.startNow(agentId, config, reason).finally(() => this.starting.delete(agentId));
     this.starting.set(agentId, pending);
     return pending;
   }
 
-  private async startNow(agentId: string, config: AgentConfig): Promise<void> {
+  private async startNow(agentId: string, config: AgentConfig, reason: AgentStartReason): Promise<void> {
     if (this.agents.has(agentId)) return;
     const runtime = this.runtimeResolver(config.runtime ?? "claude");
     if (!runtime) {
@@ -194,6 +196,16 @@ export class AgentManager {
       agentId,
       agentToken: config.agentToken ?? "",
     });
+    const pendingDeliverItems = this.pendingDelivers.get(agentId)?.items ?? [];
+    const pendingDeliveryCount = pendingDeliverItems.length;
+    const initialTurn = selectAgentInitialTurn({
+      introduced: config.introduced,
+      reason,
+      hasPendingDelivery: pendingDeliveryCount > 0,
+    });
+    if (initialTurn.kind === "introduction" && config.introductionToken) {
+      env.KITH_SPACE_INTRODUCTION_TOKEN = config.introductionToken;
+    }
 
     let markExited = () => {};
     const exited = new Promise<void>((resolve) => { markExited = resolve; });
@@ -222,28 +234,26 @@ export class AgentManager {
     };
 
     // No await between set and runtime.start (single-threaded event loop), so deliver cannot interleave and read an empty session.
-    // Deliveries that arrived earlier during workspace preparation are flushed just below, except
-    // one-shot runtimes where the wakeup prompt itself is the concrete "check then send" turn.
-    const pendingDeliverItems = this.pendingDelivers.get(agentId)?.items ?? [];
-    const pendingDeliveryCount = pendingDeliverItems.length;
-    const useOneShotWakeNudge = !!runtime.oneShotWake && pendingDeliveryCount > 0;
+    // A delivery that arrived during workspace preparation is already persisted in the inbox. Consume
+    // its queued notice here because the initial wake prompt performs the same check in a single turn.
+    const consumePendingWake = initialTurn.kind === "wake" && pendingDeliveryCount > 0;
     this.agents.set(agentId, running);
-    if (useOneShotWakeNudge) {
+    if (consumePendingWake) {
       const latest = pendingDeliverItems[pendingDeliverItems.length - 1];
       if (latest) this.startReplyPreview(agentId, running, latest.target, latest.meta.streamId);
     }
     running.session = runtime.start({
       cwd: dir, model: config.model, runtimeConfig: config.runtimeConfig, sessionId: config.sessionId, systemPrompt, env,
-      initialPrompt: useOneShotWakeNudge ? ONE_SHOT_WAKE_NUDGE : (config.sessionId ? RESUME_NUDGE : STARTUP_NUDGE),
+      initialPrompt: initialTurn.prompt,
     }, cb);
 
     this.send({ type: "agent:status", agentId, status: "active" });
     this.send({ type: "agent:activity", agentId, activity: "working", detail: "starting" });
     this.log.info("agent started", { agentId, runtime: runtime.name, model: config.model ?? "(default)", resume: !!config.sessionId, experimental: runtime.experimental ?? false });
     this.resetIdle(agentId);
-    if (useOneShotWakeNudge) {
+    if (consumePendingWake) {
       this.clearPendingDeliver(agentId);
-      this.log.debug("pending deliver consumed by one-shot wake nudge", { agentId, runtime: runtime.name, count: pendingDeliveryCount });
+      this.log.debug("pending deliver consumed by initial wake turn", { agentId, runtime: runtime.name, count: pendingDeliveryCount });
     } else {
       this.flushPendingDeliver(agentId);
     }

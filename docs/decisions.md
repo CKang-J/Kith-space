@@ -308,6 +308,16 @@
 
 ---
 
+## 决策 22：Agent 首轮按创建、普通启动和真实唤醒分流
+
+**结论（2026-07-12）**：新建 agent 的首个成功 turn 只向唯一 Human 的 `dm:@you` 发送一次简短自我介绍；已有 agent 手动启动、重启或恢复时只检查真实待处理消息，空收件箱必须静默；由频道、DM、任务或 reconnect backlog 触发的 turn 只处理持久化消息并在原目标回复。
+
+**推理与权衡**：一次入职问候能把配置项变成有身份的团队成员，同时验证 runtime、Agent CLI 和 Human-Agent DM 整条链路。但不能用“有人给你发了消息”伪造触发原因，否则不同 runtime 会产生不一致行为：Codex 会严格执行“停止前必须回复”并发送无工作汇报，Claude Code/opencode 则可能静默。显式 `create | manual | wake` 原因让三种 adapter 共享同一产品语义，不依赖模型猜测。Core 为候选 introduction turn 生成一次性 token，只有 Worker 实际选择 introduction prompt 时才把 token 注入该 runtime 进程；CLI 也只有创建提示明确调用 `message send --introduction` 时才附带 token，普通 wake/后续回复不会被旧 token 污染。Human DM 发送在全部异步目标校验后、数据库事务前同步校验并消费 token；已撤销 token 的迟到问候和已完成 token 的重复问候都会被拒绝，普通消息因不携带 token 而不受影响。介绍消息与 `agents.introduced_at` 在同一事务提交，避免把普通回复、runtime online 或 turn 结束误判为 Human 已收到问候，也避免消息已出现但状态未写入后重复问候。
+
+**边界**：问候限制为 2-3 句、只发一次 Human DM，不读取频道历史、不广播、不写记忆。schema v3 会把升级前已有 agent 回填为已介绍；普通 reset 保留介绍状态，完整 wipe 清空它并视为重新入职。真实投递在启动准备期间到达时合并进同一个 wake turn，避免“先问候、再处理通知”的双 turn。
+
+---
+
 ## 被推翻/修正的决策
 
 这一节专门记录会话中演化过的决策。保留它们，是因为"为什么没走另一条路"往往比结论本身更能帮未来的读者理解项目的形状。

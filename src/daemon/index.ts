@@ -22,7 +22,7 @@ conn = new Connection(serverUrl, workerToken, (msg) => {
   if (msg.type !== "ping") log.debug("recv", { type: msg.type, agentId: msg.agentId });
   switch (msg.type) {
     case "ready:ack": break;
-    case "agent:start": void mgr.start(msg.agentId, msg.config); break;
+    case "agent:start": void mgr.start(msg.agentId, msg.config, msg.reason ?? "manual"); break;
     case "agent:deliver": mgr.deliver(msg.agentId, msg.from ?? "someone", msg.target ?? "", !!msg.mentioned, { targetName: msg.targetName, msgShort: msg.msgShort, isTask: msg.isTask, streamId: msg.streamId }); conn.send({ type: "agent:deliver:ack", agentId: msg.agentId, seq: msg.seq }); break;
     case "agent:stop": mgr.stop(msg.agentId); break;
     case "agent:sleep": mgr.sleep(msg.agentId); break;
