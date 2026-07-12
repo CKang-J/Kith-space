@@ -7,10 +7,11 @@
 // (`pi --list-models`). The agent's model is a "provider/id" pattern (e.g. a gateway provider the host
 // configured) — the host must have that provider set up, the same "CLI configured on the machine"
 // contract as the other runtimes. stdin is closed (the prompt is an argv value).
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Runtime, StartOpts, RuntimeCallbacks, RuntimeSession, TrajectoryEntry } from "./runtime.js";
+import { spawnRuntimeProcess } from "./runtimeProcess.js";
 
 const MAX = 2000;
 const clip = (s: unknown) => String(s ?? "").slice(0, MAX);
@@ -99,7 +100,7 @@ class PiRun {
     }
     this.cb.onActivity("working", "turn");
     const args = buildArgs(prompt, this.opts.model, this.sessionId, this.opts.cwd, this.promptFile);
-    const proc = spawn("pi", args, { cwd: this.opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: this.env });
+    const proc = spawnRuntimeProcess("pi", args, { cwd: this.opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: this.env });
     this.proc = proc;
     let buf = "";
     const errTail: string[] = [];

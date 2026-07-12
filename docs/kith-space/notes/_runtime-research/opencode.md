@@ -6,6 +6,8 @@
 > 本地基线：只读 `reference/open-tag/src/daemon/opencodeRuntime.ts`、`reference/open-tag/src/daemon/runtime.ts`、`docs/kith-space/notes/runtime-adapters-current-state.md`、`docs/kith-space/notes/opencode-agent-model.md`。  
 > 证据口径：“已证实”表示当前官方文档或官方源码明确支持；“未证实”表示官方公开资料没有给出稳定承诺，不能由本地注释或训练记忆外推。
 
+> 2026-07-12 落地注记：Kith-space 已让 `opencode models --verbose` 经过统一的 `cross-spawn` 进程边界，Windows npm shim 可以返回用户真实的 `provider/model` 列表；创建时不再提供虚假的 `Default`。启动参数已从隐藏兼容别名迁到官方 `--auto`，并强制显式 `--model provider/model`。JSON error 与非零退出的重复上报已去重，错误会携带当前模型 ID。Provider 凭据仍完全由 OpenCode 管理。本文建议的 usage、child-only prompt/MCP bootstrap、版本 gate 等仍属于后续 Runtime 契约 v2，不能因本次修复而标记完成。
+
 ## 结论摘要
 
 OpenCode 当前有两条可接入路径：短期继续使用 `opencode run --format json`，每轮一进程、用 session id 延续；后续若冷启动或 MCP 初始化成本成为问题，可改为 Kith-space 管理 `opencode serve`，再用 `run --attach` 保持现有事件协议，或直接接 HTTP/SSE API。现适配器的 stdin 关闭处理仍然正确，但 prompt、usage、权限和错误终态都应按最新能力重做。

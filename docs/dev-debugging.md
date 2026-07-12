@@ -55,7 +55,19 @@ pnpm run db:studio  # 打开 scratch 库的 Drizzle Studio
 
 应用运行时会自动迁移当前 baseline，不需要 `db:push`。若旧开发库被识别为 legacy workspace database，应先备份报错路径中的 `<space>/.kith/workspace.db`，再由开发者显式删除并重新初始化；应用不会自动删除旧库。
 
-## 4. 一键 E2E 联调栈
+## 4. Runtime CLI 检测
+
+Worker 启动日志的 `ready` 事件会列出实际可启动的 runtimes。Windows 下 Claude 的 `.exe` 与 Codex/opencode 等 npm `.cmd` shim 都经过同一个跨平台启动边界；安装或升级 CLI 后需要重启 Desktop/Worker 才会刷新列表。
+
+PowerShell 可先确认宿主能找到命令：
+
+```powershell
+Get-Command claude, codex, opencode
+```
+
+如果命令存在但 Worker 的 `runtimes` 仍为空，运行 `pnpm run typecheck` 并检查 Desktop 启动终端中的 Worker 日志；不要通过 `shell: true` 或硬编码绝对路径绕过统一启动边界。
+
+## 5. 一键 E2E 联调栈
 
 `dev:e2e` 是内部联调工具，不是日常启动方式。它需要 Bash、已配置的 `.env`，以及已安装并登录的 `claude` CLI。
 
@@ -66,14 +78,14 @@ pnpm run dev:e2e:down
 
 `dev:e2e:up` 会 seed 数据、启用 local Web、轮换浏览器访问 Token、构建 Web，并启动 Core Service、Worker 和 dev-bot。它不会启动 Vite 或 Electron；浏览器访问地址和一次性显示的 Token 以终端输出为准。
 
-## 5. 编排护栏参数
+## 6. 编排护栏参数
 
 - `KITH_SPACE_MAX_DISPATCH_DEPTH`：agent 到 agent 派发链最大深度，默认 `4`。
 - `KITH_SPACE_MAX_DISPATCH_WAKES`：每条派发链最大成功唤醒次数，默认 `16`。
 
 急停等运行时控制走 `/api/tasks/:id/dispatch/*` 和 `/api/spaces/:id/dispatch/*`，架构说明见 [`kith-space/architecture-proposal.md`](./kith-space/architecture-proposal.md)。
 
-## 6. 打包实现说明
+## 7. 打包实现说明
 
 ```powershell
 pnpm run desktop:bundle  # Web + Electron + Core + Worker + agent CLI

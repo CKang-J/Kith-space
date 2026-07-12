@@ -9,7 +9,14 @@ import { createPortal } from "react-dom";
 import { Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-export interface Opt { value: string; label: string; hint?: string }
+export interface Opt { value: string; label: string; hint?: string; disabled?: boolean }
+
+function nextEnabledIndex(options: Opt[], from: number, direction: 1 | -1): number {
+  for (let i = from + direction; i >= 0 && i < options.length; i += direction) {
+    if (!options[i]?.disabled) return i;
+  }
+  return from;
+}
 
 export function Select({ value, options, onChange, placeholder, ariaLabel }: { value: string; options: Opt[]; onChange: (v: string) => void; placeholder?: string; ariaLabel?: string }) {
   const { t } = useTranslation();
@@ -24,7 +31,8 @@ export function Select({ value, options, onChange, placeholder, ariaLabel }: { v
   useLayoutEffect(() => { if (open) place(); }, [open]);
   useEffect(() => {
     if (!open) return;
-    setHi(Math.max(0, options.findIndex((o) => o.value === value)));
+    const selected = options.findIndex((o) => o.value === value && !o.disabled);
+    setHi(selected >= 0 ? selected : Math.max(0, options.findIndex((o) => !o.disabled)));
     const onDown = (e: MouseEvent) => { const t = e.target as Node; if (!btnRef.current?.contains(t) && !menuRef.current?.contains(t)) setOpen(false); };
     const close = () => setOpen(false);
     // Close on scroll EXCEPT when the scroll happens inside the menu itself. The menu is a fixed,
@@ -38,13 +46,16 @@ export function Select({ value, options, onChange, placeholder, ariaLabel }: { v
     return () => { document.removeEventListener("mousedown", onDown); window.removeEventListener("resize", close); window.removeEventListener("scroll", onScroll, true); };
   }, [open, options, value]);
 
-  const pick = (v: string) => { onChange(v); setOpen(false); btnRef.current?.focus(); };
+  const pick = (v: string) => {
+    if (options.find((option) => option.value === v)?.disabled) return;
+    onChange(v); setOpen(false); btnRef.current?.focus();
+  };
   const onKey = (e: React.KeyboardEvent) => {
     if (!open) { if (e.key === "Enter" || e.key === "ArrowDown" || e.key === " ") { e.preventDefault(); setOpen(true); } return; }
     if (e.key === "Escape") { e.preventDefault(); setOpen(false); }
-    else if (e.key === "ArrowDown") { e.preventDefault(); setHi((h) => Math.min(options.length - 1, h + 1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => Math.max(0, h - 1)); }
-    else if (e.key === "Enter") { e.preventDefault(); options[hi] && pick(options[hi]!.value); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); setHi((h) => nextEnabledIndex(options, h, 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => nextEnabledIndex(options, h, -1)); }
+    else if (e.key === "Enter") { e.preventDefault(); if (options[hi] && !options[hi]!.disabled) pick(options[hi]!.value); }
   };
 
   return (
@@ -57,9 +68,9 @@ export function Select({ value, options, onChange, placeholder, ariaLabel }: { v
       {open && pos && createPortal(
         <div ref={menuRef} className="sel-menu" role="listbox" style={{ left: pos.left, top: pos.top, minWidth: pos.width }} onKeyDown={onKey} tabIndex={-1}>
           {options.length === 0 ? <div className="sel-empty">{t("select.empty")}</div> : options.map((o, i) => (
-            <button key={o.value} type="button" role="option" aria-selected={o.value === value}
-              className={"sel-opt" + (o.value === value ? " on" : "") + (i === hi ? " hi" : "")}
-              onMouseEnter={() => setHi(i)} onMouseDown={(e) => { e.preventDefault(); pick(o.value); }}>
+            <button key={o.value} type="button" role="option" aria-selected={o.value === value} aria-disabled={o.disabled || undefined} disabled={o.disabled}
+              className={"sel-opt" + (o.value === value ? " on" : "") + (i === hi ? " hi" : "") + (o.disabled ? " disabled" : "")}
+              onMouseEnter={() => { if (!o.disabled) setHi(i); }} onMouseDown={(e) => { e.preventDefault(); pick(o.value); }}>
               <span className="grow">{o.label}{o.hint && <span className="sel-hint">{o.hint}</span>}</span>
               {o.value === value && <Check size={14} className="sel-check" />}
             </button>

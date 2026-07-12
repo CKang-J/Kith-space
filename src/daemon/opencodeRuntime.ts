@@ -6,13 +6,15 @@
 //  1. stdin MUST be "ignore" — with a piped/non-TTY stdout, `opencode run` BLOCKS reading stdin
 //     forever (it never emits a single event). The daemon uses pipe stdio, so this would hang every
 //     agent. We pass the message as argv and close stdin.
-//  2. --dangerously-skip-permissions is required for headless runs (otherwise it waits on approval),
+//  2. --auto is required for headless runs (otherwise it waits on approval),
 //     and NODE_OPTIONS is stripped from the child env (a proxy flag like `--use-env-proxy` makes some
 //     bundled CLIs refuse to start). The system prompt is injected via {cwd}/AGENTS.md (native).
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Runtime, StartOpts, RuntimeCallbacks, RuntimeSession, TrajectoryEntry } from "./runtime.js";
+import { spawnRuntimeProcess } from "./runtimeProcess.js";
+import { validateRuntimeModel } from "../local-runtime/runtimeCatalog.js";
 
 const MAX = 2000;
 const clip = (s: unknown) => String(s ?? "").slice(0, MAX);
@@ -69,7 +71,7 @@ export function handleOpencodeEvent(evt: any): OpencodeEmit {
 }
 
 function buildArgs(message: string, opts: StartOpts, sessionId: string | null): string[] {
-  const args = ["run", "--format", "json", "--dangerously-skip-permissions", "--dir", opts.cwd];
+  const args = ["run", "--format", "json", "--auto", "--dir", opts.cwd];
   const model = opts.model && opts.model !== "default" ? opts.model : "";
   if (model) args.push("--model", model);
   const v = variant(opts.runtimeConfig);
@@ -114,11 +116,12 @@ class OpencodeRun {
     this.cb.onActivity("working", "turn");
     const args = buildArgs(message, this.opts, this.sessionId);
     // stdin "ignore" is mandatory: a piped stdin makes `opencode run` block forever (see file header).
-    const proc = spawn("opencode", args, { cwd: this.opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: this.env });
+    const proc = spawnRuntimeProcess("opencode", args, { cwd: this.opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: this.env });
     this.proc = proc;
     let buf = "";
     const errTail: string[] = [];
     let errLen = 0;
+    let emittedError = false;
     const processLine = (ln: string) => {
       const t = ln.trim(); if (!t) return;
       let evt: any; try { evt = JSON.parse(t); } catch { return; }
@@ -127,7 +130,11 @@ class OpencodeRun {
         this.sessionId = emit.sessionId; // capture the id opencode assigned so the next turn --session-resumes it
         this.cb.onSession(emit.sessionId);
       }
-      if (emit.error) { this.cb.onTrajectory([{ kind: "text", text: "[opencode error] " + emit.error.slice(0, 500) }]); this.cb.onActivity("error", emit.error.slice(0, 200)); }
+      if (emit.error) {
+        emittedError = true;
+        this.cb.onTrajectory([{ kind: "text", text: `[opencode error] (${this.opts.model}) ${emit.error.slice(0, 500)}` }]);
+        this.cb.onActivity("error", emit.error.slice(0, 200));
+      }
       if (emit.activity) this.cb.onActivity(emit.activity.activity, emit.activity.detail);
       if (emit.trajectory.length) this.cb.onTrajectory(emit.trajectory);
     };
@@ -149,12 +156,14 @@ class OpencodeRun {
     proc.on("exit", (code) => {
       if (buf.trim()) processLine(buf); buf = "";
       this.proc = null; this.turnBusy = false; if (this.stopped) return;
-      if (code === 0) { this.everSucceeded = true; this.cb.onActivity("online", ""); this.pump(); return; }
+      if (code === 0 && !emittedError) { this.everSucceeded = true; this.cb.onActivity("online", ""); this.pump(); return; }
       const tail = errTail.join("").trim();
-      const last = tail.split("\n").filter(Boolean).pop() || `opencode exited ${code ?? "signal"}`;
-      this.cb.onTrajectory([{ kind: "text", text: "[opencode error] " + clip(tail).slice(0, 500) }]);
-      this.cb.onActivity("error", last.slice(0, 200));
-      if (!this.everSucceeded) { this.cb.onExit(code ?? 1); return; } // first-turn hard failure → crashed
+      const detail = tail || `opencode exited ${code ?? "signal"}`;
+      if (!emittedError) {
+        this.cb.onTrajectory([{ kind: "text", text: `[opencode error] (${this.opts.model}) ${clip(detail).slice(0, 500)}` }]);
+        this.cb.onActivity("error", detail.split("\n").filter(Boolean).pop()!.slice(0, 200));
+      }
+      if (!this.everSucceeded) { this.cb.onExit(emittedError ? 1 : (code ?? 1)); return; } // first-turn hard failure → crashed
       this.pump(); // later-turn failure → keep the session alive so the next message can retry
     });
   }
@@ -170,6 +179,16 @@ export const opencodeRuntime: Runtime = {
   name: "opencode",
   experimental: true,
   start(opts: StartOpts, cb: RuntimeCallbacks): RuntimeSession {
+    const modelError = validateRuntimeModel("opencode", opts.model);
+    if (modelError) {
+      const message = modelError;
+      queueMicrotask(() => {
+        cb.onTrajectory([{ kind: "text", text: `[opencode error] ${message}` }]);
+        cb.onActivity("error", message);
+        cb.onExit(1);
+      });
+      return { deliver: () => {}, stop: () => {} };
+    }
     const run = new OpencodeRun(opts, cb);
     return { deliver: (text) => run.enqueue(text), stop: () => run.stop() };
   },

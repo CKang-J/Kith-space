@@ -19,6 +19,7 @@ test("Machine and Computers are absent from the frontend product surface", () =>
   const main = source("./main.tsx");
   const chat = source("./views/Chat.tsx");
   const agents = source("./views/Members.tsx");
+  const runtimeDiscovery = source("./useRuntimeDiscovery.ts");
   const misc = source("./views/misc.tsx");
   const modules = source("./shell/workspaceModules.tsx");
   const dock = source("./shell/WorkspaceDock.tsx");
@@ -35,7 +36,7 @@ test("Machine and Computers are absent from the frontend product surface", () =>
   );
   assert.match(modules, /\{ id: "search",[^\n]+dock: false \}/);
   assert.match(dock, /<MessageCircle size=\{18\} \/>/);
-  assert.match(agents, /\/api\/local-runtime\/models\/\$\{runtime\}/);
+  assert.match(runtimeDiscovery, /\/api\/local-runtime\/models\/\$\{runtime\}/);
   assert.match(agents, /api\("POST", "\/api\/agents", \{ name:/);
 });
 

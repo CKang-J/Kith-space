@@ -8,6 +8,7 @@ import { requestWorker } from "../../local-runtime/workerHub.js";
 import { publish } from "../realtime.js";
 import { ALL_SCOPE_KEYS, SCOPES, effectiveScopes, isScopeLiteral } from "../scopes.js";
 import { readJson, sendErr, sendJson } from "../util.js";
+import { validateRuntimeModel } from "../../local-runtime/runtimeCatalog.js";
 
 export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   const { req, res, url, method, p, humanId, spaceId } = ctx;
@@ -30,6 +31,8 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     try { description = resolveRoleDescription(b.description, b.roleTemplate); }
     catch (error) { return (sendErr(res, 400, (error as Error).message), true); }
     if (descTooLong(description)) return (sendErr(res, 400, DESC_TOO_LONG), true);
+    const runtimeModelError = validateRuntimeModel(b.runtime || "claude", b.model);
+    if (runtimeModelError) return (sendErr(res, 400, runtimeModelError), true);
     // Machine assignment is retired. Reject the old field explicitly so stale clients do not appear to succeed.
     if (Object.prototype.hasOwnProperty.call(b, "machineId")) return (sendErr(res, 400, "machineId is no longer supported"), true);
     // A live agent name must be unique per Space — it is the @mention / dm:@<name> routing key, so a duplicate

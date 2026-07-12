@@ -15,6 +15,7 @@ import { useToast } from "../toast.tsx";
 import { CodeBlock, ColorSwatch, GithubAlertBlockquote, colorValueFromTag, markdownSchema, markdownUrlTransform, remarkColorSwatches, remarkGithubAlerts, remarkHtmlAsText } from "../messageRender.tsx";
 import i18n from "../i18n";
 import { mergeWorkspaceSearch, workspaceLocationForModule, workspaceSearchForShellState } from "../shell/workspaceRoute.ts";
+import { LOCAL_RUNTIME_DEFAULT, useRuntimeDiscovery } from "../useRuntimeDiscovery.ts";
 
 // Unified agent status label: fine-grained activity (working/thinking/online) takes priority;
 // offline/absent falls back to lifecycle status (active/sleeping/inactive).
@@ -401,59 +402,37 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
   useEscClose(onClose);
   const { api, reload } = useStore();
   const [name, setName] = useState(prefill?.name ?? ""); const [desc, setDesc] = useState(prefill?.description ?? "");
-  const [runtime, setRuntime] = useState("claude"); const [model, setModel] = useState("");
-  const [models, setModels] = useState<{ id: string; label?: string; thinking?: { levels: { value: string; label: string; description?: string }[]; default?: string } }[]>([]); const [fast, setFast] = useState(false);
-  const [modelsLoading, setModelsLoading] = useState(false);
-  const [reasoning, setReasoning] = useState(""); // reasoning effort (""=Default/no override); shown when selected model has thinking levels
+  const [fast, setFast] = useState(false);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
-  // Sentinel + per-runtime capability: claude/codex offer "use local default" (don't pass --model/--effort;
-  // the CLI uses ~/.claude / ~/.codex config). Other runtimes keep their original picker behavior.
-  const LOCAL_DEFAULT = "__default__";
-  const supportsLocalDefault = runtime === "claude" || runtime === "codex";
-  useEffect(() => {
-    let cancelled = false;
-    setModelsLoading(true);
-    (async () => {
-      try {
-        const d = await api("GET", `/api/local-runtime/models/${runtime}`);
-        if (cancelled) return;
-        const ms: typeof models = d.models || [];
-        setModels(ms);
-        // Preserve the current selection if it still exists in the new list; otherwise fall back to the first option.
-        setModel((prev) => {
-          if (supportsLocalDefault && prev === LOCAL_DEFAULT) return prev;
-          const kept = ms.find((m) => m.id === prev);
-          return kept ? prev : (supportsLocalDefault ? LOCAL_DEFAULT : (ms[0]?.id || ""));
-        });
-        setReasoning((prev) => { const kept = ms.find((m) => m.id === model); return kept ? prev : (ms[0]?.thinking?.default ?? ""); });
-      } catch { if (!cancelled) setModels([]); }
-      finally { if (!cancelled) setModelsLoading(false); }
-    })();
-    return () => { cancelled = true; };
-  }, [runtime]);
+  const {
+    runtime, setRuntime, runtimeOptions, runtimesLoading, runtimeError, runtimeInstalled,
+    supportsLocalDefault, model, models, modelsLoading, modelError, selectModel, retryModels,
+    reasoning, setReasoning,
+  } = useRuntimeDiscovery(api);
   const create = async () => {
     const nm = name.trim();
     if (!nm) { setErr(t("members.nameRequired")); return; }
     if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(nm) || nm.length > 64) { setErr(t("members.nameInvalid")); return; } // @mention handle must be token-safe; keep regex + length 64 in sync with core.ts AGENT_NAME_RE / MAX_AGENT_NAME
+    if (!runtimeInstalled) { setErr(t("members.runtimeUnavailable")); return; }
+    if (!model) { setErr(t("members.modelRequired")); return; }
     setBusy(true); setErr("");
     try {
-      const r = await api("POST", "/api/agents", { name: nm, description: desc.trim() || null, runtime, model: model && model !== LOCAL_DEFAULT ? model : null, reasoning: thinkingLevels.length ? (reasoning || null) : null, fastMode: fast });
+      const r = await api("POST", "/api/agents", { name: nm, description: desc.trim() || null, runtime, model: model && model !== LOCAL_RUNTIME_DEFAULT ? model : null, reasoning: thinkingLevels.length ? (reasoning || null) : null, fastMode: fast });
       if (r?.error) { setErr(r.error); return; }
       await reload();
       if (r?.id) { if (r.started === false) toast.info(t("members.agentCreatedOffline")); onCreated?.({ id: r.id, name: r.name ?? nm }); }
       onClose();
     } catch (e: any) { setErr(String(e?.message || e)); } finally { setBusy(false); }
   };
-  const RUNTIMES = [{ value: "claude", label: "Claude Code" }, { value: "codex", label: "Codex" }, { value: "copilot", label: "Copilot CLI" }, { value: "opencode", label: "OpenCode" }, { value: "kimi", label: "Kimi Code" }, { value: "pi", label: "Pi" }, { value: "cursor", label: "Cursor" }, { value: "hermes", label: "Hermes" }];
   const selModel = models.find((m) => m.id === model);
   const thinkingLevels = selModel?.thinking?.levels ?? [];
   const modelOpts = [
-    ...(supportsLocalDefault ? [{ value: LOCAL_DEFAULT, label: t("members.useLocalDefault") }] : []),
+    ...(supportsLocalDefault ? [{ value: LOCAL_RUNTIME_DEFAULT, label: t("members.useLocalDefault") }] : []),
     ...(models.length
       ? models.map((m) => ({ value: m.id, label: m.label || m.id }))
-      : supportsLocalDefault ? [] : [{ value: "default", label: "Default" }]),
+      : []),
   ];
-  const modelLoadingOpts = [{ value: "", label: "Detecting models…" }];
+  const modelLoadingOpts = [{ value: "", label: t("members.detectingModels"), disabled: true }];
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -461,13 +440,16 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
         <label>{t("members.nameLabel")}</label><input value={name} maxLength={64} onChange={(e) => setName(e.target.value)} placeholder={t("members.namePlaceholder")} />
         <label>{t("members.descriptionLabel")}</label><textarea value={desc} maxLength={3000} onChange={(e) => setDesc(e.target.value)} placeholder={t("members.descriptionPlaceholder")} />
         <label>Runtime</label>
-        <Select ariaLabel="Runtime" value={runtime} options={RUNTIMES} onChange={setRuntime} />
-        <label>{t("common.model")}</label>
-        {/* During probe flight: disable interaction + show "Detecting models…" placeholder.
-            fieldset[disabled] disables all descendant buttons without modifying Select.tsx. */}
-        <fieldset disabled={modelsLoading} style={{ border: 0, padding: 0, margin: 0, opacity: modelsLoading ? 0.6 : 1 }}>
-          <Select ariaLabel="Model" value={modelsLoading ? "" : model} options={modelsLoading ? modelLoadingOpts : modelOpts} onChange={(v) => { setModel(v); const m = models.find((m) => m.id === v); setReasoning(m?.thinking?.default ?? ""); }} />
+        <fieldset disabled={runtimesLoading} style={{ border: 0, padding: 0, margin: 0, opacity: runtimesLoading ? 0.6 : 1 }}>
+          <Select ariaLabel="Runtime" value={runtime} options={runtimeOptions} onChange={setRuntime} placeholder={runtimesLoading ? t("members.detectingRuntimes") : undefined} />
         </fieldset>
+        {runtimeError && <div className="form-err">{runtimeError}</div>}
+        <label>{t("common.model")}</label>
+        {/* During probe flight: disable interaction and show a localized detection placeholder. */}
+        <fieldset disabled={modelsLoading || !runtimeInstalled} style={{ border: 0, padding: 0, margin: 0, opacity: modelsLoading || !runtimeInstalled ? 0.6 : 1 }}>
+          <Select ariaLabel="Model" value={modelsLoading ? "" : model} options={modelsLoading ? modelLoadingOpts : modelOpts} onChange={selectModel} placeholder={modelError || undefined} />
+        </fieldset>
+        {modelError && <div className="form-err">{modelError} <button type="button" className="cancel" onClick={retryModels}>{t("members.retryModelDetection")}</button></div>}
         {thinkingLevels.length > 0 && <>
           <label>{t("members.reasoningLabel")}</label>
           <Select ariaLabel="Reasoning" value={reasoning} onChange={setReasoning}
@@ -475,7 +457,7 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
         </>}
         <label className="ck-row"><input type="checkbox" checked={fast} onChange={(e) => setFast(e.target.checked)} /><span>{t("members.fastMode")}</span></label>
         {err && <div className="form-err">{err}</div>}
-        <div className="acts"><button className="cancel" onClick={onClose}>{t("members.cancel")}</button><button className="ok" onClick={create} disabled={busy}>{busy ? t("members.creating") : t("members.create")}</button></div>
+        <div className="acts"><button className="cancel" onClick={onClose}>{t("members.cancel")}</button><button className="ok" onClick={create} disabled={busy || runtimesLoading || modelsLoading || !runtimeInstalled || !model}>{busy ? t("members.creating") : t("members.create")}</button></div>
       </div>
     </div>
   );

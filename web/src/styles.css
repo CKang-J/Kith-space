@@ -625,6 +625,8 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .sel-opt .grow{flex:1;display:flex;align-items:baseline;gap:8px}
 .sel-opt.hi{background:var(--surface-strong)}
 .sel-opt.on{color:var(--ink);font-weight:600}
+.sel-opt.disabled{color:var(--muted-soft);cursor:not-allowed;opacity:.62}
+.sel-opt.disabled.hi{background:none}
 .sel-hint{font-size:12px;color:var(--muted-soft);font-weight:400}
 .sel-check{color:var(--success);font-weight:700;flex:none}
 .sel-empty{padding:9px 10px;color:var(--muted);font-size:14px}

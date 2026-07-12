@@ -1,8 +1,9 @@
 // Codex runtime: `codex app-server --listen stdio://` + JSON-RPC 2.0 (NDJSON).
 // System prompt is passed via developerInstructions; each delivery = one turn/start (serial, waits for turn/completed).
 // Automatically approves exec/patch/elicitation requests in daemon mode.
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import type { Runtime, StartOpts, RuntimeCallbacks, RuntimeSession } from "./runtime.js";
+import { spawnRuntimeProcess } from "./runtimeProcess.js";
 
 const MAX = 2000;
 const clip = (s: unknown) => String(s ?? "").slice(0, MAX);
@@ -131,7 +132,7 @@ export const codexRuntime: Runtime = {
   start(opts: StartOpts, cb: RuntimeCallbacks): RuntimeSession {
     // Do not override CODEX_HOME: use the user's default ~/.codex (which contains subscription auth state).
     // Per-agent CODEX_HOME isolation + auth/MCP injection is a future improvement.
-    const proc = spawn("codex", ["app-server", "--listen", "stdio://"], { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: opts.env });
+    const proc = spawnRuntimeProcess("codex", ["app-server", "--listen", "stdio://"], { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: opts.env });
     const client = new CodexClient(proc, cb);
     let ready = false;
     let spawnFailed = false;

@@ -1,4 +1,6 @@
 import { DYNAMIC_RUNTIMES, getDynamicModels } from "../runtimeModels.js";
+import { isWorkerConnected, workerRuntimes } from "../../local-runtime/workerHub.js";
+import { runtimeAvailability } from "../../local-runtime/runtimeCatalog.js";
 import { sendJson } from "../util.js";
 import type { HumanCtx } from "./ctx.js";
 
@@ -18,18 +20,31 @@ const STATIC_MODELS: Record<string, { id: string; label: string }[]> = {
     { id: "claude-sonnet-4.5", label: "Claude Sonnet 4.5" }, { id: "claude-haiku-4.5", label: "Claude Haiku 4.5" },
   ],
   kimi: [{ id: "default", label: "Default (config.toml)" }],
-  opencode: [{ id: "default", label: "Default" }],
   cursor: [{ id: "default", label: "Default (Composer)" }, { id: "sonnet-4", label: "Sonnet 4" }, { id: "sonnet-4-thinking", label: "Sonnet 4 (thinking)" }, { id: "gpt-5", label: "GPT-5" }],
   hermes: [{ id: "default", label: "Default profile" }],
 };
 
 export async function handleLocalRuntimeHumanScope(ctx: HumanCtx): Promise<boolean> {
+  if (ctx.p === "/api/local-runtime/runtimes" && ctx.method === "GET") {
+    return (sendJson(ctx.res, 200, {
+      runtimes: runtimeAvailability(workerRuntimes()),
+      workerConnected: isWorkerConnected(),
+    }), true);
+  }
+
   const match = /^\/api\/local-runtime\/models\/([^/]+)$/.exec(ctx.p);
   if (!match || ctx.method !== "GET") return false;
   const runtime = decodeURIComponent(match[1]!).toLowerCase();
   if (DYNAMIC_RUNTIMES.has(runtime)) {
     const models = await getDynamicModels(runtime);
     if (models?.length) return (sendJson(ctx.res, 200, { models }), true);
+    if (runtime === "opencode") {
+      return (sendJson(ctx.res, 200, {
+        models: [],
+        error: "opencode model discovery failed",
+        code: "OPENCODE_MODELS_UNAVAILABLE",
+      }), true);
+    }
   }
   return (sendJson(ctx.res, 200, { models: STATIC_MODELS[runtime] ?? [{ id: "default", label: "Default" }] }), true);
 }

@@ -10,10 +10,11 @@
 //
 // The parse functions are pure (unit-tested against fixtures captured from multica's discovery
 // research) and mirror multica's server/pkg/agent/models.go field-for-field.
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { spawnRuntimeProcess } from "./runtimeProcess.js";
 
 export interface ThinkingLevel { value: string; label: string; description?: string }
 export interface ModelThinking { levels: ThinkingLevel[]; default?: string }
@@ -104,6 +105,7 @@ export function parseCodexModels(jsonStr: string): DiscoveredModel[] {
 // line that starts a JSON block (`{` / `"`).
 export function parseOpencodeModels(stdout: string): DiscoveredModel[] {
   const out: DiscoveredModel[] = [];
+  const seen = new Set<string>();
   for (const raw of stdout.split("\n")) {
     const line = raw.trim();
     if (!line) continue;
@@ -112,6 +114,8 @@ export function parseOpencodeModels(stdout: string): DiscoveredModel[] {
     const id = line.split(/\s+/)[0]!; // defensive: a verbose line could trail metadata
     const slash = id.indexOf("/");
     if (slash <= 0 || slash >= id.length - 1) continue; // need a non-empty provider AND model
+    if (seen.has(id)) continue;
+    seen.add(id);
     out.push({ id, label: id, provider: id.slice(0, slash) });
   }
   return out;
@@ -228,7 +232,7 @@ function discoverHermesProfiles(): DiscoveredModel[] {
   return discoverHermesProfilesFromRoots(roots);
 }
 
-// ── shelling out (not unit-tested — covered by the live E2E run) ──
+// ── shelling out through the shared cross-platform runtime process boundary ──
 
 const LIST_TIMEOUT_MS = 7_000; // a single probe must stay under runtimeModels' 8s WS-RPC budget, else the server gives up while the daemon keeps spawning
 const OUT_CAP = 256 * 1024; // bound memory if a CLI floods stdout
@@ -242,7 +246,7 @@ function runList(bin: string, args: string[], timeoutMs: number = LIST_TIMEOUT_M
     delete env.NODE_OPTIONS;
     let proc: ChildProcess;
     try {
-      proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], env });
+      proc = spawnRuntimeProcess(bin, args, { stdio: ["ignore", "pipe", "pipe"], env });
     } catch (e) {
       return resolve({ stdout: "", stderr: String((e as any)?.message ?? e), code: 1 });
     }

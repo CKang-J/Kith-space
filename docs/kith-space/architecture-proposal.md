@@ -85,6 +85,10 @@ canonical 传输契约是 `/api/spaces`、`x-space-id`、Socket handshake `space
 
 继续复用窄 `Runtime.start(opts, callbacks): RuntimeSession` 适配契约（当前定义在 `src/daemon/runtime.ts`）。v1 只稳定 Claude Code、Codex、opencode；其他 adapter 隐藏或标 experimental。Runtime 契约 v2 统一 usage、完成、取消和 MCP bootstrap，但不把工具循环搬入 Kith-space。
 
+Runtime 命令发现与启动统一经过 `src/daemon/runtimeProcess.ts:5`。Worker ready 不再调用 Unix 专用的 `command -v`，而是通过 `runtimeCommandAvailable`（`:14`）使用与 adapter 相同的 `cross-spawn` 边界执行轻量 `--version` 探测；全部 adapter 同样通过该边界启动 CLI。这样 Windows 上的原生 `.exe` 与 npm `.cmd` shim 具有一致语义，避免 Worker 错报 `runtimes=[]`，也避免 Codex/opencode 在检测通过后仍因原生 `child_process.spawn` 的 `EPERM`/`ENOENT` 启动失败。Core 仍以 Worker ready snapshot 为权威，在 `src/server/core.ts:1106` 的启动 guard 中拒绝真正不可用的 runtime。
+
+受支持 runtime 的规范目录位于 `src/local-runtime/runtimeCatalog.ts`。`GET /api/local-runtime/runtimes` 把 Worker ready snapshot 映射为完整 availability 列表：已安装项稳定前置，未安装项继续返回但由 UI 禁止选择。runtime 的模型发现也必须经过同一 `spawnRuntimeProcess` 边界；OpenCode 使用其官方 `opencode models --verbose`，失败时 `/api/local-runtime/models/opencode` 返回明确错误而不是伪造 `Default`。创建 OpenCode agent 必须提交显式 `provider/model`；adapter 以官方 `--auto` 和 `--model provider/model` 启动，缺少显式模型时直接拒绝启动。Provider API Key 仍由用户自己的 OpenCode 配置管理，Kith-space 不读取或保存。
+
 ### 4.4 Tasks
 
 任务服务继续位于 `src/server/tasks/`，由 repository、policy、service、HTTP 和 types 分层组成。任务仍以 task message + owning thread 表达；状态图、revision、父子关系、report/delivery metadata 和并发控制继续复用。

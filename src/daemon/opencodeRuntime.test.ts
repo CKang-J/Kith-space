@@ -2,10 +2,11 @@
 // opencode 1.15.5 (src/daemon/__fixtures__/opencode-*.jsonl). Run: `npx tsx --test src/daemon/opencodeRuntime.test.ts`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { handleOpencodeEvent } from "./opencodeRuntime.js";
+import { handleOpencodeEvent, opencodeRuntime } from "./opencodeRuntime.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 function fixtureEvents(name: string): any[] {
@@ -65,4 +66,141 @@ test("reasoning maps to thinking; empty text is skipped; lifecycle events are si
   assert.equal(fin.trajectory.length, 0);
   assert.equal(fin.activity, undefined);
   assert.equal(fin.sessionId, "ses_y"); // session id is still captured from any event
+});
+
+test("OpenCode launches with the official auto flag and an explicit model", { skip: process.platform !== "win32" }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-opencode-args-"));
+  const argsFile = path.join(root, "args.txt");
+  writeFileSync(path.join(root, "opencode.cmd"), `@echo off\r\necho %* > "${argsFile}"\r\nexit /b 0\r\n`);
+
+  try {
+    const session = opencodeRuntime.start({
+      cwd: root,
+      env: { ...process.env, PATH: root },
+      model: "deepseek/deepseek-chat",
+      systemPrompt: "system",
+      initialPrompt: "start",
+    }, {
+      onSession: () => {},
+      onActivity: () => {},
+      onTrajectory: () => {},
+      onExit: () => {},
+      log: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } as any,
+    });
+
+    const deadline = Date.now() + 1_000;
+    while (!existsSync(argsFile) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    session.stop();
+
+    const args = readFileSync(argsFile, "utf8");
+    assert.match(args, /--auto/);
+    assert.match(args, /--model/);
+    assert.match(args, /deepseek\/deepseek-chat/);
+    assert.doesNotMatch(args, /dangerously-skip-permissions/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode refuses to start without an explicit provider/model", async () => {
+  const trajectories: string[] = [];
+  let exitCode: number | null | undefined;
+  let resolveExit!: () => void;
+  const exited = new Promise<void>((resolve) => { resolveExit = resolve; });
+
+  const session = opencodeRuntime.start({
+    cwd: here,
+    env: { PATH: "" },
+    systemPrompt: "system",
+    initialPrompt: "start",
+  }, {
+    onSession: () => {},
+    onActivity: () => {},
+    onTrajectory: (entries) => trajectories.push(...entries.map((entry) => entry.text ?? "")),
+    onExit: (code) => { exitCode = code; resolveExit(); },
+    log: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } as any,
+  });
+  assert.equal(exitCode, undefined, "the adapter must not exit synchronously before AgentManager finishes start bookkeeping");
+  await exited;
+  session.stop();
+
+  assert.equal(exitCode, 1);
+  assert.match(trajectories.join("\n"), /explicit provider\/model/i);
+});
+
+test("OpenCode reports one model-qualified error instead of a second blank error", { skip: process.platform !== "win32" }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-opencode-error-"));
+  writeFileSync(
+    path.join(root, "opencode.cmd"),
+    '@echo off\r\necho {"type":"error","error":{"data":{"message":"Invalid API Key"}}}\r\nexit /b 1\r\n',
+  );
+  const trajectories: string[] = [];
+  let resolveExit!: (code: number | null) => void;
+  const exited = new Promise<number | null>((resolve) => { resolveExit = resolve; });
+
+  try {
+    opencodeRuntime.start({
+      cwd: root,
+      env: { ...process.env, PATH: root },
+      model: "deepseek/deepseek-chat",
+      systemPrompt: "system",
+      initialPrompt: "start",
+    }, {
+      onSession: () => {},
+      onActivity: () => {},
+      onTrajectory: (entries) => trajectories.push(...entries.map((entry) => entry.text ?? "")),
+      onExit: resolveExit,
+      log: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } as any,
+    });
+
+    await Promise.race([
+      exited,
+      new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("opencode error shim did not exit")), 1_000)),
+    ]);
+
+    const errors = trajectories.filter((entry) => entry.startsWith("[opencode error]"));
+    assert.equal(errors.length, 1);
+    assert.match(errors[0]!, /deepseek\/deepseek-chat/);
+    assert.match(errors[0]!, /Invalid API Key/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode keeps an error terminal when an older CLI exits zero after an error event", { skip: process.platform !== "win32" }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-opencode-error-zero-"));
+  writeFileSync(
+    path.join(root, "opencode.cmd"),
+    '@echo off\r\necho {"type":"error","error":{"data":{"message":"Invalid API Key"}}}\r\nexit /b 0\r\n',
+  );
+  const activities: string[] = [];
+  let resolveExit!: (code: number | null) => void;
+  const exited = new Promise<number | null>((resolve) => { resolveExit = resolve; });
+
+  try {
+    opencodeRuntime.start({
+      cwd: root,
+      env: { ...process.env, PATH: root },
+      model: "deepseek/deepseek-chat",
+      systemPrompt: "system",
+      initialPrompt: "start",
+    }, {
+      onSession: () => {},
+      onActivity: (activity) => activities.push(activity),
+      onTrajectory: () => {},
+      onExit: resolveExit,
+      log: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } as any,
+    });
+
+    const exitCode = await Promise.race([
+      exited,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
+    ]);
+    assert.equal(exitCode, 1);
+    assert.equal(activities.at(-1), "error");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

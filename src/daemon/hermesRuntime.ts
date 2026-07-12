@@ -3,12 +3,13 @@
 // Hermes owns provider credentials and profile configuration. Kith-space only selects a Hermes profile
 // (temporarily stored in agent.model) and passes the Kith-space system prompt + message into an isolated
 // agent workspace. This keeps secrets in Hermes config, not in the Kith-space database.
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile, unlink } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import type { Runtime, StartOpts, RuntimeCallbacks, RuntimeSession } from "./runtime.js";
+import { spawnRuntimeProcess } from "./runtimeProcess.js";
 
 const MAX = 4000;
 const clip = (s: unknown) => String(s ?? "").slice(0, MAX);
@@ -185,7 +186,7 @@ class HermesRun {
     const prompt = buildHermesPrompt(message, this.opts);
     const args = buildHermesArgs(prompt, this.sessionId);
     const turnFile = path.join(tmpdir(), `kith-space-hermes-turn-${Date.now()}-${Math.random().toString(36).slice(2)}.jsonl`);
-    const proc = spawn("hermes", args, { cwd: this.opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: { ...this.env, KITH_SPACE_TURN_FILE: turnFile } });
+    const proc = spawnRuntimeProcess("hermes", args, { cwd: this.opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: { ...this.env, KITH_SPACE_TURN_FILE: turnFile } });
     this.proc = proc;
     let stdout = "";
     const errTail: string[] = [];
