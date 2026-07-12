@@ -40,6 +40,10 @@ export function buildClaudeArgs(p: {
   return args;
 }
 
+export function claudePromptFile(opts: Pick<StartOpts, "cwd" | "runtimeStateDir">): string {
+  return path.join(opts.runtimeStateDir ?? opts.cwd, "claude-system-prompt.md");
+}
+
 export const claudeRuntime: Runtime = {
   name: "claude",
   start(opts: StartOpts, cb: RuntimeCallbacks): RuntimeSession {
@@ -47,7 +51,7 @@ export const claudeRuntime: Runtime = {
     // planning/cron/ask tools disabled (they cause undesirable autonomous-agent detours).
     // Standing prompt written to a file then passed via --append-system-prompt-file (avoids excessively long CLI args).
     let promptFlag = ["--append-system-prompt", opts.systemPrompt];
-    try { const pf = path.join(opts.cwd, ".claude-system-prompt.md"); writeFileSync(pf, opts.systemPrompt); promptFlag = ["--append-system-prompt-file", pf]; } catch { /* fallback to inline */ }
+    try { const pf = claudePromptFile(opts); writeFileSync(pf, opts.systemPrompt); promptFlag = ["--append-system-prompt-file", pf]; } catch { /* fallback to inline */ }
     const rc = opts.runtimeConfig;
     const args = buildClaudeArgs({
       promptFileFlag: promptFlag,

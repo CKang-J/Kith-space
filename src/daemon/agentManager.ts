@@ -1,6 +1,5 @@
 // Manages local agents: spawns processes via the runtime interface, bridges events to the server, and handles delivery/sleep. Runtime protocol details live in each runtime file.
 import { mkdir, writeFile, readFile, access, rm } from "node:fs/promises";
-import path from "node:path";
 import os from "node:os";
 import { buildSystemPrompt, inboxNotice } from "./prompt.js";
 import { selectAgentInitialTurn } from "./agentLifecycle.js";
@@ -11,19 +10,20 @@ import { ensureKithSpaceBin } from "./kithSpaceBin.js";
 import { getRuntime } from "./runtimes.js";
 import type { Runtime, RuntimeSession, RuntimeCallbacks } from "./runtime.js";
 import { createLogger } from "../log.js";
-import { agentsDir } from "../paths.js";
 import { buildAgentProcessEnv } from "./agentProcessEnv.js";
+import { resolveAgentWorkspacePaths, type AgentWorkspaceRef } from "./agentWorkspacePaths.js";
+import { runtimeDir } from "../paths.js";
 
-const DATA_DIR = agentsDir();
 const IDLE_MS = Number(process.env.KITH_SPACE_IDLE_MS ?? 10 * 60 * 1000); // how long before idle sleep (kills process to save memory; next wake uses --resume)
 const DELIVER_DEBOUNCE_MS = Number(process.env.KITH_SPACE_DELIVER_DEBOUNCE_MS ?? 3000); // batching window for deliveries while agent is busy (saves tokens, reduces interruptions)
 const ONE_SHOT_DELIVER_DEBOUNCE_MS = Number(process.env.KITH_SPACE_ONE_SHOT_DELIVER_DEBOUNCE_MS ?? process.env.KITH_SPACE_HERMES_DELIVER_DEBOUNCE_MS ?? 500); // One-shot runtimes need a short fixed wait when there is only one live notice.
 const PENDING_DELIVER_TTL_MS = Number(process.env.KITH_SPACE_PENDING_DELIVER_TTL_MS ?? 15_000); // start+deliver can arrive back-to-back; keep deliver briefly while start prepares workspace
+const LEGACY_INSTRUCTION_FILE_RUNTIMES = new Set(["copilot", "kimi", "cursor"]);
 
-export interface AgentConfig {
+export interface AgentConfig extends AgentWorkspaceRef {
   name: string; displayName: string; description?: string | null;
   model?: string; runtime?: string; runtimeConfig?: Record<string, unknown> | null; sessionId?: string; introduced?: boolean; introductionToken?: string;
-  serverUrl: string; spaceId: string; workspaceRoot: string; agentId: string; agentToken?: string; // per-agent token (slice10); re-sent start for a running agent may omit it (daemon ignores)
+  serverUrl: string; agentToken?: string; // per-agent token (slice10); re-sent start for a running agent may omit it (daemon ignores)
 }
 interface DeliverBuf { count: number; from: string; target: string; targetName: string; firstShort: string; latestShort: string; isTask: boolean; mentioned: boolean; targets: Set<string>; timer: ReturnType<typeof setTimeout>; streamId?: string; }
 export interface DeliverMeta { targetName?: string; msgShort?: string; isTask?: boolean; streamId?: string; }
@@ -32,8 +32,9 @@ interface PendingDeliver { from: string; target: string; mentioned: boolean; met
 interface PendingDeliverQueue { items: PendingDeliver[]; timer: ReturnType<typeof setTimeout>; }
 interface ActiveReplyPreview { channelId: string; streamId: string; name: string; }
 interface AgentManagerOptions {
-  dataDir?: string;
+  runtimeStateRoot?: string;
   binDir?: string;
+  removePath?: (target: string) => Promise<void>;
   deliverDebounceMs?: number;
   oneShotDeliverDebounceMs?: number;
   pendingDeliverTtlMs?: number;
@@ -43,11 +44,13 @@ interface AgentManagerOptions {
 export class AgentManager {
   private agents = new Map<string, Running>();
   private starting = new Map<string, Promise<void>>();
+  private resetting = new Map<string, Promise<void>>();
   private pendingDelivers = new Map<string, PendingDeliverQueue>();
   private activeReplyPreviews = new Map<string, ActiveReplyPreview>();
   private replySeq = 0;
   private binDir: string;
-  private dataDir: string;
+  private runtimeStateRoot: string;
+  private removePath: (target: string) => Promise<void>;
   private deliverDebounceMs: number;
   private oneShotDeliverDebounceMs: number;
   private pendingDeliverTtlMs: number;
@@ -55,7 +58,8 @@ export class AgentManager {
   private log = createLogger("daemon:agents");
   constructor(private send: (msg: unknown) => void, opts: AgentManagerOptions = {}) {
     this.binDir = opts.binDir ?? ensureKithSpaceBin();
-    this.dataDir = opts.dataDir ?? DATA_DIR;
+    this.runtimeStateRoot = opts.runtimeStateRoot ?? runtimeDir();
+    this.removePath = opts.removePath ?? ((target) => rm(target, { recursive: true, force: true }));
     this.deliverDebounceMs = opts.deliverDebounceMs ?? DELIVER_DEBOUNCE_MS;
     this.oneShotDeliverDebounceMs = opts.oneShotDeliverDebounceMs ?? ONE_SHOT_DELIVER_DEBOUNCE_MS;
     this.pendingDeliverTtlMs = opts.pendingDeliverTtlMs ?? PENDING_DELIVER_TTL_MS;
@@ -90,27 +94,38 @@ export class AgentManager {
   stop(agentId: string): void { if (!this.teardown(agentId)) return; this.send({ type: "agent:status", agentId, status: "inactive" }); this.send({ type: "agent:activity", agentId, activity: "offline", detail: "" }); }
   // Idle sleep: emits sleeping/sleeping (activity also set to sleeping so the frontend activity+status dual mapping stays consistent; session is preserved for --resume on next wake)
   sleep(agentId: string): void { if (!this.teardown(agentId)) return; this.log.info("sleep", { agentId }); this.send({ type: "agent:status", agentId, status: "sleeping" }); this.send({ type: "agent:activity", agentId, activity: "sleeping", detail: "" }); }
-  /** Reset: stop the process + clear the server-side session (next start will not --resume); wipeWorkspace deletes the entire workspace; clearMemory clears MEMORY.md only. */
-  async reset(agentId: string, wipeWorkspace = false, clearMemory = false): Promise<void> {
-    this.teardown(agentId); // skip stop() to avoid double inactive emit; reset sends its own inactive/offline+detail=reset below
-    this.send({ type: "agent:session", agentId, sessionId: null });
-    const dir = path.join(this.dataDir, agentId);
-    if (wipeWorkspace) {
-      try { await rm(dir, { recursive: true, force: true }); this.log.info("workspace wiped", { agentId }); }
-      catch (e) { this.log.warn("wipe failed", { agentId, detail: String(e) }); }
-    } else if (clearMemory) {
-      try { await writeFile(path.join(dir, "MEMORY.md"), "# Memory\n\n(reset)\n"); this.log.info("memory cleared", { agentId }); }
-      catch (e) { this.log.warn("clearMemory failed", { agentId, detail: String(e) }); }
+  /** Reset runtime-local state; an explicit full reset also clears only this agent's Space-local memory. */
+  async reset(ref: AgentWorkspaceRef, options: { clearAgentMemory?: boolean } = {}): Promise<void> {
+    const previous = this.resetting.get(ref.agentId) ?? Promise.resolve();
+    const pending = previous.catch(() => {}).then(() => this.resetNow(ref, options)).finally(() => {
+      if (this.resetting.get(ref.agentId) === pending) this.resetting.delete(ref.agentId);
+    });
+    this.resetting.set(ref.agentId, pending);
+    return pending;
+  }
+  private async resetNow(ref: AgentWorkspaceRef, options: { clearAgentMemory?: boolean }): Promise<void> {
+    const starting = this.starting.get(ref.agentId);
+    if (starting) await starting.catch(() => {});
+    this.teardown(ref.agentId); // skip stop() to avoid double inactive emit; reset sends its own inactive/offline+detail=reset below
+    this.send({ type: "agent:session", agentId: ref.agentId, sessionId: null });
+    const paths = resolveAgentWorkspacePaths(ref, this.runtimeStateRoot);
+    try { await this.removePath(paths.runtimeStateDir); this.log.info("runtime state cleared", { agentId: ref.agentId }); }
+    catch (e) { this.log.warn("runtime state clear failed", { agentId: ref.agentId, detail: String(e) }); }
+    if (options.clearAgentMemory) {
+      try { await this.removePath(paths.agentMemoryDir); this.log.info("agent memory cleared", { agentId: ref.agentId }); }
+      catch (e) { this.log.warn("agent memory clear failed", { agentId: ref.agentId, detail: String(e) }); }
     }
-    this.send({ type: "agent:status", agentId, status: "inactive" });
-    this.send({ type: "agent:activity", agentId, activity: "offline", detail: "reset" });
-    this.log.info("agent reset", { agentId, wipeWorkspace, clearMemory });
+    this.send({ type: "agent:status", agentId: ref.agentId, status: "inactive" });
+    this.send({ type: "agent:activity", agentId: ref.agentId, activity: "offline", detail: "reset" });
+    this.log.info("agent reset", { agentId: ref.agentId, clearAgentMemory: !!options.clearAgentMemory });
   }
   /** Profile changed on the server (displayName/description) — surgically sync the workspace MEMORY.md
    *  title + `## Role`, preserving the agent's own sections. No-op if the workspace/file doesn't exist
    *  yet (a not-yet-started agent gets fresh values from the DB when start() seeds it). */
-  async syncProfile(agentId: string, displayName: string, description?: string | null): Promise<void> {
-    const mem = path.join(this.dataDir, agentId, "MEMORY.md");
+  async syncProfile(ref: AgentWorkspaceRef, displayName: string, description?: string | null): Promise<void> {
+    const agentId = ref.agentId;
+    const paths = resolveAgentWorkspacePaths(ref, this.runtimeStateRoot);
+    const mem = resolveMemoryLayerPaths(paths.workspaceRoot, paths.agentMemoryDir).agent.indexFile;
     let content: string;
     try { content = await readFile(mem, "utf8"); }
     catch { this.log.debug("syncProfile: no MEMORY.md yet", { agentId }); return; }
@@ -159,6 +174,8 @@ export class AgentManager {
   }
 
   async start(agentId: string, config: AgentConfig, reason: AgentStartReason = "manual"): Promise<void> {
+    const resetting = this.resetting.get(agentId);
+    if (resetting) await resetting;
     if (this.agents.has(agentId)) return;
     const existing = this.starting.get(agentId);
     if (existing) return existing;
@@ -177,18 +194,21 @@ export class AgentManager {
     }
     if (runtime.experimental) this.log.warn("experimental runtime", { runtime: runtime.name });
 
-    const dir = path.join(this.dataDir, agentId);
-    await mkdir(path.join(dir, "notes"), { recursive: true });
-    const memory = resolveMemoryLayerPaths(config.workspaceRoot, dir);
+    const paths = resolveAgentWorkspacePaths(config, this.runtimeStateRoot);
+    const memory = resolveMemoryLayerPaths(paths.workspaceRoot, paths.agentMemoryDir);
+    await Promise.all([
+      mkdir(memory.agent.notesDir, { recursive: true }),
+      mkdir(paths.runtimeStateDir, { recursive: true }),
+    ]);
     await ensureSharedMemoryLayers(memory);
-    const mem = path.join(dir, "MEMORY.md");
+    const mem = memory.agent.indexFile;
     try { await access(mem); } catch {
       await writeFile(mem, seedMemory(config.displayName || config.name, config.description));
     }
 
     const systemPrompt = buildSystemPrompt({
       name: config.name, displayName: config.displayName, description: config.description,
-      agentId, spaceId: config.spaceId, hostname: os.hostname(), os: `${os.platform()} ${os.arch()}`, workspace: dir, memory,
+      agentId, spaceId: config.spaceId, hostname: os.hostname(), os: `${os.platform()} ${os.arch()}`, workspace: paths.workspaceRoot, memory,
     });
     const env = buildAgentProcessEnv({
       binDir: this.binDir,
@@ -237,13 +257,16 @@ export class AgentManager {
     // A delivery that arrived during workspace preparation is already persisted in the inbox. Consume
     // its queued notice here because the initial wake prompt performs the same check in a single turn.
     const consumePendingWake = initialTurn.kind === "wake" && pendingDeliveryCount > 0;
+    // Copilot/Kimi/Cursor still require a cwd-level AGENTS.md for their standing prompt. Keep those
+    // experimental adapters in host runtime state until they gain a non-polluting prompt channel.
+    const runtimeCwd = LEGACY_INSTRUCTION_FILE_RUNTIMES.has(runtime.name) ? paths.runtimeStateDir : paths.workspaceRoot;
     this.agents.set(agentId, running);
     if (consumePendingWake) {
       const latest = pendingDeliverItems[pendingDeliverItems.length - 1];
       if (latest) this.startReplyPreview(agentId, running, latest.target, latest.meta.streamId);
     }
     running.session = runtime.start({
-      cwd: dir, model: config.model, runtimeConfig: config.runtimeConfig, sessionId: config.sessionId, systemPrompt, env,
+      cwd: runtimeCwd, runtimeStateDir: paths.runtimeStateDir, model: config.model, runtimeConfig: config.runtimeConfig, sessionId: config.sessionId, systemPrompt, env,
       initialPrompt: initialTurn.prompt,
     }, cb);
 

@@ -30,7 +30,9 @@ test("defaults to ~/.kith-space when KITH_SPACE_HOME is unset", () => {
   assert.equal(p.userMemoryDir(), path.join(home, "memory"));
   assert.equal(p.spaceMemoryDir("/work/demo"), path.join("/work/demo", ".kith", "memory"));
   assert.equal(p.spaceUploadsDir("/work/demo"), path.join("/work/demo", ".kith", "uploads"));
-  assert.equal(p.agentsDir(), path.join(home, "agents"));
+  assert.equal(p.spaceAgentMemoryDir("/work/demo", "agent-1"), path.join("/work/demo", ".kith", "agents", "agent-1"));
+  assert.equal(p.runtimeDir(), path.join(home, "runtime"));
+  assert.equal(p.agentRuntimeStateDir("space-1", "agent-1"), path.join(home, "runtime", "space-1", "agent-1"));
   assert.equal(p.binDir(), path.join(home, "bin"));
   assert.equal(p.logsDir(), path.join(home, "logs"));
 });
@@ -39,12 +41,12 @@ test("KITH_SPACE_HOME relocates app data without moving the default Space contai
   process.env.KITH_SPACE_HOME = "/tmp/ot-wtX";
   delete process.env.KITH_SPACE_SPACES_DIR;
   delete process.env.KITH_SPACE_LOG_DIR;
-  assert.equal(p.agentsDir(), path.join("/tmp/ot-wtX", "agents"));
   assert.equal(p.appDbFile(), path.join("/tmp/ot-wtX", "app.db"));
   assert.equal(p.defaultSpaceRoot("demo"), path.join(os.homedir(), "Kith-space", "demo"));
   assert.equal(p.userMemoryDir(), path.join("/tmp/ot-wtX", "memory"));
   assert.equal(p.spaceMemoryDir("/work/demo"), path.join("/work/demo", ".kith", "memory"));
   assert.equal(p.spaceUploadsDir("/work/demo"), path.join("/work/demo", ".kith", "uploads"));
+  assert.equal(p.runtimeDir(), path.join("/tmp/ot-wtX", "runtime"));
   assert.equal(p.binDir(), path.join("/tmp/ot-wtX", "bin"));
   assert.equal(p.logsDir(), path.join("/tmp/ot-wtX", "logs"));
 });

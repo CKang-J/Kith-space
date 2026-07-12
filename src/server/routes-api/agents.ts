@@ -2,7 +2,7 @@
 import type { SpaceCtx } from "./ctx.js";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { ROLE_TEMPLATES, resolveRoleDescription } from "../../agents/roleTemplates.js";
-import { dbForSpace, schema } from "../../db/index.js";
+import { dbForSpace, schema, spaceRecord } from "../../db/index.js";
 import { DESC_TOO_LONG, INVALID_AGENT_NAME, addChannelMembers, descTooLong, invalidAgentName, resetAgent, startAgent, stopAgent, syncAgentProfile } from "../core.js";
 import { requestWorker } from "../../local-runtime/workerHub.js";
 import { publish } from "../realtime.js";
@@ -97,8 +97,10 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     if (action === "start") { const r = await startAgent(spaceId, agId!); return (r.ok ? sendJson(res, 200, { ok: true }) : sendErr(res, 503, r.reason ?? "cannot start")), true; }
     if (action === "stop") { await stopAgent(spaceId, agId!); return (sendJson(res, 200, { ok: true }), true); }
     if (action === "restart") { await stopAgent(spaceId, agId!); const r = await startAgent(spaceId, agId!); return (r.ok ? sendJson(res, 200, { ok: true }) : sendErr(res, 503, r.reason ?? "cannot start")), true; } // preserves session and workspace; restarts only the process
-    const b = await readJson(req).catch(() => ({})); await resetAgent(spaceId, agId!, !!b?.wipeWorkspace, !!b?.clearMemory);
-    if (b?.restart) await startAgent(spaceId, agId!); // reset & restart: restart after clearing; all three reset tiers support "& Restart"
+    const b = await readJson(req).catch(() => ({}));
+    const clearAgentMemory = !!(b?.clearAgentMemory || b?.clearMemory || b?.wipeWorkspace); // accept old field names without preserving their unsafe semantics
+    await resetAgent(spaceId, agId!, clearAgentMemory);
+    if (b?.restart) await startAgent(spaceId, agId!); // Worker serializes same-agent reset/start so cleanup completes before the new runtime begins.
     return (sendJson(res, 200, { ok: true }), true);
   }
   // Agent workspace file browser (reads local disk via daemon WS-RPC)
@@ -108,11 +110,13 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     const agId = (awsList || awsFile)![1]!;
     const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, agId), eq(schema.agents.spaceId, spaceId))))[0];
     if (!a) return (sendErr(res, 404, "agent not found"), true);
+    const workspaceRoot = spaceRecord(spaceId)?.rootPath;
+    if (!workspaceRoot) return (sendErr(res, 404, "space not found"), true);
     if (awsList) {
-      const r = await requestWorker({ type: "agent:workspace:list", agentId: agId });
+      const r = await requestWorker({ type: "agent:workspace:list", agentId: agId, workspaceRoot });
       return (sendJson(res, 200, r.error ? { error: r.error } : { files: r.files ?? [], root: r.root }), true);
     }
-    const r = await requestWorker({ type: "agent:workspace:read", agentId: agId, path: url.searchParams.get("path") ?? "" });
+    const r = await requestWorker({ type: "agent:workspace:read", agentId: agId, workspaceRoot, path: url.searchParams.get("path") ?? "" });
     return (sendJson(res, 200, r.error ? { error: r.error } : { path: r.path, content: r.content }), true);
   }
   // Agent activity log: chronological [{timestamp, entry}]
@@ -142,7 +146,9 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   if (askill && method === "GET") {
     const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, askill[1]!), eq(schema.agents.spaceId, spaceId))))[0];
     if (!a) return (sendErr(res, 404, "agent not found"), true);
-    try { const r = await requestWorker({ type: "agent:skills:list", agentId: askill[1]!, runtime: a.runtime }); return (sendJson(res, 200, { global: r.global ?? [], workspace: r.workspace ?? [] }), true); }
+    const workspaceRoot = spaceRecord(spaceId)?.rootPath;
+    if (!workspaceRoot) return (sendErr(res, 404, "space not found"), true);
+    try { const r = await requestWorker({ type: "agent:skills:list", agentId: askill[1]!, workspaceRoot, runtime: a.runtime }); return (sendJson(res, 200, { global: r.global ?? [], workspace: r.workspace ?? [] }), true); }
     catch { return (sendJson(res, 200, { global: [], workspace: [] }), true); }
   }
   // Apps tab (connected third-party integrations): no integrations implemented yet, returns empty array

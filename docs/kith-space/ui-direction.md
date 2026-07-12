@@ -89,7 +89,7 @@ Spaces 只在 Home 出现；Agents 只显示当前 Space 的 agent 队伍；唯�
 
 创建 Agent 时，Runtime 选择器读取 Local Runtime Worker 的实际 availability，而不是使用前端硬编码的可用状态。完整 runtime 目录始终展示：已安装项排序在前并标注“已安装”，未安装项排序在后、标注“未安装”且不可选择；默认选中第一个已安装项。OpenCode 模型选择器只展示 `opencode models` 返回并去重后的真实 `provider/model`；探测失败时显示错误、提供重试并禁止创建，不回退到虚假的 `Default`。
 
-创建成功后，agent 只向唯一 Human 的 `dm:@you` 发送一次 2-3 句自我介绍，内容包含身份、职责/擅长能力和如何派活；不扫描频道历史、不汇报“没有消息”，也不向公共频道广播。只有创建/重试 introduction turn 的介绍私信成功进入对应 Human-Agent DM 后才视为完成；若真实消息先到，agent 先按 wake 语义回复原目标，该普通回复不算自我介绍。后续手动启动、重启和恢复只检查真实待处理消息，空收件箱保持静默；由频道、DM、任务或 backlog 触发的唤醒必须在每个原会话目标处理和回复。显式清除 agent 记忆与入职状态后才视为重新入职；不得把删除共享 Space 文件树当成普通 reset。
+创建成功后，agent 只向唯一 Human 的 `dm:@you` 发送一次 2-3 句自我介绍，内容包含身份、职责/擅长能力和如何派活；不扫描频道历史、不汇报“没有消息”，也不向公共频道广播。只有创建/重试 introduction turn 的介绍私信成功进入对应 Human-Agent DM 后才视为完成；若真实消息先到，agent 先按 wake 语义回复原目标，该普通回复不算自我介绍。后续手动启动、重启和恢复只检查真实待处理消息，空收件箱保持静默；由频道、DM、任务或 backlog 触发的唤醒必须在每个原会话目标处理和回复。普通 reset 只清 session/runtime state 并保留入职状态；完整 reset 额外清当前 Agent Memory 和入职状态后重新介绍。两种 reset 都保留共享 Space 文件树，UI 不提供把“删除项目文件”伪装成 Agent 重置的入口。
 
 ---
 
@@ -164,7 +164,7 @@ A5 已完成工作区入口与规范 URL 收口，但 `MessageContextSnapshot`�
 
 ## 7. 当前实现边界
 
-当前生产壳已完成 A5 入口收口：`App` 只渲染 `WorkspaceFrame`；Agents、Human Settings 与 Desktop Settings 已落地，登录/注册/邀请、Computers、Landing、Features、PWA、SSR/prerender、旧 `Layout` 与 `?legacy=1` 均已退出活跃代码。Home Spaces 模块、普通冷启动强制进入 Home 和文件夹选择器仍是 H3-H4 待实现目标，不能误写为当前 UI 能力。
+当前生产壳已完成 A5 入口收口：`App` 只渲染 `WorkspaceFrame`；Agents、Human Settings 与 Desktop Settings 已落地，登录/注册/邀请、Computers、Landing、Features、PWA、SSR/prerender、旧 `Layout` 与 `?legacy=1` 均已退出活跃代码。Agent Overview/Workspace 通过现有 workspace-files API 展示 registry 中真实 Space root，不再拼出旧 app data agent 路径。Home Spaces 模块、普通冷启动强制进入 Home 和文件夹选择器仍是 H3-H4 待实现目标，不能误写为当前 UI 能力。
 
 单窗口壳按职责拆在 `web/src/shell/`：
 

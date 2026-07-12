@@ -8,7 +8,7 @@
 
 - 分支：`feat/p0-foundation`，尚未合并或推送远端。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A1-A6 原定代码切片已完成，正在由用户验收；P-A7 H1 已完成，下一步是 H2**。H1-H4 完成前 Runtime 契约 v2 继续暂停。
+- 当前阶段：**A1-A6 原定代码切片已完成，正在由用户验收；P-A7 H1-H2 已完成，下一步是 H3**。H1-H4 完成前 Runtime 契约 v2 继续暂停。
 - P4 视觉微调已暂停，等本机化基础收敛后再恢复。
 - 底座为 open-tag 衍生开发副本；`reference/` 只读。OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
 
@@ -55,7 +55,8 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 - **H1 已完成**：`src/paths.ts` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，并新增独立 `KITH_SPACE_SPACES_DIR` 开发/测试覆盖；全新安装的默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`。`app.db` 的 `installation_state.home_space_id` 保存稳定 Home 身份，旧开发库只在首次升级时由既有 `slug=home` 回填且不会自动搬动其已有 rootPath；Home 不能取消注册，并发首次初始化会原子复用同一个 Home。
 - H1 验证：`pnpm run typecheck`、478/478 单测与完整集成测试通过；单路轻量独立复核未发现代码阻塞，指出的规格状态/切片测试口径已修正。
-- **已确认但尚未实现的 cwd/记忆差距**：`AgentManager` 当前仍以 `<KITH_SPACE_HOME>/agents/<agentId>` 同时作为 runtime cwd 和 Agent Memory，所以 agent 相对业务文件写入隐藏 app data，复制 Space 也不会带走 Agent Memory。H2 要改为 Space root cwd、`<space>/.kith/agents/<agentId>` Agent Memory 和 `<appData>/runtime/<spaceId>/<agentId>` runtime state；cwd 不再描述为安全隔离。
+- **H2 已完成**：`src/daemon/agentWorkspacePaths.ts` 统一解析 `workspaceRoot = Space root`、`agentMemoryDir = <space>/.kith/agents/<agentId>` 和 `runtimeStateDir = <appData>/runtime/<spaceId>/<agentId>`，并拒绝可逃逸容器的 Space/Agent ID。Claude Code、Codex、opencode 以真实 Space root 为 cwd；Claude prompt、Hermes turn 文件等 adapter 临时产物写入 runtime state。OpenCode 通过 child-only `OPENCODE_CONFIG_CONTENT` 注入固定内部 execution agent，不写或覆盖用户 `AGENTS.md`，同 Space 多 agent 的 prompt 也保持进程隔离。文件树、文件读取、项目 skills、profile 同步和 reset 都改用 Core 从 registry 解析的 Space root；普通 reset 只清 session/runtime state，完整 reset 额外清当前 Agent Memory，两者都不删除共享 Space 文件；同 agent 的 reset/start 在 Worker 中串行，避免 Reset & Restart 的清理竞态。Copilot/Kimi/Cursor 仍是 experimental adapter，因为其实现会在 cwd 写 `AGENTS.md`，暂时使用 runtimeStateDir，避免覆盖用户项目文件。
+- H2 验证：`pnpm run typecheck`、486/486 单测、完整集成测试和 Web build 通过；三路径/容器逃逸、三家主要 runtime cwd、OpenCode prompt 隔离、Agent Memory/profile、文件树/skills 和 reset 串行/安全边界均有回归测试。一次轻量只读复核发现的 OpenCode 文件覆盖、Reset & Restart 竞态和删除路径逃逸均已修复。
 - **仍待实现的 Home/UI 差距**：`/api/spaces` 虽接受 rootPath，但 SpaceSwitcher 只提交 name/slug，没有 Desktop 文件夹选择器；Home 尚无 `spaces` 模块或跨 Space command service。
 - 数据层是 SQLite：中央 `app.db` 保存唯一 Human 与 `spaces` registry；每 Space 使用 `<rootPath>/.kith/workspace.db`。canonical 连接入口为 `dbForSpace(spaceId)` / `listSpaces()`；`dbFor`、`listWorkspaces`、`registerWorkspace` 等 workspace facade 已删除。
 - `src/app-data/appDatabase.ts` 是 app.db 事实源：除唯一 Human/Space registry 外，A3 增加单例 `browser_access_settings` 与 `browser_sessions`。REST、附件读取和 Socket 的 Human authority 只来自 Desktop 私有信任或已验证的浏览器 Cookie 会话，不再查询 `server_members`，也不存在 Human JWT/Bearer/dev-login。`src/human/humanIdentity.ts` 继续提供稳定 `@you` handle 与 app.db 展示名。
@@ -96,7 +97,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - A1-A6 验收期修复了 Windows runtime 启动链：旧 `detectRuntimes` 使用 Unix 专用 `command -v`，导致已安装 Claude/Codex/opencode 时 Worker 仍上报空列表，Core 因 `runtime unavailable` 拒绝 agent start；Codex/opencode 的 npm shim 还会被原生 `child_process.spawn` 以 `EPERM`/`ENOENT` 拒绝。`src/daemon/runtimeProcess.ts` 现在以直接依赖 `cross-spawn` 统一探测和启动全部 adapter。真实机器反馈环检测到 `claude/codex/kimi/opencode`，Codex shim 启动 Exit 0；typecheck、451/451 单测、全量集成和 `desktop:bundle` 均通过。隔离数据目录的 `desktop:dev` smoke 同样由 Worker/Core 上报这四个 runtime 并 Exit 0，退出后 Electron 残留与 7777/5273 监听均为 0。
 - OpenCode 模型发现也已接入统一进程边界：本机 `opencode models` 与 Worker 探测现在一致返回 17 个真实 `provider/model`，创建 Agent 不再回退到 `Default`。Core 新增完整 runtime availability，已安装项前置，未安装项保留展示但禁用；OpenCode 改用官方 `--auto` 并强制显式模型，模型列表去重且失败可直接重试，JSON provider error 与进程退出不会再形成第二条空白错误，旧版 error+exit 0 也不会被覆盖为 online。针对性 18/18、全量单测 463/463、全量集成、typecheck、Web build 与 `desktop:bundle` 已通过；浏览器渲染交互验收因当前页面要求 Access Token 未执行，未读取或代填用户 Token。
 - Windows agent 命令/编码链已按宿主收口：`ensureKithSpaceBin` 在 Windows 开发态与打包态只保留可执行 `kith-space.cmd` 并清理会触发“选择打开方式”的旧 POSIX 文件，Linux/macOS 继续生成可执行 `#!/bin/sh` wrapper；system prompt 在 Windows 明确 `.cmd` 与 UTF-8 `$OutputEncoding`，优先给出 PowerShell 写法但允许 runtime 明确提供的 POSIX shell，在 Linux/macOS 使用 POSIX sh/heredoc。`spawnRuntimeProcess` 对全部 runtime stdout/stderr 启用有状态 UTF-8 解码，CLI 的 message/thread/action stdin 也经独立 `readUtf8Stdin` 模块解码。真实 Windows PowerShell 5.1 探针从默认 `????` 恢复为 UTF-8 字节，生成的 `.cmd` 也已从 Git Bash smoke 成功执行；针对性 26/26、typecheck、全量单测 470/470、全量集成、Web build（2566 modules）与 `desktop:bundle` 均通过。
-- Agent 首轮生命周期已拆成三种显式场景：`create` 只向 `dm:@you` 做一次简短自我介绍，`manual` 启动/恢复在空收件箱时静默，`wake` 处理真实持久化投递并在每个原目标回复。Core 会把创建、消息/任务和 reconnect backlog 的原因传给唯一 Worker；启动准备期的投递被合并为单个 wake turn。候选 introduction turn 使用一次性 token，只有 Worker 实际选择 introduction prompt 才注入进程，CLI 也只在 `message send --introduction` 时附带；普通 wake 回复不携带 token。真实 wake 会撤销 active token 并拒绝迟到问候，completed token 的重复问候同样拒绝。Human DM 在异步校验后、事务前同步消费，因此被忽略的重复 start 和普通回复都不会误记为介绍。介绍消息与 `agents.introduced_at` 原子提交，普通重启保留，完整 wipe 清除；schema v3 会安全升级 v2 并将已有 agent 回填为已介绍。定向 TDD、typecheck、476/476 全量单测、全量集成和 Web build 均通过。
+- Agent 首轮生命周期已拆成三种显式场景：`create` 只向 `dm:@you` 做一次简短自我介绍，`manual` 启动/恢复在空收件箱时静默，`wake` 处理真实持久化投递并在每个原目标回复。Core 会把创建、消息/任务和 reconnect backlog 的原因传给唯一 Worker；启动准备期的投递被合并为单个 wake turn。候选 introduction turn 使用一次性 token，只有 Worker 实际选择 introduction prompt 才注入进程，CLI 也只在 `message send --introduction` 时附带；普通 wake 回复不携带 token。真实 wake 会撤销 active token 并拒绝迟到问候，completed token 的重复问候同样拒绝。Human DM 在异步校验后、事务前同步消费，因此被忽略的重复 start 和普通回复都不会误记为介绍。介绍消息与 `agents.introduced_at` 原子提交，普通重启保留，清 Agent Memory 的完整 reset 会清除介绍状态；schema v3 会安全升级 v2 并将已有 agent 回填为已介绍。定向 TDD、typecheck、476/476 全量单测、全量集成和 Web build 均通过。
 - LAN 浏览器具有完整产品能力，v1 仅支持桌面浏览器和 HTTP；只限受信任私网，禁止端口转发或公网暴露。
 - Message Context Snapshot 仍是设计契约，尚未持久化。
 - token 预算目前以唤醒次数为代理；真实 usage 等待 Runtime 契约 v2。
@@ -104,8 +105,8 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 五、下一步顺序
 
-1. P-A7 H2：三家 runtime 改用 Space root cwd，Agent Memory/runtime state 分别归位。
-2. P-A7 H3-H4：补文件夹创建/接入/重连与 Home-only Spaces 模块，完成用户验收。
+1. P-A7 H3：补 Desktop 文件夹创建、接入、重连与冲突校验。
+2. P-A7 H4：补 Home-only Spaces 模块和同窗切换，完成用户验收。
 3. H1-H4 验收后决定 Runtime 契约 v2 与 H5 跨 Space 编排的顺序；生产力模块、Message Context Snapshot 与 P4 视觉收尾继续在后。
 
 每阶段独立验证、独立中文提交。未获得用户明确指示，不合并 main、不推远端、不发布。
@@ -115,7 +116,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - 包管理使用 pnpm；脚本参数直接跟在后面，例如 `pnpm test --unit`。
 - 常规验证：`pnpm run typecheck`、`pnpm test --unit`、`pnpm test --integration`、`pnpm --dir web run build`。
 - 测试 runner 同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向同一个随机临时 profile 的不同子目录；手写测试若绕过 runner，必须显式覆盖默认 Space 容器或直接传 rootPath，绝不在真实 `~/Kith-space` 生成 fixture。
-- 当前验收单测基线为 478/478；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6 小节里的旧数字只描述当时检查点，不是当前基线。
+- 当前验收单测基线为 486/486；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6 小节里的旧数字只描述当时检查点，不是当前基线。
 - 新功能优先拆到职责清楚的模块；不整块重写 `src/server/core.ts` 或大型 React 组件。
 - 代码、命令、架构、UI、术语或阶段变化时，同一提交同步相应文档。
 - 用户未要求时不修改或提交 `.agents/`、`.claude/`、`.codegraph/daemon.pid`、`skills-lock.json` 等外部/个人工具文件。

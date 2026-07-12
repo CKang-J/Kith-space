@@ -119,13 +119,13 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
     toast.error(`${t("members.startFailedWithReason")}: ${r.error}`);
   };
   const ctl = async (action: string) => { const r = await api("POST", `/api/agents/${id}/${action}`); if (r?.error) startFail(r); setTimeout(refetch, 400); }; // start/stop: surface daemon-offline failure (503 → {error}) instead of swallowing it
-  // Three restart modes: restart=keep session+workspace; reset=clear session, keep workspace; full=clear session+delete workspace. All modes end with a restart.
+  // Three restart modes: restart keeps the session; reset clears session/runtime state; full also clears this Agent's memory. Shared Space files are always preserved.
   const doRestart = async (mode: "restart" | "reset" | "full") => {
     setShowRestart(false);
     let r: any;
     if (mode === "restart") r = await api("POST", `/api/agents/${id}/restart`);
     else if (mode === "reset") r = await api("POST", `/api/agents/${id}/reset`, { restart: true });
-    else r = await api("POST", `/api/agents/${id}/reset`, { wipeWorkspace: true, restart: true });
+    else r = await api("POST", `/api/agents/${id}/reset`, { clearAgentMemory: true, restart: true });
     if (r?.error) startFail(r); // pure restart returns 503 when daemon offline; reset/full return ok (restart leg stays best-effort)
     setTimeout(refetch, 500);
   };
@@ -194,7 +194,7 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
                 {a.runtimeConfig?.reasoningEffort && <div className="kv"><b>{t("common.reasoning")}</b> {a.runtimeConfig.reasoningEffort}</div>}
                 <div className="kv"><b>{t("common.status")}</b> <span className="kv-v"><span className={"dot " + live} /> {live}</span></div>
                 <div className="kv"><b>{t("common.session")}</b> {a.sessionId || "(none)"}</div>
-                <div className="kv"><b>{t("common.workspace")}</b> ~/.kith-space/agents/{a.id}</div>
+                <div className="kv"><b>{t("common.workspace")}</b> <AgentWorkspaceRoot id={a.id} /></div>
                 {a.createdAt && <div className="kv"><b>{t("common.created")}</b> {fmtDateTime(a.createdAt)}</div>}
                 <div className="task-acts" style={{ marginTop: 14 }}>
                   <button className="joinbtn" onClick={startEdit}>{t("members.editProfile")}</button>
@@ -343,6 +343,20 @@ function ActivityTab({ id, name }: { id: string; name: string }) {
 
 // Agent workspace file tree (GET /api/agents/:id/workspace-files for full tree + /workspace-files/read for file content)
 // .md files: Preview (rendered markdown, default) / Raw (monospace source) toggle. Other files: monospace source only.
+function AgentWorkspaceRoot({ id }: { id: string }) {
+  const { api } = useStore();
+  const [root, setRoot] = useState("...");
+  useEffect(() => {
+    let active = true;
+    setRoot("...");
+    void api("GET", `/api/agents/${id}/workspace-files`).then((result) => {
+      if (active && result.root) setRoot(result.root);
+    });
+    return () => { active = false; };
+  }, [id]);
+  return <>{root}</>;
+}
+
 export function WorkspaceTab({ id }: { id: string }) {
   const { t } = useTranslation();
   const { api } = useStore();
@@ -353,8 +367,8 @@ export function WorkspaceTab({ id }: { id: string }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set()); // tracks expanded directories (collapsed by default, toggled via onToggleDir)
   const [copied, setCopied] = useState(false);
   const [showHidden, setShowHidden] = useState(false); // dot-prefixed files hidden by default (like ls; toggle for ls -a behavior)
-  const [root, setRoot] = useState(`~/.kith-space/agents/${id}/`); // shown in root bar + copied by copy button; replaced by the real on-disk path from the API when available
-  useEffect(() => { setSel(null); setExpanded(new Set()); setRoot(`~/.kith-space/agents/${id}/`); (async () => { const d = await api("GET", `/api/agents/${id}/workspace-files`); if (d.error) { setErr(d.error); setFiles([]); } else { setErr(""); setFiles(d.files || []); if (d.root) setRoot(d.root.endsWith("/") ? d.root : d.root + "/"); } })(); }, [id]);
+  const [root, setRoot] = useState("..."); // shown in root bar + copied by copy button; replaced by the registered Space root from the API
+  useEffect(() => { setSel(null); setExpanded(new Set()); setRoot("..."); (async () => { const d = await api("GET", `/api/agents/${id}/workspace-files`); if (d.error) { setErr(d.error); setFiles([]); } else { setErr(""); setFiles(d.files || []); if (d.root) setRoot(d.root.endsWith("/") ? d.root : d.root + "/"); } })(); }, [id]);
   const open = async (f: any) => { setMode("preview"); const d = await api("GET", `/api/agents/${id}/workspace-files/read?path=${encodeURIComponent(f.path)}`); setSel({ path: f.path, content: d.content, error: d.error }); };
   const toggleDir = (path: string) => setExpanded((s) => { const n = new Set(s); n.has(path) ? n.delete(path) : n.add(path); return n; });
   const copyRoot = () => navigator.clipboard?.writeText(root).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });

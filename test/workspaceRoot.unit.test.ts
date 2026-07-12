@@ -1,6 +1,4 @@
-// listWorkspace returns the real on-disk workspace root, so the web UI can show the path
-// truthfully instead of a hardcoded `~/.kith-space/agents/<id>` template that's wrong whenever
-// KITH_SPACE_HOME is non-default (worktree isolation, custom data dir).
+// listWorkspace returns the registered Space root shared by its agents.
 // Run: npx tsx --test --test-force-exit test/workspaceRoot.unit.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -8,28 +6,27 @@ import path from "node:path";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
-// MUST be set before importing workspace.ts — DATA_DIR = agentsDir() is computed at module load.
 const HOME = mkdtempSync(path.join(tmpdir(), "ot-ws-root-"));
-process.env.KITH_SPACE_HOME = HOME;
 
-const { listWorkspace } = await import("../src/daemon/workspace.ts");
+const { listWorkspace, readWorkspaceFile } = await import("../src/daemon/workspace.ts");
 
 test("listWorkspace returns the absolute workspace root + the file tree", async () => {
-  const agentId = "11111111-1111-4111-8111-111111111111";
-  const agentDir = path.join(HOME, "agents", agentId);
-  mkdirSync(agentDir, { recursive: true });
-  writeFileSync(path.join(agentDir, "MEMORY.md"), "# test");
+  const workspaceRoot = path.join(HOME, "space");
+  mkdirSync(workspaceRoot, { recursive: true });
+  writeFileSync(path.join(workspaceRoot, "README.md"), "# test");
 
-  const r = await listWorkspace(agentId);
+  const r = await listWorkspace(workspaceRoot);
 
-  assert.equal(r.root, agentDir);
-  assert.ok(r.files!.some((f) => f.name === "MEMORY.md"), "file tree includes MEMORY.md");
+  assert.equal(r.root, workspaceRoot);
+  assert.ok(r.files!.some((f) => f.name === "README.md"), "file tree includes Space files");
+  assert.deepEqual(await readWorkspaceFile(workspaceRoot, "README.md"), { path: "README.md", content: "# test" });
+  assert.deepEqual(await readWorkspaceFile(workspaceRoot, "../outside.txt"), { error: "invalid path" });
 });
 
-test("listWorkspace returns root even when the agent dir is missing — root is a pure path, no disk IO", async () => {
-  const agentId = "22222222-2222-4222-8222-222222222222";
-  const r = await listWorkspace(agentId);
+test("listWorkspace returns root even when the Space root is missing", async () => {
+  const workspaceRoot = path.join(HOME, "missing-space");
+  const r = await listWorkspace(workspaceRoot);
 
-  assert.equal(r.root, path.join(HOME, "agents", agentId));
-  assert.ok(!r.error, "missing dir → empty tree, not an error (walk tolerates readdir failure)");
+  assert.equal(r.root, workspaceRoot);
+  assert.ok(!r.error, "missing root returns an empty tree");
 });

@@ -1,10 +1,10 @@
 # Home 总控 Space、Space 根目录与跨 Space 编排设计
 
-状态：已确认设计；H1 已完成，H2-H4 待实施，H5 为后续能力。
+状态：已确认设计；H1-H2 已完成，H3-H4 待实施，H5 为后续能力。
 确认日期：2026-07-12。
 适用范围：A1-A6 用户验收后的前置修复；完成前不进入 Runtime 契约 v2。
 
-本文固定四件事：`Home` 的产品角色、用户可见 Space 根目录、agent 的实际工作目录与记忆归属，以及未来跨 Space 编排的安全边界。它补充 `2026-07-11-personal-agent-os-local-pivot-design.md`，并修正当前实现仍继承自 open-tag 的 per-agent cwd。
+本文固定四件事：`Home` 的产品角色、用户可见 Space 根目录、agent 的实际工作目录与记忆归属，以及未来跨 Space 编排的安全边界。它补充 `2026-07-11-personal-agent-os-local-pivot-design.md`，并修正从 open-tag 继承的 per-agent cwd 遗留。
 
 ## 1. 目标与非目标
 
@@ -150,7 +150,7 @@ runtimeStateDir = <appData>/runtime/<spaceId>/<agentId>
 - Claude Code、Codex、opencode 的 cwd 都是 workspaceRoot。
 - 多个 agent 在同一 Space 中有意共享同一用户文件树；cwd 不是安全沙箱，也不能再被文档描述为 per-agent 隔离。
 - Claude system prompt 临时文件等适配器产物写入 runtimeStateDir，不污染 Space 根目录。
-- reset/wipe 必须分别表达“清 runtime 状态”“清 agent memory”和“删除 agent 生成的 Space 文件”；不得用删除旧 agent cwd 的方式模糊三者。
+- reset 必须分别表达“清 runtime 状态”和“清 Agent Memory”；两者都不得删除共享 Space 文件。若未来提供删除 agent 生成文件的能力，它必须是独立、显式且可审计的文件操作，不能伪装成 reset。
 - 非琐碎 turn 继续按 User、Space、Agent 顺序读取三个 MEMORY.md。
 
 三层记忆归属：
@@ -239,12 +239,14 @@ idempotency key
 - 为 Home 建立稳定 homeSpaceId 和 `~/Kith-space/Home` 根路径。
 - 补路径分离、旧 app.db Home 身份回填、并发初始化与 Home 不可注销测试。
 
-### H2 runtime cwd 与记忆归位
+### H2 runtime cwd 与记忆归位（已完成）
 
 - runtime cwd 改为 Space root。
 - Agent Memory 移到 `<space>/.kith/agents/<agentId>`。
 - runtime prompt/临时文件移到 app data runtimeStateDir。
 - 更新 reset/wipe 与三层记忆测试。
+
+实现说明：Claude Code、Codex、opencode 已使用 Space root cwd；OpenCode prompt 通过 child-only `OPENCODE_CONFIG_CONTENT` + 固定内部 execution agent 注入，不写用户 `AGENTS.md`。Copilot/Kimi/Cursor 仍是 experimental adapter，其现有 prompt 注入会在 cwd 写 `AGENTS.md`，暂时使用 runtimeStateDir，避免覆盖用户 Space 中的同名文件。文件树、项目 skills、profile 同步与 reset 已统一使用 registry 解析的三路径契约；Space/Agent ID 必须是安全单路径段且派生目录不得逃逸容器，同 agent reset/start 串行执行。
 
 ### H3 Space 创建与接入
 
@@ -278,13 +280,12 @@ H1-H4 是 A1-A6 验收前置修复；H5 是其上后续能力，不能用假数�
 - Home agent 的跨 Space 操作明确目标、可审计、幂等，且不冒充 Human。
 - 文档和 UI 不再把 cwd 描述为安全隔离，也不把 Spaces 模块描述成旧总览壳。
 
-## 11. 当前实现差距
+## 11. 当前实现状态与剩余差距
 
-截至设计确认时，代码仍有以下差距，不能误写成已完成：
+截至当前实现，状态如下：
 
 - H1 已消除路径绑定：`KITH_SPACE_HOME` 只覆盖 app data，`KITH_SPACE_SPACES_DIR` 独立覆盖默认 Space 容器，正式 Home 默认为 `~/Kith-space/Home`。
-- AgentManager 仍以 `<KITH_SPACE_HOME>/agents/<agentId>` 为 runtime cwd。
-- Agent Memory 仍和 cwd 共用该目录，复制 Space 时不会随 `.kith` 搬迁。
+- H2 已完成三路径归位：主要 runtime 以 Space root 为 cwd，Agent Memory 位于 `.kith/agents/<agentId>`，runtime 临时状态位于 app data；reset 不删除共享 Space 文件。
 - `/api/spaces` 已接受 rootPath，但现有创建 UI 只提交 name/slug，没有 Desktop 文件夹选择器。
 - Home 已通过 `installation_state.home_space_id` 获得稳定身份；Home-only Spaces 模块与跨 Space command service 尚未实现。
 

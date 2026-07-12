@@ -12,7 +12,7 @@ Kith 意为"你熟识信任的一圈自己人"——正是这些懂你（有记�
 
 当前最高优先级是 2026-07-11 锁定的本机化转向：正式产品只有 Electron Desktop，一个 Human、一个本机 Local Runtime Worker、多个本地 Space；浏览器入口是 Desktop 可选开放的本机/LAN 附属能力。多真人、多机器、服务器部署、云同步、Docker、账户登录和独立 Web 发行路线已经取消。完整规格见 [`个人 AgentOS 本机化路线设计`](./docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md)。
 
-本机化 A2-A6 原定代码切片已完成并进入用户验收：中央 `app.db`、唯一 Human、canonical Space 契约、安装级唯一 Local Runtime Worker、19 表 workspace.db baseline、浏览器 Token/Cookie 安全边界和 Electron Desktop 宿主均已落地。P-A7 H1 也已完成：app data 与默认 Space 容器已分离，Home 使用 app.db 中的稳定身份并默认位于用户可见的 `~/Kith-space/Home`。H2-H4 继续把 agent cwd/Memory 归位到 Space root、补用户文件夹接入和 Home Spaces 目录；完成前 Runtime 契约 v2 继续暂停。完整补充规格见 [`Home 与 Space root 设计`](./docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md)。
+本机化 A2-A6 原定代码切片已完成并进入用户验收：中央 `app.db`、唯一 Human、canonical Space 契约、安装级唯一 Local Runtime Worker、19 表 workspace.db baseline、浏览器 Token/Cookie 安全边界和 Electron Desktop 宿主均已落地。P-A7 H1-H2 也已完成：app data 与默认 Space 容器已分离，Home 使用 app.db 中的稳定身份并默认位于用户可见的 `~/Kith-space/Home`；Claude Code、Codex、opencode 以所属 Space root 为 cwd，Agent Memory 随 Space 存放。H3-H4 接着补用户文件夹接入和 Home Spaces 目录；完成前 Runtime 契约 v2 继续暂停。完整补充规格见 [`Home 与 Space root 设计`](./docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md)。
 
 ## Desktop 开发启动
 

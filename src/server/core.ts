@@ -1119,7 +1119,7 @@ async function markAgentUnavailable(spaceId: string, agentId: string, reason: st
   log.warn("agent unavailable", { agentId, reason });
 }
 type AgentStartTarget = { ok: true; cfg: NonNullable<Awaited<ReturnType<typeof agentConfig>>> };
-type AgentControlTarget = { ok: true };
+type AgentControlTarget = { ok: true; spaceId: string; workspaceRoot: string };
 
 function sendAgentStart(target: AgentStartTarget, agentId: string, reason: AgentStartReason): boolean {
   const introductionToken = reason !== "wake" && !target.cfg.introduced ? randomUUID() : null;
@@ -1158,7 +1158,9 @@ async function agentControlTarget(spaceId: string, agentId: string): Promise<Age
     .where(and(eq(schema.agents.id, agentId), eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt))))[0];
   if (!a) return { ok: false, reason: "agent not found" };
   if (!isWorkerConnected()) return { ok: false, reason: "local runtime worker offline" };
-  return { ok: true };
+  const space = spaceRecord(spaceId);
+  if (!space) return { ok: false, reason: "space not found" };
+  return { ok: true, spaceId, workspaceRoot: space.rootPath };
 }
 /** Start an agent (requires the installation-local runtime worker to be online). */
 export async function startAgent(spaceId: string, agentId: string, reason: AgentStartReason = "manual"): Promise<{ ok: boolean; reason?: string }> {
@@ -1189,12 +1191,12 @@ export async function stopAgent(spaceId: string, agentId: string): Promise<boole
   await publishAgentState(spaceId, agentId);
   return true;
 }
-export async function resetAgent(spaceId: string, agentId: string, wipeWorkspace = false, clearMemory = false): Promise<boolean> {
+export async function resetAgent(spaceId: string, agentId: string, clearAgentMemory = false): Promise<boolean> {
   const db = dbForSpace(spaceId);
   clearAgentIntroductionTurns(spaceId, agentId);
   const target = await agentControlTarget(spaceId, agentId);
   if (target.ok) {
-    if (!sendAgentControl(target, { type: "agent:reset", agentId, wipeWorkspace, clearMemory })) log.warn("agent reset target unavailable", { agentId, reason: "local runtime worker offline" });
+    if (!sendAgentControl(target, { type: "agent:reset", agentId, spaceId: target.spaceId, workspaceRoot: target.workspaceRoot, clearAgentMemory })) log.warn("agent reset target unavailable", { agentId, reason: "local runtime worker offline" });
   } else if (target.reason !== "agent not found") {
     log.warn("agent reset target unavailable", { agentId, reason: target.reason });
   }
@@ -1202,7 +1204,7 @@ export async function resetAgent(spaceId: string, agentId: string, wipeWorkspace
     status: "inactive",
     activity: "offline",
     sessionId: null,
-    ...(wipeWorkspace ? { introducedAt: null } : {}),
+    ...(clearAgentMemory ? { introducedAt: null } : {}),
   }).where(and(eq(schema.agents.id, agentId), eq(schema.agents.spaceId, spaceId)));
   await publishAgentState(spaceId, agentId);
   return true;
@@ -1212,7 +1214,7 @@ export async function resetAgent(spaceId: string, agentId: string, wipeWorkspace
 export async function syncAgentProfile(spaceId: string, agentId: string, displayName: string, description?: string | null): Promise<void> {
   const target = await agentControlTarget(spaceId, agentId);
   if (target.ok) {
-    if (!sendAgentControl(target, { type: "agent:profile", agentId, displayName, description: description ?? null })) log.warn("agent profile target unavailable", { agentId, reason: "local runtime worker offline" });
+    if (!sendAgentControl(target, { type: "agent:profile", agentId, spaceId: target.spaceId, workspaceRoot: target.workspaceRoot, displayName, description: description ?? null })) log.warn("agent profile target unavailable", { agentId, reason: "local runtime worker offline" });
   } else if (target.reason !== "agent not found") {
     log.warn("agent profile target unavailable", { agentId, reason: target.reason });
   }

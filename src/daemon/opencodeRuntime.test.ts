@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { handleOpencodeEvent, opencodeRuntime } from "./opencodeRuntime.js";
+import { buildOpencodeConfigContent, handleOpencodeEvent, KITH_OPENCODE_AGENT, opencodeRuntime } from "./opencodeRuntime.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 function fixtureEvents(name: string): any[] {
@@ -68,9 +68,23 @@ test("reasoning maps to thinking; empty text is skipped; lifecycle events are si
   assert.equal(fin.sessionId, "ses_y"); // session id is still captured from any event
 });
 
+test("OpenCode bootstrap keeps each Kith agent prompt process-local", () => {
+  const existing = JSON.stringify({ theme: "user-theme", agent: { user_agent: { prompt: "user prompt" } } });
+  const alpha = JSON.parse(buildOpencodeConfigContent("alpha role", existing));
+  const beta = JSON.parse(buildOpencodeConfigContent("beta role", existing));
+
+  assert.equal(alpha.theme, "user-theme");
+  assert.equal(alpha.agent.user_agent.prompt, "user prompt");
+  assert.equal(alpha.agent[KITH_OPENCODE_AGENT].prompt, "alpha role");
+  assert.equal(beta.agent[KITH_OPENCODE_AGENT].prompt, "beta role");
+  assert.notEqual(alpha.agent[KITH_OPENCODE_AGENT].prompt, beta.agent[KITH_OPENCODE_AGENT].prompt);
+});
+
 test("OpenCode launches with the official auto flag and an explicit model", { skip: process.platform !== "win32" }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "kith-space-opencode-args-"));
   const argsFile = path.join(root, "args.txt");
+  const agentsFile = path.join(root, "AGENTS.md");
+  writeFileSync(agentsFile, "user project rules");
   writeFileSync(path.join(root, "opencode.cmd"), `@echo off\r\necho %* > "${argsFile}"\r\nexit /b 0\r\n`);
 
   try {
@@ -98,7 +112,9 @@ test("OpenCode launches with the official auto flag and an explicit model", { sk
     assert.match(args, /--auto/);
     assert.match(args, /--model/);
     assert.match(args, /deepseek\/deepseek-chat/);
+    assert.match(args, new RegExp(`"--agent"\\s+"${KITH_OPENCODE_AGENT}"`));
     assert.doesNotMatch(args, /dangerously-skip-permissions/);
+    assert.equal(readFileSync(agentsFile, "utf8"), "user project rules", "Kith prompt injection must not overwrite the Space AGENTS.md");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

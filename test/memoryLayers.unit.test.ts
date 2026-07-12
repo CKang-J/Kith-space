@@ -5,18 +5,18 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { ensureSharedMemoryLayers, resolveMemoryLayerPaths } from "../src/daemon/memoryLayers.ts";
 
-test("three memory layers resolve to KITH_SPACE_HOME, workspace root, and agent workspace", async () => {
+test("three memory layers resolve to app data, Space root, and Space-local Agent Memory", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "kith-space-memory-layers-"));
   const previousHome = process.env.KITH_SPACE_HOME;
   process.env.KITH_SPACE_HOME = path.join(root, "home");
   const workspaceRoot = path.join(root, "workspace");
-  const agentWorkspace = path.join(root, "agent");
+  const agentMemoryDir = path.join(workspaceRoot, ".kith", "agents", "agent-1");
 
   try {
-    const paths = resolveMemoryLayerPaths(workspaceRoot, agentWorkspace);
+    const paths = resolveMemoryLayerPaths(workspaceRoot, agentMemoryDir);
     assert.equal(paths.user.indexFile, path.join(root, "home", "memory", "MEMORY.md"));
     assert.equal(paths.space.indexFile, path.join(workspaceRoot, ".kith", "memory", "MEMORY.md"));
-    assert.equal(paths.agent.indexFile, path.join(agentWorkspace, "MEMORY.md"));
+    assert.equal(paths.agent.indexFile, path.join(agentMemoryDir, "MEMORY.md"));
 
     await ensureSharedMemoryLayers(paths);
     assert.match(await readFile(paths.user.indexFile, "utf8"), /^# User Memory/);

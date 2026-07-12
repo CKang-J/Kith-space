@@ -138,7 +138,7 @@
 
 **推理与权衡**：模块工具按风险分级是常识取舍：可逆的自动放行保丝滑，不可逆的要审批防误伤（这些不可逆操作 v1 多在范围外，规则先锁定）。runtime 全权是更重的取舍——当前接受 bypassPermissions 是因为单机 + 单 Human + 仅本机可信内容的前提下风险可控，且能保住外接 runtime 的操作丝滑。但代价被明确记账：**升级的硬触发点是邮箱/浏览器等“摄入不可信外部内容”的模块上线之前**，届时必须先用审批路由或沙箱切断“prompt 注入到破坏性 shell”的攻击链。LAN 浏览器入口已由决策 17/21 限定为显式启用的受信任私网 HTTP + Token，它不能替代该 runtime 权限升级。
 
-**已核实源码事实与目标差距**：open-tag 以 `--dangerously-skip-permissions --permission-mode bypassPermissions` 启动 Claude Code，即对本机不受限访问。Kith-space 当前仍把 `<KITH_SPACE_HOME>/agents/<id>` 作为 cwd，但它从来不能阻止 runtime 用绝对路径访问其他文件；把它称为隔离会产生错误安全感。决策 23 要求改为 Space root cwd，并把真正的 Agent Memory、runtime state 与安全审批边界分别建模。工具能力裁剪仍不能限制任意文件/shell。
+**已核实源码事实与实施状态**：open-tag 以 `--dangerously-skip-permissions --permission-mode bypassPermissions` 启动 Claude Code，即对本机不受限访问。Kith-space H2 已让 Claude Code、Codex、opencode 使用所属 Space root cwd，并把 Agent Memory 与 runtime state 分别建模；这让相对文件操作落到正确项目，但仍不能阻止 runtime 用绝对路径访问其他文件。cwd 不是隔离，工具能力裁剪也不能限制任意文件/shell，真正的风险控制仍依赖审批、runtime 权限与未来沙箱。
 
 ---
 
@@ -152,7 +152,7 @@
 
 **推理与权衡**：三层是从 OpenLoaf 设计重构而来。关键取舍是**不把记忆做成 v1 的从零模块**——open-tag 已有一套 per-agent 文件记忆，直接复用，只在其上加两个目录层级（用户级/空间级）+ 在 system prompt 补两段索引约定。读用原生文件工具而非 MCP，是因为读操作 runtime 天然会做，包成 MCP 反而多一层。写工具延后，是先看 agent 用原生文件写会不会乱——若乱再提升为 `memory_save` 之类 MCP 工具（最小必要，不预先造）。空间层"agent 可写、用户策展"是自主与秩序的折中：agent 能沉淀团队知识，用户保留最终编辑权。结果：**v1 从零造的模块只有任务一个**（呼应决策 6）。
 
-**已核实源码事实与目标差距**：当前 `resolveMemoryLayerPaths` 已把 User Memory 放在 app data、Space Memory 放在 `<space>/.kith/memory/`，但 Agent Memory 仍与旧 per-agent cwd 共用 `<KITH_SPACE_HOME>/agents/<id>`，复制 Space 时不会随行。seed、profile 外科式同步和 prompt 驱动的索引约定继续复用；实现决策 23 时只迁移路径职责，不重造记忆系统。
+**已核实源码事实与实施状态**：`resolveMemoryLayerPaths` 把 User Memory 放在 app data、Space Memory 放在 `<space>/.kith/memory/`；H2 又把 Agent Memory 归位到 `<space>/.kith/agents/<id>`，复制 Space 时可以随行。seed、profile 外科式同步和 prompt 驱动的索引约定继续复用；本次只迁移路径职责，没有重造记忆系统。
 
 ---
 
@@ -306,7 +306,7 @@
 
 **Windows 发行姿态**：Desktop 是唯一正式发行路径，但“有安装器文件”和“已公开发行”必须分开。A6 锁定 x64、per-user、assisted NSIS；本地/CI 产物默认未签名，CI 只上传 artifact。代码签名证书是公开分发的硬前置，真实安装/卸载测试也是正式发布验收的一部分。该约束不改变未来 macOS/Linux 路线，只规定当前 Windows v1 的可验证边界。
 
-**实施状态（2026-07-12）**：A2-A6 的原定代码切片已落地，但用户验收发现 app data/Space root 仍被 `KITH_SPACE_HOME` 耦合、runtime cwd 仍是旧 per-agent 目录、Agent Memory 未随 Space 搬迁，且 Home 尚无 Spaces 模块。决策 23 的 H1-H4 被列为 A1-A6 验收前置修复；完成前 Runtime 契约 v2 继续暂停。
+**实施状态（2026-07-12）**：A2-A6 的原定代码切片已落地；用户验收发现的 app data/Space root 耦合、旧 per-agent cwd 与 Agent Memory 不可移植问题已由 P-A7 H1-H2 修复。文件夹接入和 Home Spaces 模块仍由 H3-H4 完成；在此之前 Runtime 契约 v2 继续暂停。
 
 ---
 
@@ -316,7 +316,7 @@
 
 **推理与权衡**：一次入职问候能把配置项变成有身份的团队成员，同时验证 runtime、Agent CLI 和 Human-Agent DM 整条链路。但不能用“有人给你发了消息”伪造触发原因，否则不同 runtime 会产生不一致行为：Codex 会严格执行“停止前必须回复”并发送无工作汇报，Claude Code/opencode 则可能静默。显式 `create | manual | wake` 原因让三种 adapter 共享同一产品语义，不依赖模型猜测。Core 为候选 introduction turn 生成一次性 token，只有 Worker 实际选择 introduction prompt 时才把 token 注入该 runtime 进程；CLI 也只有创建提示明确调用 `message send --introduction` 时才附带 token，普通 wake/后续回复不会被旧 token 污染。Human DM 发送在全部异步目标校验后、数据库事务前同步校验并消费 token；已撤销 token 的迟到问候和已完成 token 的重复问候都会被拒绝，普通消息因不携带 token 而不受影响。介绍消息与 `agents.introduced_at` 在同一事务提交，避免把普通回复、runtime online 或 turn 结束误判为 Human 已收到问候，也避免消息已出现但状态未写入后重复问候。
 
-**边界**：问候限制为 2-3 句、只发一次 Human DM，不读取频道历史、不广播、不写记忆。schema v3 会把升级前已有 agent 回填为已介绍；普通 reset 保留介绍状态，完整 wipe 清空它并视为重新入职。真实投递在启动准备期间到达时合并进同一个 wake turn，避免“先问候、再处理通知”的双 turn。
+**边界**：问候限制为 2-3 句、只发一次 Human DM，不读取频道历史、不广播、不写记忆。schema v3 会把升级前已有 agent 回填为已介绍；普通 reset 保留介绍状态，清 Agent Memory 的完整 reset 会清空它并视为重新入职。真实投递在启动准备期间到达时合并进同一个 wake turn，避免“先问候、再处理通知”的双 turn。
 
 ---
 
@@ -332,7 +332,7 @@
 
 **实施边界**：H1-H4（路径、cwd/记忆、文件夹接入、Home Spaces UI）属于 A1-A6 验收前置修复。跨 Space 写编排 H5 后续渐进实现，先只读真实摘要，再接 task/message/dispatch；没有真实数据前不做占位视图。完整规格见 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
 
-**实施状态**：P-A7 H1 已完成。`src/paths.ts` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，并以 `KITH_SPACE_SPACES_DIR` 独立隔离默认 Space 容器；app.db 已保存稳定 homeSpaceId，Home 默认根为 `~/Kith-space/Home`。`src/daemon/agentManager.ts` 仍把 `<appData>/agents/<id>` 同时作为 cwd 和 Agent Memory，前端 `SpaceSwitcher` 创建请求也尚不提交 rootPath；后两项分别由 H2、H3 修复。
+**实施状态**：P-A7 H1-H2 已完成。`src/paths.ts` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，并以 `KITH_SPACE_SPACES_DIR` 独立隔离默认 Space 容器；app.db 保存稳定 homeSpaceId，Home 默认根为 `~/Kith-space/Home`。`src/daemon/agentWorkspacePaths.ts` 与 `AgentManager` 已把主要 runtime cwd、Agent Memory 和 runtime state 拆为三个路径，并对派生删除路径做容器逃逸校验；文件树/skills/profile/reset 同步采用真实 Space root，同 agent reset/start 串行。OpenCode 已用 child-only inline execution agent 替代覆盖用户 `AGENTS.md`。前端创建请求仍不提交用户选择的 rootPath，由 H3 修复；Home-only Spaces 模块由 H4 修复。
 
 ---
 

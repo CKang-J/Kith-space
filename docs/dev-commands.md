@@ -36,7 +36,7 @@ $env:KITH_SPACE_SPACES_DIR = Join-Path $env:KITH_SPACE_HOME "spaces"
 pnpm run desktop:dev
 ```
 
-这会为本次终端创建一套带随机 GUID 的一次性 app data 与 Space 容器，不是一台电脑唯一的正式目录。正式默认值分别是 `~/.kith-space` 与 `~/Kith-space`；H2 完成前 agent cwd 和 Agent Memory 仍在 app data 下，因此这套临时 profile 只适合隔离验收，不应保存正式工作文件。路径分层见 [`Home 与 Space root 设计`](./superpowers/specs/2026-07-12-home-space-and-space-root-design.md)。
+这会为本次终端创建一套带随机 GUID 的一次性 app data 与 Space 容器，不是一台电脑唯一的正式目录。正式默认值分别是 `~/.kith-space` 与 `~/Kith-space`。该临时 profile 中创建的 Space 和 Agent Memory 都会随终端验收目录一起丢弃；Claude Code、Codex、opencode 的 cwd 是其中实际注册的 Space root，不要在这套 profile 中保存正式工作。路径分层见 [`Home 与 Space root 设计`](./superpowers/specs/2026-07-12-home-space-and-space-root-design.md)。
 
 关闭窗口默认只是进入托盘。彻底停止时使用托盘菜单的 **Quit**，或在启动终端按 `Ctrl+C`。
 

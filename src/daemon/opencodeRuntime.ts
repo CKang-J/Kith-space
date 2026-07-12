@@ -8,16 +8,37 @@
 //     agent. We pass the message as argv and close stdin.
 //  2. --auto is required for headless runs (otherwise it waits on approval),
 //     and NODE_OPTIONS is stripped from the child env (a proxy flag like `--use-env-proxy` makes some
-//     bundled CLIs refuse to start). The system prompt is injected via {cwd}/AGENTS.md (native).
+//     bundled CLIs refuse to start). The system prompt is injected into a child-only internal agent
+//     through OPENCODE_CONFIG_CONTENT; user/project AGENTS.md files are never modified.
 import type { ChildProcess } from "node:child_process";
-import { writeFileSync } from "node:fs";
-import path from "node:path";
 import type { Runtime, StartOpts, RuntimeCallbacks, RuntimeSession, TrajectoryEntry } from "./runtime.js";
 import { spawnRuntimeProcess } from "./runtimeProcess.js";
 import { validateRuntimeModel } from "../local-runtime/runtimeCatalog.js";
 
 const MAX = 2000;
 const clip = (s: unknown) => String(s ?? "").slice(0, MAX);
+export const KITH_OPENCODE_AGENT = "__kith_runtime__";
+
+function record(value: unknown): Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+/** Merge Kith's transparent execution agent into OpenCode's child-only inline config. */
+export function buildOpencodeConfigContent(systemPrompt: string, existing?: string): string {
+  const base = existing?.trim() ? record(JSON.parse(existing)) : {};
+  const agents = record(base.agent);
+  return JSON.stringify({
+    ...base,
+    agent: {
+      ...agents,
+      [KITH_OPENCODE_AGENT]: {
+        description: "Internal Kith-space runtime execution agent",
+        mode: "primary",
+        prompt: systemPrompt,
+      },
+    },
+  });
+}
 
 function variant(rc: Record<string, unknown> | null | undefined): string | null {
   // OpenCode exposes provider-specific reasoning effort as a model "variant" (e.g. high|max|minimal).
@@ -71,7 +92,7 @@ export function handleOpencodeEvent(evt: any): OpencodeEmit {
 }
 
 function buildArgs(message: string, opts: StartOpts, sessionId: string | null): string[] {
-  const args = ["run", "--format", "json", "--auto", "--dir", opts.cwd];
+  const args = ["run", "--format", "json", "--auto", "--agent", KITH_OPENCODE_AGENT, "--dir", opts.cwd];
   const model = opts.model && opts.model !== "default" ? opts.model : "";
   if (model) args.push("--model", model);
   const v = variant(opts.runtimeConfig);
@@ -95,11 +116,14 @@ class OpencodeRun {
   constructor(private readonly opts: StartOpts, private readonly cb: RuntimeCallbacks) {
     this.sessionId = opts.sessionId ?? null; // resume an existing session, or null = let opencode create one
     // Strip NODE_OPTIONS (a proxy flag can make the bundled CLI refuse to start) and pin PWD — opencode
-    // uses PWD (not just cwd) to anchor its AGENTS.md / project discovery.
+    // uses PWD (not just cwd) to anchor project discovery.
     this.env = { ...opts.env, PWD: opts.cwd };
     delete this.env.NODE_OPTIONS;
-    try { writeFileSync(path.join(opts.cwd, "AGENTS.md"), opts.systemPrompt); }
-    catch (e) { cb.log.warn("opencode: AGENTS.md write failed", { detail: String(e) }); }
+    try { this.env.OPENCODE_CONFIG_CONTENT = buildOpencodeConfigContent(opts.systemPrompt, this.env.OPENCODE_CONFIG_CONTENT); }
+    catch (e) {
+      cb.log.warn("opencode: invalid existing OPENCODE_CONFIG_CONTENT ignored", { detail: String(e) });
+      this.env.OPENCODE_CONFIG_CONTENT = buildOpencodeConfigContent(opts.systemPrompt);
+    }
     if (this.sessionId) cb.onSession(this.sessionId);
     this.enqueue(opts.initialPrompt);
   }

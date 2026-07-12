@@ -6,10 +6,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { buildClaudeArgs } from "./claudeRuntime.js";
+import path from "node:path";
+import { buildClaudeArgs, claudePromptFile } from "./claudeRuntime.js";
 
 const BASE = (promptFlag: string[] = ["--append-system-prompt", "SP"]) =>
   buildClaudeArgs({ promptFileFlag: promptFlag });
+
+test("Claude system prompt file lives in runtime state, not the Space root", () => {
+  const runtimeStateDir = path.resolve("D:/app-data/runtime/space-1/agent-1");
+  assert.equal(
+    claudePromptFile({ cwd: path.resolve("D:/spaces/project"), runtimeStateDir }),
+    path.join(runtimeStateDir, "claude-system-prompt.md"),
+  );
+});
 
 function has(args: string[], flag: string): boolean { return args.includes(flag); }
 function valAfter(args: string[], flag: string): string | undefined {

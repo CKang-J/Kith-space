@@ -20,6 +20,8 @@ KITH_SPACE_WORKER_TOKEN=<另一个独立随机值>
 - `KITH_SPACE_DESKTOP_TOKEN`：手动开发管理请求到 Core 的内部凭据。
 - `KITH_SPACE_WORKER_TOKEN`：Worker 控制 WebSocket 的独立凭据。
 
+路径职责固定为：主要 runtime 的 cwd 是 registry 中所属 Space 的 rootPath；Agent Memory 位于 `<space>/.kith/agents/<agentId>`；prompt、turn 文件等 runtime 临时状态位于 `$KITH_SPACE_HOME/runtime/<spaceId>/<agentId>`。普通 reset 只清 session/runtime state，完整 reset 额外清当前 Agent Memory；两者都不会删除共享 Space 文件，同 agent 的 reset/start 会在 Worker 内串行。OpenCode system prompt 只通过 child env 的 inline execution agent 注入，不写 Space 的 `AGENTS.md`。Copilot/Kimi/Cursor 仍为 experimental adapter，因其会向 cwd 写 `AGENTS.md`，暂时使用 runtime state cwd。
+
 两个内部 Token 必须不同，也不能复用浏览器访问 Token。PowerShell 可分别执行两次以下命令生成 32 字节随机值：
 
 ```powershell

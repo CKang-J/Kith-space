@@ -214,8 +214,8 @@
     "create": "创建",
     "restartTitle": "重启 {{name}}",
     "restartDesc": "停止并重启 agent 进程,保留运行 session 和工作区文件。",
-    "resetDesc": "清除运行 session 后重启,工作区文件(MEMORY.md、notes/)保留。",
-    "fullResetDesc": "清除 session、删除所有工作区文件,从零重启。",
+    "resetDesc": "清除运行 session 和 runtime 临时状态后重启,保留 Agent 记忆与 Space 文件。",
+    "fullResetDesc": "清除 session、runtime 临时状态和当前 Agent 记忆后重新入职,保留共享 Space 文件。",
     "nameLabel": "名称 *",
     "namePlaceholder": "如 ada"
   },

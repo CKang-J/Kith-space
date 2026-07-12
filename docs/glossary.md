@@ -88,7 +88,7 @@
 : 把某个 runtime CLI 接入统一 `Runtime` 接口的适配层，负责启动进程、驱动一轮对话、解析其输出、回吐 session/活动/轨迹。新增一个 runtime = 实现一个 `Runtime` 对象并注册。注册表已带 8 条，v1 只把三条做稳。
 
 **Agent 首轮触发场景**
-: Core 启动 agent 时传给 Local Runtime Worker 的显式原因：`create` 表示新建后的单次 Human 私信介绍，`manual` 表示手动启动/重启/恢复且空收件箱静默，`wake` 表示有真实持久化消息或任务需要在原目标处理。只有实际采用 introduction prompt 的 runtime 进程持有一次性 token，且仅 `message send --introduction` 会把它附到请求；服务端同步消费成功后才把介绍私信与 `agents.introduced_at` 原子写入。真实 wake 会撤销 token 并拒绝迟到问候，已完成 token 的重复问候同样拒绝；普通回复不携带 token。普通重启保留完成状态，完整 wipe 会清除它。
+: Core 启动 agent 时传给 Local Runtime Worker 的显式原因：`create` 表示新建后的单次 Human 私信介绍，`manual` 表示手动启动/重启/恢复且空收件箱静默，`wake` 表示有真实持久化消息或任务需要在原目标处理。只有实际采用 introduction prompt 的 runtime 进程持有一次性 token，且仅 `message send --introduction` 会把它附到请求；服务端同步消费成功后才把介绍私信与 `agents.introduced_at` 原子写入。真实 wake 会撤销 token 并拒绝迟到问候，已完成 token 的重复问候同样拒绝；普通回复不携带 token。普通重启保留完成状态，清 Agent Memory 的完整 reset 会清除它。
 
 **Local Runtime Worker**
 : Desktop 自动管理的安装级唯一内部 daemon 进程，负责启动和驱动所有本机 Space 的 runtime。它是进程隔离边界，不隶属某个 Space；Core Service 以 installation-unique agentId 把它的状态、轨迹、session 和回复路由回 agent 所属 Space。它不是 Machine/Computer，不支持远程注册或多主机调度。

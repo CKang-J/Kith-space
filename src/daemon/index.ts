@@ -26,11 +26,11 @@ conn = new Connection(serverUrl, workerToken, (msg) => {
     case "agent:deliver": mgr.deliver(msg.agentId, msg.from ?? "someone", msg.target ?? "", !!msg.mentioned, { targetName: msg.targetName, msgShort: msg.msgShort, isTask: msg.isTask, streamId: msg.streamId }); conn.send({ type: "agent:deliver:ack", agentId: msg.agentId, seq: msg.seq }); break;
     case "agent:stop": mgr.stop(msg.agentId); break;
     case "agent:sleep": mgr.sleep(msg.agentId); break;
-    case "agent:reset": void mgr.reset(msg.agentId, !!msg.wipeWorkspace, !!msg.clearMemory); break;
-    case "agent:profile": void mgr.syncProfile(msg.agentId, msg.displayName ?? "", msg.description); break;
-    case "agent:workspace:list": void listWorkspace(msg.agentId, msg.path ?? "").then((r) => conn.send({ type: "workspace:file_tree", requestId: msg.requestId, agentId: msg.agentId, ...r })); break;
-    case "agent:workspace:read": void readWorkspaceFile(msg.agentId, msg.path ?? "").then((r) => conn.send({ type: "workspace:file_content", requestId: msg.requestId, agentId: msg.agentId, ...r })); break;
-    case "agent:skills:list": void listSkills(msg.agentId, msg.runtime).then((r) => conn.send({ type: "skills:list", requestId: msg.requestId, agentId: msg.agentId, ...r })); break;
+    case "agent:reset": void mgr.reset({ agentId: msg.agentId, spaceId: msg.spaceId ?? "", workspaceRoot: msg.workspaceRoot ?? "" }, { clearAgentMemory: !!msg.clearAgentMemory }).catch((error) => log.warn("agent reset rejected", { agentId: msg.agentId, detail: String(error) })); break;
+    case "agent:profile": void mgr.syncProfile({ agentId: msg.agentId, spaceId: msg.spaceId ?? "", workspaceRoot: msg.workspaceRoot ?? "" }, msg.displayName ?? "", msg.description).catch((error) => log.warn("agent profile sync rejected", { agentId: msg.agentId, detail: String(error) })); break;
+    case "agent:workspace:list": void listWorkspace(msg.workspaceRoot ?? "", msg.path ?? "").then((r) => conn.send({ type: "workspace:file_tree", requestId: msg.requestId, agentId: msg.agentId, ...r })); break;
+    case "agent:workspace:read": void readWorkspaceFile(msg.workspaceRoot ?? "", msg.path ?? "").then((r) => conn.send({ type: "workspace:file_content", requestId: msg.requestId, agentId: msg.agentId, ...r })); break;
+    case "agent:skills:list": void listSkills(msg.workspaceRoot ?? "", msg.runtime).then((r) => conn.send({ type: "skills:list", requestId: msg.requestId, agentId: msg.agentId, ...r })); break;
     case "probe-models": void listModels(msg.runtime ?? "").then((models) => conn.send({ type: "models", requestId: msg.requestId, runtime: msg.runtime, models })).catch((e) => conn.send({ type: "models", requestId: msg.requestId, runtime: msg.runtime, models: null, error: String((e as any)?.message ?? e) })); break;
     case "ping": conn.send({ type: "pong" }); break;
   }

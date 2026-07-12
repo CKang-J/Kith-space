@@ -21,7 +21,7 @@
 
 - **Kith-space agent = 身份层**（我们定义）：谁、什么职责、什么记忆、绑哪个 runtime/model。落在我们的数据模型和 `.kith/` 里。
 - **opencode agent = 执行配置层**（引擎内部）：这一次 CLI 运行用哪套 prompt/工具权限。
-- 我们的适配器（`opencodeRuntime.ts`）已经把 Kith-space 的身份用 **system prompt 注入**（写到 `{cwd}/AGENTS.md`，opencode 的原生项目发现机制会读它），并用 `--dangerously-skip-permissions` 无头全权运行。**默认走 opencode 的 Build primary agent 即可**，我们不需要、也不应该把 Kith-space 的 leader/dev/tester 映射成 opencode 的 primary/subagent——那会把身份层和执行层搅在一起，违背"harness 优先、角色通用"的原则。
+- 我们的适配器（`opencodeRuntime.ts`）已经把 Kith-space 的身份用 **child-only system prompt** 注入：每个进程通过 `OPENCODE_CONFIG_CONTENT` 定义同名的内部 `__kith_runtime__` primary execution agent，并用 `--agent` 选择；不会写入或覆盖 Space 的 `AGENTS.md`，不同 Kith agent 也不会共享 prompt。适配器使用官方 `--auto` 做无头运行。我们不需要、也不应该把 Kith-space 的 leader/dev/tester 映射成 opencode 的 primary/subagent——那会把身份层和执行层搅在一起，违背"harness 优先、角色通用"的原则。
 
 结论：opencode 的 agent 系统对 Kith-space 是**透明的下层细节**。我们只用它的无头执行能力，身份始终由 Kith-space 在其上层负责。术语上要注意 "agent" 一词在两个项目里含义不同（见 `../../glossary.md`）。
 

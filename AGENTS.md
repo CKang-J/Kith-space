@@ -12,7 +12,7 @@ Kith-space 是一个**桌面优先、单人使用的个人 AgentOS**：一个 Hu
 
 - `docs/progress.md` — **当前进度与续接指南**：做到哪、下一步、leader 调度与验收约定、易丢失的关键技术事实。**新会话/新模型接手先读这个。**
 - `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md` — **当前产品路线总规格**：单 Human、本机 agent、Desktop/Web 边界、删除范围与 A1-A6 验收。
-- `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md` — **当前 Home/Space root 补充规格**：Home 总控 Space、用户文件夹、runtime cwd、记忆归属与跨 Space 委派；H1 已完成，H2-H4 待实现。
+- `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md` — **当前 Home/Space root 补充规格**：Home 总控 Space、用户文件夹、runtime cwd、记忆归属与跨 Space 委派；H1-H2 已完成，H3-H4 待实现。
 - `docs/vision.md` — 北极星：完整理念 + **超越 MVP 的长远愿景**。理解"为什么"从这里开始。
 - `docs/decisions.md` — 全部决策（23 条）+ 推理 + 权衡 + **被推翻/修正的决策**演化脉络。理解"凭什么这样定"看这里。
 - `docs/roadmap.md` — 产品能力分期：当前 A1-A6 与其后的本机能力路线，并区分延后能力和永久非目标。
@@ -58,8 +58,8 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 - 技术栈：TypeScript / Node（Core Service + 安装级唯一 Local Runtime Worker；目录/命令仍暂用 server/daemon）、Electron 43.1.0 + electron-builder 26.15.3（正式 Desktop 宿主与 Windows 打包）、React + Vite（共享 UI）、Drizzle ORM。
 - 包管理：**pnpm**（workspace 仅根目录 + `web/`，`pnpm-lock.yaml`）。安装 `pnpm install`。注意 pnpm 的传参约定：脚本参数**直接跟在后面、不加 `--`**——用 `pnpm test --unit` / `pnpm test --integration`，**不要**写 `pnpm test -- --integration`。公共 daemon 包与 npm/OIDC 发布 workflow 已在 A6 删除；仓库不再维护公共 npm 发行路线。
-- 数据层：**SQLite**。每 Space 一个 `<folder>/.kith/workspace.db`；中央 `app.db` 保存唯一 Human、稳定 Home 身份、Space registry、Web 模式、访问 Token 哈希/版本、浏览器会话与 Desktop 关闭/自启动设置。A2.2b 已落地单一 19 表 baseline。app data 默认 `~/.kith-space`，默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`；`KITH_SPACE_HOME` 只覆盖 app data，`KITH_SPACE_SPACES_DIR` 独立覆盖开发/测试默认 Space 容器。Agent cwd 与 Memory 归位仍属于 P-A7 H2。旧 schema 不自动迁移或删除。详见 `architecture-proposal.md §5` 与 Home/Space root 补充规格。
-- 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。测试 runner 会同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向随机临时 profile，零 Postgres/Redis 即可全绿；当前验收单测基线为 478/478，旧 `publicNavContract` 失败已随失效的 public landing 路线删除。改动配套跑测试再提交。
+- 数据层：**SQLite**。每 Space 一个 `<folder>/.kith/workspace.db`；中央 `app.db` 保存唯一 Human、稳定 Home 身份、Space registry、Web 模式、访问 Token 哈希/版本、浏览器会话与 Desktop 关闭/自启动设置。A2.2b 已落地单一 19 表 baseline。app data 默认 `~/.kith-space`，默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`；`KITH_SPACE_HOME` 只覆盖 app data，`KITH_SPACE_SPACES_DIR` 独立覆盖开发/测试默认 Space 容器。P-A7 H2 已把 Claude Code、Codex、opencode 的 cwd 切到所属 Space root，把 Agent Memory 放入 `<space>/.kith/agents/<agentId>`，把 adapter 临时状态留在 app data runtime 目录；Copilot/Kimi/Cursor 仍为 experimental adapter 并暂用 runtime state cwd。旧 schema 不自动迁移或删除。详见 `architecture-proposal.md §5` 与 Home/Space root 补充规格。
+- 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。测试 runner 会同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向随机临时 profile，零 Postgres/Redis 即可全绿；当前验收单测基线为 486/486，旧 `publicNavContract` 失败已随失效的 public landing 路线删除。改动配套跑测试再提交。
 - 启动与发行：推荐 `pnpm install` → `pnpm run desktop:dev`。全新数据目录由 Desktop 首次初始化界面收集 Human 名称（必填）、邮箱和描述（选填），并创建 `Home`，不再要求预先执行 `seed`；`pnpm run seed` 只保留为手动分进程调试或 fixture 辅助。Desktop 统一启动 Core Service、唯一 Local Runtime Worker、开发期 Vite 与 Electron；每次进程组启动/重启生成相互独立的 Desktop/Worker 临时凭据，普通用户和渲染器都不接触它们。`desktop:build` 只构建 Electron main/preload；`desktop:bundle` 生成 Web + Core/Worker/agent CLI 生产 bundle；`desktop:pack` 生成 Windows unpacked 目录；`desktop:dist` 生成 x64、per-user、assisted NSIS 安装器，输出在 `dist/desktop/`。当前安装器是可复现的本地/CI **未签名**产物，公开分发前必须配置 Windows 代码签名证书；尚未完成真实 NSIS 安装/卸载验收。`server`、`daemon`、`web`、`browser-access:dev` 和 `dev:e2e:up` 继续作为分进程调试入口；只有这类手动调试才从可选本地 `.env` 或进程环境注入独立内部凭据。日常命令以 `docs/dev-commands.md` 为准，低频参数以 `docs/dev-debugging.md` 为准。
 - 提交：中文提交信息，列要点变更；只在用户明确要求时提交；先分支不直推主干。
 - 安全：外接 runtime 的高权限是追踪中的技术债。LAN 浏览器 v1 使用 HTTP + 访问 Token且仅限受信任私网；邮箱/浏览器等不可信内容模块上线前，必须先完成 HTTPS 与审批/沙箱权限升级（见 `decisions.md` 决策 8/17/21）。
@@ -79,7 +79,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 ## 当前进展
 
-**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-12：A2-A6 原定代码切片已完成，当前处于用户验收期；P-A7 H1 已完成，下一步为 H2。Runtime 契约 v2 保持暂停。做到哪、下一步与关键发行边界全部见 `docs/progress.md`。
+**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-12：A2-A6 原定代码切片已完成，当前处于用户验收期；P-A7 H1-H2 已完成，下一步为 H3。Runtime 契约 v2 保持暂停。做到哪、下一步与关键发行边界全部见 `docs/progress.md`。
 
 <!-- CODEGRAPH_START -->
 

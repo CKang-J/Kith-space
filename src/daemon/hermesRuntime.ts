@@ -185,7 +185,7 @@ class HermesRun {
     this.cb.onActivity("working", `hermes/${this.profile}`);
     const prompt = buildHermesPrompt(message, this.opts);
     const args = buildHermesArgs(prompt, this.sessionId);
-    const turnFile = path.join(tmpdir(), `kith-space-hermes-turn-${Date.now()}-${Math.random().toString(36).slice(2)}.jsonl`);
+    const turnFile = path.join(this.opts.runtimeStateDir ?? tmpdir(), `hermes-turn-${Date.now()}-${Math.random().toString(36).slice(2)}.jsonl`);
     const proc = spawnRuntimeProcess("hermes", args, { cwd: this.opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: { ...this.env, KITH_SPACE_TURN_FILE: turnFile } });
     this.proc = proc;
     let stdout = "";

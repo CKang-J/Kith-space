@@ -214,8 +214,8 @@
     "create": "Create",
     "restartTitle": "Restart {{name}}",
     "restartDesc": "Stop and restart the agent process, keeping the current session and workspace files.",
-    "resetDesc": "Clear the running session and restart; workspace files (MEMORY.md, notes/) are preserved.",
-    "fullResetDesc": "Clear the session and delete all workspace files, starting fresh.",
+    "resetDesc": "Clear the session and runtime state, then restart while preserving Agent Memory and Space files.",
+    "fullResetDesc": "Clear the session, runtime state, and this Agent's memory, then reintroduce it while preserving shared Space files.",
     "nameLabel": "Name *",
     "namePlaceholder": "e.g. ada"
   },

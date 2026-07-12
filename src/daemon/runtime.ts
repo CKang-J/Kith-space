@@ -19,6 +19,7 @@ export interface RuntimeCallbacks {
 
 export interface StartOpts {
   cwd: string;
+  runtimeStateDir?: string;        // host-internal prompt/adapter state; never a user Space path
   model?: string;
   runtimeConfig?: Record<string, unknown> | null;
   sessionId?: string | null;       // for session resume

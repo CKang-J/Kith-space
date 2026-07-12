@@ -10,35 +10,35 @@ import { skillRootsFor } from "../src/daemon/workspace.ts";
 const slash = (value: string) => value.replaceAll("\\", "/");
 
 test("claude resolves ~/.claude/skills (default, unchanged behavior)", () => {
-  const r = skillRootsFor("claude", "agent-1");
+  const r = skillRootsFor("claude", "/workspace");
   assert.ok(r.global.some((g) => slash(g.dir).endsWith("/.claude/skills")), JSON.stringify(r.global));
 });
 
 test("codex resolves ~/.codex/skills and not Claude's dir", () => {
-  const r = skillRootsFor("codex", "agent-1");
+  const r = skillRootsFor("codex", "/workspace");
   assert.ok(r.global.some((g) => slash(g.dir).endsWith("/.codex/skills")), JSON.stringify(r.global));
   assert.ok(!r.global.some((g) => slash(g.dir).endsWith("/.claude/skills")), "codex must not read ~/.claude/skills");
 });
 
 test("opencode/cursor/pi resolve their own nested provider dirs", () => {
-  assert.ok(skillRootsFor("opencode", "a").global.some((g) => slash(g.dir).endsWith("/.config/opencode/skills")));
-  assert.ok(skillRootsFor("cursor", "a").global.some((g) => slash(g.dir).endsWith("/.cursor/skills")));
-  assert.ok(skillRootsFor("pi", "a").global.some((g) => slash(g.dir).endsWith("/.pi/agent/skills")));
+  assert.ok(skillRootsFor("opencode", "/workspace").global.some((g) => slash(g.dir).endsWith("/.config/opencode/skills")));
+  assert.ok(skillRootsFor("cursor", "/workspace").global.some((g) => slash(g.dir).endsWith("/.cursor/skills")));
+  assert.ok(skillRootsFor("pi", "/workspace").global.some((g) => slash(g.dir).endsWith("/.pi/agent/skills")));
 });
 
 test("every runtime also includes the universal ~/.agents/skills convention", () => {
   for (const rt of ["claude", "codex", "opencode", "cursor", "pi", "copilot", "kimi"]) {
-    assert.ok(skillRootsFor(rt, "a").global.some((g) => slash(g.dir).endsWith("/.agents/skills")), rt);
+    assert.ok(skillRootsFor(rt, "/workspace").global.some((g) => slash(g.dir).endsWith("/.agents/skills")), rt);
   }
 });
 
 test("kimi/unknown runtime falls back to the universal dir only (no invented provider dir)", () => {
-  assert.deepEqual(skillRootsFor("kimi", "a").global.map((g) => g.label), ["~/.agents/skills"]);
-  assert.deepEqual(skillRootsFor("totally-unknown", "a").global.map((g) => g.label), ["~/.agents/skills"]);
+  assert.deepEqual(skillRootsFor("kimi", "/workspace").global.map((g) => g.label), ["~/.agents/skills"]);
+  assert.deepEqual(skillRootsFor("totally-unknown", "/workspace").global.map((g) => g.label), ["~/.agents/skills"]);
 });
 
 test("workspace root mirrors the runtime's project-local provider dir", () => {
-  assert.ok(slash(skillRootsFor("claude", "agent-1").workspace!.dir).endsWith("agent-1/.claude/skills"));
-  assert.ok(slash(skillRootsFor("codex", "agent-1").workspace!.dir).endsWith("agent-1/.codex/skills"));
-  assert.equal(skillRootsFor("kimi", "agent-1").workspace, null);
+  assert.ok(slash(skillRootsFor("claude", "/workspace").workspace!.dir).endsWith("/workspace/.claude/skills"));
+  assert.ok(slash(skillRootsFor("codex", "/workspace").workspace!.dir).endsWith("/workspace/.codex/skills"));
+  assert.equal(skillRootsFor("kimi", "/workspace").workspace, null);
 });

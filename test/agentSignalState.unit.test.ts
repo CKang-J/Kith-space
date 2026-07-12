@@ -60,12 +60,12 @@ test("agent lifecycle control targets the one local runtime worker", () => {
   );
   assert.match(
     coreSrc,
-    /sendAgentControl\(target, \{ type: "agent:reset", agentId, wipeWorkspace, clearMemory \}\)/,
-    "reset should target the local worker",
+    /sendAgentControl\(target, \{ type: "agent:reset", agentId, spaceId: target\.spaceId, workspaceRoot: target\.workspaceRoot, clearAgentMemory \}\)/,
+    "reset should send resolved Space paths to the local worker",
   );
   assert.match(
     coreSrc,
-    /sendAgentControl\(target, \{ type: "agent:profile", agentId, displayName, description: description \?\? null \}\)/,
-    "profile sync should target the local worker",
+    /sendAgentControl\(target, \{ type: "agent:profile", agentId, spaceId: target\.spaceId, workspaceRoot: target\.workspaceRoot, displayName, description: description \?\? null \}\)/,
+    "profile sync should send resolved Space paths to the local worker",
   );
 });

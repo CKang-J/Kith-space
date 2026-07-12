@@ -75,7 +75,7 @@ Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件
 
 ### 4.2 Space
 
-`SpaceService` 当前管理本地文件夹注册、slug、最近打开记录和 `<space>/.kith/` 初始化。H1-H3 把路径职责收口为三个边界：`HomeSpaceService` 维护稳定 homeSpaceId 和 Home 不变量；`SpaceRootService` 负责路径规范化、创建、接入、重连与 `.kith` 校验；`SpaceDirectoryService` 向 UI 和 agent 提供 registry 与真实摘要。具体类名可按代码风格调整，但职责不得重新堆回 Core 大文件。
+`SpaceService` 当前管理本地文件夹注册、slug、最近打开记录和 `<space>/.kith/` 初始化。H1-H3 把路径职责收口为三个边界：Home 身份服务维护稳定 homeSpaceId 和 Home 不变量；Space root 服务负责路径规范化、创建、接入、重连与 `.kith` 校验；Space directory 服务向 UI 和 agent 提供 registry 与真实摘要。具体类名可按代码风格调整，但职责不得重新堆回 Core 大文件。
 
 默认 app data 为 `~/.kith-space`，默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`；普通 Space 可以位于任意本机磁盘。`src/paths.ts:9` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，`KITH_SPACE_SPACES_DIR` 独立覆盖默认 Space 容器；开发/测试必须使用后者或显式 rootPath 隔离 Space fixture。
 
@@ -89,9 +89,9 @@ canonical 传输契约是 `/api/spaces`、`x-space-id`、Socket handshake `space
 
 继续复用窄 `Runtime.start(opts, callbacks): RuntimeSession` 适配契约（当前定义在 `src/daemon/runtime.ts`）。v1 只稳定 Claude Code、Codex、opencode；其他 adapter 隐藏或标 experimental。Runtime 契约 v2 统一 usage、完成、取消和 MCP bootstrap，但不把工具循环搬入 Kith-space。
 
-H2 在不扩大 Runtime 接口业务职责的前提下，为每次 agent start 解析三个路径：`workspaceRoot = Space root`、`agentMemoryDir = <space>/.kith/agents/<agentId>`、`runtimeStateDir = <appData>/runtime/<spaceId>/<agentId>`。三家 runtime 的 cwd 都是 workspaceRoot；system prompt 临时文件等 adapter 产物写 runtimeStateDir。当前 `AgentManager` 仍以 `<appData>/agents/<agentId>` 同时作为 cwd 和 Agent Memory，这是待修复的 open-tag 遗留。
+H2 已在不扩大 Runtime 接口业务职责的前提下落地三路径契约：`src/daemon/agentWorkspacePaths.ts` 为每次 agent start 解析 `workspaceRoot = Space root`、`agentMemoryDir = <space>/.kith/agents/<agentId>`、`runtimeStateDir = <appData>/runtime/<spaceId>/<agentId>`，并以安全单路径段与 descendant 断言阻止递归删除逃逸容器；`src/daemon/agentManager.ts` 创建并使用这些目录。Claude Code、Codex、opencode 的 cwd 是 workspaceRoot，Claude system prompt 与 Hermes turn 文件等 adapter 产物写 runtimeStateDir。OpenCode 以 `OPENCODE_CONFIG_CONTENT` 定义固定的 `__kith_runtime__` execution agent，并通过 `--agent` 选择，system prompt 只存在于对应 child env，不修改用户项目的 `AGENTS.md`。Copilot/Kimi/Cursor 仍标 experimental：它们的现有 adapter 会在 cwd 写 `AGENTS.md`，所以暂用 runtimeStateDir，避免覆盖用户 Space 中的同名文件；其正式 Space root 适配应先取消该 cwd 注入副作用。
 
-Agent 首轮驱动明确分为三种原因，Core 通过 `src/local-runtime/agentStart.ts:1` 的 `create | manual | wake` 随 `agent:start` 传给 Worker，Worker 再由 `src/daemon/agentLifecycle.ts:9` 选择提示：新建 agent 执行一次 `dm:@you` 自我介绍；已有 agent 手动启动/恢复只检查一次收件箱，无消息必须静默；真实频道、DM、任务或 reconnect backlog 唤醒时处理持久化消息，并在每个原目标回复。启动准备期间收到的投递已经在数据库中，因此合并进同一个 wake turn，不再追加第二次 inbox notice。Core 为未介绍 agent 的候选创建/重试 turn 生成一次性 token；Worker 只有实际选择 introduction prompt 时才把它注入 runtime 环境（`src/daemon/agentManager.ts:207`），因此对已运行 agent 被忽略的 start 不会授权其普通回复。CLI 只有创建提示要求的 `message send --introduction` 才附带 token，普通 send 不带 token（`src/cli/index.ts:79`-`:85`）；服务端在全部异步 Human-Agent DM 校验后、数据库事务前同步消费匹配 token。真实 wake 会撤销 active token，撤销后迟到的 introduction 请求返回 409，completed token 的重复 introduction 同样返回 409，而同一进程不带 token 的普通 wake 回复不受影响（`src/server/agentIntroduction.ts:15`-`:30`）。随后介绍消息与 `agents.introduced_at` 在同一数据库事务提交（`src/server/core.ts:477`-`:507`）。停止、reset 或删除会清除该 agent 的全部进程 token；普通 reset 保留持久介绍状态，完整 wipe 清除它并重新进入首次介绍。
+Agent 首轮驱动明确分为三种原因，Core 通过 `src/local-runtime/agentStart.ts:1` 的 `create | manual | wake` 随 `agent:start` 传给 Worker，Worker 再由 `src/daemon/agentLifecycle.ts:9` 选择提示：新建 agent 执行一次 `dm:@you` 自我介绍；已有 agent 手动启动/恢复只检查一次收件箱，无消息必须静默；真实频道、DM、任务或 reconnect backlog 唤醒时处理持久化消息，并在每个原目标回复。启动准备期间收到的投递已经在数据库中，因此合并进同一个 wake turn，不再追加第二次 inbox notice。Core 为未介绍 agent 的候选创建/重试 turn 生成一次性 token；Worker 只有实际选择 introduction prompt 时才把它注入 runtime 环境（`src/daemon/agentManager.ts:226`），因此对已运行 agent 被忽略的 start 不会授权其普通回复。CLI 只有创建提示要求的 `message send --introduction` 才附带 token，普通 send 不带 token（`src/cli/index.ts:79`-`:85`）；服务端在全部异步 Human-Agent DM 校验后、数据库事务前同步消费匹配 token。真实 wake 会撤销 active token，撤销后迟到的 introduction 请求返回 409，completed token 的重复 introduction 同样返回 409，而同一进程不带 token 的普通 wake 回复不受影响（`src/server/agentIntroduction.ts:15`-`:30`）。随后介绍消息与 `agents.introduced_at` 在同一数据库事务提交（`src/server/core.ts:485`-`:504`）。停止、reset 或删除会清除该 agent 的全部进程 token；普通 reset 只清 session/runtime state 并保留持久介绍状态，清 Agent Memory 的完整 reset 会清除介绍状态并重新进入首次介绍；两者都不删除共享 Space 文件。同 agent 的 reset/start 在 Worker 内串行，因此 Reset & Restart 必须等递归清理完成后才创建新 runtime 状态与 Agent Memory。
 
 Runtime 命令发现与启动统一经过 `src/daemon/runtimeProcess.ts:5`。Worker ready 不再调用 Unix 专用的 `command -v`，而是通过 `runtimeCommandAvailable` 使用与 adapter 相同的 `cross-spawn` 边界执行轻量 `--version` 探测；全部 adapter 同样通过该边界启动 CLI。这样 Windows 上的原生 `.exe` 与 npm `.cmd` shim 具有一致语义，避免 Worker 错报 `runtimes=[]`，也避免 Codex/opencode 在检测通过后仍因原生 `child_process.spawn` 的 `EPERM`/`ENOENT` 启动失败。该边界同时对 runtime 的 stdout/stderr 启用 Node 有状态 UTF-8 解码，禁止 adapter 对任意 Buffer 分块分别 `toString()`；否则一个跨块汉字会在 JSON/JSONL 解析前不可逆地变成替换字符。Core 仍以 Worker ready snapshot 为权威，在 `src/server/core.ts` 的启动 guard 中拒绝真正不可用的 runtime。
 
@@ -113,11 +113,11 @@ REST、agent API、MCP handler 和 UI 必须调用同一 Task Service，不能�
 - Space 层：当前 Space 规则与背景，位于 `<space>/.kith/memory/`。
 - Agent 层：当前 Space 内 agent 的工作知识与恢复上下文，位于 `<space>/.kith/agents/<agentId>/`。
 
-Home Space Memory 承载跨 Space 协调背景和组合计划，不替代 User Memory；普通 Space Memory 只承载该 Space 的共享知识。读取继续使用 runtime 原生文件工具；写入先遵循“一事一文件 + 索引”提示词约定，后续再增加结构化 `memory_save` MCP 工具。当前 Agent Memory 仍在 app data 下，H2 迁移后才达到本段目标态。
+Home Space Memory 承载跨 Space 协调背景和组合计划，不替代 User Memory；普通 Space Memory 只承载该 Space 的共享知识。读取继续使用 runtime 原生文件工具；写入先遵循“一事一文件 + 索引”提示词约定，后续再增加结构化 `memory_save` MCP 工具。H2 已把 Agent Memory 归位到所属 Space 的 `.kith/agents/<agentId>`，profile 外科式同步和 runtime prompt 都使用同一解析结果。
 
 ### 4.6 Files
 
-文件和附件只使用本地磁盘服务。用户业务文件位于 Space root 的普通文件树，agent 相对文件操作默认落在这里；产品状态位于 `.kith`，runtime prompt/临时状态位于 app data。S3 driver、SDK 依赖、bucket 配置和 app 级上传目录均已删除；storage key 必须是平面文件名。`src/server/storage.ts` 接收 `spaceId`，通过 app.db registry 解析已注册 Space 的 rootPath，并只读写 `<spaceRoot>/.kith/uploads`。Public download 以附件记录的 `spaceId` 为准，agent plane 以认证 `spaceId` 为准；请求和调用方都不能用字符串路径绕过 registry。
+文件和附件只使用本地磁盘服务。用户业务文件位于 Space root 的普通文件树，agent 相对文件操作默认落在这里；产品状态位于 `.kith`，runtime prompt/临时状态位于 app data。Worker 的文件树、文件读取和项目 skills 请求不再从 agentId 拼内部目录，而由 Core 从 app.db registry 解析并传递 workspaceRoot；路径遍历被拒绝，文件树隐藏 `.kith`、`.git` 与 `node_modules`。S3 driver、SDK 依赖、bucket 配置和 app 级上传目录均已删除；storage key 必须是平面文件名。`src/server/storage.ts` 接收 `spaceId`，通过 app.db registry 解析已注册 Space 的 rootPath，并只读写 `<spaceRoot>/.kith/uploads`。Public download 以附件记录的 `spaceId` 为准，agent plane 以认证 `spaceId` 为准；请求和调用方都不能用字符串路径绕过 registry。
 
 ### 4.7 Home 与跨 Space 委派
 
@@ -177,7 +177,7 @@ A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Driz
 4. A2.4 已完成：删除 Machine 服务/API/UI、machine key/心跳/调度与 agent machine 选择；保留安装级唯一 Worker 进程协议，并让 Worker 事件跨 Space 定位。
 5. A2.2b 已完成：破坏性重建 workspace.db baseline，把保留表的 `servers/server_id` 改为 `spaces/space_id`，拆出单 Human 状态/收藏/偏好，并删除旧物理表与兼容边界。
 6. A2 已完成：附件目录纳入 Space 根路径，旧 app 级上传配置、命名 facade 与不兼容维护脚本已删除，并完成整阶段验收。
-7. H1 已完成：稳定 homeSpaceId，并分离 app data/默认 Space 容器；H2-H4 继续把 runtime cwd 与 Agent Memory 归位到所属 Space，补文件夹接入/重连和 Home Spaces 模块。
+7. H1-H2 已完成：稳定 homeSpaceId，分离 app data/默认 Space 容器，并把主要 runtime cwd、Agent Memory 与 runtime state 归入三路径契约；H3-H4 继续补文件夹接入/重连和 Home Spaces 模块。
 
 不执行无边界的整仓替换；每个切片都需 schema、service、route 和 UI 契约测试。
 

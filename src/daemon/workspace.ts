@@ -1,17 +1,16 @@
-// Reads agent workspace (~/.kith-space/agents/<id>/) and exposes file tree / file content via WS-RPC to the server.
+// Reads a Core-resolved Space root and exposes its user file tree / file content via WS-RPC to the server.
 // File tree: returns {root, files:[{name,path,isDirectory,size,modifiedAt}]} — root is the absolute on-disk workspace dir (so the UI shows the real path instead of a hardcoded template that's wrong under a non-default KITH_SPACE_HOME);
 //            read file: returns {path, content}. Security: path must remain inside the workspace root (prevents ../ escape).
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { agentsDir } from "../paths.js";
 
-const DATA_DIR = agentsDir();
 const MAX_FILE = 256 * 1024;
-const SKIP = new Set(["node_modules", ".git"]);
+const SKIP = new Set(["node_modules", ".git", ".kith"]);
 
-function safe(agentId: string, rel: string): string | null {
-  const root = path.join(DATA_DIR, agentId);
+function safe(workspaceRoot: string, rel: string): string | null {
+  if (!workspaceRoot.trim()) return null;
+  const root = path.resolve(workspaceRoot);
   const target = path.resolve(root, rel || ".");
   if (target !== root && !target.startsWith(root + path.sep)) return null;
   return target;
@@ -33,9 +32,10 @@ async function walk(root: string, rel: string, acc: FileNode[], depth: number): 
 }
 
 /** Full flat file tree (aligned with the workspace-files protocol). */
-export async function listWorkspace(agentId: string, _subPath = "") {
+export async function listWorkspace(workspaceRoot: string, _subPath = "") {
   // _subPath: passed by callers for protocol alignment with readWorkspaceFile; current implementation always returns the full tree.
-  const root = path.join(DATA_DIR, agentId);
+  if (!workspaceRoot.trim()) return { error: "invalid workspace root", root: "" };
+  const root = path.resolve(workspaceRoot);
   try { const files: FileNode[] = []; await walk(root, "", files, 0); return { files, root }; }
   catch (e: any) { return { error: String(e?.message ?? e), root }; }
 }
@@ -101,23 +101,25 @@ const PROVIDER_HOME_SKILLS: Record<string, SkillRoot> = {
 const PROVIDER_WS_DIR: Record<string, string> = { claude: ".claude", codex: ".codex", copilot: ".copilot", opencode: ".opencode", cursor: ".cursor", pi: ".pi" };
 
 /** Resolve which skills dirs to scan for an agent, by its runtime. Pure (no I/O) — unit-tested. */
-export function skillRootsFor(runtime: string, agentId: string): { global: SkillRoot[]; workspace: SkillRoot | null } {
+export function skillRootsFor(runtime: string, workspaceRoot: string): { global: SkillRoot[]; workspace: SkillRoot | null } {
   const home = PROVIDER_HOME_SKILLS[runtime];
   const global = home ? [home, UNIVERSAL_SKILLS] : [UNIVERSAL_SKILLS];
   const wsName = PROVIDER_WS_DIR[runtime];
-  const workspace = wsName ? { dir: path.join(DATA_DIR, agentId, wsName, "skills"), label: `<workspace>/${wsName}/skills` } : null;
+  const workspace = wsName && workspaceRoot.trim()
+    ? { dir: path.join(path.resolve(workspaceRoot), wsName, "skills"), label: `<workspace>/${wsName}/skills` }
+    : null;
   return { global, workspace };
 }
 
-export async function listSkills(agentId: string, runtime = "claude") {
-  const roots = skillRootsFor(runtime, agentId);
+export async function listSkills(workspaceRoot: string, runtime = "claude") {
+  const roots = skillRootsFor(runtime, workspaceRoot);
   const global = (await Promise.all(roots.global.map((r) => readSkillsDir(r.dir, r.label)))).flat();
   const workspace = roots.workspace ? await readSkillsDir(roots.workspace.dir, roots.workspace.label) : [];
   return { global, workspace };
 }
 
-export async function readWorkspaceFile(agentId: string, rel: string) {
-  const file = safe(agentId, rel);
+export async function readWorkspaceFile(workspaceRoot: string, rel: string) {
+  const file = safe(workspaceRoot, rel);
   if (!file) return { error: "invalid path" };
   try {
     const s = await stat(file);
