@@ -2,7 +2,7 @@
 
 本文记录从当前 open-tag 衍生实现收敛到本机个人 AgentOS 的工程顺序。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`，权威转向规格见 `../superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，Home/Space root 补充见 `../superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
 
-截至 2026-07-12，A1-A6 原定代码切片已完成，但用户验收确认 A7 的 H1-H4 必须先修复 Home、Space root、cwd、记忆和创建入口；Runtime 契约 v2 继续暂停。
+截至 2026-07-12，A1-A6 原定代码切片已完成，但用户验收确认 A7 的 H1-H4 必须先修复 Home、Space root、cwd、记忆和创建入口；H1-H3 已完成，下一步为 H4，Runtime 契约 v2 继续暂停。
 
 ## 1. 已完成基线
 
@@ -28,7 +28,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A2 本地领域与数据模型
 
-当前进度：A2 原定切片已完成。`app.db`、唯一 Human、幂等 `Home`、canonical Space 契约、安装级唯一 Worker、19 表 workspace.db baseline 与 `<spaceRoot>/.kith/uploads` 已落地；A7 H1-H2 已补 stable homeSpaceId、用户可见 Home root、Agent Memory 可移植性与主要 runtime 的 Space root cwd。
+当前进度：A2 原定切片已完成。`app.db`、唯一 Human、幂等 `Home`、canonical Space 契约、安装级唯一 Worker、19 表 workspace.db baseline 与 `<spaceRoot>/.kith/uploads` 已落地；A7 H1-H3 已补 stable homeSpaceId、用户可见 Home root、Agent Memory 可移植性、主要 runtime 的 Space root cwd，以及安全的本机文件夹创建/接入/重连契约。
 
 改动边界：
 
@@ -114,13 +114,13 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A7 Home 总控 Space 与 Space root 归位
 
-当前进度：产品与架构设计已确认，H1-H2 已完成，下一步是 H3。A7 是 A1-A6 用户验收前置修复。
+当前进度：产品与架构设计已确认，H1-H3 已完成，下一步是 H4。A7 是 A1-A6 用户验收前置修复。
 
 实施顺序：
 
 1. H1 路径地基（已完成）：拆开 app data 和默认 Space 容器；稳定 homeSpaceId；Home 默认根目录改为 `~/Kith-space/Home`；测试同时隔离两类根目录。
 2. H2 cwd/记忆（已完成）：引入 workspaceRoot、agentMemoryDir、runtimeStateDir 三路径契约；Claude Code、Codex、opencode 使用 Space root cwd；Agent Memory 移入 `.kith/agents`；prompt 临时文件移出用户根目录；文件树/skills/profile 同步改用 registry root；reset 只清 runtime state 或当前 Agent Memory，不删除共享 Space 文件。
-3. H3 文件夹接入：Desktop 原生目录选择、默认位置创建、已有 `.kith` 接入、路径失效重连、重复 root/Space ID 和不兼容 schema 拒绝。授权浏览器使用 Desktop 主机绝对路径并由 Core 校验。
+3. H3 文件夹接入（已完成）：Desktop 原生目录选择；授权浏览器提交 Desktop 主机绝对路径；默认位置创建、普通目录初始化、已有兼容 `.kith/workspace.db` 稳定 ID 接入和路径失效重新定位。重复规范 root/Space ID、损坏/不兼容数据库、symlink 和身份不匹配被拒绝；冲突 slug 自动生成本机唯一别名，接入与正式打开共用 SQLite 完整性/表列校验。列表显式返回 `ready | missing | error`，普通 API 不隐式重建缺失 root，relocate 失败回滚 registry；失联深链回退到可用 Space，全失联显示恢复页。SpaceSwitcher 提供最小创建/接入/重连入口。
 4. H4 Home UI：普通冷启动进入 Home；Home Dock 注册 `spaces`；卡片搜索/创建/同窗进入普通 Space；普通 Space 深链接不能激活该模块。
 5. H5 跨 Space 编排：先只读真实摘要，后续通过独立服务实现幂等、受审计且不冒充 Human 的 task/message/agent dispatch。
 

@@ -1,3 +1,4 @@
+import path from "node:path";
 import { and, count, eq, gt, isNull, ne, or } from "drizzle-orm";
 import {
   getHumanProfile,
@@ -5,16 +6,27 @@ import {
   getSpaceRecordBySlug,
   listSpaceRecords,
   registerSpace as persistSpaceRecord,
+  updateSpaceRootPath,
   type SpaceRecord,
 } from "../app-data/appDatabase.js";
-import { dbForSpace, schema } from "../db/index.js";
+import { closeSpaceDb, dbForSpace, schema } from "../db/index.js";
 import { createSpace } from "../db/space.js";
+import { defaultSpaceRoot } from "../paths.js";
+import {
+  assertSpaceIdAvailable,
+  assertSpaceRootAvailable,
+  createDefaultSpaceRoot,
+  initializeAttachedSpaceRoot,
+  inspectAttachedSpaceRoot,
+  SpaceRootError,
+} from "./spaceRootService.js";
 
 export type SpaceServiceErrorCode =
   | "HUMAN_NOT_INITIALIZED"
   | "SPACE_NOT_FOUND"
   | "SPACE_NAME_INVALID"
-  | "SPACE_SLUG_CONFLICT";
+  | "SPACE_SLUG_CONFLICT"
+  | "SPACE_RELOCATION_FAILED";
 
 export class SpaceServiceError extends Error {
   constructor(public readonly code: SpaceServiceErrorCode, message: string) {
@@ -62,16 +74,102 @@ export function getLocalSpace(spaceId: string): SpaceRecord {
 export async function createLocalSpace(input: {
   name: unknown;
   slug?: unknown;
-  rootPath?: string;
+  rootPath?: unknown;
+  mode?: unknown;
 }): Promise<SpaceRecord> {
   const human = getHumanProfile();
   if (!human) throw new SpaceServiceError("HUMAN_NOT_INITIALIZED", "Human profile is not initialized");
-  const name = normalizeName(input.name);
-  const slug = availableSlug(input.slug ?? name);
-  const created = await createSpace(name, slug, {
-    rootPath: input.rootPath,
-  });
+
+  let name: string;
+  let slug: string;
+  let rootPath: string;
+  let spaceId: string | undefined;
+
+  if (input.mode !== undefined && input.mode !== "attach" && input.mode !== "create") {
+    throw new SpaceRootError("SPACE_MODE_INVALID", "Space mode must be create or attach");
+  }
+  const attaching = input.rootPath !== undefined || input.mode === "attach";
+  if (attaching) {
+    const attached = inspectAttachedSpaceRoot(input.rootPath);
+    rootPath = attached.rootPath;
+    assertSpaceRootAvailable(rootPath);
+    if (attached.kind === "existing") {
+      assertSpaceIdAvailable(attached.identity.id);
+      name = input.name === undefined ? normalizeName(attached.identity.name) : normalizeName(input.name);
+      if (input.slug === undefined) {
+        slug = availableSlug(attached.identity.slug);
+      } else {
+        slug = slugBase(input.slug);
+        const slugOwner = getSpaceRecordBySlug(slug);
+        if (slugOwner) {
+          throw new SpaceServiceError("SPACE_SLUG_CONFLICT", `Space slug already exists: ${slug}`);
+        }
+      }
+      spaceId = attached.identity.id;
+    } else {
+      name = input.name === undefined ? normalizeName(path.basename(rootPath)) : normalizeName(input.name);
+      slug = availableSlug(input.slug ?? name);
+      initializeAttachedSpaceRoot(rootPath);
+    }
+  } else {
+    name = normalizeName(input.name);
+    slug = availableSlug(input.slug ?? name);
+    const proposedRoot = defaultSpaceRoot(slug);
+    assertSpaceRootAvailable(proposedRoot);
+    rootPath = createDefaultSpaceRoot(proposedRoot);
+  }
+
+  const created = await createSpace(name, slug, { rootPath, spaceId });
   return getLocalSpace(created.id);
+}
+
+export async function relocateLocalSpace(spaceId: string, input: { rootPath: unknown }): Promise<SpaceRecord> {
+  const current = getLocalSpace(spaceId);
+  const attached = inspectAttachedSpaceRoot(input.rootPath);
+  if (attached.kind !== "existing") {
+    throw new SpaceRootError(
+      "SPACE_ROOT_DB_MISSING",
+      `Relocation target must contain the existing Space workspace.db: ${attached.rootPath}`,
+    );
+  }
+  if (attached.identity.id !== current.id) {
+    throw new SpaceRootError(
+      "SPACE_ID_MISMATCH",
+      `The selected folder belongs to Space ${attached.identity.id}, not ${current.id}. Select the moved folder for this Space.`,
+    );
+  }
+  const currentKey = process.platform === "win32"
+    ? current.rootPath.toLowerCase()
+    : current.rootPath;
+  const targetKey = process.platform === "win32"
+    ? attached.rootPath.toLowerCase()
+    : attached.rootPath;
+  if (currentKey === targetKey) {
+    throw new SpaceRootError(
+      "SPACE_ROOT_ALREADY_REGISTERED",
+      `Space is already registered at ${attached.rootPath}`,
+    );
+  }
+  assertSpaceRootAvailable(attached.rootPath, current.id);
+
+  closeSpaceDb(current.id);
+  const updated = updateSpaceRootPath(current.id, attached.rootPath);
+  if (!updated) throw new SpaceServiceError("SPACE_NOT_FOUND", `Space not found: ${current.id}`);
+  try {
+    dbForSpace(current.id);
+    return getLocalSpace(current.id);
+  } catch (error) {
+    closeSpaceDb(current.id);
+    try {
+      updateSpaceRootPath(current.id, current.rootPath);
+    } catch (rollbackError) {
+      throw new AggregateError([error, rollbackError], "Space relocation and registry rollback both failed");
+    }
+    throw new SpaceServiceError(
+      "SPACE_RELOCATION_FAILED",
+      `Could not open the relocated Space at ${attached.rootPath}; the registry was restored to ${current.rootPath}`,
+    );
+  }
 }
 
 export async function updateLocalSpace(

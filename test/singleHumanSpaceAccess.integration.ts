@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { eq } from "drizzle-orm";
@@ -110,7 +111,9 @@ try {
   ))[0];
   assert.equal(humanState?.lastReadSeq, mentionedHuman.seq);
 
-  const other = await createLocalSpace({ name: "Other", rootPath: path.join(root, "other") });
+  const otherRoot = path.join(root, "other");
+  mkdirSync(otherRoot, { recursive: true });
+  const other = await createLocalSpace({ name: "Other", rootPath: otherRoot });
   const otherDb = dbForSpace(other.id);
   const [otherChannel] = await otherDb.insert(schema.channels).values({ spaceId: other.id, name: "other", type: "channel" }).returning();
   const [otherMessage] = await otherDb.insert(schema.messages).values({

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 const bridge = Object.freeze({
+  pickSpaceDirectory: () => ipcRenderer.invoke("desktop:spaces:pick-directory"),
   getSettings: () => ipcRenderer.invoke("desktop:settings:get"),
   updateLifecycle: (input: unknown) => ipcRenderer.invoke("desktop:settings:update-lifecycle", input),
   updateBrowserAccess: (input: unknown) => ipcRenderer.invoke("desktop:settings:update-browser-access", input),

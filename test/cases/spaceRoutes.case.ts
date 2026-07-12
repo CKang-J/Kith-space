@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { getSpaceRecordBySlug } from "../../src/app-data/appDatabase.ts";
@@ -55,9 +56,11 @@ try {
   assert.equal("capabilities" in initial.body[0], false);
   assert.equal("plan" in initial.body[0], false);
 
+  const researchRoot = path.join(root, "research");
+  mkdirSync(researchRoot, { recursive: true });
   const created = await request("POST", "/api/spaces", human.id, {
     name: "Research Lab",
-    rootPath: path.join(root, "research"),
+    rootPath: researchRoot,
   });
   assert.equal(created.status, 201);
   assert.equal(created.body.slug, "research-lab");

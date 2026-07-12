@@ -1,6 +1,6 @@
 # Home 总控 Space、Space 根目录与跨 Space 编排设计
 
-状态：已确认设计；H1-H2 已完成，H3-H4 待实施，H5 为后续能力。
+状态：已确认设计；H1-H3 已完成，H4 待实施，H5 为后续能力。
 确认日期：2026-07-12。
 适用范围：A1-A6 用户验收后的前置修复；完成前不进入 Runtime 契约 v2。
 
@@ -166,7 +166,7 @@ runtimeStateDir = <appData>/runtime/<spaceId>/<agentId>
 
 ### 6.1 在默认位置创建
 
-用户输入名称，默认建议 `<SpacesHome>/<name>`。路径不存在时创建文件夹并初始化 `.kith`；路径已存在且没有 `.kith` 时必须明确告知将把它接入为 Space，不能静默覆盖文件。
+用户输入名称，应用以其规范 slug 建议 `<SpacesHome>/<slug>`。路径不存在时创建文件夹并初始化 `.kith`；默认路径已经存在时拒绝并要求改用显式“使用已有文件夹”流程，不能静默覆盖或接管文件。
 
 ### 6.2 使用已有文件夹
 
@@ -248,11 +248,15 @@ idempotency key
 
 实现说明：Claude Code、Codex、opencode 已使用 Space root cwd；OpenCode prompt 通过 child-only `OPENCODE_CONFIG_CONTENT` + 固定内部 execution agent 注入，不写用户 `AGENTS.md`。Copilot/Kimi/Cursor 仍是 experimental adapter，其现有 prompt 注入会在 cwd 写 `AGENTS.md`，暂时使用 runtimeStateDir，避免覆盖用户 Space 中的同名文件。文件树、项目 skills、profile 同步与 reset 已统一使用 registry 解析的三路径契约；Space/Agent ID 必须是安全单路径段且派生目录不得逃逸容器，同 agent reset/start 串行执行。
 
-### H3 Space 创建与接入
+### H3 Space 创建与接入（已完成）
 
 - Desktop 原生目录选择器。
 - 创建、接入、重新定位 API 与 UI。
 - 授权浏览器的主机路径输入和服务端校验。
+
+实现说明：默认创建只建立新的 `<SpacesHome>/<slug>`；显式接入可初始化没有 `.kith` 的普通目录，或从兼容 workspace.db 复用稳定 Space ID。重复规范 root/Space ID、损坏或不兼容数据库、`.kith`/workspace.db symlink 与身份不匹配都会返回可操作错误且不删除用户文件；未显式指定的冲突 slug 会生成本机唯一路由别名。接入探测与正式数据库打开共用 SQLite `quick_check`、版本以及全产品表/列校验。列表返回 `ready | missing | error`，普通 API 不会为失联 registry 记录隐式重建目录或数据库；移动后的 Space 通过 relocate 更新同一逻辑身份，目标打开失败时 registry 回滚。Desktop 通过 preload 窄桥调用 Electron 原生目录选择器，授权浏览器只提交 Desktop 主机绝对路径。SpaceSwitcher 已提供最小创建/接入/重连入口并在打开时刷新状态；失联深链会回退到可用 Space，全部失联时显示独立恢复页。完整 Home Spaces 卡片模块仍属于 H4。
+
+验证：typecheck、497/497 单测、完整集成测试、Web build（2569 modules）和 Desktop build 通过；路径/身份/slug 冲突、数据库完整性与 schema、symlink、失联深链/全失联恢复、无隐式重建、relocate 回滚与两种宿主 UI 路径均有回归覆盖。
 
 ### H4 Home 与 Spaces 模块
 
@@ -286,7 +290,7 @@ H1-H4 是 A1-A6 验收前置修复；H5 是其上后续能力，不能用假数�
 
 - H1 已消除路径绑定：`KITH_SPACE_HOME` 只覆盖 app data，`KITH_SPACE_SPACES_DIR` 独立覆盖默认 Space 容器，正式 Home 默认为 `~/Kith-space/Home`。
 - H2 已完成三路径归位：主要 runtime 以 Space root 为 cwd，Agent Memory 位于 `.kith/agents/<agentId>`，runtime 临时状态位于 app data；reset 不删除共享 Space 文件。
-- `/api/spaces` 已接受 rootPath，但现有创建 UI 只提交 name/slug，没有 Desktop 文件夹选择器。
-- Home 已通过 `installation_state.home_space_id` 获得稳定身份；Home-only Spaces 模块与跨 Space command service 尚未实现。
+- H3 已完成 Space root 生命周期：默认新建、普通目录接入、兼容 workspace.db 稳定 ID 复用、失联状态、重新定位、冲突/损坏/不兼容/symlink 拒绝和 registry 回滚均已落地；Desktop 原生目录选择与浏览器 Desktop 主机路径输入已接入 SpaceSwitcher。
+- Home 已通过 `installation_state.home_space_id` 获得稳定身份；Home-only Spaces 卡片模块、普通冷启动固定进入 Home 与跨 Space command service 尚未实现。
 
 这些差距属于已确认目标态与现有代码之间的验收修复，不代表设计尚未决定。

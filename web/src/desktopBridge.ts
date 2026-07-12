@@ -28,6 +28,7 @@ export interface DesktopBrowserAccessResult extends DesktopSettingsSnapshot {
 }
 
 export interface KithDesktopBridge {
+  pickSpaceDirectory(): Promise<string | null>;
   getSettings(): Promise<DesktopSettingsSnapshot>;
   updateLifecycle(input: Partial<Pick<DesktopLifecycleSettings, "closeBehavior" | "launchAtLogin">>): Promise<DesktopSettingsSnapshot>;
   updateBrowserAccess(input: { mode?: BrowserAccessMode; port?: number; accessToken?: string }): Promise<DesktopBrowserAccessResult>;
@@ -46,6 +47,7 @@ interface DesktopBridgeHost {
 }
 
 const REQUIRED_METHODS: (keyof KithDesktopBridge)[] = [
+  "pickSpaceDirectory",
   "getSettings",
   "updateLifecycle",
   "updateBrowserAccess",

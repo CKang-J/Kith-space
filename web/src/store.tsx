@@ -10,7 +10,9 @@ import { applySpaceScopeHeaders, spaceScopeHeaders } from "./spaceScope.ts";
 export interface Channel { id: string; name: string; description?: string; type: string; lastMessageAt?: string; archivedAt?: string | null }
 export interface Dm { id: string; name: string; type: string; description?: string; lastMessageAt?: string; peerId?: string | null; peerName?: string | null; peerDisplayName?: string | null; peerType?: string | null; peerAvatarUrl?: string | null }
 export interface Agent { id: string; name: string; displayName: string; description?: string; status: string; activity?: string; activityDetail?: string; model?: string; runtime: string; avatarUrl?: string | null; creatorType?: string }
-export interface SpaceInfo { id: string; name: string; slug: string; avatarUrl?: string | null }
+export type SpaceRootStatus = "ready" | "missing" | "error";
+export interface SpaceInfo { id: string; name: string; slug: string; rootPath?: string; status: SpaceRootStatus; rootError?: string | null; code?: string; avatarUrl?: string | null }
+export interface SpaceMutationResult { space?: SpaceInfo; error?: string; code?: string }
 export interface Me { id: string; name: string; email?: string | null; description?: string | null }
 export interface Att { id: string; filename: string; mimeType?: string; sizeBytes?: number }
 export interface Reaction { emoji: string; count: number; reactorIds: string[]; reactorNames: string[] }
@@ -23,7 +25,9 @@ interface Store {
   spaces: SpaceInfo[];
   uploadSpaceAvatar: (file: File) => Promise<void>;
   uploadAgentAvatar: (agentId: string, file: File) => Promise<string>;
-  createSpace: (name: string, slug?: string) => Promise<string | null>; // POST → optimistically add to spaces; returns the new slug so the caller navigates client-side (no full-page reload)
+  createSpace: (input: { name?: string; rootPath?: string }) => Promise<SpaceMutationResult>;
+  relocateSpace: (spaceId: string, rootPath: string) => Promise<SpaceMutationResult>;
+  refreshSpaces: () => Promise<SpaceInfo[]>;
   switchSpace: (slug: string) => void;                           // client-side Space switch: re-point the active Space, reset per-Space state, reconnect the socket (no full-page reload)
   clearBrowserAccess: () => Promise<void>;
   channels: Channel[]; dms: Dm[]; unread: Record<string, number>;
@@ -111,20 +115,53 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Returns the raw response (incl. `error` on failure, e.g. 409 "channel name exists") instead of collapsing
   // it to null — callers need `error` to surface a toast instead of silently closing the create-channel modal.
   const createChannel = async (opts: { name: string; description?: string; visibility?: string; agentIds?: string[] }) => { const r = await api("POST", "/api/channels", { name: opts.name, description: opts.description, visibility: opts.visibility, agentIds: opts.agentIds ?? [] }); if (r?.id) { await reload(); sockRef.current?.emit("join:channel", r.id); } return r; };
-  // Create Space → optimistically add it to the Space list and
-  // return the new slug. The caller navigates client-side to /s/<slug>/channel; the URL drives activation (see main.tsx),
-  // so there is no full-page reload — the workspace skeleton shows while the new workspace's data loads.
-  const createSpace = async (name: string, slug?: string): Promise<string | null> => {
-    const r = await api("POST", "/api/spaces", { name, slug });
-    if (!r?.id) return null;
-    const info: SpaceInfo = { id: r.id, name: r.name, slug: r.slug, avatarUrl: null };
-    const next = [...spacesRef.current.filter((s) => s.id !== r.id), info];
+  const toSpaceInfo = (raw: any): SpaceInfo => ({
+    id: String(raw.id), name: String(raw.name), slug: String(raw.slug),
+    rootPath: typeof raw.rootPath === "string" ? raw.rootPath : undefined,
+    status: raw.status === "missing" || raw.status === "error" ? raw.status : "ready",
+    rootError: typeof raw.rootError === "string" ? raw.rootError : null,
+    code: typeof raw.code === "string" ? raw.code : undefined,
+    avatarUrl: typeof raw.avatarUrl === "string" ? raw.avatarUrl : null,
+  });
+  const rememberSpace = (raw: any): SpaceInfo => {
+    const info = toSpaceInfo(raw);
+    const next = [...spacesRef.current.filter((s) => s.id !== info.id), info];
     spacesRef.current = next; setSpaces(next);
-    return r.slug;
+    return info;
+  };
+  const refreshSpaces = async (): Promise<SpaceInfo[]> => {
+    const response = await fetch("/api/spaces", { credentials: "same-origin" });
+    if (!response.ok) throw new Error(`Space list failed (${response.status})`);
+    const data = await response.json().catch(() => []);
+    const next = Array.isArray(data) ? data.map(toSpaceInfo) : [];
+    spacesRef.current = next;
+    setSpaces(next);
+    return next;
+  };
+  const mutateSpaceDirectory = async (path: string, body: unknown) => {
+    if (!csrfRef.current) throw new Error("Missing browser session CSRF token");
+    const response = await fetch(path, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json", "x-kith-csrf": csrfRef.current },
+      body: JSON.stringify(body),
+    });
+    return response.json().catch(() => ({}));
+  };
+  // Create in the default container when rootPath is omitted; an explicit rootPath attaches an existing host folder.
+  const createSpace = async (input: { name?: string; rootPath?: string }): Promise<SpaceMutationResult> => {
+    const r = await mutateSpaceDirectory("/api/spaces", input);
+    if (!r?.id) return { error: r?.error || "Space creation failed", code: r?.code };
+    return { space: rememberSpace(r) };
+  };
+  const relocateSpace = async (targetSpaceId: string, rootPath: string): Promise<SpaceMutationResult> => {
+    const r = await mutateSpaceDirectory(`/api/spaces/${targetSpaceId}/relocate`, { rootPath });
+    if (!r?.id) return { error: r?.error || "Space relocation failed", code: r?.code };
+    return { space: rememberSpace(r) };
   };
   // Client-side Space switch: re-point the active Space by slug. The activation effect (keyed on activeSpaceId) resets
   // per-Space state and reconnects the socket. No-op if the target is unknown or already active.
-  const switchSpace = (targetSlug: string) => { const cur = spacesRef.current.find((s) => s.slug === targetSlug); if (cur && cur.id !== spaceIdRef.current) setActiveSpaceId(cur.id); };
+  const switchSpace = (targetSlug: string) => { const cur = spacesRef.current.find((s) => s.slug === targetSlug && s.status === "ready"); if (cur && cur.id !== spaceIdRef.current) setActiveSpaceId(cur.id); };
   const clearBrowserAccess = async () => {
     await revokeBrowserSession(csrfRef.current);
     csrfRef.current = "";
@@ -215,15 +252,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setMe(session.user);
         setAuthState("authed");
 
-        const spacesResponse = await fetch("/api/spaces", { credentials: "same-origin" });
-        if (!spacesResponse.ok) throw new Error(`Space list failed (${spacesResponse.status})`);
-        const data = await spacesResponse.json().catch(() => []);
-        const spaceList: SpaceInfo[] = Array.isArray(data) ? data : [];
+        const spaceList = await refreshSpaces();
         if (cancelled) return;
-        spacesRef.current = spaceList;
-        setSpaces(spaceList);
         const urlSlug = location.pathname.match(/\/s\/([^/]+)/)?.[1];
-        const cur = spaceList.find((space) => space.slug === urlSlug) || spaceList[0];
+        const requested = spaceList.find((space) => space.slug === urlSlug);
+        const cur = (requested?.status === "ready" ? requested : undefined) || spaceList.find((space) => space.status === "ready");
         if (!cur) { setReady(true); return; }
         setActiveSpaceId(cur.id);
       } catch {
@@ -342,6 +375,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Showcase demo agents (creatorType="system") stay in `agents` so #showcase history still resolves their
   // avatar/name/profile by id — but they are not real members, so every roster / picker uses `visibleAgents`.
   const visibleAgents = agents.filter((a) => a.creatorType !== "system");
-  return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, spaceAvatar, spaces, createSpace, switchSpace, clearBrowserAccess, uploadSpaceAvatar, uploadAgentAvatar, channels, dms, unread, agents, visibleAgents, traj, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, spaceAvatar, spaces, createSpace, relocateSpace, refreshSpaces, switchSpace, clearBrowserAccess, uploadSpaceAvatar, uploadAgentAvatar, channels, dms, unread, agents, visibleAgents, traj, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
 }
 

@@ -154,6 +154,8 @@ Home 的 Spaces 模块只读取 app.db registry 和真实摘要。未来 Home ag
 
 app.db 不保存 Space 消息、任务或 agent 业务数据。
 
+P-A7 H3 已把 Space root 生命周期收口到 `src/spaces/spaceRootService.ts` 与 `src/spaces/spaceService.ts`：默认创建只接受新的默认路径；显式接入可初始化普通目录，或从兼容 `.kith/workspace.db` 读取并复用稳定 Space ID；移动后的目录必须用 relocate 更新同一个 registry 记录。规范 root 或 Space ID 重复、损坏/不兼容数据库、`.kith`/workspace.db symlink、身份不匹配均返回可操作错误且不删除用户文件；已有数据库的 slug 只作本机路由别名，默认冲突时自动取唯一值，不改变稳定 Space ID。`src/db/spaceDatabaseCompatibility.ts` 由接入探测和 `dbForSpace` 共用，在迁移/打开前执行 SQLite `quick_check`、版本及全产品表/列校验，迁移后再验证当前 schema。`GET /api/spaces` 返回 `ready | missing | error` 与错误码，relocate 由 `POST /api/spaces/:id/relocate` 执行；目标打开失败时恢复旧 registry root。注册后的普通数据库访问会先校验 root、`.kith` 与 workspace.db，缺失时明确失败而不隐式重建。
+
 ### 5.2 workspace.db
 
 A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Drizzle 内部的 `__drizzle_migrations`，fresh 数据库共有 20 张物理表；当前 `PRAGMA user_version=3`，v2 数据库会自动增加 `agents.introduced_at` 并把已有 agent 回填为已介绍（`src/db/index.ts:32`-`:59`、`drizzle/0001_agent_introduction.sql:1`）。它包含 `spaces`、agent、频道、消息/任务、dispatch、附件/提醒/知识/活动，以及分离后的 Human 状态表；所有 Space 外键统一为 `space_id`。`users/server_members/machines/join_links`、`agents.machine_id` 和旧 `servers/server_id` 已删除。
@@ -177,7 +179,7 @@ A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Driz
 4. A2.4 已完成：删除 Machine 服务/API/UI、machine key/心跳/调度与 agent machine 选择；保留安装级唯一 Worker 进程协议，并让 Worker 事件跨 Space 定位。
 5. A2.2b 已完成：破坏性重建 workspace.db baseline，把保留表的 `servers/server_id` 改为 `spaces/space_id`，拆出单 Human 状态/收藏/偏好，并删除旧物理表与兼容边界。
 6. A2 已完成：附件目录纳入 Space 根路径，旧 app 级上传配置、命名 facade 与不兼容维护脚本已删除，并完成整阶段验收。
-7. H1-H2 已完成：稳定 homeSpaceId，分离 app data/默认 Space 容器，并把主要 runtime cwd、Agent Memory 与 runtime state 归入三路径契约；H3-H4 继续补文件夹接入/重连和 Home Spaces 模块。
+7. H1-H3 已完成：稳定 homeSpaceId，分离 app data/默认 Space 容器，把主要 runtime cwd、Agent Memory 与 runtime state 归入三路径契约，并完成默认创建、文件夹接入、失联状态与重新定位；H4 继续补 Home Spaces 模块。
 
 不执行无边界的整仓替换；每个切片都需 schema、service、route 和 UI 契约测试。
 
@@ -228,6 +230,8 @@ agent-to-agent 分派继续经过统一 dispatch 收口。现有深度上限、�
 - `MessageContextSnapshot` 在发送时固化 Space、会话、模块、Context Stack 和 focused item，adapter 再编码为各 runtime 所需格式。
 
 Home Spaces UI 只负责卡片、搜索、创建入口和同窗导航；路径规范化、`.kith` 校验、homeSpaceId 与 registry 摘要属于领域服务。规范 URL 是 Home 当前会话路径上的 `?module=spaces`；普通 Space 收到该 query 时移除它。从任意 Space 打开全局空间入口时导航到 Home Spaces，而不是创建第二壳。
+
+H3 已先在现有 `SpaceSwitcher` 提供最小创建、接入和失联重连入口，并在展开时刷新 registry root 状态。Desktop 表单通过 sender 校验后的 preload 窄桥调用 Electron 原生 `openDirectory` 对话框；授权浏览器不使用浏览器文件选择器，而提交 Desktop 主机绝对路径交给 Core 校验。路由只激活 `ready` Space：失联深链规范化到可用 Space；如果全部注册项都失联，Store 外壳内的 `SpaceRecovery` 仍可调用同一 relocate 服务，避免 skeleton 死锁。卡片网格、搜索和 Home-only Dock 项仍属于 H4，不能把当前最小入口描述为完整 Spaces 模块。
 
 Desktop 专属设置通过 `window.kithDesktop` 窄桥注入，不靠仅隐藏按钮实现安全；服务端同时拒绝普通浏览器调用。Windows 打包态可调用 Electron 系统自启动接口，开发态通过 `launchAtLoginSupported: false` 明确禁用该控件。
 

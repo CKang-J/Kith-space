@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { mkdirSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -273,7 +274,9 @@ try {
   );
   assert.equal("humans" in privateMembers.body, false);
 
-  const other = await createLocalSpace({ name: "Other", rootPath: path.join(root, "other") });
+  const otherRoot = path.join(root, "other");
+  mkdirSync(otherRoot, { recursive: true });
+  const other = await createLocalSpace({ name: "Other", rootPath: otherRoot });
   const otherDb = dbForSpace(other.id);
   const [otherChannel] = await otherDb.insert(schema.channels).values({
     spaceId: other.id,

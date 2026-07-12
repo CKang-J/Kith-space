@@ -306,7 +306,7 @@
 
 **Windows 发行姿态**：Desktop 是唯一正式发行路径，但“有安装器文件”和“已公开发行”必须分开。A6 锁定 x64、per-user、assisted NSIS；本地/CI 产物默认未签名，CI 只上传 artifact。代码签名证书是公开分发的硬前置，真实安装/卸载测试也是正式发布验收的一部分。该约束不改变未来 macOS/Linux 路线，只规定当前 Windows v1 的可验证边界。
 
-**实施状态（2026-07-12）**：A2-A6 的原定代码切片已落地；用户验收发现的 app data/Space root 耦合、旧 per-agent cwd 与 Agent Memory 不可移植问题已由 P-A7 H1-H2 修复。文件夹接入和 Home Spaces 模块仍由 H3-H4 完成；在此之前 Runtime 契约 v2 继续暂停。
+**实施状态（2026-07-12）**：A2-A6 的原定代码切片已落地；用户验收发现的 app data/Space root 耦合、旧 per-agent cwd 与 Agent Memory 不可移植问题已由 P-A7 H1-H2 修复，H3 已补齐安全的文件夹创建、接入、失联状态和重新定位。Home Spaces 模块仍由 H4 完成；在此之前 Runtime 契约 v2 继续暂停。
 
 ---
 
@@ -332,7 +332,7 @@
 
 **实施边界**：H1-H4（路径、cwd/记忆、文件夹接入、Home Spaces UI）属于 A1-A6 验收前置修复。跨 Space 写编排 H5 后续渐进实现，先只读真实摘要，再接 task/message/dispatch；没有真实数据前不做占位视图。完整规格见 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
 
-**实施状态**：P-A7 H1-H2 已完成。`src/paths.ts` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，并以 `KITH_SPACE_SPACES_DIR` 独立隔离默认 Space 容器；app.db 保存稳定 homeSpaceId，Home 默认根为 `~/Kith-space/Home`。`src/daemon/agentWorkspacePaths.ts` 与 `AgentManager` 已把主要 runtime cwd、Agent Memory 和 runtime state 拆为三个路径，并对派生删除路径做容器逃逸校验；文件树/skills/profile/reset 同步采用真实 Space root，同 agent reset/start 串行。OpenCode 已用 child-only inline execution agent 替代覆盖用户 `AGENTS.md`。前端创建请求仍不提交用户选择的 rootPath，由 H3 修复；Home-only Spaces 模块由 H4 修复。
+**实施状态**：P-A7 H1-H3 已完成。`src/paths.ts` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，并以 `KITH_SPACE_SPACES_DIR` 独立隔离默认 Space 容器；app.db 保存稳定 homeSpaceId，Home 默认根为 `~/Kith-space/Home`。`src/daemon/agentWorkspacePaths.ts` 与 `AgentManager` 已把主要 runtime cwd、Agent Memory 和 runtime state 拆为三个路径，并对派生删除路径做容器逃逸校验；文件树/skills/profile/reset 同步采用真实 Space root，同 agent reset/start 串行。OpenCode 已用 child-only inline execution agent 替代覆盖用户 `AGENTS.md`。H3 的 `SpaceRootService` 和 Space API 已实现默认创建、普通目录接入、兼容 workspace.db 稳定 ID 复用、`ready | missing | error` 列表状态与移动后重新定位；重复 root/ID、损坏或不兼容数据库、symlink 和身份不匹配会拒绝，冲突 slug 只调整本机路由别名，接入/打开共用 SQLite 完整性与表列校验。普通 API 不隐式重建缺失 root，relocate 失败回滚 registry；失联深链和全失联恢复保持 relocate 可达。Desktop 使用原生目录选择器，浏览器提交 Desktop 主机绝对路径；SpaceSwitcher 提供最小入口。Home-only Spaces 模块仍由 H4 完成。
 
 ---
 

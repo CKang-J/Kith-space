@@ -324,6 +324,32 @@ export function registerSpace(record: {
   return { id: record.id, name: record.name, slug: record.slug, rootPath, lastOpenedAt };
 }
 
+/** Insert a newly discovered Space without the upsert semantics used by legacy/internal callers. */
+export function insertSpaceRecord(record: {
+  id: string;
+  name: string;
+  slug: string;
+  rootPath: string;
+  lastOpenedAt?: Date;
+}): SpaceRecord {
+  const rootPath = path.resolve(record.rootPath);
+  const lastOpenedAt = record.lastOpenedAt ?? new Date();
+  appDataConnection().prepare(`
+    INSERT INTO spaces (id, name, slug, root_path, last_opened_at)
+    VALUES (@id, @name, @slug, @rootPath, @lastOpenedAt)
+  `).run({ ...record, rootPath, lastOpenedAt: lastOpenedAt.getTime() });
+  return { id: record.id, name: record.name, slug: record.slug, rootPath, lastOpenedAt };
+}
+
+/** Change only the host folder associated with an existing stable Space identity. */
+export function updateSpaceRootPath(spaceId: string, rootPath: string): SpaceRecord | undefined {
+  const normalized = path.resolve(rootPath);
+  const result = appDataConnection().prepare(`
+    UPDATE spaces SET root_path = ?, last_opened_at = ? WHERE id = ?
+  `).run(normalized, Date.now(), spaceId);
+  return result.changes === 1 ? getSpaceRecord(spaceId) : undefined;
+}
+
 export function touchSpace(spaceId: string): void {
   appDataConnection().prepare("UPDATE spaces SET last_opened_at = ? WHERE id = ?").run(Date.now(), spaceId);
 }

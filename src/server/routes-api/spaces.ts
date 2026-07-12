@@ -1,37 +1,45 @@
-import { eq } from "drizzle-orm";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { getHumanProfile } from "../../app-data/appDatabase.js";
-import { dbForSpace, schema } from "../../db/index.js";
 import {
   createLocalSpace,
   getLocalSpace,
   listLocalSpaces,
   localSpaceUnreadSummary,
+  relocateLocalSpace,
   SpaceServiceError,
   updateLocalSpace,
 } from "../../spaces/spaceService.js";
+import { inspectRegisteredSpaceRoot, SpaceRootError } from "../../spaces/spaceRootService.js";
 import type { HumanCtx } from "./ctx.js";
 
 async function serializeSpace(space: ReturnType<typeof getLocalSpace>) {
-  const [presentation] = await dbForSpace(space.id)
-    .select({ avatarUrl: schema.spaces.avatarUrl })
-    .from(schema.spaces)
-    .where(eq(schema.spaces.id, space.id));
+  const root = inspectRegisteredSpaceRoot(space);
   return {
     id: space.id,
     name: space.name,
     slug: space.slug,
     rootPath: space.rootPath,
     lastOpenedAt: space.lastOpenedAt.toISOString(),
-    avatarUrl: presentation?.avatarUrl ?? null,
+    avatarUrl: root.status === "ready" ? root.identity.avatarUrl : null,
+    status: root.status,
+    ...(root.status === "ready" ? {} : {
+      rootError: root.rootError.message,
+      code: root.rootError.code,
+    }),
   };
 }
 
 function sendSpaceError(res: HumanCtx["res"], error: unknown): true {
-  if (!(error instanceof SpaceServiceError)) throw error;
+  if (!(error instanceof SpaceServiceError) && !(error instanceof SpaceRootError)) throw error;
   const status = error.code === "SPACE_NOT_FOUND"
     ? 404
-    : error.code === "SPACE_SLUG_CONFLICT"
+    : [
+        "SPACE_SLUG_CONFLICT",
+        "SPACE_ROOT_ATTACH_REQUIRED",
+        "SPACE_ROOT_ALREADY_REGISTERED",
+        "SPACE_ID_ALREADY_REGISTERED",
+        "SPACE_ID_MISMATCH",
+      ].includes(error.code)
       ? 409
       : 400;
   sendErr(res, status, error.message, { code: error.code });
@@ -54,7 +62,8 @@ export async function handleSpacesHumanScope(ctx: HumanCtx): Promise<boolean> {
       const space = await createLocalSpace({
         name: body.name,
         slug: body.slug,
-        rootPath: typeof body.rootPath === "string" && body.rootPath.trim() ? body.rootPath.trim() : undefined,
+        rootPath: body.rootPath,
+        mode: body.mode,
       });
       return (sendJson(res, 201, await serializeSpace(space)), true);
     } catch (error) {
@@ -65,6 +74,16 @@ export async function handleSpacesHumanScope(ctx: HumanCtx): Promise<boolean> {
   if (p === "/api/spaces/unread-summary" && method === "GET") {
     try {
       return (sendJson(res, 200, await localSpaceUnreadSummary()), true);
+    } catch (error) {
+      return sendSpaceError(res, error);
+    }
+  }
+
+  const relocateMatch = /^\/api\/spaces\/([^/]+)\/relocate$/.exec(p);
+  if (relocateMatch && method === "POST") {
+    try {
+      const space = await relocateLocalSpace(relocateMatch[1]!, await readJson(req));
+      return (sendJson(res, 200, await serializeSpace(space)), true);
     } catch (error) {
       return sendSpaceError(res, error);
     }

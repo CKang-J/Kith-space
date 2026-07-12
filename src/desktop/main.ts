@@ -17,6 +17,7 @@ import { parseBrowserAccessUpdate, parseLifecycleUpdate } from "./ipcValidation.
 import { isPortAvailable } from "./portAvailability.js";
 import { buildDesktopProcessCommands } from "./processCommands.js";
 import { DesktopProcessSupervisor } from "./processSupervisor.js";
+import { pickSpaceDirectory } from "./spaceDirectoryPicker.js";
 import {
   DESKTOP_TRUST_HEADER,
   isAllowedDesktopUrl,
@@ -115,7 +116,7 @@ function trustedSender(event: IpcMainInvokeEvent): boolean {
 }
 
 function requireTrustedSender(event: IpcMainInvokeEvent): void {
-  if (!trustedSender(event)) throw new Error("Desktop settings are unavailable from this renderer");
+  if (!trustedSender(event)) throw new Error("Desktop capabilities are unavailable from this renderer");
 }
 
 function requireCoreClient(): DesktopCoreClient {
@@ -143,6 +144,18 @@ async function settingsSnapshot() {
 }
 
 function registerDesktopIpc(): void {
+  ipcMain.handle("desktop:spaces:pick-directory", async (event) => {
+    requireTrustedSender(event);
+    const owner = mainWindow;
+    if (!owner) throw new Error("Kith-space Desktop window is unavailable");
+    return pickSpaceDirectory({
+      showOpenDialog: () => dialog.showOpenDialog(owner, {
+        title: "Choose a Space folder",
+        properties: ["openDirectory"],
+      }),
+    });
+  });
+
   ipcMain.handle("desktop:settings:get", async (event) => {
     requireTrustedSender(event);
     return settingsSnapshot();
