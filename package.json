@@ -7,14 +7,14 @@
   "packageManager": "pnpm@10.33.2",
   "description": "Desktop-first personal AgentOS where one human collaborates with persistent local AI agents across spaces, channels, tasks, and memory.",
   "license": "Apache-2.0",
-  "author": "fancyboi999",
-  "homepage": "https://github.com/fancyboi999/kith-space#readme",
+  "author": "CKang-J",
+  "homepage": "https://github.com/CKang-J/Kith-space#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/fancyboi999/kith-space.git"
+    "url": "https://github.com/CKang-J/Kith-space.git"
   },
   "bugs": {
-    "url": "https://github.com/fancyboi999/kith-space/issues"
+    "url": "https://github.com/CKang-J/Kith-space/issues"
   },
   "keywords": [
     "ai",

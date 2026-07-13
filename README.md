@@ -49,7 +49,8 @@ pnpm run desktop:dist        # x64、per-user、assisted NSIS 安装器
 - 能力路线图（MVP 与之后）：[`docs/roadmap.md`](./docs/roadmap.md)
 - 术语表：[`docs/glossary.md`](./docs/glossary.md)
 - 专项设计（定位 / MVP / 架构 / UI / 迁移）：[`docs/kith-space/`](./docs/kith-space/)
-- 贡献者与 AI 接手入口：[`AGENTS.md`](./AGENTS.md)
+- 参与开发：[`CONTRIBUTING.md`](./CONTRIBUTING.md)
+- 项目背景与 AI 接手入口：[`AGENTS.md`](./AGENTS.md)
 
 ## 核心理念
 

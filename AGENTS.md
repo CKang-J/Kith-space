@@ -23,6 +23,7 @@ Kith-space 是一个**桌面优先、单人使用的个人 AgentOS**：一个 Hu
   - `ui-direction.md` 界面信息架构；`migration-plan.md` 从 open-tag fork 的分阶段工程步骤。
 - `docs/dev-commands.md` — **日常开发命令权威来源**：Desktop/分进程启动、测试与打包。跑起项目先看这里。
 - `docs/dev-debugging.md` — 低频高级调试：内部凭据、浏览器模式、数据库、E2E 联调、护栏与打包细节。
+- `CONTRIBUTING.md` — **轻量贡献流程**：分支、中文提交、验证、PR、Squash 合并，以及使用 AI 开发时的约束。
 - `docs/agent-collaboration-project-exploration.md` — 最初对四个源项目的探索报告（背景参考）。
 
 ## 不可动摇的核心原则
@@ -48,7 +49,8 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 ├─ src/ web/ scripts/ test/             ← 开发源码，初始 = 从 reference/open-tag 复制（不含 node_modules/.git）
 ├─ package.json  tsconfig.json  drizzle.config.ts …  ← 构建配置（来自 open-tag）
 ├─ LICENSE  NOTICE                 ← 沿用 open-tag 的 Apache-2.0，NOTICE 追加衍生署名
-├─ AGENTS.md  CLAUDE.md  README.md ← Kith-space 自己的
+├─ AGENTS.md  CONTRIBUTING.md  README.md ← 项目与贡献入口
+├─ CLAUDE.md                     ← 兼容入口，仅指向 AGENTS.md
 └─ docs/                           ← 见上面文档地图
 ```
 
@@ -61,8 +63,19 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 - 数据层：**SQLite**。每 Space 一个 `<folder>/.kith/workspace.db`；中央 `app.db` 保存唯一 Human、稳定 Home 身份、Space registry、Web 模式、访问 Token 哈希/版本、浏览器会话与 Desktop 关闭/自启动设置。A2.2b 已落地单一 19 表 baseline。app data 默认 `~/.kith-space`，默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`；`KITH_SPACE_HOME` 只覆盖 app data，`KITH_SPACE_SPACES_DIR` 独立覆盖开发/测试默认 Space 容器。P-A7 H2 已把 Claude Code、Codex、opencode 的 cwd 切到所属 Space root，把 Agent Memory 放入 `<space>/.kith/agents/<agentId>`，把 adapter 临时状态留在 app data runtime 目录；Agents 详情的“记忆”文件浏览器只读取当前 agentMemoryDir。Copilot/Kimi/Cursor 仍为 experimental adapter 并暂用 runtime state cwd。H3 已补默认创建、已有文件夹接入、稳定 ID 复用、失联状态与重新定位；普通 API 不会隐式重建失联 Space。H4 已以稳定 homeSpaceId 区分 Home，在 Home Dock 提供真实 registry 驱动的 Spaces 模块，并让普通冷启动进入 Home；普通 Space 不接受 `module=spaces`。旧 schema 不自动迁移或删除。详见 `architecture-proposal.md §5` 与 Home/Space root 补充规格。
 - 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。测试 runner 会同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向随机临时 profile，零 Postgres/Redis 即可全绿；当前验收单测基线为 521/521，旧 `publicNavContract` 失败已随失效的 public landing 路线删除。改动配套跑测试再提交。
 - 启动与发行：推荐 `pnpm install` → `pnpm run desktop:dev`。全新数据目录由 Desktop 首次初始化界面收集 Human 名称（必填）、邮箱和描述（选填），并创建 `Home`，不再要求预先执行 `seed`；`pnpm run seed` 只保留为手动分进程调试或 fixture 辅助。Desktop 统一启动 Core Service、唯一 Local Runtime Worker、开发期 Vite 与 Electron；每次进程组启动/重启生成相互独立的 Desktop/Worker 临时凭据，普通用户和渲染器都不接触它们。`desktop:build` 只构建 Electron main/preload；`desktop:bundle` 生成 Web + Core/Worker/agent CLI 生产 bundle；`desktop:pack` 生成 Windows unpacked 目录；`desktop:dist` 生成 x64、per-user、assisted NSIS 安装器，输出在 `dist/desktop/`。当前安装器是可复现的本地/CI **未签名**产物，公开分发前必须配置 Windows 代码签名证书；尚未完成真实 NSIS 安装/卸载验收。`server`、`daemon`、`web`、`browser-access:dev` 和 `dev:e2e:up` 继续作为分进程调试入口；只有这类手动调试才从可选本地 `.env` 或进程环境注入独立内部凭据。日常命令以 `docs/dev-commands.md` 为准，低频参数以 `docs/dev-debugging.md` 为准。
-- 提交：中文提交信息，列要点变更；只在用户明确要求时提交；先分支不直推主干。
+- Git/PR：采用轻量 GitHub Flow，只保留长期分支 `main`；从最新 `main` 创建短分支，通过 PR 和 CI 后 Squash 合入。提交使用中文 Conventional Commits，必要时用中文要点说明原因、边界和验证结果。完整流程见 `CONTRIBUTING.md`。
+- 提交权限：只在用户明确要求时创建提交、推送或 PR；先分支，不直推 `main`。
 - 安全：外接 runtime 的高权限是追踪中的技术债。LAN 浏览器 v1 使用 HTTP + 访问 Token且仅限受信任私网；邮箱/浏览器等不可信内容模块上线前，必须先完成 HTTPS 与审批/沙箱权限升级（见 `decisions.md` 决策 8/17/21）。
+
+## AI 协作与工具
+
+- 开始实现前明确目标、非目标、允许修改的范围、完成标准和验证方式；存在会改变结果的歧义时先说明并询问。
+- 优先保持模块边界和最小必要修改。`src/server/core.ts` 等职责集中的底座文件改动牵一发动全身，优先在外围增加清晰的 guard 或模块，不整块重写。
+- 结构性问题优先使用已初始化的 CodeGraph；只有独立且边界清晰的工作才适合分派子代理。关键设计事实先核实源码，再在文档中引用具体文件和行号。
+- 修改前检查并保留用户已有工作；不清理与当前目标无关的代码、文件或格式。
+- 完成后检查 `git status` 和完整 diff，并按风险运行类型检查、相关测试、完整测试或真实运行验证；没有执行的检查必须如实说明。
+- `Co-Authored-By` 等署名只按实际贡献和既有全局约定使用，不虚构贡献者。
+- Claude Code、Codex、opencode 等 AI 工具统一遵循本文件，不维护工具专属的重复规则。`CLAUDE.md` 仅作为兼容入口指向本文件。
 
 ## 文档更新规则（强制）
 
@@ -79,7 +92,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 ## 当前进展
 
-**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-12：A2-A6 原定代码切片与 P-A7 H1-H4 已完成，当前停在用户验收；H5 与 Runtime 契约 v2 均未开始。做到哪、下一步与关键发行边界全部见 `docs/progress.md`。
+**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-13：A2-A6 原定代码切片与 P-A7 H1-H4 已完成，当前停在用户验收；H5 与 Runtime 契约 v2 均未开始。做到哪、下一步与关键发行边界全部见 `docs/progress.md`。
 
 <!-- CODEGRAPH_START -->
 

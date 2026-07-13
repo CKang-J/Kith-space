@@ -1,3 +1,5 @@
+<!-- PR 标题格式：<类型>(<模块>): <中文摘要>；模块可省略。 -->
+
 ## Summary
 
 <!-- 1-3 bullets describing what this PR does and why. -->
