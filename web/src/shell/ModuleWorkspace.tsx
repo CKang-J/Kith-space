@@ -10,7 +10,7 @@ import { workspaceModuleResourceFromSearch } from "./workspaceRoute.ts";
 
 interface ModuleWorkspaceProps {
   moduleId: WorkspaceModuleId;
-  dock: ReactNode;
+  dock?: ReactNode;
   style?: CSSProperties;
 }
 
@@ -45,7 +45,7 @@ export function ModuleWorkspace({ moduleId, dock, style }: ModuleWorkspaceProps)
       <div className="shell-module-surface">
         <ModuleContent moduleId={moduleId} />
       </div>
-      <footer className="shell-dock-zone">{dock}</footer>
+      {dock ? <footer className="shell-dock-zone">{dock}</footer> : null}
     </section>
   );
 }

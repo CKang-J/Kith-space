@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useStore, type Agent } from "../store.tsx";
 import { Avatar, resolveAvatar } from "../Avatar.tsx";
 import { IconFile } from "../icons.tsx";
+import { autosizeComposerInput, observeComposerInputWidth } from "./composerAutosize.ts";
 
 const isImage = (m?: string) => !!m && m.startsWith("image/");
 
@@ -32,7 +33,8 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => { const el = inputRef.current; if (!el) return; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 160) + "px"; }, [text]); // textarea auto-grows up to 160px
+  useEffect(() => { const el = inputRef.current; if (el) autosizeComposerInput(el); }, [text]); // textarea auto-grows up to 160px
+  useEffect(() => { const el = inputRef.current; return el ? observeComposerInputWidth(el) : undefined; }, []); // reflowed placeholders/drafts shrink again when a hidden Chat pane expands
 
   // Reachability hint as the input placeholder. Targets are the DM peer plus agents @-mentioned in the draft;
   // availability comes from agent lifecycle/activity, independent of the removed Machine product model.

@@ -25,6 +25,8 @@ import { LiveTrace } from "./LiveTrace.tsx";
 import { useConfirm, useEscClose } from "../ConfirmModal.tsx";
 import { useToast } from "../toast.tsx";
 import { workspaceLocationForConversation, workspaceLocationForModule } from "../shell/workspaceRoute.ts";
+import { VerticalDragDivider } from "../components/VerticalDragDivider.tsx";
+import { defaultThreadPaneWidth, threadPaneConstraints } from "./chatPaneLayout.ts";
 
 const fmtSize = (n?: number) => (!n ? "" : n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB");
 const isImage = (m?: string) => !!m && m.startsWith("image/");
@@ -158,7 +160,7 @@ function ActionCardMsg({ m }: { m: Msg }) {
   );
 }
 
-export function Chat({ embedded = false, channelIdOverride }: { embedded?: boolean; channelIdOverride?: string }) {
+export function Chat({ embedded = false, channelIdOverride, threadOnly = false }: { embedded?: boolean; channelIdOverride?: string; threadOnly?: boolean }) {
   const { t } = useTranslation();
   const { api, channels, dms, unread, agents, slug, me, reload, onEvent, subscribeChannel, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, savedIds, saveMsg, unsaveMsg, agentPanelReq, clearAgentPanelReq } = useStore();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
@@ -182,6 +184,9 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
   const [sub, setSub] = useState("");
   const [showMembers, setShowMembers] = useState(false);
   const [thread, setThread] = useState<{ channelId: string; parent: Msg } | null>(null); // currently open thread panel
+  const [threadWidth, setThreadWidth] = useState<number | null>(null);
+  const [chatSurfaceWidth, setChatSurfaceWidth] = useState(() => typeof window === "undefined" ? 1000 : window.innerWidth);
+  const chatMainRef = useRef<HTMLElement>(null);
   const [threadMeta, setThreadMeta] = useState<Record<string, { threadChannelId: string; replyCount: number; unreadCount?: number }>>({}); // parent message id → thread metadata (reply count, unread count)
   const [unreadThreads, setUnreadThreads] = useState<{ threadChannelId: string; parentMessageId: string; parentChannelId: string; unreadCount: number }[]>([]); // unread that lives in this channel's threads (invisible in the main timeline) → "jump to unread thread" bar
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -189,6 +194,20 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
   const forceBottomPinRef = useRef(false); // own sends + agent previews should return the viewport to the live tail even if overlay height made atBottom stale
   const [showJump, setShowJump] = useState(false); // when not at the bottom, show the "Back to bottom" jump button
   const showJumpRef = useRef(false);
+  useLayoutEffect(() => {
+    if (threadOnly) return;
+    const surface = chatMainRef.current?.parentElement;
+    if (!surface) return;
+    const updateWidth = () => setChatSurfaceWidth(surface.clientWidth);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(surface);
+    return () => observer.disconnect();
+  }, [threadOnly]);
+  const threadConstraints = threadPaneConstraints(
+    chatSurfaceWidth,
+    threadWidth ?? defaultThreadPaneWidth(chatSurfaceWidth),
+  );
   const scrollingToBottomRef = useRef(false); // suppress jump-button flicker while the 0.8s smooth scroll is in progress
   const [hasMore, setHasMore] = useState(false); // older messages remain before the loaded window → drives scroll-to-top "load more"
   const loadingOlderRef = useRef(false); // de-dupes concurrent "load older" fetches while one is in flight
@@ -264,7 +283,7 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
       if (curIdRef.current === chId) setLoaded(true);
     }
   };
-  useEffect(() => { if (!cur) return; setThread(null); loadingOlderRef.current = false; prependRestoreRef.current = null; subscribeChannel(cur.id); void loadCurrentMessages(); }, [cur?.id]);
+  useEffect(() => { if (!cur) return; setThread(null); setThreadWidth(null); loadingOlderRef.current = false; prependRestoreRef.current = null; subscribeChannel(cur.id); void loadCurrentMessages(); }, [cur?.id]);
   // Surface unread that lives in this channel's threads (folded away, invisible in the main timeline → "滑不到").
   // Re-runs when the channel's badge changes: entry, a new thread reply bumping it, or opening a thread clearing it.
   useEffect(() => {
@@ -358,7 +377,7 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
   }, [threadParam, msgs, hasMore]);
 
   const setTab = (t: string) => { const n = new URLSearchParams(sp); if (t === "chat") n.delete("chatTab"); else n.set("chatTab", t); setSp(n, { replace: true }); };
-  const startThread = async (m: Msg) => { if (!cur) return; const tid = threadMeta[m.id]?.threadChannelId || await openThread(cur.id, m.id); if (tid) { setThread({ channelId: tid, parent: m }); setThreadMeta((tm) => (tm[m.id] ? { ...tm, [m.id]: { ...tm[m.id]!, unreadCount: 0 } } : tm)); markRead(tid); } }; // opening a thread clears the unread count optimistically and marks the thread channel as read
+  const startThread = async (m: Msg) => { if (!cur) return; const tid = threadMeta[m.id]?.threadChannelId || await openThread(cur.id, m.id); if (tid) { setThreadWidth(null); setThread({ channelId: tid, parent: m }); setThreadMeta((tm) => (tm[m.id] ? { ...tm, [m.id]: { ...tm[m.id]!, unreadCount: 0 } } : tm)); markRead(tid); } }; // opening a thread clears the unread count optimistically and marks the thread channel as read
   // "Jump to unread thread" bar: open a thread whose parent message may not be in the loaded page — fetch the parent
   // by id (it isn't on screen to pass through startThread), open the panel, mark it read, and drop it from the bar.
   const openUnreadThread = async (item: { threadChannelId: string; parentMessageId: string }) => {
@@ -366,6 +385,7 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
     try {
       const parent = (await api("GET", `/api/messages/${item.parentMessageId}`))?.message as Msg | undefined;
       if (!parent) return;
+      setThreadWidth(null);
       setThread({ channelId: item.threadChannelId, parent });
       setThreadMeta((tm) => (tm[parent.id] ? { ...tm, [parent.id]: { ...tm[parent.id]!, unreadCount: 0 } } : tm));
       markRead(item.threadChannelId);
@@ -406,13 +426,24 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
   return (
     <>
       {!embedded && <ChatSidebar />}
-      <main className="content-col">
+      {!thread || !threadOnly ? <main ref={chatMainRef} className="content-col">
         <div className="head chat-head">
           <h1>{isDm ? "@ " + (cur?.name || "") : cur?.type === "showcase" ? <><Eye size={16} style={{ verticalAlign: "-3px", opacity: 0.7 }} /> {cur?.name || "…"}</> : "# " + (cur?.name || "…")}</h1>
           {dmAgent
             ? <span className="head-status"><span className={"dot " + (agentLiveState(dmAgent) || "offline")} />{agentActivityText(dmAgent) || "offline"}</span>
             : <small>{sub || cur?.description || ""}</small>}
           {cur && <div className="chtabs">{(isDm ? ["chat", "tasks"] : ["chat", "tasks", "files"]).map((tt) => <button key={tt} className={chatTab === tt ? "on" : ""} onClick={() => setTab(tt)}>{tt === "chat" ? t("nav.channel") : tt === "tasks" ? t("nav.tasks") : t("common.files")}</button>)}</div>}
+          {dmAgent ? (
+            <button
+              type="button"
+              className="chat-agent-profile-btn"
+              title={t("chat.openAgentProfile")}
+              aria-label={t("chat.openAgentProfile")}
+              onClick={() => openAgentProfile(dmAgent.id)}
+            >
+              <ExternalLink size={15} />
+            </button>
+          ) : null}
           {!isDm && cur && cur.type !== "showcase" && <button className="joinbtn" style={{ marginLeft: "auto" }} title={t("chat.channelMembers")} onClick={() => setShowMembers(true)}>{t("chat.members")}</button>}
           {!isDm && cur && cur.type !== "showcase" && (
             <button className="joinbtn" title={t("chat.channelSettings")} onClick={() => setShowEdit(true)}>⋯</button>
@@ -533,9 +564,28 @@ export function Chat({ embedded = false, channelIdOverride }: { embedded?: boole
                   dmAgent={isDm ? dmAgent : undefined}
                 />}
           </>}
-      </main>
+      </main> : null}
       {thread
-        ? <ThreadPanel channelId={thread.channelId} parent={thread.parent} onClose={() => setThread(null)} onOpenAgent={openAgentProfile} />
+        ? <>
+            {!threadOnly ? (
+              <VerticalDragDivider
+                className="chat-thread-divider"
+                ariaLabel="调整对话与线程宽度"
+                value={threadConstraints.width}
+                min={threadConstraints.min}
+                max={threadConstraints.max}
+                onChange={setThreadWidth}
+              />
+            ) : null}
+            <ThreadPanel
+              channelId={thread.channelId}
+              parent={thread.parent}
+              solo={threadOnly}
+              style={threadOnly ? undefined : { width: threadConstraints.width, flexBasis: threadConstraints.width }}
+              onClose={() => { setThread(null); setThreadWidth(null); }}
+              onOpenAgent={openAgentProfile}
+            />
+          </>
         : !embedded && <aside className="traj-col"><LiveTrace /></aside>}
       {showMembers && cur && <ChannelMembersModal channelId={cur.id} channelName={cur.name} onClose={() => setShowMembers(false)} />}
       {showEdit && cur && <EditChannelModal channel={cur} onClose={() => setShowEdit(false)} onDone={async () => { setShowEdit(false); await reload(); }} onDeleted={() => { setShowEdit(false); reload(); navigateConversation(`/s/${slug}/channel`); }} />}
@@ -638,7 +688,7 @@ function EditChannelModal({ channel, onClose, onDone, onDeleted }: { channel: an
 }
 
 // Thread panel: right-side overlay showing the parent message, its replies, and a reply composer.
-function ThreadPanel({ channelId, parent, onClose, onOpenAgent }: { channelId: string; parent: Msg; onClose: () => void; onOpenAgent: (id: string) => void }) {
+function ThreadPanel({ channelId, parent, solo = false, style, onClose, onOpenAgent }: { channelId: string; parent: Msg; solo?: boolean; style?: CSSProperties; onClose: () => void; onOpenAgent: (id: string) => void }) {
   const { t } = useTranslation();
   const { api, onEvent, subscribeChannel, attachmentUrl, me, react, agents, channels, slug } = useStore();
   const senderAvatar = (m: Msg) => resolveAvatar(m.senderType === "agent" ? agents.find((agent) => agent.id === m.senderId)?.avatarUrl : undefined, attachmentUrl);
@@ -715,7 +765,7 @@ function ThreadPanel({ channelId, parent, onClose, onOpenAgent }: { channelId: s
     );
   };
   return (
-    <aside className="thread-panel">
+    <aside className={`thread-panel${solo ? " thread-panel--solo" : ""}`} style={style}>
       <div className="thread-head"><span className="grow">{t("chat.thread")}</span>
         <button className="tp-link" title={t("chat.markDone")} onClick={async () => { await api("POST", "/api/channels/threads/done", { threadChannelId: channelId }); onClose(); }}><CheckCircle2 size={14} /></button>
         <button className="tp-link" title={t("chat.unfollowThread")} onClick={async () => { await api("POST", "/api/channels/threads/unfollow", { threadChannelId: channelId }); onClose(); }}><BellOff size={14} /></button>

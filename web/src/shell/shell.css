@@ -4,6 +4,10 @@
   --shell-border: #e0e0e0;
   --shell-radius: 12px;
   --shell-gap: 10px;
+  --shell-module-motion-duration: 420ms;
+  --shell-module-motion-easing: cubic-bezier(.42, 0, .58, 1);
+  --shell-side-pane-motion-duration: 420ms;
+  --shell-side-pane-motion-easing: cubic-bezier(.25, .8, .25, 1);
   display: flex;
   height: 100vh;
   min-height: 0;
@@ -168,6 +172,7 @@
 }
 
 .shell-workspace-canvas {
+  position: relative;
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -188,26 +193,105 @@
 }
 
 .shell-chat-workspace {
+  position: relative;
+  display: grid;
   min-width: 0;
   min-height: 0;
-  flex: 1;
+  overflow: hidden;
 }
 
 .shell-chat-workspace--full {
-  display: grid;
-  grid-template-columns: clamp(210px, 19vw, 260px) minmax(340px, 1fr) clamp(240px, 22vw, 310px);
-  gap: var(--shell-gap);
+  --shell-conversations-width: clamp(210px, 19vw, 260px);
+  --shell-trace-width: clamp(240px, 22vw, 310px);
+  display: flex;
+  gap: 0;
+}
+
+.shell-chat-workspace--full > .shell-chat-conversations,
+.shell-chat-workspace--full > .shell-chat-trace {
+  transition: width var(--shell-side-pane-motion-duration) var(--shell-side-pane-motion-easing),
+    flex-basis var(--shell-side-pane-motion-duration) var(--shell-side-pane-motion-easing),
+    margin var(--shell-side-pane-motion-duration) var(--shell-side-pane-motion-easing);
+  will-change: width, flex-basis;
+}
+
+.shell-chat-workspace--full > .shell-chat-conversations {
+  width: var(--shell-conversations-width);
+  flex: 0 0 var(--shell-conversations-width);
+  margin-right: var(--shell-gap);
+}
+
+.shell-chat-workspace--full > .shell-chat-main-card {
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.shell-chat-workspace--full > .shell-chat-trace {
+  width: var(--shell-trace-width);
+  flex: 0 0 var(--shell-trace-width);
+  margin-left: var(--shell-gap);
+}
+
+.shell-chat-workspace--full[data-conversations-collapsed="true"] > .shell-chat-conversations,
+.shell-chat-workspace--full[data-trace-collapsed="true"] > .shell-chat-trace {
+  width: 0;
+  flex-basis: 0;
+}
+
+.shell-chat-workspace--full[data-conversations-collapsed="true"] > .shell-chat-conversations {
+  margin-right: 0;
+}
+
+.shell-chat-workspace--full[data-trace-collapsed="true"] > .shell-chat-trace {
+  margin-left: 0;
+}
+
+.shell-chat-workspace--compact {
+  grid-template-columns: 0 0 minmax(0, 1fr) 0 0;
+  gap: 0;
+}
+
+.shell-chat-conversations {
+  grid-column: 1;
+}
+
+.shell-chat-main-card {
+  grid-column: 3;
+}
+
+.shell-chat-trace {
+  grid-column: 5;
+}
+
+.shell-workspace-frame[data-pane-transitioning="true"] .shell-chat-workspace,
+.shell-workspace-frame[data-pane-transitioning="true"] .shell-module-workspace,
+.shell-workspace-frame[data-pane-transitioning="true"] .shell-drag-divider {
+  transition: width var(--shell-module-motion-duration) var(--shell-module-motion-easing),
+    flex-basis var(--shell-module-motion-duration) var(--shell-module-motion-easing);
+  will-change: width, flex-basis;
+}
+
+.shell-workspace-frame[data-pane-transitioning="true"] .shell-chat-workspace {
+  transition-property: width, flex-basis, grid-template-columns, gap;
+  transition-duration: var(--shell-module-motion-duration);
+  transition-timing-function: var(--shell-module-motion-easing);
+}
+
+.shell-workspace-frame[data-pane-transitioning="true"] .shell-drag-divider {
+  pointer-events: none;
 }
 
 .shell-chat-conversations,
 .shell-chat-main-card,
 .shell-chat-trace {
+  position: relative;
   height: 100%;
 }
 
 .shell-chat-conversations > .sidebar {
   position: static;
   width: 100%;
+  min-width: 210px;
   height: 100%;
   max-width: none;
   border: 0;
@@ -252,9 +336,51 @@
   flex: none;
 }
 
+.shell-chat-surface > .thread-panel.thread-panel--solo {
+  width: 100%;
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-thread-divider {
+  position: relative;
+  width: var(--shell-gap);
+  flex: 0 0 var(--shell-gap);
+  cursor: col-resize;
+  outline: none;
+  touch-action: none;
+}
+
+.chat-thread-divider::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+  background: var(--shell-border);
+  transition: width 150ms ease, left 150ms ease, background 150ms ease;
+}
+
+.chat-thread-divider:hover::after,
+.chat-thread-divider:focus-visible::after {
+  left: 3px;
+  width: 3px;
+  background: #b8b8b8;
+}
+
 .shell-chat-trace {
   position: relative;
+  box-sizing: border-box;
+  width: 100%;
   overflow-x: hidden;
+}
+
+.shell-chat-trace__content {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 240px;
+  height: 100%;
   overflow-y: auto;
   padding: 22px 20px;
 }
@@ -269,12 +395,6 @@
   text-transform: uppercase;
 }
 
-.shell-chat-workspace--compact {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-}
-
 .shell-chat-compact-tools {
   display: flex;
   height: 40px;
@@ -282,7 +402,14 @@
   align-items: center;
   gap: 6px;
   padding: 0 8px;
+  overflow: hidden;
   border-bottom: 1px solid #eeeeee;
+}
+
+.shell-workspace-frame[data-pane-transitioning="true"] .shell-chat-compact-tools {
+  transition: height var(--shell-module-motion-duration) var(--shell-module-motion-easing),
+    flex-basis var(--shell-module-motion-duration) var(--shell-module-motion-easing),
+    border-bottom-width var(--shell-module-motion-duration) var(--shell-module-motion-easing);
 }
 
 .shell-chat-compact-tools button {
@@ -357,8 +484,8 @@
 
 .shell-chat-drawer__close {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 10px;
+  right: 10px;
   z-index: 2;
   display: inline-flex;
   width: 28px;
@@ -367,10 +494,15 @@
   justify-content: center;
   padding: 0;
   border: 1px solid var(--shell-border);
-  border-radius: 8px;
+  border-radius: 50%;
   background: #fff;
   color: var(--muted);
   cursor: pointer;
+}
+
+.shell-chat-drawer__close:hover {
+  background: var(--surface-strong);
+  color: var(--ink);
 }
 
 .shell-module-workspace {
@@ -383,9 +515,13 @@
   max-width: none;
   flex: none;
   border-right: 1px solid var(--hair);
-  background: var(--canvas-soft);
+  background: #ffffff;
   box-shadow: none;
   transform: none;
+}
+
+.shell-module-surface > .sidebar.agents-sidebar {
+  width: clamp(240px, 24%, 300px);
 }
 
 .shell-module-surface > .board-scroll {
@@ -427,7 +563,7 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 0;
   padding: 0;
   overflow: visible;
   border: 0;
@@ -448,6 +584,7 @@
 
 .workspace-dock__item.is-active:not(.workspace-dock__chat) {
   width: 122px;
+  gap: 8px;
   padding: 0 14px;
 }
 
@@ -515,7 +652,8 @@
 
 @media (max-width: 1050px) {
   .shell-chat-workspace--full {
-    grid-template-columns: 210px minmax(300px, 1fr) 240px;
+    --shell-conversations-width: 210px;
+    --shell-trace-width: 240px;
   }
 
   .shell-topbar__space-name {
@@ -529,7 +667,8 @@
   }
 
   .shell-chat-workspace--full {
-    grid-template-columns: 190px minmax(280px, 1fr) 210px;
+    --shell-conversations-width: 190px;
+    --shell-trace-width: 210px;
   }
 
   .shell-workspace-frame .sidebar {
@@ -554,7 +693,14 @@
 @media (prefers-reduced-motion: reduce) {
   .workspace-dock__item,
   .workspace-dock__label,
-  .shell-drag-divider::after {
+  .shell-drag-divider::after,
+  .shell-chat-workspace,
+  .shell-module-workspace,
+  .shell-drag-divider,
+  .shell-chat-conversations,
+  .shell-chat-trace,
+  .chat-thread-divider::after,
+  .shell-chat-compact-tools {
     transition: none;
   }
 }

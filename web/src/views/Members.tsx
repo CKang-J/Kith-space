@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageCircle, X, Wrench, ChevronRight, Check, Copy, Eye, EyeOff } from "lucide-react";
+import { MessageCircle, X, Wrench, ChevronRight, Check, Copy, Eye, EyeOff, Search } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -16,6 +16,7 @@ import { CodeBlock, ColorSwatch, GithubAlertBlockquote, colorValueFromTag, markd
 import i18n from "../i18n";
 import { mergeWorkspaceSearch, workspaceLocationForModule, workspaceSearchForShellState } from "../shell/workspaceRoute.ts";
 import { LOCAL_RUNTIME_DEFAULT, useRuntimeDiscovery } from "../useRuntimeDiscovery.ts";
+import { agentStatusLabel } from "../agentStatus.ts";
 
 // Unified agent status label: fine-grained activity (working/thinking/online) takes priority;
 // offline/absent falls back to lifecycle status (active/sleeping/inactive).
@@ -36,6 +37,11 @@ export function Agents({ agentIdOverride }: AgentsProps = {}) {
   const nav = useNavigate();
   const location = useLocation();
   const [modal, setModal] = useState(false);
+  const [search, setSearch] = useState("");
+  const query = search.trim().toLowerCase();
+  const filteredAgents = query
+    ? agents.filter((agent) => [agent.name, agent.displayName, agent.description].some((value) => value?.toLowerCase().includes(query)))
+    : agents;
   const openAgent = (agent: string | null) => nav(workspaceLocationForModule(
     location.pathname,
     location.search,
@@ -44,15 +50,21 @@ export function Agents({ agentIdOverride }: AgentsProps = {}) {
 
   return (
     <>
-      <aside className="sidebar">
+      <aside className="sidebar agents-sidebar">
         <div className="sb-scroll">
         <div className="sb-title">{t("nav.agents")}</div>
-        <div className="sec">{t("common.agents")} <span className="cnt">{agents.length}</span><button className="addbtn" title={t("members.createAgent")} onClick={() => setModal(true)}>+</button></div>
-        {agents.map((a) => (
+        <div className="agent-search">
+          <Search size={15} aria-hidden="true" />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("members.searchPlaceholder")} aria-label={t("members.searchPlaceholder")} />
+          {search && <button type="button" className="agent-search-clear" onClick={() => setSearch("")} aria-label={t("members.searchClear")}><X size={14} /></button>}
+        </div>
+        <div className="sec">{t("common.agents")} <span className="cnt">{agents.length}</span><button className="addbtn agents-create-button" title={t("members.createAgent")} onClick={() => setModal(true)}>+</button></div>
+        {filteredAgents.map((a) => (
           <button key={a.id} className={"item" + (a.id === agentId ? " active" : "")} onClick={() => openAgent(a.id)}>
-            <Avatar seed={a.name} url={avFor(a.avatarUrl)} size={20} /><span className="grow">{a.name}</span><span className={"dot " + statusOf(a)} role="img" aria-label={t("members.statusLabel", { status: statusOf(a) })} title={statusOf(a)} />
+            <Avatar seed={a.name} url={avFor(a.avatarUrl)} size={20} /><span className="grow">{a.name}</span><span className={"dot " + statusOf(a)} role="img" aria-label={t("members.statusLabel", { status: agentStatusLabel(t, statusOf(a)) })} title={agentStatusLabel(t, statusOf(a))} />
           </button>
         ))}
+        {query && filteredAgents.length === 0 && <div className="empty agent-search-empty">{t("members.searchEmpty")}</div>}
         </div>
       </aside>
       <main className="content-col">
@@ -79,12 +91,13 @@ function Roster({ agents, onCreate }: { agents: any[]; onCreate: () => void }) {
             {agents.length > 0 && <div className="sec">{t("common.agents")} <span className="cnt">{agents.length}</span></div>}
             {agents.map((a) => {
               const to = workspaceLocationForModule(location.pathname, location.search, { moduleId: "agents", agent: a.id });
+              const state = statusOf(a);
               return (
                 <div className="card card-link" key={a.id} role="button" tabIndex={0} onClick={() => nav(to)} onKeyDown={(e) => goKey(e, to)}>
                   <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}><Avatar seed={a.name} url={avFor(a.avatarUrl)} size={24} />{a.displayName || a.name} <small className="meta">@{a.name}</small></h3>
                   <div className="meta">{a.description || t("members.generalAgent")}</div>
                   <div className="kv"><b>{t("common.runtime")}</b> {a.runtime} · {a.model || t("members.useLocalDefault")}</div>
-                  <div className="kv"><b>{t("common.status")}</b> {statusOf(a)}</div>
+                  <div className="kv"><b>{t("common.status")}</b> {agentStatusLabel(t, state)}</div>
                 </div>
               );
             })}
@@ -180,30 +193,22 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
         : (
           <div className="scroll">
             <div className="card">
-              {edit ? (
-                <div className="setform">
-                  <label>{t("members.displayName")}</label><input value={dn} onChange={(e) => setDn(e.target.value)} placeholder={a.name} />
-                  <label>{t("members.agentDescriptionLabel")}</label><textarea value={ds} maxLength={3000} onChange={(e) => setDs(e.target.value)} placeholder={t("members.agentDescriptionPlaceholder")} />
-                  <div className="ta-count">{ds.trim().length}/3000</div>
-                  <div className="setrow"><button className="ok" onClick={saveProfile}>{t("members.save")}</button><button className="cancel" onClick={() => setEdit(false)}>{t("members.cancel")}</button></div>
-                </div>
-              ) : (<>
-                <div className="meta">{a.description || t("members.generalAgent")}</div>
-                <div className="kv"><b>{t("common.runtime")}</b> {a.runtime}</div>
-                <div className="kv"><b>{t("common.model")}</b> {a.model || t("members.useLocalDefault")}</div>
-                {a.runtimeConfig?.reasoningEffort && <div className="kv"><b>{t("common.reasoning")}</b> {a.runtimeConfig.reasoningEffort}</div>}
-                <div className="kv"><b>{t("common.status")}</b> <span className="kv-v"><span className={"dot " + live} /> {live}</span></div>
-                <div className="kv"><b>{t("common.session")}</b> {a.sessionId || "(none)"}</div>
-                <div className="kv"><b>{t("common.workspace")}</b> <AgentWorkspaceRoot id={a.id} /></div>
-                {a.createdAt && <div className="kv"><b>{t("common.created")}</b> {fmtDateTime(a.createdAt)}</div>}
-                <div className="task-acts" style={{ marginTop: 14 }}>
-                  <button className="joinbtn" onClick={startEdit}>{t("members.editProfile")}</button>
-                </div>
-              </>)}
+              <div className="meta">{a.description || t("members.generalAgent")}</div>
+              <div className="kv"><b>{t("common.runtime")}</b> {a.runtime}</div>
+              <div className="kv"><b>{t("common.model")}</b> {a.model || t("members.useLocalDefault")}</div>
+              {a.runtimeConfig?.reasoningEffort && <div className="kv"><b>{t("common.reasoning")}</b> {a.runtimeConfig.reasoningEffort}</div>}
+                <div className="kv"><b>{t("common.status")}</b> <span className="kv-v"><span className={"dot " + live} /> {agentStatusLabel(t, live)}</span></div>
+              <div className="kv"><b>{t("common.session")}</b> {a.sessionId || "(none)"}</div>
+              <div className="kv"><b>{t("common.workspace")}</b> <AgentWorkspaceRoot id={a.id} /></div>
+              {a.createdAt && <div className="kv"><b>{t("common.created")}</b> {fmtDateTime(a.createdAt)}</div>}
+              <div className="task-acts" style={{ marginTop: 14 }}>
+                <button className="joinbtn" onClick={startEdit}>{t("members.editProfile")}</button>
+              </div>
             </div>
             <SkillsSection id={id} />
           </div>
         )}
+      {edit && <AgentProfileEditModal name={a.name} displayName={dn} description={ds} onDisplayNameChange={setDn} onDescriptionChange={setDs} onClose={() => setEdit(false)} onSave={saveProfile} />}
       {showRestart && <RestartModal name={a.displayName || a.name} onClose={() => setShowRestart(false)} onPick={doRestart} />}
     </>
   );
@@ -254,11 +259,11 @@ function PermissionsTab({ id }: { id: string }) {
       </div>
       {Object.entries(groups).map(([g, list]) => (
         <div key={g} className="perm-group">
-          <div className="sec sec-sub">{g}</div>
+          <div className="sec sec-sub">{t(`members.permissionGroups.${g}`, { defaultValue: g })}</div>
           {list.map((s: any) => (
             <label key={s.key} className="perm-row">
               <input type="checkbox" checked={granted.has(s.key)} onChange={() => toggle(s.key)} />
-              <span className="grow"><span className="who">{s.label}</span> <code className="perm-key">{s.key}</code><div className="meta">{s.description}</div></span>
+              <span className="grow"><span className="who">{t(`members.permissions.${s.key.replace(":", "_")}.label`, { defaultValue: s.label })}</span> <code className="perm-key">{s.key}</code><div className="meta">{t(`members.permissions.${s.key.replace(":", "_")}.description`, { defaultValue: s.description })}</div></span>
             </label>
           ))}
         </div>
@@ -335,7 +340,7 @@ function ActivityTab({ id, name }: { id: string; name: string }) {
           const e = entryOf(it.entry); const t2 = time(it.timestamp);
           if (e.kind === "tool_start") return <div className="act" key={i}><span className="act-t">{t2}</span><span className="act-tool"><Wrench size={11} /> {e.toolName}</span><span className="act-x mono">{e.toolInput}</span></div>;
           if (e.kind === "text") return <div className="act" key={i}><span className="act-t">{t2}</span><span className="act-x">{e.text}</span></div>;
-          return <div className="act" key={i}><span className="act-t">{t2}</span><span className={"dot " + (e.activity || "")} /><span className="act-x muted">{e.activity}{e.detail ? " · " + e.detail : ""}</span></div>;
+          return <div className="act" key={i}><span className="act-t">{t2}</span><span className={"dot " + (e.activity || "")} /><span className="act-x muted">{agentStatusLabel(t, e.activity)}{e.detail ? " · " + e.detail : ""}</span></div>;
         })}</div>}
     </div>
   );
@@ -405,6 +410,30 @@ export function WorkspaceTab({ id }: { id: string }) {
                   ? <div className="ws-md"><ReactMarkdown urlTransform={markdownUrlTransform} remarkPlugins={[remarkGfm, remarkBreaks, remarkHtmlAsText, remarkGithubAlerts, remarkColorSwatches]} rehypePlugins={[[rehypeSanitize, markdownSchema]]} components={{ a: ({ href, children }) => { const color = colorValueFromTag(href); return color ? <ColorSwatch value={color} /> : <a href={href} target="_blank" rel="noreferrer">{children}</a>; }, blockquote: ({ node: _node, children, ...props }) => <GithubAlertBlockquote {...props}>{children}</GithubAlertBlockquote>, pre: ({ children }) => <CodeBlock>{children}</CodeBlock> }}>{sel.content || ""}</ReactMarkdown></div>
                   : <pre className="ws-content">{sel.content}</pre>}
               </>}
+      </div>
+    </div>
+  );
+}
+
+function AgentProfileEditModal({ name, displayName, description, onDisplayNameChange, onDescriptionChange, onClose, onSave }: {
+  name: string; displayName: string; description: string;
+  onDisplayNameChange: (value: string) => void; onDescriptionChange: (value: string) => void;
+  onClose: () => void; onSave: () => void;
+}) {
+  const { t } = useTranslation();
+  useEscClose(onClose);
+  return (
+    <div className="modal-bg profile-edit-bg" onClick={onClose}>
+      <div className="modal profile-edit-modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{t("members.editProfile")}</h3>
+        <div className="setform">
+          <label>{t("members.displayName")}</label>
+          <input value={displayName} onChange={(e) => onDisplayNameChange(e.target.value)} placeholder={name} />
+          <label>{t("members.agentDescriptionLabel")}</label>
+          <textarea value={description} maxLength={3000} onChange={(e) => onDescriptionChange(e.target.value)} placeholder={t("members.agentDescriptionPlaceholder")} />
+          <div className="ta-count">{description.trim().length}/3000</div>
+        </div>
+        <div className="acts"><button className="ok" onClick={onSave}>{t("members.save")}</button><button className="cancel" onClick={onClose}>{t("members.cancel")}</button></div>
       </div>
     </div>
   );

@@ -104,8 +104,9 @@ ChatOnly 由三张独立白色工作面板组成：
 ```
 
 - 会话列表包含 Channels 与 Human-Agent Direct Messages，保留未读、置顶、新建和切换行为；不提供 Human-Human DM。
-- 中间复用现有 `Chat`、Composer、Thread、附件和 @mention 能力。
-- 实时轨迹继续展示 agent 的执行过程。
+- 中间复用现有 `Chat`、Composer、Thread、附件和 @mention 能力；Agent 私聊标题区提供直达当前 Agent 详情页的入口；Thread 打开时默认与当前会话各占一半宽度，并可通过中间分割线继续拖拽调整。
+- 当前会话顶部始终复用紧凑 Chat 的“会话 / 轨迹”按钮：ChatOnly 中用于把对应侧栏直接收至 `0` 或恢复，不保留贯穿全高的收起栏；展开收起沿用模块切换的物理边界运动方式，但使用独立的响应曲线，内容随边界裁切，不做淡入淡出；Split 中仍用于打开对应抽屉。该短暂界面状态不进入 URL。
+- 实时轨迹继续展示 agent 的执行过程，Thread 与当前会话使用一致的面板背景。
 - 三区之间使用与整个工作区一致的有色间隙与圆角面板语言。
 
 ### 4.2 Chat 紧凑
@@ -120,7 +121,7 @@ Composer
 
 - 会话抽屉从 Chat 左侧覆盖打开，轨迹抽屉从 Chat 右侧覆盖打开。
 - 抽屉只覆盖 Chat Pane，不挤压或遮挡 Module Pane，并且两者互斥。
-- Thread 和 agent profile 属于 Chat 内部临时层，不占用 Module Pane。
+- Thread 和 agent profile 属于 Chat 内部临时层，不占用 Module Pane；模块打开且 Thread 存在时，紧凑 Chat 只显示 Thread，不再并排保留当前会话消息流。
 - Chat 被隐藏时，Chat 的临时层随之卸载；恢复后回到当前会话。
 
 ---

@@ -8,6 +8,7 @@ import { Avatar, resolveAvatar } from "../Avatar.tsx";
 import { useEscClose } from "../ConfirmModal.tsx";
 import { LiveAgentBar } from "./LiveAgentBar.tsx";
 import { useToast } from "../toast.tsx";
+import { agentStatusLabel } from "../agentStatus.ts";
 
 // Maps the create-channel API's `error` string (e.g. 409 "channel name exists") to a localized toast message.
 // Shared by ChatSidebar's own create-channel button and Chat.tsx's action-card create-channel flow.
@@ -82,7 +83,7 @@ export function ChatSidebar({ channelIdOverride, preserveSearch = "" }: { channe
         return (
         <button key={c.id} className={"item" + (c.id === channelId ? " active" : "")} onClick={() => nav(withPreservedSearch(`/s/${slug}/channel/${c.id}`))}>
           <Avatar seed={c.peerDisplayName || c.peerName || c.peerId || c.id} url={avFor(c.peerAvatarUrl)} size={20} /><span className="grow">{c.peerDisplayName || c.peerName || t("sidebar.unknownAgent")}</span>
-          {a && <span className={"dot " + (a.activity || "offline")} role="img" aria-label={t("members.statusLabel", { status: a.activity || "offline" })} title={a.activityDetail || a.activity || "offline"} />}
+          {a && <span className={"dot " + (a.activity || "offline")} role="img" aria-label={t("members.statusLabel", { status: agentStatusLabel(t, a.activity || "offline") })} title={a.activityDetail || agentStatusLabel(t, a.activity || "offline")} />}
           {!!unread[c.id] && <span className="badge">{unread[c.id]}</span>}
         </button>
         );

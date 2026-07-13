@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useStore } from "../store.tsx";
 import { ChatWorkspace } from "./ChatWorkspace.tsx";
@@ -26,6 +26,7 @@ import {
   type WorkspaceLayoutState,
   type WorkspaceModuleId,
 } from "./workspaceLayout.ts";
+import { useWorkspacePaneTransition, workspacePaneWidths } from "./workspacePaneTransition.ts";
 import { parseWorkspaceRoute, workspaceLayoutFromRoute, workspaceSearchForLayout, workspaceSearchForShellState } from "./workspaceRoute.ts";
 
 export function WorkspaceFrame() {
@@ -40,6 +41,7 @@ export function WorkspaceFrame() {
   const isHome = spaces.some((space) => space.id === spaceId && space.isHome);
   const layoutState = workspaceLayoutForSpace(requestedLayoutState, isHome);
   const { activeModule, chatVisible } = layoutState;
+  const { animatedLayout, isTransitioning, previousLayout } = useWorkspacePaneTransition(layoutState);
   const routeChannelId = route.isChannelRoute ? route.resourceId : null;
   const previousActiveModuleRef = useRef<WorkspaceModuleId | null>(activeModule);
   const openingModule = previousActiveModuleRef.current === null && activeModule !== null;
@@ -88,13 +90,24 @@ export function WorkspaceFrame() {
   const layoutSearch = workspaceSearchForShellState(location.search, layoutState);
   const effectiveModuleRatio = openingModule ? DEFAULT_MODULE_RATIO : moduleRatio;
   const panes = activeModule ? paneConstraints(workspaceWidth, activeModule, effectiveModuleRatio) : null;
-  const isNarrow = activeModule !== null && !panes?.canSplit;
   const mode = deriveWorkspaceMode(layoutState);
-  const renderChat = activeModule === null || chatVisible;
-  const renderModule = activeModule !== null && (!isNarrow || !chatVisible);
-  const showDivider = activeModule !== null && chatVisible && !isNarrow;
-  const visualMode = showDivider ? "split" : renderModule ? "module-only" : "chat-only";
-  const effectiveModuleWidth = panes?.moduleWidth ?? 0;
+  const animatedRatio = animatedLayout.activeModule === activeModule ? effectiveModuleRatio : moduleRatio;
+  const animatedWidths = workspacePaneWidths(animatedLayout, workspaceWidth, animatedRatio);
+  const previousWidths = workspacePaneWidths(previousLayout, workspaceWidth, moduleRatio);
+  const targetWidths = workspacePaneWidths(layoutState, workspaceWidth, effectiveModuleRatio);
+  const visibleModuleId = activeModule ?? previousLayout.activeModule;
+  const renderChat = animatedWidths.chat > 0 || previousWidths.chat > 0 || targetWidths.chat > 0;
+  const renderModule = visibleModuleId !== null
+    && (animatedWidths.module > 0 || previousWidths.module > 0 || targetWidths.module > 0);
+  const renderDivider = Math.max(previousWidths.divider, targetWidths.divider) > 0;
+  const showSplitChat = animatedWidths.chat > 0 && animatedWidths.module > 0;
+  const visualMode = showSplitChat ? "split" : animatedWidths.module > 0 ? "module-only" : "chat-only";
+  const paneStyle = (width: number): CSSProperties => ({
+    width,
+    flexBasis: width,
+    flexGrow: 0,
+    flexShrink: 0,
+  });
   const unreadCount = Object.values(unread).reduce((total, count) => total + count, 0);
 
   const navigateLayout = (next: WorkspaceLayoutState) => {
@@ -129,7 +142,12 @@ export function WorkspaceFrame() {
   );
 
   return (
-    <main className="shell-workspace-frame" data-layout-mode={mode} data-visual-mode={visualMode}>
+    <main
+      className="shell-workspace-frame"
+      data-layout-mode={mode}
+      data-pane-transitioning={isTransitioning ? "true" : undefined}
+      data-visual-mode={visualMode}
+    >
       <WorkspaceTopBar
         activeModule={activeModule}
         channelId={currentChannelId}
@@ -140,28 +158,28 @@ export function WorkspaceFrame() {
         {renderChat ? (
           <ChatWorkspace
             channelId={currentChannelId}
-            compact={showDivider}
+            compact={showSplitChat}
+            threadOnly={activeModule !== null}
             layoutSearch={layoutSearch}
-            dock={!showDivider ? dock : undefined}
+            dock={animatedLayout.activeModule === null ? dock : undefined}
+            style={paneStyle(animatedWidths.chat)}
           />
         ) : null}
-        {showDivider ? (
+        {renderDivider ? (
           <DragDivider
-            value={effectiveModuleWidth}
-            min={panes!.moduleMin}
-            max={panes!.moduleMax}
+            disabled={isTransitioning || !panes?.canSplit}
+            value={animatedWidths.module}
+            min={panes?.moduleMin ?? 0}
+            max={panes?.moduleMax ?? workspaceWidth}
+            style={paneStyle(animatedWidths.divider)}
             onChange={(width) => shellActions.setModuleRatio(moduleRatioFromWidth(width, workspaceWidth))}
           />
         ) : null}
-        {renderModule && activeModule ? (
+        {renderModule && visibleModuleId ? (
           <ModuleWorkspace
-            moduleId={activeModule}
-            dock={dock}
-            style={
-              showDivider
-                ? { width: effectiveModuleWidth, flex: `0 0 ${effectiveModuleWidth}px` }
-                : undefined
-            }
+            moduleId={visibleModuleId}
+            dock={animatedLayout.activeModule !== null ? dock : undefined}
+            style={paneStyle(animatedWidths.module)}
           />
         ) : null}
       </div>

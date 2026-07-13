@@ -1,5 +1,5 @@
 import { Activity, MessagesSquare, X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { Chat } from "../views/Chat.tsx";
 import { ChatSidebar } from "../views/ChatSidebar.tsx";
@@ -12,19 +12,23 @@ type ChatDrawer = "conversations" | "trace" | null;
 interface ChatWorkspaceProps {
   channelId: string | null;
   compact: boolean;
+  threadOnly: boolean;
   layoutSearch: string;
   dock?: ReactNode;
+  style?: CSSProperties;
 }
 
-function ChatSurface({ pathname, channelId }: { pathname: string; channelId: string | null }) {
+function ChatSurface({ pathname, channelId, threadOnly }: { pathname: string; channelId: string | null; threadOnly: boolean }) {
   if (/\/saved\/?$/.test(pathname)) return <Saved embedded />;
   if (/\/showcase\/?$/.test(pathname)) return <Showcase embedded />;
-  return <Chat embedded channelIdOverride={channelId ?? undefined} />;
+  return <Chat embedded channelIdOverride={channelId ?? undefined} threadOnly={threadOnly} />;
 }
 
-export function ChatWorkspace({ channelId, compact, layoutSearch, dock }: ChatWorkspaceProps) {
+export function ChatWorkspace({ channelId, compact, threadOnly, layoutSearch, dock, style }: ChatWorkspaceProps) {
   const { pathname } = useLocation();
   const [drawer, setDrawer] = useState<ChatDrawer>(null);
+  const [conversationsCollapsed, setConversationsCollapsed] = useState(false);
+  const [traceCollapsed, setTraceCollapsed] = useState(false);
   const conversationsTriggerRef = useRef<HTMLButtonElement>(null);
   const traceTriggerRef = useRef<HTMLButtonElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
@@ -57,53 +61,51 @@ export function ChatWorkspace({ channelId, compact, layoutSearch, dock }: ChatWo
     trigger.current?.focus();
   }, [compact, drawer]);
 
-  if (!compact) {
-    return (
-      <section className="shell-chat-workspace shell-chat-workspace--full" aria-label="Chat 工作区">
-        <aside className="shell-work-panel shell-chat-conversations" aria-label="会话列表">
-          <ChatSidebar channelIdOverride={channelId ?? undefined} />
-        </aside>
-        <section className="shell-work-panel shell-chat-main-card" aria-label="当前会话">
-          <div className="shell-chat-surface">
-            <ChatSurface pathname={pathname} channelId={channelId} />
-          </div>
-          {dock ? <footer className="shell-dock-zone">{dock}</footer> : null}
-        </section>
-        <aside className="shell-work-panel shell-chat-trace" aria-label="实时轨迹">
-          <LiveTrace />
-        </aside>
-      </section>
-    );
-  }
-
   return (
-    <section className="shell-work-panel shell-chat-workspace shell-chat-workspace--compact" aria-label="紧凑 Chat 工作区">
-      <header className="shell-chat-compact-tools">
-        <button
-          ref={conversationsTriggerRef}
-          type="button"
-          className={drawer === "conversations" ? "is-active" : ""}
-          aria-pressed={drawer === "conversations"}
-          onClick={() => toggleDrawer("conversations")}
-        >
-          <MessagesSquare size={16} />
-          <span>会话</span>
-        </button>
-        <span className="shell-chat-compact-tools__title">Chat</span>
-        <button
-          ref={traceTriggerRef}
-          type="button"
-          className={drawer === "trace" ? "is-active" : ""}
-          aria-pressed={drawer === "trace"}
-          onClick={() => toggleDrawer("trace")}
-        >
-          <Activity size={16} />
-          <span>轨迹</span>
-        </button>
-      </header>
-      <div className="shell-chat-surface">
-        <ChatSurface pathname={pathname} channelId={channelId} />
-      </div>
+    <section
+      className={`shell-chat-workspace shell-chat-workspace--${compact ? "compact shell-work-panel" : "full"}`}
+      data-conversations-collapsed={!compact && conversationsCollapsed ? "true" : undefined}
+      data-trace-collapsed={!compact && traceCollapsed ? "true" : undefined}
+      style={style}
+      aria-label={compact ? "紧凑 Chat 工作区" : "Chat 工作区"}
+    >
+      <aside className={`shell-work-panel shell-chat-conversations${conversationsCollapsed ? " is-collapsed" : ""}`} aria-label="会话列表">
+        <ChatSidebar channelIdOverride={channelId ?? undefined} />
+      </aside>
+      <section className="shell-work-panel shell-chat-main-card" aria-label="当前会话">
+        <header className="shell-chat-compact-tools">
+          <button
+            ref={conversationsTriggerRef}
+            type="button"
+            className={(compact ? drawer === "conversations" : !conversationsCollapsed) ? "is-active" : ""}
+            aria-label={compact ? "打开对话列表" : conversationsCollapsed ? "展开对话列表" : "收起对话列表"}
+            aria-pressed={compact ? drawer === "conversations" : !conversationsCollapsed}
+            onClick={() => compact ? toggleDrawer("conversations") : setConversationsCollapsed((collapsed) => !collapsed)}
+          >
+            <MessagesSquare size={16} />
+            <span>会话</span>
+          </button>
+          <span className="shell-chat-compact-tools__title">Chat</span>
+          <button
+            ref={traceTriggerRef}
+            type="button"
+            className={(compact ? drawer === "trace" : !traceCollapsed) ? "is-active" : ""}
+            aria-label={compact ? "打开实时轨迹" : traceCollapsed ? "展开实时轨迹" : "收起实时轨迹"}
+            aria-pressed={compact ? drawer === "trace" : !traceCollapsed}
+            onClick={() => compact ? toggleDrawer("trace") : setTraceCollapsed((collapsed) => !collapsed)}
+          >
+            <Activity size={16} />
+            <span>轨迹</span>
+          </button>
+        </header>
+        <div className="shell-chat-surface">
+          <ChatSurface pathname={pathname} channelId={channelId} threadOnly={threadOnly} />
+        </div>
+        {dock ? <footer className="shell-dock-zone">{dock}</footer> : null}
+      </section>
+      <aside className={`shell-work-panel shell-chat-trace${traceCollapsed ? " is-collapsed" : ""}`} aria-label="实时轨迹">
+        <div className="shell-chat-trace__content"><LiveTrace /></div>
+      </aside>
       {drawer ? (
         <div className="shell-chat-drawer-scrim" role="presentation" onMouseDown={() => setDrawer(null)}>
           <aside

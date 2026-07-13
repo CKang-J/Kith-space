@@ -14,6 +14,7 @@ import { readySpace, routeSpaceAvailability } from "./spaces/spaceAvailability.t
 import { SpaceRecovery } from "./spaces/SpaceRecovery.tsx";
 import "./i18n";
 import "./styles.css";
+import "./scrollbar";
 
 // Home waits for the HttpOnly Cookie session bootstrap. Anonymous browser clients see the Access
 // Token gate; authenticated clients go straight to their Space without flashing the gate.
