@@ -1,12 +1,28 @@
 name: Feature request
-description: Suggest a new capability or improvement
+description: Suggest an improvement to the Kith-space AgentOS
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to suggest an improvement.
-        Please search existing issues and discussions first.
+        Thanks for helping improve Kith-space. Please search existing issues first.
+        Do not include access tokens, provider credentials, private messages, or other secrets.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Product area
+      description: Which part of Kith-space would this improve?
+      options:
+        - Desktop shell and Spaces
+        - Agents and local runtimes
+        - Channels, messages, or tasks
+        - Local or LAN browser access
+        - Packaging and installation
+        - Documentation
+        - Other
+    validations:
+      required: true
 
   - type: textarea
     id: problem
@@ -15,7 +31,7 @@ body:
       description: >
         What problem are you trying to solve, or what workflow would this
         improve? Concrete examples help.
-      placeholder: "When I do X with Y agents, I have to manually Z every time…"
+      placeholder: "When I work in a Space with local agents, I have to manually..."
     validations:
       required: true
 
@@ -24,7 +40,7 @@ body:
     attributes:
       label: Proposed solution
       description: >
-        Describe the change you'd like to see. Be as specific as you can —
+        Describe the change you would like to see. Be as specific as you can:
         API shape, UI flow, config option, etc.
     validations:
       required: true
@@ -32,10 +48,9 @@ body:
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternatives you've considered
+      label: Alternatives considered
       description: >
-        Other approaches you tried or thought about, and why you prefer the
-        proposed solution.
+        Describe other approaches you tried or considered and why they did not fit.
     validations:
       required: false
 
@@ -44,7 +59,6 @@ body:
     attributes:
       label: Additional context
       description: >
-        Mockups, links to related issues, prior art in other tools, or
-        anything else relevant.
+        Add mockups, links to related issues, prior art, or other relevant context.
     validations:
       required: false
