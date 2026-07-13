@@ -361,6 +361,7 @@
     "convertToTask": "Convert to task",
     "thread": "Thread",
     "markDone": "Mark done (remove from Inbox)",
+    "followThread": "Follow this thread",
     "unfollowThread": "Unfollow this thread",
     "viewInChannel": "View source message in channel",
     "unreadThreads": "{{count}} unread thread replies",

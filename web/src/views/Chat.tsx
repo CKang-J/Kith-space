@@ -8,7 +8,7 @@ import { PAGE_SIZE, appendWithCap, nextScrollState } from "../lib/msgPaging";
 import { AGENT_REPLY_PREVIEW_TYPE, AGENT_REPLY_STREAM_TICK_MS, absorbPersistedAgentMessagePreview, applyAgentReplyPreview, dropAgentReplyPreviewsForMessage, hasStreamingAgentReplyPreview, renderKeyForMessage, tickAgentReplyPreviews, type AgentReplyEvent, type AgentReplyPreviewMsg } from "../lib/agentReplyPreview";
 import { MessageContent } from "../messageRender.tsx";
 import { nextThreadMeta } from "../threadUnread";
-import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Link2, Clipboard, Bookmark, CheckSquare, Circle, Play, Eye, Ban, ArrowDown, BellOff, Lock, Globe, Archive, Trash2 } from "lucide-react";
+import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Link2, Clipboard, Bookmark, CheckSquare, Circle, Play, Eye, Ban, ArrowDown, Bell, BellOff, Lock, Globe, Archive, Trash2 } from "lucide-react";
 // Task badge per message row: icon changes with task status; color tokens from DESIGN.md (see .task-pill.st-* styles)
 const TASK_ICON: Record<string, typeof Circle> = { todo: Circle, in_progress: Play, in_review: Eye, done: CheckCircle2, closed: Ban };
 import { IconFile, IconExternalLink, IconDownload } from "../icons.tsx";
@@ -183,11 +183,11 @@ export function Chat({ embedded = false, channelIdOverride, threadOnly = false }
   const [loadError, setLoadError] = useState(false); // first fetch failed — exits the skeleton into a retryable error state
   const [sub, setSub] = useState("");
   const [showMembers, setShowMembers] = useState(false);
-  const [thread, setThread] = useState<{ channelId: string; parent: Msg } | null>(null); // currently open thread panel
+  const [thread, setThread] = useState<{ channelId: string; parent: Msg; followed: boolean } | null>(null); // currently open thread panel
   const [threadWidth, setThreadWidth] = useState<number | null>(null);
   const [chatSurfaceWidth, setChatSurfaceWidth] = useState(() => typeof window === "undefined" ? 1000 : window.innerWidth);
   const chatMainRef = useRef<HTMLElement>(null);
-  const [threadMeta, setThreadMeta] = useState<Record<string, { threadChannelId: string; replyCount: number; unreadCount?: number }>>({}); // parent message id → thread metadata (reply count, unread count)
+  const [threadMeta, setThreadMeta] = useState<Record<string, { threadChannelId: string; replyCount: number; unreadCount?: number; followed: boolean }>>({}); // parent message id → thread metadata (reply count, unread count, Human follow state)
   const [unreadThreads, setUnreadThreads] = useState<{ threadChannelId: string; parentMessageId: string; parentChannelId: string; unreadCount: number }[]>([]); // unread that lives in this channel's threads (invisible in the main timeline) → "jump to unread thread" bar
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true); // tracks whether the scroll position is at the bottom; new messages auto-scroll only when already at the bottom, preserving history browsing
@@ -377,7 +377,7 @@ export function Chat({ embedded = false, channelIdOverride, threadOnly = false }
   }, [threadParam, msgs, hasMore]);
 
   const setTab = (t: string) => { const n = new URLSearchParams(sp); if (t === "chat") n.delete("chatTab"); else n.set("chatTab", t); setSp(n, { replace: true }); };
-  const startThread = async (m: Msg) => { if (!cur) return; const tid = threadMeta[m.id]?.threadChannelId || await openThread(cur.id, m.id); if (tid) { setThreadWidth(null); setThread({ channelId: tid, parent: m }); setThreadMeta((tm) => (tm[m.id] ? { ...tm, [m.id]: { ...tm[m.id]!, unreadCount: 0 } } : tm)); markRead(tid); } }; // opening a thread clears the unread count optimistically and marks the thread channel as read
+  const startThread = async (m: Msg) => { if (!cur) return; const meta = threadMeta[m.id]; const tid = meta?.threadChannelId || await openThread(cur.id, m.id); if (tid) { const followed = meta ? meta.followed : true; setThreadWidth(null); setThread({ channelId: tid, parent: m, followed }); setThreadMeta((tm) => (tm[m.id] ? { ...tm, [m.id]: { ...tm[m.id]!, unreadCount: 0 } } : tm)); markRead(tid); } }; // opening a new thread follows it; existing thread metadata preserves the Human's current follow state
   // "Jump to unread thread" bar: open a thread whose parent message may not be in the loaded page — fetch the parent
   // by id (it isn't on screen to pass through startThread), open the panel, mark it read, and drop it from the bar.
   const openUnreadThread = async (item: { threadChannelId: string; parentMessageId: string }) => {
@@ -386,7 +386,7 @@ export function Chat({ embedded = false, channelIdOverride, threadOnly = false }
       const parent = (await api("GET", `/api/messages/${item.parentMessageId}`))?.message as Msg | undefined;
       if (!parent) return;
       setThreadWidth(null);
-      setThread({ channelId: item.threadChannelId, parent });
+      setThread({ channelId: item.threadChannelId, parent, followed: true });
       setThreadMeta((tm) => (tm[parent.id] ? { ...tm, [parent.id]: { ...tm[parent.id]!, unreadCount: 0 } } : tm));
       markRead(item.threadChannelId);
       setUnreadThreads((list) => list.filter((th) => th.threadChannelId !== item.threadChannelId));
@@ -582,6 +582,19 @@ export function Chat({ embedded = false, channelIdOverride, threadOnly = false }
               parent={thread.parent}
               solo={threadOnly}
               style={threadOnly ? undefined : { width: threadConstraints.width, flexBasis: threadConstraints.width }}
+              followed={thread.followed}
+              onFollowChange={(followed) => {
+                setThread((current) => current ? { ...current, followed } : current);
+                setThreadMeta((current) => ({
+                  ...current,
+                  [thread.parent.id]: {
+                    threadChannelId: thread.channelId,
+                    replyCount: current[thread.parent.id]?.replyCount ?? 0,
+                    unreadCount: current[thread.parent.id]?.unreadCount,
+                    followed,
+                  },
+                }));
+              }}
               onClose={() => { setThread(null); setThreadWidth(null); }}
               onOpenAgent={openAgentProfile}
             />
@@ -688,7 +701,7 @@ function EditChannelModal({ channel, onClose, onDone, onDeleted }: { channel: an
 }
 
 // Thread panel: right-side overlay showing the parent message, its replies, and a reply composer.
-function ThreadPanel({ channelId, parent, solo = false, style, onClose, onOpenAgent }: { channelId: string; parent: Msg; solo?: boolean; style?: CSSProperties; onClose: () => void; onOpenAgent: (id: string) => void }) {
+function ThreadPanel({ channelId, parent, followed, solo = false, style, onClose, onFollowChange, onOpenAgent }: { channelId: string; parent: Msg; followed: boolean; solo?: boolean; style?: CSSProperties; onClose: () => void; onFollowChange: (followed: boolean) => void; onOpenAgent: (id: string) => void }) {
   const { t } = useTranslation();
   const { api, onEvent, subscribeChannel, attachmentUrl, me, react, agents, channels, slug } = useStore();
   const senderAvatar = (m: Msg) => resolveAvatar(m.senderType === "agent" ? agents.find((agent) => agent.id === m.senderId)?.avatarUrl : undefined, attachmentUrl);
@@ -712,6 +725,7 @@ function ThreadPanel({ channelId, parent, solo = false, style, onClose, onOpenAg
     if (type === "task") { try { const r = await api("GET", "/api/tasks/space"); const tk = (r?.tasks ?? r ?? []).find((x: any) => x.taskNumber === Number(args[0])); if (tk) navigateConversation(`/s/${slug}/channel/${tk.channelId}?msg=${tk.id}`); } catch { /* */ } }
   };
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [followPending, setFollowPending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => { subscribeChannel(channelId); (async () => { const d = await api("GET", `/api/messages/channel/${channelId}?limit=200`); setMsgs(d.messages || []); })(); }, [channelId]); // join the thread room so replies arrive live (openThread/startThread do not make the socket a room member on their own)
   useEffect(() => onEvent((e) => {
@@ -735,6 +749,17 @@ function ThreadPanel({ channelId, parent, solo = false, style, onClose, onOpenAg
     return () => window.clearInterval(timer);
   }, [streamingPreviewActive]);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [msgs]);
+  const toggleFollow = async () => {
+    if (followPending) return;
+    const next = !followed;
+    setFollowPending(true);
+    try {
+      await api("POST", `/api/channels/threads/${next ? "follow" : "unfollow"}`, { threadChannelId: channelId });
+      onFollowChange(next);
+    } finally {
+      setFollowPending(false);
+    }
+  };
   const row = (m: Msg, dateDivider?: ReactNode) => {
     if (m.senderType === "system") return <Fragment key={m.id}>{dateDivider}<div className="msg-sys" id={"m-" + m.id}>{m.content}</div></Fragment>; // system messages render as a banner with no avatar
     const ag = m.senderType === "agent" && m.senderId ? agents.find((a) => a.id === m.senderId) : undefined;
@@ -768,7 +793,7 @@ function ThreadPanel({ channelId, parent, solo = false, style, onClose, onOpenAg
     <aside className={`thread-panel${solo ? " thread-panel--solo" : ""}`} style={style}>
       <div className="thread-head"><span className="grow">{t("chat.thread")}</span>
         <button className="tp-link" title={t("chat.markDone")} onClick={async () => { await api("POST", "/api/channels/threads/done", { threadChannelId: channelId }); onClose(); }}><CheckCircle2 size={14} /></button>
-        <button className="tp-link" title={t("chat.unfollowThread")} onClick={async () => { await api("POST", "/api/channels/threads/unfollow", { threadChannelId: channelId }); onClose(); }}><BellOff size={14} /></button>
+        <button className="tp-link" title={followed ? t("chat.unfollowThread") : t("chat.followThread")} aria-label={followed ? t("chat.unfollowThread") : t("chat.followThread")} aria-pressed={followed} disabled={followPending} onClick={toggleFollow}>{followed ? <Bell size={14} /> : <BellOff size={14} />}</button>
         <button className="tp-link" onClick={() => navigateConversation(`/s/${slug}/channel/${parent.channelId}?msg=${parent.id}`)} title={t("chat.viewInChannel")}><ExternalLink size={14} /></button>
         <button className="tp-close" onClick={onClose} title={t("chat.close")}><X size={15} /></button></div>
       <div className="scroll" ref={scrollRef}>

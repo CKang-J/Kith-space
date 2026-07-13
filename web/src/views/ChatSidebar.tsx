@@ -81,7 +81,7 @@ export function ChatSidebar({ channelIdOverride, preserveSearch = "" }: { channe
       {dms.map((c) => {
         const a = agents.find((agent) => agent.id === c.peerId);
         return (
-        <button key={c.id} className={"item" + (c.id === channelId ? " active" : "")} onClick={() => nav(withPreservedSearch(`/s/${slug}/channel/${c.id}`))}>
+        <button key={c.id} className={"item agent-list-item" + (c.id === channelId ? " active" : "")} onClick={() => nav(withPreservedSearch(`/s/${slug}/channel/${c.id}`))}>
           <Avatar seed={c.peerDisplayName || c.peerName || c.peerId || c.id} url={avFor(c.peerAvatarUrl)} size={20} /><span className="grow">{c.peerDisplayName || c.peerName || t("sidebar.unknownAgent")}</span>
           {a && <span className={"dot " + (a.activity || "offline")} role="img" aria-label={t("members.statusLabel", { status: agentStatusLabel(t, a.activity || "offline") })} title={a.activityDetail || agentStatusLabel(t, a.activity || "offline")} />}
           {!!unread[c.id] && <span className="badge">{unread[c.id]}</span>}
@@ -125,7 +125,7 @@ export function CreateChannelModal({ onCreate, onClose, prefill, submitLabel }: 
         <div className="member-pick">
           {fAgents.length > 0 && <div className="sec sec-sub">{t("common.agents")}</div>}
           {fAgents.map((a) => (
-            <button key={a.id} className={"item pickable" + (pickAgents.has(a.id) ? " picked" : "")} onClick={() => toggle(pickAgents, a.id, setPickAgents)}>
+            <button key={a.id} className={"item agent-list-item pickable" + (pickAgents.has(a.id) ? " picked" : "")} onClick={() => toggle(pickAgents, a.id, setPickAgents)}>
               <Avatar seed={a.name} url={avFor(a.avatarUrl)} size={22} /><span className="grow">{a.displayName || a.name}</span>{pickAgents.has(a.id) && <Check size={14} className="ck-mark" />}
             </button>
           ))}

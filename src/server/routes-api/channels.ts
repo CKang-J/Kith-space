@@ -118,7 +118,7 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
       const replies = await db.select({ seq: schema.messages.seq, createdAt: schema.messages.createdAt }).from(schema.messages).where(eq(schema.messages.channelId, th.id)).orderBy(asc(schema.messages.seq));
       const myCm = await humanChannelState(spaceId, th.id);
       const unread = myCm ? await unreadRowsForMember(spaceId, myCm, humanId) : [];
-      map[th.parentMessageId!] = { threadChannelId: th.id, replyCount: replies.length, unreadCount: unread.length, lastReplyAt: replies.length ? replies[replies.length - 1]!.createdAt : null };
+      map[th.parentMessageId!] = { threadChannelId: th.id, replyCount: replies.length, unreadCount: unread.length, followed: Boolean(myCm?.threadFollowedAt), lastReplyAt: replies.length ? replies[replies.length - 1]!.createdAt : null };
     }
     return (sendJson(res, 200, map), true);
   }
