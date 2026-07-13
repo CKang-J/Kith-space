@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FolderOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getDesktopBridge } from "../desktopBridge.ts";
+import { HostDirectoryPicker } from "./HostDirectoryPicker.tsx";
 
 export type SpaceFolderIntent = "default" | "attach" | "relocate";
 
@@ -61,13 +62,7 @@ export function SpaceFolderForm({
           {rootPath && <div className="sw-path" title={rootPath}>{rootPath}</div>}
         </>
       ) : (
-        <input
-          autoFocus={intent === "relocate"}
-          value={rootPath}
-          placeholder={t("space.hostPathPlaceholder")}
-          onChange={(event) => setRootPath(event.target.value)}
-          onKeyDown={(event) => { if (event.key === "Escape") onCancel?.(); }}
-        />
+        <HostDirectoryPicker selectedPath={rootPath} disabled={busy} onSelect={setRootPath} />
       ))}
       {intent === "attach" && <div className="sw-form-hint">{t("space.attachHint")}</div>}
       {intent === "relocate" && <div className="sw-form-hint">{t("space.relocateHint")}</div>}

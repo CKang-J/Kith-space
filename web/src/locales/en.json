@@ -385,8 +385,7 @@
     "attachNamePlaceholder": "Space name (optional)",
     "selectFolder": "Choose folder",
     "selectingFolder": "Choosing...",
-    "hostPathPlaceholder": "Absolute path on the Desktop host",
-    "attachHint": "In a browser, enter a path that exists on the computer running Kith-space.",
+    "attachHint": "Choose a folder that exists on the computer running Kith-space.",
     "relocateHint": "Choose the moved folder that contains this Space's existing .kith data.",
     "reconnectBtn": "Reconnect",
     "rootMissing": "Folder not found - reconnect it",
@@ -414,7 +413,15 @@
     "statusError": "Needs attention",
     "lastOpened": "Last opened {{time}}",
     "neverOpened": "Not opened yet",
-    "pathLabel": "Folder"
+    "pathLabel": "Folder",
+    "hostBrowserTitle": "Folders on this computer",
+    "hostLocations": "Host locations",
+    "loadingFolders": "Loading folders...",
+    "parentFolder": "Parent folder",
+    "folderEmpty": "This folder has no subfolders.",
+    "folderBrowseFailed": "Could not browse folders on the Kith-space host.",
+    "selectCurrentFolder": "Choose this folder",
+    "selectedFolder": "Selected"
   },
   "select": {
     "placeholder": "Select…",

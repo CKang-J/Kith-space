@@ -2,7 +2,7 @@
 
 ## 前言
 
-这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）。当前结论以每条决策中的最新修正和决策 21-23 为准。
+这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）；随后授权浏览器的目录选择收敛为受限主机目录浏览器（决策 24）。当前结论以每条决策中的最新修正和决策 21-24 为准。
 
 盘问的方式是一次给一个决策、每次给一个明确建议，让用户在 either/or 之间做取舍。会话过程中有几条决策被推翻或修正过（底座、runtime、Redis 的真实用途、聊天历史随文件夹走的成本），这些演化本身是理解项目为什么长成现在这样的关键，因此单列一节保留。
 
@@ -37,6 +37,7 @@
 | 21 | 个人 AgentOS 本机化 | 删除服务器部署、多真人、多机器、账户体系和云端路线 |
 | 22 | Agent 首轮 | 创建问候、空启动静默、真实投递按原目标回复 |
 | 23 | Home 与 Space 根目录 | Home 是总控 Space；app data、Space 数据和 runtime 状态分离 |
+| 24 | 浏览器目录选择 | 授权浏览器通过 Core 受限浏览主机目录，不手填路径也不读取文件内容 |
 
 ---
 
@@ -333,6 +334,20 @@
 **实施边界**：H1-H4（路径、cwd/记忆、文件夹接入、Home Spaces UI）属于 A1-A6 验收前置修复。跨 Space 写编排 H5 后续渐进实现，先只读真实摘要，再接 task/message/dispatch；没有真实数据前不做占位视图。完整规格见 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
 
 **实施状态**：P-A7 H1-H4 已完成。`src/paths.ts` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，并以 `KITH_SPACE_SPACES_DIR` 独立隔离默认 Space 容器；app.db 保存稳定 homeSpaceId，Home 默认根为 `~/Kith-space/Home`。`src/daemon/agentWorkspacePaths.ts` 与 `AgentManager` 已把主要 runtime cwd、Agent Memory 和 runtime state 拆为三个路径，并对派生删除路径做容器逃逸校验；文件树/skills/profile/reset 同步采用真实 Space root，同 agent reset/start 串行。OpenCode 已用 child-only inline execution agent 替代覆盖用户 `AGENTS.md`。H3 的 `SpaceRootService` 和 Space API 已实现默认创建、普通目录接入、兼容 workspace.db 稳定 ID 复用、`ready | missing | error` 列表状态与移动后重新定位；重复 root/ID、损坏或不兼容数据库、symlink 和身份不匹配会拒绝，冲突 slug 只调整本机路由别名，接入/打开共用 SQLite 完整性与表列校验。普通 API 不隐式重建缺失 root，relocate 失败回滚 registry；失联深链和全失联恢复保持 relocate 可达。H4 已以 stable Home 身份实现普通冷启动 Home、Home-only Spaces Dock/卡片、搜索/刷新/创建/接入/重连、最近打开记录与同窗导航；普通 Space 不能激活该模块。SpaceSwitcher 只保留快速切换、应急重连和 Home Spaces 入口。当前等待用户验收，H5 未开始。
+
+---
+
+## 决策 24：授权浏览器通过 Core 受限浏览主机目录
+
+**结论**：Desktop 继续使用 Electron 原生目录选择器；授权浏览器的创建、接入和重连流程通过 Core 的受保护接口浏览运行 Kith-space 的主机目录。接口只返回目录导航元数据，不读取或返回文件内容，选中路径仍交给统一 Space root 校验。
+
+**背景**：浏览器本机的文件选择器无法可靠提供 Desktop 主机绝对路径，LAN 浏览器选择的还可能是另一台设备上的目录。此前的绝对路径输入虽然技术上正确，但体验差，也不符合“LAN 浏览器拥有完整产品能力”的既定边界。
+
+**选项与选择**：A（继续手填主机绝对路径）/ B（让浏览器文件选择器冒充主机路径）/ C（由 Core 提供受限主机目录浏览器）。选择 C。B 的路径归属错误；A 仅保留为被推翻的过渡实现。
+
+**推理与权衡**：目录枚举属于高敏感本机元数据，因此接口必须位于 Human 授权 gate 后，只接受绝对路径，只列目录，不返回文件内容；LAN v1 仍建立在“持有访问 Token 的受信任私网用户拥有完整产品能力”这一假设上。代价是授权浏览器能够看见主机目录结构，这必须继续受访问 Token、会话和既有 LAN 风险提示保护。
+
+**已实现事实**：`src/spaces/hostDirectoryBrowser.ts` 负责跨平台根位置与目录枚举；`src/server/routes-api/hostDirectories.ts` 提供 gate-1 `GET /api/host-directories`；`web/src/spaces/HostDirectoryPicker.tsx` 提供浏览器目录选择 UI。创建与接入表单由 `SpaceFolderDialog` 承载为紧凑模态弹窗。
 
 ---
 

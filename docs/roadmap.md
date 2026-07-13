@@ -110,7 +110,7 @@ P4 的视觉微调暂缓。A1-A6 原定代码切片与 P-A7 H1-H4 已完成，�
 
 - H1 路径地基（已完成）：分离 `~/.kith-space` app data 与 `~/Kith-space` 默认 Space 容器；建立稳定 homeSpaceId 和 `~/Kith-space/Home`，并以 `KITH_SPACE_SPACES_DIR` 隔离开发/测试 Space 容器。
 - H2 runtime cwd/记忆（已完成）：Claude Code、Codex、opencode 以 Space root 为 cwd；Agent Memory 移到 `<space>/.kith/agents/<agentId>`；adapter 临时状态移到 app data runtime 目录；文件树、skills、profile 与 reset 同步采用带防逃逸校验的三路径契约，同 agent reset/start 串行且 reset 不删除共享 Space 文件。OpenCode prompt 通过 child-only inline config 隔离，不覆盖用户 `AGENTS.md`；Copilot/Kimi/Cursor 仍标 experimental，并暂用 runtime state cwd 避免其 `AGENTS.md` 注入覆盖用户文件。
-- H3 文件夹接入（已完成）：Desktop 原生目录选择器；浏览器提交 Desktop 主机绝对路径；默认位置新建、普通文件夹接入、兼容 workspace.db 稳定 ID 复用和移动后重新定位；重复 root/Space ID、损坏/不兼容数据库、symlink 与身份不匹配拒绝，冲突 slug 自动取本机唯一别名。接入与正式打开共用 SQLite 完整性/版本/产品表列校验。失联 Space 以 `ready | missing | error` 显示，普通 API 不会隐式重建缺失 root，relocate 失败回滚 registry；失联深链与全失联恢复不会卡在 skeleton。
+- H3 文件夹接入（已完成）：Desktop 原生目录选择器；授权浏览器通过 Core 受限浏览主机目录；默认位置新建、普通文件夹接入、兼容 workspace.db 稳定 ID 复用和移动后重新定位；重复 root/Space ID、损坏/不兼容数据库、symlink 与身份不匹配拒绝，冲突 slug 自动取本机唯一别名。接入与正式打开共用 SQLite 完整性/版本/产品表列校验。失联 Space 以 `ready | missing | error` 显示，普通 API 不会隐式重建缺失 root，relocate 失败回滚 registry；失联深链与全失联恢复不会卡在 skeleton。
 - H4 Home UI（已完成）：普通冷启动进入稳定 Home Chat，显式 ready 深链接仍优先；Home Dock 增加真实 registry 驱动的 Spaces 卡片模块，支持搜索、刷新、默认创建、已有文件夹接入、失联重连和同窗进入，并记录 ready Space 的最近打开时间。普通 Space 不显示该 Dock 项且会移除无效 query；SpaceSwitcher 收敛为快速切换、应急重连与 Home Spaces 入口，不恢复 OverviewShell。
 - H5 跨 Space 编排：后续先做真实只读摘要，再做受审计、幂等且不冒充 Human 的 task/message/agent dispatch。
 

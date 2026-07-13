@@ -4,6 +4,10 @@ import fs from "node:fs";
 
 const sourceUrl = new URL("../web/src/spaces/SpacesModule.tsx", import.meta.url);
 const createMenuUrl = new URL("../web/src/spaces/SpaceCreateMenu.tsx", import.meta.url);
+const dialogUrl = new URL("../web/src/spaces/SpaceFolderDialog.tsx", import.meta.url);
+const folderFormUrl = new URL("../web/src/spaces/SpaceFolderForm.tsx", import.meta.url);
+const hostPickerUrl = new URL("../web/src/spaces/HostDirectoryPicker.tsx", import.meta.url);
+const hostDirectoryApiUrl = new URL("../web/src/spaces/hostDirectoryApi.ts", import.meta.url);
 const cssUrl = new URL("../web/src/spaces/SpacesModule.css", import.meta.url);
 
 test("Home Spaces module exposes only local Space lifecycle actions", () => {
@@ -33,6 +37,22 @@ test("Space creation choices live under one accessible New Space menu", () => {
   assert.match(menu, /role="menuitem"/);
   assert.match(menu, /spacesModule\.createBlank/);
   assert.match(menu, /spacesModule\.attachExisting/);
+});
+
+test("Space creation uses a modal and browser host-directory picker", () => {
+  const source = fs.readFileSync(sourceUrl, "utf8");
+  const dialog = fs.readFileSync(dialogUrl, "utf8");
+  const form = fs.readFileSync(folderFormUrl, "utf8");
+  const picker = fs.readFileSync(hostPickerUrl, "utf8");
+  const hostDirectoryApi = fs.readFileSync(hostDirectoryApiUrl, "utf8");
+
+  assert.match(source, /<SpaceFolderDialog/);
+  assert.match(dialog, /role="dialog"/);
+  assert.match(dialog, /aria-modal="true"/);
+  assert.match(form, /<HostDirectoryPicker/);
+  assert.doesNotMatch(form, /space\.hostPathPlaceholder/);
+  assert.match(hostDirectoryApi, /\/api\/host-directories/);
+  assert.match(picker, /spacesModule\.selectCurrentFolder/);
 });
 
 test("Spaces module keeps the card grid responsive inside the existing module panel", () => {

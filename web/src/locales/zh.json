@@ -385,8 +385,7 @@
     "attachNamePlaceholder": "空间名称（选填）",
     "selectFolder": "选择文件夹",
     "selectingFolder": "选择中...",
-    "hostPathPlaceholder": "Desktop 主机上的绝对路径",
-    "attachHint": "在浏览器中，请填写运行 Kith-space 的电脑上真实存在的目录路径。",
+    "attachHint": "请选择运行 Kith-space 的电脑上真实存在的文件夹。",
     "relocateHint": "请选择移动后的目录；其中必须保留该空间原有的 .kith 数据。",
     "reconnectBtn": "重新连接",
     "rootMissing": "目录已失联，请重新连接",
@@ -414,7 +413,15 @@
     "statusError": "需要处理",
     "lastOpened": "最近打开于 {{time}}",
     "neverOpened": "尚未打开",
-    "pathLabel": "目录"
+    "pathLabel": "目录",
+    "hostBrowserTitle": "本机文件夹",
+    "hostLocations": "主机位置",
+    "loadingFolders": "正在加载文件夹...",
+    "parentFolder": "上一级文件夹",
+    "folderEmpty": "当前文件夹中没有子文件夹。",
+    "folderBrowseFailed": "无法浏览 Kith-space 主机上的文件夹。",
+    "selectCurrentFolder": "选择此文件夹",
+    "selectedFolder": "已选择"
   },
   "select": {
     "placeholder": "选择…",

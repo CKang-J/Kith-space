@@ -120,7 +120,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 1. H1 路径地基（已完成）：拆开 app data 和默认 Space 容器；稳定 homeSpaceId；Home 默认根目录改为 `~/Kith-space/Home`；测试同时隔离两类根目录。
 2. H2 cwd/记忆（已完成）：引入 workspaceRoot、agentMemoryDir、runtimeStateDir 三路径契约；Claude Code、Codex、opencode 使用 Space root cwd；Agent Memory 移入 `.kith/agents`；prompt 临时文件移出用户根目录；文件树/skills/profile 同步改用 registry root；reset 只清 runtime state 或当前 Agent Memory，不删除共享 Space 文件。
-3. H3 文件夹接入（已完成）：Desktop 原生目录选择；授权浏览器提交 Desktop 主机绝对路径；默认位置创建、普通目录初始化、已有兼容 `.kith/workspace.db` 稳定 ID 接入和路径失效重新定位。重复规范 root/Space ID、损坏/不兼容数据库、symlink 和身份不匹配被拒绝；冲突 slug 自动生成本机唯一别名，接入与正式打开共用 SQLite 完整性/表列校验。列表显式返回 `ready | missing | error`，普通 API 不隐式重建缺失 root，relocate 失败回滚 registry；失联深链回退到可用 Space，全失联显示恢复页。
+3. H3 文件夹接入（已完成）：Desktop 原生目录选择；授权浏览器通过 Core 受限浏览主机目录；默认位置创建、普通目录初始化、已有兼容 `.kith/workspace.db` 稳定 ID 接入和路径失效重新定位。重复规范 root/Space ID、损坏/不兼容数据库、symlink 和身份不匹配被拒绝；冲突 slug 自动生成本机唯一别名，接入与正式打开共用 SQLite 完整性/表列校验。列表显式返回 `ready | missing | error`，普通 API 不隐式重建缺失 root，relocate 失败回滚 registry；失联深链回退到可用 Space，全失联显示恢复页。
 4. H4 Home UI（已完成）：普通冷启动进入 stable Home，显式 ready 深链接仍优先；Home Dock 注册 `spaces`；卡片支持搜索、刷新、创建/接入/重连和同窗进入普通 Space；普通 Space 深链接不能激活该模块。SpaceSwitcher 收敛为快速切换、应急重连与 Home Spaces 入口。
 5. H5 跨 Space 编排：先只读真实摘要，后续通过独立服务实现幂等、受审计且不冒充 Human 的 task/message/agent dispatch。
 

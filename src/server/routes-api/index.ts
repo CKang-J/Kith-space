@@ -20,6 +20,7 @@ import { browserMutationAllowed } from "../browserSessionHttp.js";
 import { authenticateHumanRequest } from "../humanRequestAuth.js";
 import type { BaseCtx, HumanCtx, SpaceCtx } from "./ctx.js";
 import { handleHumanProfile } from "./humanProfile.js";
+import { handleHostDirectories } from "./hostDirectories.js";
 import { handleHumanAttachmentGet, handleAttachments } from "./attachments.js";
 import { handleAuthenticatedBrowserAuth, handleDesktopBrowserAccess, handlePublicBrowserAuth } from "./browserAccess.js";
 import { handleDesktopSettings } from "./desktopSettings.js";
@@ -56,6 +57,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (await handleAuthenticatedBrowserAuth(base, auth)) return true;
   if (await handleHumanAttachmentGet(humanCtx)) return true;
   if (await handleHumanProfile(humanCtx)) return true;
+  if (await handleHostDirectories(humanCtx)) return true;
   if (await handleLocalRuntimeHumanScope(humanCtx)) return true;
   if (await handleSpacesHumanScope(humanCtx)) return true;
 

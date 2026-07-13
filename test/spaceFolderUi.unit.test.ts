@@ -7,9 +7,10 @@ const switcherSource = fs.readFileSync(new URL("../web/src/SpaceSwitcher.tsx", i
 const storeSource = fs.readFileSync(new URL("../web/src/store.tsx", import.meta.url), "utf8");
 const recoverySource = fs.readFileSync(new URL("../web/src/spaces/SpaceRecovery.tsx", import.meta.url), "utf8");
 
-test("Desktop chooses a host directory through the preload bridge while browser mode accepts a host path", () => {
+test("Desktop uses the native directory bridge while browser mode uses the host directory browser", () => {
   assert.match(formSource, /bridge\.pickSpaceDirectory\(\)/);
-  assert.match(formSource, /space\.hostPathPlaceholder/);
+  assert.match(formSource, /<HostDirectoryPicker/);
+  assert.doesNotMatch(formSource, /space\.hostPathPlaceholder/);
   assert.doesNotMatch(formSource, /type=["']file["']/i);
 });
 

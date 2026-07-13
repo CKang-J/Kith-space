@@ -13,7 +13,8 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useStore, type SpaceInfo } from "../store.tsx";
 import { SpaceCreateMenu, type SpaceCreateIntent } from "./SpaceCreateMenu.tsx";
-import { SpaceFolderForm, type SpaceFolderIntent } from "./SpaceFolderForm.tsx";
+import { SpaceFolderDialog } from "./SpaceFolderDialog.tsx";
+import type { SpaceFolderIntent } from "./SpaceFolderForm.tsx";
 import "./SpacesModule.css";
 
 type SpacesFlow = SpaceFolderIntent | null;
@@ -146,11 +147,9 @@ export function SpacesModule() {
         <span className="spaces-module__count">{visibleSpaces.length}</span>
       </div>
 
-      {flow && (
-        <section className="spaces-module__form" aria-label={t("spacesModule.title")}>
-          <SpaceFolderForm intent={flow} busy={busy} error={error} onCancel={resetFlow} onSubmit={submit} />
-        </section>
-      )}
+      {flow ? (
+        <SpaceFolderDialog intent={flow} busy={busy} error={error} onCancel={resetFlow} onSubmit={submit} />
+      ) : null}
 
       {visibleSpaces.length > 0 ? (
         <div className="spaces-module__grid">
