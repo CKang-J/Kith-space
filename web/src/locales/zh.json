@@ -361,6 +361,7 @@
     "convertToTask": "转为任务",
     "thread": "线程",
     "markDone": "标记完成(移出 Inbox)",
+    "followThread": "关注此线程",
     "unfollowThread": "取消关注此线程",
     "viewInChannel": "在频道中查看源消息",
     "unreadThreads": "{{count}} 条未读话题回复",

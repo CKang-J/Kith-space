@@ -117,6 +117,7 @@ button{font-family:inherit}
 .item{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:8px;color:var(--body);cursor:pointer;text-decoration:none;width:100%;border:0;background:transparent;font-size:16px;text-align:left}
 .item:hover{background:var(--surface-strong)}
 .item.active{background:var(--surface-strong);color:var(--ink)}
+.agent-list-item+.agent-list-item{margin-top:4px}
 .item .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .badge{font-size:11px;background:var(--ink-2);color:var(--on-ink);border-radius:9999px;padding:0 6px;min-width:18px;text-align:center}
 .sec.sec-sub{font-size:10px;letter-spacing:.6px;margin:10px 4px 4px;color:var(--muted-soft)}

@@ -60,7 +60,7 @@ export function Agents({ agentIdOverride }: AgentsProps = {}) {
         </div>
         <div className="sec">{t("common.agents")} <span className="cnt">{agents.length}</span><button className="addbtn agents-create-button" title={t("members.createAgent")} onClick={() => setModal(true)}>+</button></div>
         {filteredAgents.map((a) => (
-          <button key={a.id} className={"item" + (a.id === agentId ? " active" : "")} onClick={() => openAgent(a.id)}>
+          <button key={a.id} className={"item agent-list-item" + (a.id === agentId ? " active" : "")} onClick={() => openAgent(a.id)}>
             <Avatar seed={a.name} url={avFor(a.avatarUrl)} size={20} /><span className="grow">{a.name}</span><span className={"dot " + statusOf(a)} role="img" aria-label={t("members.statusLabel", { status: agentStatusLabel(t, statusOf(a)) })} title={agentStatusLabel(t, statusOf(a))} />
           </button>
         ))}

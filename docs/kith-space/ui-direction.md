@@ -105,8 +105,8 @@ ChatOnly 由三张独立白色工作面板组成：
 会话列表 | 当前会话与 Composer | 实时轨迹
 ```
 
-- 会话列表包含 Channels 与 Human-Agent Direct Messages，保留未读、置顶、新建和切换行为；不提供 Human-Human DM。
-- 中间复用现有 `Chat`、Composer、Thread、附件和 @mention 能力；Agent 私聊标题区提供直达当前 Agent 详情页的入口；Thread 打开时默认与当前会话各占一半宽度，并可通过中间分割线继续拖拽调整。
+- 会话列表包含 Channels 与 Human-Agent Direct Messages，保留未读、置顶、新建和切换行为；不提供 Human-Human DM。会话抽屉、Agents 模块侧栏及 Agent 选择器中的相邻 Agent 行使用一致的轻量间距，保持列表层级清晰。
+- 中间复用现有 `Chat`、Composer、Thread、附件和 @mention 能力；Agent 私聊标题区提供直达当前 Agent 详情页的入口；Thread 打开时默认与当前会话各占一半宽度，并可通过中间分割线继续拖拽调整。Thread 标题栏以普通铃铛表示“已关注”、划线铃铛表示“未关注”，点击在两种状态间切换且不关闭 Thread；关闭仍由独立的 × 按钮负责。
 - 当前会话顶部始终复用紧凑 Chat 的“会话 / 轨迹”按钮：ChatOnly 中用于把对应侧栏直接收至 `0` 或恢复，不保留贯穿全高的收起栏；展开收起沿用模块切换的物理边界运动方式，但使用独立的响应曲线，内容随边界裁切，不做淡入淡出；Split 中仍用于打开对应抽屉。该短暂界面状态不进入 URL。
 - 实时轨迹继续展示 agent 的执行过程，Thread 与当前会话使用一致的面板背景。
 - 三区之间使用与整个工作区一致的有色间隙与圆角面板语言。

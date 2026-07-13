@@ -186,6 +186,32 @@ async function main() {
   });
   check("thread metadata returns 200", threadMetadata.status === 200);
   check("own reply leaves unreadCount at zero", threadMetadata.body?.[parent.id]?.unreadCount === 0);
+  check("thread metadata reports the Human follow", threadMetadata.body?.[parent.id]?.followed === true);
+
+  const unfollow = await apiCall({
+    method: "POST",
+    path: "/api/channels/threads/unfollow",
+    body: { threadChannelId: thread.id },
+  });
+  check("unfollow thread returns 200", unfollow.status === 200);
+  const unfollowedMetadata = await apiCall({
+    method: "GET",
+    path: `/api/channels/${channelId}/threads?parentMessageIds=${parent.id}`,
+  });
+  check("thread metadata reports the removed follow", unfollowedMetadata.body?.[parent.id]?.followed === false);
+
+  const refollow = await apiCall({
+    method: "POST",
+    path: "/api/channels/threads/follow",
+    body: { threadChannelId: thread.id },
+  });
+  check("follow thread returns 200", refollow.status === 200);
+  const refollowedMetadata = await apiCall({
+    method: "GET",
+    path: `/api/channels/${channelId}/threads?parentMessageIds=${parent.id}`,
+  });
+  check("thread metadata reports the restored follow", refollowedMetadata.body?.[parent.id]?.followed === true);
+  await markThreadRead(thread.id);
 
   console.log("\n[3] the Human's own task transition is not unread");
   const task = await humanMessage(channelId, "task owned by the Human", true);
