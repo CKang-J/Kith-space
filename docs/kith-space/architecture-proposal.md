@@ -117,7 +117,7 @@ Home Space Memory 承载跨 Space 协调背景和组合计划，不替代 User M
 
 ### 4.6 Files
 
-文件和附件只使用本地磁盘服务。用户业务文件位于 Space root 的普通文件树，agent 相对文件操作与项目 skills 默认落在这里；产品状态位于 `.kith`，runtime prompt/临时状态位于 app data。项目 skills 由 Core 从 app.db registry 解析并向 Worker 传递 Space root，项目文件树隐藏 `.kith`、`.git` 与 `node_modules`。Agent 详情的记忆列表和读取则由 Core 解析所属 Space 后传递精确的 `agentMemoryDir = <space>/.kith/agents/<agentId>`，只能浏览该 Agent 的记忆目录；两类请求都拒绝路径遍历，调用方不能提交任意绝对路径。S3 driver、SDK 依赖、bucket 配置和 app 级上传目录均已删除；storage key 必须是平面文件名。`src/server/storage.ts` 接收 `spaceId`，通过 app.db registry 解析已注册 Space 的 rootPath，并只读写 `<spaceRoot>/.kith/uploads`。Public download 以附件记录的 `spaceId` 为准，agent plane 以认证 `spaceId` 为准；请求和调用方都不能用字符串路径绕过 registry。
+文件和附件只使用本地磁盘服务。用户业务文件位于 Space root 的普通文件树，agent 相对文件操作与项目 skills 默认落在这里；产品状态位于 `.kith`，runtime prompt/临时状态位于 app data。项目 skills 由 Core 从 app.db registry 解析并向 Worker 传递 Space root，项目文件树隐藏 `.kith`、`.git` 与 `node_modules`。Agent 详情的记忆列表和读取则由 Core 解析所属 Space 后传递精确的 `agentMemoryDir = <space>/.kith/agents/<agentId>`，只能浏览该 Agent 的记忆目录；两类请求都拒绝路径遍历，调用方不能提交任意绝对路径。S3 driver、SDK 依赖、bucket 配置和 app 级上传目录均已删除；storage key 必须是平面文件名。`src/server/attachments.ts` 在统一 multipart 边界按 UTF-8 解码文件名参数，确保浏览器和本机 Agent CLI 上传的非 ASCII 原名不会被 Latin-1 误解码。`src/server/storage.ts` 接收 `spaceId`，通过 app.db registry 解析已注册 Space 的 rootPath，并只读写 `<spaceRoot>/.kith/uploads`。Public download 以附件记录的 `spaceId` 为准，agent plane 以认证 `spaceId` 为准；请求和调用方都不能用字符串路径绕过 registry。
 
 ### 4.7 Home 与跨 Space 委派
 

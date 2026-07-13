@@ -36,7 +36,15 @@ export function sanitizeMimeType(declared: string): string {
 export function parseUpload(spaceId: string, req: IncomingMessage): Promise<{ fields: Record<string, string>; files: UploadedFile[] }> {
   return new Promise((resolve, reject) => {
     let bb: ReturnType<typeof Busboy>;
-    try { bb = Busboy({ headers: req.headers, limits: { fileSize: 25 * 1024 * 1024, files: 10 } }); }
+    try {
+      bb = Busboy({
+        headers: req.headers,
+        // Browsers encode non-ASCII multipart filename parameters as UTF-8 bytes.
+        // Busboy otherwise defaults these parameters to latin1, producing mojibake.
+        defParamCharset: "utf8",
+        limits: { fileSize: 25 * 1024 * 1024, files: 10 },
+      });
+    }
     catch (e) { return reject(e); }
     const fields: Record<string, string> = {};
     const files: UploadedFile[] = [];
