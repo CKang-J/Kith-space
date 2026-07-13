@@ -1,8 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Ask a question or discuss ideas
-    url: https://github.com/fancyboi999/kith-space/discussions
-    about: Use GitHub Discussions for general questions and design conversations.
   - name: Security vulnerability
-    url: https://github.com/fancyboi999/kith-space/security/advisories/new
+    url: https://github.com/CKang-J/Kith-space/security/advisories/new
     about: Report a security issue privately via GitHub's vulnerability reporting.

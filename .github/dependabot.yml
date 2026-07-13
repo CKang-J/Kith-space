@@ -1,14 +1,13 @@
 version: 2
-# Tuned to avoid noise: patch/minor only (majors are upgraded deliberately, after
-# real testing — Dependabot's CI green ≠ runtime-safe for a major lib bump), grouped
-# into one PR per ecosystem, with a cap on concurrently-open PRs.
+# Keep routine dependency maintenance visible without flooding this single-maintainer
+# project. Major upgrades remain deliberate work and are not opened automatically.
 updates:
-  # Root package (server + daemon + CLI)
+  # Root workspace: Core Service, Local Runtime Worker, Desktop, and CLI.
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
+      interval: "monthly"
+    open-pull-requests-limit: 2
     groups:
       root-minor-patch:
         update-types: ["minor", "patch"]
@@ -16,12 +15,12 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
-  # Web frontend (Vite + React)
+  # Shared web frontend.
   - package-ecosystem: "npm"
     directory: "/web"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
+      interval: "monthly"
+    open-pull-requests-limit: 2
     groups:
       web-minor-patch:
         update-types: ["minor", "patch"]
@@ -29,12 +28,15 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
-  # GitHub Actions workflows (grouped; action majors are low-risk CI infra)
+  # GitHub Actions workflows. Major action upgrades are reviewed manually too.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
+      interval: "monthly"
+    open-pull-requests-limit: 2
     groups:
       github-actions:
         patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
