@@ -61,6 +61,52 @@
 
 .spaces-module__action--primary:hover { background: var(--ink); }
 
+.spaces-module__create {
+  position: relative;
+  display: flex;
+}
+
+.spaces-module__create .spaces-module__action > .is-open { transform: rotate(180deg); }
+
+.spaces-module__create-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  width: 220px;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid var(--hair-strong);
+  border-radius: 11px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px var(--shadow-2);
+}
+
+.spaces-module__create-menu > button {
+  display: flex;
+  width: 100%;
+  height: 38px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.spaces-module__create-menu > button:hover,
+.spaces-module__create-menu > button:focus-visible {
+  background: var(--canvas-soft);
+  color: var(--ink);
+  outline: none;
+}
+
 .spaces-module__error {
   margin-top: 14px;
   padding: 9px 11px;
@@ -292,6 +338,8 @@
   .spaces-module__header { flex-direction: column; }
   .spaces-module__actions { width: 100%; }
   .spaces-module__action { flex: 1; justify-content: center; }
+  .spaces-module__create { flex: 1; }
+  .spaces-module__create > .spaces-module__action { width: 100%; }
   .spaces-module__grid { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
 }
 

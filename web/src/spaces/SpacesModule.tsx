@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Folder,
   FolderOpen,
-  FolderPlus,
   Link2,
   RefreshCw,
   Search,
@@ -13,6 +12,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useStore, type SpaceInfo } from "../store.tsx";
+import { SpaceCreateMenu, type SpaceCreateIntent } from "./SpaceCreateMenu.tsx";
 import { SpaceFolderForm, type SpaceFolderIntent } from "./SpaceFolderForm.tsx";
 import "./SpacesModule.css";
 
@@ -48,7 +48,7 @@ export function SpacesModule() {
     setError("");
   };
 
-  const openCreate = (intent: "default" | "attach") => {
+  const openCreate = (intent: SpaceCreateIntent) => {
     setRelocateTargetId(null);
     setError("");
     setFlow(intent);
@@ -126,14 +126,7 @@ export function SpacesModule() {
             <RefreshCw size={17} className={refreshing ? "is-spinning" : undefined} />
             {t("spacesModule.refresh")}
           </button>
-          <button type="button" className="spaces-module__action" onClick={() => openCreate("attach")}>
-            <FolderOpen size={17} />
-            {t("spacesModule.attachExisting")}
-          </button>
-          <button type="button" className="spaces-module__action spaces-module__action--primary" onClick={() => openCreate("default")}>
-            <FolderPlus size={17} />
-            {t("spacesModule.createDefault")}
-          </button>
+          <SpaceCreateMenu onSelect={openCreate} />
         </div>
       </header>
 

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const sourceUrl = new URL("../web/src/spaces/SpacesModule.tsx", import.meta.url);
+const createMenuUrl = new URL("../web/src/spaces/SpaceCreateMenu.tsx", import.meta.url);
 const cssUrl = new URL("../web/src/spaces/SpacesModule.css", import.meta.url);
 
 test("Home Spaces module exposes only local Space lifecycle actions", () => {
@@ -19,6 +20,19 @@ test("Home Spaces module exposes only local Space lifecycle actions", () => {
   assert.match(source, /`\/s\/\$\{space\.slug\}\/channel`/);
 
   assert.doesNotMatch(source, /\/api\/(?:tasks|inbox)/);
+});
+
+test("Space creation choices live under one accessible New Space menu", () => {
+  const source = fs.readFileSync(sourceUrl, "utf8");
+  const menu = fs.readFileSync(createMenuUrl, "utf8");
+
+  assert.match(source, /<SpaceCreateMenu onSelect=\{openCreate\} \/>/);
+  assert.doesNotMatch(source, /onClick=\{\(\) => openCreate\("attach"\)\}/);
+  assert.match(menu, /aria-haspopup="menu"/);
+  assert.match(menu, /role="menu"/);
+  assert.match(menu, /role="menuitem"/);
+  assert.match(menu, /spacesModule\.createBlank/);
+  assert.match(menu, /spacesModule\.attachExisting/);
 });
 
 test("Spaces module keeps the card grid responsive inside the existing module panel", () => {
