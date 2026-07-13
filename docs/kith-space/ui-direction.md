@@ -167,7 +167,7 @@ A5 已完成工作区入口与规范 URL 收口，但 `MessageContextSnapshot`�
 
 ## 7. 当前实现边界
 
-当前生产壳已完成 A5 入口收口与 P-A7 H4：`App` 只渲染 `WorkspaceFrame`；Agents、Human Settings、Desktop Settings 与 Home-only Spaces 已落地，登录/注册/邀请、Computers、Landing、Features、PWA、SSR/prerender、旧 `Layout` 与 `?legacy=1` 均已退出活跃代码。Agent Overview/Workspace 通过现有 workspace-files API 展示 registry 中真实 Space root，不再拼出旧 app data agent 路径。普通冷启动进入 stable Home，显式 ready 深链接仍优先；普通 Space 不显示也不能激活 Spaces。最终视觉与实际交互仍由用户在 H1-H4 验收中确认。
+当前生产壳已完成 A5 入口收口与 P-A7 H4：`App` 只渲染 `WorkspaceFrame`；Agents、Human Settings、Desktop Settings 与 Home-only Spaces 已落地，登录/注册/邀请、Computers、Landing、Features、PWA、SSR/prerender、旧 `Layout` 与 `?legacy=1` 均已退出活跃代码。Agent 详情的“记忆”标签与概览路径通过兼容的 workspace-files API 展示并读取当前 Space 的 `<space>/.kith/agents/<agentId>`；`agentTab=workspace` 只作为既有深链兼容值保留，不再表示共享 Space 工作区。普通冷启动进入 stable Home，显式 ready 深链接仍优先；普通 Space 不显示也不能激活 Spaces。最终视觉与实际交互仍由用户在 H1-H4 验收中确认。
 
 单窗口壳按职责拆在 `web/src/shell/`：
 

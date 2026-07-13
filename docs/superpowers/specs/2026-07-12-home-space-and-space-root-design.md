@@ -246,7 +246,7 @@ idempotency key
 - runtime prompt/临时文件移到 app data runtimeStateDir。
 - 更新 reset/wipe 与三层记忆测试。
 
-实现说明：Claude Code、Codex、opencode 已使用 Space root cwd；OpenCode prompt 通过 child-only `OPENCODE_CONFIG_CONTENT` + 固定内部 execution agent 注入，不写用户 `AGENTS.md`。Copilot/Kimi/Cursor 仍是 experimental adapter，其现有 prompt 注入会在 cwd 写 `AGENTS.md`，暂时使用 runtimeStateDir，避免覆盖用户 Space 中的同名文件。文件树、项目 skills、profile 同步与 reset 已统一使用 registry 解析的三路径契约；Space/Agent ID 必须是安全单路径段且派生目录不得逃逸容器，同 agent reset/start 串行执行。
+实现说明：Claude Code、Codex、opencode 已使用 Space root cwd；OpenCode prompt 通过 child-only `OPENCODE_CONFIG_CONTENT` + 固定内部 execution agent 注入，不写用户 `AGENTS.md`。Copilot/Kimi/Cursor 仍是 experimental adapter，其现有 prompt 注入会在 cwd 写 `AGENTS.md`，暂时使用 runtimeStateDir，避免覆盖用户 Space 中的同名文件。项目 skills 使用 registry 解析的 Space root，profile 同步与 reset 使用同一三路径契约；Agents 详情的“记忆”文件树则只读取当前 agentMemoryDir。Space/Agent ID 必须是安全单路径段且派生目录不得逃逸容器，同 agent reset/start 串行执行。
 
 ### H3 Space 创建与接入（已完成）
 

@@ -177,14 +177,14 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
           ["permissions", t("members.tabPermissions")],
           ["dms", t("members.tabDms")],
           ["reminders", t("members.tabReminders")],
-          ["workspace", t("members.tabWorkspace")],
+          ["workspace", t("members.tabMemory")], // keep the query value for existing agentTab=workspace deep links
           ["integrations", t("members.tabIntegrations")],
           ["activity", t("members.tabActivity")],
         ] as [string, string][]).map(([k, label]) => (
           <button key={k} className={tab === k ? "on" : ""} onClick={() => setSp((prev) => { const n = new URLSearchParams(prev); n.set("agentTab", k); return n; })}>{label}</button>
         ))}
       </div>
-      {tab === "workspace" ? <WorkspaceTab id={id} />
+      {tab === "workspace" ? <MemoryTab id={id} />
         : tab === "activity" ? <ActivityTab id={id} name={a.name} />
         : tab === "permissions" ? <PermissionsTab id={id} />
         : tab === "integrations" ? <AppsTab id={id} />
@@ -199,7 +199,7 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
               {a.runtimeConfig?.reasoningEffort && <div className="kv"><b>{t("common.reasoning")}</b> {a.runtimeConfig.reasoningEffort}</div>}
                 <div className="kv"><b>{t("common.status")}</b> <span className="kv-v"><span className={"dot " + live} /> {agentStatusLabel(t, live)}</span></div>
               <div className="kv"><b>{t("common.session")}</b> {a.sessionId || "(none)"}</div>
-              <div className="kv"><b>{t("common.workspace")}</b> <AgentWorkspaceRoot id={a.id} /></div>
+              <div className="kv"><b>{t("common.memory")}</b> <AgentMemoryRoot id={a.id} /></div>
               {a.createdAt && <div className="kv"><b>{t("common.created")}</b> {fmtDateTime(a.createdAt)}</div>}
               <div className="task-acts" style={{ marginTop: 14 }}>
                 <button className="joinbtn" onClick={startEdit}>{t("members.editProfile")}</button>
@@ -346,9 +346,9 @@ function ActivityTab({ id, name }: { id: string; name: string }) {
   );
 }
 
-// Agent workspace file tree (GET /api/agents/:id/workspace-files for full tree + /workspace-files/read for file content)
+// Agent Memory file tree. The legacy workspace-files route names remain compatible with existing clients.
 // .md files: Preview (rendered markdown, default) / Raw (monospace source) toggle. Other files: monospace source only.
-function AgentWorkspaceRoot({ id }: { id: string }) {
+function AgentMemoryRoot({ id }: { id: string }) {
   const { api } = useStore();
   const [root, setRoot] = useState("...");
   useEffect(() => {
@@ -362,7 +362,7 @@ function AgentWorkspaceRoot({ id }: { id: string }) {
   return <>{root}</>;
 }
 
-export function WorkspaceTab({ id }: { id: string }) {
+export function MemoryTab({ id }: { id: string }) {
   const { t } = useTranslation();
   const { api } = useStore();
   const [files, setFiles] = useState<any[]>([]);
@@ -372,8 +372,8 @@ export function WorkspaceTab({ id }: { id: string }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set()); // tracks expanded directories (collapsed by default, toggled via onToggleDir)
   const [copied, setCopied] = useState(false);
   const [showHidden, setShowHidden] = useState(false); // dot-prefixed files hidden by default (like ls; toggle for ls -a behavior)
-  const [root, setRoot] = useState("..."); // shown in root bar + copied by copy button; replaced by the registered Space root from the API
-  useEffect(() => { setSel(null); setExpanded(new Set()); setRoot("..."); (async () => { const d = await api("GET", `/api/agents/${id}/workspace-files`); if (d.error) { setErr(d.error); setFiles([]); } else { setErr(""); setFiles(d.files || []); if (d.root) setRoot(d.root.endsWith("/") ? d.root : d.root + "/"); } })(); }, [id]);
+  const [root, setRoot] = useState("..."); // shown in root bar + copied by copy button; replaced by this Agent's Space-local memory path
+  useEffect(() => { setSel(null); setExpanded(new Set()); setRoot("..."); (async () => { const d = await api("GET", `/api/agents/${id}/workspace-files`); if (d.error) { setErr(d.error); setFiles([]); } else { setErr(""); setFiles(d.files || []); if (d.root) setRoot(d.root); } })(); }, [id]);
   const open = async (f: any) => { setMode("preview"); const d = await api("GET", `/api/agents/${id}/workspace-files/read?path=${encodeURIComponent(f.path)}`); setSel({ path: f.path, content: d.content, error: d.error }); };
   const toggleDir = (path: string) => setExpanded((s) => { const n = new Set(s); n.has(path) ? n.delete(path) : n.add(path); return n; });
   const copyRoot = () => navigator.clipboard?.writeText(root).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
@@ -388,7 +388,7 @@ export function WorkspaceTab({ id }: { id: string }) {
           <button className="ws-copy" title={showHidden ? t("members.hideDotFiles") : t("members.showHiddenFiles")} onClick={() => setShowHidden((v) => !v)}>{showHidden ? <EyeOff size={12} /> : <Eye size={12} />}</button>
           <button className="ws-copy" title={copied ? t("members.copied") : t("members.copyPath")} onClick={copyRoot}>{copied ? <Check size={12} /> : <Copy size={12} />}</button>
         </div>
-        {err ? <div className="empty">{err}</div> : files.length === 0 ? <div className="empty">{t("members.workspaceEmpty")}</div>
+        {err ? <div className="empty">{err}</div> : files.length === 0 ? <div className="empty">{t("members.memoryEmpty")}</div>
           : visible.map((f) => (
             <div key={f.path} className={"ws-row" + (sel?.path === f.path ? " active" : "")} style={{ paddingLeft: 6 + (f.path.split("/").length - 1) * 14 }}
               onClick={() => (f.isDirectory ? toggleDir(f.path) : open(f))}>
@@ -397,7 +397,7 @@ export function WorkspaceTab({ id }: { id: string }) {
           ))}
       </div>
       <div className="ws-view">
-        {!sel ? <div className="hint">{t("members.workspaceHint")}</div>
+        {!sel ? <div className="hint">{t("members.memoryHint")}</div>
           : sel.error ? <div className="empty">{sel.error}</div>
             : <>
                 <div className="ws-path">{sel.path}

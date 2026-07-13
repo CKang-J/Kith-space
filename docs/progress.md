@@ -2,7 +2,7 @@
 
 本文件是当前进度的权威来源。新会话先读本文件和 `AGENTS.md`，再按文档地图进入专项资料。
 
-最后更新：2026-07-12。
+最后更新：2026-07-13。
 
 ## 一、现在在哪
 
@@ -59,7 +59,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 - **H1 已完成**：`src/paths.ts` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，并新增独立 `KITH_SPACE_SPACES_DIR` 开发/测试覆盖；全新安装的默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`。`app.db` 的 `installation_state.home_space_id` 保存稳定 Home 身份，旧开发库只在首次升级时由既有 `slug=home` 回填且不会自动搬动其已有 rootPath；Home 不能取消注册，并发首次初始化会原子复用同一个 Home。
 - H1 验证：`pnpm run typecheck`、478/478 单测与完整集成测试通过；单路轻量独立复核未发现代码阻塞，指出的规格状态/切片测试口径已修正。
-- **H2 已完成**：`src/daemon/agentWorkspacePaths.ts` 统一解析 `workspaceRoot = Space root`、`agentMemoryDir = <space>/.kith/agents/<agentId>` 和 `runtimeStateDir = <appData>/runtime/<spaceId>/<agentId>`，并拒绝可逃逸容器的 Space/Agent ID。Claude Code、Codex、opencode 以真实 Space root 为 cwd；Claude prompt、Hermes turn 文件等 adapter 临时产物写入 runtime state。OpenCode 通过 child-only `OPENCODE_CONFIG_CONTENT` 注入固定内部 execution agent，不写或覆盖用户 `AGENTS.md`，同 Space 多 agent 的 prompt 也保持进程隔离。文件树、文件读取、项目 skills、profile 同步和 reset 都改用 Core 从 registry 解析的 Space root；普通 reset 只清 session/runtime state，完整 reset 额外清当前 Agent Memory，两者都不删除共享 Space 文件；同 agent 的 reset/start 在 Worker 中串行，避免 Reset & Restart 的清理竞态。Copilot/Kimi/Cursor 仍是 experimental adapter，因为其实现会在 cwd 写 `AGENTS.md`，暂时使用 runtimeStateDir，避免覆盖用户项目文件。
+- **H2 已完成**：中立领域模块 `src/agents/agentWorkspacePaths.ts` 统一解析 `workspaceRoot = Space root`、`agentMemoryDir = <space>/.kith/agents/<agentId>` 和 `runtimeStateDir = <appData>/runtime/<spaceId>/<agentId>`，并拒绝可逃逸容器的 Space/Agent ID。Claude Code、Codex、opencode 以真实 Space root 为 cwd；Claude prompt、Hermes turn 文件等 adapter 临时产物写入 runtime state。OpenCode 通过 child-only `OPENCODE_CONFIG_CONTENT` 注入固定内部 execution agent，不写或覆盖用户 `AGENTS.md`，同 Space 多 agent 的 prompt 也保持进程隔离。项目 skills 继续使用 Core 从 registry 解析的 Space root；profile 同步、reset 与 Agents 详情的“记忆”文件浏览器使用同一三路径契约，其中记忆浏览器只读取当前 `agentMemoryDir`。普通 reset 只清 session/runtime state，完整 reset 额外清当前 Agent Memory，两者都不删除共享 Space 文件；同 agent 的 reset/start 在 Worker 中串行，避免 Reset & Restart 的清理竞态。Copilot/Kimi/Cursor 仍是 experimental adapter，因为其实现会在 cwd 写 `AGENTS.md`，暂时使用 runtimeStateDir，避免覆盖用户项目文件。
 - H2 验证：`pnpm run typecheck`、486/486 单测、完整集成测试和 Web build 通过；三路径/容器逃逸、三家主要 runtime cwd、OpenCode prompt 隔离、Agent Memory/profile、文件树/skills 和 reset 串行/安全边界均有回归测试。一次轻量只读复核发现的 OpenCode 文件覆盖、Reset & Restart 竞态和删除路径逃逸均已修复。
 - **H3 已完成**：`src/spaces/spaceRootService.ts` 集中规范化和校验宿主绝对路径；支持默认位置新建、普通文件夹接入、兼容 `.kith/workspace.db` 的稳定 Space ID 复用，以及文件夹移动后的 relocate。重复规范 root/Space ID、损坏或不兼容数据库、`.kith`/workspace.db symlink 和身份不匹配都会被拒绝且不会自动删除；未显式指定的冲突 slug 会生成本机唯一别名。`src/db/spaceDatabaseCompatibility.ts` 让接入探测与正式打开共用 SQLite `quick_check`、版本及全产品表/列校验。Space 列表返回 `ready | missing | error` 与可操作错误；注册后的普通 `dbForSpace` 访问不再隐式重建缺失 root 或数据库；relocate 打开失败会回滚 app.db registry。
 - H3 的 Desktop preload 窄桥调用 Electron 原生目录选择器；授权浏览器通过 Core 的受限主机目录浏览器选择宿主路径，不使用浏览器本机文件选择器冒充宿主路径，也不读取文件内容。失联深链会转到可用 Space，全部 Space 失联时由独立恢复页保持 relocate 可达。H4 后 `SpaceSwitcher` 收敛为快速切换、失联重连和进入 Home Spaces 的入口；默认创建与已有文件夹接入统一位于 Home Spaces 模块，并使用紧凑模态弹窗。
@@ -124,7 +124,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - 包管理使用 pnpm；脚本参数直接跟在后面，例如 `pnpm test --unit`。
 - 常规验证：`pnpm run typecheck`、`pnpm test --unit`、`pnpm test --integration`、`pnpm --dir web run build`。
 - 测试 runner 同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向同一个随机临时 profile 的不同子目录；手写测试若绕过 runner，必须显式覆盖默认 Space 容器或直接传 rootPath，绝不在真实 `~/Kith-space` 生成 fixture。
-- 当前验收单测基线为 506/506；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6 与 H1-H4 小节里的旧数字只描述当时检查点，不是当前基线。
+- 当前验收单测基线为 521/521；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6 与 H1-H4 小节里的旧数字只描述当时检查点，不是当前基线。
 - 新功能优先拆到职责清楚的模块；不整块重写 `src/server/core.ts` 或大型 React 组件。
 - 代码、命令、架构、UI、术语或阶段变化时，同一提交同步相应文档。
 - 用户未要求时不修改或提交 `.agents/`、`.claude/`、`.codegraph/daemon.pid`、`skills-lock.json` 等外部/个人工具文件。

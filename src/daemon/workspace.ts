@@ -1,6 +1,7 @@
-// Reads a Core-resolved Space root and exposes its user file tree / file content via WS-RPC to the server.
-// File tree: returns {root, files:[{name,path,isDirectory,size,modifiedAt}]} — root is the absolute on-disk workspace dir (so the UI shows the real path instead of a hardcoded template that's wrong under a non-default KITH_SPACE_HOME);
-//            read file: returns {path, content}. Security: path must remain inside the workspace root (prevents ../ escape).
+// Reads a Core-approved local directory and exposes its file tree / file content via WS-RPC to the server.
+// The Agents UI currently passes one Agent's Space-local memory directory; project skill discovery separately passes the Space root.
+// File tree returns {root, files:[{name,path,isDirectory,size,modifiedAt}]}; reads return {path,content}.
+// Security: relative paths must remain inside the supplied root (prevents ../ escape).
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";

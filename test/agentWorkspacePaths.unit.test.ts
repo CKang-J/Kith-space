@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { resolveAgentWorkspacePaths } from "../src/daemon/agentWorkspacePaths.ts";
+import { resolveAgentWorkspacePaths } from "../src/agents/agentWorkspacePaths.ts";
 
 test("agent workspace paths keep business files, Agent Memory, and runtime state separate", () => {
   const workspaceRoot = path.resolve("D:/projects/example-space");

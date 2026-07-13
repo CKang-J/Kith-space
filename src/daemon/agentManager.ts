@@ -11,7 +11,7 @@ import { getRuntime } from "./runtimes.js";
 import type { Runtime, RuntimeSession, RuntimeCallbacks } from "./runtime.js";
 import { createLogger } from "../log.js";
 import { buildAgentProcessEnv } from "./agentProcessEnv.js";
-import { resolveAgentWorkspacePaths, type AgentWorkspaceRef } from "./agentWorkspacePaths.js";
+import { resolveAgentWorkspacePaths, type AgentWorkspaceRef } from "../agents/agentWorkspacePaths.js";
 import { runtimeDir } from "../paths.js";
 
 const IDLE_MS = Number(process.env.KITH_SPACE_IDLE_MS ?? 10 * 60 * 1000); // how long before idle sleep (kills process to save memory; next wake uses --resume)

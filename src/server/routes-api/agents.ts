@@ -10,6 +10,7 @@ import { clearAgentIntroductionTurns } from "../agentIntroduction.js";
 import { ALL_SCOPE_KEYS, SCOPES, effectiveScopes, isScopeLiteral } from "../scopes.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { validateRuntimeModel } from "../../local-runtime/runtimeCatalog.js";
+import { resolveAgentMemoryDir } from "../../agents/agentWorkspacePaths.js";
 
 export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   const { req, res, url, method, p, humanId, spaceId } = ctx;
@@ -103,7 +104,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     if (b?.restart) await startAgent(spaceId, agId!); // Worker serializes same-agent reset/start so cleanup completes before the new runtime begins.
     return (sendJson(res, 200, { ok: true }), true);
   }
-  // Agent workspace file browser (reads local disk via daemon WS-RPC)
+  // Agent Memory browser. Keep the legacy workspace-files route/worker message names for deep-link and protocol compatibility.
   const awsList = /^\/api\/agents\/([^/]+)\/workspace-files$/.exec(p);
   const awsFile = /^\/api\/agents\/([^/]+)\/workspace-files\/read$/.exec(p);
   if ((awsList || awsFile) && method === "GET") {
@@ -112,11 +113,12 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     if (!a) return (sendErr(res, 404, "agent not found"), true);
     const workspaceRoot = spaceRecord(spaceId)?.rootPath;
     if (!workspaceRoot) return (sendErr(res, 404, "space not found"), true);
+    const agentMemoryDir = resolveAgentMemoryDir(workspaceRoot, agId);
     if (awsList) {
-      const r = await requestWorker({ type: "agent:workspace:list", agentId: agId, workspaceRoot });
+      const r = await requestWorker({ type: "agent:workspace:list", agentId: agId, workspaceRoot: agentMemoryDir });
       return (sendJson(res, 200, r.error ? { error: r.error } : { files: r.files ?? [], root: r.root }), true);
     }
-    const r = await requestWorker({ type: "agent:workspace:read", agentId: agId, workspaceRoot, path: url.searchParams.get("path") ?? "" });
+    const r = await requestWorker({ type: "agent:workspace:read", agentId: agId, workspaceRoot: agentMemoryDir, path: url.searchParams.get("path") ?? "" });
     return (sendJson(res, 200, r.error ? { error: r.error } : { path: r.path, content: r.content }), true);
   }
   // Agent activity log: chronological [{timestamp, entry}]
