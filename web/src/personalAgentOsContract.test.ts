@@ -107,7 +107,8 @@ test("the frontend exposes only the local product shell", () => {
   assert.equal(webPackage.scripts.build, "vite build");
   assert.match(index, /<title>Kith-space<\/title>/);
   assert.match(index, /<meta name="description"/);
-  assert.match(index, /<link rel="icon" href="\/favicon\.svg"/);
+  assert.match(index, /<link rel="icon" href="\/icons\/kith-space-256\.png"/);
+  assert.doesNotMatch(index, /favicon\.svg/);
   assert.doesNotMatch(index, /canonical|og:|twitter:|application\/ld\+json|apple-touch|fonts\.googleapis|fonts\.gstatic/);
   for (const path of removedPaths) {
     assert.equal(existsSync(new URL(path, import.meta.url)), false, `${path} must stay removed`);

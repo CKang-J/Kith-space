@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { generateInternalProcessCredentials } from "../local-runtime/internalCredentials.js";
 import { DesktopCoreClient } from "./coreClient.js";
+import { resolveDesktopIconPath } from "./desktopIcon.js";
 import { parseBrowserAccessUpdate, parseLifecycleUpdate } from "./ipcValidation.js";
 import { isPortAvailable } from "./portAvailability.js";
 import { buildDesktopProcessCommands } from "./processCommands.js";
@@ -28,6 +29,7 @@ import {
 const isDevelopment = process.env.KITH_SPACE_DESKTOP_DEV === "1";
 const startHidden = process.argv.includes("--hidden") || process.env.KITH_SPACE_DESKTOP_START_HIDDEN === "1";
 const repoRoot = process.env.KITH_SPACE_REPO_ROOT?.trim() || path.resolve(__dirname, "../..");
+const desktopIconPath = resolveDesktopIconPath({ isDevelopment, repoRoot, resourcesPath: process.resourcesPath });
 const kithSpaceHome = process.env.KITH_SPACE_HOME?.trim() || path.join(os.homedir(), ".kith-space");
 const uiPort = requirePort(process.env.VITE_PORT ?? "5273", "VITE_PORT");
 let activeCredentials = generateInternalProcessCredentials();
@@ -245,11 +247,7 @@ function showMainWindow(): void {
 }
 
 function createTray(): void {
-  const iconPath = isDevelopment
-    ? path.join(repoRoot, "web", "public", "favicon.ico")
-    : path.join(process.resourcesPath, "web", "dist", "favicon.ico");
-  const icon = nativeImage.createFromPath(iconPath);
-  tray = new Tray(icon);
+  tray = new Tray(nativeImage.createFromPath(desktopIconPath));
   tray.setToolTip("Kith-space");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open Kith-space", click: showMainWindow },
@@ -261,6 +259,7 @@ function createTray(): void {
 
 async function createMainWindow(desktopSession: Electron.Session): Promise<void> {
   mainWindow = new BrowserWindow({
+    icon: desktopIconPath,
     width: 1440,
     height: 900,
     minWidth: 960,

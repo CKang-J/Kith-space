@@ -97,7 +97,7 @@
       "target": [
         "nsis"
       ],
-      "icon": "web/public/favicon.svg"
+      "icon": "web/public/favicon.ico"
     },
     "nsis": {
       "oneClick": false,
