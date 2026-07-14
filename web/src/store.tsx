@@ -32,6 +32,8 @@ interface Store {
   uploadAgentAvatar: (agentId: string, file: File) => Promise<string>;
   createSpace: (input: { name?: string; rootPath?: string }) => Promise<SpaceMutationResult>;
   relocateSpace: (spaceId: string, rootPath: string) => Promise<SpaceMutationResult>;
+  renameSpace: (spaceId: string, name: string) => Promise<SpaceMutationResult>;
+  removeSpace: (spaceId: string) => Promise<{ ok: boolean; error?: string }>;
   refreshSpaces: () => Promise<SpaceInfo[]>;
   switchSpace: (slug: string) => void;                           // client-side Space switch: re-point the active Space, reset per-Space state, reconnect the socket (no full-page reload)
   clearBrowserAccess: () => Promise<void>;
@@ -150,29 +152,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setSpaces(next);
     return next;
   };
-  const mutateSpaceDirectory = async (path: string, body: unknown) => {
+  const mutateSpaceDirectory = async (method: "POST" | "PATCH" | "DELETE", path: string, body?: unknown) => {
     if (!csrfRef.current) throw new Error("Missing browser session CSRF token");
     const response = await fetch(path, {
-      method: "POST",
+      method,
       credentials: "same-origin",
       headers: { "content-type": "application/json", "x-kith-csrf": csrfRef.current },
-      body: JSON.stringify(body),
+      body: body === undefined ? undefined : JSON.stringify(body),
     });
     return response.json().catch(() => ({}));
   };
   // Create in the default container when rootPath is omitted; an explicit rootPath attaches an existing host folder.
   const createSpace = async (input: { name?: string; rootPath?: string }): Promise<SpaceMutationResult> => {
-    const r = await mutateSpaceDirectory("/api/spaces", input);
+    const r = await mutateSpaceDirectory("POST", "/api/spaces", input);
     if (!r?.id) return { error: r?.error || "Space creation failed", code: r?.code };
     return { space: rememberSpace(r) };
   };
   const relocateSpace = async (targetSpaceId: string, rootPath: string): Promise<SpaceMutationResult> => {
-    const r = await mutateSpaceDirectory(`/api/spaces/${targetSpaceId}/relocate`, { rootPath });
+    const r = await mutateSpaceDirectory("POST", `/api/spaces/${targetSpaceId}/relocate`, { rootPath });
     if (!r?.id) return { error: r?.error || "Space relocation failed", code: r?.code };
     return { space: rememberSpace(r) };
   };
+  const renameSpace = async (targetSpaceId: string, name: string): Promise<SpaceMutationResult> => {
+    const r = await mutateSpaceDirectory("PATCH", `/api/spaces/${targetSpaceId}`, { name });
+    if (!r?.id) return { error: r?.error || "Space rename failed", code: r?.code };
+    return { space: rememberSpace(r) };
+  };
+  const removeSpace = async (targetSpaceId: string): Promise<{ ok: boolean; error?: string }> => {
+    const r = await mutateSpaceDirectory("DELETE", `/api/spaces/${targetSpaceId}`);
+    if (!r?.ok) return { ok: false, error: r?.error || "Space removal failed" };
+    const next = spacesRef.current.filter((space) => space.id !== targetSpaceId);
+    spacesRef.current = next;
+    setSpaces(next);
+    return { ok: true };
+  };
   const markSpaceOpened = async (targetSpaceId: string) => {
-    const opened = await mutateSpaceDirectory(`/api/spaces/${targetSpaceId}/open`, {});
+    const opened = await mutateSpaceDirectory("POST", `/api/spaces/${targetSpaceId}/open`, {});
     if (opened?.id) rememberSpace(opened);
   };
   // Client-side Space switch: re-point the active Space by slug. The activation effect (keyed on activeSpaceId) resets
@@ -411,6 +426,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Showcase demo agents (creatorType="system") stay in `agents` so #showcase history still resolves their
   // avatar/name/profile by id — but they are not real members, so every roster / picker uses `visibleAgents`.
   const visibleAgents = agents.filter((a) => a.creatorType !== "system");
-  return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, spaceAvatar, spaces, createSpace, relocateSpace, refreshSpaces, switchSpace, clearBrowserAccess, uploadSpaceAvatar, uploadAgentAvatar, channels, archivedChannels, dms, unread, agents, visibleAgents, trajByConversation, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, spaceAvatar, spaces, createSpace, relocateSpace, renameSpace, removeSpace, refreshSpaces, switchSpace, clearBrowserAccess, uploadSpaceAvatar, uploadAgentAvatar, channels, archivedChannels, dms, unread, agents, visibleAgents, trajByConversation, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
 }
 

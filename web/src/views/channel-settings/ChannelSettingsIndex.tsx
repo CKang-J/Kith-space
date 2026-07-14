@@ -178,9 +178,8 @@ export function ChannelSettingsIndex({
       {archived ? <p className="channel-settings__notice">{t("channelSettings.archivedSettingsReadOnly")}</p> : null}
       {required ? <p className="channel-settings__notice">{t("channelSettings.requiredChannelDescription")}</p> : null}
 
-      {!required ? (
-        <div className="channel-settings__lifecycle">
-          {archived ? (
+      <div className="channel-settings__lifecycle">
+          {!required && archived ? (
             <button
               type="button"
               className="channel-settings__lifecycle-action"
@@ -193,7 +192,7 @@ export function ChannelSettingsIndex({
                 <small>{t("channelSettings.restoreDescription")}</small>
               </span>
             </button>
-          ) : (
+          ) : !required ? (
             <button
               type="button"
               className="channel-settings__lifecycle-action"
@@ -206,7 +205,7 @@ export function ChannelSettingsIndex({
                 <small>{t("channelSettings.archiveDescription")}</small>
               </span>
             </button>
-          )}
+          ) : null}
           <button
             type="button"
             className="channel-settings__lifecycle-action channel-settings__lifecycle-action--danger"
@@ -214,16 +213,15 @@ export function ChannelSettingsIndex({
               setError("");
               setShowDelete(true);
             }}
-            disabled={busy !== null}
+            disabled={required || busy !== null}
           >
             <Trash2 size={16} aria-hidden="true" />
             <span>
               <strong>{t("channelSettings.deleteChannel")}</strong>
-              <small>{t("channelSettings.deleteDescription")}</small>
+              <small>{t(required ? "channelSettings.requiredDeleteDescription" : "channelSettings.deleteDescription")}</small>
             </span>
           </button>
         </div>
-      ) : null}
 
       {error && !showDelete ? <div className="channel-settings__error" role="alert">{error}</div> : null}
       {showDelete ? (

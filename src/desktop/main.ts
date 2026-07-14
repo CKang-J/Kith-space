@@ -6,6 +6,7 @@ import {
   Menu,
   nativeImage,
   session,
+  shell,
   Tray,
   type IpcMainInvokeEvent,
 } from "electron";
@@ -156,6 +157,12 @@ function registerDesktopIpc(): void {
         properties: ["openDirectory"],
       }),
     });
+  });
+
+  ipcMain.handle("desktop:spaces:reveal-directory", async (event, rootPath: unknown) => {
+    requireTrustedSender(event);
+    if (typeof rootPath !== "string" || !rootPath.trim()) throw new Error("Space root path is required");
+    return shell.openPath(path.resolve(rootPath));
   });
 
   ipcMain.handle("desktop:settings:get", async (event) => {

@@ -24,7 +24,8 @@ test("required and archived channels expose only the allowed settings actions", 
 
   assert.match(general, /disabled=\{readOnly \|\| required\}/);
   assert.match(general, /required\s*\? \{ description: normalized\.description \}/);
-  assert.match(index, /\{!required \? \(/);
+  assert.match(index, /disabled=\{required \|\| busy !== null\}/);
+  assert.match(index, /channelSettings\.requiredDeleteDescription/);
   assert.match(index, /\/archive`/);
   assert.match(index, /\/unarchive`/);
   assert.match(dialog, /matchesDeleteConfirmation\(confirmation, channelName\)/);
@@ -33,11 +34,17 @@ test("required and archived channels expose only the allowed settings actions", 
 
 test("member and notification pages use the agreed channel-scoped API contracts", () => {
   const members = source("./ChannelMemberSettings.tsx");
+  const addMemberDialog = source("./ChannelAddMemberDialog.tsx");
   const notifications = source("./ChannelNotificationSettings.tsx");
 
   assert.match(members, /`\/api\/channels\/\$\{encodeURIComponent\(channelId\)\}\/members`/);
   assert.match(members, /\{ agentId: agent\.id \}/);
   assert.match(members, /channelSettings\.members\.administrator/);
+  assert.match(members, /human\?\.name/);
+  assert.match(members, /removeConfirmTitle/);
+  assert.match(members, /<ChannelAddMemberDialog/);
+  assert.match(addMemberDialog, /role="dialog"/);
+  assert.match(addMemberDialog, /role="radiogroup"/);
   assert.match(notifications, /"PATCH", `\/api\/channels\/\$\{encodeURIComponent\(channelId\)\}\/notification`/);
   assert.match(notifications, /notificationLevel: next/);
 });

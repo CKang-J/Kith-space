@@ -26,6 +26,7 @@ export type ChannelSettingsApi = (method: string, path: string, body?: unknown) 
 export interface ChannelSettingsPanelProps {
   channel: ChannelSettingsChannel;
   agents: ChannelSettingsAgent[];
+  human: { name: string } | null;
   attachmentUrl(attachmentId: string): string;
   api: ChannelSettingsApi;
   reload(): Promise<void>;

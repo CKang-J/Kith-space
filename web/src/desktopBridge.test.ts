@@ -12,12 +12,14 @@ const bridge = {
   revokeBrowserSessions: async () => bridge.getSettings(),
   completeBrowserAccessUpdate: async () => {},
   pickSpaceDirectory: async () => null,
+  revealSpaceDirectory: async () => "",
 };
 
 test("Desktop bridge detection accepts only the complete preload contract", () => {
   assert.equal(isKithDesktopBridge(bridge), true);
   assert.equal(getDesktopBridge({ kithDesktop: bridge }), bridge);
   assert.equal(isKithDesktopBridge({ ...bridge, pickSpaceDirectory: undefined }), false);
+  assert.equal(isKithDesktopBridge({ ...bridge, revealSpaceDirectory: undefined }), false);
   assert.equal(isKithDesktopBridge({ ...bridge, revokeBrowserSessions: undefined }), false);
   assert.equal(getDesktopBridge({}), null);
 });

@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, UserMinus, X } from "lucide-react";
+import { Plus, UserMinus } from "lucide-react";
 import { Avatar, resolveAvatar } from "../../Avatar.tsx";
 import { SearchField } from "../../components/SearchField.tsx";
+import { useConfirm } from "../../ConfirmModal.tsx";
 import { useToast } from "../../toast.tsx";
+import { ChannelAddMemberDialog } from "./ChannelAddMemberDialog.tsx";
 import { filterAgents, responseError } from "./channelSettingsData.ts";
 import type { ChannelSettingsAgent, ChannelSettingsApi } from "./types.ts";
 
 interface ChannelMemberSettingsProps {
   channelId: string;
   agents: ChannelSettingsAgent[];
+  human: { name: string } | null;
   members: ChannelSettingsAgent[];
   attachmentUrl(attachmentId: string): string;
   loading: boolean;
@@ -23,6 +26,7 @@ interface ChannelMemberSettingsProps {
 export function ChannelMemberSettings({
   channelId,
   agents,
+  human,
   members,
   attachmentUrl,
   loading,
@@ -33,6 +37,7 @@ export function ChannelMemberSettings({
   reloadMembers,
 }: ChannelMemberSettingsProps) {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const toast = useToast();
   const [query, setQuery] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -48,13 +53,10 @@ export function ChannelMemberSettings({
 
   const memberIds = useMemo(() => new Set(members.map((member) => member.id)), [members]);
   const visibleMembers = useMemo(() => filterAgents(members, query), [members, query]);
-  const availableAgents = useMemo(
-    () => filterAgents(agents.filter((agent) => !memberIds.has(agent.id)), query),
-    [agents, memberIds, query],
-  );
+  const availableAgents = useMemo(() => agents.filter((agent) => !memberIds.has(agent.id)), [agents, memberIds]);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const humanVisible = !normalizedQuery
-    || `${t("channelSettings.members.you")} ${t("channelSettings.members.administrator")}`
+    || `${human?.name || t("channelSettings.members.human")} ${t("channelSettings.members.you")} ${t("channelSettings.members.administrator")}`
       .toLocaleLowerCase()
       .includes(normalizedQuery);
 
@@ -71,6 +73,7 @@ export function ChannelMemberSettings({
       }
       await reloadMembers();
       await reload();
+      if (method === "POST") setPickerOpen(false);
       toast.info(t(method === "POST" ? "channelSettings.members.addSuccess" : "channelSettings.members.removeSuccess", {
         name: agent.displayName || agent.name,
       }));
@@ -79,6 +82,17 @@ export function ChannelMemberSettings({
     } finally {
       setBusyAgentId(null);
     }
+  };
+
+  const removeMember = async (agent: ChannelSettingsAgent) => {
+    const name = agent.displayName || agent.name;
+    const accepted = await confirm({
+      title: t("channelSettings.members.removeConfirmTitle", { name }),
+      message: t("channelSettings.members.removeConfirmDescription"),
+      confirmLabel: t("channelSettings.members.remove"),
+      danger: true,
+    });
+    if (accepted) await mutateMember("DELETE", agent);
   };
 
   return (
@@ -98,38 +112,40 @@ export function ChannelMemberSettings({
           <button
             type="button"
             className="channel-settings__button channel-settings__button--compact"
-            onClick={() => setPickerOpen((open) => !open)}
-            aria-expanded={pickerOpen}
+            onClick={() => {
+              setError("");
+              setPickerOpen(true);
+            }}
           >
-            {pickerOpen ? <X size={14} aria-hidden="true" /> : <Plus size={14} aria-hidden="true" />}
-            {pickerOpen ? t("channelSettings.members.closePicker") : t("channelSettings.members.addMember")}
+            <Plus size={14} aria-hidden="true" />
+            {t("channelSettings.members.addMember")}
           </button>
         ) : null}
       </div>
 
       {pickerOpen ? (
-        <section className="channel-settings-members__picker" aria-label={t("channelSettings.members.availableAgents")}>
-          <h3>{t("channelSettings.members.availableAgents")}</h3>
-          {availableAgents.length ? availableAgents.map((agent) => (
-            <MemberRow
-              key={agent.id}
-              agent={agent}
-              avatarUrl={resolveAvatar(agent.avatarUrl, attachmentUrl)}
-              actionLabel={t("channelSettings.members.addAgent", { name: agent.displayName || agent.name })}
-              actionText={busyAgentId === agent.id ? t("channelSettings.members.adding") : t("channelSettings.members.add")}
-              actionDisabled={busyAgentId !== null}
-              onAction={() => void mutateMember("POST", agent)}
-            />
-          )) : <div className="channel-settings__empty">{t("channelSettings.members.noAvailableAgents")}</div>}
-        </section>
+        <ChannelAddMemberDialog
+          agents={availableAgents}
+          attachmentUrl={attachmentUrl}
+          busy={busyAgentId !== null}
+          error={error}
+          onCancel={() => {
+            setPickerOpen(false);
+            setError("");
+          }}
+          onConfirm={(agent) => void mutateMember("POST", agent)}
+        />
       ) : null}
 
       <section className="channel-settings-members__list" aria-label={t("channelSettings.members.currentMembers")}>
         {humanVisible ? (
           <div className="channel-settings-member">
-            <Avatar seed={t("channelSettings.members.you")} size={30} />
+            <Avatar seed={human?.name || t("channelSettings.members.human")} size={30} />
             <span className="channel-settings-member__identity">
-              <strong>{t("channelSettings.members.you")}</strong>
+              <span className="channel-settings-member__name-row">
+                <strong>{human?.name || t("channelSettings.members.human")}</strong>
+                <span className="channel-settings-member__you">{t("channelSettings.members.you")}</span>
+              </span>
               <small>{t("channelSettings.members.administrator")}</small>
             </span>
             <span className="channel-settings-member__fixed">{t("channelSettings.members.fixed")}</span>
@@ -147,7 +163,7 @@ export function ChannelMemberSettings({
             actionDisabled={readOnly || busyAgentId !== null}
             actionDanger
             hideAction={readOnly}
-            onAction={() => void mutateMember("DELETE", agent)}
+            onAction={() => void removeMember(agent)}
           />
         ))}
         {!loading && query && !humanVisible && visibleMembers.length === 0 ? (

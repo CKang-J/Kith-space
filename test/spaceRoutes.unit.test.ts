@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-test("canonical /api/spaces uses app.db for list, create, update, and unread summary", () => {
+test("canonical /api/spaces uses app.db for list, create, update, remove, and unread summary", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "kith-space-routes-"));
   const tsxCli = fileURLToPath(import.meta.resolve("tsx/cli"));
   try {

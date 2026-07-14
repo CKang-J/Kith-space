@@ -2,6 +2,7 @@ import path from "node:path";
 import { and, count, eq, gt, isNull, ne, or } from "drizzle-orm";
 import {
   getHumanProfile,
+  getHomeSpaceId,
   getSpaceRecord,
   getSpaceRecordBySlug,
   listSpaceRecords,
@@ -10,7 +11,7 @@ import {
   updateSpaceRootPath,
   type SpaceRecord,
 } from "../app-data/appDatabase.js";
-import { closeSpaceDb, dbForSpace, schema } from "../db/index.js";
+import { closeSpaceDb, dbForSpace, schema, unregisterSpace } from "../db/index.js";
 import { createSpace } from "../db/space.js";
 import { defaultSpaceRoot } from "../paths.js";
 import {
@@ -28,7 +29,8 @@ export type SpaceServiceErrorCode =
   | "SPACE_NOT_FOUND"
   | "SPACE_NAME_INVALID"
   | "SPACE_SLUG_CONFLICT"
-  | "SPACE_RELOCATION_FAILED";
+  | "SPACE_RELOCATION_FAILED"
+  | "HOME_SPACE_CANNOT_REMOVE";
 
 export class SpaceServiceError extends Error {
   constructor(public readonly code: SpaceServiceErrorCode, message: string) {
@@ -82,6 +84,16 @@ export function openLocalSpace(spaceId: string): SpaceRecord {
   }
   touchSpace(space.id);
   return getLocalSpace(space.id);
+}
+
+/** Remove a non-Home Space from the local registry without deleting its folder. */
+export function removeLocalSpace(spaceId: string): SpaceRecord {
+  const space = getLocalSpace(spaceId);
+  if (space.id === getHomeSpaceId()) {
+    throw new SpaceServiceError("HOME_SPACE_CANNOT_REMOVE", "Home Space cannot be removed");
+  }
+  unregisterSpace(space.id);
+  return space;
 }
 
 export async function createLocalSpace(input: {

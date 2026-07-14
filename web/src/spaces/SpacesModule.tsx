@@ -7,17 +7,43 @@ import {
   FolderOpen,
   Link2,
   RefreshCw,
-  Search,
+  Star,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { SearchField } from "../components/SearchField.tsx";
+import { useConfirm } from "../ConfirmModal.tsx";
+import { copyText } from "../clipboard.ts";
+import { getDesktopBridge } from "../desktopBridge.ts";
 import { useStore, type SpaceInfo } from "../store.tsx";
+import { useToast } from "../toast.tsx";
+import { SpaceCardMenu } from "./SpaceCardMenu.tsx";
 import { SpaceCreateMenu, type SpaceCreateIntent } from "./SpaceCreateMenu.tsx";
 import { SpaceFolderDialog } from "./SpaceFolderDialog.tsx";
 import type { SpaceFolderIntent } from "./SpaceFolderForm.tsx";
+import { SpaceRenameDialog } from "./SpaceRenameDialog.tsx";
 import "./SpacesModule.css";
 
 type SpacesFlow = SpaceFolderIntent | null;
+const FAVORITE_SPACES_KEY = "kith-space.favorite-spaces";
+
+function storedFavoriteSpaces(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const value = JSON.parse(window.localStorage.getItem(FAVORITE_SPACES_KEY) ?? "[]");
+    return new Set(Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistFavoriteSpaces(ids: Set<string>) {
+  try {
+    window.localStorage.setItem(FAVORITE_SPACES_KEY, JSON.stringify([...ids]));
+  } catch {
+    // Favorites are a local UI preference; keep the in-memory state when storage is unavailable.
+  }
+}
 
 function statusKey(status: SpaceInfo["status"]) {
   if (status === "missing") return "spacesModule.statusMissing";
@@ -28,7 +54,10 @@ function statusKey(status: SpaceInfo["status"]) {
 export function SpacesModule() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { spaces, createSpace, relocateSpace, refreshSpaces } = useStore();
+  const confirm = useConfirm();
+  const toast = useToast();
+  const desktopBridge = getDesktopBridge();
+  const { spaces, createSpace, relocateSpace, renameSpace, removeSpace, refreshSpaces } = useStore();
   const [query, setQuery] = useState("");
   const [flow, setFlow] = useState<SpacesFlow>(null);
   const [relocateTargetId, setRelocateTargetId] = useState<string | null>(null);
@@ -36,8 +65,13 @@ export function SpacesModule() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [catalogError, setCatalogError] = useState("");
+  const [renameTarget, setRenameTarget] = useState<SpaceInfo | null>(null);
+  const [spaceActionBusy, setSpaceActionBusy] = useState(false);
+  const [spaceActionError, setSpaceActionError] = useState("");
+  const [favoriteIds, setFavoriteIds] = useState(storedFavoriteSpaces);
 
-  const childSpaces = spaces.filter((space) => !space.isHome);
+  const childSpaces = [...spaces.filter((space) => !space.isHome)]
+    .sort((a, b) => Number(favoriteIds.has(b.id)) - Number(favoriteIds.has(a.id)));
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleSpaces = normalizedQuery
     ? childSpaces.filter((space) => `${space.name} ${space.rootPath ?? ""}`.toLocaleLowerCase().includes(normalizedQuery))
@@ -63,6 +97,78 @@ export function SpacesModule() {
     setRelocateTargetId(space.id);
     setError("");
     setFlow("relocate");
+  };
+
+  const toggleFavorite = (spaceId: string) => {
+    setFavoriteIds((current) => {
+      const next = new Set(current);
+      if (next.has(spaceId)) next.delete(spaceId);
+      else next.add(spaceId);
+      persistFavoriteSpaces(next);
+      return next;
+    });
+  };
+
+  const copySpacePath = async (space: SpaceInfo) => {
+    if (!space.rootPath) return;
+    if (await copyText(space.rootPath)) toast.info(t("spacesModule.pathCopied"));
+    else setCatalogError(t("spacesModule.copyPathFailed"));
+  };
+
+  const revealSpace = async (space: SpaceInfo) => {
+    if (!desktopBridge || !space.rootPath) return;
+    try {
+      const detail = await desktopBridge.revealSpaceDirectory(space.rootPath);
+      if (detail) setCatalogError(detail);
+    } catch (cause) {
+      setCatalogError(cause instanceof Error ? cause.message : t("spacesModule.revealFailed"));
+    }
+  };
+
+  const submitRename = async (name: string) => {
+    if (!renameTarget || spaceActionBusy) return;
+    setSpaceActionBusy(true);
+    setSpaceActionError("");
+    try {
+      const result = await renameSpace(renameTarget.id, name);
+      if (!result.space) {
+        setSpaceActionError(result.error || t("spacesModule.renameFailed"));
+        return;
+      }
+      setRenameTarget(null);
+      toast.info(t("spacesModule.renameSuccess"));
+    } catch (cause) {
+      setSpaceActionError(cause instanceof Error ? cause.message : t("spacesModule.renameFailed"));
+    } finally {
+      setSpaceActionBusy(false);
+    }
+  };
+
+  const requestRemove = async (space: SpaceInfo) => {
+    const accepted = await confirm({
+      title: t("spacesModule.removeConfirmTitle", { name: space.name }),
+      message: t("spacesModule.removeConfirmDescription"),
+      confirmLabel: t("spacesModule.remove"),
+      danger: true,
+    });
+    if (!accepted) return;
+    setCatalogError("");
+    try {
+      const result = await removeSpace(space.id);
+      if (!result.ok) {
+        setCatalogError(result.error || t("spacesModule.removeFailed"));
+        return;
+      }
+      setFavoriteIds((current) => {
+        const next = new Set(current);
+        next.delete(space.id);
+        persistFavoriteSpaces(next);
+        return next;
+      });
+      toast.info(t("spacesModule.removeSuccess"));
+    } catch (cause) {
+      setCatalogError(cause instanceof Error ? cause.message : t("spacesModule.removeFailed"));
+    }
   };
 
   const refresh = async () => {
@@ -134,21 +240,31 @@ export function SpacesModule() {
       {catalogError ? <div className="spaces-module__error" role="alert">{catalogError}</div> : null}
 
       <div className="spaces-module__toolbar">
-        <label className="spaces-module__search">
-          <Search size={16} aria-hidden="true" />
-          <input
-            type="search"
-            aria-label={t("spacesModule.searchPlaceholder")}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t("spacesModule.searchPlaceholder")}
-          />
-        </label>
+        <SearchField
+          className="spaces-module__search"
+          value={query}
+          onValueChange={setQuery}
+          clearLabel={t("spacesModule.clearSearch")}
+          aria-label={t("spacesModule.searchPlaceholder")}
+          placeholder={t("spacesModule.searchPlaceholder")}
+        />
         <span className="spaces-module__count">{visibleSpaces.length}</span>
       </div>
 
       {flow ? (
         <SpaceFolderDialog intent={flow} busy={busy} error={error} onCancel={resetFlow} onSubmit={submit} />
+      ) : null}
+      {renameTarget ? (
+        <SpaceRenameDialog
+          currentName={renameTarget.name}
+          busy={spaceActionBusy}
+          error={spaceActionError}
+          onCancel={() => {
+            setRenameTarget(null);
+            setSpaceActionError("");
+          }}
+          onConfirm={(name) => void submitRename(name)}
+        />
       ) : null}
 
       {visibleSpaces.length > 0 ? (
@@ -159,10 +275,25 @@ export function SpacesModule() {
             const StatusIcon = ready ? CheckCircle2 : AlertTriangle;
             return (
               <article key={space.id} className={`spaces-module__card spaces-module__card--${space.status}`}>
+                <SpaceCardMenu
+                  spaceName={space.name}
+                  favorite={favoriteIds.has(space.id)}
+                  revealAvailable={!!desktopBridge && !!space.rootPath}
+                  onOpen={() => openSpace(space)}
+                  onReveal={() => void revealSpace(space)}
+                  onCopyPath={() => void copySpacePath(space)}
+                  onRename={() => {
+                    setSpaceActionError("");
+                    setRenameTarget(space);
+                  }}
+                  onToggleFavorite={() => toggleFavorite(space.id)}
+                  onRemove={() => void requestRemove(space)}
+                />
                 <button type="button" onClick={() => openSpace(space)} aria-label={`${space.name}: ${t(statusKey(space.status))}`}>
                   <span className="spaces-module__card-top">
                     <span className="spaces-module__folder"><Folder size={24} /></span>
                     <span className={`spaces-module__status spaces-module__status--${space.status}`}>
+                      {favoriteIds.has(space.id) ? <Star size={12} fill="currentColor" aria-label={t("spacesModule.favorited")} /> : null}
                       <StatusIcon size={13} />
                       {t(statusKey(space.status))}
                     </span>

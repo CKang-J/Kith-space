@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { getSpaceRecordBySlug } from "../../src/app-data/appDatabase.ts";
@@ -223,6 +223,16 @@ try {
   await handleApi(pathMismatchRequest, pathMismatchCapture.res, new URL(`http://localhost${mismatchPath}`), "GET");
   assert.equal(pathMismatchCapture.response.status, 400);
   assert.match(pathMismatchCapture.response.body.error, /path Space/);
+
+  const removed = await request("DELETE", `/api/spaces/${created.body.id}`, human.id);
+  assert.equal(removed.status, 200);
+  assert.deepEqual(removed.body, { ok: true });
+  assert.equal(getSpaceRecordBySlug("writing"), undefined);
+  assert.equal(existsSync(researchRoot), true, "removing a Space must not delete its local folder");
+
+  const removeHome = await request("DELETE", `/api/spaces/${home.id}`, human.id);
+  assert.equal(removeHome.status, 400);
+  assert.match(removeHome.body.error, /Home Space cannot be removed/);
 
   const unknownSpaceRequest = jsonRequest();
   unknownSpaceRequest.headers = {

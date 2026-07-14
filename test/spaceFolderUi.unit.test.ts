@@ -25,7 +25,7 @@ test("Space switcher stays a quick switcher with Home management and emergency r
 });
 
 test("relocating a Space uses the dedicated identity-preserving endpoint", () => {
-  assert.match(storeSource, /mutateSpaceDirectory\(`\/api\/spaces\/\$\{targetSpaceId\}\/relocate`/);
+  assert.match(storeSource, /mutateSpaceDirectory\("POST", `\/api\/spaces\/\$\{targetSpaceId\}\/relocate`/);
 });
 
 test("relocation stays reachable when no Space can be activated", () => {

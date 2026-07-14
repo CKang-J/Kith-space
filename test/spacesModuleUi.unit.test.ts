@@ -8,6 +8,8 @@ const dialogUrl = new URL("../web/src/spaces/SpaceFolderDialog.tsx", import.meta
 const folderFormUrl = new URL("../web/src/spaces/SpaceFolderForm.tsx", import.meta.url);
 const hostPickerUrl = new URL("../web/src/spaces/HostDirectoryPicker.tsx", import.meta.url);
 const hostDirectoryApiUrl = new URL("../web/src/spaces/hostDirectoryApi.ts", import.meta.url);
+const cardMenuUrl = new URL("../web/src/spaces/SpaceCardMenu.tsx", import.meta.url);
+const renameDialogUrl = new URL("../web/src/spaces/SpaceRenameDialog.tsx", import.meta.url);
 const cssUrl = new URL("../web/src/spaces/SpacesModule.css", import.meta.url);
 
 test("Home Spaces module exposes only local Space lifecycle actions", () => {
@@ -15,7 +17,7 @@ test("Home Spaces module exposes only local Space lifecycle actions", () => {
 
   assert.match(source, /SpaceFolderForm/);
   assert.match(source, /filter\(\(space\)\s*=>\s*!space\.isHome\)/);
-  assert.match(source, /type="search"/);
+  assert.match(source, /<SearchField/);
   assert.match(source, /refreshSpaces\(\)/);
   assert.match(source, /space\.rootPath/);
   assert.match(source, /space\.lastOpenedAt/);
@@ -24,6 +26,23 @@ test("Home Spaces module exposes only local Space lifecycle actions", () => {
   assert.match(source, /`\/s\/\$\{space\.slug\}\/channel`/);
 
   assert.doesNotMatch(source, /\/api\/(?:tasks|inbox)/);
+});
+
+test("Space cards expose accessible project actions and focused dialogs", () => {
+  const source = fs.readFileSync(sourceUrl, "utf8");
+  const menu = fs.readFileSync(cardMenuUrl, "utf8");
+  const renameDialog = fs.readFileSync(renameDialogUrl, "utf8");
+
+  assert.match(source, /<SpaceCardMenu/);
+  assert.match(source, /copyText\(space\.rootPath\)/);
+  assert.match(source, /removeSpace\(space\.id\)/);
+  assert.match(menu, /aria-haspopup="menu"/);
+  assert.match(menu, /role="menuitem"/);
+  assert.match(menu, /spacesModule\.revealInFileManager/);
+  assert.match(menu, /spacesModule\.favorite/);
+  assert.match(menu, /spacesModule\.remove/);
+  assert.match(renameDialog, /role="dialog"/);
+  assert.match(renameDialog, /aria-modal="true"/);
 });
 
 test("Space creation choices live under one accessible New Space menu", () => {

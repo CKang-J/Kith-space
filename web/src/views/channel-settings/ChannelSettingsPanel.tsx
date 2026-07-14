@@ -18,6 +18,7 @@ import "./channelSettings.css";
 export function ChannelSettingsPanel({
   channel,
   agents,
+  human,
   attachmentUrl,
   api,
   reload,
@@ -125,7 +126,7 @@ export function ChannelSettingsPanel({
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (document.querySelector(".confirm-modal, .channel-settings-delete-dialog")) return;
+      if (document.querySelector(".confirm-modal, .channel-settings-delete-dialog, .channel-settings-member-dialog")) return;
       void close();
     };
     window.addEventListener("keydown", closeOnEscape);
@@ -190,6 +191,7 @@ export function ChannelSettingsPanel({
           <ChannelMemberSettings
             channelId={channel.id}
             agents={agents}
+            human={human}
             members={members}
             attachmentUrl={attachmentUrl}
             loading={membersLoading}

@@ -41,7 +41,7 @@ export function WorkspaceFrame() {
   const confirm = useConfirm();
   const location = useLocation();
   const navigate = useNavigate();
-  const { channels, archivedChannels, dms, slug, spaceId, spaces, unread, visibleAgents, api, reload, attachmentUrl } = useStore();
+  const { channels, archivedChannels, dms, slug, spaceId, spaces, unread, visibleAgents, me, api, reload, attachmentUrl } = useStore();
   const { moduleRatio } = useShellStore();
   const workspaceRef = useRef<HTMLDivElement>(null);
   const aggregatePanelRef = useRef<HTMLElement>(null);
@@ -259,6 +259,7 @@ export function WorkspaceFrame() {
       key={settingsChannel.id}
       channel={settingsChannel}
       agents={visibleAgents}
+      human={me}
       attachmentUrl={attachmentUrl}
       api={api}
       reload={reload}
