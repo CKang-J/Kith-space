@@ -18,6 +18,19 @@
   border-bottom: 1px solid #efede9;
 }
 
+.conversation-aggregate__content,
+.conversation-aggregate__settings {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.conversation-aggregate__content[hidden] {
+  display: none;
+}
+
 .conversation-aggregate__panel,
 .conversation-files,
 .conversation-topics {

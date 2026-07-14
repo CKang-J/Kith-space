@@ -105,12 +105,15 @@ ChatOnly 由当前会话工作面和可独立收起的辅助面板组成：
 会话列表 | 当前会话与 Composer | 聚合面板（轨迹 / 话题 / 文件）
 ```
 
-- 会话列表包含 Channels 与 Human-Agent Direct Messages，保留未读、置顶、新建和切换行为；不提供 Human-Human DM。会话抽屉、Agents 模块侧栏及 Agent 选择器中的相邻 Agent 行使用一致的轻量间距，保持列表层级清晰。
+- 会话列表包含 Channels 与 Human-Agent Direct Messages，保留未读、置顶、新建和切换行为；不提供 Human-Human DM。归档频道不混入活跃频道，而是进入仅在有数据时显示、默认收起并按归档时间倒序排列的“已归档”分组。会话抽屉、Agents 模块侧栏及 Agent 选择器中的相邻 Agent 行使用一致的轻量间距，保持列表层级清晰。
 - 中间复用现有 `Chat`、Composer、Thread、附件和 @mention 能力；用户界面统一称“话题”，内部数据、API 与 query 继续使用 `thread`。Agent 私聊标题区保留直达当前 Agent 详情页的入口；话题打开时默认与当前会话各占一半宽度，并可通过中间分割线继续拖拽调整。话题标题栏以普通铃铛表示“已关注”、划线铃铛表示“未关注”，关注切换不关闭面板，关闭仍由独立的 × 按钮负责。
-- 删除旧“会话 / Chat / 轨迹”顶栏。会话列表纯图标开关迁入当前会话标题最左侧；标题右侧依次提供当前会话 Tasks、频道成员、聚合面板和既有更多操作的纯图标入口。Tasks 始终导航到 `module=tasks&taskScope=<当前会话ID>`，点击已打开的同一 Tasks 不解释为关闭。
+- 删除旧“会话 / Chat / 轨迹”顶栏。会话列表纯图标开关迁入当前会话标题最左侧；标题右侧依次提供当前会话 Tasks、频道成员、聚合面板和频道设置等纯图标入口。Tasks 始终导航到 `module=tasks&taskScope=<当前会话ID>`，点击已打开的同一 Tasks 不解释为关闭。
 - 聚合面板固定承载“轨迹 / 话题 / 文件”三个等宽滑动 Tab；白色选中底板只做 `transform` 横移，内容不淡入淡出。三个内容区通过 `hidden` 切换而不卸载，因此文件分类、关键词和搜索展开状态跨 Tab 保留，只在会话切换时重置。话题列表来自独立 thread summaries 查询，新建空话题与后续回复都会实时刷新，点击后仍在原 Chat 话题位置展开正文；文件页支持“全部 / 图片 / 视频 / 文件”和文件名/来源消息搜索。文件页与 Agents 列表复用 `components/SearchField.tsx` 的胶囊搜索框，只显示产品自己的清除按钮，输入框焦点使用浅色内描边而不是黑框。
+- 频道设置是聚合面板内的临时管理场景，不是第四个 Tab。进入后以同一面板承载设置首页及“常规 / 成员 / 通知”三个钻取页，并保持原聚合 Tab、文件筛选和搜索状态挂载；返回内容场景时恢复原状态。常规页显式保存名称、描述和公开/私密可见性；成员页只增删当前 Space agent，唯一 Human 固定显示且不可移除；通知页即时持久化“所有消息 / 仅提及 / 不通知”。未保存常规修改在返回、关闭、切换频道、隐藏 Chat、刷新或浏览器历史后退前要求确认放弃；取消后保留当前 URL 和表单草稿。
 - 实时轨迹只展示当前 base conversation 的本次前端会话缓冲；话题轨迹归一到父会话，无作用域或跨会话 ambiguous 事件不进入任何会话聚合面板。
 - 会话列表与聚合面板都沿物理边界把宽度变为 `0`，内容随边界裁切，不使用淡入淡出或贯穿全高的收起长条；两者使用 Chat 侧栏曲线，Module 保持自己的切换曲线。
+- ChatOnly 与空间足够的 Split 中，频道设置占用聚合面板位置；Split 下仍位于 Chat 与 Module 之间。空间不足时复用同一个设置组件，在 Chat 内从右侧以裁切宽度动画打开临时抽屉，不覆盖 Module，也不复制第二套表单。
+- 归档频道保留历史消息、话题、文件、成员和设置阅读入口，但以顶部只读提示替代 Composer，并关闭回复、附件、reaction、任务状态/创建、action card 和成员修改等写入口。顶部提示直接提供“恢复频道”，设置首页同时提供恢复与永久删除；恢复后留在当前频道并回到活跃列表，永久删除必须准确输入频道名称。每个 Space 的 `# all` 是必需频道：名称和可见性锁定，归档/删除入口完全隐藏。
 
 ### 4.2 Chat 紧凑
 
@@ -173,13 +176,15 @@ A5 已完成工作区入口与规范 URL 收口，但 `MessageContextSnapshot`�
 
 单窗口壳按职责拆在 `web/src/shell/`：
 
-- `WorkspaceFrame.tsx`：路由同步、Chat / 聚合面板 / Module 响应式编排、聚合面板短暂状态与拖拽边界。
+- `WorkspaceFrame.tsx`：路由同步、Chat / 聚合面板 / Module 响应式编排、聚合内容/频道设置短暂场景与拖拽边界。
+- `useChannelSettingsScene.ts`：频道设置场景、脏状态退出确认、焦点恢复以及刷新/历史后退保护。
 - `workspaceLayout.ts`：无 React 依赖的三态状态机。
 - `paneConstraints.ts`：集中计算 Chat 响应式下限、聚合面板目标宽度、三栏可见阈值、各模块下限、单 Pane 阈值和比例到像素的夹取结果。
 - `shellStore.ts`：`useSyncExternalStore` 保存版本化模块宽度比例，并按 Space 持久化最近 Chat 位置；模块与 Chat 显隐由 URL 表达，避免双重状态源。
 - `workspaceRoute.ts`：解析规范会话 pathname，把 `module/chat` 与模块拥有的 `taskScope/agent/agentTab/settings` query 映射回三态，并在会话导航时只保留持久布局/模块资源；Human profile、机器旧路由和旧模块实体路径均不再映射模块。
 - `ChatWorkspace.tsx`：固定/抽屉会话列表和 Chat 工作面；不再拥有轨迹数据或旧顶部工具条。
 - `conversation-aggregate/`：轨迹、话题、文件三个会话级子视图；通用滑动 Tab 独立位于 `components/SlidingTabs.tsx`。
+- `channel-settings/`：设置场景壳、常规/成员/通知钻取页与永久删除确认；宽窄布局复用同一组件。`ArchivedChannelGroup.tsx` 单独负责默认收起的归档频道入口。
 - `ModuleWorkspace.tsx`：现有业务视图薄适配。
 - `WorkspaceDock.tsx` / `WorkspaceTopBar.tsx`：Dock 与顶部工具组。
 - `workspaceModules.tsx`：模块注册、路由和图标元数据。

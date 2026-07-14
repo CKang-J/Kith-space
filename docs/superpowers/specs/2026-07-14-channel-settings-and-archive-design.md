@@ -1,12 +1,11 @@
 # Kith-space 频道设置、归档与删除设计
 
 - 日期：2026-07-14
-- 状态：用户已确认，待实现
+- 状态：已实现、通过命令与浏览器验证并完成一次最终 review，待用户验收
 - 范围：频道设置场景、常规/成员/通知页面、归档频道分组、频道恢复与删除、`# all` 必需频道保护
-- 当前实现基线：`cdcfe4b`
+- 设计基线：`cdcfe4b`；实现位于 `codex/ui-adjustments`，与本规格同一提交交付
 
-> 本文锁定下一轮频道管理 UI 与生命周期的目标状态。实现完成前，当前产品事实仍以
-> `docs/kith-space/ui-direction.md`、`docs/kith-space/architecture-proposal.md` 和源码为准；实现提交必须同步更新这些权威文档。
+> 本文锁定频道管理 UI 与生命周期的目标状态；当前代码已经按本规格实现，命令与真实浏览器验证及按约定仅一次的最终 review 均已完成。当前产品事实以 `docs/kith-space/ui-direction.md`、`docs/kith-space/architecture-proposal.md` 和源码为准。
 
 ## 1. 决策摘要
 
@@ -186,7 +185,7 @@
 点击归档频道仍使用规范频道 URL，并进入只读页面：
 
 ```text
-该频道已归档，当前为只读状态。       [恢复频道] [删除]
+该频道已归档，当前为只读状态。       [恢复频道]
 ```
 
 - 历史消息、话题、文件、成员和频道设置可查看。
@@ -250,11 +249,11 @@ Socket `channel:updated` 后同时刷新两组列表，使归档和恢复在多�
 - 归档详情查询继续允许读取历史消息、话题摘要和文件，前提是请求属于当前 Space。
 - 删除后的频道不再接受任何普通读写；保留 tombstone 的内部维护查询除外。
 
-建议把生命周期判断放入 `src/server/channels/` 的独立领域模块，路由、消息和任务入口复用，不继续把条件堆进 `routes-api/channels.ts` 或 `core.ts`。
+生命周期判断已经放入中立领域模块 `src/channels/channelLifecycle.ts`，路由、Human 状态、消息和任务入口复用；必需频道的原始 SQLite 修复 helper 位于 `src/db/requiredChannel.ts`，避免数据库层反向依赖 server。
 
 ## 12. 前端模块边界
 
-建议拆分：
+已按以下职责拆分：
 
 - `ChannelSettingsPanel`：设置场景导航、返回和关闭，不读取具体页面表单字段。
 - `ChannelSettingsIndex`：常规/成员/通知摘要和生命周期操作。
@@ -265,7 +264,7 @@ Socket `channel:updated` 后同时刷新两组列表，使归档和恢复在多�
 
 外壳职责：
 
-- `WorkspaceFrame` 保存聚合面板打开意图和当前场景，响应 Chat 的 `onOpenChannelSettings(channelId)`。
+- `WorkspaceFrame` 只组合路由与面板布局；`useChannelSettingsScene` 保存频道设置场景、脏状态退出、焦点恢复和浏览器历史后退保护，响应 Chat 的 `onOpenChannelSettings(channelId)`。
 - `ConversationAggregatePanel` 在内容场景与设置场景之间切换，不把设置伪装成第四个 Tab。
 - `Chat` 只发出“打开当前频道设置”的窄回调，并渲染归档频道只读 banner/Composer 状态；不要把三个设置页面继续堆入 `Chat.tsx`。
 - 响应式聚合面板和 Chat 抽屉复用同一个设置内容组件，避免宽窄布局产生两套行为。
@@ -278,9 +277,10 @@ Socket `channel:updated` 后同时刷新两组列表，使归档和恢复在多�
 - 单选通知使用原生 radio 语义；成员搜索复用 `SearchField`。
 - 危险确认框初始焦点不能落在删除按钮；要求输入频道名后才启用。
 - 面板关闭后焦点返回频道设置按钮；响应式抽屉关闭遵循相同规则。
+- 常规页存在未保存修改时，面板返回/关闭、频道切换、模块隐藏 Chat、浏览器刷新和历史后退都必须先确认；取消后保留原 URL、表单与焦点上下文。
 - 所有宽度动画遵循 `prefers-reduced-motion`。
 
-## 14. 建议实现切片
+## 14. 实现切片
 
 ### 切片 A：必需频道约束与归档数据契约
 
@@ -356,13 +356,13 @@ pnpm run web:build
 
 ## 16. 文档落地边界
 
-本文是已确认但尚未实现的目标规格。代码实现前不得把设置场景、归档分组、通知持久化或 `# all` 自动修复写成当前产品事实。
+本文所述设置场景、归档分组、通知持久化、统一只读 guard 与 `# all` 自动修复已经落地。workspace.db baseline 保持 19 张产品表但升级为 schema v4，`human_channel_states.notification_level` 使用 `all | mentions | none` 三档且默认 `all`；Store 分离维护活跃/归档频道，窄屏设置复用同一组件进入 Chat 右侧抽屉。`pnpm run typecheck`、561/561 全量单测、完整集成测试与 Web build（2602 modules）已通过；真实浏览器已覆盖通知持久化、归档只读/直接恢复/删除、未保存设置的历史后退保护、窄宽度设置抽屉和模块并排布局，控制台无 warning/error。按约定仅执行的一次最终 review 已完成，发现的模块边界、历史返回、归档父频道 Mentions/Tasks 隔离、直接恢复入口和基线文档问题均已修复，未再发起第二轮 review；当前状态为“待用户验收”。
 
-实现提交必须同步：
+实现交付同步：
 
 - `docs/kith-space/ui-direction.md`：频道设置场景、归档分组、只读频道与响应式抽屉。
 - `docs/kith-space/architecture-proposal.md`：必需频道 guard、归档读写边界与通知字段。
 - `docs/glossary.md`：归档频道、已删除频道、必需频道。
-- `docs/progress.md`：只有代码和验证完成后才记录为已实现或待验收。
+- `docs/progress.md`：区分已实现、已通过检查与仍待执行的最终验收，不提前声称完成。
 
 如实现需要偏离以下核心边界——设置不是第四个 Tab、归档必须可恢复且可发现、删除替代离开、`# all` 前后端双重保护并自动修复——必须先回到产品确认，不能在编码中静默改变。

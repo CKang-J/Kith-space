@@ -79,6 +79,7 @@ export const humanChannelStates = sqliteTable("human_channel_states", {
   dmAgentId: text("dm_agent_id").references(() => agents.id, { onDelete: "set null" }),
   threadFollowedAt: timestamp("thread_followed_at"),
   threadDoneAt: timestamp("thread_done_at"),
+  notificationLevel: text("notification_level").$type<"all" | "mentions" | "none">().default("all").notNull(),
   updatedAt: timestamp("updated_at").default(now).notNull(),
 });
 

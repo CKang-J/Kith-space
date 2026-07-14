@@ -16,6 +16,10 @@ interface ChatWorkspaceProps {
   aggregateToggleRef: RefObject<HTMLButtonElement>;
   onToggleAggregate(): void;
   onOpenTasks(conversationId: string): void;
+  onOpenChannelSettings(channelId: string, trigger?: HTMLButtonElement): void;
+  onNavigateConversation(target: string): void;
+  settingsDrawer?: ReactNode;
+  settingsDrawerOpen?: boolean;
   dock?: ReactNode;
   style?: CSSProperties;
 }
@@ -32,6 +36,8 @@ interface ChatSurfaceProps {
   onToggleConversationList(): void;
   onToggleAggregate(): void;
   onOpenTasks(conversationId: string): void;
+  onOpenChannelSettings(channelId: string, trigger?: HTMLButtonElement): void;
+  onNavigateConversation(target: string): void;
 }
 
 function ChatSurface({
@@ -46,6 +52,8 @@ function ChatSurface({
   onToggleConversationList,
   onToggleAggregate,
   onOpenTasks,
+  onOpenChannelSettings,
+  onNavigateConversation,
 }: ChatSurfaceProps) {
   if (/\/saved\/?$/.test(pathname)) return <Saved embedded />;
   if (/\/showcase\/?$/.test(pathname)) return <Showcase embedded />;
@@ -62,6 +70,8 @@ function ChatSurface({
       onToggleConversationList={onToggleConversationList}
       onToggleAggregate={onToggleAggregate}
       onOpenTasks={onOpenTasks}
+      onOpenChannelSettings={onOpenChannelSettings}
+      onNavigateConversation={onNavigateConversation}
     />
   );
 }
@@ -76,6 +86,10 @@ export function ChatWorkspace({
   aggregateToggleRef,
   onToggleAggregate,
   onOpenTasks,
+  onOpenChannelSettings,
+  onNavigateConversation,
+  settingsDrawer,
+  settingsDrawerOpen = false,
   dock,
   style,
 }: ChatWorkspaceProps) {
@@ -85,6 +99,7 @@ export function ChatWorkspace({
   const conversationsTriggerRef = useRef<HTMLButtonElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const drawerWasOpenRef = useRef(false);
+  const settingsLayerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setDrawerOpen(false), [pathname, channelId, compact]);
   useEffect(() => {
@@ -95,6 +110,9 @@ export function ChatWorkspace({
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [drawerOpen]);
+  useEffect(() => {
+    settingsLayerRef.current?.toggleAttribute("inert", !settingsDrawerOpen);
+  }, [settingsDrawerOpen]);
   useEffect(() => {
     if (drawerOpen) {
       drawerWasOpenRef.current = true;
@@ -111,6 +129,10 @@ export function ChatWorkspace({
     if (compact) setDrawerOpen((open) => !open);
     else setConversationsCollapsed((collapsed) => !collapsed);
   };
+  const openChannelSettings = (channelId: string, trigger?: HTMLButtonElement) => {
+    setDrawerOpen(false);
+    onOpenChannelSettings(channelId, trigger);
+  };
 
   return (
     <section
@@ -120,7 +142,7 @@ export function ChatWorkspace({
       aria-label={compact ? "紧凑 Chat 工作区" : "Chat 工作区"}
     >
       <aside className="shell-work-panel shell-chat-conversations" aria-label="会话列表">
-        <ChatSidebar channelIdOverride={channelId ?? undefined} />
+        <ChatSidebar channelIdOverride={channelId ?? undefined} onNavigate={onNavigateConversation} />
       </aside>
       <section className="shell-work-panel shell-chat-main-card" aria-label="当前会话">
         <div className="shell-chat-surface">
@@ -136,6 +158,8 @@ export function ChatWorkspace({
             onToggleConversationList={toggleConversationList}
             onToggleAggregate={onToggleAggregate}
             onOpenTasks={onOpenTasks}
+            onOpenChannelSettings={openChannelSettings}
+            onNavigateConversation={onNavigateConversation}
           />
         </div>
         {dock ? <footer className="shell-dock-zone">{dock}</footer> : null}
@@ -152,10 +176,26 @@ export function ChatWorkspace({
             <button ref={drawerCloseRef} className="shell-chat-drawer__close" type="button" aria-label="关闭会话抽屉" onClick={() => setDrawerOpen(false)}>
               <X size={16} />
             </button>
-            <ChatSidebar channelIdOverride={channelId ?? undefined} preserveSearch={layoutSearch} />
+            <ChatSidebar channelIdOverride={channelId ?? undefined} preserveSearch={layoutSearch} onNavigate={onNavigateConversation} />
           </aside>
         </div>
       ) : null}
+      <div
+        ref={settingsLayerRef}
+        className="shell-chat-settings-layer"
+        data-open={settingsDrawerOpen ? "true" : undefined}
+        aria-hidden={!settingsDrawerOpen}
+      >
+        <aside
+          className="shell-chat-settings-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="频道设置"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <div className="shell-chat-settings-drawer__content">{settingsDrawer}</div>
+        </aside>
+      </div>
     </section>
   );
 }

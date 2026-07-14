@@ -1,7 +1,9 @@
 import { and, eq, isNotNull } from "drizzle-orm";
 import { dbForSpace, schema } from "../db/index.js";
+import { activeChannels } from "../channels/channelLifecycle.js";
 
 export type HumanChannelState = typeof schema.humanChannelStates.$inferSelect;
+export type HumanChannelNotificationLevel = HumanChannelState["notificationLevel"];
 
 const now = () => new Date();
 
@@ -17,8 +19,8 @@ export async function humanChannelState(spaceId: string, channelId: string): Pro
  */
 export async function humanContainerStates(spaceId: string) {
   const db = dbForSpace(spaceId);
-  const channels = (await db.select().from(schema.channels).where(eq(schema.channels.spaceId, spaceId)))
-    .filter((channel) => !channel.deletedAt);
+  const channels = await activeChannels(spaceId, await db.select().from(schema.channels)
+    .where(eq(schema.channels.spaceId, spaceId)));
   const stored = await db.select().from(schema.humanChannelStates);
   const byChannel = new Map(stored.map((state) => [state.channelId, state]));
   const trackedChannels = channels.filter((channel) => {
@@ -34,9 +36,27 @@ export async function humanContainerStates(spaceId: string) {
     dmAgentId: null,
     threadFollowedAt: null,
     threadDoneAt: null,
+    notificationLevel: "all",
     updatedAt: channel.createdAt,
   } satisfies HumanChannelState));
   return { states, channels: trackedChannels };
+}
+
+export async function humanChannelNotificationLevel(spaceId: string, channelId: string): Promise<HumanChannelNotificationLevel> {
+  return (await humanChannelState(spaceId, channelId))?.notificationLevel ?? "all";
+}
+
+export async function setHumanChannelNotificationLevel(
+  spaceId: string,
+  channelId: string,
+  notificationLevel: HumanChannelNotificationLevel,
+): Promise<void> {
+  const db = dbForSpace(spaceId);
+  await db.insert(schema.humanChannelStates).values({ channelId, notificationLevel, updatedAt: now() })
+    .onConflictDoUpdate({
+      target: schema.humanChannelStates.channelId,
+      set: { notificationLevel, updatedAt: now() },
+    });
 }
 
 export async function humanDmStates(spaceId: string): Promise<HumanChannelState[]> {

@@ -17,6 +17,7 @@ import { canAutoJoinMentionedMembers, isWakeable } from "./agentWakePolicy.js";
 import { SqliteDispatchState, normalizeTaskExecutionMode, type DispatchMessageContext, type TaskExecutionMode, type WakeReservation } from "./dispatchGuard.js";
 import { assignTaskRecord, claimTaskRecord, convertMessageRecord, createTaskRecord, transitionTaskRecord, unclaimTaskRecord } from "./tasks/taskRepository.js";
 import { TASK_STATUSES, TaskOperationError, isTaskStatus, type TaskStatus } from "./tasks/taskTypes.js";
+import { assertChannelWritable, channelLifecycleState } from "../channels/channelLifecycle.js";
 
 export { TASK_STATUSES } from "./tasks/taskTypes.js";
 
@@ -449,6 +450,7 @@ export async function createMessage(opts: {
   actionMetadata?: unknown; // action-card and other platform action payloads (slice09)
 }) {
   const db = dbForSpace(opts.spaceId);
+  await assertChannelWritable(opts.spaceId, opts.channelId);
   const messageId = randomUUID();
   const seq = await nextSeq(opts.spaceId);
   // Channel row fetched once; its type drives task-number scope (per-DM vs per-Space), thread auto-follow, mention auto-join, and wake routing below.
@@ -618,6 +620,8 @@ export async function createMessage(opts: {
 // so every channel-touching /agent-api/* endpoint inherits the boundary at once.
 export async function canAgentReadChannel(spaceId: string, channelId: string, agentId: string): Promise<boolean> {
   const db = dbForSpace(spaceId);
+  const lifecycle = await channelLifecycleState(spaceId, channelId);
+  if (lifecycle === "deleted" || lifecycle === "missing") return false;
   const member = (await db.select().from(schema.channelAgentMembers).where(and(eq(schema.channelAgentMembers.channelId, channelId), eq(schema.channelAgentMembers.agentId, agentId))))[0];
   if (member) return true;
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, channelId)))[0];
@@ -728,6 +732,12 @@ export async function getOrCreateDM(spaceId: string, aId: string, aType: string,
 /** Find/create thread channel (thread = channel with type=thread, carrying parentMessageId). Idempotent. creator added as member = auto follow. */
 export async function getOrCreateThread(spaceId: string, parentMessageId: string, creator?: { type: "human" | "agent"; id: string }) {
   const db = dbForSpace(spaceId);
+  const parent = (await db.select({ channelId: schema.messages.channelId }).from(schema.messages).where(and(
+    eq(schema.messages.id, parentMessageId),
+    eq(schema.messages.spaceId, spaceId),
+  )))[0];
+  if (!parent) throw new Error(`parent message not found: ${parentMessageId}`);
+  await assertChannelWritable(spaceId, parent.channelId);
   let thread = (await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.type, "thread"), eq(schema.channels.parentMessageId, parentMessageId))))[0];
   let created = false;
   if (!thread) {
@@ -736,10 +746,10 @@ export async function getOrCreateThread(spaceId: string, parentMessageId: string
     thread = ch ?? (await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.type, "thread"), eq(schema.channels.parentMessageId, parentMessageId))))[0]!;
     created = Boolean(ch);
     if (ch) { // only add thread root member on the actual new creation (skip for the losing insert)
-      const parent = (await db.select().from(schema.messages).where(eq(schema.messages.id, parentMessageId)))[0];
-      if (parent?.senderType === "human") await followHumanThread(spaceId, thread.id);
-      else if (parent?.senderType === "agent" && parent.senderId) {
-        await db.insert(schema.channelAgentMembers).values({ channelId: thread.id, agentId: parent.senderId }).onConflictDoNothing();
+      const parentMessage = (await db.select().from(schema.messages).where(eq(schema.messages.id, parentMessageId)))[0];
+      if (parentMessage?.senderType === "human") await followHumanThread(spaceId, thread.id);
+      else if (parentMessage?.senderType === "agent" && parentMessage.senderId) {
+        await db.insert(schema.channelAgentMembers).values({ channelId: thread.id, agentId: parentMessage.senderId }).onConflictDoNothing();
       }
     }
   }
@@ -762,6 +772,16 @@ async function emitTaskUpdated(spaceId: string, msg: typeof schema.messages.$inf
 /** Mark an existing message as a task (open + assign taskNumber). */
 // ── Task lifecycle system messages (convert/claim/unclaim/status each emit one messageType:system audit entry) ──
 const taskTitle = (s: string) => { const t = ((s || "").split("\n")[0] ?? "").trim(); return t.length > 40 ? t.slice(0, 40) + "…" : t; };
+
+async function assertMessageChannelWritable(spaceId: string, messageId: string): Promise<boolean> {
+  const message = (await dbForSpace(spaceId).select({ channelId: schema.messages.channelId }).from(schema.messages).where(and(
+    eq(schema.messages.id, messageId),
+    eq(schema.messages.spaceId, spaceId),
+  )))[0];
+  if (!message) return false;
+  await assertChannelWritable(spaceId, message.channelId);
+  return true;
+}
 // Task status system message copy (Title-Case + status emoji prefix). Emojis confirmed for in_progress 🔄 / in_review 👁; todo/done/closed pending confirmation, no guessing.
 const STATUS_LABEL: Record<string, string> = { todo: "Todo", in_progress: "In Progress", in_review: "In Review", done: "Done", closed: "Closed" };
 const STATUS_EMOJI: Record<string, string> = { in_progress: "🔄", in_review: "👁" };
@@ -839,6 +859,7 @@ export async function convertMessageToTask(
   by?: { type: "human" | "agent"; id: string },
   executionMode: TaskExecutionMode = "autopilot",
 ) {
+  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
   const result = convertMessageRecord({ spaceId, messageId, executionMode });
   if (!result) return null;
   if (!result.changed) return result.task;
@@ -892,6 +913,7 @@ export async function resolveMessageId(spaceId: string, idOrShort: string | unde
 }
 
 export async function claimTask(spaceId: string, messageId: string, assigneeType: "human" | "agent", assigneeId: string, expectedRevision?: number) {
+  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
   const result = claimTaskRecord({ spaceId, messageId, assigneeType, assigneeId, expectedRevision });
   if (!result) return null;
   const upd = result.task;
@@ -902,6 +924,7 @@ export async function claimTask(spaceId: string, messageId: string, assigneeType
 }
 
 export async function unclaimTask(spaceId: string, messageId: string, by?: { type: "human" | "agent"; id: string }, expectedRevision?: number) {
+  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
   const result = unclaimTaskRecord({ spaceId, messageId, by, expectedRevision });
   if (!result) return null;
   const upd = result.task;
@@ -925,6 +948,7 @@ export async function assignTask(
     isNull(schema.agents.deletedAt),
   )))[0];
   if (!target) return null;
+  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
 
   const result = assignTaskRecord({ spaceId, messageId, assigneeId, by, expectedRevision });
   if (!result) return null;
@@ -996,6 +1020,7 @@ export async function assignTask(
 }
 
 export async function setTaskExecutionMode(spaceId: string, messageId: string, mode: TaskExecutionMode) {
+  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
   const db = dbForSpace(spaceId);
   const [upd] = await db.update(schema.messages).set({ taskExecutionMode: mode, taskRevision: sql`${schema.messages.taskRevision} + 1`, updatedAt: new Date() }).where(and(
     eq(schema.messages.id, messageId),
@@ -1024,6 +1049,7 @@ export async function setTaskStatus(
   )).get();
   if (!current) return null;
   if (current.taskStatus === status) return current;
+  await assertChannelWritable(spaceId, current.channelId);
   const th = await getOrCreateThread(spaceId, current.id);
   const threadCh = th.id;
   if (!current.threadId) await db.update(schema.messages).set({ threadId: threadCh }).where(eq(schema.messages.id, current.id));
@@ -1100,6 +1126,7 @@ export async function setTaskStatus(
 
 /** Delete task: revert to regular message — clear task fields, source message retained; emit task:deleted. */
 export async function deleteTask(spaceId: string, messageId: string) {
+  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
   const db = dbForSpace(spaceId);
   const [upd] = await db.update(schema.messages)
     .set({ taskStatus: null, taskNumber: null, taskAssigneeType: null, taskAssigneeId: null, taskClaimedAt: null, taskCompletedAt: null, taskParentId: null, taskRevision: 0, updatedAt: new Date() })

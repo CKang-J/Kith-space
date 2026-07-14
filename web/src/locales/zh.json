@@ -536,6 +536,115 @@
       "loadFailed": "无法加载文件"
     }
   },
+  "channelSettings": {
+    "title": "频道设置",
+    "close": "关闭频道设置",
+    "back": "返回频道设置",
+    "backToContent": "返回会话聚合内容",
+    "loading": "加载中…",
+    "cancel": "取消",
+    "operationFailed": "操作失败",
+    "discardTitle": "放弃未保存的更改？",
+    "discardDescription": "当前修改尚未保存，离开后将丢失。",
+    "discardChanges": "放弃更改",
+    "requiredChannelDescription": "# all 是当前空间的必需频道，不能归档或删除。",
+    "archivedGroup": "已归档",
+    "archivedReadOnly": "该频道已归档，当前为只读状态。",
+    "archivedSettingsReadOnly": "该频道已归档。设置内容仅供查看，恢复频道后才能修改。",
+    "manageArchived": "管理频道",
+    "archivedAt": "归档于 {{date}}",
+    "archiveChannel": "归档频道",
+    "archiveDescription": "频道会变为只读，并移入“已归档”分组。",
+    "archiveConfirmTitle": "归档 #{{name}}？",
+    "archiveConfirmDescription": "归档后频道将变为只读，你可以随时从“已归档”分组恢复。",
+    "archiving": "正在归档…",
+    "archiveSuccess": "频道已归档",
+    "restoreChannel": "恢复频道",
+    "restoreDescription": "将频道移回活跃列表并恢复写入。",
+    "restoring": "正在恢复…",
+    "restoreSuccess": "频道已恢复",
+    "deleteChannel": "删除频道",
+    "deleteDescription": "永久移除频道，不提供恢复入口。",
+    "deleteConfirmTitle": "删除 #{{name}}？",
+    "deleteConfirmDescription": "频道将从产品中永久移除，历史消息、话题和文件不再可访问。此操作不可撤销。",
+    "deleteConfirmPrompt": "输入完整频道名称“{{name}}”以确认",
+    "deleting": "正在删除…",
+    "deleteSuccess": "频道已删除",
+    "general": {
+      "title": "常规",
+      "name": "名称",
+      "description": "描述",
+      "descriptionPlaceholder": "说明这个频道的用途…",
+      "visibilityLabel": "可见性",
+      "requiredChannelNote": "这是系统必需频道。名称与可见性已锁定，描述仍可编辑。",
+      "visibilityConfirmTitle": "更改频道可见性？",
+      "visibilityConfirmDescription": "频道将调整为“{{visibility}}”。请确认当前成员范围符合预期。",
+      "confirmVisibility": "确认并保存",
+      "visibility": {
+        "public": {
+          "title": "公开",
+          "description": "当前空间内的 agent 可以发现并加入。"
+        },
+        "private": {
+          "title": "私密",
+          "description": "仅当前频道成员可以发现和访问。"
+        }
+      },
+      "save": "保存更改",
+      "saving": "正在保存…",
+      "saveSuccess": "频道设置已保存",
+      "saveFailed": "无法保存频道设置"
+    },
+    "members": {
+      "title": "成员",
+      "summary": "{{count}} 位成员",
+      "count": "{{count}} 位成员",
+      "you": "你",
+      "administrator": "管理员",
+      "fixed": "固定成员",
+      "searchLabel": "搜索频道成员",
+      "searchPlaceholder": "搜索成员或 agent…",
+      "clearSearch": "清除成员搜索",
+      "addMember": "添加成员",
+      "closePicker": "收起",
+      "availableAgents": "可添加的 Agent",
+      "currentMembers": "当前成员",
+      "add": "添加",
+      "adding": "添加中…",
+      "removing": "移除中…",
+      "addAgent": "添加 {{name}}",
+      "removeAgent": "移除 {{name}}",
+      "noAvailableAgents": "没有可添加的 agent",
+      "noMatches": "没有匹配的成员",
+      "loadFailed": "无法加载频道成员",
+      "updateFailed": "无法更新频道成员",
+      "addSuccess": "已添加 {{name}}",
+      "removeSuccess": "已移除 {{name}}"
+    },
+    "notifications": {
+      "title": "通知",
+      "intro": "仅影响当前设备上唯一 Human 的本地通知，不会改变未读、收件箱或 agent 唤醒。",
+      "loading": "正在加载通知设置…",
+      "saving": "正在保存…",
+      "loadFailed": "无法加载通知设置",
+      "saveFailed": "无法保存通知设置",
+      "saveSuccess": "通知设置已保存",
+      "options": {
+        "all": {
+          "title": "所有消息",
+          "description": "频道中的每条新消息都可以触发本地通知。"
+        },
+        "mentions": {
+          "title": "仅提及",
+          "description": "只有明确提及你或需要你关注时才通知。"
+        },
+        "none": {
+          "title": "不通知",
+          "description": "不弹出本地通知，更新仍会进入未读和收件箱。"
+        }
+      }
+    }
+  },
   "common": {
     "agents": "Agents",
     "channels": "频道",

@@ -4,8 +4,9 @@ import { and, eq } from "drizzle-orm";
 import { dbForSpace, schema } from "../../db/index.js";
 import { findAttachmentById } from "../../db/lookup.js";
 import { parseUpload } from "../attachments.js";
+import { assertChannelWritable } from "../../channels/channelLifecycle.js";
 import { canHumanReadChannel } from "../channelAccess.js";
-import { readObject } from "../storage.js";
+import { deleteObject, readObject } from "../storage.js";
 import { sendErr, sendJson } from "../util.js";
 
 /**
@@ -119,6 +120,14 @@ export async function handleAttachments(ctx: SpaceCtx): Promise<boolean> {
   const db = dbForSpace(spaceId);
   if (p === "/api/attachments/upload" && method === "POST") {
     const { fields, files } = await parseUpload(spaceId, req);
+    if (fields.channelId) {
+      try {
+        await assertChannelWritable(spaceId, fields.channelId);
+      } catch (error) {
+        await Promise.allSettled(files.map((file) => deleteObject(spaceId, file.storageKey)));
+        throw error;
+      }
+    }
     const out: any[] = [];
     for (const f of files) {
       const [a] = await db.insert(schema.attachments).values({ spaceId, channelId: fields.channelId || null, uploaderType: "human", uploaderId: humanId, filename: f.filename, mimeType: f.mimeType, sizeBytes: f.size, storageKey: f.storageKey }).returning();

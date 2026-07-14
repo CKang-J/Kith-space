@@ -9,6 +9,8 @@ import {
   humanContainerStates,
   humanDmStates,
   markHumanChannelRead,
+  humanChannelNotificationLevel,
+  setHumanChannelNotificationLevel,
   setHumanThreadDone,
   unfollowHumanThread,
   type HumanChannelState,
@@ -18,6 +20,7 @@ import { publish } from "../realtime.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { canHumanReadChannel } from "../channelAccess.js";
 import { listThreadSummaries } from "../channels/threadSummaries.js";
+import { activeChannels, assertChannelWritable, isRequiredChannel } from "../../channels/channelLifecycle.js";
 import { humanChannels } from "./shared.js";
 
 const notSentBy = (humanId: string) => or(isNull(schema.messages.senderId), ne(schema.messages.senderId, humanId));
@@ -66,7 +69,7 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
   if (p === "/api/channels/threads/followed" && method === "GET") {
     const cms = await db.select().from(schema.humanChannelStates).where(isNotNull(schema.humanChannelStates.threadFollowedAt));
     const chIds = cms.map((c) => c.channelId);
-    const threads = chIds.length ? await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.type, "thread"), inArray(schema.channels.id, chIds))) : [];
+    const threads = chIds.length ? await activeChannels(spaceId, await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.type, "thread"), inArray(schema.channels.id, chIds)))) : [];
     const out = [];
     for (const th of threads) {
       const myCm = cms.find((c) => c.channelId === th.id);
@@ -82,17 +85,26 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
   // Thread follow/unfollow/done/undone is stored in the single Human's channel state, separate from agent membership.
   if (p === "/api/channels/threads/follow" && method === "POST") {
     const tid = (await readJson(req).catch(() => ({})))?.threadChannelId;
-    if (tid) await followHumanThread(spaceId, String(tid));
+    if (tid) {
+      await assertChannelWritable(spaceId, String(tid));
+      await followHumanThread(spaceId, String(tid));
+    }
     return (sendJson(res, 200, { ok: true }), true);
   }
   if (p === "/api/channels/threads/unfollow" && method === "POST") {
     const tid = (await readJson(req).catch(() => ({})))?.threadChannelId;
-    if (tid) await unfollowHumanThread(spaceId, String(tid));
+    if (tid) {
+      await assertChannelWritable(spaceId, String(tid));
+      await unfollowHumanThread(spaceId, String(tid));
+    }
     return (sendJson(res, 200, { ok: true }), true);
   }
   if ((p === "/api/channels/threads/done" || p === "/api/channels/threads/undone") && method === "POST") {
     const tid = (await readJson(req).catch(() => ({})))?.threadChannelId;
-    if (tid) await setHumanThreadDone(spaceId, String(tid), p.endsWith("/done"));
+    if (tid) {
+      await assertChannelWritable(spaceId, String(tid));
+      await setHumanThreadDone(spaceId, String(tid), p.endsWith("/done"));
+    }
     return (sendJson(res, 200, { ok: true }), true);
   }
   const cthreads = /^\/api\/channels\/([^/]+)\/threads$/.exec(p);
@@ -133,8 +145,10 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
   // /channels only lists regular/private channels (bare array, no unread); DMs go through /channels/dm; unread counts through /channels/unread
   if (p === "/api/channels" && method === "GET") {
     const chs = await humanChannels(spaceId);
-    const archIncl = url.searchParams.get("archived") === "include"; // ?archived=include; archived channels hidden by default
-    const list = chs.filter((c) => !c.deletedAt && (archIncl || !c.archivedAt) && (c.type === "channel" || c.type === "private"));
+    const archived = url.searchParams.get("archived");
+    const list = chs.filter((c) => !c.deletedAt
+      && (archived === "only" ? !!c.archivedAt : archived === "include" || !c.archivedAt)
+      && (c.type === "channel" || c.type === "private"));
     return (sendJson(res, 200, list.map((c) => ({
       id: c.id, spaceId: c.spaceId, name: c.name, description: c.description, type: c.type,
       parentMessageId: c.parentMessageId, createdAt: c.createdAt, archivedAt: c.archivedAt, deletedAt: c.deletedAt,
@@ -239,6 +253,7 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
   if (cmem && method === "POST") { // add an agent or the local Human to a channel
     const own = (await db.select({ id: schema.channels.id }).from(schema.channels).where(and(eq(schema.channels.id, cmem[1]!), eq(schema.channels.spaceId, spaceId))))[0];
     if (!own) return (sendErr(res, 404, "channel not found"), true); // and only this Space's channels
+    await assertChannelWritable(spaceId, cmem[1]!);
     const b = await readJson(req);
     if (b.humanId !== undefined) return (sendErr(res, 400, "Human channel membership is not configurable"), true);
     const agentId = String(b.agentId ?? "").trim();
@@ -256,6 +271,7 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
   if (cmem && method === "DELETE") { // remove an agent or the local Human from a channel
     const own = (await db.select({ id: schema.channels.id }).from(schema.channels).where(and(eq(schema.channels.id, cmem[1]!), eq(schema.channels.spaceId, spaceId))))[0];
     if (!own) return (sendErr(res, 404, "channel not found"), true);
+    await assertChannelWritable(spaceId, cmem[1]!);
     const b = await readJson(req).catch(() => ({}));
     if (b.humanId !== undefined) return (sendErr(res, 400, "Human channel membership is not configurable"), true);
     const agentId = String(b.agentId ?? "").trim();
@@ -346,13 +362,37 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
     await publish(spaceId, { type: "dm:new", channelId, participantHumanIds: [humanId] });
     return (sendJson(res, 200, { id: channelId }), true);
   }
+  const cnotification = /^\/api\/channels\/([^/]+)\/notification$/.exec(p);
+  if (cnotification && (method === "GET" || method === "PATCH")) {
+    const channelId = cnotification[1]!;
+    const target = (await db.select({ id: schema.channels.id, deletedAt: schema.channels.deletedAt }).from(schema.channels)
+      .where(and(eq(schema.channels.id, channelId), eq(schema.channels.spaceId, spaceId))))[0];
+    if (!target || target.deletedAt || !(await canHumanReadChannel(spaceId, channelId))) {
+      return (sendErr(res, 404, "channel not found"), true);
+    }
+    if (method === "GET") {
+      return (sendJson(res, 200, { notificationLevel: await humanChannelNotificationLevel(spaceId, channelId) }), true);
+    }
+    await assertChannelWritable(spaceId, channelId);
+    const b = await readJson(req).catch(() => ({}));
+    const notificationLevel = String(b.notificationLevel ?? "");
+    if (notificationLevel !== "all" && notificationLevel !== "mentions" && notificationLevel !== "none") {
+      return (sendErr(res, 400, "notificationLevel must be all, mentions, or none"), true);
+    }
+    await setHumanChannelNotificationLevel(spaceId, channelId, notificationLevel);
+    return (sendJson(res, 200, { notificationLevel }), true);
+  }
   // Channel lifecycle: archive/unarchive/rename+description+visibility/delete. All gated by manageChannels.
   const cops = /^\/api\/channels\/([^/]+)\/(archive|unarchive)$/.exec(p);
   if (cops && method === "POST") {
     // Thread channels follow their parent message's lifecycle; direct archive/unarchive is not allowed.
-    const archTarget = (await db.select({ type: schema.channels.type }).from(schema.channels)
+    const archTarget = (await db.select().from(schema.channels)
       .where(and(eq(schema.channels.id, cops[1]!), eq(schema.channels.spaceId, spaceId))))[0];
+    if (!archTarget || archTarget.deletedAt) return (sendErr(res, 404, "channel not found"), true);
     if (archTarget?.type === "thread") return (sendErr(res, 403, "thread channels cannot be archived directly"), true);
+    if (cops[2] === "archive" && isRequiredChannel(archTarget)) {
+      return (sendErr(res, 409, "# all is a required channel", { code: "required_channel" }), true);
+    }
     await db.update(schema.channels).set({ archivedAt: cops[2] === "archive" ? new Date() : null }).where(and(eq(schema.channels.id, cops[1]!), eq(schema.channels.spaceId, spaceId)));
     await publish(spaceId, { type: "channel:updated", channelId: cops[1]! });
     return (sendJson(res, 200, { ok: true }), true);
@@ -361,15 +401,21 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
   if (cone && (method === "PATCH" || method === "DELETE")) {
     // Fetch the channel first: thread channels must not be modified via this endpoint — their
     // lifecycle is managed by their parent message (getOrCreateThread / thread follow API).
-    const targetCh = (await db.select({ type: schema.channels.type }).from(schema.channels)
+    const targetCh = (await db.select().from(schema.channels)
       .where(and(eq(schema.channels.id, cone[1]!), eq(schema.channels.spaceId, spaceId))))[0];
+    if (!targetCh || targetCh.deletedAt) return (sendErr(res, 404, "channel not found"), true);
     if (targetCh?.type === "thread") return (sendErr(res, 403, "thread channels cannot be modified directly"), true);
     if (method === "DELETE") {
+      if (isRequiredChannel(targetCh)) return (sendErr(res, 409, "# all is a required channel", { code: "required_channel" }), true);
       await db.update(schema.channels).set({ deletedAt: new Date() }).where(and(eq(schema.channels.id, cone[1]!), eq(schema.channels.spaceId, spaceId))); // soft delete
       await publish(spaceId, { type: "channel:deleted", channelId: cone[1]! });
       return (sendJson(res, 200, { ok: true }), true);
     }
     const b = await readJson(req).catch(() => ({})); const patch: Record<string, unknown> = {};
+    if (isRequiredChannel(targetCh) && (b.name !== undefined || b.visibility !== undefined)) {
+      return (sendErr(res, 409, "# all is a required channel", { code: "required_channel" }), true);
+    }
+    await assertChannelWritable(spaceId, targetCh.id);
     if (b.name) patch.name = String(b.name).trim().replace(/^#/, "").toLowerCase().replace(/\s+/g, "-");
     if (b.description !== undefined) patch.description = b.description;
     if (b.visibility) patch.type = b.visibility === "private" ? "private" : "channel";

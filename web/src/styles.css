@@ -115,6 +115,17 @@ button{font-family:inherit}
 .agent-list-item+.agent-list-item{margin-top:4px}
 .item .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .badge{font-size:11px;background:var(--ink-2);color:var(--on-ink);border-radius:9999px;padding:0 6px;min-width:18px;text-align:center}
+.archived-channel-group{margin:16px 0 2px;padding-top:8px;border-top:1px solid var(--hair)}
+.archived-channel-toggle{display:flex;align-items:center;gap:6px;width:100%;padding:6px 7px;border:0;border-radius:7px;background:transparent;color:var(--muted);font:inherit;font-size:12px;font-weight:600;letter-spacing:.04em;cursor:pointer;text-align:left}
+.archived-channel-toggle:hover{background:var(--surface-strong);color:var(--ink)}
+.archived-channel-toggle svg{flex:none;transition:transform var(--dur-fast) var(--ease-quint)}
+.archived-channel-toggle svg.open{transform:rotate(90deg)}
+.archived-channel-count{min-width:18px;border-radius:9999px;background:var(--surface-strong);padding:1px 6px;text-align:center;font-size:11px;font-weight:500;color:var(--muted)}
+.archived-channel-list{display:flex;flex-direction:column;gap:2px;padding-top:3px}
+.item.archived-channel-row{font-size:14px;color:var(--muted);opacity:.82}
+.item.archived-channel-row:hover,.item.archived-channel-row.active{opacity:1}
+.item.archived-channel-row>svg{flex:none;color:var(--muted-soft)}
+.item.archived-channel-row .meta{font-size:10px}
 .sec.sec-sub{font-size:10px;letter-spacing:.6px;margin:10px 4px 4px;color:var(--muted-soft)}
 .item.ghost{color:var(--muted)}
 .item.ghost:hover{background:transparent}
@@ -238,6 +249,8 @@ main.content-col{display:flex;flex-direction:column;height:100vh;background:var(
 .chat-head-icon-btn:disabled{cursor:not-allowed;opacity:.38}
 .scroll{flex:1;overflow:auto;padding:24px 28px}
 main.content-col > .scroll{min-height:0;padding-bottom:112px;background:var(--surface)}
+main.content-col.archived-readonly > .scroll{padding-bottom:24px}
+main.content-col.archived-readonly > .jump-bottom{bottom:24px}
 main.content-col > .scroll::-webkit-scrollbar{background:var(--surface)}
 main.content-col > .scroll::-webkit-scrollbar-track{background:var(--surface)}
 main.content-col > .scroll::-webkit-scrollbar-thumb{background:transparent;border-radius:9999px;border:2px solid var(--surface)}
@@ -291,6 +304,11 @@ main.content-col > .scroll.is-scrolling::-webkit-scrollbar-thumb{background:rgba
 .composer{--composer-inline-padding:28px;position:relative;z-index:10;padding:4px 28px 14px;border-top:0;background:linear-gradient(to bottom,rgba(255,255,255,0),rgba(255,255,255,.48) 38%,var(--surface) 100%)}
 main.content-col > .composer{position:absolute;left:0;right:var(--scrollbar-gutter);bottom:0}
 .showcase-readonly{display:flex;align-items:center;gap:8px;padding:14px 28px 18px;border-top:1px solid var(--hair);font-size:13px;color:var(--muted);font-style:italic}
+.archived-channel-banner{position:relative;z-index:12;display:flex;align-items:center;gap:9px;padding:11px 28px;border-top:1px solid var(--hair);background:var(--canvas-soft);color:var(--muted);font-size:13px}
+.archived-channel-banner>svg{flex:none;color:var(--muted-soft)}
+.archived-channel-banner .grow{flex:1;min-width:0}
+.archived-channel-banner button{flex:none;border:1px solid var(--hair-strong);border-radius:7px;background:var(--surface);color:var(--ink);padding:5px 10px;font:inherit;font-size:12px;cursor:pointer}
+.archived-channel-banner button:hover{background:var(--surface-strong)}
 /* Showcase layout: the /showcase route never gets has-traj's 4th grid column, so this shell IS the single
    1fr grid cell and lays out "channel column + thread panel" itself (no empty strip when the thread is closed). */
 .showcase-shell{display:flex;height:100vh;overflow:hidden;min-width:0}
@@ -583,6 +601,7 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .msg-rx{display:flex;align-items:center;gap:5px;margin-top:5px;flex-wrap:wrap}
 .rx-chip{position:relative;display:inline-flex;align-items:center;gap:4px;font-size:13px;line-height:1;padding:3px 8px;border:1px solid var(--hair-strong);border-radius:9999px;background:var(--surface);color:var(--body);cursor:pointer}
 .rx-chip:hover{background:var(--surface-strong)}
+.rx-chip:disabled{cursor:default;opacity:.72}
 .rx-chip.on{background:var(--tint-blue);border-color:var(--g-sky);color:var(--ink);font-weight:600}
 /* "who reacted" hover tooltip on a reaction chip — replaces the native title (slow/unstyled/absent on touch). Reuses the popover skin (.agent-hovercard / .rx-pop tokens). */
 .rx-tip{position:absolute;bottom:100%;left:50%;transform:translateX(-50%) translateY(2px);margin-bottom:7px;width:max-content;max-width:220px;white-space:normal;font-size:12px;line-height:1.35;font-weight:400;color:var(--ink-2);background:var(--surface);border:1px solid var(--hair-strong);border-radius:8px;box-shadow:0 8px 24px var(--shadow-3);padding:6px 9px;opacity:0;pointer-events:none;transition:opacity var(--dur-fast) var(--ease-quint),transform var(--dur-fast) var(--ease-quint);z-index:60}
@@ -655,6 +674,7 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .action-card .ac-detail .ac-k{color:var(--muted-soft);font-weight:600;margin-right:4px}
 .action-card .ac-btn{margin-top:10px;background:var(--ink);color:var(--on-ink);border:none;border-radius:9999px;padding:6px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)}
 .action-card .ac-btn:hover{background:var(--ink-2)}
+.action-card .ac-btn:disabled{cursor:default;opacity:.45}
 .action-card .ac-done{margin-top:8px;display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--success);font-weight:500}
 .head-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
 /* Thread panel (right-side overlay) */
@@ -699,12 +719,6 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .modal input[type=checkbox],.modal input[type=radio]{width:16px;height:16px;flex:none;margin:0;accent-color:var(--ink-2);cursor:pointer}
 .modal .ck-row{display:flex;align-items:center;gap:10px;margin-top:16px;font-size:14px;color:var(--body);cursor:pointer}
 .form-err{margin-top:12px;font-size:13px;color:var(--error);background:var(--error-soft);border:1px solid var(--error-line);border-radius:8px;padding:8px 11px}
-/* Edit-channel modal secondary action buttons */
-.modal .ch-act{width:100%;display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;border:1px solid var(--hair-strong);background:var(--surface);color:var(--ink);font-size:14px;cursor:pointer;font-family:inherit;text-align:left;transition:background .1s}
-.modal .ch-act:hover{background:var(--surface-strong)}
-.modal .ch-act.ch-act-danger{color:var(--error);border-color:var(--error-line)}
-.modal .ch-act.ch-act-danger:hover{background:var(--error-soft)}
-.modal .ch-sep{border:0;border-top:1px solid var(--hair);margin:18px 0}
 /* Permissions facet */
 .perm-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .perm-head .ok{font-size:14px;color:var(--on-ink);background:var(--ink-2);border:0;padding:7px 18px;border-radius:9999px;cursor:pointer}

@@ -10,6 +10,7 @@ import { canHumanReadChannel } from "../channelAccess.js";
 import { getTaskDetails, reportTask, submitTaskDelivery } from "../tasks/taskService.js";
 import { sendTaskOperationError } from "../tasks/taskHttp.js";
 import { humanIdentityForId } from "../../human/humanIdentity.js";
+import { activeChannels } from "../../channels/channelLifecycle.js";
 
 export async function handleTasks(ctx: SpaceCtx): Promise<boolean> {
   const { req, res, method, p, humanId, spaceId } = ctx;
@@ -46,8 +47,8 @@ export async function handleTasks(ctx: SpaceCtx): Promise<boolean> {
   }
   if (p === "/api/tasks/space" && method === "GET") {
     // The one local Human owns the Space and can see tasks from every live channel.
-    const accessible = await db.select({ id: schema.channels.id }).from(schema.channels)
-      .where(and(eq(schema.channels.spaceId, spaceId), isNull(schema.channels.deletedAt)));
+    const accessible = await activeChannels(spaceId, await db.select().from(schema.channels)
+      .where(eq(schema.channels.spaceId, spaceId)));
     const accessibleIds = accessible.map((channel) => channel.id);
     if (!accessibleIds.length) return (sendJson(res, 200, { tasks: [] }), true);
     const rows = await db.select().from(schema.messages)

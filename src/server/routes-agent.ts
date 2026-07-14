@@ -9,7 +9,8 @@ import { AgentIntroductionTokenRejectedError, createMessage, resolveTarget, chan
 import { agentHasScope } from "./scopes.js";
 import { agentIntroductionTokenStatus } from "./agentIntroduction.js";
 import { parseUpload } from "./attachments.js";
-import { readObject } from "./storage.js";
+import { deleteObject, readObject } from "./storage.js";
+import { activeChannels, assertChannelWritable, channelLifecycleState } from "../channels/channelLifecycle.js";
 import { normalizeTaskExecutionMode } from "./dispatchGuard.js";
 import { getTaskDetails, reportTask, submitTaskDelivery } from "./tasks/taskService.js";
 import { sendTaskOperationError } from "./tasks/taskHttp.js";
@@ -112,7 +113,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     const out: any[] = [];
     for (const cm of cms) {
       const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, cm.channelId)))[0];
-      if (!ch || ch.deletedAt) continue;
+      if (!ch || await channelLifecycleState(spaceId, ch.id) !== "active") continue;
       const msgs = await db.select().from(schema.messages).where(and(eq(schema.messages.channelId, cm.channelId), gt(schema.messages.seq, cm.lastReadSeq))).orderBy(asc(schema.messages.seq)).limit(100);
       const fresh = msgs.filter((m) => m.senderId !== agent.id);
       if (fresh.length) {
@@ -209,7 +210,16 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
   // Agent uploads an attachment (first-class member, can share files). Multipart fields: files=binary, channel=human-readable target. Returns attachmentId; use message send --attach to attach it.
   if (p === "/agent-api/attachment/upload" && method === "POST") {
     const { fields, files } = await parseUpload(spaceId, req);
-    const tgt = await resolveTarget(spaceId, fields.channel ?? fields.target ?? "", agent.id);
+    let tgt: Awaited<ReturnType<typeof resolveTarget>>;
+    try {
+      tgt = await resolveTarget(spaceId, fields.channel ?? fields.target ?? "", agent.id);
+      if (tgt?.channelId) {
+        await assertChannelWritable(spaceId, tgt.channelId);
+      }
+    } catch (error) {
+      await Promise.allSettled(files.map((file) => deleteObject(spaceId, file.storageKey)));
+      throw error;
+    }
     const out = [];
     for (const f of files) {
       const [a] = await db.insert(schema.attachments).values({ spaceId, channelId: tgt?.channelId ?? null, uploaderType: "agent", uploaderId: agent.id, filename: f.filename, mimeType: f.mimeType, sizeBytes: f.size, storageKey: f.storageKey }).returning();
@@ -224,6 +234,9 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     if (!b.messageId || !emoji) return (sendErr(res, 400, "messageId + emoji required"), true);
     const mid = await resolveMessageId(spaceId, b.messageId, agent.id); // Tolerates short id (agent reacts to the short id it sees); without this, querying uuid column with a short id → 500
     if (!mid) return (sendErr(res, 404, "message not found"), true);
+    const message = (await db.select({ channelId: schema.messages.channelId }).from(schema.messages).where(eq(schema.messages.id, mid)))[0];
+    if (!message) return (sendErr(res, 404, "message not found"), true);
+    await assertChannelWritable(spaceId, message.channelId);
     const out = b.remove ? await removeReaction(spaceId, mid, "agent", agent.id, emoji) : await addReaction(spaceId, mid, "agent", agent.id, emoji);
     return (sendJson(res, 200, { ok: true, reactions: out?.reactions ?? [] }), true);
   }
@@ -269,7 +282,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     return (sendJson(res, 200, {
       // Agent ACL: only surface public channels + channels the agent has joined — never reveal a private
       // channel's name/description to a non-member (DMs are listed elsewhere). Keeps private channels invisible.
-      channels: chs.filter((c) => c.type !== "dm" && c.type !== "thread" && !c.deletedAt && (c.type === "channel" || joined.has(c.id))).map((c) => ({ name: c.name, description: c.description, joined: joined.has(c.id), type: c.type })),
+      channels: chs.filter((c) => c.type !== "dm" && c.type !== "thread" && !c.deletedAt && !c.archivedAt && (c.type === "channel" || joined.has(c.id))).map((c) => ({ name: c.name, description: c.description, joined: joined.has(c.id), type: c.type })),
       agents: agents.map((a) => ({ name: a.name, status: a.status, description: a.description ?? null })),
       human: human ? { name: human.handle, displayName: human.displayName, description: human.description } : null,
     }), true);
@@ -283,6 +296,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     // Agent ACL: self-join is for public channels only. Private channel, DM, and thread membership comes from
     // the Human or an existing collaboration flow; an agent cannot enroll itself by guessing a channel name.
     if (ch.type !== "channel") return (sendErr(res, 403, "private channels, DMs, and threads cannot be self-joined"), true);
+    await assertChannelWritable(spaceId, ch.id);
     // Join at the channel watermark so a self-joining agent's next `message check` sees only new messages, not
     // the channel's pre-join backlog (it can pull history on demand via `message read`).
     await addChannelMembers(spaceId, ch.id, [{ type: "agent", id: agent.id }]);
@@ -466,8 +480,13 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     if (!q) return (sendErr(res, 400, "q required"), true);
     const joined = (await agentChannels(spaceId, agent.id)).map((c) => c.channelId);
     if (!joined.length) return (sendJson(res, 200, { results: [] }), true);
+    const activeJoined = new Set((await activeChannels(spaceId, await db.select().from(schema.channels).where(and(
+      eq(schema.channels.spaceId, spaceId),
+      inArray(schema.channels.id, joined),
+    )))).map((channel) => channel.id));
+    if (!activeJoined.size) return (sendJson(res, 200, { results: [] }), true);
     const rows = await db.select().from(schema.messages)
-      .where(and(eq(schema.messages.spaceId, spaceId), inArray(schema.messages.channelId, joined), like(schema.messages.content, `%${q}%`)))
+      .where(and(eq(schema.messages.spaceId, spaceId), inArray(schema.messages.channelId, [...activeJoined]), like(schema.messages.content, `%${q}%`)))
       .orderBy(desc(schema.messages.seq)).limit(20);
     return (sendJson(res, 200, { results: rows.map((m) => ({ id: m.id, channelId: m.channelId, senderType: m.senderType, senderName: m.senderName, content: m.content, createdAt: m.createdAt })) }), true);
   }

@@ -5,6 +5,7 @@ import { getHumanIdentity } from "../../human/humanIdentity.js";
 import { humanChannelState, reactivateFollowedHumanThread } from "../../human/humanChannelState.js";
 import { nextSeq, publish } from "../realtime.js";
 import { serializeMsg } from "../core.js";
+import { assertChannelWritable } from "../../channels/channelLifecycle.js";
 import { isTaskStatus, parseTaskActionMetadata, TaskOperationError, type TaskArtifactRef, type TaskReportKind } from "./taskTypes.js";
 
 type Actor = { type: "human" | "agent"; id: string; name: string };
@@ -20,6 +21,16 @@ function validateArtifacts(value: TaskArtifactRef[] | undefined): TaskArtifactRe
     throw new TaskOperationError("INVALID_ARGUMENT", "artifactRefs must contain file, url, or message references");
   }
   return refs.map((ref) => ({ ...ref, ref: ref.ref.trim() }));
+}
+
+async function assertTaskWritable(spaceId: string, taskId: string): Promise<void> {
+  const task = (await dbForSpace(spaceId).select({ channelId: schema.messages.channelId }).from(schema.messages).where(and(
+    eq(schema.messages.id, taskId),
+    eq(schema.messages.spaceId, spaceId),
+    isNotNull(schema.messages.taskStatus),
+  )))[0];
+  if (!task) throw new TaskOperationError("NOT_FOUND", "task not found");
+  await assertChannelWritable(spaceId, task.channelId);
 }
 
 async function publishThreadUpdate(spaceId: string, threadId: string, parentMessageId: string, sender: Actor): Promise<void> {
@@ -57,6 +68,7 @@ export async function reportTask(input: {
     throw new TaskOperationError("INVALID_ARGUMENT", "invalid task report kind");
   }
   const artifactRefs = validateArtifacts(input.artifactRefs);
+  await assertTaskWritable(input.spaceId, input.taskId);
   const seq = await nextSeq(input.spaceId);
   const db = dbForSpace(input.spaceId);
   let task!: Message;
@@ -119,6 +131,7 @@ export async function submitTaskDelivery(input: {
   }
   const childTaskIds = [...new Set(input.childTaskIds ?? [])];
   const artifactRefs = validateArtifacts(input.artifactRefs);
+  await assertTaskWritable(input.spaceId, input.taskId);
   const seq = await nextSeq(input.spaceId);
   const db = dbForSpace(input.spaceId);
   let task!: Message;

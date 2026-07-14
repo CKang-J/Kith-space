@@ -4,10 +4,12 @@ import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
+import { and, eq } from "drizzle-orm";
 import {
   closeSpaceDb,
   dbForSpace,
   registerSpace,
+  schema,
   unregisterSpace,
 } from "../src/db/index.ts";
 import { kithSpaceHome, workspaceDbFile } from "../src/paths.ts";
@@ -50,6 +52,7 @@ test("fresh Space database uses the Personal AgentOS baseline and seeds its Spac
 
     assert.deepEqual(columns(sqlite, "spaces"), ["id", "name", "slug", "avatar_url", "created_at"]);
     assert.ok(columns(sqlite, "agents").includes("introduced_at"), "agents must persist successful Human introduction");
+    assert.ok(columns(sqlite, "human_channel_states").includes("notification_level"), "Human channel notification level must be persisted");
     for (const table of names) {
       const fields = columns(sqlite, table);
       assert.ok(!fields.includes("server_id"), `${table} still has server_id`);
@@ -66,14 +69,14 @@ test("fresh Space database uses the Personal AgentOS baseline and seeds its Spac
       type: "channel",
       space_id: spaceId,
     }]);
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 3);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 4);
   } finally {
     sqlite.close();
     unregisterSpace(spaceId);
   }
 });
 
-test("schema version 2 Space database migrates to version 3 without being rejected as legacy", () => {
+test("schema version 2 Space database migrates to version 4 without being rejected as legacy", () => {
   const spaceId = randomUUID();
   const rootPath = path.join(kithSpaceHome(), "workspace-v2-migration-test", spaceId);
   const dbPath = workspaceDbFile(rootPath);
@@ -94,8 +97,9 @@ test("schema version 2 Space database migrates to version 3 without being reject
 
   const sqlite = new Database(dbPath);
   try {
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 3);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 4);
     assert.ok(columns(sqlite, "agents").includes("introduced_at"));
+    assert.ok(columns(sqlite, "human_channel_states").includes("notification_level"));
     assert.equal(sqlite.prepare("SELECT introduced_at FROM agents WHERE id = 'legacy-agent'").pluck().get(), 1700000000123);
     sqlite.prepare("INSERT INTO agents (id, space_id, name, display_name) VALUES ('new-agent', ?, 'new', 'New')").run(spaceId);
     assert.equal(sqlite.prepare("SELECT introduced_at FROM agents WHERE id = 'new-agent'").pluck().get(), null);
@@ -103,6 +107,29 @@ test("schema version 2 Space database migrates to version 3 without being reject
     sqlite.close();
     unregisterSpace(spaceId);
   }
+});
+
+test("opening a Space database restores the required #all channel lifecycle", () => {
+  const spaceId = randomUUID();
+  const rootPath = path.join(kithSpaceHome(), "workspace-required-all-test", spaceId);
+  registerSpace({ id: spaceId, name: "Required all", slug: `required-all-${spaceId}`, rootPath });
+
+  const db = dbForSpace(spaceId);
+  const all = db.select().from(schema.channels).where(and(
+    eq(schema.channels.spaceId, spaceId),
+    eq(schema.channels.name, "all"),
+  )).get()!;
+  db.update(schema.channels).set({ archivedAt: new Date(), deletedAt: new Date() })
+    .where(eq(schema.channels.id, all.id)).run();
+  closeSpaceDb(spaceId);
+
+  const reopened = dbForSpace(spaceId);
+  const restored = reopened.select().from(schema.channels).where(eq(schema.channels.id, all.id)).get();
+  assert.equal(restored?.archivedAt, null);
+  assert.equal(restored?.deletedAt, null);
+
+  closeSpaceDb(spaceId);
+  unregisterSpace(spaceId);
 });
 
 test("legacy workspace schema is rejected before Drizzle mutates it", () => {

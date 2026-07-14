@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { getTableColumns, getTableName, type Table } from "drizzle-orm";
 import * as schema from "./schema.js";
 
-export const SPACE_DATABASE_SCHEMA_VERSION = 3;
+export const SPACE_DATABASE_SCHEMA_VERSION = 4;
 export const MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION = 2;
 
 export type SpaceDatabaseCompatibilityReason = "integrity" | "legacy" | "schema";
@@ -46,9 +46,9 @@ function tableColumns(sqlite: Database.Database, table: string): Set<string> {
 
 function requiredColumns(table: string, version: number): string[] {
   const current = CURRENT_REQUIRED_COLUMNS.get(table) ?? [];
-  return version < 3 && table === "agents"
-    ? current.filter((column) => column !== "introduced_at")
-    : current;
+  if (version < 3 && table === "agents") return current.filter((column) => column !== "introduced_at");
+  if (version < 4 && table === "human_channel_states") return current.filter((column) => column !== "notification_level");
+  return current;
 }
 
 /**

@@ -158,13 +158,13 @@ P-A7 H3-H4 已把 Space root 生命周期收口到 `src/spaces/spaceRootService.
 
 ### 5.2 workspace.db
 
-A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Drizzle 内部的 `__drizzle_migrations`，fresh 数据库共有 20 张物理表；当前 `PRAGMA user_version=3`，v2 数据库会自动增加 `agents.introduced_at` 并把已有 agent 回填为已介绍（`src/db/index.ts:32`-`:59`、`drizzle/0001_agent_introduction.sql:1`）。它包含 `spaces`、agent、频道、消息/任务、dispatch、附件/提醒/知识/活动，以及分离后的 Human 状态表；所有 Space 外键统一为 `space_id`。`users/server_members/machines/join_links`、`agents.machine_id` 和旧 `servers/server_id` 已删除。
+A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Drizzle 内部的 `__drizzle_migrations`，fresh 数据库共有 20 张物理表；当前 `PRAGMA user_version=4`。v2 数据库会先增加 `agents.introduced_at` 并把已有 agent 回填为已介绍，v3 再为 `human_channel_states` 增加默认 `all` 的 `notification_level`；兼容性检查按待迁移版本排除尚未存在的列，迁移后要求完整 v4 schema（`src/db/spaceDatabaseCompatibility.ts:5`-`:6`、`:47`-`:51`，`drizzle/0001_agent_introduction.sql:1`，`drizzle/0002_channel_notification_level.sql:1`-`:3`）。它包含 `spaces`、agent、频道、消息/任务、dispatch、附件/提醒/知识/活动，以及分离后的 Human 状态表；所有 Space 外键统一为 `space_id`。`users/server_members/machines/join_links`、`agents.machine_id` 和旧 `servers/server_id` 已删除。
 
 每个 Space 的 `<space>/.kith/workspace.db` 保存：
 
 - Space 元数据，以及 Space 内 agent、频道与 agent-only `channel_agent_members`。
 - 消息、thread、任务、任务计数和实时 seq。
-- 唯一 Human 的 read/DM/thread 状态 `human_channel_states`、收藏 `human_saved_messages` 与 Space 偏好 `human_space_preferences`。
+- 唯一 Human 的 read/DM/thread 状态及频道通知级别 `human_channel_states`、收藏 `human_saved_messages` 与 Space 偏好 `human_space_preferences`；`notification_level` 受约束为 `all | mentions | none`，默认 `all`（`src/db/schema.ts:76`-`:84`）。
 - 持久 actor 使用 `human | agent | system`（按字段适用）；runtime 协议的 `role: "user"` 是外部协议字面量，不属于数据库 actor。
 
 同一个 `.kith` 还包含 `<space>/.kith/memory/`、`<space>/.kith/agents/<agentId>/` 和 `<space>/.kith/uploads/`。一个 Space 文件夹可整体复制，带走用户文件、workspace.db、Space Memory、Agent Memory 与附件；Human 资料、User Memory、浏览器会话、Desktop 设置和 runtime state 不随之复制。未来本机跨 Space 聚合遍历多个 workspace.db 并在应用层合并，不引入中央云库。
@@ -182,6 +182,14 @@ A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Driz
 7. H1-H4 已完成：稳定 homeSpaceId，分离 app data/默认 Space 容器，把主要 runtime cwd、Agent Memory 与 runtime state 归入三路径契约，完成默认创建、文件夹接入、失联重连，并交付 Home-only Spaces 模块、默认 Home 启动和同窗切换。当前等待用户验收。
 
 不执行无边界的整仓替换；每个切片都需 schema、service、route 和 UI 契约测试。
+
+### 5.4 频道生命周期与唯一 Human 偏好
+
+频道生命周期分为活跃、已归档和已删除。归档是可恢复的只读状态，删除继续使用 `deleted_at` tombstone 且产品不提供恢复入口；普通列表、Inbox、未读、搜索、agent 检查及唤醒只消费活跃频道，归档详情仍允许在当前 Space 权限边界内读取历史。中立领域模块 `src/channels/channelLifecycle.ts:21`-`:53` 先把 thread 解析到父频道，再以统一 `assertChannelWritable` 返回稳定的 `channel_archived | channel_deleted | channel_not_found` 错误；`:56`-`:80` 为列表型表面集中排除归档/删除频道及其 thread，Human 状态与 server 路由都依赖该模块而不形成领域层反向依赖 server。Human/agent 消息、话题/回复、附件、reaction、action card、频道成员和任务写入口复用该 guard；核心消息入口本身也在持久化前强制校验（`src/server/core.ts:442`-`:454`），避免只靠前端禁用。Mentions 和 Space Tasks 这类跨频道聚合也先通过 `activeChannels` 收窄候选频道，因此归档/删除父频道的 thread 内容不会泄漏回活跃聚合（`src/server/routes-api/messages.ts:18`-`:43`、`src/server/routes-api/tasks.ts:47`-`:58`）。
+
+每个 Space 的 `# all` 是当前唯一必需频道。原始 SQLite 约束集中在 `src/db/requiredChannel.ts:11`-`:38`：数据库基线打开后优先恢复既有 `all` 行的 `archived_at/deleted_at`，缺失时才创建；`ensureSpaceBaseline` 在 Space 身份确认后幂等执行（`src/db/index.ts:119`-`:132`）。频道 API 对 `# all` 的归档、删除、名称和可见性修改统一返回 `required_channel`，而不是依赖隐藏按钮（`src/server/routes-api/channels.ts:386`-`:421`）。
+
+`GET /api/channels` 默认只返回活跃普通/私密频道，`?archived=only` 单独返回已归档频道，`?archived=include` 返回全部非删除频道（`src/server/routes-api/channels.ts:145`-`:151`）；Web Store 并行维护活跃与归档数组（`web/src/store.tsx:105`-`:116`）。唯一 Human 的频道通知偏好由 `GET/PATCH /api/channels/:channelId/notification` 读写并校验三档枚举（`src/server/routes-api/channels.ts:365`-`:383`），持久化 helper 位于 `src/human/humanChannelState.ts:45`-`:59`。它不改变 agent 唤醒、消息持久化、未读或 Inbox 语义。
 
 ## 6. 浏览器访问安全
 
@@ -220,11 +228,12 @@ agent-to-agent 分派继续经过统一 dispatch 收口。现有深度上限、�
 
 ## 8. 前端模块边界
 
-- `WorkspaceFrame` 组合路由、Chat / 会话聚合面板 / Module 响应式约束和三态布局，不承载文件、话题、任务或 agent 数据查询；聚合面板打开意图只存在于前端短暂状态（`web/src/shell/WorkspaceFrame.tsx:45`、`:108`）。
+- `WorkspaceFrame` 组合路由、Chat / 会话聚合面板 / Module 响应式约束和三态布局，不承载文件、话题、任务或 agent 数据查询；频道设置的场景状态、脏表单退出确认、焦点恢复、`beforeunload` 与 `popstate` 历史保护集中在 `useChannelSettingsScene`（`web/src/shell/useChannelSettingsScene.ts:21`-`:168`）。频道设置在可用时占用 Chat 与 Module 之间的聚合面板，空间不足时把同一个组件交给 Chat 右侧抽屉，并在场景退出后恢复此前挂载的聚合内容（`web/src/shell/WorkspaceFrame.tsx:75`-`:93`、`:256`-`:323`）。
 - `workspaceLayout.ts` 只表达 ChatOnly/Split/ModuleOnly 状态机。
 - `paneConstraints.ts` 只计算面板最小宽度、300px 聚合面板目标宽度、三栏阈值与单 Pane 降级（`web/src/shell/paneConstraints.ts:7`、`:65`）；`workspacePaneWidthsWithAggregate` 把聚合面板放在 Chat 与 Module 之间，宽度不足时先临时隐藏聚合面板并保留意图（`web/src/shell/workspacePaneTransition.ts:67`）。
 - `workspaceModules.tsx` 当前注册 Home-only Spaces、Inbox、Tasks、Agents、Settings 与非 Dock 的 Search；`dockModulesForSpace` 用稳定 `isHome` 选择 Home/普通 Dock，普通 Space 仍只显示五项。Computers/Machines 已退出模块注册和路由。
-- `ChatWorkspace` 只管理固定/抽屉会话列表和 Chat；旧“会话 / Chat / 轨迹”工具条与全局轨迹栏已删除。`ConversationAggregatePanel` 以窄 props 接收当前 `conversationId`、轨迹节点和导航回调，三个子视图分别拥有轨迹、话题与文件职责；三个 Tab 内容保持挂载并通过原生 `hidden` 切换，因此文件分类、关键词和搜索展开状态跨 Tab 保留，只有 `conversationId` 改变时由 keyed 子视图重置（`web/src/views/conversation-aggregate/ConversationAggregatePanel.tsx:14`、`:45`）。`components/SearchField.tsx` 统一 Agents 与会话文件的搜索输入、清除和焦点行为，页面只保留各自的筛选状态与展开动画。业务模块不能直接操控 Chat 内部状态。
+- `ChatWorkspace` 只管理固定/抽屉会话列表、Chat 和响应式设置抽屉；旧“会话 / Chat / 轨迹”工具条与全局轨迹栏已删除。`ConversationAggregatePanel` 以窄 props 接收当前 `conversationId`、轨迹节点、导航回调和可选设置场景；设置打开时原三个 Tab 内容保持挂载并以 `hidden` 隐藏，因此文件分类、关键词和搜索展开状态不会丢失（`web/src/views/conversation-aggregate/ConversationAggregatePanel.tsx:14`-`:20`、`:40`-`:75`）。轨迹、话题与文件仍由三个子视图各自负责，只有 `conversationId` 改变时由 keyed 子视图重置。`components/SearchField.tsx` 统一 Agents 与会话文件的搜索输入、清除和焦点行为，页面只保留各自的筛选状态与展开动画。业务模块不能直接操控 Chat 内部状态。
+- 频道设置拆在 `web/src/views/channel-settings/`：`ChannelSettingsPanel` 只编排首页、常规、成员、通知、脏状态返回/关闭与数据装载（`ChannelSettingsPanel.tsx:18`-`:47`、`:89`-`:132`、`:162`-`:211`），生命周期入口和精确名称删除确认分别由 `ChannelSettingsIndex` 与 `ChannelDeleteDialog` 承担。归档频道的 active/store 分离由 `ArchivedChannelGroup` 和 Store 负责；Chat 只解析当前频道是否归档，渲染带直接恢复动作的只读 banner，并把只读状态下传到消息、话题和成员入口（`web/src/views/ChatSidebar.tsx:78`-`:85`、`web/src/views/Chat.tsx:257`-`:271`、`:572`-`:579`、`:640`-`:715`）。
 - URL 是模块与 Chat 显隐事实来源。会话始终使用规范 `/s/:slug/channel[/<channelId>]`、`saved` 或 `showcase` 路径；`module`/`chat` 表达工作区布局，`taskScope`、`agent`/`agentTab`、`settings` 分别表达 Tasks、Agents、Settings 的模块资源（`web/src/shell/workspaceRoute.ts:65`、`:128`）。模块切换由 `workspaceLocationForModule`（`:143`）生成 query，不再生成 `/tasks`、`/agent`、`/settings` 等模块实体路径；Settings 未指定或传入旧/未知资源时统一归一为 `human`（`:138`）。
 - 切换频道或 Human-Agent DM 时保留当前 active module、Chat 显隐和该模块拥有的 resource query，同时丢弃旧会话的 `msg`/`thread` 等临时聚焦参数（`web/src/shell/workspaceRoute.ts:180`）。这样模块上下文跨会话导航保持稳定，旧消息焦点不会泄漏到新会话。
 - Thread 批量元数据同时返回单一 Human 的 `followed` 状态（`src/server/routes-api/channels.ts:114`）；Chat 将其作为受控状态传入 Thread 面板，并通过既有 `follow` / `unfollow` 接口切换（`web/src/views/Chat.tsx:674`、`:850`），关注切换与面板关闭保持为两个独立行为。

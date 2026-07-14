@@ -57,10 +57,22 @@
 : agent 与频道的长期成员关系，物理表为 `channel_agent_members`。它决定 agent 可读取、接收和被唤醒的频道范围，不承载 Human 权限；唯一 Human 对本机 Space 拥有隐式完整访问。
 
 **Human channel state**
-: 唯一 Human 在频道中的 read cursor、Human-Agent DM 对端和 thread follow/done 状态，物理表为 `human_channel_states`。它是会话状态而非 membership；收藏和 Space 偏好分别存于 `human_saved_messages` 与 `human_space_preferences`。
+: 唯一 Human 在频道中的 read cursor、Human-Agent DM 对端、thread follow/done 状态和频道通知级别，物理表为 `human_channel_states`。`notification_level` 固定为 `all | mentions | none`，默认 `all`；它不改变 agent 唤醒、消息持久化、未读或 Inbox 语义。该表是会话状态而非 membership；收藏和 Space 偏好分别存于 `human_saved_messages` 与 `human_space_preferences`。
 
 **频道**
 : 工作区内的多方对话空间，人与多个 agent 在此对话、@唤醒、派活、汇报。是空间内部态的 C 位（见"群聊 C 位"）。
+
+**活跃频道**
+: 未归档且未删除、允许正常读写并显示在频道主列表的频道。
+
+**已归档频道**
+: 可恢复的频道只读状态；保留历史消息、话题、文件、成员和设置读取，通过会话列表中默认收起的“已归档”分组进入，不参与普通活跃列表、未读聚合、Inbox、搜索或 agent 唤醒。
+
+**已删除频道**
+: 产品层不可恢复且不再进入普通读写或列表查询的频道；底层 `deleted_at` tombstone 只维护引用和数据一致性，不等于产品回收站。
+
+**必需频道**
+: 每个 Space 唯一的 `# all`。它不能归档或删除，名称和可见性不可修改；数据库打开时会幂等恢复历史上被误归档/软删除的 `# all`，缺失时才创建。
 
 **群聊**
 : 特指频道里"人 + 多个 agent"的多方对话形态，是产品心脏；与"频道"基本同指，"群聊"强调多 agent 协作这一属性。
@@ -164,7 +176,10 @@
 : 近实时展示 agent 执行动作的透明度窗口，位于当前会话聚合面板的“轨迹”Tab；只显示明确归属当前 base conversation 的有界前端缓冲，不是业务模块 Dock 项。
 
 **会话聚合面板 / Conversation Aggregate Panel**
-: 依附当前可见 Chat 的会话级辅助工作面，固定承载“轨迹 / 话题 / 文件”三个 Tab；它在 Split 中位于 Chat 与 Module 之间，宽度不足或 ModuleOnly 时临时隐藏，不是可任意停靠的通用面板或第二个 Module。
+: 依附当前可见 Chat 的会话级辅助工作面，固定承载“轨迹 / 话题 / 文件”三个内容 Tab；它在 Split 中位于 Chat 与 Module 之间，宽度不足或 ModuleOnly 时临时隐藏，不是可任意停靠的通用面板或第二个 Module。频道设置可以临时占用该位置，但不是第四个内容 Tab。
+
+**频道设置场景**
+: 从频道标题进入、临时占用会话聚合面板的低频管理场景，包含常规、成员和通知三个钻取页以及归档、恢复和永久删除。宽度不足时复用同一组件进入 Chat 右侧抽屉；退出后恢复原聚合内容状态。
 
 **Message Context Snapshot**
 : 消息发送时固化的结构化界面上下文，包含 Space、会话、当前模块、Context Stack 与 focused item。Kith-space 保存自己的结构，不把 OpenLoaf `<stack>` XML 硬编码进核心模型；当前仍是待实现契约。
@@ -210,7 +225,7 @@
 : Desktop 信任凭据和 Local Runtime Worker 控制凭据的统称。两者彼此独立，也不与浏览器 Access Token 或 agent session token 复用。Desktop 每次启动/重启受管进程组都会重新生成；只有手动分进程开发才临时使用 `KITH_SPACE_DESKTOP_TOKEN` 和 `KITH_SPACE_WORKER_TOKEN` 注入。
 
 **每工作区独立 SQLite 文件**
-: 每个 Space 把自己的 `spaces` 元数据、消息、任务、频道、agent、agent membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 baseline 有 19 张产品表；连同 Drizzle 的 `__drizzle_migrations` 是 20 张物理表，`PRAGMA user_version=3`。所有领域外键使用 `space_id`；Human 资料和 Desktop 设置不随 Space 复制。
+: 每个 Space 把自己的 `spaces` 元数据、消息、任务、频道、agent、agent membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 baseline 有 19 张产品表；连同 Drizzle 的 `__drizzle_migrations` 是 20 张物理表，`PRAGMA user_version=4`。所有领域外键使用 `space_id`；Human 资料和 Desktop 设置不随 Space 复制。
 
 **`.kith/`**
 : Space root 下承载其可移植状态的目录：`workspace.db`（Space 元数据、agent 阵容、频道、消息和任务）、`memory/`（Space Memory）、`agents/<agentId>/`（Agent Memory）和 `uploads/`（附件对象）。runtime prompt、日志和宿主临时状态不放在这里。

@@ -1,6 +1,6 @@
 // Local-only attachment object storage, rooted inside each registered Space.
 import { createWriteStream } from "node:fs";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
@@ -41,4 +41,8 @@ export async function saveObject(spaceId: string, filename: string, stream: Read
 
 export async function readObject(spaceId: string, key: string): Promise<Buffer> {
   return readFile(localObjectPath(spaceId, key));
+}
+
+export async function deleteObject(spaceId: string, key: string): Promise<void> {
+  await rm(localObjectPath(spaceId, key), { force: true });
 }

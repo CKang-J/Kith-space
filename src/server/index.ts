@@ -20,6 +20,7 @@ import { BrowserAccessPolicy } from "../browser-access/index.js";
 import { assertInternalCredentialsConfigured, isDesktopTrustedRequest } from "../local-runtime/internalCredentials.js";
 import { browserOriginAllowed, requestPeerIsLoopback } from "./browserSessionHttp.js";
 import { resolveCorePort } from "./localEndpoint.js";
+import { ChannelLifecycleError } from "../channels/channelLifecycle.js";
 
 assertInternalCredentialsConfigured();
 
@@ -117,6 +118,9 @@ const server = http.createServer(async (req, res) => {
     if (method === "GET" && await serveStatic(res, url.pathname)) return;
     sendErr(res, 404, "not found");
   } catch (e: any) {
+    if (e instanceof ChannelLifecycleError) {
+      return sendErr(res, e.statusCode, e.message, { code: e.code });
+    }
     log.error("request error", { path: url.pathname, method, detail: String(e?.message ?? e), stack: e?.stack });
     try { sendErr(res, 500, "internal", { detail: String(e?.message ?? e) }); } catch { /* */ }
   }

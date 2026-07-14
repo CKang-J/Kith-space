@@ -35,7 +35,7 @@ interface Store {
   refreshSpaces: () => Promise<SpaceInfo[]>;
   switchSpace: (slug: string) => void;                           // client-side Space switch: re-point the active Space, reset per-Space state, reconnect the socket (no full-page reload)
   clearBrowserAccess: () => Promise<void>;
-  channels: Channel[]; dms: Dm[]; unread: Record<string, number>;
+  channels: Channel[]; archivedChannels: Channel[]; dms: Dm[]; unread: Record<string, number>;
   agents: Agent[];        // ALL agents incl. system-seeded showcase demo agents — resolve a sender's avatar/name/profile by id (incl. #showcase history)
   visibleAgents: Agent[]; // agents minus system-seeded showcase demo agents — use for member rosters and every agent picker / @mention candidate list
   trajByConversation: TrajectoryBuckets;                          // per-base-conversation live trace buffers; each bucket is independently bounded
@@ -75,6 +75,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [spaceAvatar, setSpaceAvatar] = useState<string | null>(null); // Space avatar URL; Cookie auth is supplied by the browser
   const [me, setMe] = useState<Me | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [archivedChannels, setArchivedChannels] = useState<Channel[]>([]);
   const [dms, setDms] = useState<Dm[]>([]);
   const [unread, setUnread] = useState<Record<string, number>>({});
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -107,7 +108,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Space's data — guards rapid A→B→C switches (the sequential awaits below each read the shared spaceIdRef).
     const reloadSpaceId = spaceIdRef.current;
     const fresh = () => spaceIdRef.current === reloadSpaceId;
-    const ch = await api("GET", "/api/channels"); if (fresh()) setChannels(ch);
+    const [ch, archived] = await Promise.all([
+      api("GET", "/api/channels"),
+      api("GET", "/api/channels?archived=only"),
+    ]);
+    if (fresh()) { setChannels(ch); setArchivedChannels(archived); }
     try { const dm = await api("GET", "/api/channels/dm"); if (fresh()) setDms(dm); } catch { if (fresh()) setDms([]); }
     try { const un = (await api("GET", "/api/channels/unread")) || {}; if (fresh()) setUnread(un); } catch { if (fresh()) setUnread({}); }
     const ag = await api("GET", "/api/agents"); if (fresh()) setAgents(ag);
@@ -303,7 +308,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setReady(false);
     spaceIdRef.current = cur.id; setSpaceId(cur.id); setSlug(cur.slug || "kith-space");
     setSpaceAvatar(cur.avatarUrl || null);
-    setChannels([]); setDms([]); setUnread({}); setAgents([]); setTrajByConversation({}); setSavedIds(new Set()); setAgentPanelReq(null);
+    setChannels([]); setArchivedChannels([]); setDms([]); setUnread({}); setAgents([]); setTrajByConversation({}); setSavedIds(new Set()); setAgentPanelReq(null);
     subscribedRef.current = new Set(); // the previous workspace's view-subscriptions don't carry over
     sockRef.current = null; // the previous socket is closed by this effect's cleanup; drop the stale ref until the new one connects
     let lastSeq = 0;
@@ -386,6 +391,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // The server validates Space access for the Human; this socket event does not create domain membership.
       sock.on("dm:new", (p: any) => { reload(); if (p?.channelId) sockRef.current?.emit("join:channel", p.channelId); });
       sock.on("channel:members-updated", (p: any) => { reload(); if (p?.channelId) sockRef.current?.emit("join:channel", p.channelId); });
+      // Archive/restore/delete moves a channel between the two lists. Re-fetch both from the
+      // authoritative lifecycle queries instead of trying to infer the move from event payloads.
+      sock.on("channel:updated", () => { void reload(); });
+      sock.on("channel:deleted", () => { void reload(); });
       sock.on("task:created", (p: any) => (p.tasks || []).forEach((t: any) => dispatch({ type: "task", op: "created", task: t }))); // payload={channelId,tasks:[]}
       sock.on("task:updated", (p: any) => dispatch({ type: "task", op: "updated", task: p.task }));                                  // payload={channelId,task}
       sock.on("task:deleted", (p: any) => dispatch({ type: "task", op: "deleted", taskId: p.taskId, channelId: p.channelId }));      // payload={channelId,taskId}
@@ -402,6 +411,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Showcase demo agents (creatorType="system") stay in `agents` so #showcase history still resolves their
   // avatar/name/profile by id — but they are not real members, so every roster / picker uses `visibleAgents`.
   const visibleAgents = agents.filter((a) => a.creatorType !== "system");
-  return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, spaceAvatar, spaces, createSpace, relocateSpace, refreshSpaces, switchSpace, clearBrowserAccess, uploadSpaceAvatar, uploadAgentAvatar, channels, dms, unread, agents, visibleAgents, trajByConversation, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, spaceAvatar, spaces, createSpace, relocateSpace, refreshSpaces, switchSpace, clearBrowserAccess, uploadSpaceAvatar, uploadAgentAvatar, channels, archivedChannels, dms, unread, agents, visibleAgents, trajByConversation, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
 }
 

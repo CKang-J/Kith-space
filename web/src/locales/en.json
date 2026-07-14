@@ -536,6 +536,115 @@
       "loadFailed": "Could not load files"
     }
   },
+  "channelSettings": {
+    "title": "Channel settings",
+    "close": "Close channel settings",
+    "back": "Back to channel settings",
+    "backToContent": "Back to conversation content",
+    "loading": "Loading…",
+    "cancel": "Cancel",
+    "operationFailed": "Operation failed",
+    "discardTitle": "Discard unsaved changes?",
+    "discardDescription": "Your current changes have not been saved and will be lost if you leave.",
+    "discardChanges": "Discard changes",
+    "requiredChannelDescription": "# all is required in this Space and cannot be archived or deleted.",
+    "archivedGroup": "Archived",
+    "archivedReadOnly": "This channel is archived and is currently read-only.",
+    "archivedSettingsReadOnly": "This channel is archived. Settings are view-only until the channel is restored.",
+    "manageArchived": "Manage channel",
+    "archivedAt": "Archived {{date}}",
+    "archiveChannel": "Archive channel",
+    "archiveDescription": "Make the channel read-only and move it to Archived.",
+    "archiveConfirmTitle": "Archive #{{name}}?",
+    "archiveConfirmDescription": "The channel will become read-only. You can restore it from Archived at any time.",
+    "archiving": "Archiving…",
+    "archiveSuccess": "Channel archived",
+    "restoreChannel": "Restore channel",
+    "restoreDescription": "Move the channel back to the active list and allow writing again.",
+    "restoring": "Restoring…",
+    "restoreSuccess": "Channel restored",
+    "deleteChannel": "Delete channel",
+    "deleteDescription": "Permanently remove the channel with no recovery in the product.",
+    "deleteConfirmTitle": "Delete #{{name}}?",
+    "deleteConfirmDescription": "The channel will be permanently removed from the product. Its messages, topics, and files will no longer be accessible. This cannot be undone.",
+    "deleteConfirmPrompt": "Enter the complete channel name “{{name}}” to confirm",
+    "deleting": "Deleting…",
+    "deleteSuccess": "Channel deleted",
+    "general": {
+      "title": "General",
+      "name": "Name",
+      "description": "Description",
+      "descriptionPlaceholder": "Describe what this channel is for…",
+      "visibilityLabel": "Visibility",
+      "requiredChannelNote": "This is a required system channel. Its name and visibility are locked; you can still edit the description.",
+      "visibilityConfirmTitle": "Change channel visibility?",
+      "visibilityConfirmDescription": "The channel will become “{{visibility}}”. Confirm that the resulting member scope is intended.",
+      "confirmVisibility": "Confirm and save",
+      "visibility": {
+        "public": {
+          "title": "Public",
+          "description": "Agents in this Space can discover and join it."
+        },
+        "private": {
+          "title": "Private",
+          "description": "Only current channel members can discover and access it."
+        }
+      },
+      "save": "Save changes",
+      "saving": "Saving…",
+      "saveSuccess": "Channel settings saved",
+      "saveFailed": "Could not save channel settings"
+    },
+    "members": {
+      "title": "Members",
+      "summary": "{{count}} members",
+      "count": "{{count}} members",
+      "you": "You",
+      "administrator": "Administrator",
+      "fixed": "Fixed member",
+      "searchLabel": "Search channel members",
+      "searchPlaceholder": "Search members or agents…",
+      "clearSearch": "Clear member search",
+      "addMember": "Add member",
+      "closePicker": "Collapse",
+      "availableAgents": "Available agents",
+      "currentMembers": "Current members",
+      "add": "Add",
+      "adding": "Adding…",
+      "removing": "Removing…",
+      "addAgent": "Add {{name}}",
+      "removeAgent": "Remove {{name}}",
+      "noAvailableAgents": "No agents are available to add",
+      "noMatches": "No matching members",
+      "loadFailed": "Could not load channel members",
+      "updateFailed": "Could not update channel members",
+      "addSuccess": "Added {{name}}",
+      "removeSuccess": "Removed {{name}}"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "intro": "This only affects local notifications for the single Human on this device. It does not change unread counts, Inbox, or agent wake-ups.",
+      "loading": "Loading notification settings…",
+      "saving": "Saving…",
+      "loadFailed": "Could not load notification settings",
+      "saveFailed": "Could not save notification settings",
+      "saveSuccess": "Notification settings saved",
+      "options": {
+        "all": {
+          "title": "All messages",
+          "description": "Every new message in this channel may trigger a local notification."
+        },
+        "mentions": {
+          "title": "Mentions only",
+          "description": "Notify only when you are explicitly mentioned or need to take notice."
+        },
+        "none": {
+          "title": "Nothing",
+          "description": "Do not show local notifications; updates still appear in unread counts and Inbox."
+        }
+      }
+    }
+  },
   "common": {
     "agents": "Agents",
     "channels": "Channels",

@@ -14,6 +14,8 @@ import "./conversationAggregate.css";
 export interface ConversationAggregatePanelProps {
   conversationId: string;
   trace: ReactNode;
+  settings?: ReactNode;
+  settingsOpen?: boolean;
   onOpenTopic(parentMessageId: string): void;
   onJumpToMessage(messageId: string): void;
 }
@@ -21,6 +23,8 @@ export interface ConversationAggregatePanelProps {
 export function ConversationAggregatePanel({
   conversationId,
   trace,
+  settings,
+  settingsOpen = false,
   onOpenTopic,
   onJumpToMessage,
 }: ConversationAggregatePanelProps) {
@@ -35,36 +39,39 @@ export function ConversationAggregatePanel({
 
   return (
     <section className="conversation-aggregate" aria-label={t("conversationAggregate.title")}>
-      <header className="conversation-aggregate__header">
-        <SlidingTabs<ConversationAggregateTab>
-          id={tabsId}
-          value={activeTab}
-          options={tabs}
-          onChange={(tab) => setActiveTab(tab)}
-          ariaLabel={t("conversationAggregate.tabs.label")}
-        />
-      </header>
-      {tabs.map((tab) => {
-        const selected = tab.value === activeTab;
-        return (
-          <div
-            key={tab.value}
-            id={slidingTabPanelId(tabsId, tab.value)}
-            className="conversation-aggregate__panel"
-            role="tabpanel"
-            aria-labelledby={slidingTabId(tabsId, tab.value)}
-            hidden={!selected}
-          >
-            {tab.value === "trace" ? trace : null}
-            {tab.value === "topics" ? (
-              <ConversationTopics key={conversationId} conversationId={conversationId} onOpenTopic={onOpenTopic} />
-            ) : null}
-            {tab.value === "files" ? (
-              <ConversationFiles key={conversationId} conversationId={conversationId} onJumpToMessage={onJumpToMessage} />
-            ) : null}
-          </div>
-        );
-      })}
+      <div className="conversation-aggregate__content" hidden={settingsOpen}>
+        <header className="conversation-aggregate__header">
+          <SlidingTabs<ConversationAggregateTab>
+            id={tabsId}
+            value={activeTab}
+            options={tabs}
+            onChange={(tab) => setActiveTab(tab)}
+            ariaLabel={t("conversationAggregate.tabs.label")}
+          />
+        </header>
+        {tabs.map((tab) => {
+          const selected = tab.value === activeTab;
+          return (
+            <div
+              key={tab.value}
+              id={slidingTabPanelId(tabsId, tab.value)}
+              className="conversation-aggregate__panel"
+              role="tabpanel"
+              aria-labelledby={slidingTabId(tabsId, tab.value)}
+              hidden={!selected}
+            >
+              {tab.value === "trace" ? trace : null}
+              {tab.value === "topics" ? (
+                <ConversationTopics key={conversationId} conversationId={conversationId} onOpenTopic={onOpenTopic} />
+              ) : null}
+              {tab.value === "files" ? (
+                <ConversationFiles key={conversationId} conversationId={conversationId} onJumpToMessage={onJumpToMessage} />
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      {settingsOpen ? <div className="conversation-aggregate__settings">{settings}</div> : null}
     </section>
   );
 }
