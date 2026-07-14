@@ -18,6 +18,8 @@ import { mergeWorkspaceSearch, workspaceLocationForModule, workspaceSearchForShe
 import { LOCAL_RUNTIME_DEFAULT, useRuntimeDiscovery } from "../useRuntimeDiscovery.ts";
 import { agentStatusLabel } from "../agentStatus.ts";
 import { SearchField } from "../components/SearchField.tsx";
+import { AgentDefaultResponseModeCard } from "./agent-response-mode/AgentDefaultResponseModeCard.tsx";
+import { normalizeAgentResponseMode } from "./agent-response-mode/responseModeModel.ts";
 
 // Unified agent status label: fine-grained activity (working/thinking/online) takes priority;
 // offline/absent falls back to lifecycle status (active/sleeping/inactive).
@@ -126,7 +128,10 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
   const [avBusy, setAvBusy] = useState(false); const [avErr, setAvErr] = useState(""); const [signedAvatar, setSignedAvatar] = useState<string | null>(null);
   const refetch = async () => { const data = await api("GET", "/api/agents/" + id); setA(data); setSignedAvatar(resolveAvatar(data?.avatarUrl, attachmentUrl)); };
   useEffect(() => { refetch(); }, [id]);
-  useEffect(() => onEvent((e) => { if (e.type === "agent" && e.id === id) setA((p: any) => (p ? { ...p, status: e.status ?? p.status, activity: e.activity ?? p.activity } : p)); }), [id]);
+  useEffect(() => onEvent((e) => {
+    if (e.type === "agent" && e.id === id) setA((p: any) => (p ? { ...p, status: e.status ?? p.status, activity: e.activity ?? p.activity } : p));
+    else if (e.type === "agent:response-mode-updated" && e.agentId === id && !e.channelId) void refetch();
+  }), [id]);
   const onPickAvatar = async (f: File) => { setAvBusy(true); setAvErr(""); try { const url = await uploadAgentAvatar(id, f); setSignedAvatar(url); await refetch(); await reload(); } catch (err: any) { setAvErr(String(err?.message || err)); } finally { setAvBusy(false); } };
   const onPickSeed = async (scheme: string) => { setAvBusy(true); setAvErr(""); try { await api("PATCH", "/api/agents/" + id, { avatarUrl: scheme }); await refetch(); await reload(); } catch (err: any) { setAvErr(String(err?.message || err)); } finally { setAvBusy(false); } };
   if (!a) return <div className="scroll"><div className="empty">{t("members.loading")}</div></div>;
@@ -209,6 +214,11 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
                 <button className="joinbtn" onClick={startEdit}>{t("members.editProfile")}</button>
               </div>
             </div>
+            <AgentDefaultResponseModeCard
+              agentId={id}
+              value={normalizeAgentResponseMode(a.defaultResponseMode)}
+              onSaved={(defaultResponseMode) => setA((current: any) => current ? { ...current, defaultResponseMode } : current)}
+            />
             <SkillsSection id={id} />
           </div>
         )}

@@ -14,7 +14,7 @@ import { applySpaceScopeHeaders, spaceScopeHeaders } from "./spaceScope.ts";
 
 export interface Channel { id: string; name: string; description?: string; type: string; lastMessageAt?: string; archivedAt?: string | null }
 export interface Dm { id: string; name: string; type: string; description?: string; lastMessageAt?: string; peerId?: string | null; peerName?: string | null; peerDisplayName?: string | null; peerType?: string | null; peerAvatarUrl?: string | null }
-export interface Agent { id: string; name: string; displayName: string; description?: string; status: string; activity?: string; activityDetail?: string; model?: string; runtime: string; avatarUrl?: string | null; creatorType?: string }
+export interface Agent { id: string; name: string; displayName: string; description?: string; status: string; activity?: string; activityDetail?: string; model?: string; runtime: string; avatarUrl?: string | null; creatorType?: string; defaultResponseMode?: "active" | "mention_only" | "silent" }
 export type SpaceRootStatus = "ready" | "missing" | "error";
 export interface SpaceInfo { id: string; name: string; slug: string; rootPath?: string; status: SpaceRootStatus; rootError?: string | null; code?: string; avatarUrl?: string | null; isHome: boolean; lastOpenedAt?: string }
 export interface SpaceMutationResult { space?: SpaceInfo; error?: string; code?: string }
@@ -400,6 +400,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       });
       sock.on("agent:reply", (p: any) => dispatch({ type: "agent:reply", ...p }));
+      sock.on("agent:response-mode-updated", (p: any) => dispatch({ ...p, type: "agent:response-mode-updated" }));
       sock.on("agent:created", () => reload());
       sock.on("agent:deleted", () => reload());
       // Real-time: new DM / agent membership change → reload lists + subscribe to the affected transport room.

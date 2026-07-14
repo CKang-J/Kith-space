@@ -11,6 +11,7 @@ import { canHumanReadChannel } from "../channelAccess.js";
 import { normalizeTaskExecutionMode } from "../dispatchGuard.js";
 import { humanIdentityForId } from "../../human/humanIdentity.js";
 import { activeChannels, assertChannelWritable } from "../../channels/channelLifecycle.js";
+import { sendTaskOperationError } from "../tasks/taskHttp.js";
 
 export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
   const { req, res, url, method, p, humanId, spaceId } = ctx;
@@ -133,8 +134,13 @@ export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
     if (!human) return (sendErr(res, 403, "not the local Human"), true);
     const mode = normalizeTaskExecutionMode(b.taskExecutionMode ?? b.executionMode);
     if (b.asTask && !mode) return (sendErr(res, 400, "executionMode must be autopilot or plan-first"), true);
-    const msg = await createMessage({ spaceId, channelId: b.channelId, senderType: "human", senderId: humanId, senderName: human.displayName, content: b.content || "", asTask: !!b.asTask, taskExecutionMode: mode ?? undefined, attachmentIds: hasAtt ? b.attachmentIds : undefined });
-    return (sendJson(res, 200, { ok: true, id: msg.id, seq: msg.seq }), true);
+    try {
+      const msg = await createMessage({ spaceId, channelId: b.channelId, senderType: "human", senderId: humanId, senderName: human.displayName, content: b.content || "", asTask: !!b.asTask, taskExecutionMode: mode ?? undefined, attachmentIds: hasAtt ? b.attachmentIds : undefined });
+      return (sendJson(res, 200, { ok: true, id: msg.id, seq: msg.seq }), true);
+    } catch (error) {
+      if (sendTaskOperationError(res, error)) return true;
+      throw error;
+    }
   }
   // Emoji reactions: POST to add / DELETE to remove, same path body {emoji}; both broadcast message:updated (full message including reactions[])
   const react = /^\/api\/messages\/([^/]+)\/reactions$/.exec(p);

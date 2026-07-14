@@ -24,7 +24,7 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 - P4：单窗口 ChatOnly / Split / ModuleOnly 工作区、可拖拽面板、常驻 Dock、任务范围侧栏。
 - Runtime 调研：Claude Code、Codex、opencode 适配边界与 Runtime 契约 v2 草案。
 
-P4 的其余视觉微调暂缓。A1-A6 原定代码切片与 P-A7 H1-H4 已完成，当前等待用户验收；验收前不进入 Runtime 契约 v2 或 H5 跨 Space 编排。P-A8 Agent 频道响应模式的设计已定稿但尚未实现，不得把文档状态误写成已落地。
+P4 的其余视觉微调暂缓。A1-A6 原定代码切片、P-A7 H1-H4 与 P-A8 Agent 频道响应模式已完成，当前等待用户验收；验收前不进入 Runtime 契约 v2 或 H5 跨 Space 编排。
 
 ## 3. 当前路线：个人 AgentOS 本机化
 
@@ -120,7 +120,7 @@ H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integrati
 
 ### P-A8 Agent 频道响应模式
 
-状态：设计已定稿，尚未实现。该切片是 P4 频道协作体验的增量能力，不启动 H5，也不提前展开完整 Runtime 契约 v2。
+状态：设计与代码切片均已完成，当前等待用户验收。该切片是 P4 频道协作体验的增量能力，没有启动 H5，也没有提前展开完整 Runtime 契约 v2。
 
 - 每个 Agent 在当前 Space 保存 `active | mention_only | silent` 默认值；每个顶层频道 membership 保存可空覆盖，有效值为“频道覆盖 ?? Agent 默认”。
 - Human 普通频道消息只环境唤醒主动成员且允许 Agent 判断后静默；被动成员只在明确 `@` 或已参与话题收到 Human 跟进时唤醒；静音成员不因频道事件自动唤醒。
@@ -128,7 +128,7 @@ H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integrati
 - “作为任务 + 单一 `@Agent`”必须形成真实 assignee；无 `@` 创建未指派频道任务，多个 Agent mention 因单 assignee 模型而拒绝。
 - 服务端以纯策略模块和设置模块统一实时 wake、reconnect、message check 与 prompt 指令；前端以独立 feature 组件提供 Agent 默认卡片和频道昵称后模式菜单，不把逻辑继续堆入 `core.ts`、`Chat.tsx` 或 `Members.tsx`。
 
-验收：三档矩阵在顶层频道、话题、DM、任务和 Worker 重连中一致；模式切换不追溯唤醒、不伪造已读；双窗口设置同步；静音不越权变成发送禁令。完整规格：`docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
+实现与验证：schema v5、统一响应策略/设置模块、实时投递/reconnect/message check/prompt 指令、单一 mention 任务 assignee、Agent 默认卡片和频道覆盖菜单均已落地；三档矩阵覆盖顶层频道、话题、DM、任务和 Worker 重连。模式切换以独立 watermark 保证不追溯唤醒且不伪造已读；真实浏览器已验证默认值、频道覆盖、恢复继承、双窗口实时同步和多 Agent 任务拦截。`pnpm test --unit` 581/581、完整 integration、typecheck 与 2612-module Web build 通过。完整规格：`docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
 
 ## 4. 本机化基础完成后的能力路线
 

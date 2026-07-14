@@ -1,6 +1,6 @@
 # Agent 频道响应模式设计
 
-> 状态：2026-07-14 已定稿，尚未实现。本文锁定产品语义、数据边界、运行时策略、界面和验收标准；当前代码仍按既有频道成员唤醒规则运行。
+> 状态：2026-07-14 已定稿并实现，当前等待用户验收。本文锁定产品语义、数据边界、运行时策略、界面和验收标准；实现状态见第 16 节。
 
 ## 1. 决策摘要
 
@@ -130,7 +130,7 @@ Composer 的“作为任务”不只是给消息增加外观；它必须创建�
 - 受派 Agent 无论处于主动、被动还是静音模式都立即唤醒，响应指令为 `required`；
 - 其他未被指派的频道成员不能仅因这是一条定向任务而被环境唤醒。
 
-当前实现只把 `@` 记录为 mention，并不会据此写入任务 assignee；实现本规格时必须同时修正任务数据与唤醒语义，不能只绕过响应模式。
+P-A8 之前只把 `@` 记录为 mention，并不会据此写入任务 assignee；当前实现已同时修正任务数据与唤醒语义，不能退回只绕过响应模式的表面实现。
 
 ### 5.2 没有 `@Agent`
 
@@ -172,12 +172,14 @@ Composer 的“作为任务”不只是给消息增加外观；它必须创建�
 
 可编辑徽标在约 250ms hover 后打开，同时支持点击、键盘聚焦和触屏点击；浮层必须有安全 hover corridor、`Escape` 关闭、焦点返回和 viewport-aware 定位。
 
-菜单结构固定为：
+菜单使用同一浮层内的两层结构：
 
-1. 标题“响应方式”，说明“决定该 Agent 在本频道如何回应消息”。
-2. `跟随 Agent 默认（当前为：主动模式）`，选中时把覆盖写为 `NULL`。
-3. 分隔后的频道覆盖：`主动模式 / 被动模式 / 静音模式`。
-4. 简短说明与“在 Agent 资料中修改默认值”的入口。
+1. 主层标题为“响应方式”，右侧以弱化文字显示当前 `Agent 默认：主动 / 被动 / 静音`；“决定该 Agent 在本频道如何回应消息”只保留为无障碍描述。
+2. 主层用一个四段式控件直接显示 `默认 / 主动 / 被动 / 静音`。选择“默认”把覆盖写为 `NULL`，其余三项写入本频道显式覆盖；当前来源通过选中段明确表达，即使有效值与默认值相同也不会混淆。
+3. 分隔线后的“修改 Agent 默认”入口进入同一浮层的二级层，不跳转 Agent Profile，也不叠加第二个弹窗。
+4. 二级层提供返回按钮、标题“Agent 默认响应方式”和 `主动 / 被动 / 静音` 三段式控件，并说明“应用于当前 Space 中所有跟随默认的频道”。这里修改的是当前 Space 中该 Agent 的默认值。
+
+菜单约 `280px` 宽，使用 `14px` 标题/入口文字、紧凑留白、细边框和轻阴影；选中段使用深色底与反白文字。模式含义的完整解释仍只由 Agent Profile 默认设置卡片承载，频道菜单不重复长说明。两层选择均即时保存并保持浮层打开，方便连续确认；点击浮层外或按 `Escape` 才关闭。
 
 选择同一值是幂等操作。显式覆盖可以恰好等于当前默认值，仍保留“已覆盖”来源；只有选择“跟随 Agent 默认”才删除覆盖。默认值变化后，继承成员的徽标随之变化，显式覆盖成员保持不变。
 
@@ -189,7 +191,7 @@ Composer 的“作为任务”不只是给消息增加外观；它必须创建�
 
 ## 7. 数据模型与迁移
 
-当前 workspace.db 是 schema v4。实现本规格时升级为 v5，仍保持 19 张产品表，只增加字段：
+当前 workspace.db 是 schema v5，仍保持 19 张产品表；v4 → v5 只增加以下字段：
 
 ```text
 agents.default_response_mode
@@ -283,7 +285,7 @@ type AgentResponseDecision = {
 - runtime prompt / inbox notice；
 - Human Composer 和 Agent 工具产生的任务指派。
 
-当前 `core.ts` 会在 Human 频道消息后唤醒可达的频道 Agent，`agentWakePolicy.ts` 把 mention/DM 视为可唤醒，`WAKE_NUDGE` 又要求每个目标都回复。实现时必须用新策略替代这些互相分散的判断，不能只在前端隐藏徽标或只修改一个实时路径。
+P-A8 之前 `core.ts` 会在 Human 频道消息后唤醒可达的频道 Agent，`agentWakePolicy.ts` 把 mention/DM 视为可唤醒，`WAKE_NUDGE` 又要求每个目标都回复。当前已用统一策略替代这些分散判断；后续修改不能退回只在前端隐藏徽标或只改一个实时路径。
 
 ## 10. API 与实时同步
 
@@ -391,12 +393,12 @@ reconnect backlog 使用与实时投递完全相同的 policy、话题参与判�
 
 ## 16. 当前实现边界
 
-截至 2026-07-14，本规格只有文档和决策，以下均**尚未实现**：
+截至 2026-07-14，本规格已完成代码实现并等待用户验收：
 
-- schema v5 与响应模式字段；
-- 统一响应策略/设置模块；
-- API、实时事件和 Runtime 响应指令；
-- Composer 由单一 mention 自动形成真实 assignee；
-- Agent 设置卡片、频道徽标和 hover 菜单。
+- workspace.db schema v5 已增加 Agent 默认值、顶层频道覆盖与两类非追溯 wake watermark，产品表数仍为 19；
+- `src/agents/agentResponsePolicy.ts`、`agentResponseSettings.ts` 与 `agentResponseDelivery.ts` 已分别承载纯决策、设置持久化/解析和消息上下文适配；
+- 实时 wake、Worker reconnect、`/agent-api/message/check` 与 Worker prompt 已统一消费 `required | optional | observe` 指令及稳定 reason；
+- Composer 与服务端共同校验任务 mention：单一 Agent 写入真实 assignee，零 Agent 保持未指派，多个 Agent 在持久化和 membership 变化前拒绝；
+- `web/src/views/agent-response-mode/` 已提供 Agent 默认卡片、频道徽标、约 250ms hover/点击/键盘菜单及每频道一次装载/窄实时失效；频道菜单主层使用“默认 / 主动 / 被动 / 静音”四段式控件，并在同一浮层钻取修改当前 Space 的 Agent 默认值，完整模式解释只保留在默认设置卡片；话题复用父频道，归档只读，DM 不显示。
 
-当前 schema 仍是 v4，Human 频道消息仍沿既有成员唤醒路径，现有 wake prompt 仍倾向要求目标回复。后续实现必须以本文为验收来源，并在代码落地的同一提交再次同步架构、UI、路线和进度文档中的“待实现”状态。
+自动化验证已覆盖三档策略、watermark、API、实时投递、message check、Worker reconnect、prompt、任务指派与前端模型；菜单定稿后 `pnpm test --unit` 582/582、typecheck 与 2612-module Web build 通过，完整 integration 沿用同轮 P-A8 实现的全量通过结果。真实浏览器此前已验证默认值切换、频道覆盖、恢复继承、双窗口实时同步、多 Agent 任务提交前拦截与草稿保留，最终菜单由用户实测通过。菜单定稿后的单轮只读 review 未发现 Standards 问题；发现的旧 PATCH 回包覆盖较新实时结果问题已用 mutation 版本与权威重载收敛修复，按约定未发起第二轮 review。当前仍没有组件挂载级自动化覆盖菜单钻取、键盘和焦点交互，作为后续测试债透明保留。H5 与 Runtime 契约 v2 未因此启动。

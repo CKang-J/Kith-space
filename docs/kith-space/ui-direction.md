@@ -110,7 +110,7 @@ ChatOnly 由当前会话工作面和可独立收起的辅助面板组成：
 - 删除旧“会话 / Chat / 轨迹”顶栏。会话列表纯图标开关迁入当前会话标题最左侧；标题右侧依次提供当前会话 Tasks、频道成员、聚合面板和频道设置等纯图标入口。Tasks 始终导航到 `module=tasks&taskScope=<当前会话ID>`，点击已打开的同一 Tasks 不解释为关闭。
 - 聚合面板固定承载“轨迹 / 话题 / 文件”三个等宽滑动 Tab；白色选中底板只做 `transform` 横移，内容不淡入淡出。三个内容区通过 `hidden` 切换而不卸载，因此文件分类、关键词和搜索展开状态跨 Tab 保留，只在会话切换时重置。话题列表来自独立 thread summaries 查询，新建空话题与后续回复都会实时刷新，点击后仍在原 Chat 话题位置展开正文；文件页支持“全部 / 图片 / 视频 / 文件”和文件名/来源消息搜索。文件页与 Agents 列表复用 `components/SearchField.tsx` 的胶囊搜索框，只显示产品自己的清除按钮，输入框焦点使用浅色内描边而不是黑框。
 - 频道设置是聚合面板内的临时管理场景，不是第四个 Tab。进入后以同一面板承载设置首页及“常规 / 成员 / 通知”三个钻取页，并保持原聚合 Tab、文件筛选和搜索状态挂载；返回内容场景时恢复原状态。常规页显式保存名称、描述和公开/私密可见性；成员页以实际 Human 名称加“你”标识固定展示唯一 Human，agent 通过带搜索的单选弹窗添加，移除前要求二次确认；通知页即时持久化“所有消息 / 仅提及 / 不通知”。未保存常规修改在返回、关闭、切换频道、隐藏 Chat、刷新或浏览器历史后退前要求确认放弃；取消后保留当前 URL 和表单草稿。
-- **Agent 响应模式（已定稿、待实现）**：Agent Profile 的基本信息后、Skills 前增加独立“响应模式”卡片，用三段式控件设置当前 Space 的主动/被动/静音默认值；私聊和明确任务指派不受该默认值限制。顶层频道及其话题中的当前成员 Agent 消息在昵称后显示当前有效模式徽标，约 250ms hover 或点击/键盘聚焦后打开覆盖菜单；菜单可选择“跟随 Agent 默认”或本频道主动/被动/静音。话题继承父频道，不出现独立设置；DM、Human、系统消息和已移除 Agent 不显示徽标；归档频道只读显示。第一版不在频道设置成员页复制第二套编辑器。完整交互见 `../superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
+- **Agent 响应模式（已实现）**：Agent Profile 的基本信息后、Skills 前有独立“响应模式”卡片，用三段式控件设置当前 Space 的主动/被动/静音默认值；私聊和明确任务指派不受该默认值限制。顶层频道及其话题中的当前成员 Agent 消息在昵称后显示当前有效模式徽标，约 250ms hover 或点击/键盘聚焦后打开覆盖菜单；菜单主层以四段式控件直接切换“默认 / 主动 / 被动 / 静音”，标题右侧显示 Agent 当前默认值。底部“修改 Agent 默认”在同一浮层内钻取到三段式默认设置，并明确只影响当前 Space 中跟随默认的频道；选择即时保存且浮层保持打开，不重复模式长说明。话题继承父频道，不出现独立设置；DM、Human、系统消息和已移除 Agent 不显示徽标；归档频道只读显示。第一版没有在频道设置成员页复制第二套编辑器。完整交互见 `../superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
 - 实时轨迹只展示当前 base conversation 的本次前端会话缓冲；话题轨迹归一到父会话，无作用域或跨会话 ambiguous 事件不进入任何会话聚合面板。
 - 会话列表与聚合面板都沿物理边界把宽度变为 `0`，内容随边界裁切，不使用淡入淡出或贯穿全高的收起长条；两者使用 Chat 侧栏曲线，Module 保持自己的切换曲线。
 - ChatOnly 与空间足够的 Split 中，频道设置占用聚合面板位置；Split 下仍位于 Chat 与 Module 之间。空间不足时复用同一个设置组件，在 Chat 内从右侧以裁切宽度动画打开临时抽屉，不覆盖 Module，也不复制第二套表单。
@@ -192,7 +192,7 @@ A5 已完成工作区入口与规范 URL 收口，但 `MessageContextSnapshot`�
 
 复用 `Chat.tsx`、`ChatSidebar.tsx`、`LiveTrace.tsx`、`TaskBoard.tsx`、Inbox、Settings 与现有 agent 列表能力；Chat 不再内嵌 Tasks/Files Tab，文件筛选与话题索引也不继续堆入大文件。产品模块已从 Members 收敛为 Agents（内部文件名 `Members.tsx` 暂留）；Computers 与旧 `Layout` 已删除。旧 `OverviewShell`、`SpaceShell`、`IconRail`、`RightDock` 和 `ChatSlot` 已被新壳取代。
 
-P-A8 实现时新增独立 `agent-response-mode/` feature：默认卡片、频道徽标、浮层菜单和每频道一次装载/实时失效 hook 各自负责单一职责；`Members.tsx` 与 `Chat.tsx` 只插入组件和传递上下文，不承载请求、有效值解析或浮层状态。该 feature 当前尚不存在，schema/API/Runtime 语义也仍未改变。
+P-A8 已新增独立 `agent-response-mode/` feature：默认卡片、频道徽标、浮层菜单和每频道一次装载/实时失效 hook 各自负责单一职责；`Members.tsx` 与 `Chat.tsx` 只插入组件和传递上下文，不承载请求、有效值解析或浮层状态。Composer 的多 Agent 任务校验另收口在 `composerTaskMentions.ts`，没有把解析逻辑堆进视图组件。
 
 ## 8. 初始化与 Settings 边界
 

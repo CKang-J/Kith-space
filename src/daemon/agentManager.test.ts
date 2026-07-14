@@ -118,7 +118,7 @@ test("new agent stays introduction-pending until the Human DM is persisted", asy
     mgr.stop("agent-intro");
 
     await mgr.start("agent-intro", { ...config, introduced: true }, "manual");
-    assert.match(prompts[2]!, /If the inbox is empty, remain silent/);
+    assert.match(prompts[2]!, /If nothing requires action, remain silent/);
     assert.doesNotMatch(prompts[2]!, /one-time introduction/);
     assert.equal(introductionTokens[2], undefined);
     mgr.stopAll();
@@ -156,8 +156,86 @@ test("one-shot runtime start with pending delivery uses wake nudge without a sec
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     assert.match(initialPrompt ?? "", /host-native Kith-space CLI/);
-    assert.match(initialPrompt ?? "", /message send command/);
+    assert.match(initialPrompt ?? "", /responseDirective/);
     assert.equal(delivered.length, 0);
+    mgr.stopAll();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("optional delivery wakes without publishing a fake reply preview", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-agent-manager-"));
+  const delivered: string[] = [];
+  const events: any[] = [];
+  const fakeRuntime: Runtime = {
+    name: "fake",
+    start() {
+      return { deliver: (text) => delivered.push(text), stop: () => {} };
+    },
+  };
+
+  try {
+    const mgr = new AgentManager((event) => events.push(event), {
+      runtimeStateRoot: path.join(root, "runtime"),
+      binDir: root,
+      deliverDebounceMs: 0,
+      runtimeResolver: () => fakeRuntime,
+    });
+    await mgr.start("agent-optional", baseConfig("agent-optional", path.join(root, "workspace")));
+    mgr.deliver("agent-optional", "Human", "channel-1", false, {
+      targetName: "#all",
+      msgShort: "optional",
+      responseDirective: "optional",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    assert.equal(delivered.length, 1);
+    assert.match(delivered[0]!, /directive=optional/);
+    assert.equal(events.some((event) => event.type === "agent:reply"), false);
+    mgr.stopAll();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a required item promotes a mixed delivery batch and starts one reply preview", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-agent-manager-"));
+  const delivered: string[] = [];
+  const events: any[] = [];
+  const fakeRuntime: Runtime = {
+    name: "fake",
+    start() {
+      return { deliver: (text) => delivered.push(text), stop: () => {} };
+    },
+  };
+
+  try {
+    const mgr = new AgentManager((event) => events.push(event), {
+      runtimeStateRoot: path.join(root, "runtime"),
+      binDir: root,
+      deliverDebounceMs: 5,
+      runtimeResolver: () => fakeRuntime,
+    });
+    await mgr.start("agent-required", baseConfig("agent-required", path.join(root, "workspace")));
+    mgr.deliver("agent-required", "Human", "channel-1", false, {
+      targetName: "#all",
+      msgShort: "optional",
+      responseDirective: "optional",
+    });
+    mgr.deliver("agent-required", "Human", "channel-1", true, {
+      targetName: "#all",
+      msgShort: "required",
+      responseDirective: "required",
+      streamId: "required-stream",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(delivered.length, 1);
+    assert.match(delivered[0]!, /directive=required/);
+    const previews = events.filter((event) => event.type === "agent:reply" && event.op === "start");
+    assert.equal(previews.length, 1);
+    assert.equal(previews[0]?.streamId, "required-stream");
     mgr.stopAll();
   } finally {
     rmSync(root, { recursive: true, force: true });

@@ -22,6 +22,11 @@ import { canHumanReadChannel } from "../channelAccess.js";
 import { listThreadSummaries } from "../channels/threadSummaries.js";
 import { activeChannels, assertChannelWritable, isRequiredChannel } from "../../channels/channelLifecycle.js";
 import { humanChannels } from "./shared.js";
+import {
+  AgentResponseSettingsError,
+  listChannelAgentResponseModes,
+  setChannelAgentResponseModeOverride,
+} from "../../agents/agentResponseSettings.js";
 
 const notSentBy = (humanId: string) => or(isNull(schema.messages.senderId), ne(schema.messages.senderId, humanId));
 
@@ -243,11 +248,30 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
     if (!own) return (sendErr(res, 404, "channel not found"), true);
     // invariant 3: private/DM channel member list must not be accessible to non-members (IDOR-B2)
     if (!(await canHumanReadChannel(spaceId, cmem[1]!))) return (sendErr(res, 404, "channel not found"), true);
-    const rows = await db.select().from(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, cmem[1]!));
-    const aIds = rows.map((row) => row.agentId);
-    const ags = aIds.length ? await db.select().from(schema.agents).where(inArray(schema.agents.id, aIds)) : [];
+    const settings = await listChannelAgentResponseModes(spaceId, cmem[1]!);
+    const settingByAgent = new Map(settings.map((setting) => [setting.agentId, setting]));
+    const aIds = settings.map((setting) => setting.agentId);
+    const ags = aIds.length ? await db.select().from(schema.agents).where(and(
+      inArray(schema.agents.id, aIds),
+      eq(schema.agents.spaceId, spaceId),
+      isNull(schema.agents.deletedAt),
+    )) : [];
     return (sendJson(res, 200, {
-      agents: ags.map((a) => ({ id: a.id, name: a.name, displayName: a.displayName, status: a.status, activity: a.activity, avatarUrl: a.avatarUrl })),
+      agents: ags.map((a) => {
+        const setting = settingByAgent.get(a.id)!;
+        return {
+          id: a.id,
+          name: a.name,
+          displayName: a.displayName,
+          status: a.status,
+          activity: a.activity,
+          avatarUrl: a.avatarUrl,
+          defaultResponseMode: setting.defaultResponseMode,
+          responseModeOverride: setting.responseModeOverride,
+          effectiveResponseMode: setting.effectiveResponseMode,
+          responseModeSource: setting.responseModeSource,
+        };
+      }),
     }), true);
   }
   if (cmem && method === "POST") { // add an agent or the local Human to a channel
@@ -282,6 +306,46 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
     ));
     await publish(spaceId, { type: "channel:members-updated", channelId: cmem[1]! });
     return (sendJson(res, 200, { ok: true }), true);
+  }
+  const responseModeMember = /^\/api\/channels\/([^/]+)\/members\/([^/]+)$/.exec(p);
+  if (responseModeMember && method === "PATCH") {
+    const [, channelId, agentId] = responseModeMember;
+    const channel = (await db.select().from(schema.channels).where(and(
+      eq(schema.channels.id, channelId!),
+      eq(schema.channels.spaceId, spaceId),
+      isNull(schema.channels.deletedAt),
+    )))[0];
+    if (!channel || !(await canHumanReadChannel(spaceId, channelId!))) {
+      return (sendErr(res, 404, "channel not found"), true);
+    }
+    if (channel.type === "dm" || channel.type === "thread") {
+      return (sendErr(res, 400, "response mode overrides apply only to top-level channels", {
+        code: "response_mode_not_applicable",
+      }), true);
+    }
+    await assertChannelWritable(spaceId, channelId!);
+    const body = await readJson(req).catch(() => ({}));
+    try {
+      const result = await setChannelAgentResponseModeOverride(
+        spaceId,
+        channelId!,
+        agentId!,
+        body?.responseModeOverride,
+      );
+      if (result.changed) {
+        await publish(spaceId, {
+          type: "agent:response-mode-updated",
+          agentId: agentId!,
+          channelId: channelId!,
+        });
+      }
+      return (sendJson(res, 200, result.setting), true);
+    } catch (error) {
+      if (error instanceof AgentResponseSettingsError) {
+        return (sendErr(res, error.statusCode, error.message, { code: error.code }), true);
+      }
+      throw error;
+    }
   }
   // Attachment upload (multipart, fields: files + channelId) → save to disk + insert attachment row (messageId is backfilled when the message is sent)
   const cfiles = /^\/api\/channels\/([^/]+)\/files$/.exec(p);

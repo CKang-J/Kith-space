@@ -27,6 +27,9 @@ import { useToast } from "../toast.tsx";
 import { workspaceLocationForConversation, workspaceLocationForModule } from "../shell/workspaceRoute.ts";
 import { VerticalDragDivider } from "../components/VerticalDragDivider.tsx";
 import { defaultThreadPaneWidth, threadPaneConstraints } from "./chatPaneLayout.ts";
+import { ChannelAgentResponseModeBadge } from "./agent-response-mode/ChannelAgentResponseModeBadge.tsx";
+import { useChannelAgentResponseModes } from "./agent-response-mode/useChannelAgentResponseModes.ts";
+import type { ChannelAgentResponseMode } from "./agent-response-mode/responseModeModel.ts";
 
 const fmtSize = (n?: number) => (!n ? "" : n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB");
 const isImage = (m?: string) => !!m && m.startsWith("image/");
@@ -106,7 +109,7 @@ function Reactions({ m, mine, onReact, readOnly = false }: { m: Msg; mine: strin
 }
 
 // Action card: a proposal card sent by an agent. User clicks it → a pre-filled creation dialog opens → resource is created on behalf of the user → markExecuted is called.
-function ActionCardMsg({ m, readOnly = false }: { m: Msg; readOnly?: boolean }) {
+function ActionCardMsg({ m, readOnly = false, responseModeBadge }: { m: Msg; readOnly?: boolean; responseModeBadge?: ReactNode }) {
   const { t } = useTranslation();
   const { createChannel, markActionExecuted, slug, agents, attachmentUrl } = useStore();
   const toast = useToast();
@@ -129,7 +132,7 @@ function ActionCardMsg({ m, readOnly = false }: { m: Msg; readOnly?: boolean }) 
     <div className="msg action-card-msg" id={"m-" + m.id} key={m.id}>
       <Avatar seed={m.senderName} url={resolveAvatar(agents.find((a) => a.id === m.senderId)?.avatarUrl, attachmentUrl)} size={36} />
       <div className="msg-col">
-        <div className="msg-head"><span className="who">{m.senderName}</span><span className="member-badge">{t("chat.proposed")}</span><span className="ts">{fmtDateTime(m.createdAt)}</span></div>
+        <div className="msg-head"><span className="who">{m.senderName}</span>{responseModeBadge}<span className="member-badge">{t("chat.proposed")}</span><span className="ts">{fmtDateTime(m.createdAt)}</span></div>
         <div className="action-card">
           <div className="ac-title">{title}</div>
           {a.description ? <div className="ac-detail"><span className="ac-k">{t("chat.description")}</span> {a.description}</div> : null}
@@ -273,6 +276,9 @@ export function Chat({
   const isDm = !!dms.find((d) => d.id === cur?.id);
   const dmPeer = dms.find((d) => d.id === cur?.id);
   const dmAgent = dmPeer?.peerType === "agent" ? agents.find((a) => a.id === dmPeer.peerId) : undefined; // DM peer agent → used for the live status indicator in the header
+  const responseModeChannelId = !isDm && cur?.type !== "thread" ? cur?.id : thread?.parent.channelId;
+  const responseModeReadOnly = isArchived || cur?.type === "showcase";
+  const channelResponseModes = useChannelAgentResponseModes(responseModeChannelId, !!responseModeChannelId && !isDm);
   const [sp, setSp] = useSearchParams();
   const msgParam = sp.get("msg"); // when present, scroll to and highlight the specified message id
   const threadParam = sp.get("thread"); // auto-open a thread panel (from inbox, in-message thread link, or cross-page link); value is the parent message id (full or 8-char short) or channelId:shortid
@@ -286,6 +292,20 @@ export function Chat({
     routeLocation.search,
     { moduleId: "settings", settings: "human" },
   ));
+  const renderResponseModeBadge = (agentId: string, agentName: string, inheritedThreadMember?: ChannelAgentResponseMode): ReactNode => {
+    const editableMember = channelResponseModes.modes[agentId];
+    const member = editableMember ?? inheritedThreadMember;
+    if (!member) return null;
+    return (
+      <ChannelAgentResponseModeBadge
+        agentName={agentName}
+        member={member}
+        readOnly={responseModeReadOnly || !editableMember}
+        onChange={(value) => channelResponseModes.setResponseModeOverride(agentId, value)}
+        onChangeDefault={(value) => channelResponseModes.setDefaultResponseMode(agentId, value)}
+      />
+    );
+  };
 
   useEffect(() => {
     if (!sp.has("chatTab")) return;
@@ -592,6 +612,7 @@ export function Chat({
                 const ag = m.senderType === "agent" && m.senderId ? agents.find((a) => a.id === m.senderId) : undefined; // used for role description and avatar status dot
                 const agLive = agentLiveState(ag);
                 const agActivity = agentActivityText(ag);
+                const responseModeBadge = ag && m.senderId ? renderResponseModeBadge(m.senderId, m.senderName) : null;
                 const tm = threadMeta[m.id];
                 const isSaved = savedIds.has(m.id);
                 const isAgentReplyPreview = m.messageType === AGENT_REPLY_PREVIEW_TYPE;
@@ -602,7 +623,7 @@ export function Chat({
                   ? <div className="date-divider"><span className="date-divider-label">{fmtDateDivider(m.createdAt, i18n.language, t("chat.dateToday"), t("chat.dateYesterday"))}</span></div>
                   : null;
                 // action card (agent proposal card) → rendered by dedicated ActionCardMsg component
-                if (m.messageType === "action" && m.actionMetadata?.kind === "action-card") return <Fragment key={m.id}>{dateDivider}<ActionCardMsg m={m} readOnly={isArchived} /></Fragment>;
+                if (m.messageType === "action" && m.actionMetadata?.kind === "action-card") return <Fragment key={m.id}>{dateDivider}<ActionCardMsg m={m} readOnly={isArchived} responseModeBadge={responseModeBadge} /></Fragment>;
                 // system messages (task lifecycle events, etc.) → centered grey bar (no avatar, no full message block)
                 // If the system message has thread replies (e.g. showcase case anchors), render a thread-pill below the bar so it's clickable.
                 if (m.senderType === "system") return (
@@ -642,6 +663,7 @@ export function Chat({
                         : m.senderId
                           ? <span className="who clickable" onClick={openHumanSettings}>{m.senderName}</span>
                           : <span className="who">{m.senderName}</span>}
+                      {responseModeBadge}
                       <span className="ts">{fmtDateTime(m.createdAt)}</span>
                       {agActivity ? <code className={"msg-activity " + agLive}>{agActivity}</code> : null}</div>
                     {ag && ag.description ? <div className="msg-subhead">
@@ -689,6 +711,7 @@ export function Chat({
                   channelId={cur?.id ?? ""}
                   placeholder={isDm ? t("chat.dmPlaceholder", { name: cur?.name }) : t("chat.channelPlaceholder")}
                   allowAsTask
+                  validateChannelTaskMentions={!isDm}
                   dmAgent={isDm ? dmAgent : undefined}
                 />}
           </>
@@ -728,6 +751,7 @@ export function Chat({
               }}
               onClose={closeThread}
               onOpenAgent={openAgentProfile}
+              renderResponseModeBadge={renderResponseModeBadge}
             />
           </>
         : !embedded && <aside className="traj-col"><LiveTrace conversationId={cur?.id} /></aside>}
@@ -770,9 +794,10 @@ export function Chat({
 }
 
 // Thread panel: right-side overlay showing the parent message, its replies, and a reply composer.
-function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = false, style, headerLeading, headerActions, onClose, onFollowChange, onOpenAgent }: { channelId: string; parent: Msg; followed: boolean; readOnly?: boolean; solo?: boolean; style?: CSSProperties; headerLeading?: ReactNode; headerActions?: ReactNode; onClose: () => void; onFollowChange: (followed: boolean) => void; onOpenAgent: (id: string) => void }) {
+function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = false, style, headerLeading, headerActions, onClose, onFollowChange, onOpenAgent, renderResponseModeBadge }: { channelId: string; parent: Msg; followed: boolean; readOnly?: boolean; solo?: boolean; style?: CSSProperties; headerLeading?: ReactNode; headerActions?: ReactNode; onClose: () => void; onFollowChange: (followed: boolean) => void; onOpenAgent: (id: string) => void; renderResponseModeBadge: (agentId: string, agentName: string, inheritedThreadMember?: ChannelAgentResponseMode) => ReactNode }) {
   const { t } = useTranslation();
   const { api, onEvent, subscribeChannel, attachmentUrl, me, react, agents, channels, archivedChannels, slug } = useStore();
+  const threadResponseModes = useChannelAgentResponseModes(channelId, Boolean(channelId));
   const senderAvatar = (m: Msg) => resolveAvatar(m.senderType === "agent" ? agents.find((agent) => agent.id === m.senderId)?.avatarUrl : undefined, attachmentUrl);
   const nav = useNavigate();
   const routeLocation = useLocation();
@@ -845,9 +870,9 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
         : <Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />}
       {/* content column reuses .msg-col (flex:1;min-width:0) like the main chat — without it a flex child defaults to min-width:auto and a long unbreakable token blows the message past this narrow thread panel */}
       <div className="msg-col">
-        <div>{ag ? <span className="who clickable" onClick={() => onOpenAgent(m.senderId!)}>{m.senderName}</span>
+        <div className="msg-head">{ag ? <span className="who clickable" onClick={() => onOpenAgent(m.senderId!)}>{m.senderName}</span>
           : m.senderId ? <span className="who clickable" onClick={openHumanSettings}>{m.senderName}</span>
-          : <span className="who">{m.senderName}</span>}<span className="ts">{fmtDateTime(m.createdAt)}</span></div>
+          : <span className="who">{m.senderName}</span>}{ag && m.senderId ? renderResponseModeBadge(m.senderId, m.senderName, threadResponseModes.modes[m.senderId]) : null}<span className="ts">{fmtDateTime(m.createdAt)}</span></div>
         {isAgentReplyPreview && !m.content
           ? <AgentReplyPreviewBody m={m} />
           : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={[...channels, ...archivedChannels]} nav={navToken} /></div>}

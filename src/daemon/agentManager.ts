@@ -34,8 +34,9 @@ export interface AgentConfig extends AgentWorkspaceRef {
   model?: string; runtime?: string; runtimeConfig?: Record<string, unknown> | null; sessionId?: string; introduced?: boolean; introductionToken?: string;
   serverUrl: string; agentToken?: string; // per-agent token (slice10); re-sent start for a running agent may omit it (daemon ignores)
 }
-interface DeliverBuf { count: number; from: string; target: string; targetName: string; firstShort: string; latestShort: string; isTask: boolean; mentioned: boolean; targets: Set<string>; timer: ReturnType<typeof setTimeout>; streamId?: string; trajectoryScope: TrajectoryScopeState; }
-export interface DeliverMeta { targetName?: string; msgShort?: string; isTask?: boolean; streamId?: string; }
+export type DeliverResponseDirective = "required" | "optional";
+interface DeliverBuf { count: number; from: string; target: string; targetName: string; firstShort: string; latestShort: string; isTask: boolean; mentioned: boolean; responseDirective: DeliverResponseDirective; targets: Set<string>; timer: ReturnType<typeof setTimeout>; streamId?: string; trajectoryScope: TrajectoryScopeState; }
+export interface DeliverMeta { targetName?: string; msgShort?: string; isTask?: boolean; streamId?: string; responseDirective?: DeliverResponseDirective; responseReason?: string; }
 interface Running { session: RuntimeSession; config: AgentConfig; sessionId: string | null; exited: Promise<void>; markExited: () => void; trajectoryScopes: TrajectoryScopeTracker; idleTimer?: ReturnType<typeof setTimeout>; deliverBuf?: DeliverBuf; }
 interface PendingDeliver { from: string; target: string; mentioned: boolean; meta: DeliverMeta; }
 interface PendingDeliverQueue { items: PendingDeliver[]; timer: ReturnType<typeof setTimeout>; }
@@ -48,6 +49,10 @@ interface AgentManagerOptions {
   oneShotDeliverDebounceMs?: number;
   pendingDeliverTtlMs?: number;
   runtimeResolver?: (name: string) => Runtime | null;
+}
+
+function strongestResponseDirective(a: DeliverResponseDirective, b: DeliverResponseDirective): DeliverResponseDirective {
+  return a === "required" || b === "required" ? "required" : "optional";
 }
 
 export class AgentManager {
@@ -294,8 +299,8 @@ export class AgentManager {
     const runtimeCwd = LEGACY_INSTRUCTION_FILE_RUNTIMES.has(runtime.name) ? paths.runtimeStateDir : paths.workspaceRoot;
     this.agents.set(agentId, running);
     if (consumePendingWake) {
-      const latest = pendingDeliverItems[pendingDeliverItems.length - 1];
-      if (latest) this.startReplyPreview(agentId, running, latest.target, latest.meta.streamId);
+      const previewItem = [...pendingDeliverItems].reverse().find((item) => (item.meta.responseDirective ?? "required") === "required");
+      if (previewItem) this.startReplyPreview(agentId, running, previewItem.target, previewItem.meta.streamId);
     }
     running.session = runtime.start({
       cwd: runtimeCwd, runtimeStateDir: paths.runtimeStateDir, model: config.model, runtimeConfig: config.runtimeConfig, sessionId: config.sessionId, systemPrompt, env,
@@ -356,21 +361,22 @@ export class AgentManager {
     // Delivery batching while busy: multiple messages within 3 s are coalesced into one inbox notice, reducing interruptions and token usage.
     const tname = meta.targetName ?? target;
     const short = meta.msgShort ?? "";
+    const responseDirective = meta.responseDirective ?? "required";
     const deliveryScope = trajectoryScopeForDelivery(target, meta.streamId);
     const b = r.deliverBuf;
     if (b) { // accumulate: count++, update latest, keep first unchanged, union target set
       clearTimeout(b.timer); b.count++; b.from = from; b.target = target; b.targetName = tname; b.latestShort = short;
-      b.isTask = b.isTask || !!meta.isTask; b.mentioned = b.mentioned || mentioned; b.targets.add(tname); b.streamId = meta.streamId ?? b.streamId;
+      b.isTask = b.isTask || !!meta.isTask; b.mentioned = b.mentioned || mentioned; b.responseDirective = strongestResponseDirective(b.responseDirective, responseDirective); b.targets.add(tname); if (responseDirective === "required") b.streamId = meta.streamId ?? b.streamId;
       b.trajectoryScope = mergeTrajectoryScopes(b.trajectoryScope, deliveryScope);
-      this.startReplyPreview(agentId, r, target, b.streamId);
+      if (responseDirective === "required") this.startReplyPreview(agentId, r, target, b.streamId);
     }
-    const buf: DeliverBuf = b ?? { count: 1, from, target, targetName: tname, firstShort: short, latestShort: short, isTask: !!meta.isTask, mentioned, targets: new Set([tname]), timer: undefined as any, streamId: meta.streamId, trajectoryScope: deliveryScope };
-    this.startReplyPreview(agentId, r, target, buf.streamId);
+    const buf: DeliverBuf = b ?? { count: 1, from, target, targetName: tname, firstShort: short, latestShort: short, isTask: !!meta.isTask, mentioned, responseDirective, targets: new Set([tname]), timer: undefined as any, streamId: meta.streamId, trajectoryScope: deliveryScope };
+    if (!b && responseDirective === "required") this.startReplyPreview(agentId, r, target, buf.streamId);
     buf.timer = setTimeout(() => {
       r.deliverBuf = undefined;
-      const note = inboxNotice({ count: buf.count, from: buf.from, targetName: buf.targetName, firstShort: buf.firstShort, latestShort: buf.latestShort, isTask: buf.isTask, isDm: buf.targetName.startsWith("dm:"), changedTargets: buf.targets.size, mentioned: buf.mentioned });
+      const note = inboxNotice({ count: buf.count, from: buf.from, targetName: buf.targetName, firstShort: buf.firstShort, latestShort: buf.latestShort, isTask: buf.isTask, isDm: buf.targetName.startsWith("dm:"), changedTargets: buf.targets.size, mentioned: buf.mentioned, responseDirective: buf.responseDirective });
       const scopeToken = r.trajectoryScopes.schedule(buf.trajectoryScope);
-      try { r.session.deliver(note); this.resetIdle(agentId); this.log.debug("inbox notice -> agent", { agentId, count: buf.count, mentioned: buf.mentioned, trajectoryScope: buf.trajectoryScope.kind }); }
+      try { r.session.deliver(note); this.resetIdle(agentId); this.log.debug("inbox notice -> agent", { agentId, count: buf.count, mentioned: buf.mentioned, responseDirective: buf.responseDirective, trajectoryScope: buf.trajectoryScope.kind }); }
       catch (e) {
         r.trajectoryScopes.rollback(scopeToken);
         this.finishReplyPreview(agentId, "error");

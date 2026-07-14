@@ -4,6 +4,7 @@ import { allocateTaskNumber, taskNumberKey, type SpaceTransaction } from "../../
 import { dbForSpace, schema } from "../../db/index.js";
 import { assertTaskTransition } from "./taskPolicy.js";
 import { isTaskStatus, TaskOperationError, type TaskStatus } from "./taskTypes.js";
+import { initialAgentResponseWakeWatermarks } from "../../agents/agentResponseSettings.js";
 
 type Message = typeof schema.messages.$inferSelect;
 type MessageInsert = typeof schema.messages.$inferInsert;
@@ -41,6 +42,8 @@ function checkExpected(task: Message, expectedRevision?: number, expectedStatus?
 function insertThread(
   tx: SpaceTransaction,
   task: { id: string; spaceId: string; senderType: string; senderId?: string | null },
+  assigneeId?: string | null,
+  membershipWatermark = 0,
 ): string {
   const threadId = randomUUID();
   tx.insert(schema.channels).values({
@@ -60,8 +63,17 @@ function insertThread(
       target: schema.humanChannelStates.channelId,
       set: { threadFollowedAt: followedAt, updatedAt: followedAt },
     }).run();
-  } else if (task.senderType === "agent" && task.senderId) {
-    tx.insert(schema.channelAgentMembers).values({ channelId: threadId, agentId: task.senderId }).onConflictDoNothing().run();
+  }
+  const agentMembers = new Set<string>();
+  if (task.senderType === "agent" && task.senderId) agentMembers.add(task.senderId);
+  if (assigneeId) agentMembers.add(assigneeId);
+  if (agentMembers.size) {
+    tx.insert(schema.channelAgentMembers).values([...agentMembers].map((agentId) => ({
+      channelId: threadId,
+      agentId,
+      lastReadSeq: membershipWatermark,
+      ...initialAgentResponseWakeWatermarks(membershipWatermark),
+    }))).onConflictDoNothing().run();
   }
   return threadId;
 }
@@ -71,6 +83,7 @@ export function createTaskRecord(input: {
   channel: Channel;
   message: MessageInsert;
   parentTaskId?: string | null;
+  assigneeId?: string | null;
 }): Message {
   const db = dbForSpace(input.spaceId);
   let created!: Message;
@@ -90,12 +103,15 @@ export function createTaskRecord(input: {
       spaceId: input.spaceId,
       senderType: input.message.senderType,
       senderId: input.message.senderId,
-    });
+    }, input.assigneeId, Number(input.message.seq ?? 0));
     created = tx.insert(schema.messages).values({
       ...input.message,
-      taskStatus: "todo",
+      taskStatus: input.assigneeId ? "in_progress" : "todo",
       taskNumber,
       taskParentId: input.parentTaskId ?? null,
+      taskAssigneeType: input.assigneeId ? "agent" : null,
+      taskAssigneeId: input.assigneeId ?? null,
+      taskClaimedAt: input.assigneeId ? new Date() : null,
       taskRevision: 1,
       threadId,
     }).returning().get();

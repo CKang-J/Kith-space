@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildSystemPrompt, CREATION_NUDGE } from "./prompt.js";
+import { buildSystemPrompt, CREATION_NUDGE, STARTUP_NUDGE, WAKE_NUDGE, inboxNotice } from "./prompt.js";
 
 test("system prompt teaches the plan-first confirmation protocol and orchestration return mention", () => {
   const prompt = buildSystemPrompt({
@@ -56,9 +56,27 @@ test("system prompt distinguishes creation, quiet startup, and delivery wake tur
   assert.match(prompt, /one concise introduction to `dm:@you`/);
   assert.match(CREATION_NUDGE, /message send --introduction/);
   assert.match(prompt, /Start or resume turn/);
-  assert.match(prompt, /If nothing is waiting, stay silent/);
+  assert.match(prompt, /If nothing requires action, stay silent/);
   assert.match(prompt, /Delivery wake turn/);
-  assert.match(prompt, /must send a reply in each original target/);
+  assert.match(prompt, /responseDirective/);
+  assert.match(prompt, /directive=required\|optional\|observe/);
+  assert.match(prompt, /`required`.*must reply/);
+  assert.match(prompt, /`optional`.*may stay silent/);
+  assert.match(prompt, /`observe`.*context only/);
+  assert.doesNotMatch(prompt, /must send a reply in each original target/);
+  assert.match(STARTUP_NUDGE, /responseDirective/);
+  assert.match(WAKE_NUDGE, /do not upgrade the whole batch/i);
+});
+
+test("inbox notices preserve the highest response directive without forcing every target", () => {
+  const optional = inboxNotice({ count: 2, from: "Human", targetName: "#all", responseDirective: "optional" });
+  assert.match(optional, /directive=optional/);
+  assert.match(optional, /may stay silent/);
+  assert.doesNotMatch(optional, /must reply to every/);
+
+  const required = inboxNotice({ count: 1, from: "Human", targetName: "dm:@you", isDm: true, responseDirective: "required" });
+  assert.match(required, /directive=required/);
+  assert.match(required, /Per-message directives remain authoritative/);
 });
 
 test("Windows system prompt uses PowerShell-native commands instead of POSIX shell syntax", () => {

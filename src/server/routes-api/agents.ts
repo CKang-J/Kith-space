@@ -11,6 +11,10 @@ import { ALL_SCOPE_KEYS, SCOPES, effectiveScopes, isScopeLiteral } from "../scop
 import { readJson, sendErr, sendJson } from "../util.js";
 import { validateRuntimeModel } from "../../local-runtime/runtimeCatalog.js";
 import { resolveAgentMemoryDir } from "../../agents/agentWorkspacePaths.js";
+import {
+  AgentResponseSettingsError,
+  setAgentDefaultResponseMode,
+} from "../../agents/agentResponseSettings.js";
 
 export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   const { req, res, url, method, p, humanId, spaceId } = ctx;
@@ -23,7 +27,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     // creatorType lets the client distinguish system-seeded showcase agents (creatorType="system") from
     // real members — they stay in the store so #showcase history renders their avatar/name, but are filtered
     // out of member rosters and agent pickers (see web/src/store.tsx visibleAgents).
-    return (sendJson(res, 200, agents.map((a) => ({ id: a.id, name: a.name, displayName: a.displayName, description: a.description, status: a.status, activity: a.activity, model: a.model, runtime: a.runtime, avatarUrl: a.avatarUrl, creatorType: a.creatorType }))), true);
+    return (sendJson(res, 200, agents.map((a) => ({ id: a.id, name: a.name, displayName: a.displayName, description: a.description, status: a.status, activity: a.activity, model: a.model, runtime: a.runtime, avatarUrl: a.avatarUrl, creatorType: a.creatorType, defaultResponseMode: a.defaultResponseMode }))), true);
   }
   if (p === "/api/agents" && method === "POST") {
     const b = await readJson(req);
@@ -52,7 +56,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     // Join #all at the channel watermark, NOT lastReadSeq=0 — a newly created agent must not have its first
     // `message check` flooded with the channel's entire pre-existing history (it only needs messages from now on).
     if (all) await addChannelMembers(spaceId, all.id, [{ type: "agent", id: agent!.id }]);
-    await publish(spaceId, { type: "agent:created", agent: { id: agent!.id, name: agent!.name, displayName: agent!.displayName, description: agent!.description, status: agent!.status, activity: agent!.activity, model: agent!.model, runtime: agent!.runtime } });
+    await publish(spaceId, { type: "agent:created", agent: { id: agent!.id, name: agent!.name, displayName: agent!.displayName, description: agent!.description, status: agent!.status, activity: agent!.activity, model: agent!.model, runtime: agent!.runtime, defaultResponseMode: agent!.defaultResponseMode } });
     // Start immediately on create: the client only POSTs /agents. If the local Worker is offline,
     // startAgent returns ok:false without blocking creation.
     const started = await startAgent(spaceId, agent!.id, "create");
@@ -66,6 +70,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
       avatarUrl: a.avatarUrl, description: a.description, status: a.status, activity: a.activity,
       sessionId: a.sessionId, model: a.model, runtime: a.runtime, runtimeConfig: a.runtimeConfig,
       executionMode: a.executionMode, envVars: a.envVars, scopes: a.scopes,
+      defaultResponseMode: a.defaultResponseMode,
       creatorType: a.creatorType, creatorId: a.creatorId, createdAt: a.createdAt,
     }) : sendErr(res, 404, "agent not found"), true);
   }
@@ -75,13 +80,34 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     if (descTooLong(b.description)) return (sendErr(res, 400, DESC_TOO_LONG), true);
     for (const k of ["displayName", "description", "model", "runtime", "avatarUrl"]) if (b[k] !== undefined) patch[k] = b[k];
     if (b.envVars !== undefined) patch.envVars = b.envVars;
-    await db.update(schema.agents).set(patch).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.spaceId, spaceId)));
+    let defaultResponseModeChanged = false;
+    if (Object.prototype.hasOwnProperty.call(b, "defaultResponseMode")) {
+      try {
+        const result = await setAgentDefaultResponseMode(spaceId, am[1]!, b.defaultResponseMode);
+        defaultResponseModeChanged = result.changed;
+      } catch (error) {
+        if (error instanceof AgentResponseSettingsError) {
+          return (sendErr(res, error.statusCode, error.message, { code: error.code }), true);
+        }
+        throw error;
+      }
+    }
+    if (Object.keys(patch).length) {
+      await db.update(schema.agents).set(patch).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.spaceId, spaceId)));
+    }
     // Title/role changed → push the current profile to the daemon so it syncs the workspace MEMORY.md.
     if (patch.displayName !== undefined || patch.description !== undefined) {
       const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.spaceId, spaceId))))[0];
       if (a) await syncAgentProfile(spaceId, am[1]!, a.displayName, a.description);
     }
-    return (sendJson(res, 200, { ok: true }), true);
+    if (defaultResponseModeChanged) {
+      await publish(spaceId, { type: "agent:response-mode-updated", agentId: am[1]! });
+    }
+    const updated = (await db.select({ defaultResponseMode: schema.agents.defaultResponseMode }).from(schema.agents).where(and(
+      eq(schema.agents.id, am[1]!),
+      eq(schema.agents.spaceId, spaceId),
+    )))[0];
+    return (sendJson(res, 200, { ok: true, defaultResponseMode: updated?.defaultResponseMode }), true);
   }
   if (am && method === "DELETE") {
     await stopAgent(spaceId, am[1]!).catch(() => {}); // stop the local process before deleting

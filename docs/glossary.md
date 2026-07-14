@@ -57,13 +57,13 @@
 : Agent 与频道的长期成员关系，物理表为 `channel_agent_members`。它决定 Agent 是否属于并可读取该频道，不承载 Human 权限；唯一 Human 对本机 Space 拥有隐式完整访问。P-A8 之后，是否因某条可见频道事件自动唤醒还要由有效响应模式决定，不能把 membership 与响应模式混为一谈。
 
 **Agent 响应模式**
-: 控制 Agent 是否因频道事件自动启动 runtime、以及本轮是否必须回应的三档策略：主动 `active`、被动 `mention_only`、静音 `silent`。主动可因 Human 普通频道消息唤醒并自行判断是否回复；被动只因明确 `@` 或已参与话题中的 Human 跟进唤醒；静音不因频道事件自动唤醒。它不是读取或发送权限，Human-Agent 私聊和明确任务指派不受其限制。该能力已定稿但尚未实现。
+: 控制 Agent 是否因频道事件自动启动 runtime、以及本轮是否必须回应的三档策略：主动 `active`、被动 `mention_only`、静音 `silent`。主动可因 Human 普通频道消息唤醒并自行判断是否回复；被动只因明确 `@` 或已参与话题中的 Human 跟进唤醒；静音不因频道事件自动唤醒。它不是读取或发送权限，Human-Agent 私聊和明确任务指派不受其限制。持久模式与每条投递的 `required | optional | observe` 响应指令是两个维度。
 
 **Agent 默认响应模式**
-: 当前 Space 中某个 Agent 的默认响应模式，目标持久化字段为 `agents.default_response_mode`，已有和新建 Agent 默认 `active`。它不是跨 Space 的全局默认。
+: 当前 Space 中某个 Agent 的默认响应模式，持久化字段为 `agents.default_response_mode`，已有和新建 Agent 默认 `active`。它不是跨 Space 的全局默认。
 
 **频道响应模式覆盖**
-: 某 Agent 在某个顶层频道 membership 上的可空覆盖，目标字段为 `channel_agent_members.response_mode_override`；有效模式等于“频道覆盖 ?? Agent 默认”。“跟随 Agent 默认”表示覆盖为 `NULL`，不是第四种模式。话题继承父频道，不拥有自己的覆盖。
+: 某 Agent 在某个顶层频道 membership 上的可空覆盖，字段为 `channel_agent_members.response_mode_override`；有效模式等于“频道覆盖 ?? Agent 默认”。“跟随 Agent 默认”表示覆盖为 `NULL`，不是第四种模式。话题继承父频道，不拥有自己的覆盖。
 
 **Human channel state**
 : 唯一 Human 在频道中的 read cursor、Human-Agent DM 对端、thread follow/done 状态和频道通知级别，物理表为 `human_channel_states`。`notification_level` 固定为 `all | mentions | none`，默认 `all`；它不改变 agent 唤醒、消息持久化、未读或 Inbox 语义。该表是会话状态而非 membership；收藏和 Space 偏好分别存于 `human_saved_messages` 与 `human_space_preferences`。
@@ -234,7 +234,7 @@
 : Desktop 信任凭据和 Local Runtime Worker 控制凭据的统称。两者彼此独立，也不与浏览器 Access Token 或 agent session token 复用。Desktop 每次启动/重启受管进程组都会重新生成；只有手动分进程开发才临时使用 `KITH_SPACE_DESKTOP_TOKEN` 和 `KITH_SPACE_WORKER_TOKEN` 注入。
 
 **每工作区独立 SQLite 文件**
-: 每个 Space 把自己的 `spaces` 元数据、消息、任务、频道、Agent、Agent membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 baseline 有 19 张产品表；连同 Drizzle 的 `__drizzle_migrations` 是 20 张物理表，`PRAGMA user_version=4`。P-A8 实现后目标为 v5，只在 `agents` 与 `channel_agent_members` 增加响应模式和非追溯 wake watermark 字段，产品表数不变；当前代码仍是 v4。所有领域外键使用 `space_id`；Human 资料和 Desktop 设置不随 Space 复制。
+: 每个 Space 把自己的 `spaces` 元数据、消息、任务、频道、Agent、Agent membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 baseline 有 19 张产品表；连同 Drizzle 的 `__drizzle_migrations` 是 20 张物理表，`PRAGMA user_version=5`。v5 只在 `agents` 与 `channel_agent_members` 增加响应模式和非追溯 wake watermark 字段，产品表数不变。所有领域外键使用 `space_id`；Human 资料和 Desktop 设置不随 Space 复制。
 
 **`.kith/`**
 : Space root 下承载其可移植状态的目录：`workspace.db`（Space 元数据、agent 阵容、频道、消息和任务）、`memory/`（Space Memory）、`agents/<agentId>/`（Agent Memory）和 `uploads/`（附件对象）。runtime prompt、日志和宿主临时状态不放在这里。

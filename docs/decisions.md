@@ -127,7 +127,7 @@
 
 **推理与权衡**：默认 autopilot 给的是"魔法感"——agent 自动把活干了。但自动连锁会自我扩散（agent→agent 无限派生任务链、失控烧 token）。所以默认 A 的代价是三护栏从"可选优化"变成"强制项"：深度上限防无限派生，token 预算防失控烧钱，一键急停给用户随时夺回控制权的确定手段。plan-first 先用软闸（角色提示词要求先出计划）实现，硬闸延后——因为软闸零架构成本，够验证。三护栏配合右栏实时轨迹模块（决策 14）：轨迹提供可见性，护栏提供可控性。
 
-**已核实源码事实**：agent→agent 分派天然成立，靠纯唤醒判据 `isWakeable`（`agentWakePolicy.ts:10`）——被 @ 的成员无条件唤醒且不看发送者身份（`agentWakePolicy.ts:12`），所以 agent A @agent B 就能唤醒 B。但两条约束塑造协作闭环形状：被 @ 的 agent 须已是频道成员（agent 发文不能自动拉人，`canAutoJoinMentionedMembers` 仅对 `senderType==="user"` 为真，`agentWakePolicy.ts:3`）；agent 的普通发言不唤醒其他 agent（`agentWakePolicy.ts:13`，防自激循环），所以汇报须 @ 回 leader。DM 是例外，无条件唤醒（`agentWakePolicy.ts:11`）。三护栏都落在 server 唤醒环这一收口处（`server/core.ts:412`–`:436` 与 `assignTask` `server/core.ts:686`），不改 runtime/daemon 协议。schema 已有 `executionMode`（`db/schema.ts:74`，默认 `"auto"`）可作开关持久化字段。急停复用 `stopAgent`（`server/core.ts:896`）。
+**后续修正（2026-07-14）**：决策 26 落地后，旧纯唤醒判据 `isWakeable` 已删除；`src/agents/agentResponsePolicy.ts:42` 统一判断实时、reconnect 与 message check 的 `required | optional | observe`。agent 普通发言仍不环境唤醒其他 agent，明确 `@` 只唤醒已在频道内且有效模式为主动/被动的目标，静音目标不因频道 mention 启动；`src/server/agentWakePolicy.ts:3` 只保留 Human mention 自动加入频道的 membership 规则。DM 与明确任务指派仍为 required，后者由 `src/server/core.ts:1010` 的统一 dispatch 路径执行并继续服从既有深度、预算和急停护栏。该修正改变唤醒细节，不改变本决策的 autopilot/plan-first 与三护栏结论。
 
 ---
 
@@ -375,7 +375,7 @@
 
 **任务边界**：Human 选择“作为任务”并恰好 `@` 一个 Agent 时，必须把该 Agent 写成真实 assignee，并按明确指派绕过三种模式；没有 `@` 时创建未指派频道任务，仅主动成员可被环境唤醒；多个 Agent mention 因当前任务只有单 assignee 而在提交前拒绝，不能静默挑选目标。
 
-**实施边界与状态**：策略应收口为纯决策模块和独立设置模块，并由实时 wake、reconnect backlog、Agent message check 与 prompt 共同消费；前端在 Agent Profile 放默认卡片，在频道 Agent 昵称后放当前有效模式徽标和覆盖菜单，不在成员设置页复制编辑器。该决定目前只有文档，schema v5、API、Runtime 指令和 UI 均尚未实现；完整规格见 `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
+**实施边界与状态**：该决策已于 2026-07-14 落地。纯策略、独立设置与消息适配模块分别位于 `src/agents/agentResponsePolicy.ts`、`agentResponseSettings.ts` 和 `agentResponseDelivery.ts`；实时 wake、reconnect backlog、Agent message check 与 prompt 共同消费响应指令。schema v5、默认值/频道覆盖 API、窄实时失效、真实任务 assignee、Agent Profile 默认卡片和频道昵称后徽标/覆盖菜单均已实现，成员设置页没有复制第二套编辑器。完整规格与验证状态见 `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
 
 ---
 

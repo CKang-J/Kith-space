@@ -16,6 +16,8 @@ import { getTaskDetails, reportTask, submitTaskDelivery } from "./tasks/taskServ
 import { sendTaskOperationError } from "./tasks/taskHttp.js";
 import { getHumanIdentity, humanIdentityForHandle, humanIdentityForId } from "../human/humanIdentity.js";
 import { humanChannelState } from "../human/humanChannelState.js";
+import { resolveAgentResponseMode } from "../agents/agentResponseSettings.js";
+import { decideAgentMessageResponse, type AgentResponseDeliveryDecision } from "../agents/agentResponseDelivery.js";
 
 // Freshness-hold draft buffer (prevents agent↔agent duplicate replies): when the agent sends
 // and new messages have arrived since last read → save as draft + surface bounded context, do not post immediately.
@@ -83,7 +85,12 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 // Local YYYY-MM-DD HH:MM:SS format for message header time= field (not ISO)
 const localTime = (d: Date | string | null | undefined) => { const t = d instanceof Date ? d : new Date(d ?? Date.now()); return `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(t.getDate())} ${pad2(t.getHours())}:${pad2(t.getMinutes())}:${pad2(t.getSeconds())}`; };
 // Message rendering: header + task suffix [task #N status=] + attachment suffix
-export const fmt = (m: typeof schema.messages.$inferSelect, target: string, atts: { filename: string; id: string }[] = []) => {
+export const fmt = (
+  m: typeof schema.messages.$inferSelect,
+  target: string,
+  atts: { filename: string; id: string }[] = [],
+  responseDirective?: AgentResponseDeliveryDecision["directive"],
+) => {
   const taskSuffix = m.taskStatus ? ` [task #${m.taskNumber} status=${m.taskStatus} mode=${m.taskExecutionMode}]` : "";
   const attSuffix = atts.length ? ` [${atts.length} attachment${atts.length > 1 ? "s" : ""}: ${atts.map((a) => `${a.filename} (id:${a.id})`).join(", ")} — use kith-space attachment view to download]` : "";
   const type = m.senderType === "human" ? "human" : m.senderType; // message header uses "human" for human senders, not "human"
@@ -91,7 +98,8 @@ export const fmt = (m: typeof schema.messages.$inferSelect, target: string, atts
   // — NOT the thread channel id — because resolveTarget resolves the suffix as a PARENT MESSAGE id prefix
   // (matches addressableTarget's convention). Using the thread channel id here made the shown target
   // unresolvable (404), so agents reusing it couldn't reply into the thread. See threadTargetRoundtrip test.
-  return `[target=${target}${m.threadId ? ":" + m.id.slice(0, 8) : ""} msg=${m.id.slice(0, 8)} time=${localTime(m.createdAt)} type=${type}] @${m.senderName}: ${m.content}${taskSuffix}${attSuffix}`;
+  const directive = responseDirective ? ` directive=${responseDirective}` : "";
+  return `[target=${target}${m.threadId ? ":" + m.id.slice(0, 8) : ""} msg=${m.id.slice(0, 8)} time=${localTime(m.createdAt)} type=${type}${directive}] @${m.senderName}: ${m.content}${taskSuffix}${attSuffix}`;
 };
 
 export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, url: URL, method: string): Promise<boolean> {
@@ -118,11 +126,41 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
       const fresh = msgs.filter((m) => m.senderId !== agent.id);
       if (fresh.length) {
         const target = await addressableTarget(spaceId, ch, agent.id);
+        const responseMode = await resolveAgentResponseMode(spaceId, ch.id, agent.id);
+        const mentionRows = await db.select({ messageId: schema.messageMentions.messageId }).from(schema.messageMentions).where(and(
+          inArray(schema.messageMentions.messageId, fresh.map((message) => message.id)),
+          eq(schema.messageMentions.mentionType, "agent"),
+          eq(schema.messageMentions.mentionId, agent.id),
+        ));
+        const mentionedMessages = new Set(mentionRows.map((row) => row.messageId));
+        const parentTask = ch.type === "thread" && ch.parentMessageId
+          ? (await db.select({ taskAssigneeId: schema.messages.taskAssigneeId }).from(schema.messages).where(eq(schema.messages.id, ch.parentMessageId)))[0]
+          : null;
         // Batch-load attachments → append attachment suffix to message header
         const atts = await db.select().from(schema.attachments).where(inArray(schema.attachments.messageId, fresh.map((m) => m.id)));
         const byMsg = new Map<string, { filename: string; id: string }[]>();
         for (const a of atts) { const k = a.messageId!; const arr = byMsg.get(k) ?? []; arr.push({ filename: a.filename, id: a.id }); byMsg.set(k, arr); }
-        out.push(...fresh.map((m) => ({ ...serialize(m), text: fmt(m, target, byMsg.get(m.id) ?? []) })));
+        out.push(...fresh.map((m) => {
+          const decision = decideAgentMessageResponse({
+            agentId: agent.id,
+            channelType: ch.type as "channel" | "private" | "dm" | "thread",
+            senderType: m.senderType as "human" | "agent" | "system",
+            effectiveMode: responseMode?.effectiveResponseMode ?? "active",
+            messageSeq: m.seq,
+            mentioned: mentionedMessages.has(m.id),
+            taskAssigneeId: m.taskStatus ? m.taskAssigneeId : null,
+            parentTaskAssigneeId: parentTask?.taskAssigneeId ?? null,
+            isTask: Boolean(m.taskStatus),
+            ambientWakeAfterSeq: responseMode?.ambientWakeAfterSeq ?? cm.ambientWakeAfterSeq,
+            mentionWakeAfterSeq: responseMode?.mentionWakeAfterSeq ?? cm.mentionWakeAfterSeq,
+          });
+          return {
+            ...serialize(m),
+            responseDirective: decision.directive,
+            responseReason: decision.reason,
+            text: fmt(m, target, byMsg.get(m.id) ?? [], decision.directive),
+          };
+        }));
       }
       if (msgs.length) await db.update(schema.channelAgentMembers).set({ lastReadSeq: msgs[msgs.length - 1]!.seq })
         .where(and(eq(schema.channelAgentMembers.channelId, cm.channelId), eq(schema.channelAgentMembers.agentId, agent.id)));

@@ -5,6 +5,7 @@ import { useStore, type Agent } from "../store.tsx";
 import { Avatar, resolveAvatar } from "../Avatar.tsx";
 import { IconFile } from "../icons.tsx";
 import { autosizeComposerInput, observeComposerInputWidth } from "./composerAutosize.ts";
+import { uniqueMentionedAgentIds } from "./composerTaskMentions.ts";
 
 const isImage = (m?: string) => !!m && m.startsWith("image/");
 
@@ -13,10 +14,11 @@ const isImage = (m?: string) => !!m && m.startsWith("image/");
 // The only per-context difference is "As Task" (channels/DMs only), gated by `allowAsTask` —
 // threads leave it falsy so a thread reply is never a task. Sending POSTs to `channelId`; the
 // message echoes back over the socket, so the *parent* owns the message list + scroll, not this.
-export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent, className }: {
+export function Composer({ channelId, placeholder, allowAsTask = false, validateChannelTaskMentions = true, dmAgent, className }: {
   channelId: string;
   placeholder: string;       // base placeholder; when As Task is checked the component swaps in the task placeholder
   allowAsTask?: boolean;     // channels/DMs pass true → show the As Task toggle + ⌘/Ctrl+Shift+Enter shortcut
+  validateChannelTaskMentions?: boolean; // false for DMs: Agent assignment-by-mention is a channel-only contract
   dmAgent?: Agent;           // DM peer agent (channels/threads omit) → drives the single-peer sleeping nudge
   className?: string;        // extra class on the .composer root (threads pass "thread-composer")
 }) {
@@ -29,6 +31,9 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
   const [atSel, setAtSel] = useState(0); // highlighted candidate index for ↑/↓ keyboard nav
   const [pendingAtts, setPendingAtts] = useState<any[]>([]); // uploaded attachments queued to send with the next message
   const [uploading, setUploading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [taskMentionError, setTaskMentionError] = useState("");
+  const sendingRef = useRef(false);
   const atPosRef = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
@@ -58,11 +63,29 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
   const effectivePlaceholder = reachPlaceholder ?? (allowAsTask && asTask ? t("chat.taskPlaceholder") : placeholder);
 
   const send = async (forceTask?: boolean) => {
+    if (sendingRef.current) return;
     const v = text.trim(); if ((!v && !pendingAtts.length) || !channelId) return;
     const asT = allowAsTask && (forceTask ?? asTask); // ⌘/Ctrl+Shift+Enter forces task; threads (allowAsTask=false) never send as task
-    setText(""); setAtQuery(null); setAsTask(false);
-    const ids = pendingAtts.filter((a) => a.status === "done" || !a.status).map((a) => a.id); setPendingAtts([]); // only fully-uploaded attachments
-    await api("POST", "/api/messages", { channelId, content: v, asTask: asT, attachmentIds: ids });
+    if (asT && validateChannelTaskMentions && uniqueMentionedAgentIds(v, agents).length > 1) {
+      setTaskMentionError(t("chat.taskMultipleAgentMentions"));
+      inputRef.current?.focus();
+      return;
+    }
+    setTaskMentionError("");
+    const ids = pendingAtts.filter((a) => a.status === "done" || !a.status).map((a) => a.id); // only fully-uploaded attachments
+    sendingRef.current = true;
+    setSending(true);
+    try {
+      const result = await api("POST", "/api/messages", { channelId, content: v, asTask: asT, attachmentIds: ids });
+      if (result?.error) throw new Error(String(result.error));
+      setText(""); setAtQuery(null); setAsTask(false); setPendingAtts([]);
+    } catch (error) {
+      setTaskMentionError(error instanceof Error ? error.message : String(error));
+      inputRef.current?.focus();
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
   };
   const onPickFiles = (e: ChangeEvent<HTMLInputElement>) => { if (e.target.files?.length) addFiles(Array.from(e.target.files)); e.target.value = ""; };
   // Each file → placeholder (images get a localUrl preview + "uploading") → uploadOne streams progress → replaced with the real attachment on success, "error" on failure. Paste: images only; drag-drop: any type.
@@ -87,7 +110,7 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
   // @ mention autocomplete: candidates are all current Space agents (not just current channel members) —
   // in a public channel, @-ing a non-member pulls them in (server-side auto-join), so suggesting them is intended.
   const onInput = (e: ChangeEvent<HTMLTextAreaElement>) => {
-    const v = e.target.value; setText(v);
+    const v = e.target.value; setText(v); setTaskMentionError("");
     const pos = e.target.selectionStart ?? v.length;
     const m = /@([\p{L}\p{N}_-]*)$/u.exec(v.slice(0, pos)); // same Unicode class as the messageRender side (\p{L}): supports CJK and diacritic names
     if (m) { setAtQuery(m[1]); atPosRef.current = pos - m[0].length; } else setAtQuery(null);
@@ -131,8 +154,9 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
       })}</div>}
       <input type="file" ref={imgRef} accept="image/*" multiple style={{ display: "none" }} onChange={onPickFiles} />
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={onPickFiles} />
+      {taskMentionError ? <div className="composer-validation-error" role="alert">{taskMentionError}</div> : null}
       <div className="composer-box" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
-        <textarea className="composer-input" ref={inputRef} rows={1} value={text} onChange={onInput} onPaste={onPaste}
+        <textarea className="composer-input" ref={inputRef} rows={1} value={text} onChange={onInput} onPaste={onPaste} readOnly={sending}
           placeholder={effectivePlaceholder}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return; // IME composition (CJK input): Enter selects a candidate, not send
@@ -150,12 +174,12 @@ export function Composer({ channelId, placeholder, allowAsTask = false, dmAgent,
           }} />
         <div className="composer-bar">
           <div className="cb-left">
-            <button className="cb-icon" title={t("chat.uploadImage")} disabled={uploading} onClick={() => imgRef.current?.click()}><ImagePlus size={16} /></button>
-            <button className="cb-icon" title={t("chat.uploadFile")} disabled={uploading} onClick={() => fileRef.current?.click()}><Paperclip size={16} /></button>
+            <button className="cb-icon" title={t("chat.uploadImage")} disabled={uploading || sending} onClick={() => imgRef.current?.click()}><ImagePlus size={16} /></button>
+            <button className="cb-icon" title={t("chat.uploadFile")} disabled={uploading || sending} onClick={() => fileRef.current?.click()}><Paperclip size={16} /></button>
           </div>
           <div className="cb-right">
-            {allowAsTask && <label className={"astask" + (asTask ? " on" : "")} title={t("chat.sendAsTaskTitle")}><input type="checkbox" checked={asTask} onChange={(e) => setAsTask(e.target.checked)} />{t("chat.asTask")}</label>}
-            <button className="send-btn" title={t("chat.sendTitle")} disabled={!text.trim() && !pendingAtts.length} onClick={() => send()}><Send size={15} /></button>
+            {allowAsTask && <label className={"astask" + (asTask ? " on" : "")} title={t("chat.sendAsTaskTitle")}><input type="checkbox" checked={asTask} disabled={sending} onChange={(e) => { setAsTask(e.target.checked); setTaskMentionError(""); }} />{t("chat.asTask")}</label>}
+            <button className="send-btn" title={t("chat.sendTitle")} disabled={sending || (!text.trim() && !pendingAtts.length)} onClick={() => send()}><Send size={15} /></button>
           </div>
         </div>
       </div>

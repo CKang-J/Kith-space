@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { getTableColumns, getTableName, type Table } from "drizzle-orm";
 import * as schema from "./schema.js";
 
-export const SPACE_DATABASE_SCHEMA_VERSION = 4;
+export const SPACE_DATABASE_SCHEMA_VERSION = 5;
 export const MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION = 2;
 
 export type SpaceDatabaseCompatibilityReason = "integrity" | "legacy" | "schema";
@@ -45,10 +45,18 @@ function tableColumns(sqlite: Database.Database, table: string): Set<string> {
 }
 
 function requiredColumns(table: string, version: number): string[] {
-  const current = CURRENT_REQUIRED_COLUMNS.get(table) ?? [];
-  if (version < 3 && table === "agents") return current.filter((column) => column !== "introduced_at");
-  if (version < 4 && table === "human_channel_states") return current.filter((column) => column !== "notification_level");
-  return current;
+  let required = CURRENT_REQUIRED_COLUMNS.get(table) ?? [];
+  if (version < 3 && table === "agents") required = required.filter((column) => column !== "introduced_at");
+  if (version < 4 && table === "human_channel_states") required = required.filter((column) => column !== "notification_level");
+  if (version < 5 && table === "agents") required = required.filter((column) => column !== "default_response_mode");
+  if (version < 5 && table === "channel_agent_members") {
+    required = required.filter((column) => ![
+      "response_mode_override",
+      "ambient_wake_after_seq",
+      "mention_wake_after_seq",
+    ].includes(column));
+  }
+  return required;
 }
 
 /**

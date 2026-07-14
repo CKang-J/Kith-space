@@ -19,7 +19,7 @@ test("agent activity detail is forwarded to the UI activity signal", () => {
   );
 });
 
-test("agent wake delivery handles local worker send failure after preview start", () => {
+test("agent wake delivery handles local worker send failure without leaving a required preview stuck", () => {
   assert.match(
     coreSrc,
     /const startSent = sendAgentStart\(target, mem\.id, "wake"\);/,
@@ -27,7 +27,7 @@ test("agent wake delivery handles local worker send failure after preview start"
   );
   assert.match(
     coreSrc,
-    /const deliverSent = startSent && sendAgentDeliver\(target, \{ agentId: mem\.id,/,
+    /const deliverSent = startSent && sendAgentDeliver\(target, \{\s*agentId: mem\.id,/,
     "message wake should only deliver after a successful start send",
   );
   assert.match(

@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import type { AgentResponseMode } from "../agents/agentResponsePolicy.js";
 
 const id = (name: string) => text(name).$defaultFn(() => randomUUID());
 const timestamp = (name: string) => integer(name, { mode: "timestamp_ms" });
@@ -27,6 +28,7 @@ export const agents = sqliteTable("agents", {
   status: text("status").default("inactive").notNull(),
   activity: text("activity").default("offline").notNull(),
   introducedAt: timestamp("introduced_at"),
+  defaultResponseMode: text("default_response_mode").$type<AgentResponseMode>().default("active").notNull(),
   sessionId: text("session_id"),
   model: text("model"),
   runtime: text("runtime").default("claude").notNull(),
@@ -70,6 +72,9 @@ export const channelAgentMembers = sqliteTable("channel_agent_members", {
   channelId: text("channel_id").notNull().references(() => channels.id, { onDelete: "cascade" }),
   agentId: text("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
   lastReadSeq: integer("last_read_seq").default(0).notNull(),
+  responseModeOverride: text("response_mode_override").$type<AgentResponseMode>(),
+  ambientWakeAfterSeq: integer("ambient_wake_after_seq").default(0).notNull(),
+  mentionWakeAfterSeq: integer("mention_wake_after_seq").default(0).notNull(),
   joinedAt: timestamp("joined_at").default(now).notNull(),
 }, (t) => ({ pk: primaryKey({ columns: [t.channelId, t.agentId] }) }));
 
