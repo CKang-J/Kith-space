@@ -34,6 +34,8 @@ test("Space cards expose accessible project actions and focused dialogs", () => 
   const renameDialog = fs.readFileSync(renameDialogUrl, "utf8");
 
   assert.match(source, /<SpaceCardMenu/);
+  assert.match(source, /onContextMenu=/);
+  assert.match(source, /contextMenuRequest/);
   assert.match(source, /copyText\(space\.rootPath\)/);
   assert.match(source, /removeSpace\(space\.id\)/);
   assert.match(menu, /aria-haspopup="menu"/);
