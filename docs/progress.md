@@ -10,6 +10,7 @@
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
 - 当前阶段：**A1-A6 原定代码切片与 P-A7 H1-H4 已完成，等待用户验收**；用户指定的 P4 Chat 聚合面板切片也已实现并等待验收。不要自动进入 H5 或 Runtime 契约 v2；由用户验收后再决定顺序。
 - P4 的其余视觉微调仍暂停；本轮只恢复并实现 `2026-07-14-chat-aggregate-panel-design.md` 锁定的会话聚合面板范围，不据此扩张到其他页面重做。
+- 频道设置钻取页面、归档分组、删除语义和 `# all` 必需频道保护已由用户确认并记录在 `2026-07-14-channel-settings-and-archive-design.md`，当前只完成方案、尚未实现；实现验收必须包含自动恢复当前误归档的 `# all`。
 - 底座为 open-tag 衍生开发副本；`reference/` 只读。OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
 
 ## 二、2026-07-11 路线转向
@@ -137,6 +138,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`：本次转向完整规格。
 - `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`：Home 总控 Space、路径/cwd/记忆和跨 Space 委派补充规格。
 - `docs/superpowers/specs/2026-07-14-chat-aggregate-panel-design.md`：会话聚合面板、话题/文件索引、会话任务入口与轨迹作用域规格。
+- `docs/superpowers/specs/2026-07-14-channel-settings-and-archive-design.md`：频道设置钻取场景、归档分组、删除语义、通知偏好与 `# all` 必需频道保护规格。
 - `docs/vision.md`：长期北极星与永久边界。
 - `docs/decisions.md`：锁定决策、推理和被推翻路线。
 - `docs/roadmap.md`：阶段与后续能力顺序。

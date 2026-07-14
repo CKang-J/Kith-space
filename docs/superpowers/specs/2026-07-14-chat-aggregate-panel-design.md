@@ -1,12 +1,12 @@
 # Kith-space 会话聚合面板与会话级轨迹设计
 
 - 日期：2026-07-14
-- 状态：用户已确认，待实现
+- 状态：已实现，待用户验收
 - 范围：Chat 工作面、聚合面板、话题入口、会话任务入口、会话附件筛选、实时轨迹作用域
-- 当前实现基线：`f1314a8`
+- 当前实现基线：`cdcfe4b`
 
-> 本文描述下一轮 UI 与事件作用域改造的目标状态。实现完成前，当前生产事实仍以
-> `docs/kith-space/ui-direction.md` 和 `docs/kith-space/architecture-proposal.md` 为准；实现 PR 必须同步更新这两份权威文档。
+> 本文描述已经落地的 UI 与事件作用域目标；当前生产事实以
+> `docs/kith-space/ui-direction.md`、`docs/kith-space/architecture-proposal.md` 和实现源码为准。
 
 ## 1. 决策摘要
 
