@@ -8,10 +8,11 @@ const zh = fs.readFileSync(new URL("../web/src/locales/zh.json", import.meta.url
 const en = fs.readFileSync(new URL("../web/src/locales/en.json", import.meta.url), "utf8");
 
 test("an Agent DM header links to that Agent's module profile", () => {
-  assert.match(chat, /className="chat-agent-profile-btn"/);
+  assert.match(chat, /className="chat-agent-profile-btn chat-head-icon-btn"/);
   assert.match(chat, /onClick=\{\(\) => openAgentProfile\(dmAgent\.id\)\}/);
   assert.match(chat, /t\("chat\.openAgentProfile"/);
-  assert.match(css, /\.chat-agent-profile-btn\{[^}]*margin-left:auto[^}]*align-items:center[^}]*justify-content:center/);
+  assert.match(css, /\.chat-head-actions\{[^}]*margin-left:auto/);
+  assert.match(css, /\.chat-head-icon-btn\{[^}]*align-items:center[^}]*justify-content:center/);
   assert.match(zh, /"openAgentProfile"\s*:\s*"打开 Agent 页面"/);
   assert.match(en, /"openAgentProfile"\s*:\s*"Open Agent profile"/);
 });

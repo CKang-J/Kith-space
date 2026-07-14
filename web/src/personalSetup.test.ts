@@ -73,6 +73,7 @@ test("only a complete Desktop preload bridge enables setup probing", () => {
   };
   const bridge: KithDesktopBridge = {
     pickSpaceDirectory: async () => null,
+    revealSpaceDirectory: async () => "",
     getSettings: async () => settings,
     updateLifecycle: async () => settings,
     updateBrowserAccess: async () => settings,

@@ -1,131 +1,201 @@
-import { Activity, MessagesSquare, X } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { X } from "lucide-react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { useLocation } from "react-router-dom";
 import { Chat } from "../views/Chat.tsx";
 import { ChatSidebar } from "../views/ChatSidebar.tsx";
-import { LiveTrace } from "../views/LiveTrace.tsx";
 import { Showcase } from "../views/Showcase.tsx";
 import { Saved } from "../views/misc.tsx";
-
-type ChatDrawer = "conversations" | "trace" | null;
 
 interface ChatWorkspaceProps {
   channelId: string | null;
   compact: boolean;
   threadOnly: boolean;
   layoutSearch: string;
+  aggregateOpen: boolean;
+  aggregateAvailable: boolean;
+  aggregateToggleRef: RefObject<HTMLButtonElement>;
+  onToggleAggregate(): void;
+  onOpenTasks(conversationId: string): void;
+  onOpenChannelSettings(channelId: string, trigger?: HTMLButtonElement): void;
+  onNavigateConversation(target: string): void;
+  settingsDrawer?: ReactNode;
+  settingsDrawerOpen?: boolean;
   dock?: ReactNode;
   style?: CSSProperties;
 }
 
-function ChatSurface({ pathname, channelId, threadOnly }: { pathname: string; channelId: string | null; threadOnly: boolean }) {
-  if (/\/saved\/?$/.test(pathname)) return <Saved embedded />;
-  if (/\/showcase\/?$/.test(pathname)) return <Showcase embedded />;
-  return <Chat embedded channelIdOverride={channelId ?? undefined} threadOnly={threadOnly} />;
+interface ChatSurfaceProps {
+  pathname: string;
+  channelId: string | null;
+  threadOnly: boolean;
+  conversationListOpen: boolean;
+  conversationToggleRef: RefObject<HTMLButtonElement>;
+  aggregateOpen: boolean;
+  aggregateAvailable: boolean;
+  aggregateToggleRef: RefObject<HTMLButtonElement>;
+  onToggleConversationList(): void;
+  onToggleAggregate(): void;
+  onOpenTasks(conversationId: string): void;
+  onOpenChannelSettings(channelId: string, trigger?: HTMLButtonElement): void;
+  onNavigateConversation(target: string): void;
 }
 
-export function ChatWorkspace({ channelId, compact, threadOnly, layoutSearch, dock, style }: ChatWorkspaceProps) {
-  const { pathname } = useLocation();
-  const [drawer, setDrawer] = useState<ChatDrawer>(null);
-  const [conversationsCollapsed, setConversationsCollapsed] = useState(false);
-  const [traceCollapsed, setTraceCollapsed] = useState(false);
-  const conversationsTriggerRef = useRef<HTMLButtonElement>(null);
-  const traceTriggerRef = useRef<HTMLButtonElement>(null);
-  const drawerCloseRef = useRef<HTMLButtonElement>(null);
-  const lastDrawerRef = useRef<Exclude<ChatDrawer, null>>("conversations");
-  const drawerWasOpenRef = useRef(false);
-  const toggleDrawer = (next: Exclude<ChatDrawer, null>) => {
-    lastDrawerRef.current = next;
-    setDrawer((current) => current === next ? null : next);
-  };
+function ChatSurface({
+  pathname,
+  channelId,
+  threadOnly,
+  conversationListOpen,
+  conversationToggleRef,
+  aggregateOpen,
+  aggregateAvailable,
+  aggregateToggleRef,
+  onToggleConversationList,
+  onToggleAggregate,
+  onOpenTasks,
+  onOpenChannelSettings,
+  onNavigateConversation,
+}: ChatSurfaceProps) {
+  if (/\/saved\/?$/.test(pathname)) return <Saved embedded />;
+  if (/\/showcase\/?$/.test(pathname)) return <Showcase embedded />;
+  return (
+    <Chat
+      embedded
+      channelIdOverride={channelId ?? undefined}
+      threadOnly={threadOnly}
+      conversationListOpen={conversationListOpen}
+      conversationToggleRef={conversationToggleRef}
+      aggregateOpen={aggregateOpen}
+      aggregateAvailable={aggregateAvailable}
+      aggregateToggleRef={aggregateToggleRef}
+      onToggleConversationList={onToggleConversationList}
+      onToggleAggregate={onToggleAggregate}
+      onOpenTasks={onOpenTasks}
+      onOpenChannelSettings={onOpenChannelSettings}
+      onNavigateConversation={onNavigateConversation}
+    />
+  );
+}
 
-  useEffect(() => setDrawer(null), [pathname, channelId, compact]);
+export function ChatWorkspace({
+  channelId,
+  compact,
+  threadOnly,
+  layoutSearch,
+  aggregateOpen,
+  aggregateAvailable,
+  aggregateToggleRef,
+  onToggleAggregate,
+  onOpenTasks,
+  onOpenChannelSettings,
+  onNavigateConversation,
+  settingsDrawer,
+  settingsDrawerOpen = false,
+  dock,
+  style,
+}: ChatWorkspaceProps) {
+  const { pathname } = useLocation();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [conversationsCollapsed, setConversationsCollapsed] = useState(false);
+  const conversationsTriggerRef = useRef<HTMLButtonElement>(null);
+  const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  const drawerWasOpenRef = useRef(false);
+  const settingsLayerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => setDrawerOpen(false), [pathname, channelId, compact]);
   useEffect(() => {
-    if (!drawer) return;
+    if (!drawerOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setDrawer(null);
+      if (event.key === "Escape") setDrawerOpen(false);
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [drawer]);
+  }, [drawerOpen]);
   useEffect(() => {
-    if (drawer) {
+    settingsLayerRef.current?.toggleAttribute("inert", !settingsDrawerOpen);
+  }, [settingsDrawerOpen]);
+  useEffect(() => {
+    if (drawerOpen) {
       drawerWasOpenRef.current = true;
       const frame = window.requestAnimationFrame(() => drawerCloseRef.current?.focus());
       return () => window.cancelAnimationFrame(frame);
     }
     if (!drawerWasOpenRef.current) return;
     drawerWasOpenRef.current = false;
-    if (!compact) return;
-    const trigger = lastDrawerRef.current === "conversations" ? conversationsTriggerRef : traceTriggerRef;
-    trigger.current?.focus();
-  }, [compact, drawer]);
+    if (compact) conversationsTriggerRef.current?.focus();
+  }, [compact, drawerOpen]);
+
+  const conversationListOpen = compact ? drawerOpen : !conversationsCollapsed;
+  const toggleConversationList = () => {
+    if (compact) setDrawerOpen((open) => !open);
+    else setConversationsCollapsed((collapsed) => !collapsed);
+  };
+  const openChannelSettings = (channelId: string, trigger?: HTMLButtonElement) => {
+    setDrawerOpen(false);
+    onOpenChannelSettings(channelId, trigger);
+  };
 
   return (
     <section
       className={`shell-chat-workspace shell-chat-workspace--${compact ? "compact shell-work-panel" : "full"}`}
       data-conversations-collapsed={!compact && conversationsCollapsed ? "true" : undefined}
-      data-trace-collapsed={!compact && traceCollapsed ? "true" : undefined}
       style={style}
       aria-label={compact ? "紧凑 Chat 工作区" : "Chat 工作区"}
     >
-      <aside className={`shell-work-panel shell-chat-conversations${conversationsCollapsed ? " is-collapsed" : ""}`} aria-label="会话列表">
-        <ChatSidebar channelIdOverride={channelId ?? undefined} />
+      <aside className="shell-work-panel shell-chat-conversations" aria-label="会话列表">
+        <ChatSidebar channelIdOverride={channelId ?? undefined} onNavigate={onNavigateConversation} />
       </aside>
       <section className="shell-work-panel shell-chat-main-card" aria-label="当前会话">
-        <header className="shell-chat-compact-tools">
-          <button
-            ref={conversationsTriggerRef}
-            type="button"
-            className={(compact ? drawer === "conversations" : !conversationsCollapsed) ? "is-active" : ""}
-            aria-label={compact ? "打开对话列表" : conversationsCollapsed ? "展开对话列表" : "收起对话列表"}
-            aria-pressed={compact ? drawer === "conversations" : !conversationsCollapsed}
-            onClick={() => compact ? toggleDrawer("conversations") : setConversationsCollapsed((collapsed) => !collapsed)}
-          >
-            <MessagesSquare size={16} />
-            <span>会话</span>
-          </button>
-          <span className="shell-chat-compact-tools__title">Chat</span>
-          <button
-            ref={traceTriggerRef}
-            type="button"
-            className={(compact ? drawer === "trace" : !traceCollapsed) ? "is-active" : ""}
-            aria-label={compact ? "打开实时轨迹" : traceCollapsed ? "展开实时轨迹" : "收起实时轨迹"}
-            aria-pressed={compact ? drawer === "trace" : !traceCollapsed}
-            onClick={() => compact ? toggleDrawer("trace") : setTraceCollapsed((collapsed) => !collapsed)}
-          >
-            <Activity size={16} />
-            <span>轨迹</span>
-          </button>
-        </header>
         <div className="shell-chat-surface">
-          <ChatSurface pathname={pathname} channelId={channelId} threadOnly={threadOnly} />
+          <ChatSurface
+            pathname={pathname}
+            channelId={channelId}
+            threadOnly={threadOnly}
+            conversationListOpen={conversationListOpen}
+            conversationToggleRef={conversationsTriggerRef}
+            aggregateOpen={aggregateOpen}
+            aggregateAvailable={aggregateAvailable}
+            aggregateToggleRef={aggregateToggleRef}
+            onToggleConversationList={toggleConversationList}
+            onToggleAggregate={onToggleAggregate}
+            onOpenTasks={onOpenTasks}
+            onOpenChannelSettings={openChannelSettings}
+            onNavigateConversation={onNavigateConversation}
+          />
         </div>
         {dock ? <footer className="shell-dock-zone">{dock}</footer> : null}
       </section>
-      <aside className={`shell-work-panel shell-chat-trace${traceCollapsed ? " is-collapsed" : ""}`} aria-label="实时轨迹">
-        <div className="shell-chat-trace__content"><LiveTrace /></div>
-      </aside>
-      {drawer ? (
-        <div className="shell-chat-drawer-scrim" role="presentation" onMouseDown={() => setDrawer(null)}>
+      {drawerOpen ? (
+        <div className="shell-chat-drawer-scrim" role="presentation" onMouseDown={() => setDrawerOpen(false)}>
           <aside
-            className={`shell-chat-drawer shell-chat-drawer--${drawer}`}
+            className="shell-chat-drawer shell-chat-drawer--conversations"
             role="dialog"
             aria-modal="true"
-            aria-label={drawer === "conversations" ? "会话抽屉" : "实时轨迹抽屉"}
+            aria-label="会话抽屉"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <button ref={drawerCloseRef} className="shell-chat-drawer__close" type="button" aria-label="关闭抽屉" onClick={() => setDrawer(null)}>
+            <button ref={drawerCloseRef} className="shell-chat-drawer__close" type="button" aria-label="关闭会话抽屉" onClick={() => setDrawerOpen(false)}>
               <X size={16} />
             </button>
-            {drawer === "conversations" ? (
-              <ChatSidebar channelIdOverride={channelId ?? undefined} preserveSearch={layoutSearch} />
-            ) : (
-              <div className="shell-chat-drawer__trace"><LiveTrace /></div>
-            )}
+            <ChatSidebar channelIdOverride={channelId ?? undefined} preserveSearch={layoutSearch} onNavigate={onNavigateConversation} />
           </aside>
         </div>
       ) : null}
+      <div
+        ref={settingsLayerRef}
+        className="shell-chat-settings-layer"
+        data-open={settingsDrawerOpen ? "true" : undefined}
+        aria-hidden={!settingsDrawerOpen}
+      >
+        <aside
+          className="shell-chat-settings-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="频道设置"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <div className="shell-chat-settings-drawer__content">{settingsDrawer}</div>
+        </aside>
+      </div>
     </section>
   );
 }

@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述个人 AgentOS 的目标模块边界。A2-A6 原定代码切片与 Home/Space root 的 H1-H4 前置修复均已完成，当前等待用户验收；验收前不进入 H5 或 Runtime 契约 v2。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`，完整补充设计见 `../superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
+> 本文描述个人 AgentOS 的目标模块边界。A2-A6 原定代码切片、Home/Space root 的 H1-H4 前置修复与 P-A8 Agent 频道响应模式均已完成，当前等待用户验收；验收前不进入 H5 或 Runtime 契约 v2。P-A8 完整规格见 `../superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
 
 ## 1. 架构原则
 
@@ -83,7 +83,7 @@ Space 列表、创建和修改以 app.db registry 为事实源；每个 workspac
 
 canonical 传输契约是 `/api/spaces`、`x-space-id`、Socket handshake `spaceId` 和 `SpaceCtx`。Web 只使用这套契约；HTTP、公开附件和 Socket 以 app.db 唯一 Human + registered Space 授权，不依赖 Human Space membership。旧 `/api/servers`、`x-server-id`、Socket `serverId`、`ServerCtx` 与 `dbFor/listWorkspaces/registerWorkspace` 等 DB facade 已删除；Agent CLI 使用 `space info` 和 `space:read`。
 
-每个 Space 拥有用户文件、频道、消息、任务、agent 队伍和 Space/Agent Memory。Home 是其中唯一带总控能力的真实 Space；普通 Space 是 registry 中除 homeSpaceId 外的条目，不要求成为 Home 的物理子目录。Agent membership 只表达“某 agent 是否在频道中并可被唤醒”，不承载 Human 权限。
+每个 Space 拥有用户文件、频道、消息、任务、agent 队伍和 Space/Agent Memory。Home 是其中唯一带总控能力的真实 Space；普通 Space 是 registry 中除 homeSpaceId 外的条目，不要求成为 Home 的物理子目录。Agent membership 表达“某 Agent 是否属于并可读取该频道”，不承载 Human 权限；P-A8 再由 Agent 默认响应模式与 membership 上的可空频道覆盖决定某条可见事件是否足以自动唤醒，不能把响应模式解释成读写权限。
 
 ### 4.3 Runtime
 
@@ -91,7 +91,9 @@ canonical 传输契约是 `/api/spaces`、`x-space-id`、Socket handshake `space
 
 H2 已在不扩大 Runtime 接口业务职责的前提下落地三路径契约：中立领域模块 `src/agents/agentWorkspacePaths.ts` 为 Server 与 Local Runtime Worker 共同解析 `workspaceRoot = Space root`、`agentMemoryDir = <space>/.kith/agents/<agentId>`、`runtimeStateDir = <appData>/runtime/<spaceId>/<agentId>`，并以安全单路径段与 descendant 断言阻止递归删除逃逸容器；`src/daemon/agentManager.ts` 创建并使用这些目录。Claude Code、Codex、opencode 的 cwd 是 workspaceRoot，Claude system prompt 与 Hermes turn 文件等 adapter 产物写 runtimeStateDir。OpenCode 以 `OPENCODE_CONFIG_CONTENT` 定义固定的 `__kith_runtime__` execution agent，并通过 `--agent` 选择，system prompt 只存在于对应 child env，不修改用户项目的 `AGENTS.md`。Copilot/Kimi/Cursor 仍标 experimental：它们的现有 adapter 会在 cwd 写 `AGENTS.md`，所以暂用 runtimeStateDir，避免覆盖用户 Space 中的同名文件；其正式 Space root 适配应先取消该 cwd 注入副作用。
 
-Agent 首轮驱动明确分为三种原因，Core 通过 `src/local-runtime/agentStart.ts:1` 的 `create | manual | wake` 随 `agent:start` 传给 Worker，Worker 再由 `src/daemon/agentLifecycle.ts:9` 选择提示：新建 agent 执行一次 `dm:@you` 自我介绍；已有 agent 手动启动/恢复只检查一次收件箱，无消息必须静默；真实频道、DM、任务或 reconnect backlog 唤醒时处理持久化消息，并在每个原目标回复。启动准备期间收到的投递已经在数据库中，因此合并进同一个 wake turn，不再追加第二次 inbox notice。Core 为未介绍 agent 的候选创建/重试 turn 生成一次性 token；Worker 只有实际选择 introduction prompt 时才把它注入 runtime 环境（`src/daemon/agentManager.ts:226`），因此对已运行 agent 被忽略的 start 不会授权其普通回复。CLI 只有创建提示要求的 `message send --introduction` 才附带 token，普通 send 不带 token（`src/cli/index.ts:79`-`:85`）；服务端在全部异步 Human-Agent DM 校验后、数据库事务前同步消费匹配 token。真实 wake 会撤销 active token，撤销后迟到的 introduction 请求返回 409，completed token 的重复 introduction 同样返回 409，而同一进程不带 token 的普通 wake 回复不受影响（`src/server/agentIntroduction.ts:15`-`:30`）。随后介绍消息与 `agents.introduced_at` 在同一数据库事务提交（`src/server/core.ts:485`-`:504`）。停止、reset 或删除会清除该 agent 的全部进程 token；普通 reset 只清 session/runtime state 并保留持久介绍状态，清 Agent Memory 的完整 reset 会清除介绍状态并重新进入首次介绍；两者都不删除共享 Space 文件。同 agent 的 reset/start 在 Worker 内串行，因此 Reset & Restart 必须等递归清理完成后才创建新 runtime 状态与 Agent Memory。
+Agent 首轮驱动明确分为三种原因，Core 通过 `src/local-runtime/agentStart.ts:1` 的 `create | manual | wake` 随 `agent:start` 传给 Worker，Worker 再由 `src/daemon/agentLifecycle.ts:9` 选择提示：新建 agent 执行一次 `dm:@you` 自我介绍；已有 agent 手动启动/恢复只检查一次收件箱，无消息必须静默；真实频道、DM、任务或 reconnect backlog 唤醒时处理持久化消息，并在每个原目标回复。启动准备期间收到的投递已经在数据库中，因此合并进同一个 wake turn，不再追加第二次 inbox notice。Core 为未介绍 agent 的候选创建/重试 turn 生成一次性 token；Worker 只有实际选择 introduction prompt 时才把它注入 runtime 环境（`src/daemon/agentManager.ts:244`-`:254`），因此对已运行 agent 被忽略的 start 不会授权其普通回复。CLI 只有创建提示要求的 `message send --introduction` 才附带 token，普通 send 不带 token（`src/cli/index.ts:79`-`:85`）；服务端在全部异步 Human-Agent DM 校验后、数据库事务前同步消费匹配 token。真实 wake 会撤销 active token，撤销后迟到的 introduction 请求返回 409，completed token 的重复 introduction 同样返回 409，而同一进程不带 token 的普通 wake 回复不受影响（`src/server/agentIntroduction.ts:15`-`:30`）。随后介绍消息与 `agents.introduced_at` 在同一数据库事务提交（`src/server/core.ts:518`-`:538`）。停止、reset 或删除会清除该 agent 的全部进程 token；普通 reset 只清 session/runtime state 并保留持久介绍状态，清 Agent Memory 的完整 reset 会清除介绍状态并重新进入首次介绍；两者都不删除共享 Space 文件。同 agent 的 reset/start 在 Worker 内串行，因此 Reset & Restart 必须等递归清理完成后才创建新 runtime 状态与 Agent Memory。
+
+P-A8 已把“是否启动 runtime”与“本轮是否必须回复”拆开。`src/agents/agentResponsePolicy.ts:42` 是无 I/O 的纯领域决策，返回 `wake`、`required | optional | observe` 指令和稳定 reason；`src/agents/agentResponseSettings.ts:139`-`:161` 负责枚举解析、默认值/频道覆盖解析与初始 watermark，`:200`-`:353` 负责事务更新和非追溯推进；`src/agents/agentResponseDelivery.ts:29` 把消息、任务和话题上下文适配到纯策略。实时消息（`src/server/core.ts:611`）、任务指派/后续直达（`:1038`、`:1193`）、Worker reconnect backlog（`src/server/reconnectCatchup.ts:39`）、`/agent-api/message/check`（`src/server/routes-agent.ts:144`）与 prompt（`src/daemon/prompt.ts:129`）消费同一语义：Human 普通频道消息只对主动成员产生 `optional` wake，明确 mention 对主动/被动成员产生 `required` wake，静音不因频道事件自动启动；DM 与明确任务指派始终为 `required`。Worker 只为 required 投递建立回复预览，optional 可静默（`src/daemon/agentManager.ts:364`-`:379`）。这只增量调整 Kith CLI/prompt，没有扩大 `Runtime.start` 接口，也没有提前实现 Runtime 契约 v2。
 
 Runtime 命令发现与启动统一经过 `src/daemon/runtimeProcess.ts:5`。Worker ready 不再调用 Unix 专用的 `command -v`，而是通过 `runtimeCommandAvailable` 使用与 adapter 相同的 `cross-spawn` 边界执行轻量 `--version` 探测；全部 adapter 同样通过该边界启动 CLI。这样 Windows 上的原生 `.exe` 与 npm `.cmd` shim 具有一致语义，避免 Worker 错报 `runtimes=[]`，也避免 Codex/opencode 在检测通过后仍因原生 `child_process.spawn` 的 `EPERM`/`ENOENT` 启动失败。该边界同时对 runtime 的 stdout/stderr 启用 Node 有状态 UTF-8 解码，禁止 adapter 对任意 Buffer 分块分别 `toString()`；否则一个跨块汉字会在 JSON/JSONL 解析前不可逆地变成替换字符。Core 仍以 Worker ready snapshot 为权威，在 `src/server/core.ts` 的启动 guard 中拒绝真正不可用的 runtime。
 
@@ -158,13 +160,15 @@ P-A7 H3-H4 已把 Space root 生命周期收口到 `src/spaces/spaceRootService.
 
 ### 5.2 workspace.db
 
-A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Drizzle 内部的 `__drizzle_migrations`，fresh 数据库共有 20 张物理表；当前 `PRAGMA user_version=3`，v2 数据库会自动增加 `agents.introduced_at` 并把已有 agent 回填为已介绍（`src/db/index.ts:32`-`:59`、`drizzle/0001_agent_introduction.sql:1`）。它包含 `spaces`、agent、频道、消息/任务、dispatch、附件/提醒/知识/活动，以及分离后的 Human 状态表；所有 Space 外键统一为 `space_id`。`users/server_members/machines/join_links`、`agents.machine_id` 和旧 `servers/server_id` 已删除。
+A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Drizzle 内部的 `__drizzle_migrations`，fresh 数据库共有 20 张物理表；当前 `PRAGMA user_version=5`。v2 数据库会依次增加 `agents.introduced_at`、`human_channel_states.notification_level` 与 P-A8 响应模式字段；兼容性检查按待迁移版本排除尚未存在的列，迁移后要求完整 v5 schema（`src/db/spaceDatabaseCompatibility.ts:5`-`:6`、`:47`-`:59`，`drizzle/0001_agent_introduction.sql:1`，`drizzle/0002_channel_notification_level.sql:1`-`:3`，`drizzle/0003_agent_response_modes.sql:1`-`:5`）。它包含 `spaces`、agent、频道、消息/任务、dispatch、附件/提醒/知识/活动，以及分离后的 Human 状态表；所有 Space 外键统一为 `space_id`。`users/server_members/machines/join_links`、`agents.machine_id` 和旧 `servers/server_id` 已删除。
+
+P-A8 的 schema v5 仍保持 19 张产品表：`agents.default_response_mode` 默认 `active`（`src/db/schema.ts:31`）；`channel_agent_members` 增加可空 `response_mode_override`，以及彼此独立的 `ambient_wake_after_seq`、`mention_wake_after_seq`（`src/db/schema.ts:71`-`:77`）。覆盖只允许写在顶层频道 membership；话题 membership 继承父频道有效值，并用自己的 mention watermark 维护参与后的非追溯边界。两类 watermark 只阻止模式重新开放后补唤醒旧事件，不能复用或推进 `last_read_seq`。
 
 每个 Space 的 `<space>/.kith/workspace.db` 保存：
 
 - Space 元数据，以及 Space 内 agent、频道与 agent-only `channel_agent_members`。
 - 消息、thread、任务、任务计数和实时 seq。
-- 唯一 Human 的 read/DM/thread 状态 `human_channel_states`、收藏 `human_saved_messages` 与 Space 偏好 `human_space_preferences`。
+- 唯一 Human 的 read/DM/thread 状态及频道通知级别 `human_channel_states`、收藏 `human_saved_messages` 与 Space 偏好 `human_space_preferences`；`notification_level` 受约束为 `all | mentions | none`，默认 `all`（`src/db/schema.ts:81`-`:89`）。
 - 持久 actor 使用 `human | agent | system`（按字段适用）；runtime 协议的 `role: "user"` 是外部协议字面量，不属于数据库 actor。
 
 同一个 `.kith` 还包含 `<space>/.kith/memory/`、`<space>/.kith/agents/<agentId>/` 和 `<space>/.kith/uploads/`。一个 Space 文件夹可整体复制，带走用户文件、workspace.db、Space Memory、Agent Memory 与附件；Human 资料、User Memory、浏览器会话、Desktop 设置和 runtime state 不随之复制。未来本机跨 Space 聚合遍历多个 workspace.db 并在应用层合并，不引入中央云库。
@@ -180,8 +184,19 @@ A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Driz
 5. A2.2b 已完成：破坏性重建 workspace.db baseline，把保留表的 `servers/server_id` 改为 `spaces/space_id`，拆出单 Human 状态/收藏/偏好，并删除旧物理表与兼容边界。
 6. A2 已完成：附件目录纳入 Space 根路径，旧 app 级上传配置、命名 facade 与不兼容维护脚本已删除，并完成整阶段验收。
 7. H1-H4 已完成：稳定 homeSpaceId，分离 app data/默认 Space 容器，把主要 runtime cwd、Agent Memory 与 runtime state 归入三路径契约，完成默认创建、文件夹接入、失联重连，并交付 Home-only Spaces 模块、默认 Home 启动和同窗切换。当前等待用户验收。
+8. P-A8 已完成：schema v5、统一响应策略/设置、任务 assignee 语义、实时/reconnect/message check/prompt 指令与前端默认值/频道覆盖 UI 已同步落地，未启动 H5 或 Runtime 契约 v2。
 
 不执行无边界的整仓替换；每个切片都需 schema、service、route 和 UI 契约测试。
+
+### 5.4 频道生命周期与唯一 Human 偏好
+
+频道生命周期分为活跃、已归档和已删除。归档是可恢复的只读状态，删除继续使用 `deleted_at` tombstone 且产品不提供恢复入口；普通列表、Inbox、未读、搜索、agent 检查及唤醒只消费活跃频道，归档详情仍允许在当前 Space 权限边界内读取历史。中立领域模块 `src/channels/channelLifecycle.ts:21`-`:53` 先把 thread 解析到父频道，再以统一 `assertChannelWritable` 返回稳定的 `channel_archived | channel_deleted | channel_not_found` 错误；`:56`-`:80` 为列表型表面集中排除归档/删除频道及其 thread，Human 状态与 server 路由都依赖该模块而不形成领域层反向依赖 server。Human/agent 消息、话题/回复、附件、reaction、action card、频道成员和任务写入口复用该 guard；核心消息入口本身也在持久化前强制校验（`src/server/core.ts:451`-`:462`），避免只靠前端禁用。Mentions 和 Space Tasks 这类跨频道聚合也先通过 `activeChannels` 收窄候选频道，因此归档/删除父频道的 thread 内容不会泄漏回活跃聚合（`src/server/routes-api/messages.ts:18`-`:43`、`src/server/routes-api/tasks.ts:47`-`:58`）。
+
+每个 Space 的 `# all` 是当前唯一必需频道。原始 SQLite 约束集中在 `src/db/requiredChannel.ts:11`-`:38`：数据库基线打开后优先恢复既有 `all` 行的 `archived_at/deleted_at`，缺失时才创建；`ensureSpaceBaseline` 在 Space 身份确认后幂等执行（`src/db/index.ts:119`-`:132`）。频道 API 对 `# all` 的归档、删除、名称和可见性修改统一返回 `required_channel`，而不是依赖隐藏按钮（`src/server/routes-api/channels.ts:449`-`:482`）。
+
+`GET /api/channels` 默认只返回活跃普通/私密频道，`?archived=only` 单独返回已归档频道，`?archived=include` 返回全部非删除频道（`src/server/routes-api/channels.ts:150`-`:156`）；Web Store 并行维护活跃与归档数组（`web/src/store.tsx:107`-`:117`）。唯一 Human 的频道通知偏好由 `GET/PATCH /api/channels/:channelId/notification` 读写并校验三档枚举（`src/server/routes-api/channels.ts:429`-`:447`），持久化 helper 位于 `src/human/humanChannelState.ts:45`-`:59`。它不改变 agent 唤醒、消息持久化、未读或 Inbox 语义。
+
+P-A8 的 Agent 响应模式与 Human 通知偏好是两套正交状态：前者属于 Agent/频道 membership 并控制 runtime 自动唤醒，后者只属于唯一 Human。Agent 详情通过既有 `GET/PATCH /api/agents/:id` 读写 Space 默认值（`src/server/routes-api/agents.ts:64`-`:110`）；`GET /api/channels/:channelId/members` 返回默认、覆盖、有效值和来源，`PATCH /api/channels/:channelId/members/:agentId` 写可空覆盖（`src/server/routes-api/channels.ts:249`-`:341`）。归档频道拒绝修改，非成员/跨 Space Agent 返回 404。设置保存后发布窄 `agent:response-mode-updated` 事件，前端按频道一次装载并失效重取，禁止逐消息请求。
 
 ## 6. 浏览器访问安全
 
@@ -214,25 +229,29 @@ LAN 模式允许完整产品操作，因此默认关闭。首次启用显示明�
 
 ## 7. 编排与护栏
 
-agent-to-agent 分派继续经过统一 dispatch 收口。现有深度上限、唤醒预算和急停 guard 保留；任务 report/delivery 只写本地状态，不伪造唤醒消耗。Local Runtime Worker 虽然唯一，所有 start/deliver/stop 仍必须经过 Space、agent、频道成员和任务作用域校验。
+agent-to-agent 分派继续经过统一 dispatch 收口。现有深度上限、唤醒预算和急停 guard 保留；任务 report/delivery 只写本地状态，不伪造唤醒消耗。Local Runtime Worker 虽然唯一，所有 start/deliver/stop 仍必须经过 Space、agent、频道成员和任务作用域校验。P-A8 的响应策略位于这些 guard 之后：它可以进一步决定不自动唤醒，但不能授权原本不可达的 Agent；明确任务指派可以绕过响应模式，却不能绕过 dispatch 深度、预算或急停。
 
 默认 autopilot 与 plan-first 软闸保持不变。未来 usage 预算依赖 Runtime 契约 v2 的统一 usage 回调，不在 adapter 中分别堆业务判断。
 
 ## 8. 前端模块边界
 
-- `WorkspaceFrame` 组合路由、响应式约束和三态布局，不承载任务或 agent 业务逻辑。
+- `WorkspaceFrame` 组合路由、Chat / 会话聚合面板 / Module 响应式约束和三态布局，不承载文件、话题、任务或 agent 数据查询；频道设置的场景状态、脏表单退出确认、焦点恢复、`beforeunload` 与 `popstate` 历史保护集中在 `useChannelSettingsScene`（`web/src/shell/useChannelSettingsScene.ts:21`-`:168`）。频道设置在可用时占用 Chat 与 Module 之间的聚合面板，空间不足时把同一个组件交给 Chat 右侧抽屉，并在场景退出后恢复此前挂载的聚合内容（`web/src/shell/WorkspaceFrame.tsx:75`-`:93`、`:256`-`:323`）。
 - `workspaceLayout.ts` 只表达 ChatOnly/Split/ModuleOnly 状态机。
-- `paneConstraints.ts` 只计算面板最小宽度与单 Pane 降级。
+- `paneConstraints.ts` 只计算面板最小宽度、300px 聚合面板目标宽度、三栏阈值与单 Pane 降级（`web/src/shell/paneConstraints.ts:7`、`:65`）；`workspacePaneWidthsWithAggregate` 把聚合面板放在 Chat 与 Module 之间，宽度不足时先临时隐藏聚合面板并保留意图（`web/src/shell/workspacePaneTransition.ts:67`）。
 - `workspaceModules.tsx` 当前注册 Home-only Spaces、Inbox、Tasks、Agents、Settings 与非 Dock 的 Search；`dockModulesForSpace` 用稳定 `isHome` 选择 Home/普通 Dock，普通 Space 仍只显示五项。Computers/Machines 已退出模块注册和路由。
-- `ChatWorkspace` 管理会话列表、Chat 和实时轨迹；业务模块不能直接操控 Chat 内部状态。
+- `ChatWorkspace` 只管理固定/抽屉会话列表、Chat 和响应式设置抽屉；旧“会话 / Chat / 轨迹”工具条与全局轨迹栏已删除。`ConversationAggregatePanel` 以窄 props 接收当前 `conversationId`、轨迹节点、导航回调和可选设置场景；设置打开时原三个 Tab 内容保持挂载并以 `hidden` 隐藏，因此文件分类、关键词和搜索展开状态不会丢失（`web/src/views/conversation-aggregate/ConversationAggregatePanel.tsx:14`-`:20`、`:40`-`:75`）。轨迹、话题与文件仍由三个子视图各自负责，只有 `conversationId` 改变时由 keyed 子视图重置。`components/SearchField.tsx` 统一 Agents 与会话文件的搜索输入、清除和焦点行为，页面只保留各自的筛选状态与展开动画。业务模块不能直接操控 Chat 内部状态。
+- 频道设置拆在 `web/src/views/channel-settings/`：`ChannelSettingsPanel` 只编排首页、常规、成员、通知、脏状态返回/关闭与数据装载；生命周期入口和精确名称删除确认分别由 `ChannelSettingsIndex` 与 `ChannelDeleteDialog` 承担，新增 agent 选择弹窗由 `ChannelAddMemberDialog` 独立负责。成员页从 Store 接收唯一 Human 资料而不伪造“你”为名称，移除 agent 复用全局危险操作确认；`# all` 继续由 API 硬保护，但设置首页显式渲染禁用删除动作来解释限制。归档频道的 active/store 分离由 `ArchivedChannelGroup` 和 Store 负责；Chat 只解析当前频道是否归档，渲染带直接恢复动作的只读 banner，并把只读状态下传到消息、话题和成员入口（`web/src/views/ChatSidebar.tsx:78`-`:85`、`web/src/views/Chat.tsx:255`-`:280`、`:581`-`:599`、`:626`-`:715`）。
+- P-A8 前端拆在 `web/src/views/agent-response-mode/` feature：Agent 默认卡片（`AgentDefaultResponseModeCard.tsx:13`）、频道昵称后徽标（`ChannelAgentResponseModeBadge.tsx:18`）、可访问浮层菜单（`ChannelAgentResponseModeMenu.tsx:31`）和每频道一次装载/实时失效 hook（`useChannelAgentResponseModes.ts:28`）分开；`Members.tsx:219` 与 `Chat.tsx` 只插入窄组件并传递 Agent/频道上下文。话题复用父频道有效值，DM 不渲染徽标，归档只读；第一版没有在 `channel-settings/` 成员页复制编辑器。Composer 的多 Agent 任务检查由 `web/src/views/composerTaskMentions.ts:6` 独立解析。
 - URL 是模块与 Chat 显隐事实来源。会话始终使用规范 `/s/:slug/channel[/<channelId>]`、`saved` 或 `showcase` 路径；`module`/`chat` 表达工作区布局，`taskScope`、`agent`/`agentTab`、`settings` 分别表达 Tasks、Agents、Settings 的模块资源（`web/src/shell/workspaceRoute.ts:65`、`:128`）。模块切换由 `workspaceLocationForModule`（`:143`）生成 query，不再生成 `/tasks`、`/agent`、`/settings` 等模块实体路径；Settings 未指定或传入旧/未知资源时统一归一为 `human`（`:138`）。
 - 切换频道或 Human-Agent DM 时保留当前 active module、Chat 显隐和该模块拥有的 resource query，同时丢弃旧会话的 `msg`/`thread` 等临时聚焦参数（`web/src/shell/workspaceRoute.ts:180`）。这样模块上下文跨会话导航保持稳定，旧消息焦点不会泄漏到新会话。
-- Thread 批量元数据同时返回单一 Human 的 `followed` 状态（`src/server/routes-api/channels.ts:121`）；Chat 将其作为受控状态传入 Thread 面板，并通过既有 `follow` / `unfollow` 接口切换（`web/src/views/Chat.tsx:580`、`:704`），关注切换与面板关闭保持为两个独立行为。
+- Thread 批量元数据同时返回单一 Human 的 `followed` 状态（`src/server/routes-api/channels.ts:118`-`:141`）；Chat 将其作为受控状态传入 Thread 面板，并通过既有 `follow` / `unfollow` 接口切换（`web/src/views/Chat.tsx:735`-`:750`、`:846`-`:850`），关注切换与面板关闭保持为两个独立行为。
+- 聚合面板的话题索引不从前端消息分页推导。`GET /api/channels/:channelId/thread-summaries` 复用会话可读权限并调用独立查询模块，返回当前频道或 DM 的全部未删除 thread、父消息摘要/发起者、回复数、未读、关注与最近活动时间（`src/server/routes-api/channels.ts:143`-`:148`、`src/server/channels/threadSummaries.ts:22`）。首次创建空 thread 与后续回复都发布 `thread:updated`，使已挂载的话题索引立即失效重取（`src/server/core.ts:590`-`:591`、`:831`）。内部实体、API 和 query 继续使用 `thread`，只有用户可见术语改为“话题”。会话文件查询在原 100 条边界内联查 `sourceMessageText`，避免前端逐条补请求。
+- Worker 给 `agent:activity` / `agent:trajectory` 事件标记 `scoped | unscoped | ambiguous` 和实际 `channelId`；同步投递失败会用 schedule token 精确回滚自己的作用域，不能污染下一轮（`src/daemon/agentManager.ts:357`-`:383`、`src/daemon/trajectoryScope.ts:77`）。Core 对同一 Worker 连接的消息使用串行队列，确保 trajectory 数据先于随后到达的 terminal activity 边界处理（`src/server/ws.ts:55`、`src/server/workerMessageQueue.ts:1`）；随后校验该 channel 属于当前 Space，并把 thread 逐级归一为父 `conversationId`（`src/server/trajectoryScope.ts:61`）。Socket 透传作用域，Web Store 只把明确 `scoped` 事件写入 `trajByConversation[conversationId]` 的独立 300 条缓冲，Space 切换清空全部桶（`web/src/store.tsx:43`、`:370`-`:395`）。无作用域或 ambiguous 事件仍可进入 Agent 活动流，但不得出现在任何会话聚合面板。
 - `MessageContextSnapshot` 在发送时固化 Space、会话、模块、Context Stack 和 focused item，adapter 再编码为各 runtime 所需格式。
 
 Home Spaces UI 只负责卡片、搜索、创建入口和同窗导航；路径规范化、`.kith` 校验、homeSpaceId 与 registry 摘要属于领域服务。规范 URL 是 Home 当前会话路径上的 `?module=spaces`；普通 Space 收到该 query 时移除它。从任意 Space 打开全局空间入口时导航到 Home Spaces，而不是创建第二壳。
 
-H4 已把完整生命周期入口移入 `web/src/spaces/SpacesModule.tsx`：它过滤稳定 Home 身份，展示真实普通 Space 卡片，并提供搜索、刷新、默认创建、已有目录接入、失联重连和同窗导航。`SpaceSwitcher` 只保留快速切换、应急重连和进入 Home Spaces；展开时继续刷新 registry root 状态。Desktop 表单通过 sender 校验后的 preload 窄桥调用 Electron 原生 `openDirectory` 对话框；授权浏览器通过 gate-1 的 `GET /api/host-directories` 调用 `src/spaces/hostDirectoryBrowser.ts`，只枚举主机目录及导航元数据，不返回文件内容，且无论来源如何，选中的路径都必须通过既有 Space root 校验。创建与接入使用 `SpaceFolderDialog` 模态弹窗，浏览器目录 UI 独立位于 `HostDirectoryPicker`。路由只激活 `ready` Space：失联深链规范化到可用 Space；如果全部注册项都失联，Store 外壳内的 `SpaceRecovery` 仍可调用同一 relocate 服务，避免 skeleton 死锁。普通 Space 的 `module=spaces` 会被规范化回 Chat。
+H4 已把完整生命周期入口移入 `web/src/spaces/SpacesModule.tsx`：它过滤稳定 Home 身份，展示真实普通 Space 卡片，并提供搜索、刷新、默认创建、已有目录接入、失联重连和同窗导航。卡片操作菜单拆到 `SpaceCardMenu`，重命名表单由 `SpaceRenameDialog` 承担；`PATCH /api/spaces/:id` 继续同步 app.db 与 Space 内身份，新增 `DELETE /api/spaces/:id` 只调用领域服务注销非 Home registry 并关闭数据库连接，不删除 Space root。收藏仅是 Web 客户端 localStorage 排序偏好，不进入跨设备/跨客户端领域模型。`SpaceSwitcher` 只保留快速切换、应急重连和进入 Home Spaces；展开时继续刷新 registry root 状态。Desktop 表单通过 sender 校验后的 preload 窄桥调用 Electron 原生 `openDirectory` 对话框；文件管理器操作通过同一 sender 校验后的窄桥调用 Electron `shell.openPath`，浏览器模式不暴露任意主机路径打开能力。授权浏览器通过 gate-1 的 `GET /api/host-directories` 调用 `src/spaces/hostDirectoryBrowser.ts`，只枚举主机目录及导航元数据，不返回文件内容，且无论来源如何，选中的路径都必须通过既有 Space root 校验。创建与接入使用 `SpaceFolderDialog` 模态弹窗，浏览器目录 UI 独立位于 `HostDirectoryPicker`。路由只激活 `ready` Space：失联深链规范化到可用 Space；如果全部注册项都失联，Store 外壳内的 `SpaceRecovery` 仍可调用同一 relocate 服务，避免 skeleton 死锁。普通 Space 的 `module=spaces` 会被规范化回 Chat。
 
 Desktop 专属设置通过 `window.kithDesktop` 窄桥注入，不靠仅隐藏按钮实现安全；服务端同时拒绝普通浏览器调用。Windows 打包态可调用 Electron 系统自启动接口，开发态通过 `launchAtLoginSupported: false` 明确禁用该控件。
 

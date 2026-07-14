@@ -99,12 +99,7 @@ button{font-family:inherit}
 .sidebar{background:var(--canvas-soft);border-right:1px solid var(--hair);display:flex;flex-direction:column;min-height:0}
 .sb-scroll{flex:1;min-height:0;overflow:auto;padding:18px 14px}
 .sb-title{font-family:var(--serif);font-size:22px;letter-spacing:-.3px;color:var(--ink);margin:0 0 16px}
-.agent-search{display:flex;align-items:center;gap:8px;margin:-4px 0 14px;padding:0 12px;height:36px;border-radius:9999px;background:var(--surface-strong);color:var(--muted-soft)}
-.agent-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--ink);font:inherit;font-size:13px}
-.agent-search input:focus-visible{box-shadow:none}
-.agent-search input::placeholder{color:var(--muted-soft)}
-.agent-search-clear{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted-soft);cursor:pointer}
-.agent-search-clear:hover{background:var(--hair);color:var(--ink)}
+.agent-search{margin:-4px 0 14px}
 .agent-search-empty{padding:8px 4px}
 /* Section header: label (+ optional count hugging it) on the left, optional add affordance pinned right.
    The count counts what the label names, so it sits next to the label; only .addbtn floats to the edge. */
@@ -120,6 +115,17 @@ button{font-family:inherit}
 .agent-list-item+.agent-list-item{margin-top:4px}
 .item .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .badge{font-size:11px;background:var(--ink-2);color:var(--on-ink);border-radius:9999px;padding:0 6px;min-width:18px;text-align:center}
+.archived-channel-group{margin:16px 0 2px;padding-top:8px;border-top:1px solid var(--hair)}
+.archived-channel-toggle{display:flex;align-items:center;gap:6px;width:100%;padding:6px 7px;border:0;border-radius:7px;background:transparent;color:var(--muted);font:inherit;font-size:12px;font-weight:600;letter-spacing:.04em;cursor:pointer;text-align:left}
+.archived-channel-toggle:hover{background:var(--surface-strong);color:var(--ink)}
+.archived-channel-toggle svg{flex:none;transition:transform var(--dur-fast) var(--ease-quint)}
+.archived-channel-toggle svg.open{transform:rotate(90deg)}
+.archived-channel-count{min-width:18px;border-radius:9999px;background:var(--surface-strong);padding:1px 6px;text-align:center;font-size:11px;font-weight:500;color:var(--muted)}
+.archived-channel-list{display:flex;flex-direction:column;gap:2px;padding-top:3px}
+.item.archived-channel-row{font-size:14px;color:var(--muted);opacity:.82}
+.item.archived-channel-row:hover,.item.archived-channel-row.active{opacity:1}
+.item.archived-channel-row>svg{flex:none;color:var(--muted-soft)}
+.item.archived-channel-row .meta{font-size:10px}
 .sec.sec-sub{font-size:10px;letter-spacing:.6px;margin:10px 4px 4px;color:var(--muted-soft)}
 .item.ghost{color:var(--muted)}
 .item.ghost:hover{background:transparent}
@@ -236,11 +242,15 @@ main.content-col{display:flex;flex-direction:column;height:100vh;background:var(
 .chat-head::after{content:"";position:absolute;left:0;right:0;bottom:-46px;height:46px;background:linear-gradient(to bottom,var(--surface),rgba(255,255,255,.72) 32%,rgba(255,255,255,0));pointer-events:none}
 .chat-head>h1{flex-shrink:0}
 .chat-head>small,.chat-head>.head-status{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.chat-head>.chtabs{flex-shrink:0}
-.chat-agent-profile-btn{display:inline-flex;width:28px;height:28px;flex:none;margin-left:auto;align-self:center;align-items:center;justify-content:center;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
-.chat-agent-profile-btn:hover{background:var(--surface-strong);color:var(--ink)}
+.chat-head-actions{display:flex;flex:none;align-items:center;gap:3px;margin-left:auto}
+.chat-head-icon-btn{display:inline-flex;width:30px;height:30px;flex:none;align-self:center;align-items:center;justify-content:center;padding:0;border:0;border-radius:9px;background:transparent;color:var(--muted);cursor:pointer}
+.chat-head-icon-btn:hover,.chat-head-icon-btn[aria-pressed="true"]{background:var(--surface-strong);color:var(--ink)}
+.chat-head-icon-btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.chat-head-icon-btn:disabled{cursor:not-allowed;opacity:.38}
 .scroll{flex:1;overflow:auto;padding:24px 28px}
 main.content-col > .scroll{min-height:0;padding-bottom:112px;background:var(--surface)}
+main.content-col.archived-readonly > .scroll{padding-bottom:24px}
+main.content-col.archived-readonly > .jump-bottom{bottom:24px}
 main.content-col > .scroll::-webkit-scrollbar{background:var(--surface)}
 main.content-col > .scroll::-webkit-scrollbar-track{background:var(--surface)}
 main.content-col > .scroll::-webkit-scrollbar-thumb{background:transparent;border-radius:9999px;border:2px solid var(--surface)}
@@ -294,6 +304,11 @@ main.content-col > .scroll.is-scrolling::-webkit-scrollbar-thumb{background:rgba
 .composer{--composer-inline-padding:28px;position:relative;z-index:10;padding:4px 28px 14px;border-top:0;background:linear-gradient(to bottom,rgba(255,255,255,0),rgba(255,255,255,.48) 38%,var(--surface) 100%)}
 main.content-col > .composer{position:absolute;left:0;right:var(--scrollbar-gutter);bottom:0}
 .showcase-readonly{display:flex;align-items:center;gap:8px;padding:14px 28px 18px;border-top:1px solid var(--hair);font-size:13px;color:var(--muted);font-style:italic}
+.archived-channel-banner{position:relative;z-index:12;display:flex;align-items:center;gap:9px;padding:11px 28px;border-top:1px solid var(--hair);background:var(--canvas-soft);color:var(--muted);font-size:13px}
+.archived-channel-banner>svg{flex:none;color:var(--muted-soft)}
+.archived-channel-banner .grow{flex:1;min-width:0}
+.archived-channel-banner button{flex:none;border:1px solid var(--hair-strong);border-radius:7px;background:var(--surface);color:var(--ink);padding:5px 10px;font:inherit;font-size:12px;cursor:pointer}
+.archived-channel-banner button:hover{background:var(--surface-strong)}
 /* Showcase layout: the /showcase route never gets has-traj's 4th grid column, so this shell IS the single
    1fr grid cell and lays out "channel column + thread panel" itself (no empty strip when the thread is closed). */
 .showcase-shell{display:flex;height:100vh;overflow:hidden;min-width:0}
@@ -334,6 +349,7 @@ main.content-col > .composer{position:absolute;left:0;right:var(--scrollbar-gutt
 .composer-box{width:100%;max-width:var(--chat-card-width);margin:0 auto;border:0;border-radius:12px;background:var(--surface);padding:10px 14px 10px;transition:box-shadow .5s ease;box-shadow:inset 0 0 0 .5px var(--card-line-strong),0 10px 30px rgba(15,23,42,.055)}
 .composer-box:hover{box-shadow:inset 0 0 0 .5px var(--card-line-strong),0 10px 30px rgba(15,23,42,.055)}
 .composer-box:focus-within{box-shadow:inset 0 0 0 .5px var(--card-line-strong),0 12px 34px rgba(15,23,42,.065)}
+.composer-validation-error{width:100%;max-width:var(--chat-card-width);margin:0 auto 7px;padding:7px 10px;border:1px solid var(--error-line);border-radius:8px;background:var(--error-soft);color:var(--error);font-size:12px;line-height:1.4}
 .composer-input{display:block;width:100%;border:0;outline:none;resize:none;background:transparent;font-family:var(--sans);font-size:14px;line-height:1.5;color:var(--ink);min-height:26px;max-height:160px;overflow-y:auto;padding:3px 2px}
 .composer-input::placeholder{color:var(--muted-soft)}
 .composer-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;min-height:30px}
@@ -586,6 +602,7 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .msg-rx{display:flex;align-items:center;gap:5px;margin-top:5px;flex-wrap:wrap}
 .rx-chip{position:relative;display:inline-flex;align-items:center;gap:4px;font-size:13px;line-height:1;padding:3px 8px;border:1px solid var(--hair-strong);border-radius:9999px;background:var(--surface);color:var(--body);cursor:pointer}
 .rx-chip:hover{background:var(--surface-strong)}
+.rx-chip:disabled{cursor:default;opacity:.72}
 .rx-chip.on{background:var(--tint-blue);border-color:var(--g-sky);color:var(--ink);font-weight:600}
 /* "who reacted" hover tooltip on a reaction chip — replaces the native title (slow/unstyled/absent on touch). Reuses the popover skin (.agent-hovercard / .rx-pop tokens). */
 .rx-tip{position:absolute;bottom:100%;left:50%;transform:translateX(-50%) translateY(2px);margin-bottom:7px;width:max-content;max-width:220px;white-space:normal;font-size:12px;line-height:1.35;font-weight:400;color:var(--ink-2);background:var(--surface);border:1px solid var(--hair-strong);border-radius:8px;box-shadow:0 8px 24px var(--shadow-3);padding:6px 9px;opacity:0;pointer-events:none;transition:opacity var(--dur-fast) var(--ease-quint),transform var(--dur-fast) var(--ease-quint);z-index:60}
@@ -658,12 +675,16 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .action-card .ac-detail .ac-k{color:var(--muted-soft);font-weight:600;margin-right:4px}
 .action-card .ac-btn{margin-top:10px;background:var(--ink);color:var(--on-ink);border:none;border-radius:9999px;padding:6px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)}
 .action-card .ac-btn:hover{background:var(--ink-2)}
+.action-card .ac-btn:disabled{cursor:default;opacity:.45}
 .action-card .ac-done{margin-top:8px;display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--success);font-weight:500}
 .head-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
 /* Thread panel (right-side overlay) */
 .thread-panel{background:var(--surface);display:flex;flex-direction:column;overflow:hidden}
 .thread-head{display:flex;align-items:center;gap:2px;padding:14px 18px;border-bottom:1px solid var(--hair);font-family:var(--serif);font-size:20px;color:var(--ink)}
 .thread-head .grow{flex:1}
+.thread-panel--solo .thread-head{padding:10px 12px}
+.thread-panel--solo .thread-head .chat-head-actions{gap:0;margin-left:0}
+.thread-panel--solo .thread-head .chat-head-icon-btn{width:28px;height:28px}
 /* thread head icon buttons (mark done / unfollow / source message / close): unified transparent tertiary, surface appears on hover, flex-centered icons */
 .tp-link,.tp-close{background:none;border:0;color:var(--muted);cursor:pointer;padding:5px 7px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center}
 .tp-link:hover,.tp-close:hover{background:var(--surface-strong);color:var(--ink)}
@@ -699,12 +720,63 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .modal input[type=checkbox],.modal input[type=radio]{width:16px;height:16px;flex:none;margin:0;accent-color:var(--ink-2);cursor:pointer}
 .modal .ck-row{display:flex;align-items:center;gap:10px;margin-top:16px;font-size:14px;color:var(--body);cursor:pointer}
 .form-err{margin-top:12px;font-size:13px;color:var(--error);background:var(--error-soft);border:1px solid var(--error-line);border-radius:8px;padding:8px 11px}
-/* Edit-channel modal secondary action buttons */
-.modal .ch-act{width:100%;display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;border:1px solid var(--hair-strong);background:var(--surface);color:var(--ink);font-size:14px;cursor:pointer;font-family:inherit;text-align:left;transition:background .1s}
-.modal .ch-act:hover{background:var(--surface-strong)}
-.modal .ch-act.ch-act-danger{color:var(--error);border-color:var(--error-line)}
-.modal .ch-act.ch-act-danger:hover{background:var(--error-soft)}
-.modal .ch-sep{border:0;border-top:1px solid var(--hair);margin:18px 0}
+
+/* Agent response modes: profile default card + channel-scoped message badge/menu. */
+.agent-response-mode-card__description{max-width:680px;line-height:1.5}
+.agent-response-mode-card__segments{display:inline-flex;margin-top:13px;border:1px solid var(--hair-strong);border-radius:9px;overflow:hidden;background:var(--surface)}
+.agent-response-mode-card__segments button{border:0;background:transparent;color:var(--muted);padding:7px 14px;font:500 13px/1.3 var(--sans);cursor:pointer}
+.agent-response-mode-card__segments button+button{border-left:1px solid var(--hair-strong)}
+.agent-response-mode-card__segments button:hover:not(:disabled){background:var(--surface-strong);color:var(--ink)}
+.agent-response-mode-card__segments button.is-selected{background:var(--ink-2);color:var(--on-ink)}
+.agent-response-mode-card__segments button:focus-visible{position:relative;z-index:1;outline:2px solid var(--g-sky);outline-offset:-2px}
+.agent-response-mode-card__segments button:disabled{cursor:wait;opacity:.72}
+.agent-response-mode-card__hint{max-width:680px;margin:9px 0 0;color:var(--muted);font-size:12px;line-height:1.45}
+.agent-response-mode-card__error,.channel-response-mode-menu__error{margin-top:10px;padding:7px 9px;border:1px solid var(--error-line);border-radius:7px;background:var(--error-soft);color:var(--error);font-size:12px;line-height:1.4}
+
+.channel-response-mode-badge{display:inline-flex;flex:none;align-items:center;min-height:20px;margin:0;padding:2px 7px;border:1px solid transparent;border-radius:9999px;font:600 10px/1.2 var(--sans);letter-spacing:.01em;white-space:nowrap;vertical-align:1px;cursor:pointer;transition:background var(--dur-fast) var(--ease-quint),border-color var(--dur-fast) var(--ease-quint),color var(--dur-fast) var(--ease-quint)}
+.channel-response-mode-badge.mode-active{border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8}
+.channel-response-mode-badge.mode-mention_only{border-color:#fde68a;background:#fffbeb;color:#92400e}
+.channel-response-mode-badge.mode-silent{border-color:var(--hair-strong);background:var(--canvas-soft);color:var(--muted)}
+.channel-response-mode-badge:not(.is-readonly):hover{filter:brightness(.97)}
+.channel-response-mode-badge:focus-visible{outline:2px solid var(--g-sky);outline-offset:2px}
+.channel-response-mode-badge.is-readonly{cursor:default;opacity:.78}
+
+.channel-response-mode-menu-corridor{position:fixed;z-index:90;width:min(280px,calc(100vw - 16px))}
+.channel-response-mode-menu-corridor.is-below{padding-top:6px}
+.channel-response-mode-menu-corridor.is-above{padding-bottom:6px}
+.channel-response-mode-menu{width:100%;max-height:calc(100vh - 28px);overflow-y:auto;border:1px solid var(--hair-strong);border-radius:12px;background:var(--surface);box-shadow:0 8px 24px var(--shadow-2);animation:modal-enter var(--dur-fast) var(--ease-quint)}
+.channel-response-mode-menu__header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:12px 14px 9px;color:var(--ink);font:600 14px/20px var(--sans)}
+.channel-response-mode-menu__header small{overflow:hidden;color:var(--muted);font:400 11.5px/18px var(--sans);text-overflow:ellipsis;white-space:nowrap}
+.channel-response-mode-menu__segments{display:grid;margin:8px 12px 14px;overflow:hidden;border:1px solid var(--hair-strong);border-radius:9px;background:var(--surface)}
+.channel-response-mode-menu__segments.is-channel{grid-template-columns:repeat(4,minmax(0,1fr))}
+.channel-response-mode-menu__segments.is-default{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:9px;margin-bottom:12px}
+.channel-response-mode-menu__segments button{min-width:0;min-height:38px;border:0;background:transparent;color:var(--ink-2);font:500 13px/20px var(--sans);cursor:pointer}
+.channel-response-mode-menu__segments button+button{border-left:1px solid var(--hair-strong)}
+.channel-response-mode-menu__segments button:hover:not(:disabled):not(.is-selected){background:var(--canvas-soft)}
+.channel-response-mode-menu__segments button:focus-visible{position:relative;z-index:1;outline:0;box-shadow:inset 0 0 0 2px var(--g-sky)}
+.channel-response-mode-menu__segments button.is-selected{background:var(--ink-2);color:var(--on-ink);font-weight:600}
+.channel-response-mode-menu__segments button:disabled{cursor:wait;opacity:.68}
+.channel-response-mode-menu__separator{height:1px;background:var(--hair)}
+.channel-response-mode-menu__settings-link{display:flex;width:100%;min-height:44px;align-items:center;gap:10px;border:0;background:transparent;padding:9px 14px;color:var(--ink);font:400 14px/20px var(--sans);text-align:left;white-space:nowrap;cursor:pointer}
+.channel-response-mode-menu__settings-link>svg{flex:none;color:var(--muted)}
+.channel-response-mode-menu__settings-link>svg:last-child{margin-left:auto}
+.channel-response-mode-menu__settings-link:hover:not(:disabled),.channel-response-mode-menu__settings-link:focus-visible{background:var(--canvas-soft);outline:none}
+.channel-response-mode-menu__settings-link:disabled{cursor:wait;opacity:.68}
+.channel-response-mode-menu__drill-header{display:flex;min-height:46px;align-items:center;gap:7px;padding:8px 12px 5px;color:var(--ink);font:600 14px/20px var(--sans)}
+.channel-response-mode-menu__drill-header button{display:flex;width:28px;height:28px;flex:none;align-items:center;justify-content:center;border:0;border-radius:7px;background:transparent;color:var(--ink-2);cursor:pointer}
+.channel-response-mode-menu__drill-header button:hover:not(:disabled),.channel-response-mode-menu__drill-header button:focus-visible{background:var(--canvas-soft);outline:none}
+.channel-response-mode-menu__drill-header button:disabled{cursor:wait;opacity:.68}
+.channel-response-mode-menu__scope{margin:0;padding:0 14px 14px;color:var(--muted);font:400 11.5px/1.5 var(--sans)}
+.channel-response-mode-menu__error{margin:0 12px 12px}
+
+@media (max-width:560px){
+  .agent-response-mode-card__segments{display:flex;width:100%}
+  .agent-response-mode-card__segments button{flex:1;padding-inline:8px}
+}
+@media (prefers-reduced-motion:reduce){
+  .channel-response-mode-menu{animation:none}
+  .channel-response-mode-badge{transition:none}
+}
 /* Permissions facet */
 .perm-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .perm-head .ok{font-size:14px;color:var(--on-ink);background:var(--ink-2);border:0;padding:7px 18px;border-radius:9999px;cursor:pointer}

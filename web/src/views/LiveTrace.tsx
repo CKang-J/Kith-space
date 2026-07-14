@@ -5,9 +5,10 @@ import { IconWrench } from "../icons.tsx";
 import { useStore } from "../store.tsx";
 import { groupTraj } from "../trajBuffer.ts";
 
-export function LiveTrace({ showHeading = true }: { showHeading?: boolean }) {
+export function LiveTrace({ conversationId, showHeading = true }: { conversationId?: string; showHeading?: boolean }) {
   const { t } = useTranslation();
-  const { agents, traj, attachmentUrl } = useStore();
+  const { agents, trajByConversation, attachmentUrl } = useStore();
+  const traj = conversationId ? trajByConversation[conversationId] ?? [] : [];
   const trajGroups = useMemo(() => groupTraj(traj), [traj]);
 
   return (
@@ -16,7 +17,8 @@ export function LiveTrace({ showHeading = true }: { showHeading?: boolean }) {
       {trajGroups.length === 0
         ? <div className="hint">{t("chat.agentTraceHint")}</div>
         : trajGroups.map((group, index) => {
-            const agent = agents.find((item) => (item.displayName || item.name) === group.name);
+            const agent = agents.find((item) => item.id === group.agentId)
+              ?? agents.find((item) => (item.displayName || item.name) === group.name);
             const isTail = index === trajGroups.length - 1;
             const isLive = isTail && (agent?.activity === "working" || agent?.activity === "thinking");
             return (

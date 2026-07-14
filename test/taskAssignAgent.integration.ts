@@ -177,8 +177,11 @@ async function main() {
   await handleAgentApi(dmCheckReq, dmCheckRes.res, new URL("http://localhost/agent-api/message/check"), "GET");
   await dmCheckRes.done();
   const dmCheckBody = dmCheckRes.body();
-  const texts = Array.isArray((dmCheckBody as any).messages) ? (dmCheckBody as any).messages.map((m: any) => String(m.text || "")) : [];
+  const checkedMessages = Array.isArray((dmCheckBody as any).messages) ? (dmCheckBody as any).messages : [];
+  const texts = checkedMessages.map((m: any) => String(m.text || ""));
   check("message check exposes thread:shortid instead of actor-relative dm target", texts.some((txt: string) => txt.includes(`[target=thread:${dmTask!.id.slice(0, 8)}`)));
+  check("task assignment remains required in message check", checkedMessages.some((m: any) => m.responseDirective === "required" && m.responseReason === "explicit_task_assignment"));
+  check("rendered task assignment carries its directive", texts.some((txt: string) => txt.includes("directive=required")));
 }
 
 main()

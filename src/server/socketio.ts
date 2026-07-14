@@ -14,6 +14,18 @@ import { authenticateHumanRequest } from "./humanRequestAuth.js";
 const log = createLogger("server:io");
 let io: IOServer | null = null;
 
+function trajectoryScopeFields(event: any): Record<string, string> {
+  if (event?.scope !== "scoped" && event?.scope !== "unscoped" && event?.scope !== "ambiguous") return {};
+  if (event.scope !== "scoped") return { scope: event.scope };
+  if (typeof event.channelId !== "string" || typeof event.conversationId !== "string") return { scope: "unscoped" };
+  return {
+    scope: "scoped",
+    channelId: event.channelId,
+    conversationId: event.conversationId,
+    ...(typeof event.streamId === "string" && event.streamId ? { streamId: event.streamId } : {}),
+  };
+}
+
 export function attachSocketIO(server: Server): void {
   io = new IOServer(server, {
     cors: {
@@ -72,8 +84,8 @@ export function emitMapped(spaceId: string, event: any): void {
       break;
     }
     // agent:activity merges status + trajectory (carries entries[]). Internally we still keep status/trajectory as two sources; map both to this single event here.
-    case "agent": room.emit("agent:activity", { agentId: event.id, name: event.name, status: event.status, activity: event.activity, detail: event.detail ?? "" }); break;
-    case "trajectory": room.emit("agent:activity", { agentId: event.agentId, name: event.name, entries: event.entries }); break;
+    case "agent": room.emit("agent:activity", { agentId: event.id, name: event.name, status: event.status, activity: event.activity, detail: event.detail ?? "", ...trajectoryScopeFields(event) }); break;
+    case "trajectory": room.emit("agent:activity", { agentId: event.agentId, name: event.name, entries: event.entries, ...trajectoryScopeFields(event) }); break;
     case "agent:reply": chan(event.channelId).emit("agent:reply", event); break; // ephemeral streaming preview → channel members only, never server-wide
     case "message:updated": chan(event.message.channelId).emit("message:updated", event.message); break; // reactions/edits (content) → channel members only
     case "thread:updated": room.emit("thread:updated", { threadChannelId: event.threadChannelId, parentMessageId: event.parentMessageId, parentChannelId: event.parentChannelId, replyCount: event.replyCount, participantIds: event.participantIds, senderId: event.senderId, senderType: event.senderType }); break;

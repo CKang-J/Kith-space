@@ -23,7 +23,7 @@ conn = new Connection(serverUrl, workerToken, (msg) => {
   switch (msg.type) {
     case "ready:ack": break;
     case "agent:start": void mgr.start(msg.agentId, msg.config, msg.reason ?? "manual"); break;
-    case "agent:deliver": mgr.deliver(msg.agentId, msg.from ?? "someone", msg.target ?? "", !!msg.mentioned, { targetName: msg.targetName, msgShort: msg.msgShort, isTask: msg.isTask, streamId: msg.streamId }); conn.send({ type: "agent:deliver:ack", agentId: msg.agentId, seq: msg.seq }); break;
+    case "agent:deliver": mgr.deliver(msg.agentId, msg.from ?? "someone", msg.target ?? "", !!msg.mentioned, { targetName: msg.targetName, msgShort: msg.msgShort, isTask: msg.isTask, streamId: msg.streamId, responseDirective: msg.responseDirective, responseReason: msg.responseReason }); conn.send({ type: "agent:deliver:ack", agentId: msg.agentId, seq: msg.seq }); break;
     case "agent:stop": mgr.stop(msg.agentId); break;
     case "agent:sleep": mgr.sleep(msg.agentId); break;
     case "agent:reset": void mgr.reset({ agentId: msg.agentId, spaceId: msg.spaceId ?? "", workspaceRoot: msg.workspaceRoot ?? "" }, { clearAgentMemory: !!msg.clearAgentMemory }).catch((error) => log.warn("agent reset rejected", { agentId: msg.agentId, detail: String(error) })); break;

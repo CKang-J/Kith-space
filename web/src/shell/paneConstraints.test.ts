@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  AGGREGATE_PANE_WIDTH,
   DEFAULT_MODULE_RATIO,
+  aggregatePaneConstraints,
   chatPaneMin,
   modulePaneMin,
   moduleRatioFromWidth,
@@ -55,4 +57,15 @@ test("dragging cannot shrink Chat below its responsive minimum", () => {
   const layout = paneConstraints(2048, "tasks", 0.9);
   assert.equal(layout.moduleWidth, 1526);
   assert.equal(2048 - layout.moduleWidth - 10, layout.chatMin);
+});
+
+test("aggregate panel constraints reserve Chat and Module minimum widths", () => {
+  assert.deepEqual(aggregatePaneConstraints(1440, "inbox", true), {
+    width: AGGREGATE_PANE_WIDTH,
+    moduleMax: 760,
+    canShow: true,
+  });
+  assert.equal(aggregatePaneConstraints(1280, "inbox", true).canShow, false);
+  assert.equal(aggregatePaneConstraints(1024, null, true).canShow, true);
+  assert.equal(aggregatePaneConstraints(1440, "tasks", false).canShow, false);
 });

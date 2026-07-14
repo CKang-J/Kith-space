@@ -6,6 +6,7 @@ import {
   listLocalSpaces,
   localSpaceUnreadSummary,
   openLocalSpace,
+  removeLocalSpace,
   relocateLocalSpace,
   SpaceServiceError,
   updateLocalSpace,
@@ -109,11 +110,13 @@ export async function handleSpacesHumanScope(ctx: HumanCtx): Promise<boolean> {
   }
 
   const match = /^\/api\/spaces\/([^/]+)$/.exec(p);
-  if (!match || (method !== "GET" && method !== "PATCH")) return false;
+  if (!match || (method !== "GET" && method !== "PATCH" && method !== "DELETE")) return false;
   try {
-    const space = method === "PATCH"
-      ? await updateLocalSpace(match[1]!, await readJson(req))
-      : getLocalSpace(match[1]!);
+    if (method === "DELETE") {
+      removeLocalSpace(match[1]!);
+      return (sendJson(res, 200, { ok: true }), true);
+    }
+    const space = method === "PATCH" ? await updateLocalSpace(match[1]!, await readJson(req)) : getLocalSpace(match[1]!);
     return (sendJson(res, 200, await serializeSpace(space)), true);
   } catch (error) {
     return sendSpaceError(res, error);

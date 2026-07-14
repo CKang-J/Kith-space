@@ -2,7 +2,11 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { io, type Socket } from "socket.io-client";
 import { loadBrowserSession, revokeBrowserSession } from "./browserAuth.ts";
-import { appendCapped, type TrajItem } from "./trajBuffer.ts";
+import {
+  appendConversationBoundary,
+  appendConversationTrajectory,
+  type TrajectoryBuckets,
+} from "./trajBuffer.ts";
 import { messageUnreadDelta, threadUnreadDelta } from "./threadUnread";
 import { initialAuthState, type AuthState } from "./routing.ts";
 import { initialReadySpace } from "./spaces/spaceAvailability.ts";
@@ -10,7 +14,7 @@ import { applySpaceScopeHeaders, spaceScopeHeaders } from "./spaceScope.ts";
 
 export interface Channel { id: string; name: string; description?: string; type: string; lastMessageAt?: string; archivedAt?: string | null }
 export interface Dm { id: string; name: string; type: string; description?: string; lastMessageAt?: string; peerId?: string | null; peerName?: string | null; peerDisplayName?: string | null; peerType?: string | null; peerAvatarUrl?: string | null }
-export interface Agent { id: string; name: string; displayName: string; description?: string; status: string; activity?: string; activityDetail?: string; model?: string; runtime: string; avatarUrl?: string | null; creatorType?: string }
+export interface Agent { id: string; name: string; displayName: string; description?: string; status: string; activity?: string; activityDetail?: string; model?: string; runtime: string; avatarUrl?: string | null; creatorType?: string; defaultResponseMode?: "active" | "mention_only" | "silent" }
 export type SpaceRootStatus = "ready" | "missing" | "error";
 export interface SpaceInfo { id: string; name: string; slug: string; rootPath?: string; status: SpaceRootStatus; rootError?: string | null; code?: string; avatarUrl?: string | null; isHome: boolean; lastOpenedAt?: string }
 export interface SpaceMutationResult { space?: SpaceInfo; error?: string; code?: string }
@@ -28,13 +32,15 @@ interface Store {
   uploadAgentAvatar: (agentId: string, file: File) => Promise<string>;
   createSpace: (input: { name?: string; rootPath?: string }) => Promise<SpaceMutationResult>;
   relocateSpace: (spaceId: string, rootPath: string) => Promise<SpaceMutationResult>;
+  renameSpace: (spaceId: string, name: string) => Promise<SpaceMutationResult>;
+  removeSpace: (spaceId: string) => Promise<{ ok: boolean; error?: string }>;
   refreshSpaces: () => Promise<SpaceInfo[]>;
   switchSpace: (slug: string) => void;                           // client-side Space switch: re-point the active Space, reset per-Space state, reconnect the socket (no full-page reload)
   clearBrowserAccess: () => Promise<void>;
-  channels: Channel[]; dms: Dm[]; unread: Record<string, number>;
+  channels: Channel[]; archivedChannels: Channel[]; dms: Dm[]; unread: Record<string, number>;
   agents: Agent[];        // ALL agents incl. system-seeded showcase demo agents — resolve a sender's avatar/name/profile by id (incl. #showcase history)
   visibleAgents: Agent[]; // agents minus system-seeded showcase demo agents — use for member rosters and every agent picker / @mention candidate list
-  traj: TrajItem[];                                               // global Agent Live Trace ring buffer (newest TRAJ_CAP entries); survives channel/DM switch, fed by agent:activity
+  trajByConversation: TrajectoryBuckets;                          // per-base-conversation live trace buffers; each bucket is independently bounded
   api: (m: string, p: string, b?: unknown) => Promise<any>;
   reload: () => Promise<void>;
   onEvent: (cb: (e: Ev) => void) => () => void;
@@ -71,10 +77,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [spaceAvatar, setSpaceAvatar] = useState<string | null>(null); // Space avatar URL; Cookie auth is supplied by the browser
   const [me, setMe] = useState<Me | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [archivedChannels, setArchivedChannels] = useState<Channel[]>([]);
   const [dms, setDms] = useState<Dm[]>([]);
   const [unread, setUnread] = useState<Record<string, number>>({});
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [traj, setTraj] = useState<TrajItem[]>([]); // global live-trace feed: bounded ring buffer held here (not per Chat view) so it persists across channel/DM switches
+  const [trajByConversation, setTrajByConversation] = useState<TrajectoryBuckets>({});
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [agentPanelReq, setAgentPanelReq] = useState<string | null>(null); // cross-component signal: LiveAgentBar (sidebar) → Chat view opens the agent profile panel
   const [activeSpaceId, setActiveSpaceId] = useState(""); // id of the Space to activate; changing it drives the activation effect (initial pick + every client-side switch)
@@ -103,7 +110,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Space's data — guards rapid A→B→C switches (the sequential awaits below each read the shared spaceIdRef).
     const reloadSpaceId = spaceIdRef.current;
     const fresh = () => spaceIdRef.current === reloadSpaceId;
-    const ch = await api("GET", "/api/channels"); if (fresh()) setChannels(ch);
+    const [ch, archived] = await Promise.all([
+      api("GET", "/api/channels"),
+      api("GET", "/api/channels?archived=only"),
+    ]);
+    if (fresh()) { setChannels(ch); setArchivedChannels(archived); }
     try { const dm = await api("GET", "/api/channels/dm"); if (fresh()) setDms(dm); } catch { if (fresh()) setDms([]); }
     try { const un = (await api("GET", "/api/channels/unread")) || {}; if (fresh()) setUnread(un); } catch { if (fresh()) setUnread({}); }
     const ag = await api("GET", "/api/agents"); if (fresh()) setAgents(ag);
@@ -141,29 +152,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setSpaces(next);
     return next;
   };
-  const mutateSpaceDirectory = async (path: string, body: unknown) => {
+  const mutateSpaceDirectory = async (method: "POST" | "PATCH" | "DELETE", path: string, body?: unknown) => {
     if (!csrfRef.current) throw new Error("Missing browser session CSRF token");
     const response = await fetch(path, {
-      method: "POST",
+      method,
       credentials: "same-origin",
       headers: { "content-type": "application/json", "x-kith-csrf": csrfRef.current },
-      body: JSON.stringify(body),
+      body: body === undefined ? undefined : JSON.stringify(body),
     });
     return response.json().catch(() => ({}));
   };
   // Create in the default container when rootPath is omitted; an explicit rootPath attaches an existing host folder.
   const createSpace = async (input: { name?: string; rootPath?: string }): Promise<SpaceMutationResult> => {
-    const r = await mutateSpaceDirectory("/api/spaces", input);
+    const r = await mutateSpaceDirectory("POST", "/api/spaces", input);
     if (!r?.id) return { error: r?.error || "Space creation failed", code: r?.code };
     return { space: rememberSpace(r) };
   };
   const relocateSpace = async (targetSpaceId: string, rootPath: string): Promise<SpaceMutationResult> => {
-    const r = await mutateSpaceDirectory(`/api/spaces/${targetSpaceId}/relocate`, { rootPath });
+    const r = await mutateSpaceDirectory("POST", `/api/spaces/${targetSpaceId}/relocate`, { rootPath });
     if (!r?.id) return { error: r?.error || "Space relocation failed", code: r?.code };
     return { space: rememberSpace(r) };
   };
+  const renameSpace = async (targetSpaceId: string, name: string): Promise<SpaceMutationResult> => {
+    const r = await mutateSpaceDirectory("PATCH", `/api/spaces/${targetSpaceId}`, { name });
+    if (!r?.id) return { error: r?.error || "Space rename failed", code: r?.code };
+    return { space: rememberSpace(r) };
+  };
+  const removeSpace = async (targetSpaceId: string): Promise<{ ok: boolean; error?: string }> => {
+    const r = await mutateSpaceDirectory("DELETE", `/api/spaces/${targetSpaceId}`);
+    if (!r?.ok) return { ok: false, error: r?.error || "Space removal failed" };
+    const next = spacesRef.current.filter((space) => space.id !== targetSpaceId);
+    spacesRef.current = next;
+    setSpaces(next);
+    return { ok: true };
+  };
   const markSpaceOpened = async (targetSpaceId: string) => {
-    const opened = await mutateSpaceDirectory(`/api/spaces/${targetSpaceId}/open`, {});
+    const opened = await mutateSpaceDirectory("POST", `/api/spaces/${targetSpaceId}/open`, {});
     if (opened?.id) rememberSpace(opened);
   };
   // Client-side Space switch: re-point the active Space by slug. The activation effect (keyed on activeSpaceId) resets
@@ -299,7 +323,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setReady(false);
     spaceIdRef.current = cur.id; setSpaceId(cur.id); setSlug(cur.slug || "kith-space");
     setSpaceAvatar(cur.avatarUrl || null);
-    setChannels([]); setDms([]); setUnread({}); setAgents([]); setTraj([]); setSavedIds(new Set()); setAgentPanelReq(null);
+    setChannels([]); setArchivedChannels([]); setDms([]); setUnread({}); setAgents([]); setTrajByConversation({}); setSavedIds(new Set()); setAgentPanelReq(null);
     subscribedRef.current = new Set(); // the previous workspace's view-subscriptions don't carry over
     sockRef.current = null; // the previous socket is closed by this effect's cleanup; drop the stale ref until the new one connects
     let lastSeq = 0;
@@ -345,27 +369,48 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
       sock.on("agent:activity", (p: any) => {
         if (p?.entries) {
-          dispatch({ type: "trajectory", agentId: p.agentId, name: p.name, entries: p.entries });
-          // Also accumulate into the global live-trace ring buffer (capped at TRAJ_CAP) so the panel keeps history across channel/DM switches. Mapping mirrors the panel's render shape.
-          setTraj((prev) => appendCapped(prev, (p.entries as any[]).map((x) => ({ name: p.name, tool: !!x.toolName, text: x.text || (x.toolName ? `${x.toolName}${x.toolInput ? " — " + x.toolInput : ""}` : "") || x.detail || "" }))));
+          dispatch({ type: "trajectory", agentId: p.agentId, name: p.name, entries: p.entries, scope: p.scope, channelId: p.channelId, conversationId: p.conversationId, streamId: p.streamId });
+          if (p.scope === "scoped" && typeof p.conversationId === "string" && p.conversationId) {
+            setTrajByConversation((prev) => appendConversationTrajectory(
+              prev,
+              p.conversationId,
+              (p.entries as any[]).map((x) => ({
+                agentId: p.agentId,
+                name: p.name,
+                streamId: p.streamId,
+                tool: !!x.toolName,
+                text: x.text || (x.toolName ? `${x.toolName}${x.toolInput ? " — " + x.toolInput : ""}` : "") || x.detail || "",
+              })),
+            ));
+          }
         }
         else {
           setAgents((as) => as.map((a) => (a.id === p.agentId ? { ...a, status: p.status ?? a.status, activity: p.activity ?? a.activity, activityDetail: p.detail ?? a.activityDetail } : a))); // real-time status dot + activity text used by header and sidebar
-          // Leaving working/thinking ends this agent's turn — mark the live-trace buffer so the next
-          // fragment for the same agent starts a fresh group instead of running on from a finished turn.
-          if (p.activity && p.activity !== "working" && p.activity !== "thinking") {
-            setTraj((prev) => (prev.some((x) => x.name === p.name && !x.boundary) ? appendCapped(prev, [{ name: p.name, text: "", boundary: true }]) : prev));
+          // A terminal activity closes only the matching scoped turn. Unscoped/ambiguous status
+          // updates still feed the Agent activity page but never create a conversation marker.
+          if (p.scope === "scoped" && typeof p.conversationId === "string" && p.conversationId
+            && p.activity && p.activity !== "working" && p.activity !== "thinking") {
+            setTrajByConversation((prev) => appendConversationBoundary(prev, p.conversationId, {
+              agentId: p.agentId,
+              name: p.name,
+              streamId: p.streamId,
+            }));
           }
-          dispatch({ type: "agent", id: p.agentId, name: p.name, activity: p.activity, status: p.status, detail: p.detail });
+          dispatch({ type: "agent", id: p.agentId, name: p.name, activity: p.activity, status: p.status, detail: p.detail, scope: p.scope, channelId: p.channelId, conversationId: p.conversationId, streamId: p.streamId });
         }
       });
       sock.on("agent:reply", (p: any) => dispatch({ type: "agent:reply", ...p }));
+      sock.on("agent:response-mode-updated", (p: any) => dispatch({ ...p, type: "agent:response-mode-updated" }));
       sock.on("agent:created", () => reload());
       sock.on("agent:deleted", () => reload());
       // Real-time: new DM / agent membership change → reload lists + subscribe to the affected transport room.
       // The server validates Space access for the Human; this socket event does not create domain membership.
       sock.on("dm:new", (p: any) => { reload(); if (p?.channelId) sockRef.current?.emit("join:channel", p.channelId); });
       sock.on("channel:members-updated", (p: any) => { reload(); if (p?.channelId) sockRef.current?.emit("join:channel", p.channelId); });
+      // Archive/restore/delete moves a channel between the two lists. Re-fetch both from the
+      // authoritative lifecycle queries instead of trying to infer the move from event payloads.
+      sock.on("channel:updated", () => { void reload(); });
+      sock.on("channel:deleted", () => { void reload(); });
       sock.on("task:created", (p: any) => (p.tasks || []).forEach((t: any) => dispatch({ type: "task", op: "created", task: t }))); // payload={channelId,tasks:[]}
       sock.on("task:updated", (p: any) => dispatch({ type: "task", op: "updated", task: p.task }));                                  // payload={channelId,task}
       sock.on("task:deleted", (p: any) => dispatch({ type: "task", op: "deleted", taskId: p.taskId, channelId: p.channelId }));      // payload={channelId,taskId}
@@ -382,6 +427,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Showcase demo agents (creatorType="system") stay in `agents` so #showcase history still resolves their
   // avatar/name/profile by id — but they are not real members, so every roster / picker uses `visibleAgents`.
   const visibleAgents = agents.filter((a) => a.creatorType !== "system");
-  return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, spaceAvatar, spaces, createSpace, relocateSpace, refreshSpaces, switchSpace, clearBrowserAccess, uploadSpaceAvatar, uploadAgentAvatar, channels, dms, unread, agents, visibleAgents, traj, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, spaceAvatar, spaces, createSpace, relocateSpace, renameSpace, removeSpace, refreshSpaces, switchSpace, clearBrowserAccess, uploadSpaceAvatar, uploadAgentAvatar, channels, archivedChannels, dms, unread, agents, visibleAgents, trajByConversation, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
 }
 

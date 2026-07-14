@@ -84,7 +84,8 @@ CRITICAL: Text you print outside a \`${cli}\` command is NOT delivered to anyone
 FRESHNESS HOLD (collaboration safety): if new messages arrived in that target since you last read it, \`send\` does NOT post — it saves your text as a draft and shows you the newer messages ("Freshness hold: …"). Read that bounded context, then EITHER revise (run \`send --target <t>\` again with new content — e.g. drop what a teammate already covered, to avoid redundant replies) OR commit unchanged with \`${cli} message send --send-draft --target <t>\`. This is how teammates avoid talking over each other — use it: if someone already answered, shorten or skip your reply.
 
 ## Received message format
-\`[target=<id> msg=<shortid> time=<iso> type=human|agent|system] @sender: content\`
+\`[target=<id> msg=<shortid> time=<iso> type=human|agent|system directive=required|optional|observe] @sender: content\`
+The per-message \`directive=\` is authoritative: reply to \`required\`, use judgment for \`optional\`, and treat \`observe\` as context only.
 Reuse the \`target=\` value when replying so it lands in the right channel/DM/thread. @mention people by their @handle. \`msg=\` is the 8-char short id — use it as a thread suffix (\`#channel:shortid\`) or as the stable form \`thread:shortid\` to start/reply in a thread, and pass it to \`${cli} message resolve\` to verify a cited id is real. \`type=system\` messages announce state changes (task events, reminders) — don't reply unless they clearly ask you to act.
 
 ### Formatting — so refs/links render
@@ -125,8 +126,8 @@ This is a v1 soft guard carried by the prompt; the server does not hard-block pr
 ## Turn lifecycle
 The concrete turn instruction tells you why this turn started. Follow exactly one matching path:
 - **Creation turn**: this is a one-time introduction, not an inbox reply. Send one concise introduction to \`dm:@you\`, then stop. Do not scan channel history or announce an empty inbox.
-- **Start or resume turn**: run \`${cli} message check\` once and handle any real waiting messages. If nothing is waiting, stay silent and stop; never send a no-work report.
-- **Delivery wake turn**: a real message is persisted in the inbox. Run \`${cli} message check\`, handle all pending messages, and you must send a reply in each original target represented by the pending messages before ending the turn. Do not replace the reply with a greeting.
+- **Start or resume turn**: run \`${cli} message check\` once and handle any real waiting messages according to each message's \`responseDirective\`. If nothing requires action, stay silent and stop; never send a no-work report.
+- **Delivery wake turn**: a real message is persisted in the inbox. Run \`${cli} message check\` and preserve each message's directive: \`required\` means you must reply in that original target; \`optional\` means decide whether a useful response exists and you may stay silent; \`observe\` is context only and must not cause a reply by itself. Never upgrade every target merely because one item is \`required\`.
 
 For non-trivial work, read all three memory indexes with your runtime's native file tools, in this exact order:
    1. User memory: \`${c.memory.user.indexFile}\`
@@ -185,22 +186,23 @@ export const CREATION_NUDGE =
   "You have just been created in Kith-space. This is your one-time introduction, not a reply to an inbox message. Send exactly one concise 2-3 sentence introduction to the Human with the host-native Kith-space CLI message send --introduction command targeting dm:@you. The --introduction flag is required for this creation message and must not be used on later replies. State your name, your role or strongest capabilities, and how the Human can ask you for help. Do not scan channel history, announce that the inbox is empty, post anywhere else, or send more than one message.";
 /** Existing agent started or resumed without a known delivery. Check once, but never narrate an empty inbox. */
 export const STARTUP_NUDGE =
-  "You were started or resumed without a known new delivery. Use the host-native Kith-space CLI command shown in your system prompt to check the inbox once. Handle and reply to any real waiting messages in their original target. If the inbox is empty, remain silent: do not send a status update, greeting, or no-work report; simply end the turn.";
-/** A real persisted delivery caused this turn. The agent must handle the real target, not greet or narrate idle state. */
+  "You were started or resumed without a known new delivery. Use the host-native Kith-space CLI command shown in your system prompt to check the inbox once. Follow each message's responseDirective: reply to required items, decide optional items, and treat observe items as context only. If nothing requires action, remain silent: do not send a status update, greeting, or no-work report; simply end the turn.";
+/** A real persisted delivery caused this turn. Per-message directives decide whether a reply is required. */
 export const WAKE_NUDGE =
-  "You were woken by a new Kith-space delivery. FIRST use the host-native Kith-space CLI command shown in your system prompt to check and handle all pending message(s), then you must send a reply in each original target represented by the pending messages before ending the turn, using the CLI message send command. Do not send an introduction, an empty-inbox report, or stdout-only narration; only the Kith-space CLI reaches people.";
+  "You were woken by a new Kith-space delivery. FIRST use the host-native Kith-space CLI command shown in your system prompt to check all pending message(s). Respect each responseDirective independently: required must be handled and replied to in its original target; optional should be answered only when useful and may stay silent; observe is context only. Do not upgrade the whole batch because one item is required. Do not send an introduction, an empty-inbox report, or stdout-only narration; only the Kith-space CLI reaches people.";
 /** Stdin notification delivered while the agent is busy. Structured, content-free: message bodies are retrieved through the host-native CLI. */
-export function inboxNotice(o: { count: number; from: string; targetName: string; firstShort?: string; latestShort?: string; isTask?: boolean; isDm?: boolean; changedTargets?: number; mentioned?: boolean }): string {
+export function inboxNotice(o: { count: number; from: string; targetName: string; firstShort?: string; latestShort?: string; isTask?: boolean; isDm?: boolean; changedTargets?: number; mentioned?: boolean; responseDirective?: "required" | "optional" }): string {
   // Inbox notice format (content-free, metadata only):
   // [inbox notice:\nInbox update: N unread message total; M changed target\n#all  pending: N message · first msg=<8hex> · latest @<h> · latest msg=<8hex> · task/dm\n]
   const plural = (n: number) => (n === 1 ? "" : "s");
   const changed = o.changedTargets ?? 1;
   const first = o.firstShort ? ` · first msg=${o.firstShort}` : "";
   const latest = o.latestShort ? ` · latest msg=${o.latestShort}` : "";
-  const suffix = `${o.isTask ? " · task" : ""}${o.isDm ? " · dm" : ""}`;
+  const directive = o.responseDirective ?? "required";
+  const suffix = `${o.isTask ? " · task" : ""}${o.isDm ? " · dm" : ""} · directive=${directive}`;
   return `[inbox notice:
 Inbox update: ${o.count} unread message${plural(o.count)} total; ${changed} changed target${plural(changed)}
 ${o.targetName}  pending: ${o.count} message${plural(o.count)}${first} · latest @${o.from}${latest}${suffix}
 ]
-Content-free signal — message bodies are withheld, not absent. Finish your current step, then use the host-native Kith-space CLI command shown in your system prompt to check and handle them. If this notice is the only thing in your current turn, check now and reply through that CLI; do not finish with stdout only. Never conclude "no work" from this notice alone.`;
+Content-free signal — message bodies are withheld, not absent. Finish your current step, then use the host-native Kith-space CLI command shown in your system prompt to check them. Per-message directives remain authoritative: reply to required items; optional items may stay silent when no useful response exists. Never conclude "no work" from this notice alone.`;
 }

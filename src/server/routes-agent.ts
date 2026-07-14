@@ -9,12 +9,15 @@ import { AgentIntroductionTokenRejectedError, createMessage, resolveTarget, chan
 import { agentHasScope } from "./scopes.js";
 import { agentIntroductionTokenStatus } from "./agentIntroduction.js";
 import { parseUpload } from "./attachments.js";
-import { readObject } from "./storage.js";
+import { deleteObject, readObject } from "./storage.js";
+import { activeChannels, assertChannelWritable, channelLifecycleState } from "../channels/channelLifecycle.js";
 import { normalizeTaskExecutionMode } from "./dispatchGuard.js";
 import { getTaskDetails, reportTask, submitTaskDelivery } from "./tasks/taskService.js";
 import { sendTaskOperationError } from "./tasks/taskHttp.js";
 import { getHumanIdentity, humanIdentityForHandle, humanIdentityForId } from "../human/humanIdentity.js";
 import { humanChannelState } from "../human/humanChannelState.js";
+import { resolveAgentResponseMode } from "../agents/agentResponseSettings.js";
+import { decideAgentMessageResponse, type AgentResponseDeliveryDecision } from "../agents/agentResponseDelivery.js";
 
 // Freshness-hold draft buffer (prevents agent↔agent duplicate replies): when the agent sends
 // and new messages have arrived since last read → save as draft + surface bounded context, do not post immediately.
@@ -82,7 +85,12 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 // Local YYYY-MM-DD HH:MM:SS format for message header time= field (not ISO)
 const localTime = (d: Date | string | null | undefined) => { const t = d instanceof Date ? d : new Date(d ?? Date.now()); return `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(t.getDate())} ${pad2(t.getHours())}:${pad2(t.getMinutes())}:${pad2(t.getSeconds())}`; };
 // Message rendering: header + task suffix [task #N status=] + attachment suffix
-export const fmt = (m: typeof schema.messages.$inferSelect, target: string, atts: { filename: string; id: string }[] = []) => {
+export const fmt = (
+  m: typeof schema.messages.$inferSelect,
+  target: string,
+  atts: { filename: string; id: string }[] = [],
+  responseDirective?: AgentResponseDeliveryDecision["directive"],
+) => {
   const taskSuffix = m.taskStatus ? ` [task #${m.taskNumber} status=${m.taskStatus} mode=${m.taskExecutionMode}]` : "";
   const attSuffix = atts.length ? ` [${atts.length} attachment${atts.length > 1 ? "s" : ""}: ${atts.map((a) => `${a.filename} (id:${a.id})`).join(", ")} — use kith-space attachment view to download]` : "";
   const type = m.senderType === "human" ? "human" : m.senderType; // message header uses "human" for human senders, not "human"
@@ -90,7 +98,8 @@ export const fmt = (m: typeof schema.messages.$inferSelect, target: string, atts
   // — NOT the thread channel id — because resolveTarget resolves the suffix as a PARENT MESSAGE id prefix
   // (matches addressableTarget's convention). Using the thread channel id here made the shown target
   // unresolvable (404), so agents reusing it couldn't reply into the thread. See threadTargetRoundtrip test.
-  return `[target=${target}${m.threadId ? ":" + m.id.slice(0, 8) : ""} msg=${m.id.slice(0, 8)} time=${localTime(m.createdAt)} type=${type}] @${m.senderName}: ${m.content}${taskSuffix}${attSuffix}`;
+  const directive = responseDirective ? ` directive=${responseDirective}` : "";
+  return `[target=${target}${m.threadId ? ":" + m.id.slice(0, 8) : ""} msg=${m.id.slice(0, 8)} time=${localTime(m.createdAt)} type=${type}${directive}] @${m.senderName}: ${m.content}${taskSuffix}${attSuffix}`;
 };
 
 export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, url: URL, method: string): Promise<boolean> {
@@ -112,16 +121,46 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     const out: any[] = [];
     for (const cm of cms) {
       const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, cm.channelId)))[0];
-      if (!ch || ch.deletedAt) continue;
+      if (!ch || await channelLifecycleState(spaceId, ch.id) !== "active") continue;
       const msgs = await db.select().from(schema.messages).where(and(eq(schema.messages.channelId, cm.channelId), gt(schema.messages.seq, cm.lastReadSeq))).orderBy(asc(schema.messages.seq)).limit(100);
       const fresh = msgs.filter((m) => m.senderId !== agent.id);
       if (fresh.length) {
         const target = await addressableTarget(spaceId, ch, agent.id);
+        const responseMode = await resolveAgentResponseMode(spaceId, ch.id, agent.id);
+        const mentionRows = await db.select({ messageId: schema.messageMentions.messageId }).from(schema.messageMentions).where(and(
+          inArray(schema.messageMentions.messageId, fresh.map((message) => message.id)),
+          eq(schema.messageMentions.mentionType, "agent"),
+          eq(schema.messageMentions.mentionId, agent.id),
+        ));
+        const mentionedMessages = new Set(mentionRows.map((row) => row.messageId));
+        const parentTask = ch.type === "thread" && ch.parentMessageId
+          ? (await db.select({ taskAssigneeId: schema.messages.taskAssigneeId }).from(schema.messages).where(eq(schema.messages.id, ch.parentMessageId)))[0]
+          : null;
         // Batch-load attachments → append attachment suffix to message header
         const atts = await db.select().from(schema.attachments).where(inArray(schema.attachments.messageId, fresh.map((m) => m.id)));
         const byMsg = new Map<string, { filename: string; id: string }[]>();
         for (const a of atts) { const k = a.messageId!; const arr = byMsg.get(k) ?? []; arr.push({ filename: a.filename, id: a.id }); byMsg.set(k, arr); }
-        out.push(...fresh.map((m) => ({ ...serialize(m), text: fmt(m, target, byMsg.get(m.id) ?? []) })));
+        out.push(...fresh.map((m) => {
+          const decision = decideAgentMessageResponse({
+            agentId: agent.id,
+            channelType: ch.type as "channel" | "private" | "dm" | "thread",
+            senderType: m.senderType as "human" | "agent" | "system",
+            effectiveMode: responseMode?.effectiveResponseMode ?? "active",
+            messageSeq: m.seq,
+            mentioned: mentionedMessages.has(m.id),
+            taskAssigneeId: m.taskStatus ? m.taskAssigneeId : null,
+            parentTaskAssigneeId: parentTask?.taskAssigneeId ?? null,
+            isTask: Boolean(m.taskStatus),
+            ambientWakeAfterSeq: responseMode?.ambientWakeAfterSeq ?? cm.ambientWakeAfterSeq,
+            mentionWakeAfterSeq: responseMode?.mentionWakeAfterSeq ?? cm.mentionWakeAfterSeq,
+          });
+          return {
+            ...serialize(m),
+            responseDirective: decision.directive,
+            responseReason: decision.reason,
+            text: fmt(m, target, byMsg.get(m.id) ?? [], decision.directive),
+          };
+        }));
       }
       if (msgs.length) await db.update(schema.channelAgentMembers).set({ lastReadSeq: msgs[msgs.length - 1]!.seq })
         .where(and(eq(schema.channelAgentMembers.channelId, cm.channelId), eq(schema.channelAgentMembers.agentId, agent.id)));
@@ -209,7 +248,16 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
   // Agent uploads an attachment (first-class member, can share files). Multipart fields: files=binary, channel=human-readable target. Returns attachmentId; use message send --attach to attach it.
   if (p === "/agent-api/attachment/upload" && method === "POST") {
     const { fields, files } = await parseUpload(spaceId, req);
-    const tgt = await resolveTarget(spaceId, fields.channel ?? fields.target ?? "", agent.id);
+    let tgt: Awaited<ReturnType<typeof resolveTarget>>;
+    try {
+      tgt = await resolveTarget(spaceId, fields.channel ?? fields.target ?? "", agent.id);
+      if (tgt?.channelId) {
+        await assertChannelWritable(spaceId, tgt.channelId);
+      }
+    } catch (error) {
+      await Promise.allSettled(files.map((file) => deleteObject(spaceId, file.storageKey)));
+      throw error;
+    }
     const out = [];
     for (const f of files) {
       const [a] = await db.insert(schema.attachments).values({ spaceId, channelId: tgt?.channelId ?? null, uploaderType: "agent", uploaderId: agent.id, filename: f.filename, mimeType: f.mimeType, sizeBytes: f.size, storageKey: f.storageKey }).returning();
@@ -224,6 +272,9 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     if (!b.messageId || !emoji) return (sendErr(res, 400, "messageId + emoji required"), true);
     const mid = await resolveMessageId(spaceId, b.messageId, agent.id); // Tolerates short id (agent reacts to the short id it sees); without this, querying uuid column with a short id → 500
     if (!mid) return (sendErr(res, 404, "message not found"), true);
+    const message = (await db.select({ channelId: schema.messages.channelId }).from(schema.messages).where(eq(schema.messages.id, mid)))[0];
+    if (!message) return (sendErr(res, 404, "message not found"), true);
+    await assertChannelWritable(spaceId, message.channelId);
     const out = b.remove ? await removeReaction(spaceId, mid, "agent", agent.id, emoji) : await addReaction(spaceId, mid, "agent", agent.id, emoji);
     return (sendJson(res, 200, { ok: true, reactions: out?.reactions ?? [] }), true);
   }
@@ -269,7 +320,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     return (sendJson(res, 200, {
       // Agent ACL: only surface public channels + channels the agent has joined — never reveal a private
       // channel's name/description to a non-member (DMs are listed elsewhere). Keeps private channels invisible.
-      channels: chs.filter((c) => c.type !== "dm" && c.type !== "thread" && !c.deletedAt && (c.type === "channel" || joined.has(c.id))).map((c) => ({ name: c.name, description: c.description, joined: joined.has(c.id), type: c.type })),
+      channels: chs.filter((c) => c.type !== "dm" && c.type !== "thread" && !c.deletedAt && !c.archivedAt && (c.type === "channel" || joined.has(c.id))).map((c) => ({ name: c.name, description: c.description, joined: joined.has(c.id), type: c.type })),
       agents: agents.map((a) => ({ name: a.name, status: a.status, description: a.description ?? null })),
       human: human ? { name: human.handle, displayName: human.displayName, description: human.description } : null,
     }), true);
@@ -283,6 +334,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     // Agent ACL: self-join is for public channels only. Private channel, DM, and thread membership comes from
     // the Human or an existing collaboration flow; an agent cannot enroll itself by guessing a channel name.
     if (ch.type !== "channel") return (sendErr(res, 403, "private channels, DMs, and threads cannot be self-joined"), true);
+    await assertChannelWritable(spaceId, ch.id);
     // Join at the channel watermark so a self-joining agent's next `message check` sees only new messages, not
     // the channel's pre-join backlog (it can pull history on demand via `message read`).
     await addChannelMembers(spaceId, ch.id, [{ type: "agent", id: agent.id }]);
@@ -466,8 +518,13 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     if (!q) return (sendErr(res, 400, "q required"), true);
     const joined = (await agentChannels(spaceId, agent.id)).map((c) => c.channelId);
     if (!joined.length) return (sendJson(res, 200, { results: [] }), true);
+    const activeJoined = new Set((await activeChannels(spaceId, await db.select().from(schema.channels).where(and(
+      eq(schema.channels.spaceId, spaceId),
+      inArray(schema.channels.id, joined),
+    )))).map((channel) => channel.id));
+    if (!activeJoined.size) return (sendJson(res, 200, { results: [] }), true);
     const rows = await db.select().from(schema.messages)
-      .where(and(eq(schema.messages.spaceId, spaceId), inArray(schema.messages.channelId, joined), like(schema.messages.content, `%${q}%`)))
+      .where(and(eq(schema.messages.spaceId, spaceId), inArray(schema.messages.channelId, [...activeJoined]), like(schema.messages.content, `%${q}%`)))
       .orderBy(desc(schema.messages.seq)).limit(20);
     return (sendJson(res, 200, { results: rows.map((m) => ({ id: m.id, channelId: m.channelId, senderType: m.senderType, senderName: m.senderName, content: m.content, createdAt: m.createdAt })) }), true);
   }

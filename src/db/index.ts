@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { and, eq, isNull } from "drizzle-orm";
 import {
   closeAppDatabase,
   getSpaceRecord as getRegisteredSpace,
@@ -23,6 +22,7 @@ import {
   SPACE_DATABASE_SCHEMA_VERSION,
   SpaceDatabaseCompatibilityError,
 } from "./spaceDatabaseCompatibility.js";
+import { ensureRequiredChannels } from "./requiredChannel.js";
 
 export type SpaceDb = BetterSQLite3Database<typeof schema>;
 
@@ -116,7 +116,7 @@ function assertCompatibleBaseline(sqlite: Database.Database, dbPath: string): vo
   }
 }
 
-function ensureSpaceBaseline(db: SpaceDb, record: SpaceRecord): void {
+function ensureSpaceBaseline(db: SpaceDb, sqlite: Database.Database, record: SpaceRecord): void {
   db.transaction((tx) => {
     const existingSpaces = tx.select().from(schema.spaces).all();
     if (existingSpaces.some((space) => space.id !== record.id)) {
@@ -127,21 +127,8 @@ function ensureSpaceBaseline(db: SpaceDb, record: SpaceRecord): void {
         target: schema.spaces.id,
         set: { name: record.name, slug: record.slug },
       }).run();
-    const all = tx.select({ id: schema.channels.id }).from(schema.channels).where(and(
-      eq(schema.channels.spaceId, record.id),
-      eq(schema.channels.name, "all"),
-      eq(schema.channels.type, "channel"),
-      isNull(schema.channels.deletedAt),
-    )).get();
-    if (!all) {
-      tx.insert(schema.channels).values({
-        spaceId: record.id,
-        name: "all",
-        description: "General channel for the Human and all agents",
-        type: "channel",
-      }).run();
-    }
   });
+  ensureRequiredChannels(sqlite, record.id);
 }
 
 export function spaceRecord(spaceId: string): SpaceRecord | undefined {
@@ -212,7 +199,7 @@ export function dbForSpace(spaceId: string, options: { allowCreate?: boolean } =
         error.message,
       );
     }
-    ensureSpaceBaseline(db, record);
+    ensureSpaceBaseline(db, sqlite, record);
     spaceConnections.set(spaceId, { sqlite, db, dbPath });
     pendingSpaceInitializations.delete(spaceId);
     return db;

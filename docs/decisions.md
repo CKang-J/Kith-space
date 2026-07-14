@@ -2,7 +2,7 @@
 
 ## 前言
 
-这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）；随后授权浏览器的目录选择收敛为受限主机目录浏览器（决策 24）。当前结论以每条决策中的最新修正和决策 21-24 为准。
+这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）；随后授权浏览器的目录选择收敛为受限主机目录浏览器（决策 24）。2026-07-14 又锁定会话聚合面板（决策 25）与 Agent 频道响应模式（决策 26）。当前结论以每条决策中的最新修正和决策 21-26 为准。
 
 盘问的方式是一次给一个决策、每次给一个明确建议，让用户在 either/or 之间做取舍。会话过程中有几条决策被推翻或修正过（底座、runtime、Redis 的真实用途、聊天历史随文件夹走的成本），这些演化本身是理解项目为什么长成现在这样的关键，因此单列一节保留。
 
@@ -38,6 +38,8 @@
 | 22 | Agent 首轮 | 创建问候、空启动静默、真实投递按原目标回复 |
 | 23 | Home 与 Space 根目录 | Home 是总控 Space；app data、Space 数据和 runtime 状态分离 |
 | 24 | 浏览器目录选择 | 授权浏览器通过 Core 受限浏览主机目录，不手填路径也不读取文件内容 |
+| 25 | 会话聚合面板 | 轨迹/话题/文件收敛为当前会话辅助面板，轨迹按 base conversation 隔离 |
+| 26 | Agent 频道响应模式 | Agent 默认值加频道成员覆盖；私聊与明确任务指派不受模式限制 |
 
 ---
 
@@ -125,7 +127,7 @@
 
 **推理与权衡**：默认 autopilot 给的是"魔法感"——agent 自动把活干了。但自动连锁会自我扩散（agent→agent 无限派生任务链、失控烧 token）。所以默认 A 的代价是三护栏从"可选优化"变成"强制项"：深度上限防无限派生，token 预算防失控烧钱，一键急停给用户随时夺回控制权的确定手段。plan-first 先用软闸（角色提示词要求先出计划）实现，硬闸延后——因为软闸零架构成本，够验证。三护栏配合右栏实时轨迹模块（决策 14）：轨迹提供可见性，护栏提供可控性。
 
-**已核实源码事实**：agent→agent 分派天然成立，靠纯唤醒判据 `isWakeable`（`agentWakePolicy.ts:10`）——被 @ 的成员无条件唤醒且不看发送者身份（`agentWakePolicy.ts:12`），所以 agent A @agent B 就能唤醒 B。但两条约束塑造协作闭环形状：被 @ 的 agent 须已是频道成员（agent 发文不能自动拉人，`canAutoJoinMentionedMembers` 仅对 `senderType==="user"` 为真，`agentWakePolicy.ts:3`）；agent 的普通发言不唤醒其他 agent（`agentWakePolicy.ts:13`，防自激循环），所以汇报须 @ 回 leader。DM 是例外，无条件唤醒（`agentWakePolicy.ts:11`）。三护栏都落在 server 唤醒环这一收口处（`server/core.ts:412`–`:436` 与 `assignTask` `server/core.ts:686`），不改 runtime/daemon 协议。schema 已有 `executionMode`（`db/schema.ts:74`，默认 `"auto"`）可作开关持久化字段。急停复用 `stopAgent`（`server/core.ts:896`）。
+**后续修正（2026-07-14）**：决策 26 落地后，旧纯唤醒判据 `isWakeable` 已删除；`src/agents/agentResponsePolicy.ts:42` 统一判断实时、reconnect 与 message check 的 `required | optional | observe`。agent 普通发言仍不环境唤醒其他 agent，明确 `@` 只唤醒已在频道内且有效模式为主动/被动的目标，静音目标不因频道 mention 启动；`src/server/agentWakePolicy.ts:3` 只保留 Human mention 自动加入频道的 membership 规则。DM 与明确任务指派仍为 required，后者由 `src/server/core.ts:1010` 的统一 dispatch 路径执行并继续服从既有深度、预算和急停护栏。该修正改变唤醒细节，不改变本决策的 autopilot/plan-first 与三护栏结论。
 
 ---
 
@@ -348,6 +350,32 @@
 **推理与权衡**：目录枚举属于高敏感本机元数据，因此接口必须位于 Human 授权 gate 后，只接受绝对路径，只列目录，不返回文件内容；LAN v1 仍建立在“持有访问 Token 的受信任私网用户拥有完整产品能力”这一假设上。代价是授权浏览器能够看见主机目录结构，这必须继续受访问 Token、会话和既有 LAN 风险提示保护。
 
 **已实现事实**：`src/spaces/hostDirectoryBrowser.ts` 负责跨平台根位置与目录枚举；`src/server/routes-api/hostDirectories.ts` 提供 gate-1 `GET /api/host-directories`；`web/src/spaces/HostDirectoryPicker.tsx` 提供浏览器目录选择 UI。创建与接入表单由 `SpaceFolderDialog` 承载为紧凑模态弹窗。
+
+---
+
+## 决策 25：会话辅助信息收敛为聚合面板，轨迹按 base conversation 隔离
+
+**结论（2026-07-14）**：删除 Chat 顶部“会话 / Chat / 轨迹”工具条和 Chat 内嵌 Tasks/Files Tab。会话列表开关、当前会话 Tasks、成员和聚合面板入口进入会话标题栏；聚合面板固定承载“轨迹 / 话题 / 文件”，在 Split 中位于 Chat 与 Module 之间。中文 UI 用“话题”，内部继续使用 `thread`。实时轨迹只进入明确归属的 base conversation，thread 归一到父会话，无作用域或 ambiguous 事件不得猜测归属。
+
+**推理与权衡**：原实时轨迹栏展示所有会话事件，会把并行 agent 工作误导为当前会话上下文；文件和 thread 索引又散落在 Chat Tab，模块打开后入口与布局规则不一致。一个会话级聚合面板把“当前会话的辅助索引”放在稳定位置，同时保留 Module 一次一个、话题正文仍在 Chat、Tasks 仍是模块的既有边界。代价是三栏需要明确最小宽度和降级顺序，因此聚合面板优先于会话列表、低于主要工作面与 Module；宽度不足时临时收至 `0`，不退化为覆盖 Module 的抽屉。
+
+**实施边界**：聚合面板不是通用停靠系统，不可拖拽改宽，不持久化到 URL；轨迹仍是本次前端会话内每会话 300 条的有界缓冲，不新增历史表。话题列表用独立 thread summaries 查询，文件搜索只覆盖本次加载的当前会话 100 条附件。完整规格见 `docs/superpowers/specs/2026-07-14-chat-aggregate-panel-design.md`。
+
+---
+
+## 决策 26：Agent 响应模式采用“Space 默认 + 顶层频道覆盖”两层模型
+
+**结论（2026-07-14）**：每个 Agent 在所属 Space 中保存一个默认响应模式，每个顶层频道的 Agent membership 可保存一个可空覆盖；有效值为“频道覆盖 ?? Agent 默认”。三档固定为主动（`active`）、被动（`mention_only`）和静音（`silent`），“跟随 Agent 默认”只是覆盖为空的继承状态。已有和新建 Agent 默认主动。Human-Agent 私聊和明确任务指派始终直达目标 Agent，不受模式限制；话题继承父频道，不增加第三层设置。
+
+**背景**：现有 Human 频道消息会沿频道成员范围唤醒 Agent，runtime wake 提示又倾向要求每个目标都回复，导致“加入频道”同时承担阅读权限、自动启动和强制回应三种职责。用户需要的是按 Agent、按频道控制主动程度，同时保留私聊、任务指派和话题连续对话的确定性。
+
+**选项与选择**：只做前端显示 / 在服务端建立统一响应策略（选中后者）；只设 Agent 默认 / 默认加频道覆盖（选中后者）；让 DM、话题各自再有一层 / DM 绕过且话题继承频道（选中后者）。响应模式不成为发送权限，也不取代 membership、频道生命周期或编排护栏。
+
+**运行语义**：主动模式只对 Human 的普通频道消息做环境唤醒，Agent 可以判断后静默；被动模式只因明确 `@` 或已参与话题中的 Human 跟进唤醒；静音模式不因频道消息、频道 `@` 或话题跟进自动唤醒。Agent 普通消息不环境唤醒其他 Agent，避免循环；明确 `@` 仍可唤醒主动或被动目标。模式切换只作用于新事件，不补唤醒历史消息，也不复用 read cursor。
+
+**任务边界**：Human 选择“作为任务”并恰好 `@` 一个 Agent 时，必须把该 Agent 写成真实 assignee，并按明确指派绕过三种模式；没有 `@` 时创建未指派频道任务，仅主动成员可被环境唤醒；多个 Agent mention 因当前任务只有单 assignee 而在提交前拒绝，不能静默挑选目标。
+
+**实施边界与状态**：该决策已于 2026-07-14 落地。纯策略、独立设置与消息适配模块分别位于 `src/agents/agentResponsePolicy.ts`、`agentResponseSettings.ts` 和 `agentResponseDelivery.ts`；实时 wake、reconnect backlog、Agent message check 与 prompt 共同消费响应指令。schema v5、默认值/频道覆盖 API、窄实时失效、真实任务 assignee、Agent Profile 默认卡片和频道昵称后徽标/覆盖菜单均已实现，成员设置页没有复制第二套编辑器。完整规格与验证状态见 `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
 
 ---
 

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   workspacePaneTransition,
   workspacePaneWidths,
+  workspacePaneWidthsWithAggregate,
   type WorkspacePaneTransition,
 } from "./workspacePaneTransition.ts";
 import type { WorkspaceLayoutState } from "./workspaceLayout.ts";
@@ -47,4 +48,31 @@ test("changing module content without changing pane visibility does not replay a
     workspacePaneTransition(splitTasks, { activeModule: "agents", chatVisible: true }),
     "none",
   );
+});
+
+test("aggregate panel sits between Chat and Module without violating their minimums", () => {
+  assert.deepEqual(workspacePaneWidthsWithAggregate(chatOnly, 1440, 0.75, true), {
+    chat: 1130,
+    divider: 0,
+    module: 0,
+    aggregate: 300,
+    aggregateGap: 10,
+    aggregateAvailable: true,
+  });
+  assert.deepEqual(workspacePaneWidthsWithAggregate(splitTasks, 1440, 0.75, true), {
+    chat: 360,
+    divider: 10,
+    module: 760,
+    aggregate: 300,
+    aggregateGap: 10,
+    aggregateAvailable: true,
+  });
+  assert.deepEqual(workspacePaneWidthsWithAggregate(tasksOnly, 1440, 0.75, true), {
+    chat: 0,
+    divider: 0,
+    module: 1440,
+    aggregate: 0,
+    aggregateGap: 0,
+    aggregateAvailable: false,
+  });
 });

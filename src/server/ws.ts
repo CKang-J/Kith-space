@@ -1,5 +1,5 @@
 // Installation-local runtime worker control plane: WS /daemon/connect with a private header.
-import { WebSocketServer, type WebSocket } from "ws";
+import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import type { Server } from "node:http";
 import { and, desc, eq, isNull, notInArray } from "drizzle-orm";
 import { allSpaceDbs, dbForSpace, schema } from "../db/index.js";
@@ -10,6 +10,8 @@ import { catchUpAgentsOnWorker } from "./reconnectCatchup.js";
 import { WORKER_REJECTED_CODE } from "../daemonProtocol.js";
 import { locateAgent } from "../local-runtime/agentLocator.js";
 import { WORKER_TOKEN_HEADER, isLoopbackAddress, workerBootstrapToken } from "../local-runtime/internalCredentials.js";
+import { resolveTrajectoryScope } from "./trajectoryScope.js";
+import { createWorkerMessageQueue } from "./workerMessageQueue.js";
 import {
   isWorkerLeaseCurrent,
   isWorkerLeaseLatest,
@@ -50,7 +52,7 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
     try { ws.send(JSON.stringify({ type: "ping" })); } catch { /* close/error handles the connection */ }
   }, 30000);
 
-  ws.on("message", async (data) => {
+  const enqueueMessage = createWorkerMessageQueue<RawData>(async (data) => {
     if (!isWorkerLeaseCurrent(lease)) return;
     let msg: any; try { msg = JSON.parse(data.toString()); } catch { return; }
     try {
@@ -76,7 +78,9 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
       else if (msg.type === "agent:trajectory" && msg.agentId) {
         const located = await locateAgent(msg.agentId);
         if (!located || !isWorkerLeaseCurrent(lease)) return;
-        await publish(located.spaceId, { type: "trajectory", agentId: msg.agentId, name: located.agent.name, entries: msg.entries ?? [] });
+        const trajectoryScope = await resolveTrajectoryScope(located.db, msg);
+        if (!isWorkerLeaseCurrent(lease)) return;
+        await publish(located.spaceId, { type: "trajectory", agentId: msg.agentId, name: located.agent.name, entries: msg.entries ?? [], ...trajectoryScope });
         if (!isWorkerLeaseCurrent(lease)) return;
         for (const e of msg.entries ?? []) {
           if (!isWorkerLeaseCurrent(lease)) return;
@@ -91,7 +95,10 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
       }
       else if ((msg.type === "workspace:file_tree" || msg.type === "workspace:file_content" || msg.type === "skills:list" || msg.type === "models") && msg.requestId) resolveWorkerRequest(msg.requestId, msg);
     } catch (e: any) { log.error("ws handler error", { type: msg?.type, detail: String(e?.message ?? e) }); }
+  }, (error) => {
+    log.error("ws message queue error", { detail: String((error as any)?.message ?? error) });
   });
+  ws.on("message", (data) => { void enqueueMessage(data); });
   ws.on("close", async () => {
     clearInterval(ping);
     const wasCurrent = unregisterWorker(lease);
@@ -163,7 +170,9 @@ async function onAgentUpdate(msg: any, lease: WorkerLease): Promise<void> {
   if (!isWorkerLeaseCurrent(lease)) return;
   const agent = (await located.db.select().from(schema.agents).where(eq(schema.agents.id, msg.agentId)))[0];
   if (!isWorkerLeaseCurrent(lease)) return;
-  if (agent) await publish(located.spaceId, { type: "agent", id: agent.id, name: agent.name, status: agent.status, activity: agent.activity, detail: msg.detail ?? "" });
+  const trajectoryScope = await resolveTrajectoryScope(located.db, msg);
+  if (!isWorkerLeaseCurrent(lease)) return;
+  if (agent) await publish(located.spaceId, { type: "agent", id: agent.id, name: agent.name, status: agent.status, activity: agent.activity, detail: msg.detail ?? "", ...trajectoryScope });
   if (!isWorkerLeaseCurrent(lease)) return;
   if (msg.type === "agent:activity") {
     await logActivity(located.spaceId, msg.agentId, { kind: "status", activity: msg.activity, detail: msg.detail });

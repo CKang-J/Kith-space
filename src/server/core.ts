@@ -13,10 +13,14 @@ import { clearAgentIntroductionTurns, completeAgentIntroductionTurn, consumeAgen
 import { getHumanIdentity, humanIdentityForHandle, humanIdentityForId } from "../human/humanIdentity.js";
 import { followHumanThread, humanChannelState, reactivateFollowedHumanThread, trackHumanDm } from "../human/humanChannelState.js";
 import { canHumanReadChannel } from "./channelAccess.js";
-import { canAutoJoinMentionedMembers, isWakeable } from "./agentWakePolicy.js";
+import { canAutoJoinMentionedMembers } from "./agentWakePolicy.js";
 import { SqliteDispatchState, normalizeTaskExecutionMode, type DispatchMessageContext, type TaskExecutionMode, type WakeReservation } from "./dispatchGuard.js";
 import { assignTaskRecord, claimTaskRecord, convertMessageRecord, createTaskRecord, transitionTaskRecord, unclaimTaskRecord } from "./tasks/taskRepository.js";
+import { taskAssigneeFromMentions } from "./tasks/taskMentionAssignment.js";
 import { TASK_STATUSES, TaskOperationError, isTaskStatus, type TaskStatus } from "./tasks/taskTypes.js";
+import { assertChannelWritable, channelLifecycleState } from "../channels/channelLifecycle.js";
+import { initialAgentResponseWakeWatermarks, resolveAgentResponseMode } from "../agents/agentResponseSettings.js";
+import { decideAgentMessageResponse } from "../agents/agentResponseDelivery.js";
 
 export { TASK_STATUSES } from "./tasks/taskTypes.js";
 
@@ -77,7 +81,7 @@ export async function channelMembers(spaceId: string, channelId: string): Promis
     || (channel.type === "thread" && Boolean(state?.threadFollowedAt));
   if (human && includesHuman) out.push({ type: "human", id: human.id, name: human.handle, displayName: human.displayName });
   for (const r of rows) {
-    const a = (await db.select().from(schema.agents).where(eq(schema.agents.id, r.agentId)))[0];
+    const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, r.agentId), isNull(schema.agents.deletedAt))))[0];
     if (a) out.push({ type: "agent", id: a.id, name: a.name, displayName: a.displayName });
   }
   return out;
@@ -105,8 +109,14 @@ export async function addChannelMembers(spaceId: string, channelId: string, memb
   if (!agents.length) return;
   const db = dbForSpace(spaceId);
   const wm = opts?.watermark ?? await channelMaxSeq(spaceId, channelId);
+  const wakeWatermarks = initialAgentResponseWakeWatermarks(wm);
   await db.insert(schema.channelAgentMembers)
-    .values(agents.map((member) => ({ channelId, agentId: member.id, lastReadSeq: wm })))
+    .values(agents.map((member) => ({
+      channelId,
+      agentId: member.id,
+      lastReadSeq: wm,
+      ...wakeWatermarks,
+    })))
     .onConflictDoNothing();
 }
 
@@ -449,11 +459,33 @@ export async function createMessage(opts: {
   actionMetadata?: unknown; // action-card and other platform action payloads (slice09)
 }) {
   const db = dbForSpace(opts.spaceId);
+  await assertChannelWritable(opts.spaceId, opts.channelId);
+  // Resolve addressable mentions before allocating a seq or changing membership. In particular, an invalid
+  // multi-Agent "As Task" submission must fail without persisting a task or auto-joining anyone.
+  const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, opts.channelId)))[0];
+  if (opts.asTask && !ch) throw new TaskOperationError("NOT_FOUND", "task channel not found");
+  let members = await channelMembers(opts.spaceId, opts.channelId);
+  const mentionPool = ch && canAutoJoinMentionedMembers(opts.senderType) && opts.content.includes("@")
+    ? await mentionAutoJoinPool(opts.spaceId, ch)
+    : members;
+  const addressableMentions = parseMentions(opts.content, mentionPool);
+  const taskAssigneeId = taskAssigneeFromMentions({
+    asTask: Boolean(opts.asTask),
+    senderType: opts.senderType,
+    channelType: ch?.type ?? "channel",
+    mentions: addressableMentions,
+  });
+  const taskAssignee = taskAssigneeId
+    ? (await db.select().from(schema.agents).where(and(
+        eq(schema.agents.id, taskAssigneeId),
+        eq(schema.agents.spaceId, opts.spaceId),
+        isNull(schema.agents.deletedAt),
+      )))[0]
+    : null;
+  if (taskAssigneeId && !taskAssignee) throw new TaskOperationError("INVALID_ARGUMENT", "task assignee is unavailable");
   const messageId = randomUUID();
   const seq = await nextSeq(opts.spaceId);
   // Channel row fetched once; its type drives task-number scope (per-DM vs per-Space), thread auto-follow, mention auto-join, and wake routing below.
-  const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, opts.channelId)))[0];
-  if (opts.asTask && !ch) throw new TaskOperationError("NOT_FOUND", "task channel not found");
   const dispatchState = new SqliteDispatchState(opts.spaceId);
   const taskMessageId = opts.asTask ? messageId : await taskMessageIdForChannel(opts.spaceId, ch);
   const dispatch = await dispatchState.resolveMessageContext({
@@ -481,6 +513,7 @@ export async function createMessage(opts: {
         channel: ch!,
         message: messageValues,
         parentTaskId: opts.taskParentId,
+        assigneeId: taskAssigneeId,
       })
     : opts.introductionAgentId && opts.introductionToken
       ? (() => {
@@ -510,7 +543,7 @@ export async function createMessage(opts: {
   // auto-follow: reply to thread → sender auto-joins; replying after done clears done and brings thread back to inbox
   if (opts.senderId && opts.senderType !== "system" && ch?.type === "thread") {
     if (opts.senderType === "human") await followHumanThread(opts.spaceId, opts.channelId);
-    else await db.insert(schema.channelAgentMembers).values({ channelId: opts.channelId, agentId: opts.senderId }).onConflictDoNothing();
+    else await addChannelMembers(opts.spaceId, opts.channelId, [{ type: "agent", id: opts.senderId }], { watermark: seq });
     await reactivateFollowedHumanThread(opts.spaceId, opts.channelId);
   }
 
@@ -521,7 +554,6 @@ export async function createMessage(opts: {
     atts = await db.select().from(schema.attachments).where(inArray(schema.attachments.id, opts.attachmentIds));
   }
 
-  let members = await channelMembers(opts.spaceId, opts.channelId);
   // Human-authored Slack-style mention auto-join: @-mentioning someone who isn't in this channel yet pulls them in, so the
   // mention is recorded + delivered (wake / inbox) instead of being silently dropped. A thread inherits its
   // parent channel's @-reach (mentionAutoJoinPool — the same parent-channel inheritance canReadChannel uses),
@@ -529,11 +561,13 @@ export async function createMessage(opts: {
   // workspace; private/dm (and their threads) → existing members only, so an @ to a non-member stays a no-op.
   // Agent-authored text must not mutate channel membership: a model casually mentioning @Reviewer should not
   // pull that agent into a channel and start a reply loop.
-  if (ch && canAutoJoinMentionedMembers(opts.senderType) && opts.content.includes("@")) {
-    const joined = await autoJoinMentioned(opts.spaceId, opts.channelId, opts.content, members, await mentionAutoJoinPool(opts.spaceId, ch), seq - 1);
+  if (!taskAssigneeId && ch && canAutoJoinMentionedMembers(opts.senderType) && opts.content.includes("@")) {
+    const joined = await autoJoinMentioned(opts.spaceId, opts.channelId, opts.content, members, mentionPool, seq - 1);
     if (joined.length) members = [...members, ...joined];
   }
-  const mentions = parseMentions(opts.content, members);
+  // A targeted task may address a public-channel Agent without granting parent-channel membership. Keep the
+  // validated mention on the task message while the assignment service grants only the owning thread access.
+  const mentions = taskAssigneeId ? addressableMentions : parseMentions(opts.content, members);
   if (mentions.length) {
     await db.insert(schema.messageMentions).values(
       mentions.map((x) => ({ messageId: msg.id, mentionType: x.type, mentionId: x.id, mentionName: x.name })),
@@ -548,9 +582,10 @@ export async function createMessage(opts: {
     await publish(opts.spaceId, { type: "task", op: "created", task: serializeMsg(msg, mentions, atts) });
     const actor = (opts.senderType === "human" || opts.senderType === "agent") && opts.senderId ? { type: opts.senderType, id: opts.senderId } : undefined;
     await sysTaskMsg(opts.spaceId, opts.channelId, `${opts.senderName} created task #${msg.taskNumber} "${taskTitle(opts.content)}"`, actor); // audit trail (task system messages)
+    if (taskAssignee) await dispatchTaskAssignment(opts.spaceId, msg, taskAssignee, actor);
   }
 
-  // Agent-side wake: only wake agents @-mentioned (in channel), or agent members in a DM.
+  // Agent-side wake: the same response policy is reused by reconnect catch-up and message check.
   const isDm = ch?.type === "dm";
   // Message in thread channel → broadcast thread:updated (parentMessageId + replyCount + participantIds)
   await publishThreadUpdated(opts.spaceId, ch, opts.senderId, opts.senderType);
@@ -558,15 +593,40 @@ export async function createMessage(opts: {
   // inbox notice uses human-readable target (#name / dm:@sender), not uuid. threads use channel name.
   const targetName = isDm ? `dm:@${opts.senderName}` : `#${ch?.name ?? opts.channelId}`;
   const msgShort = msg.id.slice(0, 8);
+  const parentTask = ch?.type === "thread" && ch.parentMessageId
+    ? (await db.select({
+        taskStatus: schema.messages.taskStatus,
+        taskAssigneeId: schema.messages.taskAssigneeId,
+      }).from(schema.messages).where(eq(schema.messages.id, ch.parentMessageId)))[0]
+    : null;
   const woken: string[] = [];
   for (const mem of members) {
     if (mem.type !== "agent" || mem.id === opts.senderId) continue;
+    // A targeted channel task is dispatched once through its owning thread. It must not also ambient-wake
+    // parent-channel members (including the assignee when they already belong to the parent channel).
+    if (taskAssigneeId) continue;
     const mentioned = mentionedAgents.has(mem.id);
-    // Channel messages delivered to all agent members (not limited to @; wake even without @, model decides whether to reply).
-    // Ambient wake without @ requires inbox:receive scope; @-mentioned or DM always delivers.
-    if (!isDm && !mentioned) {
+    const responseMode = await resolveAgentResponseMode(opts.spaceId, opts.channelId, mem.id);
+    if (!responseMode) continue;
+    const decision = decideAgentMessageResponse({
+      agentId: mem.id,
+      channelType: (ch?.type ?? "channel") as "channel" | "private" | "dm" | "thread",
+      senderType: opts.senderType,
+      effectiveMode: responseMode.effectiveResponseMode,
+      messageSeq: seq,
+      mentioned,
+      taskAssigneeId: msg.taskStatus ? msg.taskAssigneeId : null,
+      parentTaskAssigneeId: parentTask?.taskAssigneeId ?? null,
+      isTask: Boolean(msg.taskStatus),
+      ambientWakeAfterSeq: responseMode.ambientWakeAfterSeq,
+      mentionWakeAfterSeq: responseMode.mentionWakeAfterSeq,
+    });
+    if (!decision.wake) continue;
+    // Preserve the existing capability boundary for ambient inbox scanning. Direct and explicit mention
+    // deliveries retain their established reachability behavior.
+    if (decision.deliveryClass === "ambient") {
       const a0 = (await db.select({ scopes: schema.agents.scopes }).from(schema.agents).where(eq(schema.agents.id, mem.id)))[0];
-      if (!isWakeable({ channelType: ch?.type ?? "channel", mentioned, hasInboxScope: agentHasScope(a0?.scopes, "inbox:receive"), senderType: opts.senderType })) continue;
+      if (!agentHasScope(a0?.scopes, "inbox:receive")) continue;
     }
     const reservation = await reserveDispatchWake({
       state: dispatchState,
@@ -584,12 +644,29 @@ export async function createMessage(opts: {
       continue;
     }
     const replyStreamId = agentReplyStreamId(msg!.id, mem.id);
-    await publish(opts.spaceId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, triggerMessageId: msg.id, op: "start" });
+    if (decision.directive === "required") {
+      await publish(opts.spaceId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, triggerMessageId: msg.id, op: "start" });
+    }
     const startSent = sendAgentStart(target, mem.id, "wake");
-    const deliverSent = startSent && sendAgentDeliver(target, { agentId: mem.id, seq, from: opts.senderName, target: opts.channelId, targetName, msgShort, isTask: !!opts.asTask, message: { content: opts.content }, mentioned, streamId: replyStreamId });
+    const deliverSent = startSent && sendAgentDeliver(target, {
+      agentId: mem.id,
+      seq,
+      from: opts.senderName,
+      target: opts.channelId,
+      targetName,
+      msgShort,
+      isTask: Boolean(msg.taskStatus || parentTask?.taskStatus),
+      message: { content: opts.content },
+      mentioned,
+      streamId: replyStreamId,
+      responseDirective: decision.directive,
+      responseReason: decision.reason,
+    });
     if (!deliverSent) {
       await dispatchState.releaseWake(reservation.reservationId);
-      await publish(opts.spaceId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, op: "error", text: "local runtime worker offline" });
+      if (decision.directive === "required") {
+        await publish(opts.spaceId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, op: "error", text: "local runtime worker offline" });
+      }
       await markAgentUnavailable(opts.spaceId, mem.id, "local runtime worker offline");
       continue;
     }
@@ -599,7 +676,7 @@ export async function createMessage(opts: {
       chainId: dispatch.chainId,
       dispatchDepth: dispatch.dispatchDepth,
     });
-    woken.push(mem.name + (mentioned ? "(@)" : ""));
+    woken.push(`${mem.name}${mentioned ? "(@)" : ""}:${decision.directive}`);
   }
   log.info("message created", {
     seq, channel: opts.channelId, from: opts.senderName, kind: opts.senderType,
@@ -618,6 +695,8 @@ export async function createMessage(opts: {
 // so every channel-touching /agent-api/* endpoint inherits the boundary at once.
 export async function canAgentReadChannel(spaceId: string, channelId: string, agentId: string): Promise<boolean> {
   const db = dbForSpace(spaceId);
+  const lifecycle = await channelLifecycleState(spaceId, channelId);
+  if (lifecycle === "deleted" || lifecycle === "missing") return false;
   const member = (await db.select().from(schema.channelAgentMembers).where(and(eq(schema.channelAgentMembers.channelId, channelId), eq(schema.channelAgentMembers.agentId, agentId))))[0];
   if (member) return true;
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, channelId)))[0];
@@ -716,9 +795,7 @@ export async function getOrCreateDM(spaceId: string, aId: string, aType: string,
   const agentIds = [aType === "agent" ? aId : null, bType === "agent" ? bId : null]
     .filter((id): id is string => Boolean(id));
   if (agentIds.length) {
-    await db.insert(schema.channelAgentMembers)
-      .values(agentIds.map((agentId) => ({ channelId: channel.id, agentId })))
-      .onConflictDoNothing();
+    await addChannelMembers(spaceId, channel.id, agentIds.map((agentId) => ({ type: "agent", id: agentId })));
   }
   const humanPeerAgentId = aType === "human" && bType === "agent" ? bId : bType === "human" && aType === "agent" ? aId : null;
   if (humanPeerAgentId) await trackHumanDm(spaceId, channel.id, humanPeerAgentId);
@@ -728,21 +805,30 @@ export async function getOrCreateDM(spaceId: string, aId: string, aType: string,
 /** Find/create thread channel (thread = channel with type=thread, carrying parentMessageId). Idempotent. creator added as member = auto follow. */
 export async function getOrCreateThread(spaceId: string, parentMessageId: string, creator?: { type: "human" | "agent"; id: string }) {
   const db = dbForSpace(spaceId);
+  const parent = (await db.select({ channelId: schema.messages.channelId }).from(schema.messages).where(and(
+    eq(schema.messages.id, parentMessageId),
+    eq(schema.messages.spaceId, spaceId),
+  )))[0];
+  if (!parent) throw new Error(`parent message not found: ${parentMessageId}`);
+  await assertChannelWritable(spaceId, parent.channelId);
   let thread = (await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.type, "thread"), eq(schema.channels.parentMessageId, parentMessageId))))[0];
+  let created = false;
   if (!thread) {
     // Atomic create: partitioned unique index (spaceId, parentMessageId WHERE type=thread) ensures only one row under concurrency; losing insert returns empty → re-select.
     const [ch] = await db.insert(schema.channels).values({ spaceId, type: "thread", parentMessageId, name: `thread-${parentMessageId.slice(0, 8)}` }).onConflictDoNothing().returning();
     thread = ch ?? (await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.type, "thread"), eq(schema.channels.parentMessageId, parentMessageId))))[0]!;
+    created = Boolean(ch);
     if (ch) { // only add thread root member on the actual new creation (skip for the losing insert)
-      const parent = (await db.select().from(schema.messages).where(eq(schema.messages.id, parentMessageId)))[0];
-      if (parent?.senderType === "human") await followHumanThread(spaceId, thread.id);
-      else if (parent?.senderType === "agent" && parent.senderId) {
-        await db.insert(schema.channelAgentMembers).values({ channelId: thread.id, agentId: parent.senderId }).onConflictDoNothing();
+      const parentMessage = (await db.select().from(schema.messages).where(eq(schema.messages.id, parentMessageId)))[0];
+      if (parentMessage?.senderType === "human") await followHumanThread(spaceId, thread.id);
+      else if (parentMessage?.senderType === "agent" && parentMessage.senderId) {
+        await addChannelMembers(spaceId, thread.id, [{ type: "agent", id: parentMessage.senderId }]);
       }
     }
   }
   if (creator?.type === "human") await followHumanThread(spaceId, thread.id);
-  else if (creator) await db.insert(schema.channelAgentMembers).values({ channelId: thread.id, agentId: creator.id }).onConflictDoNothing();
+  else if (creator) await addChannelMembers(spaceId, thread.id, [{ type: "agent", id: creator.id }]);
+  if (created) await publishThreadUpdated(spaceId, thread, creator?.id ?? null, creator?.type ?? "system");
   return thread;
 }
 
@@ -759,6 +845,16 @@ async function emitTaskUpdated(spaceId: string, msg: typeof schema.messages.$inf
 /** Mark an existing message as a task (open + assign taskNumber). */
 // ── Task lifecycle system messages (convert/claim/unclaim/status each emit one messageType:system audit entry) ──
 const taskTitle = (s: string) => { const t = ((s || "").split("\n")[0] ?? "").trim(); return t.length > 40 ? t.slice(0, 40) + "…" : t; };
+
+async function assertMessageChannelWritable(spaceId: string, messageId: string): Promise<boolean> {
+  const message = (await dbForSpace(spaceId).select({ channelId: schema.messages.channelId }).from(schema.messages).where(and(
+    eq(schema.messages.id, messageId),
+    eq(schema.messages.spaceId, spaceId),
+  )))[0];
+  if (!message) return false;
+  await assertChannelWritable(spaceId, message.channelId);
+  return true;
+}
 // Task status system message copy (Title-Case + status emoji prefix). Emojis confirmed for in_progress 🔄 / in_review 👁; todo/done/closed pending confirmation, no guessing.
 const STATUS_LABEL: Record<string, string> = { todo: "Todo", in_progress: "In Progress", in_review: "In Review", done: "Done", closed: "Closed" };
 const STATUS_EMOJI: Record<string, string> = { in_progress: "🔄", in_review: "👁" };
@@ -836,6 +932,7 @@ export async function convertMessageToTask(
   by?: { type: "human" | "agent"; id: string },
   executionMode: TaskExecutionMode = "autopilot",
 ) {
+  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
   const result = convertMessageRecord({ spaceId, messageId, executionMode });
   if (!result) return null;
   if (!result.changed) return result.task;
@@ -889,6 +986,7 @@ export async function resolveMessageId(spaceId: string, idOrShort: string | unde
 }
 
 export async function claimTask(spaceId: string, messageId: string, assigneeType: "human" | "agent", assigneeId: string, expectedRevision?: number) {
+  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
   const result = claimTaskRecord({ spaceId, messageId, assigneeType, assigneeId, expectedRevision });
   if (!result) return null;
   const upd = result.task;
@@ -899,6 +997,7 @@ export async function claimTask(spaceId: string, messageId: string, assigneeType
 }
 
 export async function unclaimTask(spaceId: string, messageId: string, by?: { type: "human" | "agent"; id: string }, expectedRevision?: number) {
+  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
   const result = unclaimTaskRecord({ spaceId, messageId, by, expectedRevision });
   if (!result) return null;
   const upd = result.task;
@@ -906,6 +1005,88 @@ export async function unclaimTask(spaceId: string, messageId: string, by?: { typ
   await emitTaskUpdated(spaceId, upd);
   await sysTaskMsg(spaceId, upd.channelId, `${by ? await actorName(spaceId, by.type, by.id) : "Someone"} released #${upd.taskNumber} "${taskTitle(upd.content)}"`, by);
   return upd;
+}
+
+async function dispatchTaskAssignment(
+  spaceId: string,
+  task: typeof schema.messages.$inferSelect,
+  target: typeof schema.agents.$inferSelect,
+  by?: { type: "human" | "agent"; id: string },
+): Promise<void> {
+  const db = dbForSpace(spaceId);
+  const thread = await getOrCreateThread(spaceId, task.id);
+  const threadCh = thread.id;
+  if (!task.threadId) {
+    await db.update(schema.messages).set({ threadId: threadCh }).where(eq(schema.messages.id, task.id));
+    task.threadId = threadCh;
+  }
+  // A task-only assignee gets the minimum required access: the owning task thread, not the parent channel.
+  // Join at the current boundary so earlier thread history stays context-on-demand while this assignment event
+  // (written immediately below) remains unread and can be delivered as required.
+  await addChannelMembers(spaceId, threadCh, [{ type: "agent", id: target.id }]);
+
+  const actor = by ? await actorName(spaceId, by.type, by.id) : "Someone";
+  const assigneeName = target.displayName || target.name;
+  const action = await prepareTaskActionDispatch(spaceId, task.id, threadCh, by);
+  const sysMsg = await sysTaskMsg(
+    spaceId,
+    threadCh,
+    `${actor} assigned #${task.taskNumber} "${taskTitle(task.content)}" to ${assigneeName}`,
+    by,
+    { ...action.dispatch, messageId: action.messageId },
+  );
+  const responseDecision = decideAgentMessageResponse({
+    agentId: target.id,
+    channelType: "thread",
+    senderType: "system",
+    effectiveMode: target.defaultResponseMode,
+    messageSeq: sysMsg.seq,
+    explicitTaskAssignment: true,
+  });
+  if (!responseDecision.wake || responseDecision.directive === "observe") return;
+
+  const reservation = await reserveDispatchWake({
+    state: action.state,
+    dispatch: action.dispatch,
+    messageId: sysMsg.id,
+    targetAgentId: target.id,
+    targetAgentName: target.name,
+    fallbackChannelId: threadCh,
+  });
+  if (!reservation) return;
+  const startTarget = await agentStartTarget(spaceId, target.id);
+  if (startTarget.ok) {
+    const startSent = sendAgentStart(startTarget, target.id, "wake");
+    const deliverSent = startSent && sendAgentDeliver(startTarget, {
+      agentId: target.id,
+      seq: sysMsg.seq,
+      from: actor,
+      target: threadCh,
+      targetName: `task #${task.taskNumber}`,
+      msgShort: sysMsg.id.slice(0, 8),
+      isTask: true,
+      message: { content: `#${task.taskNumber} assigned to you` },
+      mentioned: true,
+      responseDirective: responseDecision.directive,
+      responseReason: responseDecision.reason,
+    });
+    if (!deliverSent) {
+      await action.state.releaseWake(reservation.reservationId);
+      await markAgentUnavailable(spaceId, target.id, "local runtime worker offline");
+    } else {
+      await action.state.commitWake(reservation.reservationId, {
+        agentId: target.id,
+        channelId: threadCh,
+        chainId: action.dispatch.chainId,
+        dispatchDepth: action.dispatch.dispatchDepth,
+      });
+    }
+  } else if (startTarget.reason !== "agent not found") {
+    await action.state.releaseWake(reservation.reservationId);
+    await markAgentUnavailable(spaceId, target.id, startTarget.reason);
+  } else {
+    await action.state.releaseWake(reservation.reservationId);
+  }
 }
 
 export async function assignTask(
@@ -922,6 +1103,7 @@ export async function assignTask(
     isNull(schema.agents.deletedAt),
   )))[0];
   if (!target) return null;
+  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
 
   const result = assignTaskRecord({ spaceId, messageId, assigneeId, by, expectedRevision });
   if (!result) return null;
@@ -929,70 +1111,12 @@ export async function assignTask(
   if (!result.changed) return upd;
 
   await emitTaskUpdated(spaceId, upd);
-  const th = await getOrCreateThread(spaceId, upd.id);
-  const threadCh = th.id;
-  if (!upd.threadId) {
-    await db.update(schema.messages).set({ threadId: threadCh }).where(eq(schema.messages.id, upd.id));
-    upd.threadId = threadCh;
-  }
-  await db.insert(schema.channelAgentMembers).values({ channelId: threadCh, agentId: assigneeId }).onConflictDoNothing();
-
-  const actor = by ? await actorName(spaceId, by.type, by.id) : "Someone";
-  const assigneeName = target.displayName || target.name;
-  const action = await prepareTaskActionDispatch(spaceId, upd.id, threadCh, by);
-  const sysMsg = await sysTaskMsg(
-    spaceId,
-    threadCh,
-    `${actor} assigned #${upd.taskNumber} "${taskTitle(upd.content)}" to ${assigneeName}`,
-    by,
-    { ...action.dispatch, messageId: action.messageId },
-  );
-
-  const reservation = await reserveDispatchWake({
-    state: action.state,
-    dispatch: action.dispatch,
-    messageId: sysMsg.id,
-    targetAgentId: assigneeId,
-    targetAgentName: target.name,
-    fallbackChannelId: threadCh,
-  });
-  if (!reservation) return upd;
-  const startTarget = await agentStartTarget(spaceId, assigneeId);
-  if (startTarget.ok) {
-    const startSent = sendAgentStart(startTarget, assigneeId, "wake");
-    const deliverSent = startSent && sendAgentDeliver(startTarget, {
-      agentId: assigneeId,
-      seq: sysMsg.seq,
-      from: actor,
-      target: threadCh,
-      targetName: `task #${upd.taskNumber}`,
-      msgShort: sysMsg.id.slice(0, 8),
-      isTask: true,
-      message: { content: `#${upd.taskNumber} assigned to you` },
-      mentioned: true,
-    });
-    if (!deliverSent) {
-      await action.state.releaseWake(reservation.reservationId);
-      await markAgentUnavailable(spaceId, assigneeId, "local runtime worker offline");
-    } else {
-      await action.state.commitWake(reservation.reservationId, {
-        agentId: assigneeId,
-        channelId: threadCh,
-        chainId: action.dispatch.chainId,
-        dispatchDepth: action.dispatch.dispatchDepth,
-      });
-    }
-  } else if (startTarget.reason !== "agent not found") {
-    await action.state.releaseWake(reservation.reservationId);
-    await markAgentUnavailable(spaceId, assigneeId, startTarget.reason);
-  } else {
-    await action.state.releaseWake(reservation.reservationId);
-  }
-
+  await dispatchTaskAssignment(spaceId, upd, target, by);
   return upd;
 }
 
 export async function setTaskExecutionMode(spaceId: string, messageId: string, mode: TaskExecutionMode) {
+  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
   const db = dbForSpace(spaceId);
   const [upd] = await db.update(schema.messages).set({ taskExecutionMode: mode, taskRevision: sql`${schema.messages.taskRevision} + 1`, updatedAt: new Date() }).where(and(
     eq(schema.messages.id, messageId),
@@ -1021,6 +1145,7 @@ export async function setTaskStatus(
   )).get();
   if (!current) return null;
   if (current.taskStatus === status) return current;
+  await assertChannelWritable(spaceId, current.channelId);
   const th = await getOrCreateThread(spaceId, current.id);
   const threadCh = th.id;
   if (!current.threadId) await db.update(schema.messages).set({ threadId: threadCh }).where(eq(schema.messages.id, current.id));
@@ -1059,8 +1184,21 @@ export async function setTaskStatus(
   await publishTaskSystemMessage(spaceId, sysMsg, by);
   // Wake the assigned agent (only when changed by someone else). Verified: human changes status → assignee agent fires agent:activity working detail="Message received".
   if (upd.taskAssigneeType === "agent" && upd.taskAssigneeId && by?.id !== upd.taskAssigneeId) {
-    await db.insert(schema.channelAgentMembers).values({ channelId: threadCh, agentId: upd.taskAssigneeId }).onConflictDoNothing(); // ensure assignee is a thread member, otherwise message check cannot see this system message
-    const assignee = db.select({ name: schema.agents.name }).from(schema.agents).where(eq(schema.agents.id, upd.taskAssigneeId)).get();
+    // Repair a missing task membership without marking this already-persisted required event as read.
+    await addChannelMembers(spaceId, threadCh, [{ type: "agent", id: upd.taskAssigneeId }], { watermark: sysMsg.seq - 1 });
+    const assignee = db.select({
+      name: schema.agents.name,
+      defaultResponseMode: schema.agents.defaultResponseMode,
+    }).from(schema.agents).where(eq(schema.agents.id, upd.taskAssigneeId)).get();
+    const responseDecision = decideAgentMessageResponse({
+      agentId: upd.taskAssigneeId,
+      channelType: "thread",
+      senderType: "system",
+      effectiveMode: assignee?.defaultResponseMode ?? "active",
+      messageSeq: sysMsg.seq,
+      explicitTaskAssignment: true,
+    });
+    if (!responseDecision.wake || responseDecision.directive === "observe") return upd;
     const reservation = await reserveDispatchWake({
       state: action.state,
       dispatch: action.dispatch,
@@ -1073,7 +1211,7 @@ export async function setTaskStatus(
     const target = await agentStartTarget(spaceId, upd.taskAssigneeId);
     if (target.ok) {
       const startSent = sendAgentStart(target, upd.taskAssigneeId, "wake");
-      const deliverSent = startSent && sendAgentDeliver(target, { type: "agent:deliver", agentId: upd.taskAssigneeId, seq: sysMsg.seq, from: actor, target: threadCh, targetName: `task #${upd.taskNumber}`, msgShort: sysMsg.id.slice(0, 8), isTask: true, message: { content: `#${upd.taskNumber} → ${label}` }, mentioned: true });
+      const deliverSent = startSent && sendAgentDeliver(target, { type: "agent:deliver", agentId: upd.taskAssigneeId, seq: sysMsg.seq, from: actor, target: threadCh, targetName: `task #${upd.taskNumber}`, msgShort: sysMsg.id.slice(0, 8), isTask: true, message: { content: `#${upd.taskNumber} → ${label}` }, mentioned: true, responseDirective: responseDecision.directive, responseReason: responseDecision.reason });
       if (!deliverSent) {
         await action.state.releaseWake(reservation.reservationId);
         await markAgentUnavailable(spaceId, upd.taskAssigneeId, "local runtime worker offline");
@@ -1097,6 +1235,7 @@ export async function setTaskStatus(
 
 /** Delete task: revert to regular message — clear task fields, source message retained; emit task:deleted. */
 export async function deleteTask(spaceId: string, messageId: string) {
+  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
   const db = dbForSpace(spaceId);
   const [upd] = await db.update(schema.messages)
     .set({ taskStatus: null, taskNumber: null, taskAssigneeType: null, taskAssigneeId: null, taskClaimedAt: null, taskCompletedAt: null, taskParentId: null, taskRevision: 0, updatedAt: new Date() })
