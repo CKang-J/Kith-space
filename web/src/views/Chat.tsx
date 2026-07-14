@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, Fragment, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, Fragment, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { useLocation, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
@@ -8,13 +8,13 @@ import { PAGE_SIZE, appendWithCap, nextScrollState } from "../lib/msgPaging";
 import { AGENT_REPLY_PREVIEW_TYPE, AGENT_REPLY_STREAM_TICK_MS, absorbPersistedAgentMessagePreview, applyAgentReplyPreview, dropAgentReplyPreviewsForMessage, hasStreamingAgentReplyPreview, renderKeyForMessage, tickAgentReplyPreviews, type AgentReplyEvent, type AgentReplyPreviewMsg } from "../lib/agentReplyPreview";
 import { MessageContent } from "../messageRender.tsx";
 import { nextThreadMeta } from "../threadUnread";
-import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Link2, Clipboard, Bookmark, CheckSquare, Circle, Play, Eye, Ban, ArrowDown, Bell, BellOff, Lock, Globe, Archive, Trash2 } from "lucide-react";
+import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Link2, Clipboard, Bookmark, CheckSquare, Circle, Play, Eye, Ban, ArrowDown, Bell, BellOff, Lock, Globe, Archive, Trash2, MessagesSquare, ListTodo, UsersRound, PanelsTopLeft } from "lucide-react";
 // Task badge per message row: icon changes with task status; color tokens from DESIGN.md (see .task-pill.st-* styles)
 const TASK_ICON: Record<string, typeof Circle> = { todo: Circle, in_progress: Play, in_review: Eye, done: CheckCircle2, closed: Ban };
-import { IconFile, IconExternalLink, IconDownload } from "../icons.tsx";
+import { IconFile } from "../icons.tsx";
 import { Avatar, resolveAvatar } from "../Avatar.tsx";
 import { Lightbox } from "../Lightbox.tsx";
-import { TaskBoard, ST_LABEL } from "../TaskBoard.tsx";
+import { ST_LABEL } from "../TaskBoard.tsx";
 import { taskStatusOptions } from "../taskStatusPolicy.ts";
 import { PaneEmpty } from "../PaneEmpty.tsx";
 import { ChatSkeleton } from "./Skeleton.tsx";
@@ -61,7 +61,6 @@ function AgentReplyPreviewBody({ m }: { m: Msg }) {
     </div>
   );
 }
-
 export function keepPinnedToBottomDuringEnter(el: Pick<HTMLDivElement, "scrollTop" | "scrollHeight">, shouldContinue: () => boolean, durationMs = MESSAGE_ENTER_PIN_MS) {
   const startTime = performance.now();
   const pin = () => { el.scrollTop = el.scrollHeight; };
@@ -160,7 +159,35 @@ function ActionCardMsg({ m }: { m: Msg }) {
   );
 }
 
-export function Chat({ embedded = false, channelIdOverride, threadOnly = false }: { embedded?: boolean; channelIdOverride?: string; threadOnly?: boolean }) {
+interface ChatShellControls {
+  conversationListOpen?: boolean;
+  conversationToggleRef?: RefObject<HTMLButtonElement>;
+  aggregateOpen?: boolean;
+  aggregateAvailable?: boolean;
+  aggregateToggleRef?: RefObject<HTMLButtonElement>;
+  onToggleConversationList?(): void;
+  onToggleAggregate?(): void;
+  onOpenTasks?(conversationId: string): void;
+}
+interface ChatProps extends ChatShellControls {
+  embedded?: boolean;
+  channelIdOverride?: string;
+  threadOnly?: boolean;
+}
+
+export function Chat({
+  embedded = false,
+  channelIdOverride,
+  threadOnly = false,
+  conversationListOpen = true,
+  conversationToggleRef,
+  aggregateOpen = false,
+  aggregateAvailable = true,
+  aggregateToggleRef,
+  onToggleConversationList,
+  onToggleAggregate,
+  onOpenTasks,
+}: ChatProps) {
   const { t } = useTranslation();
   const { api, channels, dms, unread, agents, slug, me, reload, onEvent, subscribeChannel, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, savedIds, saveMsg, unsaveMsg, agentPanelReq, clearAgentPanelReq } = useStore();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
@@ -225,7 +252,6 @@ export function Chat({ embedded = false, channelIdOverride, threadOnly = false }
   const dmPeer = dms.find((d) => d.id === cur?.id);
   const dmAgent = dmPeer?.peerType === "agent" ? agents.find((a) => a.id === dmPeer.peerId) : undefined; // DM peer agent → used for the live status indicator in the header
   const [sp, setSp] = useSearchParams();
-  const chatTab = sp.get("chatTab") || "chat"; // active tab: chat | tasks (| files in channels). DMs get chat + tasks (per-DM task board); files/members stay channel-only.
   const msgParam = sp.get("msg"); // when present, scroll to and highlight the specified message id
   const threadParam = sp.get("thread"); // auto-open a thread panel (from inbox, in-message thread link, or cross-page link); value is the parent message id (full or 8-char short) or channelId:shortid
   const openAgentProfile = (agent: string, agentTab?: string) => nav(workspaceLocationForModule(
@@ -238,6 +264,13 @@ export function Chat({ embedded = false, channelIdOverride, threadOnly = false }
     routeLocation.search,
     { moduleId: "settings", settings: "human" },
   ));
+
+  useEffect(() => {
+    if (!sp.has("chatTab")) return;
+    const next = new URLSearchParams(sp);
+    next.delete("chatTab");
+    setSp(next, { replace: true });
+  }, [setSp, sp]);
 
   // Channel-scoped state (loaded messages + load gate + has-more) belongs to one channel. When the
   // channel changes, reset it *synchronously during render* (React's "adjust state when a prop changes"
@@ -360,24 +393,31 @@ export function Chat({ embedded = false, channelIdOverride, threadOnly = false }
   const highlightedMsgRef = useRef<string | null>(null);
   useEffect(() => { highlightedMsgRef.current = null; }, [cur?.id]);
   useEffect(() => { // scroll to and highlight the target message for ~2s when msgParam is set (once per target)
-    if (!msgParam || chatTab !== "chat") return;
+    if (!msgParam) return;
     if (highlightedMsgRef.current === msgParam) return; // already flashed this target — ignore msgs/live-update re-runs
     const el = document.getElementById("m-" + msgParam);
     if (el) { highlightedMsgRef.current = msgParam; el.scrollIntoView({ block: "center" }); el.classList.add("msg-hl"); setTimeout(() => el.classList.remove("msg-hl"), 2200); } // no cleanup-cancel: the removal must outlive re-renders, else a re-render cancels the timer and the highlight sticks
     else if (hasMore && !loadingOlderRef.current) void loadOlder(); // target outside the loaded window → page older history (re-runs on each prepend via the msgs dep) until it appears or the channel start is reached
-  }, [msgParam, msgs, chatTab, hasMore]);
-  useEffect(() => { // ?thread= auto-opens the thread panel: finds the parent message (full id or 8-char short id) in the loaded list and calls startThread; each threadParam is only opened once
+  }, [msgParam, msgs, hasMore]);
+  useEffect(() => { // ?thread= opens or switches the topic panel after finding its parent message (full id or 8-char short id) in the loaded list
     if (!threadParam || !msgs.length) return;
-    if (thread) return; // panel already open, do not re-open
     const short = threadParam.includes(":") ? threadParam.split(":").pop()! : threadParam;
+    if (thread && (thread.parent.id === threadParam || thread.parent.id.startsWith(short))) return;
     const m = msgs.find((x) => x.id === threadParam || x.id.startsWith(short));
     if (m) startThread(m);
     else if (hasMore && !loadingOlderRef.current) void loadOlder(); // parent outside the loaded window → page older history until it appears or the channel start is reached
     // eslint-disable-next-line
   }, [threadParam, msgs, hasMore]);
 
-  const setTab = (t: string) => { const n = new URLSearchParams(sp); if (t === "chat") n.delete("chatTab"); else n.set("chatTab", t); setSp(n, { replace: true }); };
   const startThread = async (m: Msg) => { if (!cur) return; const meta = threadMeta[m.id]; const tid = meta?.threadChannelId || await openThread(cur.id, m.id); if (tid) { const followed = meta ? meta.followed : true; setThreadWidth(null); setThread({ channelId: tid, parent: m, followed }); setThreadMeta((tm) => (tm[m.id] ? { ...tm, [m.id]: { ...tm[m.id]!, unreadCount: 0 } } : tm)); markRead(tid); } }; // opening a new thread follows it; existing thread metadata preserves the Human's current follow state
+  const closeThread = () => {
+    setThread(null);
+    setThreadWidth(null);
+    if (!sp.has("thread")) return;
+    const next = new URLSearchParams(sp);
+    next.delete("thread");
+    setSp(next, { replace: true });
+  };
   // "Jump to unread thread" bar: open a thread whose parent message may not be in the loaded page — fetch the parent
   // by id (it isn't on screen to pass through startThread), open the panel, mark it read, and drop it from the bar.
   const openUnreadThread = async (item: { threadChannelId: string; parentMessageId: string }) => {
@@ -422,44 +462,98 @@ export function Chat({ embedded = false, channelIdOverride, threadOnly = false }
     }
   };
 
+  const openCurrentTasks = () => {
+    if (!cur) return;
+    if (onOpenTasks) return onOpenTasks(cur.id);
+    nav(workspaceLocationForModule(
+      routeLocation.pathname,
+      routeLocation.search,
+      { moduleId: "tasks", taskScope: cur.id },
+      { chatVisible: true },
+    ));
+  };
+
+  const renderConversationListControl = () => onToggleConversationList ? (
+    <button
+      ref={conversationToggleRef}
+      type="button"
+      className="chat-head-icon-btn"
+      title={conversationListOpen ? "收起对话列表" : "展开对话列表"}
+      aria-label={conversationListOpen ? "收起对话列表" : "展开对话列表"}
+      aria-pressed={conversationListOpen}
+      onClick={onToggleConversationList}
+    >
+      <MessagesSquare size={17} />
+    </button>
+  ) : null;
+
+  const renderAggregateControl = () => onToggleAggregate ? (
+    <button
+      ref={aggregateToggleRef}
+      type="button"
+      className="chat-head-icon-btn"
+      title={aggregateAvailable ? (aggregateOpen ? "收起聚合面板" : "展开聚合面板") : "当前宽度不足，无法展开聚合面板"}
+      aria-label={aggregateAvailable ? (aggregateOpen ? "收起聚合面板" : "展开聚合面板") : "当前宽度不足，无法展开聚合面板"}
+      aria-pressed={aggregateOpen}
+      disabled={!aggregateAvailable && !aggregateOpen}
+      onClick={onToggleAggregate}
+    >
+      <PanelsTopLeft size={17} />
+    </button>
+  ) : null;
+
+  const renderConversationActions = () => cur ? (
+    <div className="chat-head-actions">
+      {dmAgent ? (
+        <button
+          type="button"
+          className="chat-agent-profile-btn chat-head-icon-btn"
+          title={t("chat.openAgentProfile")}
+          aria-label={t("chat.openAgentProfile")}
+          onClick={() => openAgentProfile(dmAgent.id)}
+        >
+          <ExternalLink size={16} />
+        </button>
+      ) : null}
+      <button type="button" className="chat-head-icon-btn" title={t("nav.tasks")} aria-label={t("nav.tasks")} onClick={openCurrentTasks}>
+        <ListTodo size={17} />
+      </button>
+      {!isDm && cur.type !== "showcase" ? (
+        <button type="button" className="chat-head-icon-btn" title={t("chat.channelMembers")} aria-label={t("chat.channelMembers")} onClick={() => setShowMembers(true)}>
+          <UsersRound size={17} />
+        </button>
+      ) : null}
+      {renderAggregateControl()}
+      {!isDm && cur.type !== "showcase" ? (
+        <button type="button" className="chat-head-icon-btn" title={t("chat.channelSettings")} aria-label={t("chat.channelSettings")} onClick={() => setShowEdit(true)}>
+          <MoreHorizontal size={17} />
+        </button>
+      ) : null}
+    </div>
+  ) : null;
+
 
   return (
     <>
       {!embedded && <ChatSidebar />}
       {!thread || !threadOnly ? <main ref={chatMainRef} className="content-col">
         <div className="head chat-head">
+          {renderConversationListControl()}
           <h1>{isDm ? "@ " + (cur?.name || "") : cur?.type === "showcase" ? <><Eye size={16} style={{ verticalAlign: "-3px", opacity: 0.7 }} /> {cur?.name || "…"}</> : "# " + (cur?.name || "…")}</h1>
           {dmAgent
             ? <span className="head-status"><span className={"dot " + (agentLiveState(dmAgent) || "offline")} />{agentActivityText(dmAgent) || "offline"}</span>
             : <small>{sub || cur?.description || ""}</small>}
-          {cur && <div className="chtabs">{(isDm ? ["chat", "tasks"] : ["chat", "tasks", "files"]).map((tt) => <button key={tt} className={chatTab === tt ? "on" : ""} onClick={() => setTab(tt)}>{tt === "chat" ? t("nav.channel") : tt === "tasks" ? t("nav.tasks") : t("common.files")}</button>)}</div>}
-          {dmAgent ? (
-            <button
-              type="button"
-              className="chat-agent-profile-btn"
-              title={t("chat.openAgentProfile")}
-              aria-label={t("chat.openAgentProfile")}
-              onClick={() => openAgentProfile(dmAgent.id)}
-            >
-              <ExternalLink size={15} />
-            </button>
-          ) : null}
-          {!isDm && cur && cur.type !== "showcase" && <button className="joinbtn" style={{ marginLeft: "auto" }} title={t("chat.channelMembers")} onClick={() => setShowMembers(true)}>{t("chat.members")}</button>}
-          {!isDm && cur && cur.type !== "showcase" && (
-            <button className="joinbtn" title={t("chat.channelSettings")} onClick={() => setShowEdit(true)}>⋯</button>
-          )}
+          {renderConversationActions()}
         </div>
-        {chatTab === "tasks" && cur ? <TaskBoard channelId={cur.id} onOpenThread={startThread} />
-          : chatTab === "files" && cur ? <ChannelFiles channelId={cur.id} />
-          : <>
-            {chatTab === "chat" && unreadThreads.length > 0 && (
+        <>
+            {unreadThreads.length > 0 && (
               <button className="unread-threads-bar" onClick={() => openUnreadThread(unreadThreads[0]!)}>
                 <MessageCircle size={14} />
                 <span className="utb-label">{t("chat.unreadThreads", { count: unreadThreads.reduce((s, th) => s + th.unreadCount, 0) })}</span>
                 <span className="utb-cta">{t("chat.viewUnreadThread")}</span>
               </button>
             )}
-            <div key={cur?.id} className={"scroll ch-view-enter" + (chatTab === "chat" && unreadThreads.length > 0 ? " scroll-fade-top" : "")} ref={scrollRef} onScroll={onScroll}>
+            <div key={cur?.id} className={"scroll ch-view-enter" + (unreadThreads.length > 0 ? " scroll-fade-top" : "")} ref={scrollRef} onScroll={onScroll}>
               {!loaded && <ChatSkeleton />}
               {loaded && loadError && <PaneEmpty icon={<MessageCircle size={30} />} title={t("chat.loadFailedTitle")} sub={<><span>{t("chat.loadFailedBody")}</span><button className="joinbtn" onClick={loadCurrentMessages}>{t("chat.retryLoad")}</button></>} />}
               {loaded && !loadError && !msgs.length && <PaneEmpty icon={<MessageCircle size={30} />} title={t("chat.channelEmpty")} />}
@@ -563,14 +657,14 @@ export function Chat({ embedded = false, channelIdOverride, threadOnly = false }
                   allowAsTask
                   dmAgent={isDm ? dmAgent : undefined}
                 />}
-          </>}
+          </>
       </main> : null}
       {thread
         ? <>
             {!threadOnly ? (
               <VerticalDragDivider
                 className="chat-thread-divider"
-                ariaLabel="调整对话与线程宽度"
+                ariaLabel="调整对话与话题宽度"
                 value={threadConstraints.width}
                 min={threadConstraints.min}
                 max={threadConstraints.max}
@@ -583,6 +677,8 @@ export function Chat({ embedded = false, channelIdOverride, threadOnly = false }
               solo={threadOnly}
               style={threadOnly ? undefined : { width: threadConstraints.width, flexBasis: threadConstraints.width }}
               followed={thread.followed}
+              headerLeading={threadOnly ? renderConversationListControl() : undefined}
+              headerActions={threadOnly ? renderConversationActions() : undefined}
               onFollowChange={(followed) => {
                 setThread((current) => current ? { ...current, followed } : current);
                 setThreadMeta((current) => ({
@@ -595,11 +691,11 @@ export function Chat({ embedded = false, channelIdOverride, threadOnly = false }
                   },
                 }));
               }}
-              onClose={() => { setThread(null); setThreadWidth(null); }}
+              onClose={closeThread}
               onOpenAgent={openAgentProfile}
             />
           </>
-        : !embedded && <aside className="traj-col"><LiveTrace /></aside>}
+        : !embedded && <aside className="traj-col"><LiveTrace conversationId={cur?.id} /></aside>}
       {showMembers && cur && <ChannelMembersModal channelId={cur.id} channelName={cur.name} onClose={() => setShowMembers(false)} />}
       {showEdit && cur && <EditChannelModal channel={cur} onClose={() => setShowEdit(false)} onDone={async () => { setShowEdit(false); await reload(); }} onDeleted={() => { setShowEdit(false); reload(); navigateConversation(`/s/${slug}/channel`); }} />}
       {ctxMenu && (() => {
@@ -701,7 +797,7 @@ function EditChannelModal({ channel, onClose, onDone, onDeleted }: { channel: an
 }
 
 // Thread panel: right-side overlay showing the parent message, its replies, and a reply composer.
-function ThreadPanel({ channelId, parent, followed, solo = false, style, onClose, onFollowChange, onOpenAgent }: { channelId: string; parent: Msg; followed: boolean; solo?: boolean; style?: CSSProperties; onClose: () => void; onFollowChange: (followed: boolean) => void; onOpenAgent: (id: string) => void }) {
+function ThreadPanel({ channelId, parent, followed, solo = false, style, headerLeading, headerActions, onClose, onFollowChange, onOpenAgent }: { channelId: string; parent: Msg; followed: boolean; solo?: boolean; style?: CSSProperties; headerLeading?: ReactNode; headerActions?: ReactNode; onClose: () => void; onFollowChange: (followed: boolean) => void; onOpenAgent: (id: string) => void }) {
   const { t } = useTranslation();
   const { api, onEvent, subscribeChannel, attachmentUrl, me, react, agents, channels, slug } = useStore();
   const senderAvatar = (m: Msg) => resolveAvatar(m.senderType === "agent" ? agents.find((agent) => agent.id === m.senderId)?.avatarUrl : undefined, attachmentUrl);
@@ -791,7 +887,7 @@ function ThreadPanel({ channelId, parent, followed, solo = false, style, onClose
   };
   return (
     <aside className={`thread-panel${solo ? " thread-panel--solo" : ""}`} style={style}>
-      <div className="thread-head"><span className="grow">{t("chat.thread")}</span>
+      <div className="thread-head">{headerLeading}<span className="grow">{t("chat.thread")}</span>{headerActions}
         <button className="tp-link" title={t("chat.markDone")} onClick={async () => { await api("POST", "/api/channels/threads/done", { threadChannelId: channelId }); onClose(); }}><CheckCircle2 size={14} /></button>
         <button className="tp-link" title={followed ? t("chat.unfollowThread") : t("chat.followThread")} aria-label={followed ? t("chat.unfollowThread") : t("chat.followThread")} aria-pressed={followed} disabled={followPending} onClick={toggleFollow}>{followed ? <Bell size={14} /> : <BellOff size={14} />}</button>
         <button className="tp-link" onClick={() => navigateConversation(`/s/${slug}/channel/${parent.channelId}?msg=${parent.id}`)} title={t("chat.viewInChannel")}><ExternalLink size={14} /></button>
@@ -843,38 +939,6 @@ function ChannelMembersModal({ channelId, channelName, onClose }: { channelId: s
         </>}
         <div className="acts"><button className="cancel" onClick={onClose}>{t("chat.close")}</button></div>
       </div>
-    </div>
-  );
-}
-
-// Channel files tab (chatTab=files): lists attachments associated with channel messages; click to download or preview
-function ChannelFiles({ channelId }: { channelId: string }) {
-  const { t } = useTranslation();
-  const { api, attachmentUrl, slug } = useStore();
-  const nav = useNavigate();
-  const routeLocation = useLocation();
-  const navigateConversation = (target: string) => nav(workspaceLocationForConversation(
-    target,
-    routeLocation.pathname,
-    routeLocation.search,
-  ));
-  const [files, setFiles] = useState<any[]>([]);
-  useEffect(() => { (async () => { const d = await api("GET", `/api/channels/${channelId}/files`); setFiles(d?.files || []); })(); }, [channelId]);
-  return (
-    <div className="scroll ch-view-enter">
-      {files.length === 0 ? <div className="empty">{t("chat.noFiles")}</div>
-        : files.map((f) => (
-          <div key={f.id} className="card file-row">
-            <a className="file-main" href={attachmentUrl(f.id)} target="_blank" rel="noreferrer">
-              {isImage(f.mimeType) ? <img className="file-thumb" src={attachmentUrl(f.id)} alt={f.filename} loading="lazy" /> : <IconFile size={22} />}
-              <div className="grow"><div className="who">{f.filename}</div><div className="meta">{fmtSize(f.sizeBytes)} · {f.uploader?.displayName || f.uploader?.name || (f.uploader?.type === "agent" ? "agent" : t("chat.humanKind"))} · {fmtDateTime(f.createdAt)}</div></div>
-            </a>
-            <div className="file-acts">
-              {f.messageId && <button title={t("chat.jumpToMessage")} onClick={() => navigateConversation(`/s/${slug}/channel/${f.channelId}?msg=${f.messageId}`)}><IconExternalLink size={14} /></button>}
-              <a title={t("chat.download")} href={attachmentUrl(f.id)} download={f.filename}><IconDownload size={14} /></a>
-            </div>
-          </div>
-        ))}
     </div>
   );
 }

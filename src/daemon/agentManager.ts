@@ -13,6 +13,15 @@ import { createLogger } from "../log.js";
 import { buildAgentProcessEnv } from "./agentProcessEnv.js";
 import { resolveAgentWorkspacePaths, type AgentWorkspaceRef } from "../agents/agentWorkspacePaths.js";
 import { runtimeDir } from "../paths.js";
+import {
+  TrajectoryScopeTracker,
+  UNSCOPED_TRAJECTORY,
+  mergeTrajectoryScopes,
+  trajectoryScopeForDeliveries,
+  trajectoryScopeForDelivery,
+  trajectoryScopePayload,
+  type TrajectoryScopeState,
+} from "./trajectoryScope.js";
 
 const IDLE_MS = Number(process.env.KITH_SPACE_IDLE_MS ?? 10 * 60 * 1000); // how long before idle sleep (kills process to save memory; next wake uses --resume)
 const DELIVER_DEBOUNCE_MS = Number(process.env.KITH_SPACE_DELIVER_DEBOUNCE_MS ?? 3000); // batching window for deliveries while agent is busy (saves tokens, reduces interruptions)
@@ -25,9 +34,9 @@ export interface AgentConfig extends AgentWorkspaceRef {
   model?: string; runtime?: string; runtimeConfig?: Record<string, unknown> | null; sessionId?: string; introduced?: boolean; introductionToken?: string;
   serverUrl: string; agentToken?: string; // per-agent token (slice10); re-sent start for a running agent may omit it (daemon ignores)
 }
-interface DeliverBuf { count: number; from: string; target: string; targetName: string; firstShort: string; latestShort: string; isTask: boolean; mentioned: boolean; targets: Set<string>; timer: ReturnType<typeof setTimeout>; streamId?: string; }
+interface DeliverBuf { count: number; from: string; target: string; targetName: string; firstShort: string; latestShort: string; isTask: boolean; mentioned: boolean; targets: Set<string>; timer: ReturnType<typeof setTimeout>; streamId?: string; trajectoryScope: TrajectoryScopeState; }
 export interface DeliverMeta { targetName?: string; msgShort?: string; isTask?: boolean; streamId?: string; }
-interface Running { session: RuntimeSession; config: AgentConfig; sessionId: string | null; exited: Promise<void>; markExited: () => void; idleTimer?: ReturnType<typeof setTimeout>; deliverBuf?: DeliverBuf; }
+interface Running { session: RuntimeSession; config: AgentConfig; sessionId: string | null; exited: Promise<void>; markExited: () => void; trajectoryScopes: TrajectoryScopeTracker; idleTimer?: ReturnType<typeof setTimeout>; deliverBuf?: DeliverBuf; }
 interface PendingDeliver { from: string; target: string; mentioned: boolean; meta: DeliverMeta; }
 interface PendingDeliverQueue { items: PendingDeliver[]; timer: ReturnType<typeof setTimeout>; }
 interface ActiveReplyPreview { channelId: string; streamId: string; name: string; }
@@ -89,11 +98,11 @@ export class AgentManager {
     }
   }
   // Tear down process: clear timers + remove from map first (critical: deletion before session.stop() lets the onExit has() guard recognize this as an intentional stop, suppressing unexpected sleeping status) + stop runtime. Returns whether the agent was found.
-  private teardown(agentId: string): boolean { this.clearPendingDeliver(agentId); this.finishReplyPreview(agentId); const r = this.agents.get(agentId); if (!r) return false; if (r.idleTimer) clearTimeout(r.idleTimer); if (r.deliverBuf) clearTimeout(r.deliverBuf.timer); this.agents.delete(agentId); r.session.stop(); return true; }
+  private teardown(agentId: string): TrajectoryScopeState | null { this.clearPendingDeliver(agentId); this.finishReplyPreview(agentId); const r = this.agents.get(agentId); if (!r) return null; if (r.idleTimer) clearTimeout(r.idleTimer); if (r.deliverBuf) clearTimeout(r.deliverBuf.timer); const scope = r.trajectoryScopes.finishTurn(); this.agents.delete(agentId); r.session.stop(); return scope; }
   // User-initiated stop: emits inactive/offline
-  stop(agentId: string): void { if (!this.teardown(agentId)) return; this.send({ type: "agent:status", agentId, status: "inactive" }); this.send({ type: "agent:activity", agentId, activity: "offline", detail: "" }); }
+  stop(agentId: string): void { const scope = this.teardown(agentId); if (!scope) return; this.send({ type: "agent:status", agentId, status: "inactive" }); this.send({ type: "agent:activity", agentId, activity: "offline", detail: "", ...trajectoryScopePayload(scope) }); }
   // Idle sleep: emits sleeping/sleeping (activity also set to sleeping so the frontend activity+status dual mapping stays consistent; session is preserved for --resume on next wake)
-  sleep(agentId: string): void { if (!this.teardown(agentId)) return; this.log.info("sleep", { agentId }); this.send({ type: "agent:status", agentId, status: "sleeping" }); this.send({ type: "agent:activity", agentId, activity: "sleeping", detail: "" }); }
+  sleep(agentId: string): void { const scope = this.teardown(agentId); if (!scope) return; this.log.info("sleep", { agentId }); this.send({ type: "agent:status", agentId, status: "sleeping" }); this.send({ type: "agent:activity", agentId, activity: "sleeping", detail: "", ...trajectoryScopePayload(scope) }); }
   /** Reset runtime-local state; an explicit full reset also clears only this agent's Space-local memory. */
   async reset(ref: AgentWorkspaceRef, options: { clearAgentMemory?: boolean } = {}): Promise<void> {
     const previous = this.resetting.get(ref.agentId) ?? Promise.resolve();
@@ -106,7 +115,7 @@ export class AgentManager {
   private async resetNow(ref: AgentWorkspaceRef, options: { clearAgentMemory?: boolean }): Promise<void> {
     const starting = this.starting.get(ref.agentId);
     if (starting) await starting.catch(() => {});
-    this.teardown(ref.agentId); // skip stop() to avoid double inactive emit; reset sends its own inactive/offline+detail=reset below
+    const trajectoryScope = this.teardown(ref.agentId) ?? UNSCOPED_TRAJECTORY; // skip stop() to avoid double inactive emit; reset sends its own inactive/offline+detail=reset below
     this.send({ type: "agent:session", agentId: ref.agentId, sessionId: null });
     const paths = resolveAgentWorkspacePaths(ref, this.runtimeStateRoot);
     try { await this.removePath(paths.runtimeStateDir); this.log.info("runtime state cleared", { agentId: ref.agentId }); }
@@ -116,7 +125,7 @@ export class AgentManager {
       catch (e) { this.log.warn("agent memory clear failed", { agentId: ref.agentId, detail: String(e) }); }
     }
     this.send({ type: "agent:status", agentId: ref.agentId, status: "inactive" });
-    this.send({ type: "agent:activity", agentId: ref.agentId, activity: "offline", detail: "reset" });
+    this.send({ type: "agent:activity", agentId: ref.agentId, activity: "offline", detail: "reset", ...trajectoryScopePayload(trajectoryScope) });
     this.log.info("agent reset", { agentId: ref.agentId, clearAgentMemory: !!options.clearAgentMemory });
   }
   /** Profile changed on the server (displayName/description) — surgically sync the workspace MEMORY.md
@@ -142,6 +151,16 @@ export class AgentManager {
     const r = this.agents.get(agentId); if (!r) return;
     if (r.idleTimer) clearTimeout(r.idleTimer);
     r.idleTimer = setTimeout(() => { this.log.info("idle sleep", { agentId, idleMs: IDLE_MS }); this.sleep(agentId); }, IDLE_MS);
+  }
+
+  private sendRuntimeActivity(agentId: string, r: Running, activity: string, detail = ""): void {
+    const terminal = activity === "online" || activity === "sleeping" || activity === "offline" || activity === "error";
+    const scope = terminal
+      ? r.trajectoryScopes.finishTurn()
+      : activity === "working" || activity === "thinking"
+        ? r.trajectoryScopes.beginTurn()
+        : r.trajectoryScopes.current();
+    this.send({ type: "agent:activity", agentId, activity, detail, ...trajectoryScopePayload(scope) });
   }
 
   private startReplyPreview(agentId: string, r: Running, channelId: string, streamId?: string): void {
@@ -189,7 +208,7 @@ export class AgentManager {
     const runtime = this.runtimeResolver(config.runtime ?? "claude");
     if (!runtime) {
       this.log.error("no runtime", { runtime: config.runtime });
-      this.send({ type: "agent:activity", agentId, activity: "offline", detail: `no runtime: ${config.runtime}` });
+      this.send({ type: "agent:activity", agentId, activity: "offline", detail: `no runtime: ${config.runtime}`, ...trajectoryScopePayload(UNSCOPED_TRAJECTORY) });
       return;
     }
     if (runtime.experimental) this.log.warn("experimental runtime", { runtime: runtime.name });
@@ -223,21 +242,34 @@ export class AgentManager {
       reason,
       hasPendingDelivery: pendingDeliveryCount > 0,
     });
+    const initialTrajectoryScope = initialTurn.kind === "wake" && pendingDeliveryCount > 0
+      ? trajectoryScopeForDeliveries(pendingDeliverItems.map((item) => ({ target: item.target, streamId: item.meta.streamId })))
+      : UNSCOPED_TRAJECTORY;
     if (initialTurn.kind === "introduction" && config.introductionToken) {
       env.KITH_SPACE_INTRODUCTION_TOKEN = config.introductionToken;
     }
 
     let markExited = () => {};
     const exited = new Promise<void>((resolve) => { markExited = resolve; });
-    const running: Running = { session: undefined as unknown as RuntimeSession, config, sessionId: config.sessionId ?? null, exited, markExited };
+    const running: Running = {
+      session: undefined as unknown as RuntimeSession,
+      config,
+      sessionId: config.sessionId ?? null,
+      exited,
+      markExited,
+      trajectoryScopes: new TrajectoryScopeTracker(initialTrajectoryScope),
+    };
     const cb: RuntimeCallbacks = {
       onSession: (sid) => { running.sessionId = sid; this.send({ type: "agent:session", agentId, sessionId: sid }); },
       onActivity: (activity, detail) => {
         this.resetIdle(agentId);
-        this.send({ type: "agent:activity", agentId, activity, detail: detail ?? "" });
+        this.sendRuntimeActivity(agentId, running, activity, detail ?? "");
         if (activity === "online" || activity === "sleeping" || activity === "offline" || activity === "error") this.finishReplyPreview(agentId, activity === "error" ? "error" : "done");
       },
-      onTrajectory: (entries) => { this.send({ type: "agent:trajectory", agentId, entries }); this.sendReplyPreviewDelta(agentId, entries); },
+      onTrajectory: (entries) => {
+        this.send({ type: "agent:trajectory", agentId, entries, ...trajectoryScopePayload(running.trajectoryScopes.current()) });
+        this.sendReplyPreviewDelta(agentId, entries);
+      },
       onExit: (code) => {
         running.markExited();
         this.log.info("agent exited", { agentId, code });
@@ -248,7 +280,7 @@ export class AgentManager {
         const crashed = code !== 0;
         this.finishReplyPreview(agentId, crashed ? "error" : "done");
         this.send({ type: "agent:status", agentId, status: "sleeping" });
-        this.send({ type: "agent:activity", agentId, activity: crashed ? "error" : "sleeping", detail: crashed ? `crashed (exit ${code ?? "signal"})` : "" });
+        this.sendRuntimeActivity(agentId, running, crashed ? "error" : "sleeping", crashed ? `crashed (exit ${code ?? "signal"})` : "");
       },
       log: this.log,
     };
@@ -271,7 +303,7 @@ export class AgentManager {
     }, cb);
 
     this.send({ type: "agent:status", agentId, status: "active" });
-    this.send({ type: "agent:activity", agentId, activity: "working", detail: "starting" });
+    this.sendRuntimeActivity(agentId, running, "working", "starting");
     this.log.info("agent started", { agentId, runtime: runtime.name, model: config.model ?? "(default)", resume: !!config.sessionId, experimental: runtime.experimental ?? false });
     this.resetIdle(agentId);
     if (consumePendingWake) {
@@ -324,19 +356,26 @@ export class AgentManager {
     // Delivery batching while busy: multiple messages within 3 s are coalesced into one inbox notice, reducing interruptions and token usage.
     const tname = meta.targetName ?? target;
     const short = meta.msgShort ?? "";
+    const deliveryScope = trajectoryScopeForDelivery(target, meta.streamId);
     const b = r.deliverBuf;
     if (b) { // accumulate: count++, update latest, keep first unchanged, union target set
       clearTimeout(b.timer); b.count++; b.from = from; b.target = target; b.targetName = tname; b.latestShort = short;
       b.isTask = b.isTask || !!meta.isTask; b.mentioned = b.mentioned || mentioned; b.targets.add(tname); b.streamId = meta.streamId ?? b.streamId;
+      b.trajectoryScope = mergeTrajectoryScopes(b.trajectoryScope, deliveryScope);
       this.startReplyPreview(agentId, r, target, b.streamId);
     }
-    const buf: DeliverBuf = b ?? { count: 1, from, target, targetName: tname, firstShort: short, latestShort: short, isTask: !!meta.isTask, mentioned, targets: new Set([tname]), timer: undefined as any, streamId: meta.streamId };
+    const buf: DeliverBuf = b ?? { count: 1, from, target, targetName: tname, firstShort: short, latestShort: short, isTask: !!meta.isTask, mentioned, targets: new Set([tname]), timer: undefined as any, streamId: meta.streamId, trajectoryScope: deliveryScope };
     this.startReplyPreview(agentId, r, target, buf.streamId);
     buf.timer = setTimeout(() => {
       r.deliverBuf = undefined;
       const note = inboxNotice({ count: buf.count, from: buf.from, targetName: buf.targetName, firstShort: buf.firstShort, latestShort: buf.latestShort, isTask: buf.isTask, isDm: buf.targetName.startsWith("dm:"), changedTargets: buf.targets.size, mentioned: buf.mentioned });
-      try { r.session.deliver(note); this.resetIdle(agentId); this.log.debug("inbox notice -> agent", { agentId, count: buf.count, mentioned: buf.mentioned }); }
-      catch (e) { this.finishReplyPreview(agentId, "error"); this.log.warn("deliver failed", { agentId, detail: String(e) }); }
+      const scopeToken = r.trajectoryScopes.schedule(buf.trajectoryScope);
+      try { r.session.deliver(note); this.resetIdle(agentId); this.log.debug("inbox notice -> agent", { agentId, count: buf.count, mentioned: buf.mentioned, trajectoryScope: buf.trajectoryScope.kind }); }
+      catch (e) {
+        r.trajectoryScopes.rollback(scopeToken);
+        this.finishReplyPreview(agentId, "error");
+        this.log.warn("deliver failed", { agentId, detail: String(e) });
+      }
     }, this.debounceMsFor(r));
     r.deliverBuf = buf;
   }

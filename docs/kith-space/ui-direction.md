@@ -31,24 +31,24 @@
 ```text
 顶部栏：当前 Space / 当前会话与模块 / 搜索与工具
 ┌────────────────────────────────────────────────────────────┐
-│ Chat Pane       │ 10px 可拖拽热区 │ Module Pane           │
-│                 │                  │                       │
-│                 │                  │             Dock      │
+│ Chat Pane       │ 聚合面板（可选） │ 10px 可拖拽区 │ Module Pane │
+│                 │ 轨迹/话题/文件   │                 │ Dock        │
 └────────────────────────────────────────────────────────────┘
 ```
 
 - 未初始化时进入本地 Human 资料页；普通冷启动进入自动创建的 Home Chat，显式 Space 深链接直达目标，托盘恢复保留现有窗口现场。
 - Space 名称保留快速切换入口；H4 已把默认创建、已有文件夹接入和完整目录管理移入 Home 的 Spaces 模块。顶部入口只保留快速切换、失联重连和“管理空间”跳转。
 - Search 位于顶部工具组，通过按钮和 `Cmd/Ctrl + K` 进入，不占 Dock 槽位。
-- 同时最多显示一个 Chat Pane 和一个 Module Pane。
+- 同时最多显示一个 Chat Pane、一个当前会话聚合面板和一个 Module Pane；聚合面板只依附可见 Chat，不是第二个 Module。
 - Split 默认让 Chat 占可用工作区的 25%、Module 占其余空间；Chat 下限为 `max(360px, 25%)`。Tasks / Search 的模块下限为 560px，其余现有模块为 640px；模块不再使用固定 960px 上限。
 - 分区间完整 10px 间隙都是拖拽热区，悬停或拖动时才显示短握柄，不显示贯穿全高的分隔线。
 - 宽度不足以容纳双栏时不强行压缩，临时退化为单 Pane；窗口变宽后恢复此前的双栏意图。
+- 三栏宽度优先级为当前主要工作面、Module、聚合面板、固定会话列表；不能同时满足最小宽度时先临时把聚合面板收至 `0` 并保留打开意图，ModuleOnly 不单独显示聚合面板。
 - 拖拽偏好保存为工作区宽度比例而非像素。Split 内切换模块保留该比例；从 ChatOnly 打开模块、关闭模块后重新打开，或从 ModuleOnly 恢复 Chat 时，均回到 Chat 25% 的默认下限。
 
 当前 Space 的频道或 Human-Agent DM 由规范会话 pathname 表达；打开模块时在同一 URL 上增加 `?module=<id>`，ModuleOnly 再增加 `chat=0`。Tasks 使用 `taskScope`，Agents 使用 `agent` 与 `agentTab`，Settings 使用 `settings` 表达自己的模块资源；不属于当前模块的资源参数会被清除。切换频道或 DM 时保留 active module、Chat 显隐和该模块的资源 query，并替换旧会话的 `msg`/`thread` 等临时焦点。因此一个 URL 可以同时表达“频道 A + Tasks + Split”，在紧凑会话抽屉切频道不会关闭模块，也不会把旧消息焦点带到新会话。
 
-浏览器刷新、前进和后退都以 URL 为准恢复三态；会话/轨迹抽屉等短暂界面状态不进入 URL。`/tasks`、`/agent`、`/settings` 等旧模块实体路径不再作为兼容深链，未知 Space 子路径会规范化到 `/s/:slug/channel` 并保留有效 query/hash。`?legacy=1` 与旧 `Layout` 已删除。
+浏览器刷新、前进和后退都以 URL 为准恢复三态；会话列表、聚合面板、聚合 Tab 与文件筛选等短暂界面状态不进入 URL。`/tasks`、`/agent`、`/settings` 等旧模块实体路径不再作为兼容深链，未知 Space 子路径会规范化到 `/s/:slug/channel` 并保留有效 query/hash。`?legacy=1` 与旧 `Layout` 已删除。
 
 ---
 
@@ -99,31 +99,31 @@ Spaces 只在 Home 出现；Agents 只显示当前 Space 的 agent 队伍；唯�
 
 ### 4.1 Chat 全宽
 
-ChatOnly 由三张独立白色工作面板组成：
+ChatOnly 由当前会话工作面和可独立收起的辅助面板组成：
 
 ```text
-会话列表 | 当前会话与 Composer | 实时轨迹
+会话列表 | 当前会话与 Composer | 聚合面板（轨迹 / 话题 / 文件）
 ```
 
 - 会话列表包含 Channels 与 Human-Agent Direct Messages，保留未读、置顶、新建和切换行为；不提供 Human-Human DM。会话抽屉、Agents 模块侧栏及 Agent 选择器中的相邻 Agent 行使用一致的轻量间距，保持列表层级清晰。
-- 中间复用现有 `Chat`、Composer、Thread、附件和 @mention 能力；Agent 私聊标题区提供直达当前 Agent 详情页的入口；Thread 打开时默认与当前会话各占一半宽度，并可通过中间分割线继续拖拽调整。Thread 标题栏以普通铃铛表示“已关注”、划线铃铛表示“未关注”，点击在两种状态间切换且不关闭 Thread；关闭仍由独立的 × 按钮负责。
-- 当前会话顶部始终复用紧凑 Chat 的“会话 / 轨迹”按钮：ChatOnly 中用于把对应侧栏直接收至 `0` 或恢复，不保留贯穿全高的收起栏；展开收起沿用模块切换的物理边界运动方式，但使用独立的响应曲线，内容随边界裁切，不做淡入淡出；Split 中仍用于打开对应抽屉。该短暂界面状态不进入 URL。
-- 实时轨迹继续展示 agent 的执行过程，Thread 与当前会话使用一致的面板背景。
-- 三区之间使用与整个工作区一致的有色间隙与圆角面板语言。
+- 中间复用现有 `Chat`、Composer、Thread、附件和 @mention 能力；用户界面统一称“话题”，内部数据、API 与 query 继续使用 `thread`。Agent 私聊标题区保留直达当前 Agent 详情页的入口；话题打开时默认与当前会话各占一半宽度，并可通过中间分割线继续拖拽调整。话题标题栏以普通铃铛表示“已关注”、划线铃铛表示“未关注”，关注切换不关闭面板，关闭仍由独立的 × 按钮负责。
+- 删除旧“会话 / Chat / 轨迹”顶栏。会话列表纯图标开关迁入当前会话标题最左侧；标题右侧依次提供当前会话 Tasks、频道成员、聚合面板和既有更多操作的纯图标入口。Tasks 始终导航到 `module=tasks&taskScope=<当前会话ID>`，点击已打开的同一 Tasks 不解释为关闭。
+- 聚合面板固定承载“轨迹 / 话题 / 文件”三个等宽滑动 Tab；白色选中底板只做 `transform` 横移，内容不淡入淡出。三个内容区通过 `hidden` 切换而不卸载，因此文件分类、关键词和搜索展开状态跨 Tab 保留，只在会话切换时重置。话题列表来自独立 thread summaries 查询，新建空话题与后续回复都会实时刷新，点击后仍在原 Chat 话题位置展开正文；文件页支持“全部 / 图片 / 视频 / 文件”和文件名/来源消息搜索。文件页与 Agents 列表复用 `components/SearchField.tsx` 的胶囊搜索框，只显示产品自己的清除按钮，输入框焦点使用浅色内描边而不是黑框。
+- 实时轨迹只展示当前 base conversation 的本次前端会话缓冲；话题轨迹归一到父会话，无作用域或跨会话 ambiguous 事件不进入任何会话聚合面板。
+- 会话列表与聚合面板都沿物理边界把宽度变为 `0`，内容随边界裁切，不使用淡入淡出或贯穿全高的收起长条；两者使用 Chat 侧栏曲线，Module 保持自己的切换曲线。
 
 ### 4.2 Chat 紧凑
 
-打开模块进入 Split 时，会话列表与实时轨迹不再占固定栏位，Chat 收成一张紧凑面板：
+打开模块进入 Split 时，会话列表不再占固定栏位，Chat 收成一张紧凑面板；聚合面板在宽度允许时作为 Chat 与 Module 的同级面板留在两者之间：
 
 ```text
-[会话抽屉] 当前会话 [轨迹抽屉]
+[会话抽屉] 当前会话 | 聚合面板 | Module
 消息流
 Composer
 ```
 
-- 会话抽屉从 Chat 左侧覆盖打开，轨迹抽屉从 Chat 右侧覆盖打开。
-- 抽屉只覆盖 Chat Pane，不挤压或遮挡 Module Pane，并且两者互斥。
-- Thread 和 agent profile 属于 Chat 内部临时层，不占用 Module Pane；模块打开且 Thread 存在时，紧凑 Chat 只显示 Thread，不再并排保留当前会话消息流。
+- 会话抽屉从 Chat 左侧覆盖打开，只覆盖 Chat Pane，不挤压或遮挡聚合面板与 Module。
+- 话题和 agent profile 属于 Chat 内部临时层，不占用 Module Pane；模块打开且话题存在时，紧凑 Chat 只显示话题，不再并排保留父会话消息流；聚合面板仍由自己的标题图标控制。
 - Chat 被隐藏时，Chat 的临时层随之卸载；恢复后回到当前会话。
 
 ---
@@ -173,17 +173,18 @@ A5 已完成工作区入口与规范 URL 收口，但 `MessageContextSnapshot`�
 
 单窗口壳按职责拆在 `web/src/shell/`：
 
-- `WorkspaceFrame.tsx`：路由同步、响应式 Pane 编排与拖拽边界。
+- `WorkspaceFrame.tsx`：路由同步、Chat / 聚合面板 / Module 响应式编排、聚合面板短暂状态与拖拽边界。
 - `workspaceLayout.ts`：无 React 依赖的三态状态机。
-- `paneConstraints.ts`：集中计算 Chat 响应式下限、各模块下限、单 Pane 阈值和比例到像素的夹取结果。
+- `paneConstraints.ts`：集中计算 Chat 响应式下限、聚合面板目标宽度、三栏可见阈值、各模块下限、单 Pane 阈值和比例到像素的夹取结果。
 - `shellStore.ts`：`useSyncExternalStore` 保存版本化模块宽度比例，并按 Space 持久化最近 Chat 位置；模块与 Chat 显隐由 URL 表达，避免双重状态源。
 - `workspaceRoute.ts`：解析规范会话 pathname，把 `module/chat` 与模块拥有的 `taskScope/agent/agentTab/settings` query 映射回三态，并在会话导航时只保留持久布局/模块资源；Human profile、机器旧路由和旧模块实体路径均不再映射模块。
-- `ChatWorkspace.tsx`：全宽三区与紧凑抽屉形态。
+- `ChatWorkspace.tsx`：固定/抽屉会话列表和 Chat 工作面；不再拥有轨迹数据或旧顶部工具条。
+- `conversation-aggregate/`：轨迹、话题、文件三个会话级子视图；通用滑动 Tab 独立位于 `components/SlidingTabs.tsx`。
 - `ModuleWorkspace.tsx`：现有业务视图薄适配。
 - `WorkspaceDock.tsx` / `WorkspaceTopBar.tsx`：Dock 与顶部工具组。
 - `workspaceModules.tsx`：模块注册、路由和图标元数据。
 
-复用 `Chat.tsx`、`ChatSidebar.tsx`、`LiveTrace.tsx`、`TaskBoard.tsx`、Inbox、Settings 与现有 agent 列表能力，不整块重写大文件。产品模块已从 Members 收敛为 Agents（内部文件名 `Members.tsx` 暂留）；Computers 与旧 `Layout` 已删除。旧 `OverviewShell`、`SpaceShell`、`IconRail`、`RightDock` 和 `ChatSlot` 已被新壳取代。
+复用 `Chat.tsx`、`ChatSidebar.tsx`、`LiveTrace.tsx`、`TaskBoard.tsx`、Inbox、Settings 与现有 agent 列表能力；Chat 不再内嵌 Tasks/Files Tab，文件筛选与话题索引也不继续堆入大文件。产品模块已从 Members 收敛为 Agents（内部文件名 `Members.tsx` 暂留）；Computers 与旧 `Layout` 已删除。旧 `OverviewShell`、`SpaceShell`、`IconRail`、`RightDock` 和 `ChatSlot` 已被新壳取代。
 
 ## 8. 初始化与 Settings 边界
 

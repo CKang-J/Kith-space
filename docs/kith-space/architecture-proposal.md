@@ -220,14 +220,16 @@ agent-to-agent 分派继续经过统一 dispatch 收口。现有深度上限、�
 
 ## 8. 前端模块边界
 
-- `WorkspaceFrame` 组合路由、响应式约束和三态布局，不承载任务或 agent 业务逻辑。
+- `WorkspaceFrame` 组合路由、Chat / 会话聚合面板 / Module 响应式约束和三态布局，不承载文件、话题、任务或 agent 数据查询；聚合面板打开意图只存在于前端短暂状态（`web/src/shell/WorkspaceFrame.tsx:45`、`:108`）。
 - `workspaceLayout.ts` 只表达 ChatOnly/Split/ModuleOnly 状态机。
-- `paneConstraints.ts` 只计算面板最小宽度与单 Pane 降级。
+- `paneConstraints.ts` 只计算面板最小宽度、300px 聚合面板目标宽度、三栏阈值与单 Pane 降级（`web/src/shell/paneConstraints.ts:7`、`:65`）；`workspacePaneWidthsWithAggregate` 把聚合面板放在 Chat 与 Module 之间，宽度不足时先临时隐藏聚合面板并保留意图（`web/src/shell/workspacePaneTransition.ts:67`）。
 - `workspaceModules.tsx` 当前注册 Home-only Spaces、Inbox、Tasks、Agents、Settings 与非 Dock 的 Search；`dockModulesForSpace` 用稳定 `isHome` 选择 Home/普通 Dock，普通 Space 仍只显示五项。Computers/Machines 已退出模块注册和路由。
-- `ChatWorkspace` 管理会话列表、Chat 和实时轨迹；业务模块不能直接操控 Chat 内部状态。
+- `ChatWorkspace` 只管理固定/抽屉会话列表和 Chat；旧“会话 / Chat / 轨迹”工具条与全局轨迹栏已删除。`ConversationAggregatePanel` 以窄 props 接收当前 `conversationId`、轨迹节点和导航回调，三个子视图分别拥有轨迹、话题与文件职责；三个 Tab 内容保持挂载并通过原生 `hidden` 切换，因此文件分类、关键词和搜索展开状态跨 Tab 保留，只有 `conversationId` 改变时由 keyed 子视图重置（`web/src/views/conversation-aggregate/ConversationAggregatePanel.tsx:14`、`:45`）。`components/SearchField.tsx` 统一 Agents 与会话文件的搜索输入、清除和焦点行为，页面只保留各自的筛选状态与展开动画。业务模块不能直接操控 Chat 内部状态。
 - URL 是模块与 Chat 显隐事实来源。会话始终使用规范 `/s/:slug/channel[/<channelId>]`、`saved` 或 `showcase` 路径；`module`/`chat` 表达工作区布局，`taskScope`、`agent`/`agentTab`、`settings` 分别表达 Tasks、Agents、Settings 的模块资源（`web/src/shell/workspaceRoute.ts:65`、`:128`）。模块切换由 `workspaceLocationForModule`（`:143`）生成 query，不再生成 `/tasks`、`/agent`、`/settings` 等模块实体路径；Settings 未指定或传入旧/未知资源时统一归一为 `human`（`:138`）。
 - 切换频道或 Human-Agent DM 时保留当前 active module、Chat 显隐和该模块拥有的 resource query，同时丢弃旧会话的 `msg`/`thread` 等临时聚焦参数（`web/src/shell/workspaceRoute.ts:180`）。这样模块上下文跨会话导航保持稳定，旧消息焦点不会泄漏到新会话。
-- Thread 批量元数据同时返回单一 Human 的 `followed` 状态（`src/server/routes-api/channels.ts:121`）；Chat 将其作为受控状态传入 Thread 面板，并通过既有 `follow` / `unfollow` 接口切换（`web/src/views/Chat.tsx:580`、`:704`），关注切换与面板关闭保持为两个独立行为。
+- Thread 批量元数据同时返回单一 Human 的 `followed` 状态（`src/server/routes-api/channels.ts:114`）；Chat 将其作为受控状态传入 Thread 面板，并通过既有 `follow` / `unfollow` 接口切换（`web/src/views/Chat.tsx:674`、`:850`），关注切换与面板关闭保持为两个独立行为。
+- 聚合面板的话题索引不从前端消息分页推导。`GET /api/channels/:channelId/thread-summaries` 复用会话可读权限并调用独立查询模块，返回当前频道或 DM 的全部未删除 thread、父消息摘要/发起者、回复数、未读、关注与最近活动时间（`src/server/routes-api/channels.ts:126`、`src/server/channels/threadSummaries.ts:22`）。首次创建空 thread 与后续回复都发布 `thread:updated`，使已挂载的话题索引立即失效重取（`src/server/core.ts:748`）。内部实体、API 和 query 继续使用 `thread`，只有用户可见术语改为“话题”。会话文件查询在原 100 条边界内联查 `sourceMessageText`，避免前端逐条补请求。
+- Worker 给 `agent:activity` / `agent:trajectory` 事件标记 `scoped | unscoped | ambiguous` 和实际 `channelId`；同步投递失败会用 schedule token 精确回滚自己的作用域，不能污染下一轮（`src/daemon/agentManager.ts:372`、`src/daemon/trajectoryScope.ts:77`）。Core 对同一 Worker 连接的消息使用串行队列，确保 trajectory 数据先于随后到达的 terminal activity 边界处理（`src/server/ws.ts:55`、`src/server/workerMessageQueue.ts:1`）；随后校验该 channel 属于当前 Space，并把 thread 逐级归一为父 `conversationId`（`src/server/trajectoryScope.ts:61`）。Socket 透传作用域，Web Store 只把明确 `scoped` 事件写入 `trajByConversation[conversationId]` 的独立 300 条缓冲，Space 切换清空全部桶（`web/src/store.tsx:41`、`:350`）。无作用域或 ambiguous 事件仍可进入 Agent 活动流，但不得出现在任何会话聚合面板。
 - `MessageContextSnapshot` 在发送时固化 Space、会话、模块、Context Stack 和 focused item，adapter 再编码为各 runtime 所需格式。
 
 Home Spaces UI 只负责卡片、搜索、创建入口和同窗导航；路径规范化、`.kith` 校验、homeSpaceId 与 registry 摘要属于领域服务。规范 URL 是 Home 当前会话路径上的 `?module=spaces`；普通 Space 收到该 query 时移除它。从任意 Space 打开全局空间入口时导航到 Home Spaces，而不是创建第二壳。

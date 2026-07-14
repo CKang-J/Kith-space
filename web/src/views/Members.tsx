@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageCircle, X, Wrench, ChevronRight, Check, Copy, Eye, EyeOff, Search } from "lucide-react";
+import { MessageCircle, X, Wrench, ChevronRight, Check, Copy, Eye, EyeOff } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -17,6 +17,7 @@ import i18n from "../i18n";
 import { mergeWorkspaceSearch, workspaceLocationForModule, workspaceSearchForShellState } from "../shell/workspaceRoute.ts";
 import { LOCAL_RUNTIME_DEFAULT, useRuntimeDiscovery } from "../useRuntimeDiscovery.ts";
 import { agentStatusLabel } from "../agentStatus.ts";
+import { SearchField } from "../components/SearchField.tsx";
 
 // Unified agent status label: fine-grained activity (working/thinking/online) takes priority;
 // offline/absent falls back to lifecycle status (active/sleeping/inactive).
@@ -53,11 +54,14 @@ export function Agents({ agentIdOverride }: AgentsProps = {}) {
       <aside className="sidebar agents-sidebar">
         <div className="sb-scroll">
         <div className="sb-title">{t("nav.agents")}</div>
-        <div className="agent-search">
-          <Search size={15} aria-hidden="true" />
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("members.searchPlaceholder")} aria-label={t("members.searchPlaceholder")} />
-          {search && <button type="button" className="agent-search-clear" onClick={() => setSearch("")} aria-label={t("members.searchClear")}><X size={14} /></button>}
-        </div>
+        <SearchField
+          className="agent-search"
+          value={search}
+          onValueChange={setSearch}
+          placeholder={t("members.searchPlaceholder")}
+          aria-label={t("members.searchPlaceholder")}
+          clearLabel={t("members.searchClear")}
+        />
         <div className="sec">{t("common.agents")} <span className="cnt">{agents.length}</span><button className="addbtn agents-create-button" title={t("members.createAgent")} onClick={() => setModal(true)}>+</button></div>
         {filteredAgents.map((a) => (
           <button key={a.id} className={"item agent-list-item" + (a.id === agentId ? " active" : "")} onClick={() => openAgent(a.id)}>

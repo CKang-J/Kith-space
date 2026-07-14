@@ -99,12 +99,7 @@ button{font-family:inherit}
 .sidebar{background:var(--canvas-soft);border-right:1px solid var(--hair);display:flex;flex-direction:column;min-height:0}
 .sb-scroll{flex:1;min-height:0;overflow:auto;padding:18px 14px}
 .sb-title{font-family:var(--serif);font-size:22px;letter-spacing:-.3px;color:var(--ink);margin:0 0 16px}
-.agent-search{display:flex;align-items:center;gap:8px;margin:-4px 0 14px;padding:0 12px;height:36px;border-radius:9999px;background:var(--surface-strong);color:var(--muted-soft)}
-.agent-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--ink);font:inherit;font-size:13px}
-.agent-search input:focus-visible{box-shadow:none}
-.agent-search input::placeholder{color:var(--muted-soft)}
-.agent-search-clear{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted-soft);cursor:pointer}
-.agent-search-clear:hover{background:var(--hair);color:var(--ink)}
+.agent-search{margin:-4px 0 14px}
 .agent-search-empty{padding:8px 4px}
 /* Section header: label (+ optional count hugging it) on the left, optional add affordance pinned right.
    The count counts what the label names, so it sits next to the label; only .addbtn floats to the edge. */
@@ -236,9 +231,11 @@ main.content-col{display:flex;flex-direction:column;height:100vh;background:var(
 .chat-head::after{content:"";position:absolute;left:0;right:0;bottom:-46px;height:46px;background:linear-gradient(to bottom,var(--surface),rgba(255,255,255,.72) 32%,rgba(255,255,255,0));pointer-events:none}
 .chat-head>h1{flex-shrink:0}
 .chat-head>small,.chat-head>.head-status{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.chat-head>.chtabs{flex-shrink:0}
-.chat-agent-profile-btn{display:inline-flex;width:28px;height:28px;flex:none;margin-left:auto;align-self:center;align-items:center;justify-content:center;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
-.chat-agent-profile-btn:hover{background:var(--surface-strong);color:var(--ink)}
+.chat-head-actions{display:flex;flex:none;align-items:center;gap:3px;margin-left:auto}
+.chat-head-icon-btn{display:inline-flex;width:30px;height:30px;flex:none;align-self:center;align-items:center;justify-content:center;padding:0;border:0;border-radius:9px;background:transparent;color:var(--muted);cursor:pointer}
+.chat-head-icon-btn:hover,.chat-head-icon-btn[aria-pressed="true"]{background:var(--surface-strong);color:var(--ink)}
+.chat-head-icon-btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.chat-head-icon-btn:disabled{cursor:not-allowed;opacity:.38}
 .scroll{flex:1;overflow:auto;padding:24px 28px}
 main.content-col > .scroll{min-height:0;padding-bottom:112px;background:var(--surface)}
 main.content-col > .scroll::-webkit-scrollbar{background:var(--surface)}
@@ -664,6 +661,9 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .thread-panel{background:var(--surface);display:flex;flex-direction:column;overflow:hidden}
 .thread-head{display:flex;align-items:center;gap:2px;padding:14px 18px;border-bottom:1px solid var(--hair);font-family:var(--serif);font-size:20px;color:var(--ink)}
 .thread-head .grow{flex:1}
+.thread-panel--solo .thread-head{padding:10px 12px}
+.thread-panel--solo .thread-head .chat-head-actions{gap:0;margin-left:0}
+.thread-panel--solo .thread-head .chat-head-icon-btn{width:28px;height:28px}
 /* thread head icon buttons (mark done / unfollow / source message / close): unified transparent tertiary, surface appears on hover, flex-centered icons */
 .tp-link,.tp-close{background:none;border:0;color:var(--muted);cursor:pointer;padding:5px 7px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center}
 .tp-link:hover,.tp-close:hover{background:var(--surface-strong);color:var(--ink)}

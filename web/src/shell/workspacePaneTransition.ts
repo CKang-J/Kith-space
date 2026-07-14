@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { paneConstraints, WORKSPACE_PANE_GAP } from "./paneConstraints.ts";
+import {
+  aggregatePaneConstraints,
+  normalizeModuleRatio,
+  paneConstraints,
+  WORKSPACE_PANE_GAP,
+} from "./paneConstraints.ts";
 import type { WorkspaceLayoutState } from "./workspaceLayout.ts";
 
 export const WORKSPACE_PANE_TRANSITION_MS = 420;
@@ -15,6 +20,12 @@ export interface WorkspacePaneWidths {
   chat: number;
   divider: number;
   module: number;
+}
+
+export interface WorkspacePaneWidthsWithAggregate extends WorkspacePaneWidths {
+  aggregate: number;
+  aggregateGap: number;
+  aggregateAvailable: boolean;
 }
 
 const layoutsMatch = (left: WorkspaceLayoutState, right: WorkspaceLayoutState) => (
@@ -50,6 +61,47 @@ export function workspacePaneWidths(
     chat: Math.max(0, width - WORKSPACE_PANE_GAP - panes.moduleWidth),
     divider: WORKSPACE_PANE_GAP,
     module: panes.moduleWidth,
+  };
+}
+
+export function workspacePaneWidthsWithAggregate(
+  layout: WorkspaceLayoutState,
+  workspaceWidth: number,
+  moduleRatio: number,
+  aggregateRequested: boolean,
+): WorkspacePaneWidthsWithAggregate {
+  const base = workspacePaneWidths(layout, workspaceWidth, moduleRatio);
+  const aggregate = aggregatePaneConstraints(
+    workspaceWidth,
+    layout.activeModule,
+    layout.activeModule === null || layout.chatVisible,
+  );
+  if (!aggregateRequested || !aggregate.canShow || base.chat === 0) {
+    return { ...base, aggregate: 0, aggregateGap: 0, aggregateAvailable: aggregate.canShow };
+  }
+
+  const width = Math.max(0, Math.round(workspaceWidth));
+  if (layout.activeModule === null) {
+    return {
+      chat: width - aggregate.width - WORKSPACE_PANE_GAP,
+      divider: 0,
+      module: 0,
+      aggregate: aggregate.width,
+      aggregateGap: WORKSPACE_PANE_GAP,
+      aggregateAvailable: true,
+    };
+  }
+
+  const panes = paneConstraints(width, layout.activeModule, moduleRatio);
+  const preferredModuleWidth = Math.round(width * normalizeModuleRatio(moduleRatio));
+  const moduleWidth = Math.min(aggregate.moduleMax, Math.max(panes.moduleMin, preferredModuleWidth));
+  return {
+    chat: Math.max(0, width - moduleWidth - aggregate.width - WORKSPACE_PANE_GAP * 2),
+    divider: WORKSPACE_PANE_GAP,
+    module: moduleWidth,
+    aggregate: aggregate.width,
+    aggregateGap: WORKSPACE_PANE_GAP,
+    aggregateAvailable: true,
   };
 }
 

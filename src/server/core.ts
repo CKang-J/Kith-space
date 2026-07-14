@@ -729,10 +729,12 @@ export async function getOrCreateDM(spaceId: string, aId: string, aType: string,
 export async function getOrCreateThread(spaceId: string, parentMessageId: string, creator?: { type: "human" | "agent"; id: string }) {
   const db = dbForSpace(spaceId);
   let thread = (await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.type, "thread"), eq(schema.channels.parentMessageId, parentMessageId))))[0];
+  let created = false;
   if (!thread) {
     // Atomic create: partitioned unique index (spaceId, parentMessageId WHERE type=thread) ensures only one row under concurrency; losing insert returns empty → re-select.
     const [ch] = await db.insert(schema.channels).values({ spaceId, type: "thread", parentMessageId, name: `thread-${parentMessageId.slice(0, 8)}` }).onConflictDoNothing().returning();
     thread = ch ?? (await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.type, "thread"), eq(schema.channels.parentMessageId, parentMessageId))))[0]!;
+    created = Boolean(ch);
     if (ch) { // only add thread root member on the actual new creation (skip for the losing insert)
       const parent = (await db.select().from(schema.messages).where(eq(schema.messages.id, parentMessageId)))[0];
       if (parent?.senderType === "human") await followHumanThread(spaceId, thread.id);
@@ -743,6 +745,7 @@ export async function getOrCreateThread(spaceId: string, parentMessageId: string
   }
   if (creator?.type === "human") await followHumanThread(spaceId, thread.id);
   else if (creator) await db.insert(schema.channelAgentMembers).values({ channelId: thread.id, agentId: creator.id }).onConflictDoNothing();
+  if (created) await publishThreadUpdated(spaceId, thread, creator?.id ?? null, creator?.type ?? "system");
   return thread;
 }
 

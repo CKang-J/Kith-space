@@ -202,13 +202,11 @@
 
 .shell-chat-workspace--full {
   --shell-conversations-width: clamp(210px, 19vw, 260px);
-  --shell-trace-width: clamp(240px, 22vw, 310px);
   display: flex;
   gap: 0;
 }
 
-.shell-chat-workspace--full > .shell-chat-conversations,
-.shell-chat-workspace--full > .shell-chat-trace {
+.shell-chat-workspace--full > .shell-chat-conversations {
   transition: width var(--shell-side-pane-motion-duration) var(--shell-side-pane-motion-easing),
     flex-basis var(--shell-side-pane-motion-duration) var(--shell-side-pane-motion-easing),
     margin var(--shell-side-pane-motion-duration) var(--shell-side-pane-motion-easing);
@@ -226,24 +224,13 @@
   flex: 1 1 0;
 }
 
-.shell-chat-workspace--full > .shell-chat-trace {
-  width: var(--shell-trace-width);
-  flex: 0 0 var(--shell-trace-width);
-  margin-left: var(--shell-gap);
-}
-
-.shell-chat-workspace--full[data-conversations-collapsed="true"] > .shell-chat-conversations,
-.shell-chat-workspace--full[data-trace-collapsed="true"] > .shell-chat-trace {
+.shell-chat-workspace--full[data-conversations-collapsed="true"] > .shell-chat-conversations {
   width: 0;
   flex-basis: 0;
 }
 
 .shell-chat-workspace--full[data-conversations-collapsed="true"] > .shell-chat-conversations {
   margin-right: 0;
-}
-
-.shell-chat-workspace--full[data-trace-collapsed="true"] > .shell-chat-trace {
-  margin-left: 0;
 }
 
 .shell-chat-workspace--compact {
@@ -261,6 +248,30 @@
 
 .shell-chat-trace {
   grid-column: 5;
+}
+
+.shell-aggregate-gap,
+.shell-conversation-aggregate {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  transition: width var(--shell-side-pane-motion-duration) var(--shell-side-pane-motion-easing),
+    flex-basis var(--shell-side-pane-motion-duration) var(--shell-side-pane-motion-easing);
+  will-change: width, flex-basis;
+}
+
+.shell-conversation-aggregate > * {
+  width: 300px;
+  min-width: 300px;
+  height: 100%;
+}
+
+.shell-workspace-frame[data-aggregate-transitioning="true"] .shell-chat-workspace,
+.shell-workspace-frame[data-aggregate-transitioning="true"] .shell-module-workspace,
+.shell-workspace-frame[data-aggregate-transitioning="true"] .shell-drag-divider {
+  transition: width var(--shell-side-pane-motion-duration) var(--shell-side-pane-motion-easing),
+    flex-basis var(--shell-side-pane-motion-duration) var(--shell-side-pane-motion-easing);
+  will-change: width, flex-basis;
 }
 
 .shell-workspace-frame[data-pane-transitioning="true"] .shell-chat-workspace,
@@ -441,7 +452,7 @@
 
 .shell-chat-drawer-scrim {
   position: absolute;
-  top: 40px;
+  top: 0;
   right: 0;
   bottom: 0;
   left: 0;
@@ -653,7 +664,6 @@
 @media (max-width: 1050px) {
   .shell-chat-workspace--full {
     --shell-conversations-width: 210px;
-    --shell-trace-width: 240px;
   }
 
   .shell-topbar__space-name {
@@ -668,7 +678,6 @@
 
   .shell-chat-workspace--full {
     --shell-conversations-width: 190px;
-    --shell-trace-width: 210px;
   }
 
   .shell-workspace-frame .sidebar {
@@ -699,6 +708,8 @@
   .shell-drag-divider,
   .shell-chat-conversations,
   .shell-chat-trace,
+  .shell-aggregate-gap,
+  .shell-conversation-aggregate,
   .chat-thread-divider::after,
   .shell-chat-compact-tools {
     transition: none;

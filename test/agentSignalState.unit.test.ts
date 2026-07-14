@@ -9,13 +9,13 @@ const coreSrc = fs.readFileSync(new URL("../src/server/core.ts", import.meta.url
 test("agent activity detail is forwarded to the UI activity signal", () => {
   assert.match(
     wsSrc,
-    /publish\(located\.spaceId, \{ type: "agent", id: agent\.id, name: agent\.name, status: agent\.status, activity: agent\.activity, detail: msg\.detail \?\? "" \}\)/,
-    "worker activity detail should be included in the Space-level agent event",
+    /publish\(located\.spaceId, \{ type: "agent", id: agent\.id, name: agent\.name, status: agent\.status, activity: agent\.activity, detail: msg\.detail \?\? "", \.\.\.trajectoryScope \}\)/,
+    "worker activity detail and conversation scope should be included in the Space-level agent event",
   );
   assert.match(
     socketSrc,
-    /room\.emit\("agent:activity", \{ agentId: event\.id, name: event\.name, status: event\.status, activity: event\.activity, detail: event\.detail \?\? "" \}\)/,
-    "Socket.IO mapping should preserve detail for Store.activityDetail",
+    /room\.emit\("agent:activity", \{ agentId: event\.id, name: event\.name, status: event\.status, activity: event\.activity, detail: event\.detail \?\? "", \.\.\.trajectoryScopeFields\(event\) \}\)/,
+    "Socket.IO mapping should preserve detail and conversation scope for Store.activityDetail",
   );
 });
 

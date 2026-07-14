@@ -2,7 +2,15 @@
 // Run: npx tsx --test --test-force-exit test/trajBuffer.unit.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { appendCapped, groupTraj, TRAJ_CAP, type TrajItem } from "../web/src/trajBuffer.ts";
+import {
+  appendCapped,
+  appendConversationBoundary,
+  appendConversationTrajectory,
+  groupTraj,
+  TRAJ_CAP,
+  type TrajItem,
+  type TrajectoryBuckets,
+} from "../web/src/trajBuffer.ts";
 
 const mk = (n: number, from = 0): TrajItem[] => Array.from({ length: n }, (_, i) => ({ text: `e${from + i}` }));
 
@@ -42,6 +50,32 @@ test("stays bounded at cap under sustained appends (memory bound)", () => {
 test("default cap is 300", () => {
   assert.equal(TRAJ_CAP, 300);
   assert.equal(appendCapped([], mk(400)).length, 300);
+});
+
+test("conversation buffers stay isolated and are capped independently", () => {
+  let buffers: TrajectoryBuckets = {};
+  buffers = appendConversationTrajectory(buffers, "conversation-a", mk(8), 5);
+  buffers = appendConversationTrajectory(buffers, "conversation-b", mk(3, 20), 5);
+
+  assert.deepEqual(buffers["conversation-a"]!.map((item) => item.text), ["e3", "e4", "e5", "e6", "e7"]);
+  assert.deepEqual(buffers["conversation-b"]!.map((item) => item.text), ["e20", "e21", "e22"]);
+});
+
+test("terminal boundary is appended only to the matching conversation, agent, and stream", () => {
+  const buffers: TrajectoryBuckets = {
+    "conversation-a": [{ agentId: "agent-1", name: "Agent", streamId: "stream-a", text: "A" }],
+    "conversation-b": [{ agentId: "agent-1", name: "Agent", streamId: "stream-b", text: "B" }],
+  };
+  const next = appendConversationBoundary(buffers, "conversation-a", {
+    agentId: "agent-1",
+    name: "Agent",
+    streamId: "stream-a",
+  });
+
+  assert.equal(next["conversation-a"]!.at(-1)!.boundary, true);
+  assert.equal(next["conversation-a"]!.at(-1)!.streamId, "stream-a");
+  assert.equal(next["conversation-b"]!.length, 1);
+  assert.equal(appendConversationBoundary(next, "conversation-a", { agentId: "agent-1", streamId: "stream-a" }), next, "duplicate terminal events do not add boundaries");
 });
 
 // ── groupTraj: turns raw streamed fragments into message-bar-like groups (avatar + one growing block per turn) ──

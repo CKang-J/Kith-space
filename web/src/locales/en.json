@@ -315,8 +315,8 @@
     "someone": "someone",
     "createChannel": "Create channel",
     "createAgentBtn": "Create Agent",
-    "channelMembers": "Channel agents",
-    "members": "Agents",
+    "channelMembers": "Members",
+    "members": "Members",
     "channelSettings": "Channel settings",
     "openAgentProfile": "Open Agent profile",
     "newChannelName": "New channel name",
@@ -367,7 +367,7 @@
     "unreadThreads": "{{count}} unread thread replies",
     "viewUnreadThread": "View",
     "threadReplyPlaceholder": "Reply to thread… (@ to trigger an agent)",
-    "membersCount": "Agents ({{count}})",
+    "membersCount": "Members ({{count}})",
     "remove": "Remove",
     "addAgent": "Add agent",
     "addToChannel": "Add",
@@ -494,6 +494,47 @@
     "createBtn": "Create",
     "createChannelDup": "A channel with this name already exists",
     "createChannelFailed": "Failed to create channel"
+  },
+  "conversationAggregate": {
+    "title": "Conversation panel",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "agent": "Agent",
+    "tabs": {
+      "label": "Conversation content",
+      "trace": "Trace",
+      "topics": "Topics",
+      "files": "Files"
+    },
+    "topics": {
+      "title": "Topics in this conversation",
+      "empty": "No topics yet",
+      "loadFailed": "Could not load topics",
+      "open": "Open topic started by {{author}}",
+      "noContent": "(No content)",
+      "replies": "{{count}} replies",
+      "unread": "{{count}} unread",
+      "followed": "Following"
+    },
+    "files": {
+      "title": "Files in this conversation",
+      "filterLabel": "File category",
+      "filters": {
+        "all": "All",
+        "images": "Images",
+        "videos": "Videos",
+        "files": "Files"
+      },
+      "search": "Search files",
+      "openSearch": "Open file search",
+      "focusSearch": "Focus file search",
+      "searchPlaceholder": "Search files or messages…",
+      "clearSearch": "Clear search",
+      "empty": "No files yet",
+      "noMatches": "No matching files",
+      "clearFilters": "Clear filters",
+      "loadFailed": "Could not load files"
+    }
   },
   "common": {
     "agents": "Agents",

@@ -2,14 +2,14 @@
 
 本文件是当前进度的权威来源。新会话先读本文件和 `AGENTS.md`，再按文档地图进入专项资料。
 
-最后更新：2026-07-13。
+最后更新：2026-07-14。
 
 ## 一、现在在哪
 
 - 主干：`main`。临时工作分支不作为阶段进度记录。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A1-A6 原定代码切片与 P-A7 H1-H4 已完成，等待用户验收**。不要自动进入 H5 或 Runtime 契约 v2；由用户验收后再决定顺序。
-- P4 视觉微调已暂停，等本机化基础收敛后再恢复。
+- 当前阶段：**A1-A6 原定代码切片与 P-A7 H1-H4 已完成，等待用户验收**；用户指定的 P4 Chat 聚合面板切片也已实现并等待验收。不要自动进入 H5 或 Runtime 契约 v2；由用户验收后再决定顺序。
+- P4 的其余视觉微调仍暂停；本轮只恢复并实现 `2026-07-14-chat-aggregate-panel-design.md` 锁定的会话聚合面板范围，不据此扩张到其他页面重做。
 - 底座为 open-tag 衍生开发副本；`reference/` 只读。OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
 
 ## 二、2026-07-11 路线转向
@@ -95,6 +95,9 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - 最终 unpacked Desktop fresh smoke 以全新隔离数据目录运行并 Exit 0：Core/Worker ready，内置 Web/Drizzle/setup status 可用，`app.db` 成功创建，`kith-space.cmd --help` 可运行；退出后残留受管进程为 0，7777/5273 监听为 0。另一次 packaged Core 真实初始化创建唯一 Human 与 `Home`；当时生成的 workspace.db 为 19 张产品表 + `__drizzle_migrations` 共 20 张物理表、`PRAGMA user_version=2`，并完成优雅退出；当前连接时会自动升级为 schema v3。
 - 最终安装器为 `D:/Projects/multi-agent/dist/desktop/Kith-space-Setup-0.1.0-x64.exe`，大小 113625983 bytes，SHA-256 `D314DAE15A8E9AB598901D2E3DF8B90DE1C7B46E79824CC8575BD4C742B89646`，Authenticode 状态 `NotSigned`。这是可复现的本地/CI 未签名安装器，不代表已签名或已发布；公开分发前仍需 Windows 代码签名证书，且本阶段没有实际执行 NSIS 安装/卸载流程。
 - P4 壳位于 `web/src/shell/`。URL 以频道/DM 路径、`?module=<id>` 和 `chat=0` 表达三态；Split 默认 Chat 25%。
+- **会话聚合面板切片已实现**：旧“会话 / Chat / 轨迹”顶栏与固定全 Space 轨迹栏已移除；频道/DM 标题右侧提供纯图标任务、成员/Agent 资料与聚合面板入口。聚合面板作为 Chat 与 Module 的同级面板，在 ChatOnly 位于 Chat 右侧、Split 位于 Chat 与 Module 之间，ModuleOnly 和空间不足时暂时收起并保留打开意图；会话列表和聚合面板都按边界横向改宽，不保留收起长条，也不做淡入淡出。任务入口使用 `module=tasks&taskScope=<conversationId>`，重复点击保持幂等；聚合面板的轨迹/话题/文件使用通用 `SlidingTabs` 滑块组件，话题正文继续在既有 `ThreadPanel` 位置打开，中文 UI 统一称“话题”而内部 `thread` 代号不变。文件页支持全部/图片/视频/文件分类、文件名或来源消息搜索与无黑框的浅色焦点反馈。
+- **轨迹会话隔离已实现**：Worker 将目标解析为 `scoped | unscoped | ambiguous`，Core 把 thread channel 归一到父频道/DM 后再向 Socket 广播；无明确单一会话归属的轨迹不进入任何会话聚合面板。前端按 `conversationId` 保存各自最多 300 条实时缓冲，并在切换 Space 时清空。新增 `/api/channels/:channelId/thread-summaries` 提供当前会话全量话题摘要；`/files` 补充来源消息文本，继续复用当前 Space、会话与成员权限边界。
+- 聚合面板切片验证：`pnpm run typecheck`、549/549 单测、完整集成测试和 Web build（2588 modules）通过；真实浏览器 smoke 已覆盖 ChatOnly/Split/ModuleOnly、任务会话作用域、话题外置打开、文件分类/来源消息搜索及其跨 Tab 状态保留、成员入口、会话列表/聚合面板横向动画、1024px 响应式隐藏与状态恢复，控制台无 warning/error。按用户约定只执行了一次完整只读 review；发现的失败投递作用域残留、Worker 消息异步乱序、文件筛选卸载重置和空话题不实时刷新四项问题均已由主线修复并补针对性验证，未再发起第二轮 review。
 - 产品登录/注册、成员/RBAC/邀请 API、Web Human roster、Human-Human DM、Machines API 和 Computers UI 已删除；Dock/模块使用 Agents，频道成员只增删 agent，Human 资料入口位于 Settings。A3 进一步删除了 Human JWT、dev-login、`?as=`、localStorage/Bearer 会话和附件/Socket URL token；A5 删除 Landing、旧 Layout/PWA 与剩余账户入口，A6 删除 Docker、公共 server/daemon/npm/docs-site 发布与远程部署资产。未授权浏览器只看到 Access Token Gate。
 - Core Service 启动时从 app.db 读取 Web 模式：off（默认）与 local 均绑定 `127.0.0.1`，lan 绑定 `0.0.0.0`。off 只留 Desktop/Worker 私有传输，普通浏览器壳被拒绝；LAN 只允许匹配 Host 的 Origin。`/health` 只对 loopback/Desktop 可见并暴露 `workerConnected`。
 - 访问 Token 可自定义 16-256 字符，留空自动生成 32 字节；app.db 只存 scrypt 哈希和 revision。原始 browser session token 只进 HttpOnly、SameSite=Strict Cookie，DB 只存 SHA-256 哈希；写请求同时校验 Origin 和 CSRF。Token 轮换或 Desktop 全量撤销会使旧会话失效。
@@ -114,7 +117,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 五、下一步顺序
 
-1. 用户验收 P-A7 H1-H4，重点实际查看 Home 默认入口、Home/普通 Dock 差异、Spaces 卡片、文件夹选择与同窗切换。
+1. 用户验收 P-A7 H1-H4 与本轮会话聚合面板切片，重点实际查看 Home 默认入口、Home/普通 Dock 差异、Spaces 卡片、文件夹选择与同窗切换，以及聚合面板、话题/文件/轨迹、任务作用域和响应式收起行为。
 2. 验收通过后由用户决定 Runtime 契约 v2 与 H5 跨 Space 编排的顺序；生产力模块、Message Context Snapshot 与 P4 视觉收尾继续在后。当前不要自动推进。
 
 每阶段独立验证、独立中文提交。未获得用户明确指示，不合并 main、不推远端、不发布。
@@ -124,7 +127,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - 包管理使用 pnpm；脚本参数直接跟在后面，例如 `pnpm test --unit`。
 - 常规验证：`pnpm run typecheck`、`pnpm test --unit`、`pnpm test --integration`、`pnpm --dir web run build`。
 - 测试 runner 同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向同一个随机临时 profile 的不同子目录；手写测试若绕过 runner，必须显式覆盖默认 Space 容器或直接传 rootPath，绝不在真实 `~/Kith-space` 生成 fixture。
-- 当前验收单测基线为 521/521；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6 与 H1-H4 小节里的旧数字只描述当时检查点，不是当前基线。
+- 当前验收单测基线为 549/549；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6 与 H1-H4 小节里的旧数字只描述当时检查点，不是当前基线。
 - 新功能优先拆到职责清楚的模块；不整块重写 `src/server/core.ts` 或大型 React 组件。
 - 代码、命令、架构、UI、术语或阶段变化时，同一提交同步相应文档。
 - 用户未要求时不修改或提交 `.agents/`、`.claude/`、`.codegraph/daemon.pid`、`skills-lock.json` 等外部/个人工具文件。
@@ -133,6 +136,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 - `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`：本次转向完整规格。
 - `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`：Home 总控 Space、路径/cwd/记忆和跨 Space 委派补充规格。
+- `docs/superpowers/specs/2026-07-14-chat-aggregate-panel-design.md`：会话聚合面板、话题/文件索引、会话任务入口与轨迹作用域规格。
 - `docs/vision.md`：长期北极星与永久边界。
 - `docs/decisions.md`：锁定决策、推理和被推翻路线。
 - `docs/roadmap.md`：阶段与后续能力顺序。

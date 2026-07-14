@@ -17,6 +17,7 @@ import { addChannelMembers, getOrCreateDM, getOrCreateThread } from "../core.js"
 import { publish } from "../realtime.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { canHumanReadChannel } from "../channelAccess.js";
+import { listThreadSummaries } from "../channels/threadSummaries.js";
 import { humanChannels } from "./shared.js";
 
 const notSentBy = (humanId: string) => or(isNull(schema.messages.senderId), ne(schema.messages.senderId, humanId));
@@ -121,6 +122,13 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
       map[th.parentMessageId!] = { threadChannelId: th.id, replyCount: replies.length, unreadCount: unread.length, followed: Boolean(myCm?.threadFollowedAt), lastReplyAt: replies.length ? replies[replies.length - 1]!.createdAt : null };
     }
     return (sendJson(res, 200, map), true);
+  }
+  const threadSummaries = /^\/api\/channels\/([^/]+)\/thread-summaries$/.exec(p);
+  if (threadSummaries && method === "GET") {
+    const parentChannelId = threadSummaries[1]!;
+    if (!(await canHumanReadChannel(spaceId, parentChannelId))) return (sendErr(res, 404, "channel not found"), true);
+    const threads = await listThreadSummaries({ spaceId, parentChannelId, humanId });
+    return (sendJson(res, 200, { threads }), true);
   }
   // /channels only lists regular/private channels (bare array, no unread); DMs go through /channels/dm; unread counts through /channels/unread
   if (p === "/api/channels" && method === "GET") {
@@ -264,7 +272,25 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
   if (cfiles && method === "GET") {
     // invariant 3: private/DM channel file list must not be accessible to non-members (IDOR-B2)
     if (!(await canHumanReadChannel(spaceId, cfiles[1]!))) return (sendErr(res, 404, "channel not found"), true);
-    const rows = await db.select().from(schema.attachments).where(and(eq(schema.attachments.channelId, cfiles[1]!), eq(schema.attachments.spaceId, spaceId), isNotNull(schema.attachments.messageId))).orderBy(desc(schema.attachments.createdAt)).limit(100); // spaceId scope: don't list another Space's channel files by raw channel UUID
+    const rows = await db.select({
+      id: schema.attachments.id,
+      messageId: schema.attachments.messageId,
+      channelId: schema.attachments.channelId,
+      uploaderType: schema.attachments.uploaderType,
+      uploaderId: schema.attachments.uploaderId,
+      filename: schema.attachments.filename,
+      mimeType: schema.attachments.mimeType,
+      sizeBytes: schema.attachments.sizeBytes,
+      createdAt: schema.attachments.createdAt,
+      sourceMessageText: schema.messages.content,
+    }).from(schema.attachments)
+      .innerJoin(schema.messages, and(
+        eq(schema.attachments.messageId, schema.messages.id),
+        eq(schema.messages.spaceId, spaceId),
+        eq(schema.messages.channelId, cfiles[1]!),
+      ))
+      .where(and(eq(schema.attachments.channelId, cfiles[1]!), eq(schema.attachments.spaceId, spaceId), isNotNull(schema.attachments.messageId)))
+      .orderBy(desc(schema.attachments.createdAt)).limit(100); // spaceId scope: don't list another Space's channel files by raw channel UUID
     const aIds = rows.filter((r) => r.uploaderType === "agent" && r.uploaderId).map((r) => r.uploaderId!) as string[];
     const ags = aIds.length ? await db.select().from(schema.agents).where(inArray(schema.agents.id, aIds)) : [];
     const human = getHumanIdentity();
@@ -274,7 +300,7 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
     return (sendJson(res, 200, {
       files: rows.map((a) => {
         const src: any = who(a.uploaderType, a.uploaderId);
-        return { id: a.id, messageId: a.messageId, channelId: a.channelId, filename: a.filename, mimeType: a.mimeType, sizeBytes: a.sizeBytes, width: null, height: null, thumbnailUrl: null, createdAt: a.createdAt, uploader: { type: a.uploaderType, id: a.uploaderId, name: src?.name ?? null, displayName: src?.displayName ?? null }, source: { type: "channel", channelId: a.channelId, parentMessageId: null } };
+        return { id: a.id, messageId: a.messageId, channelId: a.channelId, filename: a.filename, mimeType: a.mimeType, sizeBytes: a.sizeBytes, width: null, height: null, thumbnailUrl: null, createdAt: a.createdAt, sourceMessageText: a.sourceMessageText, uploader: { type: a.uploaderType, id: a.uploaderId, name: src?.name ?? null, displayName: src?.displayName ?? null }, source: { type: "channel", channelId: a.channelId, parentMessageId: null } };
       }), nextCursor: null,
     }), true);
   }
