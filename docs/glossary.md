@@ -54,7 +54,16 @@
 : 未手动选路径时创建 Home 和普通 Space 的用户可见父目录，默认 `~/Kith-space`；Home 的默认根目录为 `~/Kith-space/Home`。它与 app data root 必须独立配置和测试。
 
 **Agent membership**
-: agent 与频道的长期成员关系，物理表为 `channel_agent_members`。它决定 agent 可读取、接收和被唤醒的频道范围，不承载 Human 权限；唯一 Human 对本机 Space 拥有隐式完整访问。
+: Agent 与频道的长期成员关系，物理表为 `channel_agent_members`。它决定 Agent 是否属于并可读取该频道，不承载 Human 权限；唯一 Human 对本机 Space 拥有隐式完整访问。P-A8 之后，是否因某条可见频道事件自动唤醒还要由有效响应模式决定，不能把 membership 与响应模式混为一谈。
+
+**Agent 响应模式**
+: 控制 Agent 是否因频道事件自动启动 runtime、以及本轮是否必须回应的三档策略：主动 `active`、被动 `mention_only`、静音 `silent`。主动可因 Human 普通频道消息唤醒并自行判断是否回复；被动只因明确 `@` 或已参与话题中的 Human 跟进唤醒；静音不因频道事件自动唤醒。它不是读取或发送权限，Human-Agent 私聊和明确任务指派不受其限制。该能力已定稿但尚未实现。
+
+**Agent 默认响应模式**
+: 当前 Space 中某个 Agent 的默认响应模式，目标持久化字段为 `agents.default_response_mode`，已有和新建 Agent 默认 `active`。它不是跨 Space 的全局默认。
+
+**频道响应模式覆盖**
+: 某 Agent 在某个顶层频道 membership 上的可空覆盖，目标字段为 `channel_agent_members.response_mode_override`；有效模式等于“频道覆盖 ?? Agent 默认”。“跟随 Agent 默认”表示覆盖为 `NULL`，不是第四种模式。话题继承父频道，不拥有自己的覆盖。
 
 **Human channel state**
 : 唯一 Human 在频道中的 read cursor、Human-Agent DM 对端、thread follow/done 状态和频道通知级别，物理表为 `human_channel_states`。`notification_level` 固定为 `all | mentions | none`，默认 `all`；它不改变 agent 唤醒、消息持久化、未读或 Inbox 语义。该表是会话状态而非 membership；收藏和 Space 偏好分别存于 `human_saved_messages` 与 `human_space_preferences`。
@@ -81,14 +90,14 @@
 : Human 与单个 agent 的一对一会话，在会话列表里与频道并列。产品不支持 Human-Human DM；唤醒规则上 Human-Agent DM 无条件唤醒目标 agent。
 
 **话题 / thread**
-: 挂在某条消息（常是一个任务）下的子对话线，任务的领取、推进、汇报在其中发生；中文用户界面统一称“话题”，代码、数据模型、API、CLI 与 URL query 继续使用 `thread`，不引入 `topic` 代号。
+: 挂在某条消息（常是一个任务）下的子对话线，任务的领取、推进、汇报在其中发生；中文用户界面统一称“话题”，代码、数据模型、API、CLI 与 URL query 继续使用 `thread`，不引入 `topic` 代号。响应模式上继承父频道，不增加第三层覆盖；Agent 成为参与者后，主动/被动模式下的 Human 后续回复无需重复 `@`。
 
 ---
 
 ## Agent 与 Runtime
 
 **Agent**
-: 有身份、职责与记忆的团队成员，跑在本机已有的 runtime 上，通过 @提及被唤醒，可领任务、互相分派、交付结果，并经统一工具层操作模块。agent 在所属 Space root 中工作，个人语义记忆位于该 Space 的 `.kith/agents/<agentId>/`，runtime 临时状态位于 app data。
+: 有身份、职责与记忆的团队成员，跑在本机已有的 runtime 上，可按频道响应模式、明确 @、私聊或任务指派被唤醒，可领任务、互相分派、交付结果，并经统一工具层操作模块。Agent 在所属 Space root 中工作，个人语义记忆位于该 Space 的 `.kith/agents/<agentId>/`，runtime 临时状态位于 app data。
 
 **原生 agent vs 外接 agent（术语澄清）**
 : 早期设想里"原生 agent"指跑在自研 runtime 内、操控更丝滑的 agent。本项目 v1 已锁定**不自研 runtime**，所有 agent 均为**外接**——连接本机已有 runtime。所谓"原生丝滑"改由 MCP 工具层 + UI 桥实现，而非 in-app runtime。故在 Kith-space 语境中不存在"原生 agent"，只有外接 agent；提到"原生"多指复用 runtime 的原生文件/工具能力。
@@ -130,7 +139,7 @@
 ## 编排与护栏
 
 **编排**
-: 把用户需求拆解为子任务、分派给合适 agent、协调唤醒与汇总的过程。agent→agent 分派天然成立，依托 open-tag 的唤醒策略（被 @ 者无条件唤醒且不看发送者）。
+: 把用户需求拆解为子任务、分派给合适 Agent、协调唤醒与汇总的过程。Agent→Agent 分派继续经过深度、预算和急停护栏；普通频道 `@` 只自动唤醒主动/被动目标，静音目标不因 mention 唤醒，而明确任务指派在三种模式下都可直达受派 Agent。响应模式不能绕过原有编排护栏。
 
 **autopilot**
 : 编排自主性的默认取值——agent 自动拆解、分派、唤醒，无需用户逐步确认；所有动作在频道/thread 里留可见记录。因其自动连锁，三护栏为强制项。
@@ -225,7 +234,7 @@
 : Desktop 信任凭据和 Local Runtime Worker 控制凭据的统称。两者彼此独立，也不与浏览器 Access Token 或 agent session token 复用。Desktop 每次启动/重启受管进程组都会重新生成；只有手动分进程开发才临时使用 `KITH_SPACE_DESKTOP_TOKEN` 和 `KITH_SPACE_WORKER_TOKEN` 注入。
 
 **每工作区独立 SQLite 文件**
-: 每个 Space 把自己的 `spaces` 元数据、消息、任务、频道、agent、agent membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 baseline 有 19 张产品表；连同 Drizzle 的 `__drizzle_migrations` 是 20 张物理表，`PRAGMA user_version=4`。所有领域外键使用 `space_id`；Human 资料和 Desktop 设置不随 Space 复制。
+: 每个 Space 把自己的 `spaces` 元数据、消息、任务、频道、Agent、Agent membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 baseline 有 19 张产品表；连同 Drizzle 的 `__drizzle_migrations` 是 20 张物理表，`PRAGMA user_version=4`。P-A8 实现后目标为 v5，只在 `agents` 与 `channel_agent_members` 增加响应模式和非追溯 wake watermark 字段，产品表数不变；当前代码仍是 v4。所有领域外键使用 `space_id`；Human 资料和 Desktop 设置不随 Space 复制。
 
 **`.kith/`**
 : Space root 下承载其可移植状态的目录：`workspace.db`（Space 元数据、agent 阵容、频道、消息和任务）、`memory/`（Space Memory）、`agents/<agentId>/`（Agent Memory）和 `uploads/`（附件对象）。runtime prompt、日志和宿主临时状态不放在这里。

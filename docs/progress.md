@@ -8,7 +8,7 @@
 
 - 主干：`main`。临时工作分支不作为阶段进度记录。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A1-A6 原定代码切片与 P-A7 H1-H4 已完成，等待用户验收**；用户指定的 P4 Chat 聚合面板与频道设置/归档切片也已实现，并完成最终验证与约定的一次 review，等待用户验收。不要自动进入 H5 或 Runtime 契约 v2；由用户验收后再决定顺序。
+- 当前阶段：**A1-A6 原定代码切片与 P-A7 H1-H4 已完成，等待用户验收**；用户指定的 P4 Chat 聚合面板与频道设置/归档切片也已实现，并完成最终验证与约定的一次 review，等待用户验收。P-A8 Agent 频道响应模式已完成方案定稿，但 schema、服务端策略、任务语义和 UI 均尚未实现。不要自动进入 H5 或 Runtime 契约 v2；由用户验收后再决定顺序。
 - P4 的其余视觉微调仍暂停；本轮实现范围只覆盖 `2026-07-14-chat-aggregate-panel-design.md` 与 `2026-07-14-channel-settings-and-archive-design.md` 已锁定边界，不据此扩张到其他页面重做。
 - 频道设置已进入聚合面板临时场景并提供常规/成员/通知钻取页；成员页显示真实 Human 名称与“你”标识，agent 使用搜索单选弹窗添加并在移除前二次确认。归档频道进入默认收起分组并全链路只读，支持恢复与精确名称确认后的永久删除。`# all` 的归档、删除、名称和可见性由 UI 与服务端双重保护，删除入口显式置灰解释限制，历史误归档/软删除会在 Space 数据库打开时自动恢复。
 - 底座为 open-tag 衍生开发副本；`reference/` 只读。OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
@@ -100,6 +100,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - **轨迹会话隔离已实现**：Worker 将目标解析为 `scoped | unscoped | ambiguous`，Core 把 thread channel 归一到父频道/DM 后再向 Socket 广播；无明确单一会话归属的轨迹不进入任何会话聚合面板。前端按 `conversationId` 保存各自最多 300 条实时缓冲，并在切换 Space 时清空。新增 `/api/channels/:channelId/thread-summaries` 提供当前会话全量话题摘要；`/files` 补充来源消息文本，继续复用当前 Space、会话与成员权限边界。
 - 聚合面板切片验证：`pnpm run typecheck`、549/549 单测、完整集成测试和 Web build（2588 modules）通过；真实浏览器 smoke 已覆盖 ChatOnly/Split/ModuleOnly、任务会话作用域、话题外置打开、文件分类/来源消息搜索及其跨 Tab 状态保留、成员入口、会话列表/聚合面板横向动画、1024px 响应式隐藏与状态恢复，控制台无 warning/error。按用户约定只执行了一次完整只读 review；发现的失败投递作用域残留、Worker 消息异步乱序、文件筛选卸载重置和空话题不实时刷新四项问题均已由主线修复并补针对性验证，未再发起第二轮 review。
 - **频道设置与归档切片已实现**：设置不是第四个聚合 Tab，而是保留原聚合内容挂载状态的临时场景；ChatOnly/Split 优先占用聚合面板，空间不足时复用同一组件进入 Chat 右侧抽屉。常规页、agent 成员页与三档通知偏好已落地；通知值持久化在 `human_channel_states.notification_level`，workspace.db 当前为 schema v4。会话列表分别加载活跃/归档频道，默认收起归档分组；归档详情保留历史读取并禁用 Human/agent 消息、话题、附件、reaction、action card、成员与任务写入。恢复保留当前频道，永久删除要求精确输入名称；`# all` 由集中 helper、API 冲突错误和数据库打开时的幂等修复共同保护。后续 UI 验收修正已补真实 Human 名称、“你”标识、添加 agent 弹窗、移除二次确认、`# all` 置灰删除解释，以及 Space 卡片项目菜单和通用搜索框。当前 `pnpm run typecheck`、562/562 单测、完整集成测试、Web build（2605 modules）与 Desktop build 通过；真实浏览器已覆盖频道成员弹窗/确认、必需频道禁用动作、Space 搜索焦点、卡片菜单和重命名弹窗，控制台无 warning/error。按用户约定未对本轮 UI 修正派发子代理 review，当前等待用户验收。
+- **P-A8 Agent 频道响应模式仅完成设计**：目标是当前 Space 的 Agent 默认值加顶层频道 membership 覆盖，三档为 `active | mention_only | silent`；DM 与明确任务指派绕过模式，话题继承父频道。“作为任务 + 单一 @Agent”将落成真实 assignee，无 `@` 保持未指派。实现时必须以统一策略覆盖实时 wake、reconnect、message check 和 prompt，并用独立 feature 组件提供 Agent 默认卡片与频道昵称后菜单。当前 schema 仍为 v4，既有频道成员唤醒和 wake prompt 尚未改变；完整规格见 `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
 - 产品登录/注册、成员/RBAC/邀请 API、Web Human roster、Human-Human DM、Machines API 和 Computers UI 已删除；Dock/模块使用 Agents，频道成员只增删 agent，Human 资料入口位于 Settings。A3 进一步删除了 Human JWT、dev-login、`?as=`、localStorage/Bearer 会话和附件/Socket URL token；A5 删除 Landing、旧 Layout/PWA 与剩余账户入口，A6 删除 Docker、公共 server/daemon/npm/docs-site 发布与远程部署资产。未授权浏览器只看到 Access Token Gate。
 - Core Service 启动时从 app.db 读取 Web 模式：off（默认）与 local 均绑定 `127.0.0.1`，lan 绑定 `0.0.0.0`。off 只留 Desktop/Worker 私有传输，普通浏览器壳被拒绝；LAN 只允许匹配 Host 的 Origin。`/health` 只对 loopback/Desktop 可见并暴露 `workerConnected`。
 - 访问 Token 可自定义 16-256 字符，留空自动生成 32 字节；app.db 只存 scrypt 哈希和 revision。原始 browser session token 只进 HttpOnly、SameSite=Strict Cookie，DB 只存 SHA-256 哈希；写请求同时校验 Origin 和 CSRF。Token 轮换或 Desktop 全量撤销会使旧会话失效。
@@ -119,8 +120,9 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 五、下一步顺序
 
-1. 由用户统一验收 P-A7 H1-H4、会话聚合面板和频道管理，重点查看 Home 默认入口、Home/普通 Dock 差异、Spaces 卡片、文件夹选择与同窗切换，以及聚合面板、话题/文件/轨迹、任务作用域、设置钻取、响应式抽屉、归档只读/恢复/删除和 `# all` 自动恢复。
-2. 验收通过后由用户决定 Runtime 契约 v2 与 H5 跨 Space 编排的顺序；生产力模块、Message Context Snapshot 与 P4 视觉收尾继续在后。当前不要自动推进。
+1. P-A8 响应模式方案已定稿并单独提交文档；后续只有在用户继续指示实现时，才按“领域/迁移 → 投递链路 → 任务语义 → API/实时 → 前端 → 真实验收”推进，不把文档完成误认为代码完成。
+2. 由用户统一验收 P-A7 H1-H4、会话聚合面板和频道管理，重点查看 Home 默认入口、Home/普通 Dock 差异、Spaces 卡片、文件夹选择与同窗切换，以及聚合面板、话题/文件/轨迹、任务作用域、设置钻取、响应式抽屉、归档只读/恢复/删除和 `# all` 自动恢复。
+3. 验收通过后由用户决定 Runtime 契约 v2 与 H5 跨 Space 编排的顺序；生产力模块、Message Context Snapshot 与 P4 其余视觉收尾继续在后。当前不要自动推进。
 
 每阶段独立验证、独立中文提交。未获得用户明确指示，不合并 main、不推远端、不发布。
 
@@ -140,6 +142,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`：Home 总控 Space、路径/cwd/记忆和跨 Space 委派补充规格。
 - `docs/superpowers/specs/2026-07-14-chat-aggregate-panel-design.md`：会话聚合面板、话题/文件索引、会话任务入口与轨迹作用域规格。
 - `docs/superpowers/specs/2026-07-14-channel-settings-and-archive-design.md`：频道设置钻取场景、归档分组、删除语义、通知偏好与 `# all` 必需频道保护规格。
+- `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`：Agent 默认/频道覆盖、唤醒矩阵、任务指派、Runtime 指令与响应模式 UI 规格。
 - `docs/vision.md`：长期北极星与永久边界。
 - `docs/decisions.md`：锁定决策、推理和被推翻路线。
 - `docs/roadmap.md`：阶段与后续能力顺序。
