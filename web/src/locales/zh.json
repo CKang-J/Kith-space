@@ -381,6 +381,8 @@
     "addMenu": "添加",
     "addPhotosAndFiles": "添加照片和文件",
     "assignTask": "指派任务",
+    "enableTaskAssignment": "开启指派任务",
+    "disableTaskAssignment": "关闭指派任务",
     "removeAssignedTask": "取消指派任务",
     "pendingAttachments": "待发送的照片和文件",
     "removeAttachment": "移除 {{name}}",

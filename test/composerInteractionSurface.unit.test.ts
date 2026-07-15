@@ -29,10 +29,19 @@ test("composer exposes one combined photo and file picker from the add menu", ()
 test("task assignment moves from the add menu into a removable hover chip", () => {
   assert.match(actions, /role="menuitemcheckbox"/);
   assert.match(actions, /t\("chat\.assignTask"\)/);
+  assert.match(actions, /taskActive \? t\("chat\.disableTaskAssignment"\) : t\("chat\.enableTaskAssignment"\)/);
+  assert.doesNotMatch(actions, /<Check\b|composer-add-menu__check|is-selected/);
   assert.match(actions, /className="composer-task-chip"/);
   assert.match(actions, /onClick=\{\(\) => onTaskChange\(false\)\}/);
   assert.equal(zh.chat.assignTask, "指派任务");
+  assert.equal(zh.chat.enableTaskAssignment, "开启指派任务");
+  assert.equal(zh.chat.disableTaskAssignment, "关闭指派任务");
   assert.equal(en.chat.assignTask, "Assign task");
+  assert.equal(en.chat.enableTaskAssignment, "Enable task assignment");
+  assert.equal(en.chat.disableTaskAssignment, "Disable task assignment");
+  const taskDescription = ruleBody(".composer-add-menu__description");
+  assert.match(taskDescription, /color\s*:\s*var\(--muted-soft\)/);
+  assert.match(taskDescription, /text-overflow\s*:\s*ellipsis/);
 
   const taskChip = ruleBody(".composer-task-chip");
   assert.match(taskChip, /border-radius\s*:\s*9999px/);
@@ -47,6 +56,18 @@ test("task assignment moves from the add menu into a removable hover chip", () =
   assert.match(ruleBody(".composer-task-chip__remove-icon"), /height\s*:\s*14px/);
   assert.match(css, /\.composer-task-chip:hover \.composer-task-chip__default-icon[^{}]*\{display:none\}/);
   assert.match(css, /\.composer-task-chip:hover \.composer-task-chip__remove-icon[^{}]*\{display:block\}/);
+});
+
+test("add menu opens on the first available item and retains the last pointer highlight", () => {
+  assert.match(actions, /type ComposerMenuItem = "files" \| "task"/);
+  assert.match(actions, /const \[highlightedItem, setHighlightedItem\] = useState<ComposerMenuItem>\("files"\)/);
+  assert.match(actions, /setHighlightedItem\(firstAvailableItem\)/);
+  assert.match(actions, /highlightedItem === "files" \? "is-highlighted" : undefined/);
+  assert.match(actions, /highlightedItem === "task" \? "is-highlighted" : undefined/);
+  assert.match(actions, /onPointerEnter=\{\(\) => setHighlightedItem\("files"\)\}/);
+  assert.match(actions, /onPointerEnter=\{\(\) => setHighlightedItem\("task"\)\}/);
+  assert.doesNotMatch(actions, /onPointerLeave=\{[^}]*setHighlightedItem/);
+  assert.match(css, /\.composer-add-menu__popover>button\.is-highlighted/);
 });
 
 test("task assignment shares the compact row and only the remaining safe text width triggers expansion", () => {
@@ -102,4 +123,21 @@ test("add menu is portaled and positioned against the whole composer box", () =>
   assert.match(menuItem, /white-space\s*:\s*nowrap/);
   assert.match(menuItem, /border-radius\s*:\s*10px/);
   assert.match(menuItem, /padding\s*:\s*4px 10px/);
+});
+
+test("mention candidates reuse the add-menu surface and compact row treatment", () => {
+  assert.match(composer, /className="mention-opt-copy"/);
+  assert.match(composer, /className="mention-opt-label"/);
+  const mentionMenu = ruleBody(".mention-menu");
+  assert.match(mentionMenu, /left\s*:\s*var\(--composer-menu-edge\)/);
+  assert.match(mentionMenu, /right\s*:\s*var\(--composer-menu-edge\)/);
+  assert.match(mentionMenu, /max-width\s*:\s*var\(--chat-card-width\)/);
+  assert.match(mentionMenu, /padding\s*:\s*4px 5px/);
+  assert.match(mentionMenu, /border-radius\s*:\s*16px/);
+  assert.match(mentionMenu, /box-shadow\s*:\s*none/);
+  const mentionItem = ruleBody(".mention-opt");
+  assert.match(mentionItem, /height\s*:\s*30px/);
+  assert.match(mentionItem, /border-radius\s*:\s*10px/);
+  assert.match(mentionItem, /padding\s*:\s*4px 10px/);
+  assert.match(css, /\.mention-opt:hover,\.mention-opt\.sel\{background:var\(--surface-strong\)\}/);
 });

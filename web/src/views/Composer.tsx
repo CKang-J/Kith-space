@@ -157,13 +157,14 @@ export function Composer({ channelId, placeholder, allowAsTask = false, allowCha
         <div className="mention-menu">
           {cands.map((c, i) => (
             <button key={c.kind + c.name} className={"mention-opt" + (i === atSel ? " sel" : "")} aria-selected={i === atSel}
-              onMouseEnter={() => setAtSel(i)} onMouseDown={(e) => { e.preventDefault(); pick(c); }}>
+              onPointerEnter={() => setAtSel(i)} onMouseDown={(e) => { e.preventDefault(); pick(c); }}>
               {c.kind === "channel_all"
                 ? <span className="mention-broadcast-icon"><Users size={14} aria-hidden="true" /></span>
                 : <Avatar seed={c.name} url={avFor(c.avatarUrl)} size={22} />}
-              <span className="grow">
-                {c.label} <span className="mk-name">@{c.name}</span>
-                {c.kind === "channel_all" && <span className="mention-opt-desc">{t("chat.mentionEveryoneDescription")}</span>}
+              <span className="mention-opt-copy">
+                <span className="mention-opt-label">{c.label}</span>
+                <span className="mk-name">@{c.name}</span>
+                {c.kind === "channel_all" ? <span className="mention-opt-desc">{t("chat.mentionEveryoneDescription")}</span> : null}
               </span>
               <span className="mk">{c.kind === "channel_all" ? t("chat.channelMentionKind") : "agent"}</span>
             </button>

@@ -301,7 +301,7 @@ main.content-col > .scroll.is-scrolling::-webkit-scrollbar-thumb{background:rgba
 .md ul.contains-task-list{padding-left:1.1em}.md li.task-list-item{list-style:none;margin-left:0}.md li.task-list-item input[type="checkbox"]{position:absolute;left:.025em;top:.42em}.md del{color:var(--done-text);text-decoration-color:var(--done-text)}.md li.task-list-item:has(input[type="checkbox"]:checked){color:var(--done-text);text-decoration:line-through;text-decoration-color:var(--done-text)}
 .color-token{display:inline;white-space:nowrap;vertical-align:baseline}.color-token-text{color:var(--ink-2)}.color-chip{box-sizing:border-box;display:inline-block;width:.95em;height:.95em;margin-left:6px;border-radius:4px;border:1px solid var(--hair-strong);vertical-align:-.12em}
 .mention{color:var(--ink);font-weight:600;background:var(--mention);border-radius:4px;padding:0 3px}
-.composer{position:relative;z-index:10;padding:4px 28px 14px;border-top:0;background:linear-gradient(to bottom,rgba(255,255,255,0),rgba(255,255,255,.48) 38%,var(--surface) 100%)}
+.composer{--composer-menu-edge:28px;position:relative;z-index:10;padding:4px 28px 14px;border-top:0;background:linear-gradient(to bottom,rgba(255,255,255,0),rgba(255,255,255,.48) 38%,var(--surface) 100%)}
 main.content-col > .composer{position:absolute;left:0;right:var(--scrollbar-gutter);bottom:0}
 .showcase-readonly{display:flex;align-items:center;gap:8px;padding:14px 28px 18px;border-top:1px solid var(--hair);font-size:13px;color:var(--muted);font-style:italic}
 .archived-channel-banner{position:relative;z-index:12;display:flex;align-items:center;gap:9px;padding:11px 28px;border-top:1px solid var(--hair);background:var(--canvas-soft);color:var(--muted);font-size:13px}
@@ -340,12 +340,14 @@ main.content-col > .composer{position:absolute;left:0;right:var(--scrollbar-gutt
 .toast-x{flex:0 0 auto;background:none;border:none;color:var(--muted);font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
 .toast-x:hover{color:var(--ink)}
 @keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.mention-menu{position:absolute;left:28px;right:28px;bottom:100%;margin-bottom:8px;background:var(--surface);border:1px solid var(--hair-strong);border-radius:12px;box-shadow:0 8px 28px var(--shadow-3);max-height:264px;overflow:auto;z-index:20}
-.mention-opt{display:flex;align-items:center;gap:9px;width:100%;border:0;background:transparent;padding:8px 12px;cursor:pointer;font-size:14px;text-align:left;color:var(--body)}
+.mention-menu{position:absolute;left:var(--composer-menu-edge);right:var(--composer-menu-edge);bottom:100%;z-index:32;max-width:var(--chat-card-width);max-height:264px;margin:0 auto 8px;padding:4px 5px;overflow:auto;border:1px solid var(--hair);border-radius:16px;background:var(--surface);box-shadow:none;animation:modal-enter var(--dur-fast) var(--ease-quint)}
+.mention-opt{display:flex;width:100%;height:30px;min-width:0;align-items:center;gap:10px;overflow:hidden;border:0;border-radius:10px;background:transparent;color:var(--body);padding:4px 10px;font:inherit;font-size:14px;text-align:left;white-space:nowrap;cursor:pointer}
 .mention-opt:hover,.mention-opt.sel{background:var(--surface-strong)}
-.mention-opt .mk-name{font-size:12px;color:var(--muted-soft)}
+.mention-opt-copy{display:flex;min-width:0;flex:1;align-items:center;gap:6px;overflow:hidden;white-space:nowrap}
+.mention-opt-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mention-opt .mk-name{flex:none;font-size:12px;color:var(--muted-soft)}
 .mention-opt .mk{font-size:11px;color:var(--muted-soft);flex:none}
-.mention-opt-desc{display:block;margin-top:2px;font-size:11px;line-height:1.35;color:var(--muted-soft)}
+.mention-opt-desc{min-width:0;overflow:hidden;font-size:11px;color:var(--muted-soft);text-overflow:ellipsis;white-space:nowrap}
 .mention-broadcast-icon{display:flex;width:22px;height:22px;flex:none;align-items:center;justify-content:center;border-radius:6px;background:var(--surface-strong);color:var(--ink-2)}
 /* Composer: compact empty state, expanding draft surface, combined add menu, attachments, task assignment, and send. */
 .composer-box{--composer-compact-edge:10px;--composer-compact-gap:6px;--composer-compact-safety:8px;--composer-input-font-size:14px;position:relative;width:100%;max-width:var(--chat-card-width);margin:0 auto;border:0;border-radius:20px;background:var(--surface);padding:10px 14px 10px;transition:box-shadow .5s ease;box-shadow:inset 0 0 0 .5px var(--card-line-strong),0 10px 30px rgba(15,23,42,.055)}
@@ -376,11 +378,13 @@ main.content-col > .composer{position:absolute;left:0;right:var(--scrollbar-gutt
 .composer-add-trigger[aria-expanded="true"]{background:var(--surface-strong);color:var(--ink)}
 .composer-add-menu__popover{position:fixed;z-index:32;width:min(300px,calc(100vw - 16px));padding:4px 5px;border:1px solid var(--hair);border-radius:16px;background:var(--surface);box-shadow:none;animation:modal-enter var(--dur-fast) var(--ease-quint)}
 .composer-add-menu__popover>button{display:flex;width:100%;height:30px;min-width:0;align-items:center;gap:10px;border:0;border-radius:10px;background:transparent;color:var(--ink-2);padding:4px 10px;font:inherit;font-size:14px;text-align:left;white-space:nowrap;cursor:pointer}
-.composer-add-menu__popover>button:hover,.composer-add-menu__popover>button:focus-visible,.composer-add-menu__popover>button.is-selected{background:var(--surface-strong);color:var(--ink)}
+.composer-add-menu__popover>button:hover,.composer-add-menu__popover>button:focus-visible,.composer-add-menu__popover>button.is-highlighted{background:var(--surface-strong);color:var(--ink)}
 .composer-add-menu__popover>button:disabled{cursor:default;opacity:.42;background:transparent}
 .composer-add-menu__popover>button>svg{flex:none}
 .composer-add-menu__popover>button>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.composer-add-menu__check{margin-left:auto;color:var(--muted)}
+.composer-add-menu__copy{display:flex;align-items:center;gap:8px}
+.composer-add-menu__label{flex:none}
+.composer-add-menu__description{min-width:0;overflow:hidden;color:var(--muted-soft);text-overflow:ellipsis;white-space:nowrap}
 .composer-task-chip{display:inline-flex;min-width:0;height:28px;align-items:center;gap:5px;border:0;border-radius:9999px;background:transparent;color:var(--muted);padding:3px 8px 3px 4px;font:inherit;font-size:var(--composer-input-font-size);line-height:1;cursor:pointer}
 .composer-task-chip:hover,.composer-task-chip:focus-visible{background:var(--surface-strong);color:var(--ink)}
 .composer-task-chip:disabled{cursor:default;opacity:.45;background:transparent}
@@ -719,7 +723,7 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .tp-link:hover,.tp-close:hover{background:var(--surface-strong);color:var(--ink)}
 .thread-parent{background:var(--surface-strong);border-radius:12px;padding:6px 12px;margin-bottom:6px}
 .thread-sep{font-size:12px;color:var(--muted);text-align:center;margin:6px 0 12px;position:relative}
-.thread-composer{padding:14px 18px 18px}
+.thread-composer{--composer-menu-edge:18px;padding:14px 18px 18px}
 /* Reminder status badge */
 .rem-badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:9999px;border:1px solid var(--hair-strong)}
 .rem-badge.scheduled{background:var(--tint-blue);border-color:var(--g-sky);color:var(--ink)}
@@ -1022,7 +1026,7 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
 @media (max-width:700px){
   :root{--read-pad:16px}
   .scroll{padding-left:16px;padding-right:16px}
-  .composer{padding-left:16px;padding-right:16px}
+  .composer{--composer-menu-edge:16px;padding-left:16px;padding-right:16px}
   .composer-box{--composer-input-font-size:16px}
 }
 
@@ -1042,7 +1046,7 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
 
 /* ── Reduced-motion overrides for all new secondary animations (consolidated block) ── */
 @media (prefers-reduced-motion:reduce){
-  .modal,.qs,.ch-view-enter,.board-scroll,.composer-add-menu__popover{animation:none}
+  .modal,.qs,.ch-view-enter,.board-scroll,.composer-add-menu__popover,.mention-menu{animation:none}
   .send-btn,.modal .ok,.setform .ok,.newtask,.action-card .ac-btn,.perm-head .ok,.pe-cta{transition:none}
 }
 

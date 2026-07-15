@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ListChecks, Paperclip, Plus, X } from "lucide-react";
+import { ListChecks, Paperclip, Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 interface ComposerActionsProps {
@@ -19,6 +19,8 @@ interface MenuPosition {
   ready: boolean;
 }
 
+type ComposerMenuItem = "files" | "task";
+
 const VIEWPORT_MARGIN = 8;
 const MENU_GAP = 8;
 
@@ -32,11 +34,13 @@ export function ComposerActions({
 }: ComposerActionsProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [highlightedItem, setHighlightedItem] = useState<ComposerMenuItem>("files");
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState<MenuPosition>({ left: VIEWPORT_MARGIN, top: VIEWPORT_MARGIN, width: 0, ready: false });
   const triggerDisabled = uploadDisabled && (!allowTask || taskDisabled);
+  const firstAvailableItem: ComposerMenuItem = uploadDisabled && allowTask && !taskDisabled ? "task" : "files";
 
   useEffect(() => {
     if (!open) return;
@@ -99,6 +103,11 @@ export function ComposerActions({
     });
   };
 
+  const openMenu = () => {
+    setHighlightedItem(firstAvailableItem);
+    setOpen(true);
+  };
+
   const select = (action: () => void) => {
     setOpen(false);
     setMenuPosition((position) => ({ ...position, ready: false }));
@@ -129,11 +138,14 @@ export function ComposerActions({
           aria-haspopup="menu"
           aria-expanded={open}
           disabled={triggerDisabled}
-          onClick={() => setOpen((value) => !value)}
+          onClick={() => {
+            if (open) setOpen(false);
+            else openMenu();
+          }}
           onKeyDown={(event) => {
             if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
             event.preventDefault();
-            setOpen(true);
+            openMenu();
             focusMenuItem(event.key === "ArrowUp");
           }}
         >
@@ -166,7 +178,15 @@ export function ComposerActions({
           style={{ left: menuPosition.left, top: menuPosition.top, width: menuPosition.width || undefined, visibility: menuPosition.ready ? "visible" : "hidden" }}
           onKeyDown={onMenuKeyDown}
         >
-          <button type="button" role="menuitem" disabled={uploadDisabled} onClick={() => select(onAddFiles)}>
+          <button
+            type="button"
+            role="menuitem"
+            className={highlightedItem === "files" ? "is-highlighted" : undefined}
+            disabled={uploadDisabled}
+            onFocus={() => setHighlightedItem("files")}
+            onPointerEnter={() => setHighlightedItem("files")}
+            onClick={() => select(onAddFiles)}
+          >
             <Paperclip size={17} aria-hidden="true" />
             <span>{t("chat.addPhotosAndFiles")}</span>
           </button>
@@ -175,13 +195,19 @@ export function ComposerActions({
               type="button"
               role="menuitemcheckbox"
               aria-checked={taskActive}
-              className={taskActive ? "is-selected" : ""}
+              className={highlightedItem === "task" ? "is-highlighted" : undefined}
               disabled={taskDisabled}
+              onFocus={() => setHighlightedItem("task")}
+              onPointerEnter={() => setHighlightedItem("task")}
               onClick={() => select(() => onTaskChange(!taskActive))}
             >
               <ListChecks size={17} aria-hidden="true" />
-              <span>{t("chat.assignTask")}</span>
-              {taskActive ? <Check className="composer-add-menu__check" size={16} aria-hidden="true" /> : null}
+              <span className="composer-add-menu__copy">
+                <span className="composer-add-menu__label">{t("chat.assignTask")}</span>
+                <span className="composer-add-menu__description">
+                  {taskActive ? t("chat.disableTaskAssignment") : t("chat.enableTaskAssignment")}
+                </span>
+              </span>
             </button>
           ) : null}
         </div>,

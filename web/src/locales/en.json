@@ -381,6 +381,8 @@
     "addMenu": "Add",
     "addPhotosAndFiles": "Add photos and files",
     "assignTask": "Assign task",
+    "enableTaskAssignment": "Enable task assignment",
+    "disableTaskAssignment": "Disable task assignment",
     "removeAssignedTask": "Remove task assignment",
     "pendingAttachments": "Photos and files ready to send",
     "removeAttachment": "Remove {{name}}",
