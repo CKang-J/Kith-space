@@ -8,7 +8,7 @@
 
 - 主干：`main`。临时工作分支不作为阶段进度记录。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A1-A6 原定代码切片、P-A7 H1-H4、P4 Chat 聚合面板与频道设置/归档切片、P-A8 Agent 频道响应模式均已完成，等待用户验收**。P-A8 已落地 schema v5、统一响应策略/设置模块、任务指派语义、Runtime 指令与 UI。不要自动进入 H5 或 Runtime 契约 v2；由用户验收后再决定顺序。
+- 当前阶段：**A1-A6 原定代码切片、P-A7 H1-H4、P4 Chat 聚合面板与频道设置/归档切片、P-A8 Agent 频道响应模式及频道全体提及均已完成，等待用户验收**。P-A8 已落地 schema v5、统一响应策略/设置模块、任务指派语义、Human `@all` 接收者快照、Runtime 指令与 UI。不要自动进入 H5 或 Runtime 契约 v2；由用户验收后再决定顺序。
 - P4 的其余视觉微调仍暂停；本轮实现范围只覆盖 `2026-07-14-chat-aggregate-panel-design.md` 与 `2026-07-14-channel-settings-and-archive-design.md` 已锁定边界，不据此扩张到其他页面重做。
 - 频道设置已进入聚合面板临时场景并提供常规/成员/通知钻取页；成员页显示真实 Human 名称与“你”标识，agent 使用搜索单选弹窗添加并在移除前二次确认。归档频道进入默认收起分组并全链路只读，支持恢复与精确名称确认后的永久删除。`# all` 的归档、删除、名称和可见性由 UI 与服务端双重保护，删除入口显式置灰解释限制，历史误归档/软删除会在 Space 数据库打开时自动恢复。
 - 底座为 open-tag 衍生开发副本；`reference/` 只读。OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
@@ -101,7 +101,8 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - 聚合面板切片验证：`pnpm run typecheck`、549/549 单测、完整集成测试和 Web build（2588 modules）通过；真实浏览器 smoke 已覆盖 ChatOnly/Split/ModuleOnly、任务会话作用域、话题外置打开、文件分类/来源消息搜索及其跨 Tab 状态保留、成员入口、会话列表/聚合面板横向动画、1024px 响应式隐藏与状态恢复，控制台无 warning/error。按用户约定只执行了一次完整只读 review；发现的失败投递作用域残留、Worker 消息异步乱序、文件筛选卸载重置和空话题不实时刷新四项问题均已由主线修复并补针对性验证，未再发起第二轮 review。
 - **频道设置与归档切片已实现**：设置不是第四个聚合 Tab，而是保留原聚合内容挂载状态的临时场景；ChatOnly/Split 优先占用聚合面板，空间不足时复用同一组件进入 Chat 右侧抽屉。常规页、agent 成员页与三档通知偏好已落地；通知值持久化在 `human_channel_states.notification_level`，该切片当时把 workspace.db 升级为 schema v4，当前 P-A8 之后为 v5。会话列表分别加载活跃/归档频道，默认收起归档分组；归档详情保留历史读取并禁用 Human/agent 消息、话题、附件、reaction、action card、成员与任务写入。恢复保留当前频道，永久删除要求精确输入名称；`# all` 由集中 helper、API 冲突错误和数据库打开时的幂等修复共同保护。后续 UI 验收修正已补真实 Human 名称、“你”标识、添加 agent 弹窗、移除二次确认、`# all` 置灰删除解释，以及 Space 卡片项目菜单和通用搜索框。该切片验证时 `pnpm run typecheck`、562/562 单测、完整集成测试、Web build（2605 modules）与 Desktop build 通过；真实浏览器覆盖频道成员弹窗/确认、必需频道禁用动作、Space 搜索焦点、卡片菜单和重命名弹窗，控制台无 warning/error。按用户约定未对该轮 UI 修正派发子代理 review，当前等待用户验收。
 - **P-A8 Agent 频道响应模式已实现**：workspace.db 升级为 schema v5，当前 Space 的 Agent 默认值加顶层频道 membership 可空覆盖，三档为 `active | mention_only | silent`；独立 ambient/mention wake watermark 保证模式重新开放时不补唤醒旧事件，也不推进 read cursor。实时 wake、Worker reconnect、`/agent-api/message/check` 和 prompt 共用 `required | optional | observe` 响应指令；DM 与明确任务指派始终 required，话题继承父频道。Human“作为任务 + 单一 @Agent”会形成真实 assignee，无 `@` 保持未指派，多个 Agent mention 在持久化与 membership 变化前拒绝。前端独立 `agent-response-mode/` feature 提供 Agent 默认卡片、频道昵称后徽标/覆盖菜单和窄实时失效；频道菜单主层以“默认 / 主动 / 被动 / 静音”四段式控件切换本频道来源和覆盖，标题显示当前 Agent 默认值，底部可在同一浮层钻取并修改当前 Space 的 Agent 默认值；选择即时保存且浮层保持打开，完整模式解释只留在 Agent 默认设置卡片。归档频道与话题只读继承，DM 不显示。完整规格见 `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
-- P-A8 验证：菜单定稿后 `pnpm test --unit` 582/582、`pnpm run typecheck` 与 `pnpm run web:build`（2612 modules）通过，`pnpm test --integration` 沿用同轮 P-A8 实现的全量通过结果。真实应用内浏览器此前覆盖默认值切换、频道覆盖、恢复继承、两个窗口的实时同步和“作为任务 + 多个 Agent”提交前拦截/草稿保留，最终菜单由用户实测通过。菜单定稿后的单轮 Standards + Spec 子代理 review 未发现 Standards/High 问题；发现的旧 PATCH 回包覆盖较新实时结果问题已用 mutation 版本与权威重载修复，未再发起第二轮 review。组件挂载级菜单钻取、键盘和焦点自动化仍是透明测试债。
+- **频道全体提及已实现**：Human 在可写频道或其话题发送语言无关的规范 token `@all` 时，服务端按父频道当时全部 Agent membership 固化接收者快照，同时保存一个 `channel_all` 展示标记和普通 Agent mention 行；主动/被动目标按明确 mention 得到 required 投递，静音目标不自动唤醒。话题会以当前消息可处理的边界补齐快照 Agent membership，后续新增成员不追溯旧消息。Agent-authored、DM、Showcase 与归档场景不展开；“作为任务 + @all”在任何消息、membership 或任务副作用前拒绝。Composer 候选标签通过 i18n 显示“所有人 / Everyone”并插入 `@all`，消息正文不展开名单。
+- P-A8 验证：频道全体提及及话题回复预览修正完成后，`pnpm test --unit` 592/592、完整 `pnpm test --integration`、`pnpm run typecheck` 与 Web build（2613 modules）通过。自动化覆盖规范 token/跨层一致性、接收者去重快照、主动/被动/静音投递、话题 membership、Agent-authored/DM 非展开、频道与 DM 任务无副作用拒绝、正文 token 渲染、同名 Agent 冲突优先级，以及 Agent 在触发消息的话题正式回复后移除父频道临时预览、空话题创建不提前清理、其他 Agent/父消息不误删和迟到 runtime 尾部文本不复活预览。真实应用内浏览器已覆盖“所有人 `@all`”候选及范围说明、任务模式隐藏和页面无 warning/error，测试草稿已清空；后续真实群体消息验证发现并复现了话题回复后的父频道幽灵预览，现已按非空 `thread:updated` 的 `parentMessageId + senderId` 精确修正。此前默认值、频道覆盖、恢复继承、双窗口实时同步和多 Agent 任务拦截也已验证，最终响应模式菜单由用户实测通过。本次按约定只执行一次 Standards + Spec 子代理 review：发现的空话题事件过早清理、DM 手工 `@all` 任务放行和架构行号失真均已修复，未发起第二轮 review。组件挂载级响应模式菜单钻取、键盘和焦点自动化仍是透明测试债。
 - 产品登录/注册、成员/RBAC/邀请 API、Web Human roster、Human-Human DM、Machines API 和 Computers UI 已删除；Dock/模块使用 Agents，频道成员只增删 agent，Human 资料入口位于 Settings。A3 进一步删除了 Human JWT、dev-login、`?as=`、localStorage/Bearer 会话和附件/Socket URL token；A5 删除 Landing、旧 Layout/PWA 与剩余账户入口，A6 删除 Docker、公共 server/daemon/npm/docs-site 发布与远程部署资产。未授权浏览器只看到 Access Token Gate。
 - Core Service 启动时从 app.db 读取 Web 模式：off（默认）与 local 均绑定 `127.0.0.1`，lan 绑定 `0.0.0.0`。off 只留 Desktop/Worker 私有传输，普通浏览器壳被拒绝；LAN 只允许匹配 Host 的 Origin。`/health` 只对 loopback/Desktop 可见并暴露 `workerConnected`。
 - 访问 Token 可自定义 16-256 字符，留空自动生成 32 字节；app.db 只存 scrypt 哈希和 revision。原始 browser session token 只进 HttpOnly、SameSite=Strict Cookie，DB 只存 SHA-256 哈希；写请求同时校验 Origin 和 CSRF。Token 轮换或 Desktop 全量撤销会使旧会话失效。
@@ -121,8 +122,8 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 五、下一步顺序
 
-1. 由用户统一验收 P-A7 H1-H4、会话聚合面板、频道管理与 P-A8 响应模式，重点查看 Home 默认入口、Home/普通 Dock 差异、Spaces 卡片、文件夹选择与同窗切换，以及聚合面板、话题/文件/轨迹、任务作用域、设置钻取、归档只读/恢复/删除、Agent 默认响应卡片、频道覆盖菜单和“作为任务”指派语义。
-2. P-A8 验收重点：普通频道消息、明确 `@`、话题跟进、DM、单一/零/多个 Agent 的频道任务及 Worker 重连符合三档矩阵；模式切换不追溯唤醒、不伪造已读；两个窗口的默认值/覆盖值实时收敛。
+1. 由用户统一验收 P-A7 H1-H4、会话聚合面板、频道管理与 P-A8 响应模式，重点查看 Home 默认入口、Home/普通 Dock 差异、Spaces 卡片、文件夹选择与同窗切换，以及聚合面板、话题/文件/轨迹、任务作用域、设置钻取、归档只读/恢复/删除、Agent 默认响应卡片、频道覆盖菜单、“作为任务”指派语义和频道 `@all` 候选/正文。
+2. P-A8 验收重点：普通频道消息、单一明确 `@`、`@all`、话题跟进、DM、单一/零/多个 Agent 的频道任务及 Worker 重连符合三档矩阵；Agent-authored 与任务模式不会群体展开；模式切换不追溯唤醒、不伪造已读；两个窗口的默认值/覆盖值实时收敛。
 3. 验收通过后由用户决定 Runtime 契约 v2 与 H5 跨 Space 编排的顺序；生产力模块、Message Context Snapshot 与 P4 其余视觉收尾继续在后。当前不要自动推进。
 
 每阶段独立验证、独立中文提交。未获得用户明确指示，不合并 main、不推远端、不发布。
@@ -132,7 +133,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - 包管理使用 pnpm；脚本参数直接跟在后面，例如 `pnpm test --unit`。
 - 常规验证：`pnpm run typecheck`、`pnpm test --unit`、`pnpm test --integration`、`pnpm --dir web run build`。
 - 测试 runner 同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向同一个随机临时 profile 的不同子目录；手写测试若绕过 runner，必须显式覆盖默认 Space 容器或直接传 rootPath，绝不在真实 `~/Kith-space` 生成 fixture。
-- 当前验收单测基线为 581/581；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6、H1-H4 与聚合面板/频道设置小节里的旧数字只描述当时检查点，不是当前基线。
+- 当前验收单测基线为 591/591；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6、H1-H4 与聚合面板/频道设置小节里的旧数字只描述当时检查点，不是当前基线。
 - 新功能优先拆到职责清楚的模块；不整块重写 `src/server/core.ts` 或大型 React 组件。
 - 代码、命令、架构、UI、术语或阶段变化时，同一提交同步相应文档。
 - 用户未要求时不修改或提交 `.agents/`、`.claude/`、`.codegraph/daemon.pid`、`skills-lock.json` 等外部/个人工具文件。

@@ -65,6 +65,9 @@
 **频道响应模式覆盖**
 : 某 Agent 在某个顶层频道 membership 上的可空覆盖，字段为 `channel_agent_members.response_mode_override`；有效模式等于“频道覆盖 ?? Agent 默认”。“跟随 Agent 默认”表示覆盖为 `NULL`，不是第四种模式。话题继承父频道，不拥有自己的覆盖。
 
+**频道全体提及（`@all`）**
+: 由唯一 Human 在可写频道或其话题中发起的特殊 mention。`@all` 是不随界面语言变化的规范 token，候选标签通过 i18n 显示“所有人 / Everyone”。服务端在发送时快照父频道的全部 Agent 成员，保存一个 `channel_all` 展示标记和对应的普通 Agent mention 行；主动/被动 Agent 按明确 mention 必须回应，静音 Agent 不自动唤醒。正文始终显示一个 `@all`，不展开名单。它不适用于 Human-Agent DM、只读 Showcase、归档频道或“作为任务”，Agent 发出的同名文本也不会群体唤醒。
+
 **Human channel state**
 : 唯一 Human 在频道中的 read cursor、Human-Agent DM 对端、thread follow/done 状态和频道通知级别，物理表为 `human_channel_states`。`notification_level` 固定为 `all | mentions | none`，默认 `all`；它不改变 agent 唤醒、消息持久化、未读或 Inbox 语义。该表是会话状态而非 membership；收藏和 Space 偏好分别存于 `human_saved_messages` 与 `human_space_preferences`。
 

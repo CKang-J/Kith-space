@@ -218,6 +218,20 @@ channel_agent_members.mention_wake_after_seq
 
 新 membership 的两类 watermark 与现有加入边界一致：人工加入使用当前频道最大 seq，避免把入群前历史补唤醒；Human mention 自动加入使用触发消息 seq - 1，让当前 mention 保持可处理。任务明确指派给 thread-only Agent 时以指派时的当前 seq 初始化话题 membership，但该次任务本身通过明确指派路径直达。
 
+### 7.1 频道全体提及与接收者快照
+
+Human 在可写顶层频道或其话题中发送语言无关的规范 token `@all` 时，服务端必须在消息发送事务前读取父频道当前全部 Agent membership，并把它们固化为本条消息的接收者快照。界面候选标签和说明通过 i18n 显示“所有人 / Everyone”，协议、数据库 mention name 与历史正文不得保存本地化 token：
+
+- `message_mentions` 保存一条 `mention_type = channel_all`、`mention_id = <父频道 id>` 的展示标记；
+- 同时为每个快照成员保存普通 `mention_type = agent` 行，使实时 wake、reconnect 与 message check 复用既有明确 mention 语义；
+- UI 和消息正文只显示一个 `@all` token，不展开名单；后续加入频道的 Agent 不追溯成为旧消息接收者；
+- 主动和被动目标得到 `required` 投递，静音目标不自动唤醒，但消息仍保留在其可读频道上下文中；
+- 话题中的全体提及取父频道快照，并以触发消息 `seq - 1` 的边界补齐这些 Agent 的话题 membership，使当前消息可被处理；
+- 只有 Human-authored 消息可以展开；Agent 发送相同文本只作为普通正文，避免 agent-to-agent 群体连锁；
+- DM、只读 Showcase、归档频道均不提供该能力；Human 的“作为任务 + @all”无论会话类型都在 seq、消息、membership 和任务状态变更前拒绝，任务继续保持单 assignee 或未指派模型。
+
+`channel_all` 只是稳定展示标记，不是第二套投递类型；真正的接收者语义由发送时快照生成的 Agent mention 行承担。
+
 ## 8. 非追溯切换与 wake watermark
 
 模式修改只影响保存成功后的新事件：
@@ -275,7 +289,11 @@ type AgentResponseDecision = {
 
 路由、`core.ts` 和 reconnect 逻辑只调用该模块，不各自直接写响应模式字段。
 
-### 9.3 唤醒收口
+### 9.3 频道全体 mention 模块
+
+`src/channels/channelAllMention.ts` 只负责 token 边界识别、展示标记和接收者 mention 的去重合并；它不查询数据库、不决定响应模式、不发送 WS。`core.ts` 负责根据已校验的频道/话题作用域取得成员快照并建立话题 membership，随后仍把普通 Agent mention 行交给统一响应策略。前端对应的 `web/src/views/composerChannelAllMention.ts` 只承担固定 token 与候选查询匹配。
+
+### 9.4 唤醒收口
 
 以下路径必须消费同一个 `AgentResponseDecision`：
 
@@ -374,6 +392,7 @@ reconnect backlog 使用与实时投递完全相同的 policy、话题参与判�
 - `core.ts` 实时投递与 reconnect backlog 对同一事件产生相同决策。
 - message check / prompt 分别正确表达 `required | optional | observe`。
 - “作为任务”覆盖：单一 mention 真正指派并绕过模式、零 mention 未指派、多 mention 拒绝。
+- `@all` 覆盖：Human 顶层频道/话题按发送时成员快照投递；主动/被动 required、静音不唤醒；Agent-authored、DM 和任务模式不展开；服务端和前端只识别规范 token，不依赖中文文案。
 - DM 与后续明确任务指派在三种模式下都能唤醒。
 - 归档/删除、非成员、跨 Space、派发护栏不能被模式设置绕过。
 - API 枚举、404/409、Human authority 和 realtime invalidation 测试。
@@ -388,17 +407,22 @@ reconnect backlog 使用与实时投递完全相同的 policy、话题参与判�
 5. Agent 已参与话题后，Human 后续回复在主动/被动模式下无需重复 `@`；静音不唤醒。
 6. Human 发送“作为任务 + 单一 `@Agent`”；任务详情显示真实 assignee，静音 Agent 仍收到任务，其他成员不被唤醒。
 7. Human 发送未 `@` 的频道任务；任务保持未指派，只有主动成员可以被环境唤醒。
-8. 切换模式后重连 Worker；切换前的旧消息不补唤醒，当前未读状态不被伪造。
-9. 两个窗口同时打开同一频道；一处修改后另一处徽标和菜单收敛到新值。
+8. Human 在频道和话题发送 `@all`；主动/被动 Agent 都收到 required 投递，静音 Agent 不启动，消息正文不展开名单；Agent 发送相同文本不群体唤醒；切换界面语言后历史 token 不变化。
+9. Human 在频道或 DM 尝试“作为任务 + `@all`”；发送被拒绝且草稿保留，没有消息、membership 或任务副作用。
+10. 切换模式后重连 Worker；切换前的旧消息不补唤醒，当前未读状态不被伪造。
+11. 两个窗口同时打开同一频道；一处修改后另一处徽标和菜单收敛到新值。
 
 ## 16. 当前实现边界
 
-截至 2026-07-14，本规格已完成代码实现并等待用户验收：
+截至 2026-07-15，本规格及频道全体提及增量已完成代码实现并等待用户验收：
 
 - workspace.db schema v5 已增加 Agent 默认值、顶层频道覆盖与两类非追溯 wake watermark，产品表数仍为 19；
 - `src/agents/agentResponsePolicy.ts`、`agentResponseSettings.ts` 与 `agentResponseDelivery.ts` 已分别承载纯决策、设置持久化/解析和消息上下文适配；
 - 实时 wake、Worker reconnect、`/agent-api/message/check` 与 Worker prompt 已统一消费 `required | optional | observe` 指令及稳定 reason；
 - Composer 与服务端共同校验任务 mention：单一 Agent 写入真实 assignee，零 Agent 保持未指派，多个 Agent 在持久化和 membership 变化前拒绝；
+- `src/channels/channelAllMention.ts` 与服务端消息路径已实现 Human `@all` 的父频道 Agent 快照、`channel_all` 展示标记、话题 membership 补齐和任务模式拒绝；Agent-authored 与 DM 文本不展开，DM 手工任务 token 也会在副作用前拒绝；
 - `web/src/views/agent-response-mode/` 已提供 Agent 默认卡片、频道徽标、约 250ms hover/点击/键盘菜单及每频道一次装载/窄实时失效；频道菜单主层使用“默认 / 主动 / 被动 / 静音”四段式控件，并在同一浮层钻取修改当前 Space 的 Agent 默认值，完整模式解释只保留在默认设置卡片；话题复用父频道，归档只读，DM 不显示。
+- Composer 已在频道/话题 autocomplete 中提供本地化“所有人 / Everyone”标签、单一规范 token `@all` 和范围说明，消息渲染为不可导航 token；DM、Showcase、归档和任务模式不提供候选，手工任务输入仍由发送前校验拒绝。
+- required 回复预览会保留触发消息 ID；Agent 转而在该父消息的话题中发送正式回复时，父频道根据非空 `thread:updated` 的 `parentMessageId + senderId` 精确移除对应临时预览；`replyCount=0` 的空话题创建不能提前清理。后续 runtime 尾部文本不会形成只存在于前端内存、刷新即消失的主频道幽灵消息。
 
-自动化验证已覆盖三档策略、watermark、API、实时投递、message check、Worker reconnect、prompt、任务指派与前端模型；菜单定稿后 `pnpm test --unit` 582/582、typecheck 与 2612-module Web build 通过，完整 integration 沿用同轮 P-A8 实现的全量通过结果。真实浏览器此前已验证默认值切换、频道覆盖、恢复继承、双窗口实时同步、多 Agent 任务提交前拦截与草稿保留，最终菜单由用户实测通过。菜单定稿后的单轮只读 review 未发现 Standards 问题；发现的旧 PATCH 回包覆盖较新实时结果问题已用 mutation 版本与权威重载收敛修复，按约定未发起第二轮 review。当前仍没有组件挂载级自动化覆盖菜单钻取、键盘和焦点交互，作为后续测试债透明保留。H5 与 Runtime 契约 v2 未因此启动。
+自动化验证已覆盖三档策略、watermark、API、实时投递、message check、Worker reconnect、prompt、任务指派、频道全体提及和前端模型；频道全体提及及话题回复预览修正完成后 `pnpm test --unit` 592/592、完整 integration、typecheck 与 2613-module Web build 通过。新增场景覆盖规范 token 边界与 Server/Composer 一致性、接收者去重快照、主动/被动/静音投递、话题 membership、Agent-authored/DM 非展开、频道与 DM 任务无副作用拒绝、正文 token 渲染、同名 Agent 冲突优先级，以及话题正式回复收掉父频道临时预览、空话题事件不提前清理、其他 Agent/父消息不误删、迟到 runtime 文本不复活幽灵消息。真实浏览器已验证“所有人 `@all`”候选及范围说明、任务模式隐藏和页面无 warning/error；后续真实群体消息验证发现并复现了话题回复后的父频道幽灵预览，现已按非空 `thread:updated` 的 `parentMessageId + senderId` 精确修正。此前也已验证默认值切换、频道覆盖、恢复继承、双窗口实时同步、多 Agent 任务提交前拦截与草稿保留，最终响应模式菜单由用户实测通过。本次单轮 Standards + Spec 子代理 review 发现的空话题事件过早清理、DM 手工 token 任务放行和架构行号失真已修复，按约定未发起第二轮 review。当前仍没有组件挂载级自动化覆盖响应模式菜单钻取、键盘和焦点交互，作为后续测试债透明保留。H5 与 Runtime 契约 v2 未因此启动。

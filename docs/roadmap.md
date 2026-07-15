@@ -126,9 +126,10 @@ H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integrati
 - Human 普通频道消息只环境唤醒主动成员且允许 Agent 判断后静默；被动成员只在明确 `@` 或已参与话题收到 Human 跟进时唤醒；静音成员不因频道事件自动唤醒。
 - Human-Agent DM 与明确任务指派始终直达目标 Agent。话题继承父频道，不增加独立设置层；Agent 普通消息不环境唤醒其他 Agent。
 - “作为任务 + 单一 `@Agent`”必须形成真实 assignee；无 `@` 创建未指派频道任务，多个 Agent mention 因单 assignee 模型而拒绝。
+- Human 在频道或话题使用语言无关的规范 token `@all` 时，服务端快照父频道当前全部 Agent：主动/被动成员按明确 mention 必回，静音成员不自动唤醒；Agent-authored、DM 与任务模式不展开该 token；候选标签通过 i18n 显示“所有人 / Everyone”。
 - 服务端以纯策略模块和设置模块统一实时 wake、reconnect、message check 与 prompt 指令；前端以独立 feature 组件提供 Agent 默认卡片和频道昵称后模式菜单，不把逻辑继续堆入 `core.ts`、`Chat.tsx` 或 `Members.tsx`。
 
-实现与验证：schema v5、统一响应策略/设置模块、实时投递/reconnect/message check/prompt 指令、单一 mention 任务 assignee、Agent 默认卡片和频道覆盖菜单均已落地；三档矩阵覆盖顶层频道、话题、DM、任务和 Worker 重连。模式切换以独立 watermark 保证不追溯唤醒且不伪造已读；真实浏览器已验证默认值、频道覆盖、恢复继承、双窗口实时同步和多 Agent 任务拦截。`pnpm test --unit` 581/581、完整 integration、typecheck 与 2612-module Web build 通过。完整规格：`docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
+实现与验证：schema v5、统一响应策略/设置模块、实时投递/reconnect/message check/prompt 指令、单一 mention 任务 assignee、Human `@all` 接收者快照、Agent 默认卡片和频道覆盖菜单均已落地；三档矩阵覆盖顶层频道、话题、DM、任务、全体提及和 Worker 重连。模式切换以独立 watermark 保证不追溯唤醒且不伪造已读；真实浏览器已验证默认值、频道覆盖、恢复继承、双窗口实时同步、多 Agent 任务拦截，以及“所有人 `@all`”候选/任务模式隐藏。`pnpm test --unit` 591/591、完整 integration、typecheck 与 2613-module Web build 通过。完整规格：`docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
 
 ## 4. 本机化基础完成后的能力路线
 

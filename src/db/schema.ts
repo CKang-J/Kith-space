@@ -183,7 +183,7 @@ export const dispatchStops = sqliteTable("dispatch_stops", {
 
 export const messageMentions = sqliteTable("message_mentions", {
   messageId: text("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
-  mentionType: text("mention_type").notNull(), // human | agent
+  mentionType: text("mention_type").notNull(), // human | agent | channel_all (display marker; agent rows snapshot recipients)
   mentionId: text("mention_id").notNull(),
   mentionName: text("mention_name").notNull(),
 }, (t) => ({

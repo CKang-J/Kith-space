@@ -5,7 +5,7 @@ import i18n from "../i18n";
 import { useStore, type Msg, type Att } from "../store.tsx";
 import { fmtDateTime, isSameLocalDay, fmtDateDivider } from "../format";
 import { PAGE_SIZE, appendWithCap, nextScrollState } from "../lib/msgPaging";
-import { AGENT_REPLY_PREVIEW_TYPE, AGENT_REPLY_STREAM_TICK_MS, absorbPersistedAgentMessagePreview, applyAgentReplyPreview, dropAgentReplyPreviewsForMessage, hasStreamingAgentReplyPreview, renderKeyForMessage, tickAgentReplyPreviews, type AgentReplyEvent, type AgentReplyPreviewMsg } from "../lib/agentReplyPreview";
+import { AGENT_REPLY_PREVIEW_TYPE, AGENT_REPLY_STREAM_TICK_MS, absorbPersistedAgentMessagePreview, applyAgentReplyPreview, dropAgentReplyPreviewForThreadReply, dropAgentReplyPreviewsForMessage, hasStreamingAgentReplyPreview, renderKeyForMessage, tickAgentReplyPreviews, type AgentReplyEvent, type AgentReplyPreviewMsg } from "../lib/agentReplyPreview";
 import { MessageContent } from "../messageRender.tsx";
 import { nextThreadMeta } from "../threadUnread";
 import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Link2, Clipboard, Bookmark, CheckSquare, Circle, Play, Eye, Ban, ArrowDown, Bell, BellOff, Archive, MessagesSquare, ListTodo, UsersRound, PanelsTopLeft } from "lucide-react";
@@ -385,10 +385,18 @@ export function Chat({
     if (e.type === "message" && e.channelId === cur?.id) { if (e.message.senderType === "human" && e.message.senderId === me?.id) forceBottomPinRef.current = true; setMsgs((m) => { const preview = absorbPersistedAgentMessagePreview(m, e.message); if (preview.consumed) { forceBottomPinRef.current = true; newMsgOrderRef.current.delete(e.message.id); return preview.messages; } const idx = Math.min(burstCountRef.current, 7); newMsgOrderRef.current.set(e.message.id, idx); burstCountRef.current += 1; if (burstTimerRef.current) clearTimeout(burstTimerRef.current); burstTimerRef.current = setTimeout(() => { burstCountRef.current = 0; burstTimerRef.current = null; }, 600); const { next, trimmed } = appendWithCap(dropAgentReplyPreviewsForMessage(m, e.message), e.message, atBottomRef.current && !loadingOlderRef.current); if (trimmed) trimmedRef.current = true; return next; }); markRead(cur.id); } // don't trim mid-pagination: a trim's setHasMore(true) would race the in-flight loadOlder's setHasMore — suppressing it closes the window (the next message trims instead)
     else if (e.type === "message:updated" && e.message) setMsgs((m) => m.map((x) => (x.id === e.message.id ? { ...x, ...e.message } : x))); // sync reactions and task fields
     else if (e.type === "agent:reply" && e.channelId === cur?.id) { forceBottomPinRef.current = true; setMsgs((m) => applyAgentReplyPreview(m, e as AgentReplyEvent, agents.find((a) => a.id === e.agentId))); }
-    else if (e.type === "thread:updated" && e.parentMessageId) setThreadMeta((tm) => ({ // live reply count update; unreadCount is approximated from the replyCount delta (the authoritative value is corrected on channel switch via GET)
-      ...tm,
-      [e.parentMessageId]: nextThreadMeta(tm[e.parentMessageId], { threadChannelId: e.threadChannelId, replyCount: e.replyCount, senderId: e.senderId }, me?.id),
-    }));
+    else if (e.type === "thread:updated" && e.parentMessageId) {
+      setMsgs((m) => dropAgentReplyPreviewForThreadReply(m, {
+        parentMessageId: e.parentMessageId,
+        senderId: e.senderId,
+        senderType: e.senderType,
+        replyCount: e.replyCount,
+      }));
+      setThreadMeta((tm) => ({ // live reply count update; unreadCount is approximated from the replyCount delta (the authoritative value is corrected on channel switch via GET)
+        ...tm,
+        [e.parentMessageId]: nextThreadMeta(tm[e.parentMessageId], { threadChannelId: e.threadChannelId, replyCount: e.replyCount, senderId: e.senderId }, me?.id),
+      }));
+    }
   }), [cur?.id, agents, me?.id]);
   const streamingPreviewActive = hasStreamingAgentReplyPreview(msgs);
   useEffect(() => {
@@ -711,6 +719,7 @@ export function Chat({
                   channelId={cur?.id ?? ""}
                   placeholder={isDm ? t("chat.dmPlaceholder", { name: cur?.name }) : t("chat.channelPlaceholder")}
                   allowAsTask
+                  allowChannelAllMention={!isDm && cur?.type !== "showcase"}
                   validateChannelTaskMentions={!isDm}
                   dmAgent={isDm ? dmAgent : undefined}
                 />}
@@ -751,6 +760,7 @@ export function Chat({
               }}
               onClose={closeThread}
               onOpenAgent={openAgentProfile}
+              allowChannelAllMention={!isDm && cur?.type !== "showcase"}
               renderResponseModeBadge={renderResponseModeBadge}
             />
           </>
@@ -794,7 +804,7 @@ export function Chat({
 }
 
 // Thread panel: right-side overlay showing the parent message, its replies, and a reply composer.
-function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = false, style, headerLeading, headerActions, onClose, onFollowChange, onOpenAgent, renderResponseModeBadge }: { channelId: string; parent: Msg; followed: boolean; readOnly?: boolean; solo?: boolean; style?: CSSProperties; headerLeading?: ReactNode; headerActions?: ReactNode; onClose: () => void; onFollowChange: (followed: boolean) => void; onOpenAgent: (id: string) => void; renderResponseModeBadge: (agentId: string, agentName: string, inheritedThreadMember?: ChannelAgentResponseMode) => ReactNode }) {
+function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = false, style, headerLeading, headerActions, onClose, onFollowChange, onOpenAgent, allowChannelAllMention, renderResponseModeBadge }: { channelId: string; parent: Msg; followed: boolean; readOnly?: boolean; solo?: boolean; style?: CSSProperties; headerLeading?: ReactNode; headerActions?: ReactNode; onClose: () => void; onFollowChange: (followed: boolean) => void; onOpenAgent: (id: string) => void; allowChannelAllMention: boolean; renderResponseModeBadge: (agentId: string, agentName: string, inheritedThreadMember?: ChannelAgentResponseMode) => ReactNode }) {
   const { t } = useTranslation();
   const { api, onEvent, subscribeChannel, attachmentUrl, me, react, agents, channels, archivedChannels, slug } = useStore();
   const threadResponseModes = useChannelAgentResponseModes(channelId, Boolean(channelId));
@@ -905,7 +915,7 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
         ? <div className="showcase-readonly"><Eye size={14} />{t("chat.showcaseReadOnly")}</div>
         : readOnly
           ? <div className="showcase-readonly"><Archive size={14} />{t("channelSettings.archivedReadOnly")}</div>
-        : <Composer channelId={channelId} placeholder={t("chat.threadReplyPlaceholder")} className="thread-composer" />}
+        : <Composer channelId={channelId} placeholder={t("chat.threadReplyPlaceholder")} allowChannelAllMention={allowChannelAllMention} className="thread-composer" />}
     </aside>
   );
 }

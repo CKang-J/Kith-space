@@ -1,11 +1,16 @@
 import { useState, useRef, useEffect, useMemo, type ChangeEvent, type ClipboardEvent as RClipboardEvent, type DragEvent as RDragEvent, type CSSProperties } from "react";
-import { ImagePlus, Paperclip, Send, CheckCircle2 } from "lucide-react";
+import { ImagePlus, Paperclip, Send, CheckCircle2, Users } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useStore, type Agent } from "../store.tsx";
 import { Avatar, resolveAvatar } from "../Avatar.tsx";
 import { IconFile } from "../icons.tsx";
 import { autosizeComposerInput, observeComposerInputWidth } from "./composerAutosize.ts";
 import { uniqueMentionedAgentIds } from "./composerTaskMentions.ts";
+import {
+  CHANNEL_ALL_MENTION_NAME,
+  containsChannelAllMention,
+  matchesChannelAllMentionQuery,
+} from "./composerChannelAllMention.ts";
 
 const isImage = (m?: string) => !!m && m.startsWith("image/");
 
@@ -14,10 +19,11 @@ const isImage = (m?: string) => !!m && m.startsWith("image/");
 // The only per-context difference is "As Task" (channels/DMs only), gated by `allowAsTask` —
 // threads leave it falsy so a thread reply is never a task. Sending POSTs to `channelId`; the
 // message echoes back over the socket, so the *parent* owns the message list + scroll, not this.
-export function Composer({ channelId, placeholder, allowAsTask = false, validateChannelTaskMentions = true, dmAgent, className }: {
+export function Composer({ channelId, placeholder, allowAsTask = false, allowChannelAllMention = false, validateChannelTaskMentions = true, dmAgent, className }: {
   channelId: string;
   placeholder: string;       // base placeholder; when As Task is checked the component swaps in the task placeholder
   allowAsTask?: boolean;     // channels/DMs pass true → show the As Task toggle + ⌘/Ctrl+Shift+Enter shortcut
+  allowChannelAllMention?: boolean; // top-level channels and their topics only; DMs/showcase omit
   validateChannelTaskMentions?: boolean; // false for DMs: Agent assignment-by-mention is a channel-only contract
   dmAgent?: Agent;           // DM peer agent (channels/threads omit) → drives the single-peer sleeping nudge
   className?: string;        // extra class on the .composer root (threads pass "thread-composer")
@@ -66,10 +72,17 @@ export function Composer({ channelId, placeholder, allowAsTask = false, validate
     if (sendingRef.current) return;
     const v = text.trim(); if ((!v && !pendingAtts.length) || !channelId) return;
     const asT = allowAsTask && (forceTask ?? asTask); // ⌘/Ctrl+Shift+Enter forces task; threads (allowAsTask=false) never send as task
-    if (asT && validateChannelTaskMentions && uniqueMentionedAgentIds(v, agents).length > 1) {
-      setTaskMentionError(t("chat.taskMultipleAgentMentions"));
-      inputRef.current?.focus();
-      return;
+    if (asT) {
+      if (containsChannelAllMention(v)) {
+        setTaskMentionError(t("chat.taskChannelAllMention"));
+        inputRef.current?.focus();
+        return;
+      }
+      if (validateChannelTaskMentions && uniqueMentionedAgentIds(v, agents).length > 1) {
+        setTaskMentionError(t("chat.taskMultipleAgentMentions"));
+        inputRef.current?.focus();
+        return;
+      }
     }
     setTaskMentionError("");
     const ids = pendingAtts.filter((a) => a.status === "done" || !a.status).map((a) => a.id); // only fully-uploaded attachments
@@ -116,10 +129,14 @@ export function Composer({ channelId, placeholder, allowAsTask = false, validate
     if (m) { setAtQuery(m[1]); atPosRef.current = pos - m[0].length; } else setAtQuery(null);
     setAtSel(0); // typing narrows the list → restart highlight at the top
   };
-  const cands = atQuery === null ? [] : agents
-    .map((agent) => ({ name: agent.name, label: agent.displayName || agent.name, kind: "agent", avatarUrl: agent.avatarUrl }))
-    .filter((candidate) => candidate.name && candidate.name.toLowerCase().includes((atQuery || "").toLowerCase()))
-    .slice(0, 8);
+  const cands = atQuery === null ? [] : [
+    ...(allowChannelAllMention && !asTask && matchesChannelAllMentionQuery(atQuery)
+      ? [{ name: CHANNEL_ALL_MENTION_NAME, label: t("chat.mentionEveryone"), kind: "channel_all" as const, avatarUrl: null }]
+      : []),
+    ...agents
+      .map((agent) => ({ name: agent.name, label: agent.displayName || agent.name, kind: "agent" as const, avatarUrl: agent.avatarUrl }))
+      .filter((candidate) => candidate.name && candidate.name.toLowerCase().includes((atQuery || "").toLowerCase())),
+  ].slice(0, 8);
   const pick = (c: { name: string }) => {
     const start = atPosRef.current;
     const after = text.slice(start + 1 + (atQuery?.length ?? 0));
@@ -134,9 +151,14 @@ export function Composer({ channelId, placeholder, allowAsTask = false, validate
           {cands.map((c, i) => (
             <button key={c.kind + c.name} className={"mention-opt" + (i === atSel ? " sel" : "")} aria-selected={i === atSel}
               onMouseEnter={() => setAtSel(i)} onMouseDown={(e) => { e.preventDefault(); pick(c); }}>
-              <Avatar seed={c.name} url={avFor(c.avatarUrl)} size={22} />
-              <span className="grow">{c.label} <span className="mk-name">@{c.name}</span></span>
-              <span className="mk">{c.kind === "agent" ? "agent" : t("chat.humanKind")}</span>
+              {c.kind === "channel_all"
+                ? <span className="mention-broadcast-icon"><Users size={14} aria-hidden="true" /></span>
+                : <Avatar seed={c.name} url={avFor(c.avatarUrl)} size={22} />}
+              <span className="grow">
+                {c.label} <span className="mk-name">@{c.name}</span>
+                {c.kind === "channel_all" && <span className="mention-opt-desc">{t("chat.mentionEveryoneDescription")}</span>}
+              </span>
+              <span className="mk">{c.kind === "channel_all" ? t("chat.channelMentionKind") : "agent"}</span>
             </button>
           ))}
         </div>
