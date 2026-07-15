@@ -374,7 +374,7 @@
 
 **运行语义**：主动模式只对 Human 的普通频道消息做环境唤醒，Agent 可以判断后静默；被动模式只因明确 `@` 或已参与话题中的 Human 跟进唤醒；静音模式不因频道消息、频道 `@` 或话题跟进自动唤醒。Agent 普通消息不环境唤醒其他 Agent，避免循环；明确 `@` 仍可唤醒主动或被动目标。模式切换只作用于新事件，不补唤醒历史消息，也不复用 read cursor。
 
-**任务边界**：Human 选择“作为任务”并恰好 `@` 一个 Agent 时，必须把该 Agent 写成真实 assignee，并按明确指派绕过三种模式；没有 `@` 时创建未指派频道任务，仅主动成员可被环境唤醒；多个 Agent mention 因当前任务只有单 assignee 而在提交前拒绝，不能静默挑选目标。
+**任务边界**：Human 选择“指派任务”并恰好 `@` 一个 Agent 时，必须把该 Agent 写成真实 assignee，并按明确指派绕过三种模式；没有 `@` 时创建未指派频道任务，仅主动成员可被环境唤醒；多个 Agent mention 因当前任务只有单 assignee 而在提交前拒绝，不能静默挑选目标。
 
 **实施边界与状态**：该决策已于 2026-07-14 落地。纯策略、独立设置与消息适配模块分别位于 `src/agents/agentResponsePolicy.ts`、`agentResponseSettings.ts` 和 `agentResponseDelivery.ts`；实时 wake、reconnect backlog、Agent message check 与 prompt 共同消费响应指令。schema v5、默认值/频道覆盖 API、窄实时失效、真实任务 assignee、Agent Profile 默认卡片和频道昵称后徽标/覆盖菜单均已实现，成员设置页没有复制第二套编辑器。完整规格与验证状态见 `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
 
@@ -386,7 +386,7 @@
 
 **持久化与话题语义**：消息只显示一个 `@all` 标记，不在正文或 UI 展开名单；`message_mentions` 同时保存 `channel_all` 展示标记和每个快照 Agent 的普通 `agent` mention 行，因而实时 wake、Worker reconnect 与 message check 自动复用决策 26 的统一路径。话题以内层发送时取父频道成员快照，并以当前消息可处理的边界把快照 Agent 加入话题；后续新增频道成员不会追溯成为旧消息接收者。
 
-**产品边界**：v1 不在 Human-Agent DM、只读 Showcase、归档频道或“作为任务”中提供该能力。任务仍保持单 assignee：`作为任务 + @all` 在任何消息、成员关系或任务状态落库前拒绝，用户应明确 `@` 一个 Agent 或创建未指派任务。频道生命周期、membership、Space 隔离、dispatch 深度、wake budget 与 emergency stop 继续作为外围 guard，`@all` 不提供绕过能力。
+**产品边界**：v1 不在 Human-Agent DM、只读 Showcase、归档频道或“指派任务”中提供该能力。任务仍保持单 assignee：`指派任务 + @all` 在任何消息、成员关系或任务状态落库前拒绝，用户应明确 `@` 一个 Agent 或创建未指派任务。频道生命周期、membership、Space 隔离、dispatch 深度、wake budget 与 emergency stop 继续作为外围 guard，`@all` 不提供绕过能力。
 
 **推理与权衡**：发送时快照同时满足“这条历史消息当时通知了谁”的稳定性和既有投递链复用；若只在读取时解释为当前成员，成员变更会篡改历史语义。限制 Human 发起与任务模式禁用，避免把方便的频道广播误变成无边界的 agent 群体派发或多负责人任务。
 

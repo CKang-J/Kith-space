@@ -239,8 +239,9 @@ test("composer removes the hard divider and aligns its input with the message co
   assert.match(ruleBody(".composer-box:focus-within"), /box-shadow\s*:\s*inset 0 0 0 \.5px var\(--card-line-strong\),0 12px 34px rgba\(15,23,42,\.065\)/, "composer focus can keep a slightly stronger depth cue");
 
   const input = ruleBody(".composer-input");
-  assert.match(input, /font-size\s*:\s*14px\b/, `desktop composer input text should match compact message markdown body size: ${input}`);
-  assert.match(css, /@media \(max-width:700px\)\{[\s\S]*?\.composer-input\{font-size:16px\}/, "mobile composer input should remain large enough to avoid mobile browser input zoom");
+  assert.match(box, /--composer-input-font-size\s*:\s*14px\b/, `desktop composer input text should match compact message markdown body size: ${box}`);
+  assert.match(input, /font-size\s*:\s*var\(--composer-input-font-size\)/, `composer input should consume the shared input and task-chip font size: ${input}`);
+  assert.match(css, /@media \(max-width:700px\)\{[\s\S]*?\.composer-box\{--composer-input-font-size:16px\}/, "mobile composer input should remain large enough to avoid mobile browser input zoom");
 
   const bar = ruleBody(".composer-bar");
   assert.match(bar, /min-height\s*:\s*30px\b/, `composer toolbar should reserve a stable icon row height: ${bar}`);

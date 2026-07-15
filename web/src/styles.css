@@ -301,7 +301,7 @@ main.content-col > .scroll.is-scrolling::-webkit-scrollbar-thumb{background:rgba
 .md ul.contains-task-list{padding-left:1.1em}.md li.task-list-item{list-style:none;margin-left:0}.md li.task-list-item input[type="checkbox"]{position:absolute;left:.025em;top:.42em}.md del{color:var(--done-text);text-decoration-color:var(--done-text)}.md li.task-list-item:has(input[type="checkbox"]:checked){color:var(--done-text);text-decoration:line-through;text-decoration-color:var(--done-text)}
 .color-token{display:inline;white-space:nowrap;vertical-align:baseline}.color-token-text{color:var(--ink-2)}.color-chip{box-sizing:border-box;display:inline-block;width:.95em;height:.95em;margin-left:6px;border-radius:4px;border:1px solid var(--hair-strong);vertical-align:-.12em}
 .mention{color:var(--ink);font-weight:600;background:var(--mention);border-radius:4px;padding:0 3px}
-.composer{--composer-inline-padding:28px;position:relative;z-index:10;padding:4px 28px 14px;border-top:0;background:linear-gradient(to bottom,rgba(255,255,255,0),rgba(255,255,255,.48) 38%,var(--surface) 100%)}
+.composer{position:relative;z-index:10;padding:4px 28px 14px;border-top:0;background:linear-gradient(to bottom,rgba(255,255,255,0),rgba(255,255,255,.48) 38%,var(--surface) 100%)}
 main.content-col > .composer{position:absolute;left:0;right:var(--scrollbar-gutter);bottom:0}
 .showcase-readonly{display:flex;align-items:center;gap:8px;padding:14px 28px 18px;border-top:1px solid var(--hair);font-size:13px;color:var(--muted);font-style:italic}
 .archived-channel-banner{position:relative;z-index:12;display:flex;align-items:center;gap:9px;padding:11px 28px;border-top:1px solid var(--hair);background:var(--canvas-soft);color:var(--muted);font-size:13px}
@@ -347,36 +347,66 @@ main.content-col > .composer{position:absolute;left:0;right:var(--scrollbar-gutt
 .mention-opt .mk{font-size:11px;color:var(--muted-soft);flex:none}
 .mention-opt-desc{display:block;margin-top:2px;font-size:11px;line-height:1.35;color:var(--muted-soft)}
 .mention-broadcast-icon{display:flex;width:22px;height:22px;flex:none;align-items:center;justify-content:center;border-radius:6px;background:var(--surface-strong);color:var(--ink-2)}
-/* composer: auto-growing textarea + dual attachments + As Task + Send, skin follows DESIGN.md editorial style (thin hairline / rounded corners / ink pill) */
-.composer-box{width:100%;max-width:var(--chat-card-width);margin:0 auto;border:0;border-radius:12px;background:var(--surface);padding:10px 14px 10px;transition:box-shadow .5s ease;box-shadow:inset 0 0 0 .5px var(--card-line-strong),0 10px 30px rgba(15,23,42,.055)}
+/* Composer: compact empty state, expanding draft surface, combined add menu, attachments, task assignment, and send. */
+.composer-box{--composer-compact-edge:10px;--composer-compact-gap:6px;--composer-compact-safety:8px;--composer-input-font-size:14px;position:relative;width:100%;max-width:var(--chat-card-width);margin:0 auto;border:0;border-radius:20px;background:var(--surface);padding:10px 14px 10px;transition:box-shadow .5s ease;box-shadow:inset 0 0 0 .5px var(--card-line-strong),0 10px 30px rgba(15,23,42,.055)}
 .composer-box:hover{box-shadow:inset 0 0 0 .5px var(--card-line-strong),0 10px 30px rgba(15,23,42,.055)}
 .composer-box:focus-within{box-shadow:inset 0 0 0 .5px var(--card-line-strong),0 12px 34px rgba(15,23,42,.065)}
+.composer-box.is-expanded{min-height:94px;border-radius:20px 20px 24px 24px}
+.composer-box.is-compact{display:grid;grid-template-columns:auto minmax(0,1fr) auto;column-gap:var(--composer-compact-gap);align-items:center;min-height:48px;border-radius:9999px;padding:8px var(--composer-compact-edge)}
 .composer-validation-error{width:100%;max-width:var(--chat-card-width);margin:0 auto 7px;padding:7px 10px;border:1px solid var(--error-line);border-radius:8px;background:var(--error-soft);color:var(--error);font-size:12px;line-height:1.4}
-.composer-input{display:block;width:100%;border:0;outline:none;resize:none;background:transparent;font-family:var(--sans);font-size:14px;line-height:1.5;color:var(--ink);min-height:26px;max-height:160px;overflow-y:auto;padding:3px 2px}
+.composer-input{display:block;width:100%;border:0;outline:none;resize:none;background:transparent;font-family:var(--sans);font-size:var(--composer-input-font-size);line-height:1.5;color:var(--ink);min-height:26px;max-height:160px;overflow-y:auto;padding:3px 2px}
 .composer-input::placeholder{color:var(--muted-soft)}
 .composer-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;min-height:30px}
+.composer-box.is-compact .composer-input{grid-column:2;grid-row:1;min-width:0;min-height:30px;max-height:30px;overflow:hidden;padding:4px 2px}
+.composer-box.is-compact .composer-bar{display:contents}
+.composer-box.is-compact .cb-left{grid-column:1;grid-row:1}
+.composer-box.is-compact .cb-right{grid-column:3;grid-row:1}
+.composer-box.is-expanded .composer-bar{margin:8px -4px -2px}
 .cb-left{display:flex;align-items:center;gap:2px}
 .cb-right{display:flex;align-items:center;gap:14px}
 .cb-icon{width:28px;height:28px;background:none;border:0;color:var(--muted);cursor:pointer;padding:0;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none}
 .cb-icon svg{width:15px;height:15px}
 .cb-icon:hover{background:var(--surface-strong);color:var(--ink)}
 .cb-icon:disabled{opacity:.4;cursor:default;background:none}
+.composer-actions{position:relative;display:flex;min-width:0;align-items:center;gap:4px}
+.composer-add-menu{position:relative;flex:none}
+.composer-add-trigger{width:32px;height:32px;border-radius:9999px}
+.composer-add-trigger svg{width:18px;height:18px;stroke-width:2.4}
+.composer-add-trigger:focus-visible{outline:none;background:var(--surface-strong);color:var(--ink)}
+.composer-add-trigger[aria-expanded="true"]{background:var(--surface-strong);color:var(--ink)}
+.composer-add-menu__popover{position:fixed;z-index:32;width:min(300px,calc(100vw - 16px));padding:4px 5px;border:1px solid var(--hair);border-radius:16px;background:var(--surface);box-shadow:none;animation:modal-enter var(--dur-fast) var(--ease-quint)}
+.composer-add-menu__popover>button{display:flex;width:100%;height:30px;min-width:0;align-items:center;gap:10px;border:0;border-radius:10px;background:transparent;color:var(--ink-2);padding:4px 10px;font:inherit;font-size:14px;text-align:left;white-space:nowrap;cursor:pointer}
+.composer-add-menu__popover>button:hover,.composer-add-menu__popover>button:focus-visible,.composer-add-menu__popover>button.is-selected{background:var(--surface-strong);color:var(--ink)}
+.composer-add-menu__popover>button:disabled{cursor:default;opacity:.42;background:transparent}
+.composer-add-menu__popover>button>svg{flex:none}
+.composer-add-menu__popover>button>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.composer-add-menu__check{margin-left:auto;color:var(--muted)}
+.composer-task-chip{display:inline-flex;min-width:0;height:28px;align-items:center;gap:5px;border:0;border-radius:9999px;background:transparent;color:var(--muted);padding:3px 8px 3px 4px;font:inherit;font-size:var(--composer-input-font-size);line-height:1;cursor:pointer}
+.composer-task-chip:hover,.composer-task-chip:focus-visible{background:var(--surface-strong);color:var(--ink)}
+.composer-task-chip:disabled{cursor:default;opacity:.45;background:transparent}
+.composer-task-chip__icon{display:inline-flex;width:18px;height:18px;flex:none;align-items:center;justify-content:center;border-radius:9999px}
+.composer-task-chip__remove-icon{display:none;width:14px;height:14px;border-radius:9999px;background:var(--muted-soft);color:var(--surface);padding:2px}
+.composer-task-chip:hover .composer-task-chip__default-icon,.composer-task-chip:focus-visible .composer-task-chip__default-icon{display:none}
+.composer-task-chip:hover .composer-task-chip__remove-icon,.composer-task-chip:focus-visible .composer-task-chip__remove-icon{display:block}
 .send-btn{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:9999px;background:var(--ink-2);color:var(--on-ink);cursor:pointer;padding:0;flex:none}
+.send-btn svg{width:17px;height:17px;stroke-width:2.2}
 .send-btn:hover{background:var(--ink)}
 .send-btn:disabled{opacity:.3;cursor:default;background:var(--ink-2)}
-.pending-atts{position:absolute;bottom:100%;left:var(--composer-inline-padding);right:var(--composer-inline-padding);max-width:var(--chat-card-width);display:flex;flex-wrap:wrap;gap:6px;margin:0 auto 8px}
-.patt{position:relative;display:inline-flex;align-items:center;gap:5px;font-size:12px;background:var(--surface-strong);border:1px solid var(--hair-strong);border-radius:8px;padding:3px 8px;color:var(--body)}
-.patt button{background:none;border:0;cursor:pointer;color:var(--muted);font-size:15px;line-height:1;padding:0}
-.patt-img{padding:0;overflow:hidden;position:relative}
-.patt-img img{display:block;width:48px;height:48px;object-fit:cover}
-.patt-img button{position:absolute;top:2px;right:2px;background:var(--scrim);color:var(--surface);border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;font-size:12px;z-index:2}
-/* Upload state: thumbnail dims + centered % + bottom progress bar; done = green ✓ badge; error = red */
-.patt.st-uploading img{opacity:.5}
-.patt-prog{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--ink)}
-.patt.st-uploading::after{content:"";position:absolute;left:0;bottom:0;height:3px;width:var(--pct,0%);background:var(--success);border-radius:0 0 0 8px}
-.patt-ok{position:absolute;top:-5px;left:-5px;color:var(--success);background:var(--surface);border-radius:50%;display:flex;box-shadow:0 0 0 1px var(--hair)}
-.patt.st-error{border-color:var(--error)}
-.patt-err{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--error);background:var(--error-soft);border-radius:inherit}
+.composer-attachments{display:flex;width:100%;flex-wrap:wrap;gap:8px;margin:0 0 9px;padding:0 2px}
+.composer-attachment{position:relative;display:flex;height:56px;align-items:center;border:1px solid var(--hair);border-radius:11px;background:var(--surface);color:var(--body);overflow:hidden}
+.composer-attachment.is-image{width:56px;flex:none}
+.composer-attachment.is-image img{display:block;width:100%;height:100%;object-fit:cover}
+.composer-attachment.is-file{width:220px;max-width:100%;gap:9px;padding:7px 30px 7px 8px}
+.composer-attachment__file-icon{display:flex;width:36px;height:36px;flex:none;align-items:center;justify-content:center;border-radius:9px;background:var(--tint-blue);color:var(--link-blue)}
+.composer-attachment__copy{display:flex;min-width:0;flex:1;flex-direction:column;gap:2px}
+.composer-attachment__copy strong{overflow:hidden;color:var(--ink-2);font-size:13px;font-weight:500;text-overflow:ellipsis;white-space:nowrap}
+.composer-attachment__copy small{color:var(--muted);font-size:11px}
+.composer-attachment__remove{position:absolute;top:4px;right:4px;z-index:3;display:flex;width:18px;height:18px;align-items:center;justify-content:center;border:0;border-radius:9999px;background:var(--ink-2);color:var(--surface);padding:0;cursor:pointer}
+.composer-attachment__remove:hover{background:var(--ink)}
+.composer-attachment__status{position:absolute;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.64);color:var(--ink);font-size:11px;font-weight:700}
+.composer-attachment__status.is-error{background:var(--error-soft);color:var(--error)}
+.composer-attachment__progress{position:absolute;left:0;bottom:0;z-index:2;width:var(--attachment-progress,0%);height:3px;background:var(--success)}
+.composer-attachment.is-error{border-color:var(--error-line)}
 .msg-atts{display:flex;flex-direction:column;align-items:flex-start;gap:5px;margin-top:6px}
 .msg-att{display:inline-flex;align-items:center;gap:8px;max-width:360px;padding:7px 11px;border:1px solid var(--hair-strong);border-radius:8px;background:var(--surface);color:var(--body);text-decoration:none;font-size:14px}
 .msg-att:hover{background:var(--surface-strong)} .msg-att .asz{font-size:11px;color:var(--muted-soft);flex:none}
@@ -387,15 +417,12 @@ main.content-col > .composer{position:absolute;left:0;right:var(--scrollbar-gutt
 .file-acts button:hover,.file-acts a:hover{color:var(--ink);background:var(--surface-strong)}
 .msg-sys{text-align:center;font-size:12px;color:var(--muted);padding:6px 12px;line-height:1.4}
 .msg.msg-hl{background:var(--g-peach);border-radius:12px;transition:background .4s}
-.composer .astask{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;user-select:none}
-.composer .astask input{margin:0;cursor:pointer;accent-color:var(--ink-2)}
 .card{border:1px solid var(--hair);border-radius:16px;background:var(--surface);padding:18px;margin-bottom:14px}
 .card h3{margin:0 0 6px;font-size:16px;color:var(--ink)} .card .meta{font-size:13px;color:var(--muted)}
 /* Clickable member card (roster → profile): same hover/focus affordance as .card.task */
 .card.card-link{cursor:pointer;transition:transform .1s,border-color .1s}
 .card.card-link:hover{transform:translateY(-1px);border-color:var(--hair-strong)}
 .card.card-link:focus-visible{outline:2px solid var(--g-sky);outline-offset:2px}
-.composer .astask.on{color:var(--ink);font-weight:600}
 /* Board layout: horizontal Kanban (columns side by side, min-width + horizontal scroll so the narrow embedded tasks tab degrades gracefully) vs the legacy vertical stack. Toggle persisted in localStorage. */
 /* The tasks pane is a flex column so the board fills the height left under the toolbar (instead of being only as tall as its cards). */
 .board-scroll{display:flex;flex-direction:column;min-height:0}
@@ -692,7 +719,7 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .tp-link:hover,.tp-close:hover{background:var(--surface-strong);color:var(--ink)}
 .thread-parent{background:var(--surface-strong);border-radius:12px;padding:6px 12px;margin-bottom:6px}
 .thread-sep{font-size:12px;color:var(--muted);text-align:center;margin:6px 0 12px;position:relative}
-.thread-composer{--composer-inline-padding:18px;padding:14px 18px 18px}
+.thread-composer{padding:14px 18px 18px}
 /* Reminder status badge */
 .rem-badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:9999px;border:1px solid var(--hair-strong)}
 .rem-badge.scheduled{background:var(--tint-blue);border-color:var(--g-sky);color:var(--ink)}
@@ -995,8 +1022,8 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
 @media (max-width:700px){
   :root{--read-pad:16px}
   .scroll{padding-left:16px;padding-right:16px}
-  .composer{--composer-inline-padding:16px;padding-left:16px;padding-right:16px}
-  .composer-input{font-size:16px}
+  .composer{padding-left:16px;padding-right:16px}
+  .composer-box{--composer-input-font-size:16px}
 }
 
 /* ── Primary button press feedback: snap-scale on :active (transform only, layout-safe) ── */
@@ -1015,7 +1042,7 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
 
 /* ── Reduced-motion overrides for all new secondary animations (consolidated block) ── */
 @media (prefers-reduced-motion:reduce){
-  .modal,.qs,.ch-view-enter,.board-scroll{animation:none}
+  .modal,.qs,.ch-view-enter,.board-scroll,.composer-add-menu__popover{animation:none}
   .send-btn,.modal .ok,.setform .ok,.newtask,.action-card .ac-btn,.perm-head .ok,.pe-cta{transition:none}
 }
 
