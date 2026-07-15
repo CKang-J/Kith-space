@@ -1,0 +1,61 @@
+import { Reply } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { Avatar } from "../../Avatar.tsx";
+import type { ThreadMeta, ThreadReplyPreview } from "../../threadUnread.ts";
+
+interface MessageTopicPreviewProps {
+  meta: ThreadMeta;
+  onOpen(): void;
+  avatarUrlFor?(reply: ThreadReplyPreview): string | null | undefined;
+}
+
+const relativeTime = (iso: string | null | undefined, t: (key: string, options?: Record<string, unknown>) => string) => {
+  if (!iso) return "";
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60_000));
+  if (!Number.isFinite(elapsedMinutes)) return "";
+  if (elapsedMinutes < 1) return t("misc.relTimeJustNow");
+  if (elapsedMinutes < 60) return t("misc.relTimeMinutes", { count: elapsedMinutes });
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) return t("misc.relTimeHours", { count: elapsedHours });
+  return t("misc.relTimeDays", { count: Math.floor(elapsedHours / 24) });
+};
+
+const uniqueParticipants = (previews: ThreadReplyPreview[]) => {
+  const seen = new Set<string>();
+  return previews.filter((reply) => {
+    const key = `${reply.senderType}:${reply.senderId ?? reply.senderName}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(-3);
+};
+
+export function MessageTopicPreview({ meta, onOpen, avatarUrlFor }: MessageTopicPreviewProps) {
+  const { t } = useTranslation();
+  const previews = (meta.previews ?? []).filter((reply) => reply.senderType !== "system");
+  const participants = uniqueParticipants(previews);
+  const latest = relativeTime(meta.lastReplyAt, t);
+
+  return (
+    <button type="button" className="message-topic-preview" onClick={onOpen} aria-label={t("chat.openThread")}>
+      <span className="message-topic-preview__summary">
+        {participants.length ? <span className="message-topic-preview__participants" aria-hidden="true">
+          {participants.map((reply) => <span key={`${reply.senderType}:${reply.senderId ?? reply.senderName}`} className="message-topic-preview__participant">
+            <Avatar seed={reply.senderName} url={avatarUrlFor?.(reply)} size={16} />
+          </span>)}
+        </span> : null}
+        <span className="message-topic-preview__count">{t("chat.replyCount", { count: meta.replyCount })}</span>
+        <span className="message-topic-preview__rule" />
+        {latest ? <span className="message-topic-preview__latest">{t("chat.latestReply", { time: latest })}</span> : null}
+      </span>
+      {previews.length ? <span className="message-topic-preview__replies">
+        {previews.map((reply) => <span key={reply.id} className="message-topic-preview__reply">
+          <span className="message-topic-preview__reply-avatar" aria-hidden="true"><Avatar seed={reply.senderName} url={avatarUrlFor?.(reply)} size={16} /></span>
+          <strong>{reply.senderName}</strong>
+          <span className="message-topic-preview__reply-text">{reply.content}</span>
+        </span>)}
+      </span> : null}
+      <span className="message-topic-preview__action"><Reply size={12} aria-hidden="true" />{t("chat.replyInThread")}</span>
+    </button>
+  );
+}

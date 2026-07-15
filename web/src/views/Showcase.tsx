@@ -3,17 +3,17 @@
 // is built into the frontend so every visitor sees it identically.
 //
 // Form mirrors the real product (Chat.tsx): the channel shows one human "task" anchor per case with a
-// task badge + attachment + a "💬 N replies" thread-pill; clicking the pill opens the case's thread in a
+// task badge + attachment + a "💬 N replies" topic summary; clicking it opens the case's thread in a
 // right-side panel (the agents' collaboration = how that task got done). Nothing is flattened.
 //
-// Reuses the Chat message/thread styles (.msg / .msg-col / .mbody / .msg-meta / .task-pill / .thread-pill /
-// .thread-panel / .thread-head / .thread-sep / Avatar / MessageContent). Agent avatars/names are
+// Reuses the Chat message presentation (ChatMessageItem / MessageHeader / .mbody / .msg-meta /
+// .task-pill / .message-topic-preview / .thread-panel / Avatar / MessageContent). Agent avatars/names are
 // intentionally NON-clickable and trigger no profile/API: the old DB-channel showcase leaked host details and
 // skills on avatar click, so this static page never makes an avatar interactive. Thread open/close is pure
 // useState over static data — never openThread/startThread (those hit the server).
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Eye, CheckCircle2, MessageCircle, X } from "lucide-react";
+import { Eye, CheckCircle2, X } from "lucide-react";
 import { Avatar } from "../Avatar.tsx";
 import { Lightbox } from "../Lightbox.tsx";
 import { MessageContent } from "../messageRender.tsx";
@@ -21,6 +21,10 @@ import { ChatSidebar } from "./ChatSidebar.tsx";
 import { IconFile, IconDownload } from "../icons.tsx";
 import { ST_LABEL } from "../TaskBoard.tsx";
 import { AGENTS, CASES, type ShowcaseAttachment, type ShowcaseCase, type ShowcaseLine, type ShowcaseTask } from "../showcaseData.ts";
+import { ChatMessageItem, MessageHeader } from "./chat-message/ChatMessageItem.tsx";
+import { MessageTopicPreview } from "./chat-message/MessageTopicPreview.tsx";
+import { surfaceForSender } from "./chat-message/messagePresentation.ts";
+import type { ThreadMeta } from "../threadUnread.ts";
 
 // Internal token links (@mention / #channel / task #N) are inert on this static page: with empty
 // mentions/channels the markdown renderer leaves them as plain text, and nav() is a no-op.
@@ -57,46 +61,53 @@ function ShowcaseAtt({ att }: { att: ShowcaseAttachment }) {
   );
 }
 
-// One message row — anchor (you) or a thread line (agent | you). Mirrors the Chat .msg layout but with a
-// non-clickable avatar/name and no live status/toolbar. The meta row (task badge + thread-pill) only renders
+// One message row — anchor (you) or a thread line (agent | you). Mirrors ChatMessageItem but with a
+// non-clickable avatar/name and no live status/toolbar. Task metadata and the topic summary only render
 // on the channel anchor (where task / onOpenThread are passed), matching Chat's .msg-meta.
-function ShowcaseMsg({ line, task, attachment, replyCount, onOpenThread }: {
+function ShowcaseMsg({ line, task, attachment, replyLines, onOpenThread }: {
   line: ShowcaseLine;
   task?: ShowcaseTask | null;
   attachment?: ShowcaseAttachment;
-  replyCount?: number;
+  replyLines?: ShowcaseLine[];
   onOpenThread?: () => void;
 }) {
   const { t } = useTranslation();
   const isYou = line.agent === null;
   const senderName = isYou ? "you" : line.agent!;
   const { role, title } = isYou ? { role: "", title: "" } : roleOf(senderName);
+  const topicMeta: ThreadMeta | null = onOpenThread && replyLines ? {
+    threadChannelId: "showcase",
+    replyCount: replyLines.length,
+    previews: replyLines.slice(-3).map((reply, index) => ({
+      id: `showcase-${replyLines.length - Math.min(replyLines.length, 3) + index}`,
+      senderType: reply.agent === null ? "human" : "agent",
+      senderId: reply.agent,
+      senderName: reply.agent ?? "you",
+      content: reply.content,
+      createdAt: "",
+    })),
+  } : null;
   return (
-    <div className="msg">
-      <Avatar seed={senderName} size={36} />
-      <div className="msg-col">
-        <div className="msg-head">
-          <span className="who" title={title || undefined}>{senderName}</span>
-          {role ? <span className="msg-role" title={title}>{role}</span> : <span className="member-badge">{t("chat.humanKind")}</span>}
-        </div>
+    <ChatMessageItem
+      surface="showcase"
+      tone={surfaceForSender(isYou ? "human" : "agent")}
+      avatar={<span className="msg-av"><Avatar seed={senderName} size={32} /></span>}
+      header={<MessageHeader
+        sender={<span className="who" title={title || undefined}>{senderName}</span>}
+        badge={role ? <span className="showcase-role" title={title}>{role}</span> : <span className="member-badge">{t("chat.humanKind")}</span>}
+      />}
+    >
         {!!line.content && <div className="mbody"><MessageContent content={line.content} mentions={[]} channels={[]} nav={noNav} /></div>}
         {attachment && <ShowcaseAtt att={attachment} />}
-        {(task || onOpenThread) && (
+        {task && (
           <div className="msg-meta">
-            {task && (
               <span className="task-pill st-done" style={{ cursor: "default" }}>
                 <CheckCircle2 size={11} /> #{task.number} {t(ST_LABEL[task.status] ?? task.status)}
               </span>
-            )}
-            {onOpenThread && (
-              <button className="thread-pill" onClick={onOpenThread}>
-                <MessageCircle size={12} /> {t("chat.replyCount", { count: replyCount ?? 0 })}
-              </button>
-            )}
           </div>
         )}
-      </div>
-    </div>
+        {topicMeta && onOpenThread && <MessageTopicPreview meta={topicMeta} onOpen={onOpenThread} />}
+    </ChatMessageItem>
   );
 }
 
@@ -141,7 +152,7 @@ export function Showcase({ embedded = false }: { embedded?: boolean } = {}) {
           </div>
           <div className="scroll ch-view-enter">
             {CASES.map((c, i) => (
-              // A case = its human "task" anchor (carrying the task badge, attachment, and the thread-pill).
+              // A case = its human "task" anchor (carrying the task badge, attachment, and topic summary).
               // The collaboration transcript lives behind the pill — not flattened here. Cases after the first
               // get a hairline top divider.
               <section key={i} className={"showcase-case" + (openIdx === i ? " open" : "")} style={i > 0 ? { marginTop: 4, paddingTop: 18, borderTop: "1px solid var(--hair)" } : undefined}>
@@ -149,7 +160,7 @@ export function Showcase({ embedded = false }: { embedded?: boolean } = {}) {
                   line={{ agent: null, content: c.anchor }}
                   task={c.task}
                   attachment={c.attachment}
-                  replyCount={c.lines.length}
+                  replyLines={c.lines}
                   onOpenThread={() => setOpenIdx(i)}
                 />
               </section>

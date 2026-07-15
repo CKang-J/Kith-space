@@ -24,6 +24,26 @@ test("other member thread update increases unread by reply-count delta", () => {
   assert.equal(next.unreadCount, 3);
 });
 
+test("live count updates preserve fetched topic preview metadata until it refreshes", () => {
+  const previews = [{
+    id: "r1",
+    senderType: "agent",
+    senderId: "a1",
+    senderName: "Agent One",
+    content: "preview",
+    createdAt: "2026-07-15T01:00:00.000Z",
+  }];
+  const next = nextThreadMeta(
+    { threadChannelId: "th1", replyCount: 1, unreadCount: 0, followed: true, lastReplyAt: previews[0]!.createdAt, previews },
+    { threadChannelId: "th1", replyCount: 2, senderId: "other" },
+    "me",
+  );
+
+  assert.equal(next.followed, true);
+  assert.equal(next.lastReplyAt, previews[0]!.createdAt);
+  assert.deepEqual(next.previews, previews);
+});
+
 test("parent channel badge delta uses the same self-filter rule", () => {
   assert.equal(threadUnreadDelta(1, "me", "me"), 0);
   assert.equal(threadUnreadDelta(2, "other", "me"), 2);

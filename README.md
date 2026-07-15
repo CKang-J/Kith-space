@@ -27,6 +27,8 @@ Kith 意为"你熟识信任的一圈自己人"——正是这些懂你（有记�
 
 P-A8 Agent 频道响应模式与频道全体提及已实现并等待用户验收：当前 Space 的 Agent 默认值可由顶层频道 membership 覆盖，三档为主动/被动/静音；Human-Agent 私聊和明确任务指派始终直达，话题继承父频道。“指派任务 + 单一 @Agent”会形成真实 assignee，无 `@` 保持未指派，多个 Agent mention 或 `@all` 在任务模式发送前拒绝。Human 在频道/话题发送语言无关的规范 token `@all` 时，按发送瞬间的父频道 Agent 成员生成接收者快照，主动/被动目标必须回应，静音目标不自动唤醒；Agent-authored 与 DM 文本不会群体展开。界面标签通过 i18n 显示“所有人 / Everyone”，历史消息和协议始终保留 `@all`。实时 wake、Worker reconnect、Agent message check 与 prompt 共用统一响应指令，Agent 详情默认卡片、频道昵称后覆盖菜单和 Composer 全体候选均已落地。Composer 已把照片/文件与“指派任务”合并到左下角圆形“+”菜单，任务启用后显示可移除胶囊并与正文共享单行空间；短单行草稿保持紧凑，只有任务胶囊与文字的合计占位接近右侧安全区、显式换行或附件存在时才展开。完整边界见 [`Agent 频道响应模式设计`](./docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md)。
 
+聊天消息流密度与交互重构的代码已完成，等待用户手动视觉验收：主会话、话题、Showcase、action card 与加载 Skeleton 已统一到“32px 头像 + 紧凑发送者行 + 内容气泡”表现层；Human 使用暖色气泡、Agent 使用中性浅灰气泡，正文保持 `14.5px / 1.55`，消息流、日期分隔和 Composer 统一使用 `900px` 上限。普通链尾间距为 20px；同一天相邻且同发送者的 Human/Agent 普通消息隐藏重复头像与昵称，组内间距为 6px。父消息气泡内的话题摘要显示参与者头像、总回复数、最新时间、最近三条 Human/Agent 单行回复和“在话题中回复”，system 任务事件不显示为预览行，正文与摘要之间不绘制分隔线；摘要复用既有批量元数据接口。Agent 状态文字从发送者行移除，只保留头像右下角状态点；主消息工具仅在气泡 hover/focus 时出现，外显“加表情、话题、复制、更多”，收藏保留在更多菜单；右侧空间足够时工具栏位于气泡右侧，不足时切换到气泡上方。归档与 Showcase 统一隐藏写入口，同时保留复制和打开已有话题；任务、附件、响应模式和深链契约不变。本轮按用户要求只做代码级检查，不执行浏览器自测。完整边界见 [`聊天消息流密度与交互重构设计`](./docs/superpowers/specs/2026-07-15-chat-message-ui-density-design.md)。
+
 ## Desktop 开发启动
 
 包管理器是 **pnpm**。日常命令见 [`docs/dev-commands.md`](./docs/dev-commands.md)，低频调试见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。
@@ -38,7 +40,7 @@ pnpm install
 pnpm run desktop:dev        # 构建 Electron main/preload，并启动 Core + Worker + Vite + Electron
 ```
 
-Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。日常启动见 [`docs/dev-commands.md`](./docs/dev-commands.md)，Web 模式、访问 Token 与低频联调见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。测试：`pnpm test --unit` / `pnpm test --integration`；当前验收单测基线为 591/591。
+Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。日常启动见 [`docs/dev-commands.md`](./docs/dev-commands.md)，Web 模式、访问 Token 与低频联调见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。测试：`pnpm test --unit` / `pnpm test --integration`；当前验收单测基线为 608/608。
 
 Windows 构建分为四层：
 

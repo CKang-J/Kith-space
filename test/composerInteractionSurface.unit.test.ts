@@ -131,7 +131,7 @@ test("mention candidates reuse the add-menu surface and compact row treatment", 
   const mentionMenu = ruleBody(".mention-menu");
   assert.match(mentionMenu, /left\s*:\s*var\(--composer-menu-edge\)/);
   assert.match(mentionMenu, /right\s*:\s*var\(--composer-menu-edge\)/);
-  assert.match(mentionMenu, /max-width\s*:\s*var\(--chat-card-width\)/);
+  assert.match(mentionMenu, /max-width\s*:\s*var\(--chat-stream-max\)/);
   assert.match(mentionMenu, /padding\s*:\s*4px 5px/);
   assert.match(mentionMenu, /border-radius\s*:\s*16px/);
   assert.match(mentionMenu, /box-shadow\s*:\s*none/);

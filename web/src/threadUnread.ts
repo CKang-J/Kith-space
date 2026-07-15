@@ -1,7 +1,19 @@
+export interface ThreadReplyPreview {
+  id: string;
+  senderType: string;
+  senderId: string | null;
+  senderName: string;
+  content: string;
+  createdAt: string;
+}
+
 export interface ThreadMeta {
   threadChannelId: string;
   replyCount: number;
   unreadCount?: number;
+  followed?: boolean;
+  lastReplyAt?: string | null;
+  previews?: ThreadReplyPreview[];
 }
 
 export function nextThreadMeta(
@@ -12,6 +24,7 @@ export function nextThreadMeta(
   const delta = prev ? Math.max(0, event.replyCount - prev.replyCount) : 0;
   const unreadDelta = threadUnreadDelta(delta, event.senderId, currentUserId);
   return {
+    ...prev,
     threadChannelId: event.threadChannelId,
     replyCount: event.replyCount,
     unreadCount: (prev?.unreadCount ?? 0) + unreadDelta,

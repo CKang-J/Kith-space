@@ -8,8 +8,8 @@
 
 - 主干：`main`。临时工作分支不作为阶段进度记录。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A1-A6 原定代码切片、P-A7 H1-H4、P4 Chat 聚合面板与频道设置/归档切片、P-A8 Agent 频道响应模式及频道全体提及均已完成，等待用户验收**。P-A8 已落地 schema v5、统一响应策略/设置模块、任务指派语义、Human `@all` 接收者快照、Runtime 指令与 UI。不要自动进入 H5 或 Runtime 契约 v2；由用户验收后再决定顺序。
-- P4 的其余视觉微调仍暂停；本轮实现范围只覆盖 `2026-07-14-chat-aggregate-panel-design.md` 与 `2026-07-14-channel-settings-and-archive-design.md` 已锁定边界，不据此扩张到其他页面重做。
+- 当前阶段：**A1-A6 原定代码切片、P-A7 H1-H4、P4 Chat 聚合面板与频道设置/归档切片、P-A8 Agent 频道响应模式及频道全体提及，以及聊天消息流密度重构代码均已完成，等待用户验收**。P-A8 已落地 schema v5、统一响应策略/设置模块、任务指派语义、Human `@all` 接收者快照、Runtime 指令与 UI。不要自动进入 H5 或 Runtime 契约 v2；由用户验收后再决定顺序。
+- 聊天消息流已从全宽描边卡片迁入统一 `ChatMessageItem` 表现层，主会话、话题、Showcase、action card 与加载 Skeleton 共用 32px 头像、紧凑发送者行和 Human/Agent 语义气泡；900px 流宽、14.5px/1.55 正文、52px 标题、14px 顶部留白、88px Composer 预留和气泡内话题摘要已落地。普通链尾间距为 20px；同一天相邻且同发送者的 Human/Agent 普通消息隐藏重复头像/昵称并以 6px 组内间距连续展示，hover/focus 在头像槽显示时分，系统消息、action card、日期和发送者变化会打断分组。消息昵称已修正为真实的 `14.5px / 700 / 20px`，时间为 `11px / 400 / 16px`，二者按基线对齐且消息头无额外字距；侧栏 Agent 名称继续使用 600。发送者行状态文字移除并只保留头像状态点；父消息话题摘要新增参与者头像、总数、最新时间、最近三条 Human/Agent 单行回复和“在话题中回复”，system 任务事件不进入预览行且正文与摘要之间无分隔线；摘要复用批量 thread metadata 接口并实时刷新变更父消息，不产生逐话题请求。主消息工具外显“加表情、话题、复制、更多”，收藏保留在更多菜单，工具栏只由气泡 hover/focus 触发并按右侧空间自动切换到气泡右侧或上方。归档与 Showcase 继续统一隐藏写入口并保留复制和打开已有话题。按用户要求不做浏览器自测，当前状态仍是“代码完成、待手动视觉验收”。
 - 频道设置已进入聚合面板临时场景并提供常规/成员/通知钻取页；成员页显示真实 Human 名称与“你”标识，agent 使用搜索单选弹窗添加并在移除前二次确认。归档频道进入默认收起分组并全链路只读，支持恢复与精确名称确认后的永久删除。`# all` 的归档、删除、名称和可见性由 UI 与服务端双重保护，删除入口显式置灰解释限制，历史误归档/软删除会在 Space 数据库打开时自动恢复。
 - 底座为 open-tag 衍生开发副本；`reference/` 只读。OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
 
@@ -128,7 +128,8 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 1. 由用户统一验收 P-A7 H1-H4、会话聚合面板、频道管理与 P-A8 响应模式，重点查看 Home 默认入口、Home/普通 Dock 差异、Spaces 卡片、文件夹选择与同窗切换，以及聚合面板、话题/文件/轨迹、任务作用域、设置钻取、归档只读/恢复/删除、Agent 默认响应卡片、频道覆盖菜单、“指派任务”语义、Composer 紧凑/展开与附件交互，以及频道 `@all` 候选/正文。
 2. P-A8 验收重点：普通频道消息、单一明确 `@`、`@all`、话题跟进、DM、单一/零/多个 Agent 的频道任务及 Worker 重连符合三档矩阵；Agent-authored 与任务模式不会群体展开；模式切换不追溯唤醒、不伪造已读；两个窗口的默认值/覆盖值实时收敛。
-3. 验收通过后由用户决定 Runtime 契约 v2 与 H5 跨 Space 编排的顺序；生产力模块、Message Context Snapshot 与 P4 其余视觉收尾继续在后。当前不要自动推进。
+3. 用户手动验收聊天消息流，重点检查短/长消息密度、Human/Agent 气泡、悬浮与键盘工具、气泡内话题摘要、话题窄面板、附件/任务/reaction、归档与 Showcase；如发现视觉问题只在本规格边界内调整，不改变后端协议或 Composer 产品契约。
+4. 既有验收通过后由用户决定 Runtime 契约 v2 与 H5 跨 Space 编排的顺序；生产力模块、Message Context Snapshot 与 P4 其余视觉收尾继续在后。当前不要自动推进。
 
 每阶段独立验证、独立中文提交。未获得用户明确指示，不合并 main、不推远端、不发布。
 
@@ -137,7 +138,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - 包管理使用 pnpm；脚本参数直接跟在后面，例如 `pnpm test --unit`。
 - 常规验证：`pnpm run typecheck`、`pnpm test --unit`、`pnpm test --integration`、`pnpm --dir web run build`。
 - 测试 runner 同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向同一个随机临时 profile 的不同子目录；手写测试若绕过 runner，必须显式覆盖默认 Space 容器或直接传 rootPath，绝不在真实 `~/Kith-space` 生成 fixture。
-- 当前验收单测基线为 591/591；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6、H1-H4 与聚合面板/频道设置小节里的旧数字只描述当时检查点，不是当前基线。
+- 当前验收单测基线为 608/608；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6、H1-H4 与聚合面板/频道设置小节里的旧数字只描述当时检查点，不是当前基线。
 - 新功能优先拆到职责清楚的模块；不整块重写 `src/server/core.ts` 或大型 React 组件。
 - 代码、命令、架构、UI、术语或阶段变化时，同一提交同步相应文档。
 - 用户未要求时不修改或提交 `.agents/`、`.claude/`、`.codegraph/daemon.pid`、`skills-lock.json` 等外部/个人工具文件。
@@ -149,6 +150,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - `docs/superpowers/specs/2026-07-14-chat-aggregate-panel-design.md`：会话聚合面板、话题/文件索引、会话任务入口与轨迹作用域规格。
 - `docs/superpowers/specs/2026-07-14-channel-settings-and-archive-design.md`：频道设置钻取场景、归档分组、删除语义、通知偏好与 `# all` 必需频道保护规格。
 - `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`：Agent 默认/频道覆盖、唤醒矩阵、任务指派、Runtime 指令与响应模式 UI 规格。
+- `docs/superpowers/specs/2026-07-15-chat-message-ui-density-design.md`：聊天消息流密度、气泡层级、消息工具、表现层组件边界、实施切片与量化验收规格；代码与自动化验证已完成，待用户手动视觉验收。
 - `docs/vision.md`：长期北极星与永久边界。
 - `docs/decisions.md`：锁定决策、推理和被推翻路线。
 - `docs/roadmap.md`：阶段与后续能力顺序。

@@ -3,11 +3,11 @@ import { useLocation, useParams, useNavigate, useSearchParams } from "react-rout
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useStore, type Msg, type Att } from "../store.tsx";
-import { fmtDateTime, isSameLocalDay, fmtDateDivider } from "../format";
+import { fmtMessageTime, fmtMessageTimestamp, isSameLocalDay, fmtDateDivider } from "../format";
 import { PAGE_SIZE, appendWithCap, nextScrollState } from "../lib/msgPaging";
 import { AGENT_REPLY_PREVIEW_TYPE, AGENT_REPLY_STREAM_TICK_MS, absorbPersistedAgentMessagePreview, applyAgentReplyPreview, dropAgentReplyPreviewForThreadReply, dropAgentReplyPreviewsForMessage, hasStreamingAgentReplyPreview, renderKeyForMessage, tickAgentReplyPreviews, type AgentReplyEvent, type AgentReplyPreviewMsg } from "../lib/agentReplyPreview";
 import { MessageContent } from "../messageRender.tsx";
-import { nextThreadMeta } from "../threadUnread";
+import { nextThreadMeta, type ThreadMeta } from "../threadUnread";
 import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Link2, Clipboard, Bookmark, CheckSquare, Circle, Play, Eye, Ban, ArrowDown, Bell, BellOff, Archive, MessagesSquare, ListTodo, UsersRound, PanelsTopLeft } from "lucide-react";
 // Task badge per message row: icon changes with task status; color tokens from DESIGN.md (see .task-pill.st-* styles)
 const TASK_ICON: Record<string, typeof Circle> = { todo: Circle, in_progress: Play, in_review: Eye, done: CheckCircle2, closed: Ban };
@@ -30,6 +30,11 @@ import { defaultThreadPaneWidth, threadPaneConstraints } from "./chatPaneLayout.
 import { ChannelAgentResponseModeBadge } from "./agent-response-mode/ChannelAgentResponseModeBadge.tsx";
 import { useChannelAgentResponseModes } from "./agent-response-mode/useChannelAgentResponseModes.ts";
 import type { ChannelAgentResponseMode } from "./agent-response-mode/responseModeModel.ts";
+import { ChatMessageItem, MessageHeader, MessageToolbar } from "./chat-message/ChatMessageItem.tsx";
+import { MessageTopicPreview } from "./chat-message/MessageTopicPreview.tsx";
+import { shouldGroupMessage } from "./chat-message/messageGrouping.ts";
+import { surfaceForSender } from "./chat-message/messagePresentation.ts";
+import { fetchThreadMetadata } from "./chat-message/threadPreviewApi.ts";
 
 const fmtSize = (n?: number) => (!n ? "" : n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB");
 const isImage = (m?: string) => !!m && m.startsWith("image/");
@@ -91,8 +96,8 @@ function AttCard({ a, url }: { a: Att; url: string }) {
 // Message emoji reactions: chip shows emoji×count (highlighted if the current user reacted), click to toggle; hovering the add button reveals a quick picker
 const QUICK_EMOJIS = ["👍", "✅", "❤️", "😂", "🎉", "👀", "🚀", "🙏"];
 function Reactions({ m, mine, onReact, readOnly = false }: { m: Msg; mine: string; onReact: (emoji: string, remove: boolean) => void; readOnly?: boolean }) {
-  const [pick, setPick] = useState(false);
   const rs = m.reactions || [];
+  if (!rs.length) return null;
   return (
     <div className="msg-rx">
       {rs.map((r) => {
@@ -100,10 +105,57 @@ function Reactions({ m, mine, onReact, readOnly = false }: { m: Msg; mine: strin
         const names = (r.reactorNames || []).filter(Boolean).join(", "); // who reacted — shown in a custom hover tooltip (native title is slow/unstyled/missing on touch)
         return <button key={r.emoji} className={"rx-chip" + (did ? " on" : "")} disabled={readOnly} onClick={() => onReact(r.emoji, !!did)}>{r.emoji} {r.count}{names ? <span className="rx-tip" role="tooltip">{names}</span> : null}</button>;
       })}
-      {!readOnly ? <span className="rx-add-wrap">
-        <button className="rx-add" title={i18n.t("chat.addReaction")} onMouseDown={(e) => { e.preventDefault(); setPick((v) => !v); }}><Smile size={17} /></button>
-        {pick && <span className="rx-pop" onMouseLeave={() => setPick(false)}>{QUICK_EMOJIS.map((e) => <button key={e} onMouseDown={(ev) => { ev.preventDefault(); onReact(e, false); setPick(false); }}>{e}</button>)}</span>}
-      </span> : null}
+    </div>
+  );
+}
+
+function ReactionToolbarButton({ onReact }: { onReact: (emoji: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="toolbar-reaction-wrap">
+      <button type="button" title={i18n.t("chat.addReaction")} aria-label={i18n.t("chat.addReaction")} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((current) => !current)}><Smile size={15} /></button>
+      {open ? <span className="rx-pop" role="menu" onMouseLeave={() => setOpen(false)}>{QUICK_EMOJIS.map((emoji) => <button type="button" role="menuitem" key={emoji} title={emoji} onClick={() => { onReact(emoji); setOpen(false); }}>{emoji}</button>)}</span> : null}
+    </span>
+  );
+}
+
+function MessageContextMenu({
+  m,
+  x,
+  y,
+  link,
+  readOnly,
+  saved,
+  onClose,
+  onReact,
+  onOpenThread,
+  onToggleSave,
+  onConvertTask,
+}: {
+  m: Msg;
+  x: number;
+  y: number;
+  link: string;
+  readOnly: boolean;
+  saved: boolean;
+  onClose: () => void;
+  onReact: (emoji: string) => void;
+  onOpenThread?: () => void;
+  onToggleSave: () => void;
+  onConvertTask?: () => void;
+}) {
+  const { t } = useTranslation();
+  const copy = (text: string) => { navigator.clipboard?.writeText(text).catch(() => {}); onClose(); };
+  return (
+    <div className="ctx-backdrop" onClick={onClose} onContextMenu={(event) => { event.preventDefault(); onClose(); }}>
+      <div className="ctx-menu" style={{ left: Math.min(x, window.innerWidth - 230), top: Math.min(y, window.innerHeight - 320) }} onClick={(event) => event.stopPropagation()}>
+        {!readOnly ? <div className="ctx-rx">{QUICK_EMOJIS.slice(0, 6).map((emoji) => <button key={emoji} title={emoji} onClick={() => { onReact(emoji); onClose(); }}>{emoji}</button>)}</div> : null}
+        <button className="ctx-item" onClick={() => copy(m.content)}><Clipboard size={14} /> {t("chat.copyMarkdown")}</button>
+        <button className="ctx-item" onClick={() => copy(link)}><Link2 size={14} /> {t("chat.copyLink")}</button>
+        {onOpenThread ? <button className="ctx-item" onClick={() => { onOpenThread(); onClose(); }}><MessageCircle size={14} /> {t("chat.openThread")}</button> : null}
+        {!readOnly ? <button className="ctx-item" onClick={() => { onToggleSave(); onClose(); }}><Bookmark size={14} fill={saved ? "currentColor" : "none"} /> {saved ? t("chat.unsave") : t("chat.saveMessage")}</button> : null}
+        {!readOnly && onConvertTask ? <button className="ctx-item" onClick={() => { onClose(); onConvertTask(); }}><CheckSquare size={14} /> {t("chat.convertToTask")}</button> : null}
+      </div>
     </div>
   );
 }
@@ -129,18 +181,26 @@ function ActionCardMsg({ m, readOnly = false, responseModeBadge }: { m: Msg; rea
     ? <>{t(a.visibility === "private" ? "chat.createPrivateChannel" : "chat.createPublicChannel", { name: a.name })}</>
     : <>{t("chat.createAgent", { name: a.name })}</>;
   return (
-    <div className="msg action-card-msg" id={"m-" + m.id} key={m.id}>
-      <Avatar seed={m.senderName} url={resolveAvatar(agents.find((a) => a.id === m.senderId)?.avatarUrl, attachmentUrl)} size={36} />
-      <div className="msg-col">
-        <div className="msg-head"><span className="who">{m.senderName}</span>{responseModeBadge}<span className="member-badge">{t("chat.proposed")}</span><span className="ts">{fmtDateTime(m.createdAt)}</span></div>
+    <>
+      <ChatMessageItem
+        id={"m-" + m.id}
+        surface="action"
+        className="action-card-msg"
+        avatar={<span className="msg-av"><Avatar seed={m.senderName} url={resolveAvatar(agents.find((a) => a.id === m.senderId)?.avatarUrl, attachmentUrl)} size={32} /></span>}
+        header={<MessageHeader
+          sender={<span className="who">{m.senderName}</span>}
+          badge={<>{responseModeBadge}<span className="member-badge">{t("chat.proposed")}</span></>}
+          timestamp={fmtMessageTimestamp(m.createdAt)}
+        />}
+      >
         <div className="action-card">
           <div className="ac-title">{title}</div>
           {a.description ? <div className="ac-detail"><span className="ac-k">{t("chat.description")}</span> {a.description}</div> : null}
           {executed
             ? <div className="ac-done"><CheckCircle2 size={13} /> {t("chat.executedBy", { name: meta.executedByUserName || t("chat.someone") })}</div>
-            : <button className="ac-btn" disabled={readOnly} onClick={() => setOpen(true)}>{isChan ? t("chat.createChannel") : t("chat.createAgentBtn")}</button>}
+            : readOnly ? null : <button className="ac-btn" onClick={() => setOpen(true)}>{isChan ? t("chat.createChannel") : t("chat.createAgentBtn")}</button>}
         </div>
-      </div>
+      </ChatMessageItem>
       {open && !readOnly && isChan && (
         <CreateChannelModal
           prefill={{ name: a.name, description: a.description ?? "", visibility: a.visibility, agentIds: a.initialAgents ?? [] }}
@@ -158,7 +218,7 @@ function ActionCardMsg({ m, readOnly = false, responseModeBadge }: { m: Msg; rea
           onCreated={async (r) => { await markActionExecuted(m.id, { kind: "agent", id: r.id, name: r.name }); }}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -221,7 +281,7 @@ export function Chat({
   const [threadWidth, setThreadWidth] = useState<number | null>(null);
   const [chatSurfaceWidth, setChatSurfaceWidth] = useState(() => typeof window === "undefined" ? 1000 : window.innerWidth);
   const chatMainRef = useRef<HTMLElement>(null);
-  const [threadMeta, setThreadMeta] = useState<Record<string, { threadChannelId: string; replyCount: number; unreadCount?: number; followed: boolean }>>({}); // parent message id → thread metadata (reply count, unread count, Human follow state)
+  const [threadMeta, setThreadMeta] = useState<Record<string, ThreadMeta>>({}); // parent message id → thread metadata and latest reply previews
   const [unreadThreads, setUnreadThreads] = useState<{ threadChannelId: string; parentMessageId: string; parentChannelId: string; unreadCount: number }[]>([]); // unread that lives in this channel's threads (invisible in the main timeline) → "jump to unread thread" bar
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true); // tracks whether the scroll position is at the bottom; new messages auto-scroll only when already at the bottom, preserving history browsing
@@ -254,6 +314,7 @@ export function Chat({
   const burstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // resets burstCount after 600ms silence
   const cur = [...channels, ...archivedChannels, ...dms].find((c) => c.id === channelId) || channels.find((c) => c.name === "all") || channels[0];
   const isArchived = !!cur && archivedChannels.some((channel) => channel.id === cur.id);
+  const conversationReadOnly = isArchived || cur?.type === "showcase";
   const [restoringArchived, setRestoringArchived] = useState(false);
   const messageChannels = [...channels, ...archivedChannels];
 
@@ -277,7 +338,7 @@ export function Chat({
   const dmPeer = dms.find((d) => d.id === cur?.id);
   const dmAgent = dmPeer?.peerType === "agent" ? agents.find((a) => a.id === dmPeer.peerId) : undefined; // DM peer agent → used for the live status indicator in the header
   const responseModeChannelId = !isDm && cur?.type !== "thread" ? cur?.id : thread?.parent.channelId;
-  const responseModeReadOnly = isArchived || cur?.type === "showcase";
+  const responseModeReadOnly = conversationReadOnly;
   const channelResponseModes = useChannelAgentResponseModes(responseModeChannelId, !!responseModeChannelId && !isDm);
   const [sp, setSp] = useSearchParams();
   const msgParam = sp.get("msg"); // when present, scroll to and highlight the specified message id
@@ -345,7 +406,7 @@ export function Chat({
       markRead(chId);
       const ids = ms.map((m) => m.id);
       if (ids.length) {
-        try { setThreadMeta(await api("GET", `/api/channels/${chId}/threads?parentMessageIds=${ids.join(",")}`) || {}); }
+        try { setThreadMeta(await fetchThreadMetadata(api, chId, ids)); }
         catch { setThreadMeta({}); }
       } else setThreadMeta({});
     } catch {
@@ -396,6 +457,11 @@ export function Chat({
         ...tm,
         [e.parentMessageId]: nextThreadMeta(tm[e.parentMessageId], { threadChannelId: e.threadChannelId, replyCount: e.replyCount, senderId: e.senderId }, me?.id),
       }));
+      const chId = cur?.id;
+      if (chId) void fetchThreadMetadata(api, chId, [e.parentMessageId]).then((fresh) => {
+        if (curIdRef.current !== chId || !fresh[e.parentMessageId]) return;
+        setThreadMeta((current) => ({ ...current, [e.parentMessageId]: fresh[e.parentMessageId]! }));
+      }).catch(() => {});
     }
   }), [cur?.id, agents, me?.id]);
   const streamingPreviewActive = hasStreamingAgentReplyPreview(msgs);
@@ -432,7 +498,15 @@ export function Chat({
       const d = await api("GET", `/api/messages/channel/${chId}?limit=${PAGE_SIZE}&before=${msgs[0]!.seq}`);
       if (curIdRef.current !== chId) return; // channel switched mid-fetch → drop the stale result (finally still clears the in-flight flag)
       const older: Msg[] = d.messages || [];
-      if (older.length) { const el = scrollRef.current; prependRestoreRef.current = el ? el.scrollHeight : null; setMsgs((m) => [...older, ...m]); } // capture height right before prepend; layout effect restores after
+      if (older.length) {
+        const el = scrollRef.current;
+        prependRestoreRef.current = el ? el.scrollHeight : null;
+        setMsgs((m) => [...older, ...m]);
+        try {
+          const olderThreadMeta = await fetchThreadMetadata(api, chId, older.map((message) => message.id));
+          if (curIdRef.current === chId) setThreadMeta((current) => ({ ...olderThreadMeta, ...current }));
+        } catch { /* message history remains usable when optional thread previews fail */ }
+      } // capture height right before prepend; layout effect restores after
       setHasMore(!!d.hasMore);
     } catch { /* transient — the next scroll-to-top retries */ } finally { loadingOlderRef.current = false; }
   };
@@ -457,9 +531,9 @@ export function Chat({
     if (m) startThread(m);
     else if (hasMore && !loadingOlderRef.current) void loadOlder(); // parent outside the loaded window → page older history until it appears or the channel start is reached
     // eslint-disable-next-line
-  }, [threadParam, msgs, hasMore, threadMeta, isArchived]);
+  }, [threadParam, msgs, hasMore, threadMeta, conversationReadOnly]);
 
-  const startThread = async (m: Msg) => { if (!cur) return; const meta = threadMeta[m.id]; if (isArchived && !meta?.threadChannelId) return; const tid = meta?.threadChannelId || await openThread(cur.id, m.id); if (tid) { const followed = meta ? meta.followed : true; setThreadWidth(null); setThread({ channelId: tid, parent: m, followed }); setThreadMeta((tm) => (tm[m.id] ? { ...tm, [m.id]: { ...tm[m.id]!, unreadCount: 0 } } : tm)); markRead(tid); } }; // archived channels can open existing topics but never create a new one
+  const startThread = async (m: Msg) => { if (!cur) return; const meta = threadMeta[m.id]; if (conversationReadOnly && !meta?.threadChannelId) return; const tid = meta?.threadChannelId || await openThread(cur.id, m.id); if (tid) { const followed = meta?.followed ?? true; setThreadWidth(null); setThread({ channelId: tid, parent: m, followed }); setThreadMeta((tm) => (tm[m.id] ? { ...tm, [m.id]: { ...tm[m.id]!, unreadCount: 0 } } : tm)); markRead(tid); } }; // read-only conversations can open existing topics but never create a new one
   const closeThread = () => {
     setThread(null);
     setThreadWidth(null);
@@ -619,19 +693,21 @@ export function Chat({
               {loaded && !loadError && msgs.map((m, mIdx) => {
                 const ag = m.senderType === "agent" && m.senderId ? agents.find((a) => a.id === m.senderId) : undefined; // used for role description and avatar status dot
                 const agLive = agentLiveState(ag);
-                const agActivity = agentActivityText(ag);
                 const responseModeBadge = ag && m.senderId ? renderResponseModeBadge(m.senderId, m.senderName) : null;
                 const tm = threadMeta[m.id];
-                const isSaved = savedIds.has(m.id);
+                const hasInlineMeta = !!m.taskStatus || !!m.reactions?.length;
                 const isAgentReplyPreview = m.messageType === AGENT_REPLY_PREVIEW_TYPE;
                 const agentReplyPreview = isAgentReplyPreview ? m as AgentReplyPreviewMsg : undefined;
                 if (agentReplyPreview && !agentReplyPreview.streamVisible) return null;
                 const prevMsg = msgs[mIdx - 1];
+                const nextMsg = msgs[mIdx + 1];
+                const continuation = shouldGroupMessage(prevMsg, m);
+                const hasContinuation = shouldGroupMessage(m, nextMsg);
                 const dateDivider: ReactNode = m.createdAt && !isSameLocalDay(m.createdAt, prevMsg?.createdAt)
                   ? <div className="date-divider"><span className="date-divider-label">{fmtDateDivider(m.createdAt, i18n.language, t("chat.dateToday"), t("chat.dateYesterday"))}</span></div>
                   : null;
                 // action card (agent proposal card) → rendered by dedicated ActionCardMsg component
-                if (m.messageType === "action" && m.actionMetadata?.kind === "action-card") return <Fragment key={m.id}>{dateDivider}<ActionCardMsg m={m} readOnly={isArchived} responseModeBadge={responseModeBadge} /></Fragment>;
+                if (m.messageType === "action" && m.actionMetadata?.kind === "action-card") return <Fragment key={m.id}>{dateDivider}<ActionCardMsg m={m} readOnly={conversationReadOnly} responseModeBadge={responseModeBadge} /></Fragment>;
                 // system messages (task lifecycle events, etc.) → centered grey bar (no avatar, no full message block)
                 // If the system message has thread replies (e.g. showcase case anchors), render a thread-pill below the bar so it's clickable.
                 if (m.senderType === "system") return (
@@ -643,46 +719,57 @@ export function Chat({
                     </div>
                   </Fragment>
                 );
+                const messageTone = surfaceForSender(m.senderType === "agent" ? "agent" : "human");
                 const staggerIdx = newMsgOrderRef.current.get(m.id);
                 const isNewMsg = staggerIdx !== undefined;
                 const shouldEnter = isNewMsg || !!agentReplyPreview;
+                const avatar = ag
+                  ? <button type="button" className="msg-av clickable" aria-label={m.senderName} onClick={() => openAgentProfile(m.senderId!)}
+                      onMouseEnter={(e) => setHoverAgent({ id: m.senderId!, x: e.currentTarget.getBoundingClientRect().right + 8, y: e.currentTarget.getBoundingClientRect().top })}
+                      onMouseLeave={() => setHoverAgent(null)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />{agLive !== "offline" && <span className={"av-status " + agLive} />}</button>
+                  : m.senderId
+                    ? <button type="button" className="msg-av clickable" aria-label={m.senderName} onClick={openHumanSettings}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></button>
+                    : <span className="msg-av"><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></span>;
+                const sender = ag
+                  ? <button type="button" className="who clickable" onClick={() => openAgentProfile(m.senderId!)}
+                      onMouseEnter={(e) => setHoverAgent({ id: m.senderId!, x: e.currentTarget.getBoundingClientRect().left, y: e.currentTarget.getBoundingClientRect().bottom + 6 })}
+                      onMouseLeave={() => setHoverAgent(null)}>{m.senderName}</button>
+                  : m.senderId
+                    ? <button type="button" className="who clickable" onClick={openHumanSettings}>{m.senderName}</button>
+                    : <span className="who">{m.senderName}</span>;
                 return (
                 <Fragment key={renderKeyForMessage(m)}>
                   {dateDivider}
-                  <div className={"msg" + (shouldEnter ? " msg-enter" : "")} id={"m-" + m.id} onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ m, x: e.clientX, y: e.clientY }); }} style={isNewMsg ? { "--msg-delay": `${staggerIdx * 60}ms` } as CSSProperties : undefined}>
-                  <div className="msg-toolbar">
-                    <button className={isSaved ? "on" : ""} title={isSaved ? t("chat.unsave") : t("chat.saveMessage")} onClick={() => { isSaved ? unsaveMsg(m.id) : saveMsg(m.id); }}><Bookmark size={15} fill={isSaved ? "currentColor" : "none"} /></button>
-                    <button title={t("chat.copyMarkdown")} onClick={() => copyMarkdown(m.content)}><Clipboard size={15} /></button>
-                    <button title={t("chat.more")} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setCtxMenu({ m, x: r.right - 212, y: r.bottom + 4 }); }}><MoreHorizontal size={15} /></button>
-                  </div>
-                  {ag
-                    ? <span className="msg-av clickable" onClick={() => openAgentProfile(m.senderId!)}
-                        onMouseEnter={(e) => setHoverAgent({ id: m.senderId!, x: e.currentTarget.getBoundingClientRect().right + 8, y: e.currentTarget.getBoundingClientRect().top })}
-                        onMouseLeave={() => setHoverAgent(null)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} />{agLive !== "offline" && <span className={"av-status " + agLive} />}</span>
-                    : m.senderId
-                      ? <span className="msg-av clickable" onClick={openHumanSettings}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></span>
-                      : <span className="msg-av"><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></span>}
-                  <div className="msg-col">
-                    <div className="msg-head">
-                      {ag
-                        ? <span className="who clickable" onClick={() => openAgentProfile(m.senderId!)}
-                            onMouseEnter={(e) => setHoverAgent({ id: m.senderId!, x: e.currentTarget.getBoundingClientRect().left, y: e.currentTarget.getBoundingClientRect().bottom + 6 })}
-                            onMouseLeave={() => setHoverAgent(null)}>{m.senderName}</span>
-                        : m.senderId
-                          ? <span className="who clickable" onClick={openHumanSettings}>{m.senderName}</span>
-                          : <span className="who">{m.senderName}</span>}
-                      {responseModeBadge}
-                      <span className="ts">{fmtDateTime(m.createdAt)}</span>
-                      {agActivity ? <code className={"msg-activity " + agLive}>{agActivity}</code> : null}</div>
-                    {ag && ag.description ? <div className="msg-subhead">
-                      <span className="msg-role">{ag.description}</span>
-                    </div> : null}
+                  <ChatMessageItem
+                    id={"m-" + m.id}
+                    surface={cur?.type === "showcase" ? "showcase" : messageTone}
+                    tone={cur?.type === "showcase" ? messageTone : undefined}
+                    className={[
+                      shouldEnter ? "msg-enter" : "",
+                      continuation ? "chat-message--continuation" : "",
+                      hasContinuation ? "chat-message--has-continuation" : "",
+                    ].filter(Boolean).join(" ")}
+                    style={isNewMsg ? { "--msg-delay": `${staggerIdx * 60}ms` } as CSSProperties : undefined}
+                    onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ m, x: e.clientX, y: e.clientY }); }}
+                    avatar={continuation ? null : avatar}
+                    continuationTimestamp={continuation ? fmtMessageTime(m.createdAt) : null}
+                    header={continuation ? null : <MessageHeader
+                      sender={sender}
+                      badge={responseModeBadge}
+                      timestamp={fmtMessageTimestamp(m.createdAt)}
+                    />}
+                    toolbar={<MessageToolbar>
+                      {!conversationReadOnly ? <ReactionToolbarButton onReact={(emoji) => react(m.id, emoji, false)} /> : null}
+                      {!conversationReadOnly || tm?.threadChannelId ? <button title={t("chat.openThread")} aria-label={t("chat.openThread")} onClick={() => startThread(m)}><MessageCircle size={15} /></button> : null}
+                      <button title={t("chat.copyMarkdown")} aria-label={t("chat.copyMarkdown")} onClick={() => copyMarkdown(m.content)}><Clipboard size={15} /></button>
+                      <button title={t("chat.more")} aria-label={t("chat.more")} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setCtxMenu({ m, x: r.right - 212, y: r.bottom + 4 }); }}><MoreHorizontal size={15} /></button>
+                    </MessageToolbar>}
+                  >
                     {isAgentReplyPreview && !m.content
                       ? <AgentReplyPreviewBody m={m} />
                       : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={messageChannels} nav={navToken} /></div>}
                     {!!m.attachments?.length && <div className="msg-atts">{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} />)}</div>}
-                    {/* persistent meta row: task badge + thread button + reactions all on the same line (reactions no longer occupy a separate row) */}
-                    <div className="msg-meta">
+                    {hasInlineMeta ? <div className="msg-meta">
                         {m.taskStatus && (() => {
                           const TI = TASK_ICON[m.taskStatus] || Circle;
                           const isShowcase = cur?.type === "showcase";
@@ -692,8 +779,10 @@ export function Chat({
                           const open = !readOnlyTask && taskMenu === m.id;
                           return (
                             <span className="task-pill-wrap">
-                              {/* clicking the badge changes status; in showcase channels the pill is a read-only label */}
-                              <button className={"task-pill st-" + m.taskStatus} onClick={(e) => { e.stopPropagation(); if (!readOnlyTask) setTaskMenu(open ? null : m.id); }} title={readOnlyTask ? undefined : t("chat.taskChangeStatus", { number: m.taskNumber })} style={readOnlyTask ? { cursor: "default" } : undefined}><TI size={11} /> #{m.taskNumber} {t(ST_LABEL[m.taskStatus] ?? m.taskStatus)}{taskAssignee(m)}</button>
+                              {/* clicking the badge changes status; in read-only conversations it is plain metadata */}
+                              {readOnlyTask
+                                ? <span className={"task-pill is-readonly st-" + m.taskStatus}><TI size={11} /> #{m.taskNumber} {t(ST_LABEL[m.taskStatus] ?? m.taskStatus)}{taskAssignee(m)}</span>
+                                : <button className={"task-pill st-" + m.taskStatus} onClick={(e) => { e.stopPropagation(); setTaskMenu(open ? null : m.id); }} title={t("chat.taskChangeStatus", { number: m.taskNumber })}><TI size={11} /> #{m.taskNumber} {t(ST_LABEL[m.taskStatus] ?? m.taskStatus)}{taskAssignee(m)}</button>}
                               {open && <div className="st-menu" onMouseLeave={() => setTaskMenu(null)}>
                                 {claimable && <button onClick={() => { setTaskMenu(null); doTask(m, "claim"); }}>{t("chat.claim")}</button>}
                                 {opts.map((s) => <button key={s} className={s === m.taskStatus ? "on" : ""} onClick={() => { setTaskMenu(null); if (s !== m.taskStatus) doTask(m, "status", { status: s }); }}><span className={"st-dot st-" + s} />{t(ST_LABEL[s])}</button>)}
@@ -701,11 +790,16 @@ export function Chat({
                             </span>
                           );
                         })()}
-                        {tm?.replyCount ? <button className="thread-pill" onClick={() => startThread(m)}><MessageCircle size={12} /> {t("chat.replyCount", { count: tm.replyCount })}{tm.unreadCount ? <span className="thread-new"> · {tm.unreadCount} new</span> : ""}</button> : null}
-                        <Reactions m={m} mine={me?.id ?? ""} readOnly={isArchived} onReact={(emoji, remove) => react(m.id, emoji, remove)} />
-                      </div>
-                  </div>
-                  </div>
+                        {m.reactions?.length ? <Reactions m={m} mine={me?.id ?? ""} readOnly={conversationReadOnly} onReact={(emoji, remove) => react(m.id, emoji, remove)} /> : null}
+                      </div> : null}
+                    {tm?.replyCount ? <MessageTopicPreview
+                      meta={tm}
+                      onOpen={() => startThread(m)}
+                      avatarUrlFor={(reply) => reply.senderType === "agent"
+                        ? avFor(agents.find((agent) => agent.id === reply.senderId)?.avatarUrl)
+                        : undefined}
+                    /> : null}
+                  </ChatMessageItem>
                 </Fragment>
                 );
               })}
@@ -743,7 +837,7 @@ export function Chat({
               solo={threadOnly}
               style={threadOnly ? undefined : { width: threadConstraints.width, flexBasis: threadConstraints.width }}
               followed={thread.followed}
-              readOnly={isArchived}
+              readOnly={conversationReadOnly}
               headerLeading={threadOnly ? renderConversationListControl() : undefined}
               headerActions={threadOnly ? renderConversationActions() : undefined}
               onFollowChange={(followed) => {
@@ -765,23 +859,25 @@ export function Chat({
             />
           </>
         : !embedded && <aside className="traj-col"><LiveTrace conversationId={cur?.id} /></aside>}
-      {showMembers && cur && <ChannelMembersModal channelId={cur.id} channelName={cur.name} readOnly={isArchived} onClose={() => setShowMembers(false)} />}
+      {showMembers && cur && <ChannelMembersModal channelId={cur.id} channelName={cur.name} readOnly={conversationReadOnly} onClose={() => setShowMembers(false)} />}
       {ctxMenu && (() => {
         const m = ctxMenu.m;
         const close = () => setCtxMenu(null);
-        const copy = (t: string) => { navigator.clipboard?.writeText(t).catch(() => {}); close(); };
         const link = `${location.origin}/s/${slug}/channel/${m.channelId}?msg=${m.id}`;
         return (
-          <div className="ctx-backdrop" onClick={close} onContextMenu={(e) => { e.preventDefault(); close(); }}>
-            <div className="ctx-menu" style={{ left: Math.min(ctxMenu.x, window.innerWidth - 230), top: Math.min(ctxMenu.y, window.innerHeight - 320) }} onClick={(e) => e.stopPropagation()}>
-              {!isArchived ? <div className="ctx-rx">{QUICK_EMOJIS.slice(0, 6).map((e) => <button key={e} title={e} onClick={() => { react(m.id, e, false); close(); }}>{e}</button>)}</div> : null}
-              <button className="ctx-item" onClick={() => copy(m.content)}><Clipboard size={14} /> {t("chat.copyMarkdown")}</button>
-              <button className="ctx-item" onClick={() => copy(link)}><Link2 size={14} /> {t("chat.copyLink")}</button>
-              {(!isArchived || threadMeta[m.id]?.threadChannelId) ? <button className="ctx-item" onClick={() => { startThread(m); close(); }}><MessageCircle size={14} /> {t("chat.openThread")}</button> : null}
-              <button className="ctx-item" onClick={() => { savedIds.has(m.id) ? unsaveMsg(m.id) : saveMsg(m.id); close(); }}><Bookmark size={14} fill={savedIds.has(m.id) ? "currentColor" : "none"} /> {savedIds.has(m.id) ? t("chat.unsave") : t("chat.saveMessage")}</button>
-              {!isArchived ? <button className="ctx-item" onClick={async () => { close(); await api("POST", "/api/tasks/convert-message", { messageId: m.id }); }}><CheckSquare size={14} /> {t("chat.convertToTask")}</button> : null}
-            </div>
-          </div>
+          <MessageContextMenu
+            m={m}
+            x={ctxMenu.x}
+            y={ctxMenu.y}
+            link={link}
+            readOnly={conversationReadOnly}
+            saved={savedIds.has(m.id)}
+            onClose={close}
+            onReact={(emoji) => react(m.id, emoji, false)}
+            onOpenThread={!conversationReadOnly || threadMeta[m.id]?.threadChannelId ? () => startThread(m) : undefined}
+            onToggleSave={() => { savedIds.has(m.id) ? unsaveMsg(m.id) : saveMsg(m.id); }}
+            onConvertTask={() => { void api("POST", "/api/tasks/convert-message", { messageId: m.id }); }}
+          />
         );
       })()}
       {hoverAgent && (() => {
@@ -806,7 +902,7 @@ export function Chat({
 // Thread panel: right-side overlay showing the parent message, its replies, and a reply composer.
 function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = false, style, headerLeading, headerActions, onClose, onFollowChange, onOpenAgent, allowChannelAllMention, renderResponseModeBadge }: { channelId: string; parent: Msg; followed: boolean; readOnly?: boolean; solo?: boolean; style?: CSSProperties; headerLeading?: ReactNode; headerActions?: ReactNode; onClose: () => void; onFollowChange: (followed: boolean) => void; onOpenAgent: (id: string) => void; allowChannelAllMention: boolean; renderResponseModeBadge: (agentId: string, agentName: string, inheritedThreadMember?: ChannelAgentResponseMode) => ReactNode }) {
   const { t } = useTranslation();
-  const { api, onEvent, subscribeChannel, attachmentUrl, me, react, agents, channels, archivedChannels, slug } = useStore();
+  const { api, onEvent, subscribeChannel, attachmentUrl, me, react, agents, channels, archivedChannels, slug, savedIds, saveMsg, unsaveMsg } = useStore();
   const threadResponseModes = useChannelAgentResponseModes(channelId, Boolean(channelId));
   const senderAvatar = (m: Msg) => resolveAvatar(m.senderType === "agent" ? agents.find((agent) => agent.id === m.senderId)?.avatarUrl : undefined, attachmentUrl);
   const nav = useNavigate();
@@ -830,6 +926,7 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
   };
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [followPending, setFollowPending] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<{ m: Msg; x: number; y: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => { subscribeChannel(channelId); (async () => { const d = await api("GET", `/api/messages/channel/${channelId}?limit=200`); setMsgs(d.messages || []); })(); }, [channelId]); // join the thread room so replies arrive live (openThread/startThread do not make the socket a room member on their own)
   useEffect(() => onEvent((e) => {
@@ -864,7 +961,7 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
       setFollowPending(false);
     }
   };
-  const row = (m: Msg, dateDivider?: ReactNode) => {
+  const row = (m: Msg, dateDivider?: ReactNode, continuation = false, hasContinuation = false) => {
     if (m.senderType === "system") return <Fragment key={m.id}>{dateDivider}<div className="msg-sys" id={"m-" + m.id}>{m.content}</div></Fragment>; // system messages render as a banner with no avatar
     const ag = m.senderType === "agent" && m.senderId ? agents.find((a) => a.id === m.senderId) : undefined;
     const live = ag ? ((ag.activity && ag.activity !== "offline" ? ag.activity : ag.status) || "offline") : "offline";
@@ -874,22 +971,43 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
     return (
     <Fragment key={renderKeyForMessage(m)}>
       {dateDivider}
-      <div className={"msg" + (agentReplyPreview ? " msg-enter" : "")}>
-      {ag ? <span className="msg-av clickable" onClick={() => onOpenAgent(m.senderId!)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />{live !== "offline" && <span className={"av-status " + live} />}</span>
-        : m.senderId ? <span className="msg-av clickable" onClick={openHumanSettings}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></span>
-        : <Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />}
-      {/* content column reuses .msg-col (flex:1;min-width:0) like the main chat — without it a flex child defaults to min-width:auto and a long unbreakable token blows the message past this narrow thread panel */}
-      <div className="msg-col">
-        <div className="msg-head">{ag ? <span className="who clickable" onClick={() => onOpenAgent(m.senderId!)}>{m.senderName}</span>
-          : m.senderId ? <span className="who clickable" onClick={openHumanSettings}>{m.senderName}</span>
-          : <span className="who">{m.senderName}</span>}{ag && m.senderId ? renderResponseModeBadge(m.senderId, m.senderName, threadResponseModes.modes[m.senderId]) : null}<span className="ts">{fmtDateTime(m.createdAt)}</span></div>
+      <ChatMessageItem
+        id={"m-" + m.id}
+        surface="thread"
+        tone={surfaceForSender(m.senderType === "agent" ? "agent" : "human")}
+        className={[
+          agentReplyPreview ? "msg-enter" : "",
+          continuation ? "chat-message--continuation" : "",
+          hasContinuation ? "chat-message--has-continuation" : "",
+        ].filter(Boolean).join(" ")}
+        onContextMenu={(event) => { event.preventDefault(); setCtxMenu({ m, x: event.clientX, y: event.clientY }); }}
+        avatar={continuation ? null : ag
+          ? <button type="button" className="msg-av clickable" aria-label={m.senderName} onClick={() => onOpenAgent(m.senderId!)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />{live !== "offline" && <span className={"av-status " + live} />}</button>
+          : m.senderId
+            ? <button type="button" className="msg-av clickable" aria-label={m.senderName} onClick={openHumanSettings}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></button>
+            : <span className="msg-av"><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></span>}
+        continuationTimestamp={continuation ? fmtMessageTime(m.createdAt) : null}
+        header={continuation ? null : <MessageHeader
+          sender={ag
+            ? <button type="button" className="who clickable" onClick={() => onOpenAgent(m.senderId!)}>{m.senderName}</button>
+            : m.senderId
+              ? <button type="button" className="who clickable" onClick={openHumanSettings}>{m.senderName}</button>
+              : <span className="who">{m.senderName}</span>}
+          badge={ag && m.senderId ? renderResponseModeBadge(m.senderId, m.senderName, threadResponseModes.modes[m.senderId]) : null}
+          timestamp={fmtMessageTimestamp(m.createdAt)}
+        />}
+        toolbar={<MessageToolbar>
+          {!readOnly ? <ReactionToolbarButton onReact={(emoji) => react(m.id, emoji, false)} /> : null}
+          <button title={t("chat.copyMarkdown")} aria-label={t("chat.copyMarkdown")} onClick={() => { navigator.clipboard?.writeText(m.content).catch(() => {}); }}><Clipboard size={15} /></button>
+          <button title={t("chat.more")} aria-label={t("chat.more")} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setCtxMenu({ m, x: rect.right - 212, y: rect.bottom + 4 }); }}><MoreHorizontal size={15} /></button>
+        </MessageToolbar>}
+      >
         {isAgentReplyPreview && !m.content
           ? <AgentReplyPreviewBody m={m} />
           : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={[...channels, ...archivedChannels]} nav={navToken} /></div>}
         {!!m.attachments?.length && <div className="msg-atts">{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} />)}</div>}
         <Reactions m={m} mine={me?.id ?? ""} readOnly={readOnly} onReact={(emoji, remove) => react(m.id, emoji, remove)} />
-      </div>
-      </div>
+      </ChatMessageItem>
     </Fragment>
     );
   };
@@ -905,10 +1023,13 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
         <div className="thread-sep">{t("chat.replyCount", { count: msgs.length })}</div>
         {msgs.map((m, i) => {
           const prevMsg = msgs[i - 1];
+          const nextMsg = msgs[i + 1];
+          const continuation = shouldGroupMessage(prevMsg, m);
+          const hasContinuation = shouldGroupMessage(m, nextMsg);
           const dateDivider: ReactNode = m.createdAt && !isSameLocalDay(m.createdAt, prevMsg?.createdAt)
             ? <div className="date-divider"><span className="date-divider-label">{fmtDateDivider(m.createdAt, i18n.language, t("chat.dateToday"), t("chat.dateYesterday"))}</span></div>
             : null;
-          return row(m, dateDivider);
+          return row(m, dateDivider, continuation, hasContinuation);
         })}
       </div>
       {channels.find((c) => c.id === parent.channelId)?.type === "showcase"
@@ -916,6 +1037,18 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
         : readOnly
           ? <div className="showcase-readonly"><Archive size={14} />{t("channelSettings.archivedReadOnly")}</div>
         : <Composer channelId={channelId} placeholder={t("chat.threadReplyPlaceholder")} allowChannelAllMention={allowChannelAllMention} className="thread-composer" />}
+      {ctxMenu ? <MessageContextMenu
+        m={ctxMenu.m}
+        x={ctxMenu.x}
+        y={ctxMenu.y}
+        link={`${location.origin}/s/${slug}/channel/${parent.channelId}?thread=${parent.id}&msg=${ctxMenu.m.id}`}
+        readOnly={readOnly}
+        saved={savedIds.has(ctxMenu.m.id)}
+        onClose={() => setCtxMenu(null)}
+        onReact={(emoji) => react(ctxMenu.m.id, emoji, false)}
+        onToggleSave={() => { savedIds.has(ctxMenu.m.id) ? unsaveMsg(ctxMenu.m.id) : saveMsg(ctxMenu.m.id); }}
+        onConvertTask={() => { void api("POST", "/api/tasks/convert-message", { messageId: ctxMenu.m.id }); }}
+      /> : null}
     </aside>
   );
 }

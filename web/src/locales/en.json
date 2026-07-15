@@ -362,6 +362,8 @@
     "taskChangeStatus": "task #{{number}} · click to change status",
     "claim": "Claim",
     "replyCount": "{{count}} replies",
+    "latestReply": "Latest {{time}}",
+    "replyInThread": "Reply in thread",
     "backToBottom": "Back to bottom",
     "agentSleeping": "@{{name}} is sleeping. Send a message to wake them up.",
     "agentSleepingComposerPlaceholder": "@{{name}} is sleeping. Send a message to wake them up.",

@@ -26,9 +26,10 @@ test("the Store and Chat keep archived channels discoverable but read-only", () 
   assert.match(chat, /restoreArchivedChannel/);
   assert.match(chat, /channelSettings\.restoreChannel/);
   assert.doesNotMatch(chat, /function EditChannelModal/);
-  assert.match(chat, /isArchived && !meta\?\.threadChannelId/);
-  assert.match(chat, /<ThreadPanel[\s\S]*readOnly=\{isArchived\}/);
-  assert.match(chat, /<Reactions[^>]+readOnly=\{isArchived\}/);
-  assert.match(chat, /!isArchived \? <div className="ctx-rx"/);
-  assert.match(chat, /!isArchived \? <button className="ctx-item"[\s\S]*?convert-message/);
+  assert.match(chat, /const conversationReadOnly = isArchived \|\| cur\?\.type === "showcase"/);
+  assert.match(chat, /conversationReadOnly && !meta\?\.threadChannelId/);
+  assert.match(chat, /<ThreadPanel[\s\S]*readOnly=\{conversationReadOnly\}/);
+  assert.match(chat, /<Reactions[^>]+readOnly=\{conversationReadOnly\}/);
+  assert.match(chat, /!readOnly \? <div className="ctx-rx"/);
+  assert.match(chat, /!readOnly && onConvertTask/);
 });

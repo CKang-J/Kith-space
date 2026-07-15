@@ -133,10 +133,28 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
     const threads = await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.type, "thread"), inArray(schema.channels.parentMessageId, pids)));
     const map: Record<string, any> = {};
     for (const th of threads) {
-      const replies = await db.select({ seq: schema.messages.seq, createdAt: schema.messages.createdAt }).from(schema.messages).where(eq(schema.messages.channelId, th.id)).orderBy(asc(schema.messages.seq));
+      const replies = await db.select({
+        id: schema.messages.id,
+        seq: schema.messages.seq,
+        senderType: schema.messages.senderType,
+        senderId: schema.messages.senderId,
+        senderName: schema.messages.senderName,
+        content: schema.messages.content,
+        createdAt: schema.messages.createdAt,
+      }).from(schema.messages).where(eq(schema.messages.channelId, th.id)).orderBy(asc(schema.messages.seq));
       const myCm = await humanChannelState(spaceId, th.id);
       const unread = myCm ? await unreadRowsForMember(spaceId, myCm, humanId) : [];
-      map[th.parentMessageId!] = { threadChannelId: th.id, replyCount: replies.length, unreadCount: unread.length, followed: Boolean(myCm?.threadFollowedAt), lastReplyAt: replies.length ? replies[replies.length - 1]!.createdAt : null };
+      const previewReplies = replies.filter((reply) => reply.senderType !== "system").slice(-3);
+      map[th.parentMessageId!] = {
+        threadChannelId: th.id,
+        replyCount: replies.length,
+        unreadCount: unread.length,
+        followed: Boolean(myCm?.threadFollowedAt),
+        lastReplyAt: replies.length ? replies[replies.length - 1]!.createdAt : null,
+        previews: previewReplies.map(({ id, senderType, senderId, senderName, content, createdAt }) => ({
+          id, senderType, senderId, senderName, content, createdAt,
+        })),
+      };
     }
     return (sendJson(res, 200, map), true);
   }

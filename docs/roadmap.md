@@ -24,7 +24,7 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 - P4：单窗口 ChatOnly / Split / ModuleOnly 工作区、可拖拽面板、常驻 Dock、任务范围侧栏。
 - Runtime 调研：Claude Code、Codex、opencode 适配边界与 Runtime 契约 v2 草案。
 
-P4 的其余视觉微调暂缓。A1-A6 原定代码切片、P-A7 H1-H4 与 P-A8 Agent 频道响应模式已完成，当前等待用户验收；验收前不进入 Runtime 契约 v2 或 H5 跨 Space 编排。
+P4 的其余视觉微调暂缓；聊天消息流密度与交互重构已按 `docs/superpowers/specs/2026-07-15-chat-message-ui-density-design.md` 完成代码与自动化验证，等待用户手动视觉验收，不计为完整验收通过。A1-A6 原定代码切片、P-A7 H1-H4 与 P-A8 Agent 频道响应模式已完成，当前等待用户验收；验收前不进入 Runtime 契约 v2 或 H5 跨 Space 编排。
 
 ## 3. 当前路线：个人 AgentOS 本机化
 

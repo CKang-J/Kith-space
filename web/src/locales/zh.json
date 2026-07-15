@@ -362,6 +362,8 @@
     "taskChangeStatus": "task #{{number}} · 点击改状态",
     "claim": "认领",
     "replyCount": "{{count}} 条回复",
+    "latestReply": "最新 {{time}}",
+    "replyInThread": "在话题中回复",
     "backToBottom": "回到底部",
     "agentSleeping": "@{{name}} 正在休眠,发消息会唤醒 ta 接手。",
     "agentSleepingComposerPlaceholder": "@{{name}} 正在休眠，发消息会唤醒 ta 接手。",
