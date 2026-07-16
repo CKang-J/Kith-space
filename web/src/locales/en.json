@@ -453,6 +453,7 @@
     "openSpaces": "Open spaces",
     "openSettings": "Settings",
     "topic": "Topic",
+    "topicTitleWithReplies": "{{title}} ({{count}} replies)",
     "subChannel": "Channel",
     "subDm": "DM",
     "subAgent": "Agent",

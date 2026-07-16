@@ -1,24 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { FolderKanban, Hash, ListTodo, MessageCircle, Search, Settings } from "lucide-react";
+import { FolderKanban, Hash, ListTodo, Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Avatar } from "./Avatar.tsx";
+import { MessageSearchResultRow } from "./quick-switcher/MessageSearchResultRow.tsx";
+import type { MessageSearchResult } from "./quick-switcher/messageSearchPresentation.ts";
 import { useStore } from "./store.tsx";
 import { workspaceLocationForConversation, workspaceLocationForModule } from "./shell/workspaceRoute.ts";
-
-interface MessageSearchResult {
-  id: string;
-  channelId: string;
-  channelName: string;
-  channelType: string;
-  parentMessageId?: string | null;
-  parentChannelId?: string | null;
-  parentChannelName?: string | null;
-  senderName: string;
-  senderDeleted?: boolean;
-  snippet?: string;
-  content: string;
-}
 
 interface QuickItem {
   key: string;
@@ -26,6 +14,7 @@ interface QuickItem {
   label: string;
   detail?: string;
   icon: ReactNode;
+  message?: MessageSearchResult;
   go(): void;
 }
 
@@ -125,13 +114,9 @@ export function QuickSwitcher({ onClose }: { onClose: () => void }) {
     const messageItems = messageResults.map((message): QuickItem => ({
       key: `message:${message.id}`,
       section: message.channelType === "thread" ? "topicMessages" : message.channelType === "dm" ? "dmMessages" : "channelMessages",
-      label: message.snippet || message.content,
-      detail: `${message.channelType === "thread" ? message.parentChannelName || t("qs.topic") : message.channelName} · ${message.senderName}${message.senderDeleted ? ` (${t("chat.deletedAgent")})` : ""}`,
-      icon: message.channelType === "thread"
-        ? <MessageCircle size={16} aria-hidden="true" />
-        : message.channelType === "dm"
-          ? <Search size={16} aria-hidden="true" />
-          : <Hash size={16} aria-hidden="true" />,
+      label: message.conversationName || message.channelName || t("qs.topic"),
+      icon: null,
+      message,
       go: () => openConversation(messageTarget(message)),
     }));
     const messageSection = (section: QuickItem["section"], title: string): QuickSection => ({ title, items: messageItems.filter((item) => item.section === section) });
@@ -192,13 +177,17 @@ export function QuickSwitcher({ onClose }: { onClose: () => void }) {
                     key={item.key}
                     type="button"
                     data-quick-index={index}
-                    className={`qs-item${index === boundedHighlight ? " on" : ""}`}
+                    className={`qs-item${item.message ? " qs-item--message" : ""}${index === boundedHighlight ? " on" : ""}`}
                     onMouseEnter={() => setHighlighted(index)}
                     onClick={() => pick(item)}
                   >
-                    <span className="qs-item__icon">{item.icon}</span>
-                    <span className="qs-label">{item.label}</span>
-                    {item.detail ? <span className="qs-detail">{item.detail}</span> : null}
+                    {item.message
+                      ? <MessageSearchResultRow result={item.message} query={query} />
+                      : <>
+                        <span className="qs-item__icon">{item.icon}</span>
+                        <span className="qs-label">{item.label}</span>
+                        {item.detail ? <span className="qs-detail">{item.detail}</span> : null}
+                      </>}
                   </button>
                 );
               })}

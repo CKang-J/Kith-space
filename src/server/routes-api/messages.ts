@@ -1,9 +1,10 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
 import type { SpaceCtx } from "./ctx.js";
-import { and, asc, desc, eq, gt, like, inArray, isNull, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, like, inArray, lt, sql } from "drizzle-orm";
 import { dbForSpace, schema } from "../../db/index.js";
 import { addReaction, checkSaved, createMessage, listSaved, removeReaction, saveMessage, unsaveMessage } from "../core.js";
 import { parseMsgPageParams } from "../messagePage.js";
+import { escapeLikePattern, loadMessageSearchPresentation, messageSearchDisplay, messageSearchSnippet } from "../messageSearchPresentation.js";
 import { publish } from "../realtime.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { attachMentions, humanChannels } from "./shared.js";
@@ -104,32 +105,23 @@ export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
     if (!q) return (sendJson(res, 200, { hasMore: false, results: [] }), true);
     const chIds = (await activeChannels(spaceId, await humanChannels(spaceId))).map((channel) => channel.id);
     if (!chIds.length) return (sendJson(res, 200, { hasMore: false, results: [] }), true);
+    const escapedQuery = escapeLikePattern(q);
     const rows = await db.select().from(schema.messages)
-      .where(and(eq(schema.messages.spaceId, spaceId), inArray(schema.messages.channelId, chIds), like(schema.messages.content, `%${q}%`)))
+      .where(and(
+        eq(schema.messages.spaceId, spaceId),
+        inArray(schema.messages.channelId, chIds),
+        sql`${schema.messages.content} LIKE ${`%${escapedQuery}%`} ESCAPE '\\'`,
+      ))
       .orderBy(desc(schema.messages.seq)).limit(limit + 1).offset(offset);
     const hasMore = rows.length > limit;
-    const chs = await db.select().from(schema.channels).where(inArray(schema.channels.id, chIds));
-    const channelById = new Map(chs.map((channel) => [channel.id, channel]));
-    const threadParentIds = [...new Set(chs.filter((channel) => channel.type === "thread" && channel.parentMessageId).map((channel) => channel.parentMessageId!))];
-    const threadParents = threadParentIds.length
-      ? await db.select({ id: schema.messages.id, channelId: schema.messages.channelId }).from(schema.messages).where(inArray(schema.messages.id, threadParentIds))
-      : [];
-    const threadParentById = new Map(threadParents.map((message) => [message.id, message]));
-    const snip = (s: string) => { const i = s.toLowerCase().indexOf(q.toLowerCase()); return i < 0 ? s.slice(0, 90) : (i > 24 ? "…" : "") + s.slice(Math.max(0, i - 24), i + 66); };
+    const presentation = await loadMessageSearchPresentation(spaceId, chIds);
     const serialized = await attachMentions(spaceId, rows.slice(0, limit));
-    const results = serialized.map((m) => {
-      const channel = channelById.get(m.channelId);
-      const parent = channel?.parentMessageId ? threadParentById.get(channel.parentMessageId) : null;
-      const parentChannel = parent ? channelById.get(parent.channelId) : null;
-      return {
-        id: m.id, seq: m.seq, channelId: m.channelId, channelName: channel?.name ?? "", channelType: channel?.type ?? "channel",
-        parentMessageId: channel?.type === "thread" ? channel.parentMessageId : null,
-        parentChannelId: channel?.type === "thread" ? parent?.channelId ?? null : null,
-        parentChannelName: channel?.type === "thread" ? parentChannel?.name ?? null : null,
+    const results = serialized.map((m) => ({
+        id: m.id, seq: m.seq, channelId: m.channelId,
+        ...messageSearchDisplay(m, presentation),
         senderType: m.senderType, senderName: m.senderName, senderDeleted: m.senderDeleted,
-        content: m.content, snippet: snip(m.content), createdAt: m.createdAt,
-      };
-    });
+        content: m.content, snippet: messageSearchSnippet(m.content, q), createdAt: m.createdAt,
+      }));
     return (sendJson(res, 200, { hasMore, results }), true);
   }
   const cmsg = /^\/api\/messages\/channel\/([^/]+)$/.exec(p);

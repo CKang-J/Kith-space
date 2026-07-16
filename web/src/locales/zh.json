@@ -453,6 +453,7 @@
     "openSpaces": "打开空间",
     "openSettings": "设置",
     "topic": "话题",
+    "topicTitleWithReplies": "{{title}}（{{count}} 条回复）",
     "subChannel": "频道",
     "subDm": "私信",
     "subAgent": "agent",

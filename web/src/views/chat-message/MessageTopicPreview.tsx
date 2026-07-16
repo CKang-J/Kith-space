@@ -1,6 +1,7 @@
 import { Reply } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Avatar } from "../../Avatar.tsx";
+import { relativeTimeLabel } from "../../relativeTime.ts";
 import type { ThreadMeta, ThreadReplyPreview } from "../../threadUnread.ts";
 
 interface MessageTopicPreviewProps {
@@ -8,17 +9,6 @@ interface MessageTopicPreviewProps {
   onOpen(): void;
   avatarUrlFor?(reply: ThreadReplyPreview): string | null | undefined;
 }
-
-const relativeTime = (iso: string | null | undefined, t: (key: string, options?: Record<string, unknown>) => string) => {
-  if (!iso) return "";
-  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60_000));
-  if (!Number.isFinite(elapsedMinutes)) return "";
-  if (elapsedMinutes < 1) return t("misc.relTimeJustNow");
-  if (elapsedMinutes < 60) return t("misc.relTimeMinutes", { count: elapsedMinutes });
-  const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return t("misc.relTimeHours", { count: elapsedHours });
-  return t("misc.relTimeDays", { count: Math.floor(elapsedHours / 24) });
-};
 
 const uniqueParticipants = (previews: ThreadReplyPreview[]) => {
   const seen = new Set<string>();
@@ -34,7 +24,7 @@ export function MessageTopicPreview({ meta, onOpen, avatarUrlFor }: MessageTopic
   const { t } = useTranslation();
   const previews = (meta.previews ?? []).filter((reply) => reply.senderType !== "system");
   const participants = uniqueParticipants(previews);
-  const latest = relativeTime(meta.lastReplyAt, t);
+  const latest = relativeTimeLabel(meta.lastReplyAt, t);
 
   return (
     <button type="button" className="message-topic-preview" onClick={onOpen} aria-label={t("chat.openThread")}>

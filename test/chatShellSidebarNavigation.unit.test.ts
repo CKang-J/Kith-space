@@ -8,6 +8,7 @@ const frame = read("../web/src/shell/WorkspaceFrame.tsx");
 const chatWorkspace = read("../web/src/shell/ChatWorkspace.tsx");
 const moduleNavigation = read("../web/src/shell/SidebarModuleNavigation.tsx");
 const quickSwitcher = read("../web/src/QuickSwitcher.tsx");
+const messageSearchResultRow = read("../web/src/quick-switcher/MessageSearchResultRow.tsx");
 const topBar = read("../web/src/shell/WorkspaceTopBar.tsx");
 const sidebar = read("../web/src/views/ChatSidebar.tsx");
 const conversations = read("../web/src/views/ConversationListContent.tsx");
@@ -35,6 +36,11 @@ test("Ctrl+K is the categorized global search and its visible entry lives above 
   assert.match(quickSwitcher, /sectionChannelMessages/);
   assert.match(quickSwitcher, /sectionTopicMessages/);
   assert.match(quickSwitcher, /sectionDmMessages/);
+  assert.match(quickSwitcher, /<MessageSearchResultRow result=\{item\.message\} query=\{query\}/);
+  assert.match(messageSearchResultRow, /qs-message-result__heading/);
+  assert.match(messageSearchResultRow, /qs-message-result__preview/);
+  assert.match(messageSearchResultRow, /messageSearchTextSegments/);
+  assert.match(messageSearchResultRow, /relativeTimeLabel/);
   assert.match(quickSwitcher, /threadMsg=\$\{message\.id\}/);
   assert.match(frame, /params\.delete\("threadMsg"\)/);
   assert.doesNotMatch(quickSwitcher, /qs-foot|<kbd/);
@@ -42,6 +48,8 @@ test("Ctrl+K is the categorized global search and its visible entry lives above 
   assert.match(globalCss, /\.qs\{[^}]*max-height:min\(640px,calc\(100dvh - 96px\)\)[^}]*border-radius:20px/);
   assert.match(globalCss, /\.qs-list\{[^}]*overflow-y:auto[^}]*scrollbar-width:none/);
   assert.match(globalCss, /\.qs-list::\-webkit-scrollbar\{display:none\}/);
+  assert.match(globalCss, /\.qs-item--message\{[^}]*min-height:58px/);
+  assert.match(globalCss, /\.qs-message-result__match\{[^}]*color:#0675f7/);
 });
 
 test("the horizontal Dock only mounts in ModuleWorkspace", () => {
