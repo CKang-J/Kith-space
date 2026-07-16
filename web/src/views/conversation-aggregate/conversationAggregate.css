@@ -104,7 +104,7 @@
   padding: 0 12px;
   border: 0;
   border-radius: 999px;
-  background: #f5f4f2;
+  background: var(--canvas);
   color: #8d8983;
   font: inherit;
   font-size: 13px;
@@ -152,6 +152,7 @@
 
 .conversation-files__search-field {
   --search-field-height: 40px;
+  background: var(--canvas);
 }
 
 .conversation-file__actions button,
@@ -190,6 +191,12 @@
   border: 1px solid #ebe9e5;
   border-radius: 13px;
   background: #fff;
+  transition: background var(--dur-fast) var(--ease-quint);
+}
+
+.conversation-file:hover,
+.conversation-file:focus-within {
+  background: #f7f7f7;
 }
 
 .conversation-file__main {
@@ -212,6 +219,10 @@
   border-radius: 10px;
   background: #f4f3f1;
   color: #77736d;
+}
+
+.conversation-file > .conversation-file__main > .attachment-card__file-icon {
+  flex: 0 0 36px;
 }
 
 .conversation-file__preview img {

@@ -52,6 +52,7 @@ export function MessageTopicPreview({ meta, onOpen, avatarUrlFor }: MessageTopic
         {previews.map((reply) => <span key={reply.id} className="message-topic-preview__reply">
           <span className="message-topic-preview__reply-avatar" aria-hidden="true"><Avatar seed={reply.senderName} url={avatarUrlFor?.(reply)} size={16} /></span>
           <strong>{reply.senderName}</strong>
+          {reply.senderDeleted ? <span className="message-topic-preview__deleted">{t("chat.deletedAgent")}</span> : null}
           <span className="message-topic-preview__reply-text">{reply.content}</span>
         </span>)}
       </span> : null}

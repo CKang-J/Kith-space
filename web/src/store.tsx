@@ -22,7 +22,7 @@ export interface Me { id: string; name: string; email?: string | null; descripti
 export interface Att { id: string; filename: string; mimeType?: string; sizeBytes?: number }
 export interface Reaction { emoji: string; count: number; reactorIds: string[]; reactorNames: string[] }
 export interface ActionMeta { kind: string; state: "prepared" | "executed"; action: { type: string; name: string; description?: string | null; visibility?: string; initialAgents?: string[] }; executedByUserName?: string | null; result?: { kind: string; id: string; name: string } | null }
-export interface Msg { id: string; seq: number; channelId: string; senderType: string; senderId?: string | null; senderName: string; content: string; messageType?: string; actionMetadata?: ActionMeta | null; createdAt?: string; taskStatus?: string | null; taskNumber?: number | null; taskAssigneeType?: string | null; taskAssigneeId?: string | null; mentions?: { type?: string; id?: string; name: string }[]; attachments?: Att[]; reactions?: Reaction[] }
+export interface Msg { id: string; seq: number; channelId: string; senderType: string; senderId?: string | null; senderName: string; senderDeleted?: boolean; content: string; messageType?: string; actionMetadata?: ActionMeta | null; createdAt?: string; taskStatus?: string | null; taskNumber?: number | null; taskAssigneeType?: string | null; taskAssigneeId?: string | null; mentions?: { type?: string; id?: string; name: string }[]; attachments?: Att[]; reactions?: Reaction[] }
 type Ev = { type: string; [k: string]: any };
 
 interface Store {
@@ -402,7 +402,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sock.on("agent:reply", (p: any) => dispatch({ type: "agent:reply", ...p }));
       sock.on("agent:response-mode-updated", (p: any) => dispatch({ ...p, type: "agent:response-mode-updated" }));
       sock.on("agent:created", () => reload());
-      sock.on("agent:deleted", () => reload());
+      sock.on("agent:deleted", (p: any) => { reload(); dispatch({ type: "agent:deleted", id: p?.id }); });
       // Real-time: new DM / agent membership change → reload lists + subscribe to the affected transport room.
       // The server validates Space access for the Human; this socket event does not create domain membership.
       sock.on("dm:new", (p: any) => { reload(); if (p?.channelId) sockRef.current?.emit("join:channel", p.channelId); });

@@ -99,7 +99,7 @@ Agent membership 继续决定：
 
 ### 4.2 私聊
 
-Human-Agent DM 是明确寻址，不显示模式徽标，不读取频道覆盖，也不受 Agent 默认模式限制。Human 发出的 DM 始终唤醒目标 Agent 并要求回复。
+Human-Agent DM 是明确寻址，Agent 卡片不显示频道模式控件，不读取频道覆盖，也不受 Agent 默认模式限制。Human 发出的 DM 始终唤醒目标 Agent 并要求回复。
 
 ### 4.3 话题
 
@@ -159,29 +159,27 @@ P-A8 之前只把 `@` 记录为 mention，并不会据此写入任务 assignee�
 - 选择后即时保存，保存失败回滚到服务端值并显示就地错误；
 - 不使用“全局默认”，因为 Agent 归属于当前 Space。
 
-### 6.2 频道消息中的模式徽标
+### 6.2 消息头像 Agent 卡片
 
-在顶层频道和其话题中，每条当前成员 Agent 消息的昵称后显示紧凑模式徽标：
+顶层频道、话题和 DM 中的 Agent 消息头像是 Agent 卡片的唯一消息内入口；昵称继续打开完整 Agent 页面。头像不再通过 hover 打开只读信息层，也不在昵称后显示模式徽标。点击或键盘激活头像后，卡片显示：
 
-- 徽标显示**当前有效模式**，不是发送消息时的历史快照；
-- 只显示在 Agent 作者后，不显示在 Human、系统消息、Human-Agent DM 或已移除 Agent 后；
-- 视觉上与在线状态分开，不能让用户误认为运行中/离线状态；
-- 归档频道可显示只读徽标，但不能打开可编辑菜单。
+- 头像、显示名称、运行状态和模型；
+- 单一“发消息”动作，用于打开 Human-Agent DM；不提供“悄悄话”和“分享”；
+- 当前 Agent 是顶层频道成员时，显示“本频道响应模式”控件；
+- DM 或已移除 Agent 不显示频道模式；归档频道显示只读模式。
 
-### 6.3 Hover / click 菜单
+卡片约 `288px` 宽，使用圆角白色表面、轻边框与阴影。它按头像位置在左右两侧择优放置并限制在视口内；点击外部、滚动、调整窗口或按 `Escape` 关闭。头像 hover 只保留普通可点击反馈，不触发卡片。
 
-可编辑徽标在约 250ms hover 后打开，同时支持点击、键盘聚焦和触屏点击；浮层必须有安全 hover corridor、`Escape` 关闭、焦点返回和 viewport-aware 定位。
+### 6.3 本频道响应模式
 
-菜单使用同一浮层内的两层结构：
+卡片内以 `静音 / 被动 / 主动` 三段式控件显示当前**有效模式**。这里是频道覆盖入口，不是 Agent 默认入口：
 
-1. 主层标题为“响应方式”，右侧以弱化文字显示当前 `Agent 默认：主动 / 被动 / 静音`；“决定该 Agent 在本频道如何回应消息”只保留为无障碍描述。
-2. 主层用一个四段式控件直接显示 `默认 / 主动 / 被动 / 静音`。选择“默认”把覆盖写为 `NULL`，其余三项写入本频道显式覆盖；当前来源通过选中段明确表达，即使有效值与默认值相同也不会混淆。
-3. 分隔线后的“修改 Agent 默认”入口进入同一浮层的二级层，不跳转 Agent Profile，也不叠加第二个弹窗。
-4. 二级层提供返回按钮、标题“Agent 默认响应方式”和 `主动 / 被动 / 静音` 三段式控件，并说明“应用于当前 Space 中所有跟随默认的频道”。这里修改的是当前 Space 中该 Agent 的默认值。
+1. 选择任一档只写当前顶层频道 membership 的 `response_mode_override`；话题沿用父频道。
+2. 当前为显式覆盖时显示“仅作用于本频道 · Agent 默认：…”和“恢复默认”；恢复默认把覆盖写为 `NULL`。
+3. 当前跟随默认时显示“跟随 Agent 默认：…”，不会把默认值伪装成历史快照。
+4. 卡片中不得修改 Agent 默认值；当前 Space 的 Agent 默认仍只在 Agent 设置页管理。
 
-菜单约 `280px` 宽，使用 `14px` 标题/入口文字、紧凑留白、细边框和轻阴影；选中段使用深色底与反白文字。模式含义的完整解释仍只由 Agent Profile 默认设置卡片承载，频道菜单不重复长说明。两层选择均即时保存并保持浮层打开，方便连续确认；点击浮层外或按 `Escape` 才关闭。
-
-选择同一值是幂等操作。显式覆盖可以恰好等于当前默认值，仍保留“已覆盖”来源；只有选择“跟随 Agent 默认”才删除覆盖。默认值变化后，继承成员的徽标随之变化，显式覆盖成员保持不变。
+选择同一显式值是幂等操作。显式覆盖可以恰好等于当前默认值，仍保留“已覆盖”来源；只有“恢复默认”才删除覆盖。默认值变化后，继承成员的卡片有效值随之变化，显式覆盖成员保持不变。模式含义的完整解释仍只由 Agent Profile 默认设置卡片承载，消息卡片不重复长说明。
 
 ### 6.4 数据装载
 
@@ -363,12 +361,11 @@ reconnect backlog 使用与实时投递完全相同的 policy、话题参与判�
 新增响应模式 UI 时保持以下边界：
 
 - `web/src/views/agent-response-mode/AgentDefaultResponseModeCard.tsx`：Agent 默认卡片与即时保存状态；
-- `web/src/views/agent-response-mode/ChannelAgentResponseModeBadge.tsx`：消息昵称后的徽标；
-- `web/src/views/agent-response-mode/ChannelAgentResponseModeMenu.tsx`：浮层、键盘与选择交互；
-- `web/src/views/agent-response-mode/useChannelAgentResponseModes.ts`：一次装载、缓存和实时失效；
+- `web/src/views/agent-response-mode/useChannelAgentResponseModes.ts`：一次装载、缓存、实时失效和频道覆盖写入；
+- `web/src/views/chat-message/AgentMessageCard.tsx`：头像点击卡片、发消息动作和只作用于当前频道的三段式覆盖控件；
 - 共享类型与展示文案集中在同一 feature 目录的小模块中。
 
-`Members.tsx` 只负责插入独立默认卡片，`Chat.tsx` 只把作者和频道上下文交给徽标组件；不得把请求、模式解析和浮层状态继续堆进这两个大型文件。现有 `channel-settings/` 成员页不复制编辑器。
+`Members.tsx` 只负责插入独立默认卡片；`Chat.tsx` 负责已加载频道模式、头像锚点、DM 导航和路由回调，再把纯 DTO 与回调交给 `AgentMessageCard`。卡片不读取 Store、Router 或直接发 API。现有 `channel-settings/` 成员页不复制编辑器。
 
 文件名可以在实现时按仓库既有命名微调，但职责边界不得退回单一大组件。
 
@@ -387,7 +384,7 @@ reconnect backlog 使用与实时投递完全相同的 policy、话题参与判�
 2. **投递链路**：实时 wake、reconnect、message check 与 prompt 统一消费决策和响应指令。
 3. **任务语义**：把“指派任务 + 单一 `@Agent`”落成真实 assignee；补无 mention 与多 mention 分支。
 4. **HTTP 与实时**：扩展 Agent/频道成员 DTO、Human 写接口和多窗口失效事件。
-5. **前端**：Agent 默认卡片、频道徽标/菜单、无每消息请求、归档只读与键盘/触屏交互。
+5. **前端**：Agent 默认卡片、消息头像 Agent 卡片内的本频道模式控件、无每消息请求、归档只读与键盘/触屏交互。
 6. **真实验收**：覆盖顶层频道、话题、DM、任务、重连、模式切换和双窗口同步。
 
 每个切片保持最小修改，不顺手重构频道设置、完整 Chat 或 Runtime 契约 v2。
@@ -406,21 +403,21 @@ reconnect backlog 使用与实时投递完全相同的 policy、话题参与判�
 - DM 与后续明确任务指派在三种模式下都能唤醒。
 - 归档/删除、非成员、跨 Space、派发护栏不能被模式设置绕过。
 - API 枚举、404/409、Human authority 和 realtime invalidation 测试。
-- 前端卡片、徽标、继承/覆盖、错误回滚、归档只读和键盘操作测试。
+- 前端 Agent 卡片、继承/覆盖、错误回滚、归档只读和键盘操作测试。
 
 ### 15.2 用户验收场景
 
-1. 将 Agent 默认设为被动；频道徽标同步显示被动，普通频道消息不唤醒，`@Agent` 会唤醒。
+1. 将 Agent 默认设为被动；频道内点击头像后卡片同步显示被动，普通频道消息不唤醒，`@Agent` 会唤醒。
 2. 在某频道覆盖为主动；其他频道仍跟随被动，当前频道普通 Human 消息可唤醒但 Agent 可以判断后静默。
 3. 将频道覆盖设为静音；普通消息和 `@` 都不唤醒，但 Human 私聊和明确指派任务仍唤醒。
-4. 清除覆盖；徽标立刻跟随 Agent 默认值，菜单明确显示来源。
+4. 恢复默认；卡片立刻跟随 Agent 默认值，并明确显示继承来源。
 5. Agent 已参与话题后，Human 后续回复在主动/被动模式下无需重复 `@`；静音不唤醒。
 6. Human 发送“指派任务 + 单一 `@Agent`”；任务详情显示真实 assignee，静音 Agent 仍收到任务，其他成员不被唤醒。
 7. Human 发送未 `@` 的频道任务；任务保持未指派，只有主动成员可以被环境唤醒。
 8. Human 在频道和话题发送 `@all`；主动/被动 Agent 都收到 required 投递，静音 Agent 不启动，消息正文不展开名单；Agent 发送相同文本不群体唤醒；切换界面语言后历史 token 不变化。
 9. Human 在频道或 DM 尝试“指派任务 + `@all`”；发送被拒绝且草稿保留，没有消息、membership 或任务副作用。
 10. 切换模式后重连 Worker；切换前的旧消息不补唤醒，当前未读状态不被伪造。
-11. 两个窗口同时打开同一频道；一处修改后另一处徽标和菜单收敛到新值。
+11. 两个窗口同时打开同一频道；一处修改后另一处 Agent 卡片收敛到新值。
 
 ## 16. 当前实现边界
 
@@ -431,7 +428,7 @@ reconnect backlog 使用与实时投递完全相同的 policy、话题参与判�
 - 实时 wake、Worker reconnect、`/agent-api/message/check` 与 Worker prompt 已统一消费 `required | optional | observe` 指令及稳定 reason；
 - Composer 与服务端共同校验任务 mention：单一 Agent 写入真实 assignee，零 Agent 保持未指派，多个 Agent 在持久化和 membership 变化前拒绝；
 - `src/channels/channelAllMention.ts` 与服务端消息路径已实现 Human `@all` 的父频道 Agent 快照、`channel_all` 展示标记、话题 membership 补齐和任务模式拒绝；Agent-authored 与 DM 文本不展开，DM 手工任务 token 也会在副作用前拒绝；
-- `web/src/views/agent-response-mode/` 已提供 Agent 默认卡片、频道徽标、约 250ms hover/点击/键盘菜单及每频道一次装载/窄实时失效；频道菜单主层使用“默认 / 主动 / 被动 / 静音”四段式控件，并在同一浮层钻取修改当前 Space 的 Agent 默认值，完整模式解释只保留在默认设置卡片；话题复用父频道，归档只读，DM 不显示。
+- `web/src/views/agent-response-mode/` 保留 Agent 默认卡片和每频道一次装载/窄实时失效；昵称后徽标与 hover 菜单已退役。`web/src/views/chat-message/AgentMessageCard.tsx` 由消息头像点击打开，提供“发消息”和只作用于当前频道的 `静音 / 被动 / 主动` 覆盖控件，可恢复跟随 Agent 默认但不能修改默认值；话题复用父频道，归档只读，DM 不显示频道模式。
 - Composer 已在频道/话题 autocomplete 中提供本地化“所有人 / Everyone”标签、单一规范 token `@all` 和范围说明，消息渲染为不可导航 token；DM、Showcase、归档和任务模式不提供候选，手工任务输入仍由发送前校验拒绝。
 - required 回复预览会保留触发消息 ID；Agent 转而在该父消息的话题中发送正式回复时，父频道根据非空 `thread:updated` 的 `parentMessageId + senderId` 精确移除对应临时预览；`replyCount=0` 的空话题创建不能提前清理。后续 runtime 尾部文本不会形成只存在于前端内存、刷新即消失的主频道幽灵消息。
 

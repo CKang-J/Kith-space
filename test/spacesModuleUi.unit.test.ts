@@ -83,3 +83,10 @@ test("Spaces module keeps the card grid responsive inside the existing module pa
   assert.match(css, /grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(/);
   assert.match(css, /\.spaces-module__card\s*\{[^}]*border-radius:/s);
 });
+
+test("Spaces search keeps the same neutral surface while focused", () => {
+  const css = fs.readFileSync(cssUrl, "utf8");
+
+  assert.match(css, /\.spaces-module__search\s*\{[^}]*background:\s*var\(--canvas\)/s);
+  assert.match(css, /\.spaces-module__search:focus-within\s*\{[^}]*background:\s*var\(--canvas\)/s);
+});

@@ -377,7 +377,7 @@
 
 **任务边界**：Human 选择“指派任务”并恰好 `@` 一个 Agent 时，必须把该 Agent 写成真实 assignee，并按明确指派绕过三种模式；没有 `@` 时创建未指派频道任务，仅主动成员可被环境唤醒；多个 Agent mention 因当前任务只有单 assignee 而在提交前拒绝，不能静默挑选目标。
 
-**实施边界与状态**：该决策已于 2026-07-14 落地。纯策略、独立设置与消息适配模块分别位于 `src/agents/agentResponsePolicy.ts`、`agentResponseSettings.ts` 和 `agentResponseDelivery.ts`；实时 wake、reconnect backlog、Agent message check 与 prompt 共同消费响应指令。schema v5、默认值/频道覆盖 API、窄实时失效、真实任务 assignee、Agent Profile 默认卡片和频道昵称后徽标/覆盖菜单均已实现，成员设置页没有复制第二套编辑器。完整规格与验证状态见 `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
+**实施边界与状态**：该决策已于 2026-07-14 落地。纯策略、独立设置与消息适配模块分别位于 `src/agents/agentResponsePolicy.ts`、`agentResponseSettings.ts` 和 `agentResponseDelivery.ts`；实时 wake、reconnect backlog、Agent message check 与 prompt 共同消费响应指令。schema v5、默认值/频道覆盖 API、窄实时失效、真实任务 assignee 与 Agent Profile 默认卡片均已实现。2026-07-16 只调整前端入口：频道昵称后徽标/hover 菜单退役，频道覆盖改由消息头像点击 Agent 卡片承载；该卡片只能写当前频道覆盖或恢复默认，不能修改 Agent 默认值，成员设置页仍不复制第二套编辑器。完整规格与验证状态见 `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
 
 ---
 

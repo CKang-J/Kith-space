@@ -94,7 +94,8 @@ test("the frontend exposes only the local product shell", () => {
   assert.doesNotMatch(app, /Layout|legacy|useLocation|useState/);
   assert.doesNotMatch(frame, /legacyHref/);
   assert.doesNotMatch(topBar, /legacyHref|MoreHorizontal|<a\b/);
-  assert.match(topBar, /onOpenSearch/);
+  assert.doesNotMatch(topBar, /onOpenSearch|QuickSwitcher|shell-topbar__tools/);
+  assert.match(frame, /<QuickSwitcher onClose=/);
   assert.equal(webPackage.scripts.build, "vite build");
   assert.match(index, /<title>Kith-space<\/title>/);
   assert.match(index, /<meta name="description"/);

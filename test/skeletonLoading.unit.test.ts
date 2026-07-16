@@ -23,7 +23,7 @@ test("workspace skeleton follows the current single-window shell and panel langu
   assert.match(skeletonTsx, /className="shell-workspace-frame skel-workspace"/, "skeleton must reuse the workspace frame");
   assert.match(skeletonTsx, /className="shell-workspace-canvas skel-workspace-canvas"/, "skeleton must reuse the gray workspace canvas");
   assert.match(skeletonTsx, /className="shell-topbar skel-topbar"/, "skeleton must include the current top bar");
-  assert.match(skeletonTsx, /shell-topbar__tools skel-topbar-tools/, "top-bar tools must remain a distinct white surface");
+  assert.doesNotMatch(skeletonTsx, /shell-topbar__tools|skel-topbar-tools/, "removed top-bar search tools must not remain in the skeleton");
   assert.match(skeletonTsx, /shell-work-panel shell-chat-main-card/, "ChatOnly must use an independent work panel");
   assert.match(skeletonTsx, /shell-work-panel shell-module-workspace/, "module loading must use an independent work panel");
   assert.match(skeletonTsx, /WORKSPACE_MODULES\.has\(requestedModule\)/, "only legal module query values may change the skeleton mode");

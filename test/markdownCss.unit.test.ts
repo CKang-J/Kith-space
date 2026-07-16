@@ -136,11 +136,11 @@ test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", 
   assertDecl(".md li.task-list-item:has(input[type=\"checkbox\"]:checked)", "color", "var\\(--done-text\\)");
   assertDecl(".md li.task-list-item:has(input[type=\"checkbox\"]:checked)", "text-decoration", "line-through");
   assertDecl(".md li.task-list-item:has(input[type=\"checkbox\"]:checked)", "text-decoration-color", "var\\(--done-text\\)");
-  assertDecl(".mbody .ref-at", "color", "var\\(--ink-2\\)");
+  assertDecl(".mbody .ref-at", "color", "#0969da");
   assertDecl(".mbody .ref-at", "text-decoration", "none");
   assert.match(messageRenderSrc, /type === "agent" \? "mention ref-at ref-agent" : type === "human" \? "mention ref-at ref-human"/);
-  assertDecl(".mbody .ref-human", "background", "var\\(--human-mention\\)");
-  assertDecl(".mbody .ref-human:hover", "background", "var\\(--human-mention-strong\\)");
+  assert.match(messageRenderSrc, /aria-haspopup=\{type === "agent" \|\| type === "human" \? "dialog" : undefined\}/);
+  assert.match(messageRenderSrc, /nav\(type, args, e\.currentTarget\)/);
   assertDecl(".mbody .ref-chan", "background", "var\\(--channel-mention\\)");
   assertDecl(".mbody .ref-chan", "color", "var\\(--ink-2\\)");
 });

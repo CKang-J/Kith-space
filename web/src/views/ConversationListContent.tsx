@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bookmark, Check, Pin } from "lucide-react";
+import { Bookmark, Check, Hash, Pin } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { mergeWorkspaceSearch } from "../shell/workspaceRoute.ts";
@@ -83,7 +83,8 @@ export function ConversationListContent({
       aria-current={channel.id === channelId ? "page" : undefined}
       onClick={() => navigate(withPreservedSearch(`/s/${slug}/channel/${channel.id}`))}
     >
-      <span className="grow"># {channel.name}</span>
+      <Hash size={14} className="channel-row-icon" aria-hidden="true" />
+      <span className="grow">{channel.name}</span>
       <button
         className={`pinbtn${pinned.includes(channel.id) ? " on" : ""}`}
         title={pinned.includes(channel.id) ? t("sidebar.unpinChannel") : t("sidebar.pinChannel")}

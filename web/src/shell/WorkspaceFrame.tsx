@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useConfirm } from "../ConfirmModal.tsx";
+import { QuickSwitcher } from "../QuickSwitcher.tsx";
 import { useStore } from "../store.tsx";
 import { ChannelSettingsPanel } from "../views/channel-settings/index.ts";
 import { ConversationAggregatePanel } from "../views/conversation-aggregate/ConversationAggregatePanel.tsx";
@@ -50,6 +51,7 @@ export function WorkspaceFrame() {
   const aggregateMotionTimerRef = useRef<number | null>(null);
   const [workspaceWidth, setWorkspaceWidth] = useState(() => typeof window === "undefined" ? 1280 : window.innerWidth);
   const [aggregateOpen, setAggregateOpen] = useState(true);
+  const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [aggregateTransitioning, setAggregateTransitioning] = useState(false);
   const beginAggregateMotion = useCallback(() => {
     setAggregateTransitioning(true);
@@ -110,6 +112,16 @@ export function WorkspaceFrame() {
   useEffect(() => {
     setAggregateOpen(true);
   }, [spaceId]);
+
+  useEffect(() => {
+    const openQuickSwitcher = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
+      event.preventDefault();
+      setQuickSwitcherOpen(true);
+    };
+    window.addEventListener("keydown", openQuickSwitcher);
+    return () => window.removeEventListener("keydown", openQuickSwitcher);
+  }, []);
 
   useEffect(() => () => {
     if (aggregateMotionTimerRef.current !== null) window.clearTimeout(aggregateMotionTimerRef.current);
@@ -236,6 +248,7 @@ export function WorkspaceFrame() {
   const updateConversationFocus = (key: "thread" | "msg", value: string) => {
     const params = new URLSearchParams(location.search);
     params.delete(key === "thread" ? "msg" : "thread");
+    params.delete("threadMsg");
     params.set(key, value);
     params.delete("chatTab");
     const encoded = params.toString();
@@ -270,6 +283,7 @@ export function WorkspaceFrame() {
     <SidebarModuleNavigation
       isHome={isHome}
       unreadCount={unreadCount}
+      onSearch={() => setQuickSwitcherOpen(true)}
       onModuleSelect={(moduleId: DockModuleId) => void selectModule(moduleId)}
     />
   );
@@ -304,7 +318,6 @@ export function WorkspaceFrame() {
         activeModule={activeModule}
         channelId={currentChannelId}
         layoutSearch={layoutSearch}
-        onOpenSearch={() => void selectModule("search")}
       />
       <div ref={workspaceRef} className="shell-workspace-canvas">
         {renderChat ? (
@@ -368,6 +381,7 @@ export function WorkspaceFrame() {
           />
         ) : null}
       </div>
+      {quickSwitcherOpen ? <QuickSwitcher onClose={() => setQuickSwitcherOpen(false)} /> : null}
     </main>
   );
 }

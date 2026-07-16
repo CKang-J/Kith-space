@@ -38,9 +38,6 @@ function TopBarSkeleton() {
       <div className="skel-box skel-topbar-space" />
       <div className="skel-box skel-topbar-context" />
       <div className="shell-topbar__spacer" />
-      <div className="shell-topbar__tools skel-topbar-tools">
-        {Array.from({ length: 3 }).map((_, i) => <div key={i} className="skel-box skel-topbar-tool" />)}
-      </div>
     </header>
   );
 }

@@ -7,8 +7,11 @@ const read = (path: string) => fs.readFileSync(new URL(path, import.meta.url), "
 const frame = read("../web/src/shell/WorkspaceFrame.tsx");
 const chatWorkspace = read("../web/src/shell/ChatWorkspace.tsx");
 const moduleNavigation = read("../web/src/shell/SidebarModuleNavigation.tsx");
+const quickSwitcher = read("../web/src/QuickSwitcher.tsx");
+const topBar = read("../web/src/shell/WorkspaceTopBar.tsx");
 const sidebar = read("../web/src/views/ChatSidebar.tsx");
 const conversations = read("../web/src/views/ConversationListContent.tsx");
+const archivedChannels = read("../web/src/views/ArchivedChannelGroup.tsx");
 const route = read("../web/src/shell/workspaceRoute.ts");
 const shellCss = read("../web/src/shell/shell.css");
 const globalCss = read("../web/src/styles.css");
@@ -20,6 +23,25 @@ test("ChatOnly uses the shared module registry as a vertical text navigation wit
   assert.doesNotMatch(moduleNavigation, /MessageCircle/);
   assert.match(frame, /<SidebarModuleNavigation/);
   assert.match(frame, /moduleNavigation=\{sidebarModuleNavigation\}/);
+});
+
+test("Ctrl+K is the categorized global search and its visible entry lives above sidebar modules", () => {
+  assert.match(moduleNavigation, /sidebar-search-trigger/);
+  assert.match(moduleNavigation, /<Search size=\{18\}/);
+  assert.match(frame, /event\.key\.toLowerCase\(\) !== "k"/);
+  assert.match(frame, /<QuickSwitcher onClose=/);
+  assert.doesNotMatch(topBar, /<Search\b|QuickSwitcher|onOpenSearch|shell-topbar__tools/);
+  assert.match(quickSwitcher, /\/api\/messages\/search\?q=/);
+  assert.match(quickSwitcher, /sectionChannelMessages/);
+  assert.match(quickSwitcher, /sectionTopicMessages/);
+  assert.match(quickSwitcher, /sectionDmMessages/);
+  assert.match(quickSwitcher, /threadMsg=\$\{message\.id\}/);
+  assert.match(frame, /params\.delete\("threadMsg"\)/);
+  assert.doesNotMatch(quickSwitcher, /qs-foot|<kbd/);
+  assert.match(globalCss, /\.qs-bg\{[^}]*align-items:center[^}]*padding:48px 16px/);
+  assert.match(globalCss, /\.qs\{[^}]*max-height:min\(640px,calc\(100dvh - 96px\)\)[^}]*border-radius:20px/);
+  assert.match(globalCss, /\.qs-list\{[^}]*overflow-y:auto[^}]*scrollbar-width:none/);
+  assert.match(globalCss, /\.qs-list::\-webkit-scrollbar\{display:none\}/);
 });
 
 test("the horizontal Dock only mounts in ModuleWorkspace", () => {
@@ -55,6 +77,14 @@ test("conversation selection exposes aria-current instead of relying only on col
   assert.match(conversations, /aria-current=\{conversation\.id === channelId \? "page" : undefined\}/);
 });
 
+test("channel rows use an icon instead of a text hash", () => {
+  assert.match(conversations, /import \{[^}]*Hash[^}]*\} from "lucide-react"/);
+  assert.match(conversations, /<Hash size=\{14\} className="channel-row-icon" aria-hidden="true" \/>/);
+  assert.doesNotMatch(conversations, /<span className="grow"># \{channel\.name\}<\/span>/);
+  assert.match(archivedChannels, /<Hash size=\{14\} className="channel-row-icon" aria-hidden="true" \/>/);
+  assert.doesNotMatch(archivedChannels, /# \{channel\.name\}/);
+});
+
 test("the shell preserves the Chat card while the conversation navigation sits directly on the canvas", () => {
   assert.match(shellCss, /\.shell-work-panel\s*\{[\s\S]*?border-radius:\s*var\(--shell-radius\)/);
   assert.match(shellCss, /\.shell-chat-workspace--full > \.shell-chat-conversations\s*\{[\s\S]*?margin-right:\s*var\(--shell-gap\)/);
@@ -65,6 +95,9 @@ test("the shell preserves the Chat card while the conversation navigation sits d
   assert.match(shellCss, /\.sidebar-module-navigation__item\s*\{[\s\S]*?padding:\s*0 10px 0 4px/);
   assert.match(shellCss, /\.chat-navigation-sidebar \.archived-channel-group,[\s\S]*?border-top:\s*0/);
   assert.match(shellCss, /\.chat-navigation-sidebar \.live-bar\s*\{[\s\S]*?border-top:\s*0;[\s\S]*?background:\s*transparent/);
+  assert.match(shellCss, /\.chat-navigation-sidebar \.chan-row \+ \.chan-row\s*\{[\s\S]*?margin-top:\s*4px/);
+  assert.match(shellCss, /\.chat-navigation-sidebar \.item:hover:not\(\.active\)\s*\{[\s\S]*?background:\s*#ececeb/);
+  assert.match(shellCss, /\.chat-navigation-sidebar \.item\.active,[\s\S]*?\.chat-navigation-sidebar \.item\.active:hover\s*\{[\s\S]*?background:\s*#ffffff/);
   assert.match(shellCss, /\.shell-chat-drawer > \.sidebar\s*\{[\s\S]*?border:\s*0/);
   assert.match(globalCss, /\.sb-title\{[^}]*font-family:var\(--sans\)/);
   assert.match(messageCss, /\.chat-message\{[\s\S]*?margin:0 auto 20px/);

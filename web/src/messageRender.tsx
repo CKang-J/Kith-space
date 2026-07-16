@@ -37,7 +37,7 @@ const alertConfig: Record<string, { label: string; Icon: LucideIcon }> = {
 
 type NameItem = { name?: string; id?: string };
 type MentionItem = { type?: string; id?: string; name?: string };
-type Nav = (type: string, args: string[]) => void;
+type Nav = (type: string, args: string[], trigger?: HTMLElement) => void;
 const lc = (x?: string) => (x ?? "").toLowerCase();
 
 function textFromReact(node: ReactNode): string {
@@ -357,7 +357,7 @@ export function MessageContent({ content, mentions, channels, nav }: { content: 
               const [, type, ...args] = href.split(":");
               if (type === "broadcast") return <span className="mention ref-at ref-broadcast">{children}</span>;
               const cls = type === "agent" ? "mention ref-at ref-agent" : type === "human" ? "mention ref-at ref-human" : type === "channel" ? "ref-chan" : type === "thread" ? "ref-thread" : "ref-task";
-              return <a className={cls} onClick={(e) => { e.preventDefault(); nav(type, args); }}>{children}</a>;
+              return <a className={cls} href={href} aria-haspopup={type === "agent" || type === "human" ? "dialog" : undefined} onClick={(e) => { e.preventDefault(); nav(type, args, e.currentTarget); }}>{children}</a>;
             }
             return <a href={href} target="_blank" rel="noreferrer">{children}</a>;
           },

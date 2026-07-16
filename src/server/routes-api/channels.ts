@@ -21,7 +21,7 @@ import { readJson, sendErr, sendJson } from "../util.js";
 import { canHumanReadChannel } from "../channelAccess.js";
 import { listThreadSummaries } from "../channels/threadSummaries.js";
 import { activeChannels, assertChannelWritable, isRequiredChannel } from "../../channels/channelLifecycle.js";
-import { humanChannels } from "./shared.js";
+import { deletedAgentIds, humanChannels } from "./shared.js";
 import {
   AgentResponseSettingsError,
   listChannelAgentResponseModes,
@@ -132,6 +132,7 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
     if (!pids.length) return (sendJson(res, 200, {}), true);
     const threads = await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.type, "thread"), inArray(schema.channels.parentMessageId, pids)));
     const map: Record<string, any> = {};
+    const deletedSenderIds = deletedAgentIds(spaceId);
     for (const th of threads) {
       const replies = await db.select({
         id: schema.messages.id,
@@ -153,6 +154,7 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
         lastReplyAt: replies.length ? replies[replies.length - 1]!.createdAt : null,
         previews: previewReplies.map(({ id, senderType, senderId, senderName, content, createdAt }) => ({
           id, senderType, senderId, senderName, content, createdAt,
+          senderDeleted: senderType === "agent" && !!senderId && deletedSenderIds.has(senderId),
         })),
       };
     }
@@ -183,7 +185,10 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
     const myIds = new Set(myMems.map((m) => m.channelId));
     const dms = (await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.type, "dm")))).filter((c) => !c.deletedAt && myIds.has(c.id));
     if (!dms.length) return (sendJson(res, 200, []), true);
-    const agentsAll = await db.select().from(schema.agents).where(eq(schema.agents.spaceId, spaceId));
+    const agentsAll = await db.select().from(schema.agents).where(and(
+      eq(schema.agents.spaceId, spaceId),
+      isNull(schema.agents.deletedAt),
+    ));
     const out = dms.map((c) => {
       const state = myMems.find((member) => member.channelId === c.id);
       const src = state?.dmAgentId ? agentsAll.find((agent) => agent.id === state.dmAgentId) : null;
@@ -191,7 +196,7 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
         id: c.id, name: src?.name ?? c.name, type: "dm", description: c.description, createdAt: c.createdAt, lastMessageAt: c.lastMessageAt,
         peerId: state?.dmAgentId ?? null, peerName: src?.name ?? null, peerDisplayName: src?.displayName ?? null, peerType: state?.dmAgentId ? "agent" : null, peerAvatarUrl: src?.avatarUrl ?? null,
       };
-    }).filter((item) => item.peerId); // A missing/deleted peer is excluded from the Human's DM list.
+    }).filter((item) => item.peerId && item.peerName); // A missing/deleted peer is excluded from the Human's DM list.
     return (sendJson(res, 200, out), true);
   }
   if (p === "/api/channels/unread" && method === "GET") {
@@ -206,7 +211,10 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
     const { states: myMems, channels: chs } = await humanContainerStates(spaceId);
     if (!myMems.length) return (sendJson(res, 200, { items: [] }), true);
     if (!chs.length) return (sendJson(res, 200, { items: [] }), true);
-    const agentsAll = await db.select().from(schema.agents).where(eq(schema.agents.spaceId, spaceId));
+    const agentsAll = await db.select().from(schema.agents).where(and(
+      eq(schema.agents.spaceId, spaceId),
+      isNull(schema.agents.deletedAt),
+    ));
     const items: any[] = [];
     for (const c of chs) {
       const cm = myMems.find((m) => m.channelId === c.id)!;
@@ -230,7 +238,8 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
         const peerId = cm.dmAgentId;
         if (!peerId) continue;
         const src = agentsAll.find((agent) => agent.id === peerId);
-        channelName = src?.name ?? c.name;
+        if (!src) continue;
+        channelName = src.name;
       } else if (c.type === "thread" && c.parentMessageId) {
         parentMessageId = c.parentMessageId;
         const pm = (await db.select().from(schema.messages).where(eq(schema.messages.id, c.parentMessageId)))[0];

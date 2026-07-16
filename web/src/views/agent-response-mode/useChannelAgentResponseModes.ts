@@ -3,8 +3,6 @@ import { useStore } from "../../store.tsx";
 import {
   normalizeChannelAgentResponseMode,
   normalizeChannelAgentResponseModes,
-  isAgentResponseMode,
-  withDefaultResponseMode,
   withResponseModeOverride,
   type AgentResponseMode,
   type ChannelAgentResponseMode,
@@ -25,7 +23,6 @@ export interface ChannelAgentResponseModesResult {
   loading: boolean;
   error: boolean;
   setResponseModeOverride(agentId: string, value: AgentResponseMode | null): Promise<ChannelAgentResponseMode>;
-  setDefaultResponseMode(agentId: string, value: AgentResponseMode): Promise<ChannelAgentResponseMode>;
 }
 
 export function useChannelAgentResponseModes(
@@ -136,54 +133,6 @@ export function useChannelAgentResponseModes(
     }
   }, [channelId, enabled, load]);
 
-  const setDefaultResponseMode = useCallback(async (agentId: string, value: AgentResponseMode) => {
-    if (!enabled || !channelId) throw new Error("response_mode_not_applicable");
-    const current = stateRef.current.channelId === channelId ? stateRef.current.modes[agentId] : undefined;
-    if (!current) throw new Error("agent_not_a_channel_member");
-    if (current.defaultResponseMode === value) return current;
-    const mutationVersion = (mutationVersionRef.current[agentId] ?? 0) + 1;
-    mutationVersionRef.current[agentId] = mutationVersion;
-    const requestVersion = requestIdRef.current;
-
-    const optimistic = withDefaultResponseMode(current, value);
-    setState((previous) => ({
-      ...previous,
-      modes: { ...previous.modes, [agentId]: optimistic },
-    }));
-
-    try {
-      const response = await apiRef.current(
-        "PATCH",
-        `/api/agents/${encodeURIComponent(agentId)}`,
-        { defaultResponseMode: value },
-      );
-      if (response?.error) throw new Error(String(response.error));
-      const savedMode = isAgentResponseMode(response?.defaultResponseMode) ? response.defaultResponseMode : value;
-      const saved = withDefaultResponseMode(current, savedMode);
-      const isCurrentMutation = mutationVersionRef.current[agentId] === mutationVersion;
-      if (activeChannelIdRef.current === channelId && isCurrentMutation && requestIdRef.current === requestVersion) {
-        setState((previous) => ({
-          ...previous,
-          modes: { ...previous.modes, [agentId]: saved },
-          error: false,
-        }));
-      } else if (activeChannelIdRef.current === channelId && isCurrentMutation) {
-        await load();
-      }
-      return saved;
-    } catch (error) {
-      if (activeChannelIdRef.current === channelId && mutationVersionRef.current[agentId] === mutationVersion) {
-        setState((previous) => ({
-          ...previous,
-          modes: { ...previous.modes, [agentId]: current },
-          error: true,
-        }));
-        await load();
-      }
-      throw error;
-    }
-  }, [channelId, enabled, load]);
-
   const currentState = enabled && channelId && state.channelId === channelId
     ? state
     : { channelId: channelId ?? "", modes: EMPTY_MODES, loading: false, error: false };
@@ -193,6 +142,5 @@ export function useChannelAgentResponseModes(
     loading: currentState.loading,
     error: currentState.error,
     setResponseModeOverride,
-    setDefaultResponseMode,
   };
 }

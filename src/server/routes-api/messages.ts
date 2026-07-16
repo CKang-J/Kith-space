@@ -109,9 +109,27 @@ export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
       .orderBy(desc(schema.messages.seq)).limit(limit + 1).offset(offset);
     const hasMore = rows.length > limit;
     const chs = await db.select().from(schema.channels).where(inArray(schema.channels.id, chIds));
-    const cname = (cid: string) => chs.find((c) => c.id === cid)?.name ?? "";
+    const channelById = new Map(chs.map((channel) => [channel.id, channel]));
+    const threadParentIds = [...new Set(chs.filter((channel) => channel.type === "thread" && channel.parentMessageId).map((channel) => channel.parentMessageId!))];
+    const threadParents = threadParentIds.length
+      ? await db.select({ id: schema.messages.id, channelId: schema.messages.channelId }).from(schema.messages).where(inArray(schema.messages.id, threadParentIds))
+      : [];
+    const threadParentById = new Map(threadParents.map((message) => [message.id, message]));
     const snip = (s: string) => { const i = s.toLowerCase().indexOf(q.toLowerCase()); return i < 0 ? s.slice(0, 90) : (i > 24 ? "…" : "") + s.slice(Math.max(0, i - 24), i + 66); };
-    const results = rows.slice(0, limit).map((m) => ({ id: m.id, seq: m.seq, channelId: m.channelId, channelName: cname(m.channelId), senderType: m.senderType, senderName: m.senderName, content: m.content, snippet: snip(m.content), createdAt: m.createdAt }));
+    const serialized = await attachMentions(spaceId, rows.slice(0, limit));
+    const results = serialized.map((m) => {
+      const channel = channelById.get(m.channelId);
+      const parent = channel?.parentMessageId ? threadParentById.get(channel.parentMessageId) : null;
+      const parentChannel = parent ? channelById.get(parent.channelId) : null;
+      return {
+        id: m.id, seq: m.seq, channelId: m.channelId, channelName: channel?.name ?? "", channelType: channel?.type ?? "channel",
+        parentMessageId: channel?.type === "thread" ? channel.parentMessageId : null,
+        parentChannelId: channel?.type === "thread" ? parent?.channelId ?? null : null,
+        parentChannelName: channel?.type === "thread" ? parentChannel?.name ?? null : null,
+        senderType: m.senderType, senderName: m.senderName, senderDeleted: m.senderDeleted,
+        content: m.content, snippet: snip(m.content), createdAt: m.createdAt,
+      };
+    });
     return (sendJson(res, 200, { hasMore, results }), true);
   }
   const cmsg = /^\/api\/messages\/channel\/([^/]+)$/.exec(p);

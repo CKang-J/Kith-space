@@ -3,6 +3,7 @@ export interface ThreadReplyPreview {
   senderType: string;
   senderId: string | null;
   senderName: string;
+  senderDeleted?: boolean;
   content: string;
   createdAt: string;
 }

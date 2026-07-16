@@ -15,6 +15,7 @@ import {
   AgentResponseSettingsError,
   setAgentDefaultResponseMode,
 } from "../../agents/agentResponseSettings.js";
+import { deleteAgentAndPrivateConversations } from "../../agents/agentDeletion.js";
 
 export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   const { req, res, url, method, p, humanId, spaceId } = ctx;
@@ -109,8 +110,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   }
   if (am && method === "DELETE") {
     await stopAgent(spaceId, am[1]!).catch(() => {}); // stop the local process before deleting
-    await db.delete(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.agentId, am[1]!));
-    await db.update(schema.agents).set({ deletedAt: new Date(), status: "inactive", activity: "offline", agentTokenHash: null }).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.spaceId, spaceId))); // soft delete: row is kept so historical messages/DM names remain resolvable by id, no orphans; clear the token hash so a still-running deleted agent can no longer authenticate (C4, with resolveAgent's deletedAt filter)
+    await deleteAgentAndPrivateConversations(spaceId, am[1]!);
     clearAgentIntroductionTurns(spaceId, am[1]!);
     await publish(spaceId, { type: "agent:deleted", id: am[1]! });
     return (sendJson(res, 200, { ok: true }), true);

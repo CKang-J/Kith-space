@@ -110,49 +110,6 @@
   flex: 1;
 }
 
-.shell-topbar__tools {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--shell-border);
-  border-radius: var(--shell-radius);
-  background: var(--shell-panel);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, .08);
-}
-
-.shell-topbar__tools button,
-.shell-topbar__tools a {
-  position: relative;
-  display: inline-flex;
-  width: 30px;
-  height: 30px;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  text-decoration: none;
-}
-
-.shell-topbar__tools button:hover,
-.shell-topbar__tools a:hover,
-.shell-topbar__tools button:focus-visible,
-.shell-topbar__tools a:focus-visible {
-  background: #f5f5f5;
-  color: var(--ink);
-  outline: none;
-}
-
-.shell-topbar__tools button:disabled {
-  cursor: default;
-  opacity: .45;
-}
-
 .shell-topbar__alert > span {
   position: absolute;
   top: -2px;
@@ -314,6 +271,25 @@
   background: transparent;
 }
 
+.chat-navigation-sidebar .chan-row + .chan-row {
+  margin-top: 4px;
+}
+
+.chat-navigation-sidebar .channel-row-icon {
+  flex: none;
+  color: var(--muted-soft);
+}
+
+.chat-navigation-sidebar .item:hover:not(.active) {
+  background: #ececeb;
+}
+
+.chat-navigation-sidebar .item.active,
+.chat-navigation-sidebar .item.active:hover {
+  background: #ffffff;
+  color: var(--ink);
+}
+
 .sidebar-module-navigation {
   display: flex;
   flex-direction: column;
@@ -349,6 +325,10 @@
 .sidebar-module-navigation__item > svg {
   flex: none;
   color: var(--muted);
+}
+
+.sidebar-search-trigger {
+  margin-bottom: 4px;
 }
 
 .sidebar-module-navigation__label {

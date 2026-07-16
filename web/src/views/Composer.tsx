@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, type ChangeEvent, type ClipboardEvent as RClipboardEvent, type DragEvent as RDragEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent as RClipboardEvent, type DragEvent as RDragEvent } from "react";
 import { ArrowUp, Users } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useStore, type Agent } from "../store.tsx";
@@ -8,18 +8,24 @@ import { uniqueMentionedAgentIds } from "./composerTaskMentions.ts";
 import { ComposerActions } from "./composer/ComposerActions.tsx";
 import { ComposerAttachments, type PendingAttachment } from "./composer/ComposerAttachments.tsx";
 import { useComposerExpansion } from "./composer/useComposerExpansion.ts";
+import { useComposerReserve } from "./composer/useComposerReserve.ts";
 import {
   CHANNEL_ALL_MENTION_NAME,
   containsChannelAllMention,
   matchesChannelAllMentionQuery,
 } from "./composerChannelAllMention.ts";
+import { insertAgentMention } from "./composerMention.ts";
 
 // Shared message composer for channels, DMs, and threads. Owns text, attachment upload
 // (button / paste / drag-drop, with per-file progress), @mention autocomplete, and send.
 // The only per-context difference is task assignment (channels/DMs only), gated by `allowAsTask` —
 // threads leave it falsy so a thread reply is never a task. Sending POSTs to `channelId`; the
 // message echoes back over the socket, so the *parent* owns the message list + scroll, not this.
-export function Composer({ channelId, placeholder, allowAsTask = false, allowChannelAllMention = false, validateChannelTaskMentions = true, dmAgent, className }: {
+export interface ComposerHandle {
+  mentionAgent(agentName: string): void;
+}
+
+interface ComposerProps {
   channelId: string;
   placeholder: string;       // base placeholder; when task assignment is active the component swaps in the task placeholder
   allowAsTask?: boolean;     // channels/DMs pass true → offer Assign Task + ⌘/Ctrl+Shift+Enter shortcut
@@ -27,7 +33,9 @@ export function Composer({ channelId, placeholder, allowAsTask = false, allowCha
   validateChannelTaskMentions?: boolean; // false for DMs: Agent assignment-by-mention is a channel-only contract
   dmAgent?: Agent;           // DM peer agent (channels/threads omit) → drives the single-peer sleeping nudge
   className?: string;        // extra class on the .composer root (threads pass "thread-composer")
-}) {
+}
+
+export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer({ channelId, placeholder, allowAsTask = false, allowChannelAllMention = false, validateChannelTaskMentions = true, dmAgent, className }, ref) {
   const { t } = useTranslation();
   const { api, visibleAgents: agents, uploadOne, attachmentUrl } = useStore();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
@@ -44,6 +52,7 @@ export function Composer({ channelId, placeholder, allowAsTask = false, allowCha
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { boxRef, textNeedsExpansion } = useComposerExpansion(text, inputRef, asTask);
+  const composerRootRef = useComposerReserve();
   useEffect(() => { const el = inputRef.current; if (el) autosizeComposerInput(el); }, [text]); // textarea auto-grows up to 160px
   useEffect(() => { const el = inputRef.current; return el ? observeComposerInputWidth(el) : undefined; }, []); // reflowed placeholders/drafts shrink again when a hidden Chat pane expands
 
@@ -74,6 +83,22 @@ export function Composer({ channelId, placeholder, allowAsTask = false, allowCha
     setTaskMentionError("");
     setTimeout(() => inputRef.current?.focus(), 0);
   };
+
+  useImperativeHandle(ref, () => ({
+    mentionAgent(agentName: string) {
+      const input = inputRef.current;
+      const start = input?.selectionStart ?? text.length;
+      const end = input?.selectionEnd ?? start;
+      const insertion = insertAgentMention(text, start, end, agentName);
+      setText(insertion.text);
+      setAtQuery(null);
+      setTaskMentionError("");
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.setSelectionRange(insertion.caret, insertion.caret);
+      });
+    },
+  }), [text]);
 
   const send = async (forceTask?: boolean) => {
     if (sendingRef.current) return;
@@ -152,7 +177,7 @@ export function Composer({ channelId, placeholder, allowAsTask = false, allowCha
   };
 
   return (
-    <div className={"composer" + (className ? " " + className : "")}>
+    <div ref={composerRootRef} className={"composer" + (className ? " " + className : "")}>
       {atQuery !== null && cands.length > 0 && (
         <div className="mention-menu">
           {cands.map((c, i) => (
@@ -213,4 +238,4 @@ export function Composer({ channelId, placeholder, allowAsTask = false, allowCha
       </div>
     </div>
   );
-}
+});
