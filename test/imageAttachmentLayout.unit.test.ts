@@ -11,7 +11,7 @@ import fs from "node:fs";
 
 const css = fs.readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
 const chatSrc = fs.readFileSync(new URL("../web/src/views/Chat.tsx", import.meta.url), "utf8");
-// The lightbox now lives in a shared module (web/src/Lightbox.tsx) reused by both Chat and the Showcase demo.
+// The lightbox lives in a shared module (web/src/Lightbox.tsx) reused by message attachment surfaces.
 const lightboxSrc = fs.readFileSync(new URL("../web/src/Lightbox.tsx", import.meta.url), "utf8");
 
 function ruleBody(selector: string): string {

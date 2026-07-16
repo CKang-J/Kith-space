@@ -6,7 +6,8 @@
     "channel": "Chat",
     "tasks": "Tasks",
     "agents": "Agents",
-    "settings": "Settings"
+    "settings": "Settings",
+    "workspaceModules": "Workspace modules"
   },
   "responseMode": {
     "title": "Response mode",
@@ -379,7 +380,6 @@
     "taskPlaceholder": "Describe the task… (it will appear in Tasks after sending)",
     "dmPlaceholder": "Message @{{name}}",
     "channelPlaceholder": "Send a message (@ mention someone to trigger an agent)",
-    "showcaseReadOnly": "This is a read-only Showcase channel — case studies for reference only.",
     "addMenu": "Add",
     "addPhotosAndFiles": "Add photos and files",
     "assignTask": "Assign task",
@@ -417,10 +417,6 @@
     "retryLoad": "Retry",
     "jumpToMessage": "Jump to original message",
     "download": "Download"
-  },
-  "showcase": {
-    "title": "showcase",
-    "subtitle": "Read-only — four real collaboration sessions across engineering, research, security, and growth."
   },
   "qs": {
     "ariaLabel": "Quick switcher",
@@ -534,8 +530,6 @@
     "unpinChannel": "Unpin",
     "pinnedSection": "Pinned",
     "createChannelTitle": "Create channel",
-    "showcaseSection": "Showcase",
-    "showcaseItem": "showcase",
     "newDmTitle": "New agent DM",
     "dmPickEmpty": "Create an agent in Agents first",
     "unknownAgent": "Unknown agent",

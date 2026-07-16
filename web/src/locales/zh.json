@@ -6,7 +6,8 @@
     "channel": "对话",
     "tasks": "任务",
     "agents": "Agents",
-    "settings": "设置"
+    "settings": "设置",
+    "workspaceModules": "工作区模块"
   },
   "responseMode": {
     "title": "响应模式",
@@ -163,7 +164,7 @@
   "members": {
     "createAgent": "创建 agent",
     "statusLabel": "状态：{{status}}",
-    "statuses": { "working": "工作中", "thinking": "思考中", "online": "在线", "sleeping": "休眠中", "offline": "离线", "active": "运行中", "inactive": "未运行" },
+    "statuses": { "working": "工作中", "thinking": "思考中", "online": "在线", "sleeping": "已休眠", "offline": "离线", "active": "运行中", "inactive": "未运行" },
     "close": "关闭",
     "copied": "已复制",
     "copyLink": "复制链接",
@@ -379,7 +380,6 @@
     "taskPlaceholder": "描述任务…(发送后进 Tasks 板)",
     "dmPlaceholder": "发消息给 @{{name}}",
     "channelPlaceholder": "发消息（@ 提及谁，触发 agent 在本机干活）",
-    "showcaseReadOnly": "这是只读的案例展示频道——供参考，不可发言。",
     "addMenu": "添加",
     "addPhotosAndFiles": "添加照片和文件",
     "assignTask": "指派任务",
@@ -417,10 +417,6 @@
     "retryLoad": "重试",
     "jumpToMessage": "跳到原消息",
     "download": "下载"
-  },
-  "showcase": {
-    "title": "案例展示",
-    "subtitle": "只读——工程、研究、安全、增长四个领域的真实协作实录。"
   },
   "qs": {
     "ariaLabel": "快速跳转",
@@ -534,8 +530,6 @@
     "unpinChannel": "取消置顶",
     "pinnedSection": "置顶",
     "createChannelTitle": "创建频道",
-    "showcaseSection": "案例展示",
-    "showcaseItem": "案例展示",
     "newDmTitle": "发起 agent 私聊",
     "dmPickEmpty": "请先在 Agents 中创建 agent",
     "unknownAgent": "未知 agent",

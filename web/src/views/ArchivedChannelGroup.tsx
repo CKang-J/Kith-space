@@ -43,6 +43,7 @@ export function ArchivedChannelGroup({ channels, currentChannelId, onSelect }: A
               key={channel.id}
               type="button"
               className={"item archived-channel-row" + (channel.id === currentChannelId ? " active" : "")}
+              aria-current={channel.id === currentChannelId ? "page" : undefined}
               onClick={() => onSelect(channel.id)}
             >
               <Archive size={13} />

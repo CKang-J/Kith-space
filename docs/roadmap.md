@@ -1,6 +1,6 @@
 # Kith-space 产品路线图
 
-> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式。完整边界见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`、`docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md` 与 `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`，当前工程状态见 `docs/progress.md`。
+> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式；2026-07-15 锁定 ChatOnly 侧栏模块导航与模块打开态 Dock。完整边界见对应 `docs/superpowers/specs/` 规格，当前工程状态见 `docs/progress.md`。
 
 ## 1. 产品终点与永久边界
 
@@ -21,10 +21,10 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 - P1：派发深度、唤醒预算与急停护栏。
 - P2：三层记忆与通用角色模板。
 - P3：任务领域与 HTTP 接口。
-- P4：单窗口 ChatOnly / Split / ModuleOnly 工作区、可拖拽面板、常驻 Dock、任务范围侧栏。
+- P4：单窗口 ChatOnly / Split / ModuleOnly 工作区、可拖拽面板、模块切换与任务范围侧栏；ChatOnly 使用侧栏模块入口，模块打开态使用 Module Pane 底部 Dock。
 - Runtime 调研：Claude Code、Codex、opencode 适配边界与 Runtime 契约 v2 草案。
 
-P4 的其余视觉微调暂缓；聊天消息流密度与交互重构已按 `docs/superpowers/specs/2026-07-15-chat-message-ui-density-design.md` 完成代码与自动化验证，等待用户手动视觉验收，不计为完整验收通过。A1-A6 原定代码切片、P-A7 H1-H4 与 P-A8 Agent 频道响应模式已完成，当前等待用户验收；验收前不进入 Runtime 契约 v2 或 H5 跨 Space 编排。
+聊天消息流密度与交互重构、Chat 壳层与侧栏模块导航均已按对应 2026-07-15 规格完成代码与自动化验证，等待用户手动视觉验收，不计为完整验收通过。当前已落地 ChatOnly 纵向模块入口、Split 三组会话抽屉、模块打开态 Dock、中心 Chat 卡片保护、直接使用画布背景且无直线分隔的常驻会话导航，以及案例展示退役。A1-A6 原定代码切片、P-A7 H1-H4 与 P-A8 Agent 频道响应模式已完成，当前等待用户验收；验收前不进入 Runtime 契约 v2 或 H5 跨 Space 编排。
 
 ## 3. 当前路线：个人 AgentOS 本机化
 
@@ -82,7 +82,7 @@ P4 的其余视觉微调暂缓；聊天消息流密度与交互重构已按 `doc
 状态：已完成。
 
 - Desktop 首次启动通过仅 Desktop 私有信任可达的 setup API 收集 Human 名称、可选邮箱和描述，幂等初始化唯一 Human 与 `Home`；普通浏览器不会探测或调用该入口。全新 Desktop 目录不再要求 seed。
-- 普通 Space Dock 固定为 `Chat | Inbox | Tasks | Agents | Settings`；P-A7 H4 已把 Home Dock 固定为 `Chat | Spaces | Inbox | Tasks | Agents | Settings`。
+- 普通 Space 模块集合固定为 `Inbox | Tasks | Agents | Settings`，Home 额外包含 `Spaces`。ChatOnly 使用不含 Chat 的左侧纵向入口；模块打开态 Dock 保留 Chat 作为布局控制。
 - `Members` 改为当前 Space 的 `Agents`；Human 资料进入全局 Settings；`Computers` 已在 A2.4 提前删除。
 - 已删除 landing、登录、注册、邀请、PWA 和 `?legacy=1`/旧 `Layout`，静态路由只提供产品壳与 canonical Space 路径。
 - 模块统一挂在当前 Chat/收藏等会话 pathname 上，以 `?module=<id>` 和模块专属 resource query 表达；切换频道、DM 或收藏时保留当前模块及其合法 resource，不再生成 `/tasks`、`/agent`、`/settings` 等旧模块 pathname。
@@ -111,7 +111,7 @@ P4 的其余视觉微调暂缓；聊天消息流密度与交互重构已按 `doc
 - H1 路径地基（已完成）：分离 `~/.kith-space` app data 与 `~/Kith-space` 默认 Space 容器；建立稳定 homeSpaceId 和 `~/Kith-space/Home`，并以 `KITH_SPACE_SPACES_DIR` 隔离开发/测试 Space 容器。
 - H2 runtime cwd/记忆（已完成）：Claude Code、Codex、opencode 以 Space root 为 cwd；Agent Memory 移到 `<space>/.kith/agents/<agentId>`；adapter 临时状态移到 app data runtime 目录；文件树、skills、profile 与 reset 同步采用带防逃逸校验的三路径契约，同 agent reset/start 串行且 reset 不删除共享 Space 文件。OpenCode prompt 通过 child-only inline config 隔离，不覆盖用户 `AGENTS.md`；Copilot/Kimi/Cursor 仍标 experimental，并暂用 runtime state cwd 避免其 `AGENTS.md` 注入覆盖用户文件。
 - H3 文件夹接入（已完成）：Desktop 原生目录选择器；授权浏览器通过 Core 受限浏览主机目录；默认位置新建、普通文件夹接入、兼容 workspace.db 稳定 ID 复用和移动后重新定位；重复 root/Space ID、损坏/不兼容数据库、symlink 与身份不匹配拒绝，冲突 slug 自动取本机唯一别名。接入与正式打开共用 SQLite 完整性/版本/产品表列校验。失联 Space 以 `ready | missing | error` 显示，普通 API 不会隐式重建缺失 root，relocate 失败回滚 registry；失联深链与全失联恢复不会卡在 skeleton。
-- H4 Home UI（已完成）：普通冷启动进入稳定 Home Chat，显式 ready 深链接仍优先；Home Dock 增加真实 registry 驱动的 Spaces 卡片模块，支持搜索、刷新、默认创建、已有文件夹接入、失联重连和同窗进入，并记录 ready Space 的最近打开时间。普通 Space 不显示该 Dock 项且会移除无效 query；SpaceSwitcher 收敛为快速切换、应急重连与 Home Spaces 入口，不恢复 OverviewShell。
+- H4 Home UI（已完成）：普通冷启动进入稳定 Home Chat，显式 ready 深链接仍优先；Home 模块集合增加真实 registry 驱动的 Spaces 卡片模块，支持搜索、刷新、默认创建、已有文件夹接入、失联重连和同窗进入，并记录 ready Space 的最近打开时间。普通 Space 不显示该模块且会移除无效 query；SpaceSwitcher 收敛为快速切换、应急重连与 Home Spaces 入口，不恢复 OverviewShell。
 - H5 跨 Space 编排：后续先做真实只读摘要，再做受审计、幂等且不冒充 Human 的 task/message/agent dispatch。
 
 H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integration、2571-module Web build 与 Desktop build；仍由用户实际验收 Home/普通 Dock、Spaces 卡片、文件夹操作与同窗切换。agent 相对业务文件写入所属 Space root；复制 Space 带走 workspace.db、Space/Agent Memory、附件和用户文件；Home Spaces 只使用真实 registry，普通 Space 不出现该模块；测试隔离不会污染真实 `~/Kith-space`。

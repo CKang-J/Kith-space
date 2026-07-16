@@ -2,7 +2,7 @@
   --canvas:#f5f5f5;--canvas-soft:#fafafa;--surface:#fff;--surface-strong:#f0efed;
   --ink:#0c0a09;--ink-2:#292524;--body:#4e4e4e;--muted:#777169;--muted-soft:#a8a29e;
   --hair:#e7e5e4;--hair-strong:#d6d3d1;--card-line:rgba(87,96,106,.22);--card-line-strong:rgba(87,96,106,.35);--card-shadow:rgba(15,23,42,.035);--success:#16a34a;--amber:#b9770e;
-  --status-blue:#92B6FF;--status-blue-ink:#4f6fae;--status-green:hsl(137 36% 64%);--status-green-ink:#32734a;--status-orange:hsl(46 66% 50%);--status-orange-ink:#805400;--status-red:#c36a6a;--status-badge-bg:rgba(240,239,237,.4);
+  --status-blue:#92B6FF;--status-blue-ink:#4f6fae;--status-sleeping:#9c9894;--status-green:hsl(137 36% 64%);--status-green-ink:#32734a;--status-orange:hsl(46 66% 50%);--status-orange-ink:#805400;--status-red:#c36a6a;--status-badge-bg:rgba(240,239,237,.4);
   --g-mint:#a7e5d3;--g-lav:#c8b8e0;--g-sky:#a8c8e8;--g-peach:#f4c5a8;
   /* sidecar: UI functional colors not covered by DESIGN.md primary palette, centralized as tokens to prevent scattering (error aligned with DESIGN.md semantic-error) */
   --error:#dc2626;--error-soft:#fef2f2;--error-line:#fecaca;
@@ -12,7 +12,7 @@
   --on-ink:#fff;--mention:#fdf2d6;--scrim:rgba(12,10,9,.4);
   /* Shadow scale (elevation depth): black at varying opacity, centralized as tokens to prevent scattering (same sidecar approach); used for box-shadow on overlays/cards/menus */
   --shadow-1:rgba(0,0,0,.05);--shadow-2:rgba(0,0,0,.1);--shadow-3:rgba(0,0,0,.12);--shadow-4:rgba(0,0,0,.16);--shadow-5:rgba(0,0,0,.25);--shadow-6:rgba(0,0,0,.3);--shadow-7:rgba(0,0,0,.45);
-  --serif:Georgia,'Times New Roman',serif;--sans:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;--serif:var(--sans);--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   /* Markdown rendering sidecar tokens: scoped to .md/.ws-md so app chrome keeps the existing palette/layout contract. */
   --link-blue:#7097F1;--quote-text:#8f8881;--done-text:#9b9690;
   --channel-mention:#e7f0ff;--channel-mention-strong:#dbe8ff;
@@ -20,7 +20,7 @@
   --task-mention:#f5ddd9;--task-mention-strong:#efcbc5;
   --human-mention:#fde9ec;--human-mention-strong:#fad9df;
   --alert-note:#92B6FF;--alert-tip:#72bd8f;--alert-important:#a98ad5;--alert-warning:#d9ad2b;--alert-caution:#d67b72;
-  --read-measure:76ch;--read-pad:24px;--read-top:40px;--read-bottom:80px;--scrollbar-gutter:16px;
+  --read-measure:76ch;--read-pad:24px;--read-top:40px;--read-bottom:80px;--scrollbar-gutter:10px;
   --md-text-size:14.5px;--md-line-height:1.68;--md-paragraph-gap:.75em;
   --md-h1-size:1.4em;--md-h2-size:1.25em;--md-h3-size:1.12em;--md-h-rest-size:1em;
   /* Motion tokens for the product shell. */
@@ -35,7 +35,7 @@
 *{box-sizing:border-box}
 /* Global scrollbar treatment: keep every scrollable surface quiet until it is actively used. */
 *{scrollbar-width:thin;scrollbar-color:transparent transparent}
-*::-webkit-scrollbar{width:6px;height:6px}
+*::-webkit-scrollbar{width:10px;height:10px}
 *::-webkit-scrollbar-button{display:none;width:0;height:0}
 *::-webkit-scrollbar-track{background:transparent}
 *::-webkit-scrollbar-thumb{background:transparent;border-radius:9999px;border:1px solid transparent;background-clip:padding-box}
@@ -98,7 +98,7 @@ button{font-family:inherit}
 /* Embedded module sidebars keep their own scroll area above any pinned footer. */
 .sidebar{background:var(--canvas-soft);border-right:1px solid var(--hair);display:flex;flex-direction:column;min-height:0}
 .sb-scroll{flex:1;min-height:0;overflow:auto;padding:18px 14px}
-.sb-title{font-family:var(--serif);font-size:22px;letter-spacing:-.3px;color:var(--ink);margin:0 0 16px}
+.sb-title{font-family:var(--sans);font-size:20px;font-weight:600;letter-spacing:-.2px;color:var(--ink);margin:0 0 14px}
 .agent-search{margin:-4px 0 14px}
 .agent-search-empty{padding:8px 4px}
 /* Section header: label (+ optional count hugging it) on the left, optional add affordance pinned right.
@@ -135,7 +135,7 @@ button{font-family:inherit}
 .dm-pick{margin:0 0 4px;padding:4px;border:1px solid var(--hair);border-radius:8px;background:var(--surface)}
 .inline-create{width:100%;font-size:15px;padding:6px 10px;border:1px solid var(--hair-strong);border-radius:8px;outline:none;margin-bottom:6px;background:var(--canvas)}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--muted-soft);flex:none}
-.dot.sleeping{background:var(--status-blue)}
+.dot.sleeping{background:var(--status-sleeping)}
 .dot.online,.dot.active{background:var(--status-green)}
 .dot.working,.dot.thinking{background:var(--status-orange)}
 .dot.offline,.dot.inactive{background:var(--muted-soft)}
@@ -239,16 +239,19 @@ main.content-col{display:flex;flex-direction:column;height:100vh;background:var(
    keep name + description + tabs on ONE row. The description shrinks to an ellipsis instead of wrapping — wrapping
    otherwise multiplied the header height and dropped the channel name to the bottom when the column got narrow
    (e.g. a wide right panel). Name + tabs never shrink, so the tab row stays intact instead of being pushed around. */
-.chat-head{position:relative;height:52px;flex:none;align-items:center;padding:0 20px;border-bottom:1px solid var(--hair);background:var(--surface);z-index:11}
-.chat-head>h1{flex-shrink:0;font-family:var(--sans);font-size:20px;font-weight:600;line-height:1.2;letter-spacing:-.2px}
-.chat-head>small,.chat-head>.head-status{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-head{position:relative;height:52px;flex:none;padding:0 14px;border-bottom:1px solid var(--hair);background:var(--surface);z-index:11}
+.chat-head__rail{display:flex;width:100%;max-width:none;min-width:0;height:100%;align-items:center;gap:8px;margin:0}
+.chat-head__rail>h1{flex-shrink:0;font-family:var(--sans);font-size:20px;font-weight:600;line-height:1.2;letter-spacing:-.2px}
+.chat-head__rail>.chat-head__dm-title{display:flex;align-items:center;gap:7px;font-size:16px;font-weight:700;letter-spacing:-.1px}
+.chat-head__dm-title .av-img{border-radius:50%}
+.chat-head__rail>small,.chat-head__rail>.head-status{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chat-head-actions{display:flex;flex:none;align-items:center;gap:3px;margin-left:auto}
 .chat-head-icon-btn{display:inline-flex;width:30px;height:30px;flex:none;align-self:center;align-items:center;justify-content:center;padding:0;border:0;border-radius:9px;background:transparent;color:var(--muted);cursor:pointer}
 .chat-head-icon-btn:hover,.chat-head-icon-btn[aria-pressed="true"]{background:var(--surface-strong);color:var(--ink)}
 .chat-head-icon-btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .chat-head-icon-btn:disabled{cursor:not-allowed;opacity:.38}
-.scroll{flex:1;overflow:auto;padding:14px 20px}
-main.content-col > .scroll{min-height:0;padding-bottom:var(--chat-composer-reserve);background:var(--surface)}
+.scroll{flex:1;overflow:auto;padding:14px var(--chat-stream-gutter,20px)}
+main.content-col > .scroll{min-height:0;padding-bottom:var(--chat-composer-reserve);scrollbar-gutter:stable both-edges;overflow-x:hidden;background:var(--surface)}
 main.content-col.archived-readonly > .scroll{padding-bottom:24px}
 main.content-col.archived-readonly > .jump-bottom{bottom:24px}
 main.content-col > .scroll::-webkit-scrollbar{background:var(--surface)}
@@ -298,28 +301,14 @@ main.content-col > .scroll.is-scrolling::-webkit-scrollbar-thumb{background:rgba
 .md ul.contains-task-list{padding-left:1.1em}.md li.task-list-item{list-style:none;margin-left:0}.md li.task-list-item input[type="checkbox"]{position:absolute;left:.025em;top:.42em}.md del{color:var(--done-text);text-decoration-color:var(--done-text)}.md li.task-list-item:has(input[type="checkbox"]:checked){color:var(--done-text);text-decoration:line-through;text-decoration-color:var(--done-text)}
 .color-token{display:inline;white-space:nowrap;vertical-align:baseline}.color-token-text{color:var(--ink-2)}.color-chip{box-sizing:border-box;display:inline-block;width:.95em;height:.95em;margin-left:6px;border-radius:4px;border:1px solid var(--hair-strong);vertical-align:-.12em}
 .mention{color:var(--ink);font-weight:600;background:var(--mention);border-radius:4px;padding:0 3px}
-.composer{--composer-menu-edge:20px;position:relative;z-index:10;padding:4px 20px 14px;border-top:0;background:linear-gradient(to bottom,rgba(255,255,255,0),rgba(255,255,255,.48) 38%,var(--surface) 100%)}
-main.content-col > .composer{position:absolute;left:0;right:var(--scrollbar-gutter);bottom:0}
-.showcase-readonly{display:flex;align-items:center;gap:8px;padding:14px 28px 18px;border-top:1px solid var(--hair);font-size:13px;color:var(--muted);font-style:italic}
+.composer{--composer-menu-edge:var(--chat-stream-gutter,20px);position:relative;z-index:10;padding:4px var(--chat-stream-gutter,20px) 14px;border-top:0;background:linear-gradient(to bottom,rgba(255,255,255,0),rgba(255,255,255,.48) 38%,var(--surface) 100%)}
+main.content-col > .composer{position:absolute;left:var(--scrollbar-gutter);right:var(--scrollbar-gutter);bottom:0}
+.conversation-readonly{display:flex;align-items:center;gap:8px;padding:14px 28px 18px;border-top:1px solid var(--hair);font-size:13px;color:var(--muted);font-style:italic}
 .archived-channel-banner{position:relative;z-index:12;display:flex;align-items:center;gap:9px;padding:11px 28px;border-top:1px solid var(--hair);background:var(--canvas-soft);color:var(--muted);font-size:13px}
 .archived-channel-banner>svg{flex:none;color:var(--muted-soft)}
 .archived-channel-banner .grow{flex:1;min-width:0}
 .archived-channel-banner button{flex:none;border:1px solid var(--hair-strong);border-radius:7px;background:var(--surface);color:var(--ink);padding:5px 10px;font:inherit;font-size:12px;cursor:pointer}
 .archived-channel-banner button:hover{background:var(--surface-strong)}
-/* Showcase layout: the /showcase route never gets has-traj's 4th grid column, so this shell IS the single
-   1fr grid cell and lays out "channel column + thread panel" itself (no empty strip when the thread is closed). */
-.showcase-shell{display:flex;height:100vh;overflow:hidden;min-width:0}
-.showcase-shell>.content-col{flex:1;min-width:0}
-.showcase-thread{flex:none;width:var(--traj-w,360px)}  /* the thread panel; .thread-panel supplies the skin, mobile @820 makes it fullscreen */
-.showcase-case{transition:background .12s ease}
-.showcase-case.open{background:var(--surface-strong);box-shadow:inset 3px 0 0 var(--g-sky)}  /* highlight the case whose thread is open */
-/* Open case = a contained card: keep the shared message row contained and indent the content so the
-   avatar/text clear the inset accent bar instead of sitting flush on it — the bar otherwise pressed right
-   against the avatar's left edge. (Keep the 6px bottom margin so the content doesn't hug the card floor.) */
-.showcase-case.open .chat-message{margin:0 0 6px;padding-left:18px}
-/* The open case already provides the row highlight. Keep the shared message row transparent so the
-   case fill and full-height accent bar remain continuous; sender hover color stays on its content bubble. */
-.showcase-case.open .chat-message:hover{background:transparent}
 .wake-hint{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);padding:0 2px 9px;line-height:1.4}
 .wake-hint svg{color:var(--g-sky);flex:0 0 auto}
 .wake-hint.wh-off svg{color:var(--muted-soft)}
@@ -412,7 +401,8 @@ main.content-col > .composer{position:absolute;left:0;right:var(--scrollbar-gutt
 .file-acts{display:flex;gap:4px;flex:none}
 .file-acts button,.file-acts a{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid var(--hair-strong);border-radius:8px;background:var(--surface);color:var(--muted);cursor:pointer;text-decoration:none}
 .file-acts button:hover,.file-acts a:hover{color:var(--ink);background:var(--surface-strong)}
-.msg-sys{text-align:center;font-size:12px;color:var(--muted);padding:6px 12px;line-height:1.4}
+.msg-sys{box-sizing:border-box;width:100%;max-width:var(--chat-stream-max);margin:0 auto;text-align:center;font-size:12px;color:var(--muted);padding:6px 12px;line-height:1.4}
+.msg-sys>.md{margin:0 auto;text-align:center}
 .chat-message.msg-hl .chat-message__bubble{background:var(--g-peach);box-shadow:inset 0 0 0 1px rgba(185,119,14,.28);transition:background .4s,box-shadow .4s}
 .card{border:1px solid var(--hair);border-radius:16px;background:var(--surface);padding:18px;margin-bottom:14px}
 .card h3{margin:0 0 6px;font-size:16px;color:var(--ink)} .card .meta{font-size:13px;color:var(--muted)}
@@ -641,13 +631,12 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .msg-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 /* Message row metadata shared by the compact bubble presentation. */
 .member-badge{font-size:12px;color:var(--muted);font-weight:400;flex:none}
-.showcase-role{max-width:140px;overflow:hidden;color:var(--muted);font-size:11.5px;font-weight:500;text-overflow:ellipsis;white-space:nowrap}
 .agent-reply-placeholder{color:#8f949b;font-size:14px;font-weight:700;font-style:normal;background:linear-gradient(90deg,#b9bdc2 0%,#b9bdc2 46%,#fff 50%,#b9bdc2 54%,#b9bdc2 100%);background-size:300% 100%;background-position:100% 0;-webkit-background-clip:text;background-clip:text;color:transparent;animation:agent-thinking-shimmer 4s linear infinite}
 .agent-reply-placeholder.done{animation:none;color:var(--muted-soft);background:none}
 .agent-reply-placeholder.error{color:var(--status-red);font-style:normal;background:none;animation:none}
 @keyframes agent-thinking-shimmer{0%{background-position:100% 0}50%{background-position:0% 0}100%{background-position:0% 0}}
 .av-status{position:absolute;bottom:-1px;right:-1px;width:10px;height:10px;border-radius:50%;border:2px solid var(--surface);background:var(--muted-soft)}
-.av-status.sleeping{background:var(--status-blue)}
+.av-status.sleeping{background:var(--status-sleeping)}
 .av-status.offline,.av-status.inactive{background:var(--muted-soft)}
 .av-status.online,.av-status.active{background:var(--status-green)}
 .av-status.working,.av-status.thinking{background:var(--status-orange)}
@@ -689,7 +678,8 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .action-card .ac-btn:hover{background:var(--ink-2)}
 .action-card .ac-btn:disabled{cursor:default;opacity:.45}
 .action-card .ac-done{margin-top:8px;display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--success);font-weight:500}
-.head-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.head-status{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:400;color:var(--muted)}
+.head-status .dot{width:5px;height:5px}
 /* Thread panel (right-side overlay) */
 .thread-panel{background:var(--surface);display:flex;flex-direction:column;overflow:hidden}
 .thread-head{display:flex;align-items:center;gap:2px;padding:14px 18px;border-bottom:1px solid var(--hair);font-family:var(--serif);font-size:20px;color:var(--ink)}

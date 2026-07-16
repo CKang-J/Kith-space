@@ -312,9 +312,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
   if (p === "/agent-api/space/info" && method === "GET") {
     const chs = await db.select().from(schema.channels).where(eq(schema.channels.spaceId, spaceId));
     const joined = new Set((await agentChannels(spaceId, agent.id)).map((c) => c.channelId));
-    // Exclude system-seeded showcase demo props (creatorType="system") from the agent-facing teammate roster,
-    // mirroring the human plane's visibleAgents: they aren't reachable (workspaceMembers excludes them from
-    // @-mention/wake for every sender), so listing them would just tempt an agent into a no-op @-mention.
+    // System-owned identities are historical attribution records, not reachable teammates.
     const agents = await db.select().from(schema.agents).where(and(eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt), ne(schema.agents.creatorType, "system")));
     const human = getHumanIdentity();
     return (sendJson(res, 200, {

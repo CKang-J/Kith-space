@@ -30,7 +30,7 @@ export function ChatMessageItem({
 }: ChatMessageItemProps) {
   const bubbleWrapRef = useRef<HTMLDivElement>(null);
   const toolbarSlotRef = useRef<HTMLDivElement>(null);
-  const [toolbarPlacement, setToolbarPlacement] = useState<"side" | "above">("side");
+  const [toolbarPlacement, setToolbarPlacement] = useState<"side" | "above">("above");
   const classes = [
     "chat-message",
     `chat-message--${surface}`,

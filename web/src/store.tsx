@@ -38,8 +38,8 @@ interface Store {
   switchSpace: (slug: string) => void;                           // client-side Space switch: re-point the active Space, reset per-Space state, reconnect the socket (no full-page reload)
   clearBrowserAccess: () => Promise<void>;
   channels: Channel[]; archivedChannels: Channel[]; dms: Dm[]; unread: Record<string, number>;
-  agents: Agent[];        // ALL agents incl. system-seeded showcase demo agents — resolve a sender's avatar/name/profile by id (incl. #showcase history)
-  visibleAgents: Agent[]; // agents minus system-seeded showcase demo agents — use for member rosters and every agent picker / @mention candidate list
+  agents: Agent[];        // all persisted agent identities, including system-owned records needed for attribution
+  visibleAgents: Agent[]; // interactive agents available to rosters, pickers, and @mention reachability
   trajByConversation: TrajectoryBuckets;                          // per-base-conversation live trace buffers; each bucket is independently bounded
   api: (m: string, p: string, b?: unknown) => Promise<any>;
   reload: () => Promise<void>;
@@ -424,8 +424,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; sock?.close(); sockRef.current = null; if (unreadTimer) clearTimeout(unreadTimer); };
   }, [activeSpaceId]);
 
-  // Showcase demo agents (creatorType="system") stay in `agents` so #showcase history still resolves their
-  // avatar/name/profile by id — but they are not real members, so every roster / picker uses `visibleAgents`.
+  // System-owned identities remain available for historical attribution but are never interactive members.
   const visibleAgents = agents.filter((a) => a.creatorType !== "system");
   return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, spaceAvatar, spaces, createSpace, relocateSpace, renameSpace, removeSpace, refreshSpaces, switchSpace, clearBrowserAccess, uploadSpaceAvatar, uploadAgentAvatar, channels, archivedChannels, dms, unread, agents, visibleAgents, trajByConversation, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
 }

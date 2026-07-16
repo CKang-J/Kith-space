@@ -7,7 +7,6 @@ const presentationSrc = fs.readFileSync(new URL("../web/src/views/chat-message/m
 const messageCss = fs.readFileSync(new URL("../web/src/views/chat-message/chatMessage.css", import.meta.url), "utf8");
 const globalCss = fs.readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
 const chatSrc = fs.readFileSync(new URL("../web/src/views/Chat.tsx", import.meta.url), "utf8");
-const showcaseSrc = fs.readFileSync(new URL("../web/src/views/Showcase.tsx", import.meta.url), "utf8");
 const skeletonSrc = fs.readFileSync(new URL("../web/src/views/Skeleton.tsx", import.meta.url), "utf8");
 const topicPreviewSrc = fs.readFileSync(new URL("../web/src/views/chat-message/MessageTopicPreview.tsx", import.meta.url), "utf8");
 
@@ -18,26 +17,23 @@ test("message presentation has one semantic skeleton and sender surface mapping"
   assert.match(itemSrc, /chat-message__bubble/);
   assert.match(itemSrc, /chat-message__toolbar/);
   assert.match(presentationSrc, /senderType: "agent" \| "human"/);
-  assert.match(presentationSrc, /"thread" \| "showcase"/);
+  assert.match(presentationSrc, /"action" \| "thread"/);
 });
 
-test("main chat, thread replies, action cards, and Showcase reuse ChatMessageItem", () => {
+test("main chat, thread replies, action cards, and skeletons reuse ChatMessageItem", () => {
   const chatUses = chatSrc.match(/<ChatMessageItem\b/g) ?? [];
   assert.ok(chatUses.length >= 3, `expected main, thread, and action-card uses, got ${chatUses.length}`);
-  assert.match(showcaseSrc, /<ChatMessageItem\b/);
   assert.match(skeletonSrc, /<ChatMessageItem\b/);
   assert.match(chatSrc, /surface="thread"/);
-  assert.match(showcaseSrc, /surface="showcase"/);
   assert.doesNotMatch(chatSrc, /className=\{"msg"/);
-  assert.doesNotMatch(showcaseSrc, /className="msg"/);
-  assert.match(chatSrc, /const conversationReadOnly = isArchived \|\| cur\?\.type === "showcase"/);
+  assert.match(chatSrc, /const conversationReadOnly = isArchived/);
   assert.match(chatSrc, /readOnly=\{conversationReadOnly\}/);
   assert.match(chatSrc, /!conversationReadOnly \? <ReactionToolbarButton/);
   assert.match(chatSrc, /!readOnly \? <button className="ctx-item"/);
 });
 
 test("message density tokens match the approved design", () => {
-  assert.match(messageCss, /--chat-stream-max:\s*900px/);
+  assert.match(messageCss, /--chat-stream-max:\s*1040px/);
   assert.match(messageCss, /--chat-message-avatar:\s*32px/);
   assert.match(messageCss, /--chat-message-font-size:\s*14\.5px/);
   assert.match(messageCss, /--chat-message-line-height:\s*1\.55/);
@@ -60,16 +56,19 @@ test("legacy full-card width penalty and repeated agent description are removed"
 
 test("chat title, scroll reserve, and composer align to the shared stream", () => {
   assert.match(globalCss, /\.chat-head\{[^}]*height:\s*52px/);
+  assert.match(globalCss, /\.chat-head\{[^}]*padding:\s*0 14px/);
+  assert.match(globalCss, /\.chat-head__rail\{[^}]*max-width:\s*none[^}]*margin:\s*0/);
   assert.doesNotMatch(globalCss, /\.chat-head::after/);
-  assert.match(globalCss, /main\.content-col > \.scroll\{[^}]*padding-bottom:\s*var\(--chat-composer-reserve\)/);
-  assert.match(globalCss, /\.composer-box\{[^}]*max-width:\s*var\(--chat-stream-max\)/);
+  assert.match(globalCss, /main\.content-col > \.scroll\{[^}]*padding-bottom:\s*var\(--chat-composer-reserve\)[^}]*scrollbar-gutter:\s*stable both-edges[^}]*overflow-x:\s*hidden/);
+  assert.match(globalCss, /--scrollbar-gutter:10px/);
+  assert.match(globalCss, /\.date-divider\{[^}]*max-width:\s*var\(--chat-stream-max\)[^}]*margin:\s*10px auto/);
+  assert.match(globalCss, /\.composer-box\{[^}]*max-width:\s*var\(--chat-stream-max\)[^}]*margin:\s*0 auto/);
 });
 
 test("topic replies use a full-width bubble summary and empty inline meta is omitted", () => {
   assert.match(chatSrc, /const hasInlineMeta = !!m\.taskStatus \|\| !!m\.reactions\?\.length;/);
   assert.match(chatSrc, /\{hasInlineMeta \? <div className="msg-meta">/);
   assert.match(chatSrc, /<MessageTopicPreview/);
-  assert.match(showcaseSrc, /<MessageTopicPreview/);
   const previewBlock = messageCss.match(/\.message-topic-preview\{([^}]*)\}/)?.[1] ?? "";
   const previewRuleBlock = messageCss.match(/\.message-topic-preview__rule\{([^}]*)\}/)?.[1] ?? "";
   assert.doesNotMatch(previewBlock, /border-top/);

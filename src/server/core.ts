@@ -151,11 +151,8 @@ export async function spaceMembers(spaceId: string): Promise<Member[]> {
   const out: Member[] = [];
   const human = getHumanIdentity();
   if (human) out.push({ type: "human", id: human.id, name: human.handle, displayName: human.displayName });
-  // Exclude system-seeded showcase demo agents (creatorType="system"): they are display-only props for the
-  // read-only #showcase channel, NOT @-reachable members. This pool feeds @-mention auto-join in public
-  // channels — without the filter, @-ing a word that happens to match a prop's name (e.g. "Pat") would
-  // auto-join it into a real channel and fire a no-op wake (it has no runtime process). Message rendering resolves a
-  // sender by id elsewhere, so props still render correctly in #showcase history.
+  // System-owned identities have no runtime process and are not reachable teammates. Keep them out of the
+  // membership pool so public-channel mention matching cannot auto-join or wake a non-interactive record.
   const ags = await db.select().from(schema.agents).where(and(eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt), ne(schema.agents.creatorType, "system")));
   for (const a of ags) out.push({ type: "agent", id: a.id, name: a.name, displayName: a.displayName });
   return out;

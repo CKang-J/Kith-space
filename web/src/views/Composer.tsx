@@ -23,13 +23,13 @@ export function Composer({ channelId, placeholder, allowAsTask = false, allowCha
   channelId: string;
   placeholder: string;       // base placeholder; when task assignment is active the component swaps in the task placeholder
   allowAsTask?: boolean;     // channels/DMs pass true → offer Assign Task + ⌘/Ctrl+Shift+Enter shortcut
-  allowChannelAllMention?: boolean; // top-level channels and their topics only; DMs/showcase omit
+  allowChannelAllMention?: boolean; // top-level channels and their topics only; DMs omit
   validateChannelTaskMentions?: boolean; // false for DMs: Agent assignment-by-mention is a channel-only contract
   dmAgent?: Agent;           // DM peer agent (channels/threads omit) → drives the single-peer sleeping nudge
   className?: string;        // extra class on the .composer root (threads pass "thread-composer")
 }) {
   const { t } = useTranslation();
-  const { api, visibleAgents: agents, uploadOne, attachmentUrl } = useStore(); // visibleAgents: only real agents are @-mention candidates / reachability targets (not showcase demo props)
+  const { api, visibleAgents: agents, uploadOne, attachmentUrl } = useStore();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
   const [text, setText] = useState("");
   const [asTask, setAsTask] = useState(false);

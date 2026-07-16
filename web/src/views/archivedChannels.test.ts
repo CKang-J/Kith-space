@@ -15,7 +15,7 @@ test("archived channels are shown newest archive first without mutating Store st
 
 test("the Store and Chat keep archived channels discoverable but read-only", () => {
   const store = readFileSync(new URL("../store.tsx", import.meta.url), "utf8");
-  const sidebar = readFileSync(new URL("./ChatSidebar.tsx", import.meta.url), "utf8");
+  const sidebar = readFileSync(new URL("./ConversationListContent.tsx", import.meta.url), "utf8");
   const chat = readFileSync(new URL("./Chat.tsx", import.meta.url), "utf8");
 
   assert.match(store, /archivedChannels: Channel\[\]/);
@@ -26,7 +26,7 @@ test("the Store and Chat keep archived channels discoverable but read-only", () 
   assert.match(chat, /restoreArchivedChannel/);
   assert.match(chat, /channelSettings\.restoreChannel/);
   assert.doesNotMatch(chat, /function EditChannelModal/);
-  assert.match(chat, /const conversationReadOnly = isArchived \|\| cur\?\.type === "showcase"/);
+  assert.match(chat, /const conversationReadOnly = isArchived/);
   assert.match(chat, /conversationReadOnly && !meta\?\.threadChannelId/);
   assert.match(chat, /<ThreadPanel[\s\S]*readOnly=\{conversationReadOnly\}/);
   assert.match(chat, /<Reactions[^>]+readOnly=\{conversationReadOnly\}/);

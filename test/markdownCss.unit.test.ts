@@ -32,7 +32,7 @@ function assertDecl(selector: string, prop: string, value: string): void {
 
 test("font tokens only reference loaded or system fonts", () => {
   assert.doesNotMatch(indexHtml, /fonts\.googleapis|fonts\.gstatic/);
-  assert.match(css, /--serif:Georgia,'Times New Roman',serif;--sans:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace/);
+  assert.match(css, /--sans:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;--serif:var\(--sans\);--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace/);
   assert.match(css, /--md-text-size:14\.5px;--md-line-height:1\.68;--md-paragraph-gap:\.75em/);
   assert.doesNotMatch(css, /--font-display|--font-body|--font-code|--text-heading|--text-body/);
   assertDecl("body", "font-family", "var\\(--sans\\)");

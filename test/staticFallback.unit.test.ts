@@ -15,10 +15,13 @@ test("serves the app shell for real client-side routes", () => {
     "/s/kith-space/channel",
     "/s/kith-space/channel/123",
     "/s/kith-space/saved",
-    "/s/kith-space/showcase/",
   ]) {
     assert.equal(shouldServeAppShell(pathname), true, pathname);
   }
+});
+
+test("serves the retired Showcase URL only so the client can normalize it", () => {
+  assert.equal(shouldServeAppShell("/s/kith-space/showcase"), true);
 });
 
 test("does not serve the app shell for unknown file or scanner paths", () => {

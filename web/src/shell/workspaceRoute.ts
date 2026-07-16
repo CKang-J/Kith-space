@@ -5,7 +5,6 @@ export const SPACE_ROUTE_PATTERN = "/s/:slug/*";
 export type WorkspaceRouteSection =
   | "channel"
   | "saved"
-  | "showcase"
   | null;
 
 export interface WorkspaceRouteMatch {
@@ -19,7 +18,6 @@ export interface WorkspaceRouteMatch {
 const KNOWN_SECTIONS = new Set<Exclude<WorkspaceRouteSection, null>>([
   "channel",
   "saved",
-  "showcase",
 ]);
 
 const MODULE_IDS = new Set<WorkspaceModuleId>([
@@ -76,7 +74,7 @@ export function parseWorkspaceRoute(pathname: string): WorkspaceRouteMatch {
     section,
     resourceId,
     moduleId: null,
-    isChatRoute: isChannelRoute || section === "saved" || section === "showcase",
+    isChatRoute: isChannelRoute || section === "saved",
     isChannelRoute,
   };
 }

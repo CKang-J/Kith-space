@@ -13,6 +13,7 @@ import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Li
 const TASK_ICON: Record<string, typeof Circle> = { todo: Circle, in_progress: Play, in_review: Eye, done: CheckCircle2, closed: Ban };
 import { IconFile } from "../icons.tsx";
 import { Avatar, resolveAvatar } from "../Avatar.tsx";
+import { agentStatusLabel } from "../agentStatus.ts";
 import { Lightbox } from "../Lightbox.tsx";
 import { ST_LABEL } from "../TaskBoard.tsx";
 import { taskStatusOptions } from "../taskStatusPolicy.ts";
@@ -314,7 +315,7 @@ export function Chat({
   const burstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // resets burstCount after 600ms silence
   const cur = [...channels, ...archivedChannels, ...dms].find((c) => c.id === channelId) || channels.find((c) => c.name === "all") || channels[0];
   const isArchived = !!cur && archivedChannels.some((channel) => channel.id === cur.id);
-  const conversationReadOnly = isArchived || cur?.type === "showcase";
+  const conversationReadOnly = isArchived;
   const [restoringArchived, setRestoringArchived] = useState(false);
   const messageChannels = [...channels, ...archivedChannels];
 
@@ -567,11 +568,6 @@ export function Chat({
     const status = a.status && a.status !== "offline" ? a.status : "";
     return activity || status || "offline";
   };
-  const agentActivityText = (a?: (typeof agents)[number]) => {
-    if (a?.activity && a.activity !== "offline") return a.activity;
-    if (a?.status && a.status !== "offline") return a.status;
-    return "";
-  };
   // Routes inline token clicks (@mention / #channel / thread / task #N) inside MessageContent
   const navToken = async (type: string, args: string[]) => {
     if (type === "agent") return openAgentProfile(args[0]!);
@@ -642,13 +638,13 @@ export function Chat({
       <button type="button" className="chat-head-icon-btn" title={t("nav.tasks")} aria-label={t("nav.tasks")} onClick={openCurrentTasks}>
         <ListTodo size={17} />
       </button>
-      {!isDm && cur.type !== "showcase" ? (
+      {!isDm ? (
         <button type="button" className="chat-head-icon-btn" title={t("chat.channelMembers")} aria-label={t("chat.channelMembers")} onClick={() => setShowMembers(true)}>
           <UsersRound size={17} />
         </button>
       ) : null}
       {renderAggregateControl()}
-      {!isDm && cur.type !== "showcase" && onOpenChannelSettings ? (
+      {!isDm && onOpenChannelSettings ? (
         <button type="button" className="chat-head-icon-btn" title={t("chat.channelSettings")} aria-label={t("chat.channelSettings")} onClick={(event) => onOpenChannelSettings(cur.id, event.currentTarget)}>
           <MoreHorizontal size={17} />
         </button>
@@ -662,12 +658,18 @@ export function Chat({
       {!embedded && <ChatSidebar />}
       {!thread || !threadOnly ? <main ref={chatMainRef} className={"content-col" + (isArchived ? " archived-readonly" : "")}>
         <div className="head chat-head">
-          {renderConversationListControl()}
-          <h1>{isDm ? "@ " + (cur?.name || "") : cur?.type === "showcase" ? <><Eye size={16} style={{ verticalAlign: "-3px", opacity: 0.7 }} /> {cur?.name || "…"}</> : "# " + (cur?.name || "…")}</h1>
-          {dmAgent
-            ? <span className="head-status"><span className={"dot " + (agentLiveState(dmAgent) || "offline")} />{agentActivityText(dmAgent) || "offline"}</span>
-            : <small>{sub || cur?.description || ""}</small>}
-          {renderConversationActions()}
+          <div className="chat-head__rail">
+            {renderConversationListControl()}
+            <h1 className={isDm ? "chat-head__dm-title" : undefined}>
+              {isDm
+                ? <>{dmAgent ? <Avatar seed={dmAgent.name} url={avFor(dmAgent.avatarUrl)} size={24} /> : null}{cur?.name || ""}</>
+                : "# " + (cur?.name || "…")}
+            </h1>
+            {dmAgent
+              ? <span className="head-status"><span className={"dot " + agentLiveState(dmAgent)} aria-hidden="true" />{agentStatusLabel(t, agentLiveState(dmAgent))}</span>
+              : <small>{sub || cur?.description || ""}</small>}
+            {renderConversationActions()}
+          </div>
         </div>
         <>
             {isArchived ? (
@@ -709,7 +711,7 @@ export function Chat({
                 // action card (agent proposal card) → rendered by dedicated ActionCardMsg component
                 if (m.messageType === "action" && m.actionMetadata?.kind === "action-card") return <Fragment key={m.id}>{dateDivider}<ActionCardMsg m={m} readOnly={conversationReadOnly} responseModeBadge={responseModeBadge} /></Fragment>;
                 // system messages (task lifecycle events, etc.) → centered grey bar (no avatar, no full message block)
-                // If the system message has thread replies (e.g. showcase case anchors), render a thread-pill below the bar so it's clickable.
+                // If the system message has thread replies, render a thread pill below the bar so it stays reachable.
                 if (m.senderType === "system") return (
                   <Fragment key={m.id}>
                     {dateDivider}
@@ -742,8 +744,7 @@ export function Chat({
                   {dateDivider}
                   <ChatMessageItem
                     id={"m-" + m.id}
-                    surface={cur?.type === "showcase" ? "showcase" : messageTone}
-                    tone={cur?.type === "showcase" ? messageTone : undefined}
+                    surface={messageTone}
                     className={[
                       shouldEnter ? "msg-enter" : "",
                       continuation ? "chat-message--continuation" : "",
@@ -772,8 +773,7 @@ export function Chat({
                     {hasInlineMeta ? <div className="msg-meta">
                         {m.taskStatus && (() => {
                           const TI = TASK_ICON[m.taskStatus] || Circle;
-                          const isShowcase = cur?.type === "showcase";
-                          const readOnlyTask = isShowcase || isArchived;
+                          const readOnlyTask = isArchived;
                           const claimable = !readOnlyTask && !m.taskAssigneeId && m.taskStatus === "todo";
                           const opts = taskStatusOptions();
                           const open = !readOnlyTask && taskMenu === m.id;
@@ -805,15 +805,13 @@ export function Chat({
               })}
             </div>
             {showJump && <button className="jump-bottom" onClick={toBottom}><ArrowDown size={14} /> {t("chat.backToBottom")}</button>}
-            {cur?.type === "showcase"
-              ? <div className="showcase-readonly"><Eye size={14} />{t("chat.showcaseReadOnly")}</div>
-              : isArchived
-                ? null
-                : <Composer
+            {isArchived
+              ? null
+              : <Composer
                   channelId={cur?.id ?? ""}
                   placeholder={isDm ? t("chat.dmPlaceholder", { name: cur?.name }) : t("chat.channelPlaceholder")}
                   allowAsTask
-                  allowChannelAllMention={!isDm && cur?.type !== "showcase"}
+                  allowChannelAllMention={!isDm}
                   validateChannelTaskMentions={!isDm}
                   dmAgent={isDm ? dmAgent : undefined}
                 />}
@@ -854,7 +852,7 @@ export function Chat({
               }}
               onClose={closeThread}
               onOpenAgent={openAgentProfile}
-              allowChannelAllMention={!isDm && cur?.type !== "showcase"}
+              allowChannelAllMention={!isDm}
               renderResponseModeBadge={renderResponseModeBadge}
             />
           </>
@@ -1032,10 +1030,8 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
           return row(m, dateDivider, continuation, hasContinuation);
         })}
       </div>
-      {channels.find((c) => c.id === parent.channelId)?.type === "showcase"
-        ? <div className="showcase-readonly"><Eye size={14} />{t("chat.showcaseReadOnly")}</div>
-        : readOnly
-          ? <div className="showcase-readonly"><Archive size={14} />{t("channelSettings.archivedReadOnly")}</div>
+      {readOnly
+        ? <div className="conversation-readonly"><Archive size={14} />{t("channelSettings.archivedReadOnly")}</div>
         : <Composer channelId={channelId} placeholder={t("chat.threadReplyPlaceholder")} allowChannelAllMention={allowChannelAllMention} className="thread-composer" />}
       {ctxMenu ? <MessageContextMenu
         m={ctxMenu.m}
@@ -1057,7 +1053,7 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
 function ChannelMembersModal({ channelId, channelName, readOnly = false, onClose }: { channelId: string; channelName: string; readOnly?: boolean; onClose: () => void }) {
   const { t } = useTranslation();
   useEscClose(onClose);
-  const { api, visibleAgents: agents, attachmentUrl } = useStore(); // visibleAgents: showcase demo props are not offered in the "add agent" list
+  const { api, visibleAgents: agents, attachmentUrl } = useStore();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
   const [members, setMembers] = useState<any[]>([]);
   const load = async () => { const data = await api("GET", `/api/channels/${channelId}/members`); setMembers(data?.agents || []); };

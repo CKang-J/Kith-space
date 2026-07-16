@@ -1,6 +1,6 @@
 // Image lightbox: focused media panel with scroll-to-zoom, drag-to-pan, double-click to reset, Esc/backdrop
 // to close. Portaled to document.body so position:fixed is viewport-relative (not relative to a message
-// row's enter-animation transform). Shared by the real Chat view and the static Showcase demo so an image
+// row's enter-animation transform). Shared by all message and attachment surfaces so an image
 // preview opens a floating dialog in place instead of navigating the browser to the raw asset.
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";

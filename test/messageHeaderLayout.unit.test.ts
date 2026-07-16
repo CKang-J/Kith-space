@@ -8,6 +8,7 @@ const chatSrc = fs.readFileSync(new URL("../web/src/views/Chat.tsx", import.meta
 const itemSrc = fs.readFileSync(new URL("../web/src/views/chat-message/ChatMessageItem.tsx", import.meta.url), "utf8");
 const css = fs.readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
 const messageCss = fs.readFileSync(new URL("../web/src/views/chat-message/chatMessage.css", import.meta.url), "utf8");
+const zh = fs.readFileSync(new URL("../web/src/locales/zh.json", import.meta.url), "utf8");
 
 function ruleBodyFrom(source: string, selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -22,7 +23,7 @@ const messageRuleBody = (selector: string) => ruleBodyFrom(messageCss, selector)
 test("messages use the shared semantic presentation without repeated agent descriptions", () => {
   assert.match(chatSrc, /<ChatMessageItem/);
   assert.match(chatSrc, /const messageTone = surfaceForSender/);
-  assert.match(chatSrc, /surface=\{cur\?\.type === "showcase" \? "showcase" : messageTone\}/);
+  assert.match(chatSrc, /surface=\{messageTone\}/);
   assert.match(chatSrc, /<MessageHeader/);
   assert.doesNotMatch(chatSrc, /msg-activity|activity=\{agActivity/);
   assert.doesNotMatch(chatSrc, /msg-subhead|msg-role/);
@@ -53,7 +54,7 @@ test("the shared item owns avatar, header, bubble, and hover toolbar structure",
 });
 
 test("message density tokens match the accepted design", () => {
-  assert.match(messageCss, /--chat-stream-max:900px/);
+  assert.match(messageCss, /--chat-stream-max:1040px/);
   assert.match(messageCss, /--chat-message-avatar:32px/);
   assert.match(messageCss, /--chat-message-font-size:14\.5px/);
   assert.match(messageCss, /--chat-message-line-height:1\.55/);
@@ -93,21 +94,44 @@ test("chat chrome is compact while non-chat page headings keep their existing ty
   assert.match(ruleBody(".thread-head"), /font-family\s*:\s*var\(--serif\)/);
   const chatHead = ruleBody(".chat-head");
   assert.match(chatHead, /height\s*:\s*52px/);
-  assert.match(chatHead, /padding\s*:\s*0 20px/);
+  assert.match(chatHead, /padding\s*:\s*0 14px/);
   assert.match(chatHead, /border-bottom\s*:\s*1px solid var\(--hair\)/);
-  const title = ruleBody(".chat-head>h1");
+  const rail = ruleBody(".chat-head__rail");
+  assert.match(rail, /max-width\s*:\s*none/);
+  assert.match(rail, /margin\s*:\s*0/);
+  assert.match(rail, /gap\s*:\s*8px/);
+  const title = ruleBody(".chat-head__rail>h1");
   assert.match(title, /font-family\s*:\s*var\(--sans\)/);
   assert.match(title, /font-size\s*:\s*20px/);
   assert.match(title, /font-weight\s*:\s*600/);
   assert.doesNotMatch(css, /\.chat-head::after\s*\{/);
 });
 
-test("avatar and generic status dots keep the established lifecycle colors and pulse rules", () => {
-  assert.match(css, /--status-blue:#92B6FF/i);
-  assert.match(css, /\.dot\.sleeping\{background:var\(--status-blue\)\}/);
+test("agent DM header uses the peer avatar, plain name, and localized lifecycle label", () => {
+  assert.match(chatSrc, /import \{ agentStatusLabel \} from "\.\.\/agentStatus\.ts"/);
+  assert.match(chatSrc, /className=\{isDm \? "chat-head__dm-title" : undefined\}/);
+  assert.match(chatSrc, /<Avatar seed=\{dmAgent\.name\} url=\{avFor\(dmAgent\.avatarUrl\)\} size=\{24\} \/>/);
+  assert.match(chatSrc, /agentStatusLabel\(t, agentLiveState\(dmAgent\)\)/);
+  assert.doesNotMatch(chatSrc, /isDm \? "@ " \+/);
+  const dmTitle = ruleBody(".chat-head__rail>.chat-head__dm-title");
+  assert.match(dmTitle, /display\s*:\s*flex/);
+  assert.match(dmTitle, /align-items\s*:\s*center/);
+  assert.match(dmTitle, /gap\s*:\s*7px/);
+  assert.match(dmTitle, /font-size\s*:\s*16px/);
+  assert.match(dmTitle, /font-weight\s*:\s*700/);
+  assert.match(css, /\.head-status\{[^}]*font-size\s*:\s*12px[^}]*font-weight\s*:\s*400/);
+  const statusDot = ruleBody(".head-status .dot");
+  assert.match(statusDot, /width\s*:\s*5px/);
+  assert.match(statusDot, /height\s*:\s*5px/);
+  assert.match(zh, /"sleeping"\s*:\s*"已休眠"/);
+});
+
+test("avatar and generic status dots use the quiet sleeping gray while keeping active lifecycle colors", () => {
+  assert.match(css, /--status-sleeping:#9c9894/i);
+  assert.match(css, /\.dot\.sleeping\{background:var\(--status-sleeping\)\}/);
   assert.match(css, /\.dot\.online,\.dot\.active\{background:var\(--status-green\)\}/);
   assert.match(css, /\.dot\.working,\.dot\.thinking\{background:var\(--status-orange\)\}/);
-  assert.match(css, /\.av-status\.sleeping\{background:var\(--status-blue\)\}/);
+  assert.match(css, /\.av-status\.sleeping\{background:var\(--status-sleeping\)\}/);
   assert.match(css, /\.av-status\.online,\.av-status\.active\{background:var\(--status-green\)\}/);
   assert.match(css, /\.av-status\.working,\.av-status\.thinking\{background:var\(--status-orange\)\}/);
   assert.match(ruleBody(".av-status.working::after"), /animation\s*:\s*lb-ping/);
@@ -171,13 +195,41 @@ test("reaction add moves into the toolbar without creating empty message meta", 
 test("composer, scroll reserve, and date divider align with the message stream", () => {
   const scroll = ruleBody("main.content-col > .scroll");
   assert.match(scroll, /padding-bottom\s*:\s*var\(--chat-composer-reserve\)/);
-  assert.match(ruleBody(".date-divider"), /max-width\s*:\s*var\(--chat-stream-max\)/);
+  assert.match(scroll, /scrollbar-gutter\s*:\s*stable both-edges/);
+  assert.match(scroll, /overflow-x\s*:\s*hidden/);
+  assert.match(css, /--scrollbar-gutter:10px/);
+  assert.match(css, /\*::-webkit-scrollbar\{width:10px;height:10px\}/);
+  const dateDivider = ruleBody(".date-divider");
+  assert.match(dateDivider, /max-width\s*:\s*var\(--chat-stream-max\)/);
+  assert.match(dateDivider, /margin\s*:\s*10px auto/);
   const composer = ruleBody(".composer");
-  assert.match(composer, /padding\s*:\s*4px 20px 14px/);
+  assert.match(composer, /padding\s*:\s*4px var\(--chat-stream-gutter,20px\) 14px/);
   assert.match(composer, /border-top\s*:\s*0/);
-  assert.match(ruleBody(".composer-box"), /max-width\s*:\s*var\(--chat-stream-max\)/);
-  assert.match(ruleBody(".mention-menu"), /max-width\s*:\s*var\(--chat-stream-max\)/);
+  const composerRail = ruleBody("main.content-col > .composer");
+  assert.match(composerRail, /left\s*:\s*var\(--scrollbar-gutter\)/);
+  assert.match(composerRail, /right\s*:\s*var\(--scrollbar-gutter\)/);
+  const composerBox = ruleBody(".composer-box");
+  assert.match(composerBox, /max-width\s*:\s*var\(--chat-stream-max\)/);
+  assert.match(composerBox, /margin\s*:\s*0 auto/);
+  const mentionMenu = ruleBody(".mention-menu");
+  assert.match(mentionMenu, /max-width\s*:\s*var\(--chat-stream-max\)/);
+  assert.match(mentionMenu, /margin\s*:\s*0 auto 8px/);
+  assert.match(ruleBody(".composer-validation-error"), /margin\s*:\s*0 auto 7px/);
   assert.match(ruleBody(".jump-bottom"), /bottom\s*:\s*calc\(var\(--chat-composer-reserve\) \+ 14px\)/);
+});
+
+test("system task events share the centered message rail", () => {
+  const systemMessage = ruleBody(".msg-sys");
+  assert.match(systemMessage, /width\s*:\s*100%/);
+  assert.match(systemMessage, /max-width\s*:\s*var\(--chat-stream-max\)/);
+  assert.match(systemMessage, /margin\s*:\s*0 auto/);
+  const markdown = ruleBody(".msg-sys>.md");
+  assert.match(markdown, /margin\s*:\s*0 auto/);
+  assert.match(markdown, /text-align\s*:\s*center/);
+});
+
+test("hidden message toolbars do not widen the chat scroll surface", () => {
+  assert.match(itemSrc, /useState<"side" \| "above">\("above"\)/);
 });
 
 test("new messages still expand from below and honor reduced motion", () => {

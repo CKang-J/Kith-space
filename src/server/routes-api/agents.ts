@@ -24,9 +24,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   }
   if (p === "/api/agents" && method === "GET") {
     const agents = await db.select().from(schema.agents).where(and(eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt)));
-    // creatorType lets the client distinguish system-seeded showcase agents (creatorType="system") from
-    // real members — they stay in the store so #showcase history renders their avatar/name, but are filtered
-    // out of member rosters and agent pickers (see web/src/store.tsx visibleAgents).
+    // creatorType lets the client exclude non-interactive system-owned identities from rosters and pickers.
     return (sendJson(res, 200, agents.map((a) => ({ id: a.id, name: a.name, displayName: a.displayName, description: a.description, status: a.status, activity: a.activity, model: a.model, runtime: a.runtime, avatarUrl: a.avatarUrl, creatorType: a.creatorType, defaultResponseMode: a.defaultResponseMode }))), true);
   }
   if (p === "/api/agents" && method === "POST") {

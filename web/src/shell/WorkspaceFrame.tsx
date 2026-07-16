@@ -9,6 +9,7 @@ import { LiveTrace } from "../views/LiveTrace.tsx";
 import { ChatWorkspace } from "./ChatWorkspace.tsx";
 import { DragDivider } from "./DragDivider.tsx";
 import { ModuleWorkspace } from "./ModuleWorkspace.tsx";
+import { SidebarModuleNavigation } from "./SidebarModuleNavigation.tsx";
 import { WorkspaceDock } from "./WorkspaceDock.tsx";
 import { WorkspaceTopBar } from "./WorkspaceTopBar.tsx";
 import {
@@ -134,11 +135,14 @@ export function WorkspaceFrame() {
 
   const rememberedChat = storedChatLocation(slug);
   const fallbackConversation = channels.find((channel) => channel.name === "all") ?? channels[0] ?? dms[0];
-  const currentChannelId = routeChannelId ?? rememberedChat?.channelId ?? fallbackConversation?.id ?? null;
-  const chatPath = rememberedChat?.path ?? `/s/${slug}/channel${currentChannelId ? `/${currentChannelId}` : ""}`;
+  const fallbackConversationId = fallbackConversation?.id ?? null;
+  const fallbackChatPathname = `/s/${slug}/channel${fallbackConversationId ? `/${fallbackConversationId}` : ""}`;
+  const currentChannelId = routeChannelId ?? rememberedChat?.channelId ?? fallbackConversationId;
+  const chatPath = rememberedChat?.path ?? fallbackChatPathname;
   const chatQueryIndex = chatPath.indexOf("?");
   const rememberedChatPathname = chatQueryIndex === -1 ? chatPath : chatPath.slice(0, chatQueryIndex);
   const rememberedChatSearch = chatQueryIndex === -1 ? "" : chatPath.slice(chatQueryIndex);
+  const retiredShowcaseRoute = /\/showcase\/?$/.test(location.pathname);
   const layoutPathname = route.isChatRoute ? location.pathname : rememberedChatPathname;
   const layoutBaseSearch = route.isChatRoute ? location.search : rememberedChatSearch;
   const layoutSearch = workspaceSearchForShellState(location.search, layoutState);
@@ -171,6 +175,16 @@ export function WorkspaceFrame() {
   const settingsChannel = settingsChannelId
     ? [...channels, ...archivedChannels].find((channel) => channel.id === settingsChannelId) ?? null
     : null;
+
+  useEffect(() => {
+    if (route.isChatRoute) return;
+    if (retiredShowcaseRoute && !fallbackConversationId) return;
+    const normalizationLayout: WorkspaceLayoutState = activeModule === null
+      ? INITIAL_WORKSPACE_LAYOUT
+      : { activeModule, chatVisible };
+    const normalizationPathname = retiredShowcaseRoute ? fallbackChatPathname : rememberedChatPathname;
+    navigate(`${normalizationPathname}${workspaceSearchForShellState(location.search, normalizationLayout)}`, { replace: true });
+  }, [activeModule, chatVisible, fallbackChatPathname, fallbackConversationId, location.search, navigate, rememberedChatPathname, retiredShowcaseRoute, route.isChatRoute]);
 
   const navigateLayout = (next: WorkspaceLayoutState) => {
     navigate(`${layoutPathname}${workspaceSearchForLayout(layoutBaseSearch, next)}`);
@@ -252,6 +266,13 @@ export function WorkspaceFrame() {
       onModuleSelect={(moduleId: DockModuleId) => void selectModule(moduleId)}
     />
   );
+  const sidebarModuleNavigation = (
+    <SidebarModuleNavigation
+      isHome={isHome}
+      unreadCount={unreadCount}
+      onModuleSelect={(moduleId: DockModuleId) => void selectModule(moduleId)}
+    />
+  );
 
   const settingsInDrawer = !!settingsChannel && !aggregateAvailable;
   const channelSettings = settingsChannel ? (
@@ -301,7 +322,7 @@ export function WorkspaceFrame() {
             onNavigateConversation={(target) => void requestConversationNavigation(target)}
             settingsDrawer={settingsInDrawer ? channelSettings : undefined}
             settingsDrawerOpen={settingsInDrawer && aggregateOpen}
-            dock={animatedLayout.activeModule === null ? dock : undefined}
+            moduleNavigation={sidebarModuleNavigation}
             style={paneStyle(animatedWidths.chat)}
           />
         ) : null}

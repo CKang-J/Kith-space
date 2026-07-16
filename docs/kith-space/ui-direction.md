@@ -1,26 +1,27 @@
 # Kith-space UI 方向
 
-本文是 Kith-space 当前 UI 信息架构与视觉语言的权威说明。单窗口交互契约见 `docs/superpowers/specs/2026-07-10-kith-space-single-window-workspace-design.md`，个人 AgentOS 宿主与产品边界见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，Home/Space root 补充设计见 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。现有可交互线框 `docs/prototypes/kith-space-single-window-flow.html` 只覆盖基础三态壳，尚未补 Home Spaces 页面。
+本文是 Kith-space 当前 UI 信息架构与视觉语言的权威说明。单窗口交互契约见 `docs/superpowers/specs/2026-07-10-kith-space-single-window-workspace-design.md`，个人 AgentOS 宿主与产品边界见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，Home/Space root 补充设计见 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`；Chat 壳层、侧栏模块入口、会话抽屉和案例展示退役的最新覆盖规格见 `docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md`。现有可交互线框 `docs/prototypes/kith-space-single-window-flow.html` 只覆盖早期三态壳，不代表最新 ChatOnly 导航目标。
 
-结论前置：Kith-space 采用**单窗口工作区**。首次启动先初始化唯一 Human，普通冷启动随后进入 `Home` Chat；Home 是真实总控 Space，并在同一个 Dock 增加 Spaces 模块。Chat 是默认主页与基础工作面，功能模块打开后，界面只在 Chat 全宽、Chat + 模块分屏、模块全宽三种形态间切换。此前的“空间总览壳 + 空间内部壳”、旧 `Layout` 回退、Landing 与 PWA 入口均保持删除。
+结论前置：Kith-space 采用**单窗口工作区**。首次启动先初始化唯一 Human，普通冷启动随后进入 `Home` Chat；Home 是真实总控 Space，并比普通 Space 多 Spaces 模块。Chat 是默认主页与基础工作面，功能模块打开后，界面只在 Chat 全宽、Chat + 模块分屏、模块全宽三种形态间切换。ChatOnly 的模块入口位于左侧常驻栏，模块打开后切换为 Module Pane 底部 Dock；案例展示退出目标信息架构。此前的“空间总览壳 + 空间内部壳”、旧 `Layout` 回退、Landing 与 PWA 入口均保持删除。
 
 ---
 
 ## 1. 视觉语言
 
-借鉴 OpenLoaf 的布局关系与空间层次，不复制其 AGPL 源码或具体实现。Kith-space 保留自身已有组件与业务视觉，只统一工作窗口的骨架：
+借鉴参考产品的布局关系与空间层次，不复制其源码、品牌或具体实现。Kith-space 保留自身已有组件与业务视觉，只统一工作窗口的骨架：
 
-- 窗口画布为浅灰 `#f5f5f5`，工作面板为纯白 `#ffffff`。
-- 顶部栏高 40px，位于画布层；右侧工具组单独使用白底，与窗口底色形成层次。
-- 主工作面板圆角 12px，无边框、无阴影；层级由白色面板、浅灰画布和间隙建立。
-- 面板间隙 10px，画布外边距 8px。
-- Dock、顶部工具组、抽屉、菜单和输入区可使用 1px `#e0e0e0` 边框。
-- 工具层阴影为 `0 4px 16px rgba(0,0,0,.08)`；普通浮层可用 `0 8px 24px rgba(0,0,0,.10)`，主面板始终不加阴影。
+- 窗口沿用原有浅灰画布；中心 Chat 保持独立白色圆角卡片，会话导航取消卡片底板并直接使用画布背景，两者以既有间隙分开。
+- 顶部栏高 40px；标题、导航、正文和元信息统一使用系统无衬线字体，不为功能标题单独使用衬线字体。
+- 原有中心 Chat 卡片式 UI、圆角、间隙和表面层级不得因壳层导航改造被拉平或移除；常驻会话导航不再使用独立卡片表面。
+- 新增纵向模块入口、会话列表和 Split 会话抽屉不使用贯穿式横线或竖线分割；归档频道入口与常驻 agent 状态区同样只用留白、分组标题与行底色组织层级。
+- ChatOnly 常驻会话导航不显示“对话”总标题；上方模块图标与下方“频道 / 私信”分组标题共用左侧基线。Split 临时抽屉仍保留自身标题。
+- 活跃行使用克制的浅表面色，Human 消息保持 `#eff4fb`，Agent 消息使用中性浅灰，不建立互相竞争的多套强调色。
+- Chat 标题栏相对 Chat 卡片左右固定 14px，与 24px 私聊头像在 52px 标题栏中的上下留白一致，不跟随消息宽度变化；Agent 私聊标题使用“头像 + 16px/700 昵称 + 12px/400 状态”，不显示 `@` 前缀或 AI 标签，状态文字复用 Agents 页面同一套本地化映射。休眠状态统一使用低对比暖灰色状态点，在线、工作和错误状态继续保留各自语义色。ChatOnly 与 Split 的消息区统一使用 10px 水平内边距，日期分隔、消息流、system 任务事件与 Composer 使用同一条 1040px 居中内容轨道；system 事件内部 Markdown 同样居中。Composer 左边界对齐头像槽、右边界对齐消息内容列的最大右边界，滚动区使用左右对称的稳定槽位消除滚动条造成的偏移和单侧空白，并只允许纵向滚动；宽屏左右留白对称，窄屏不会被隐藏工具栏撑出横向滚动条。
 - 不把现有业务视图一比一重画成原型；原型负责布局与交互，现有 Kith-space UI 负责内容呈现。
 
 品牌标志采用“三层本地 Space”概念：暖白、鼠尾草绿与近黑三张错位平面表达 Home 和多个本地 Space，前景平面形成 `K`。用户确认的生成设计稿及其原始像素裁切是唯一母版；应用图标按母版 120/558 的标准圆角比例精确裁出透明四角，浏览器使用同源 RGBA PNG，Windows/Electron 使用同源多尺寸 ICO，不重新描摹 SVG。完整资产与回归约束见 `docs/brand.md`。
 
-这套“有色画布 + 独立白色面板 + 克制浮层”的语言同时用于 ChatOnly、Split 和 ModuleOnly，避免不同状态像三套产品。
+这套“中心 Chat 卡片 + 画布会话导航 + 留白分组 + 克制浮层”的语言用于三态切换，避免不同状态像三套产品。
 
 ---
 
@@ -40,7 +41,7 @@
 - Space 名称保留快速切换入口；H4 已把默认创建、已有文件夹接入和完整目录管理移入 Home 的 Spaces 模块。顶部入口只保留快速切换、失联重连和“管理空间”跳转。
 - Search 位于顶部工具组，通过按钮和 `Cmd/Ctrl + K` 进入，不占 Dock 槽位。
 - 同时最多显示一个 Chat Pane、一个当前会话聚合面板和一个 Module Pane；聚合面板只依附可见 Chat，不是第二个 Module。
-- Split 默认让 Chat 占可用工作区的 25%、Module 占其余空间；Chat 下限为 `max(360px, 25%)`。Tasks / Search 的模块下限为 560px，其余现有模块为 640px；模块不再使用固定 960px 上限。
+- Split 默认让 Chat 占可用工作区的 25%、Module 占其余空间；Chat 下限为 `max(360px, 25%)`。ChatOnly 的主 Chat 卡片沿用同一 360px 绝对下限。Tasks / Search 的模块下限为 560px，其余现有模块为 640px；模块不再使用固定 960px 上限。
 - 分区间完整 10px 间隙都是拖拽热区，悬停或拖动时才显示短握柄，不显示贯穿全高的分隔线。
 - 宽度不足以容纳双栏时不强行压缩，临时退化为单 Pane；窗口变宽后恢复此前的双栏意图。
 - 三栏宽度优先级为当前主要工作面、Module、聚合面板、固定会话列表；不能同时满足最小宽度时先临时把聚合面板收至 `0` 并保留打开意图，ModuleOnly 不单独显示聚合面板。
@@ -52,7 +53,7 @@
 
 ---
 
-## 3. 三态布局与 Dock
+## 3. 三态布局与模块导航
 
 ### 3.1 状态机
 
@@ -64,30 +65,37 @@ ModuleOnly = Chat 隐藏，Module 可见
 
 系统不允许 Chat 与 Module 同时隐藏。
 
-| 当前状态 | 点击 Chat | 点击当前模块 | 点击其他模块 |
-|---|---|---|---|
-| ChatOnly | 无操作 | 打开 Split | 打开对应模块的 Split |
-| Split | 进入 ModuleOnly | 关闭模块，回到 ChatOnly | 保持 Split 并替换模块 |
-| ModuleOnly | 恢复 Split | 关闭模块，回到 ChatOnly | 保持 ModuleOnly 并替换模块 |
+| 当前状态 | 模块入口位置 | 点击 Chat | 点击当前模块 | 点击其他模块 |
+|---|---|---|---|---|
+| ChatOnly | 左侧纵向模块列表 | 无 Chat 入口 | 不适用 | 点击任一模块后打开 Split；空间不足时打开 ModuleOnly |
+| Split | Module Pane 底部 Dock | 进入 ModuleOnly | 关闭模块，回到 ChatOnly | 保持 Split 并替换模块 |
+| ModuleOnly | Module Pane 底部 Dock | 恢复 Split | 关闭模块，回到 ChatOnly | 保持 ModuleOnly 并替换模块 |
 
-这意味着 Chat 按钮只有在模块已打开时才允许隐藏 Chat；当 Chat 是唯一工作面时，点击 Chat 必须无操作。
+这意味着 Chat 控制只在模块已打开时出现并负责 Chat 显隐；ChatOnly 已经明确处于 Chat，不渲染重复的 Chat 项。
 
-### 3.2 Dock
+### 3.2 ChatOnly 侧栏模块导航
 
-Dock 按 Space 类型固定：
+ChatOnly 的左侧常驻栏按 Space 类型显示纵向“图标 + 文字”模块入口：
 
-- Home：`Chat | Spaces | Inbox | Tasks | Agents | Settings`。
-- 普通 Space：`Chat | Inbox | Tasks | Agents | Settings`。
+- Home：`Spaces | Inbox | Tasks | Agents | Settings`。
+- 普通 Space：`Inbox | Tasks | Agents | Settings`。
 
-- Dock 始终属于当前主要工作面板：ChatOnly 在 Chat 底部，Split 和 ModuleOnly 在模块底部。
-- Chat 按钮始终只显示图标，用激活底色表达 Chat 是否可见，不因激活而展开。
-- 其他模块默认只显示图标；当前模块横向展开并显示名称。
-- Dock 白底、1px `#e0e0e0` 边框、12px 圆角和轻工具层阴影，距面板底部 14px。
+- Chat 不进入列表；Search 继续位于顶部入口。
+- 入口复用同一模块注册表，行高 36–40px、图标 18px、标签 14px，使用轻量 hover/active 表面，不绘制行边框或阴影。
+- 点击入口写入现有 `module` query；固定左侧栏随后隐藏，工作区进入 Split 或响应式 ModuleOnly。
+- ChatOnly 不挂载底部 Dock，也不再为 Dock 预留 Composer 下方空间。
+
+### 3.3 模块打开态 Dock
+
+- Split 和 ModuleOnly 的 Dock 位于 Module Pane 底部。
+- Chat 按钮只显示图标，用激活底色表达 Chat 是否可见，不因激活而展开。
+- 业务模块默认只显示图标；当前模块横向展开并显示名称。
+- 点击当前模块关闭 Module Pane 并回到 ChatOnly；此时 Dock 卸载，左侧常驻栏恢复。
+- Dock 白底、1px `#e0e0e0` 边框、12px 圆角和轻工具层阴影，距面板底部 14px；其所在面板预留空间，不覆盖模块内容。
 - Dock 项高 39px；未激活宽 41px，激活模块宽 122px；图标 18px、标签 13px。
 - 未激活项用 `#fafafa`，激活项用 `#f5f5f5`，不使用高饱和强调色。
-- Dock 所在面板预留底部空间，不覆盖 Composer 或模块内容。
 
-Spaces 只在 Home 出现；Agents 只显示当前 Space 的 agent 队伍；唯一 Human 的资料位于全局 Settings。Calendar、Canvas 等真实能力成熟后插入模块区；当前不展示无功能的空入口。
+Spaces 只在 Home 出现；Agents 只显示当前 Space 的 agent 队伍；唯一 Human 的资料位于全局 Settings。Calendar、Canvas 等真实能力成熟后插入同一模块注册表；当前不展示无功能的空入口。
 
 创建 Agent 时，Runtime 选择器读取 Local Runtime Worker 的实际 availability，而不是使用前端硬编码的可用状态。完整 runtime 目录始终展示：已安装项排序在前并标注“已安装”，未安装项排序在后、标注“未安装”且不可选择；默认选中第一个已安装项。OpenCode 模型选择器只展示 `opencode models` 返回并去重后的真实 `provider/model`；探测失败时显示错误、提供重试并禁止创建，不回退到虚假的 `Default`。
 
@@ -102,20 +110,20 @@ Spaces 只在 Home 出现；Agents 只显示当前 Space 的 agent 队伍；唯�
 ChatOnly 由当前会话工作面和可独立收起的辅助面板组成：
 
 ```text
-会话列表 | 当前会话与 Composer | 聚合面板（轨迹 / 话题 / 文件）
+Chat 导航侧栏 | 当前会话与 Composer | 聚合面板（轨迹 / 话题 / 文件）
 ```
 
-- 会话列表包含 Channels 与 Human-Agent Direct Messages，保留未读、置顶、新建和切换行为；不提供 Human-Human DM。归档频道不混入活跃频道，而是进入仅在有数据时显示、默认收起并按归档时间倒序排列的“已归档”分组。会话抽屉、Agents 模块侧栏及 Agent 选择器中的相邻 Agent 行使用一致的轻量间距，保持列表层级清晰。
+- Chat 导航侧栏从上到下包含纵向模块入口、已保存、频道、私信和底部 agent 运行状态。频道保留未读、置顶、新建和切换行为；不提供 Human-Human DM。归档频道不混入活跃频道，而是进入仅在有数据时显示、默认收起并按归档时间倒序排列的“已归档”子分组。案例展示不再属于目标信息架构。会话抽屉、Agents 模块侧栏及 Agent 选择器中的相邻 Agent 行使用一致的轻量间距，保持列表层级清晰。
 - 中间复用现有 `Chat`、Composer、Thread、附件和 @mention 能力；用户界面统一称“话题”，内部数据、API 与 query 继续使用 `thread`。Agent 私聊标题区保留直达当前 Agent 详情页的入口；话题打开时默认与当前会话各占一半宽度，并可通过中间分割线继续拖拽调整。话题标题栏以普通铃铛表示“已关注”、划线铃铛表示“未关注”，关注切换不关闭面板，关闭仍由独立的 × 按钮负责。
 - 删除旧“会话 / Chat / 轨迹”顶栏。会话列表纯图标开关迁入当前会话标题最左侧；标题右侧依次提供当前会话 Tasks、频道成员、聚合面板和频道设置等纯图标入口。Tasks 始终导航到 `module=tasks&taskScope=<当前会话ID>`，点击已打开的同一 Tasks 不解释为关闭。
 - 聚合面板固定承载“轨迹 / 话题 / 文件”三个等宽滑动 Tab；白色选中底板只做 `transform` 横移，内容不淡入淡出。三个内容区通过 `hidden` 切换而不卸载，因此文件分类、关键词和搜索展开状态跨 Tab 保留，只在会话切换时重置。话题列表来自独立 thread summaries 查询，新建空话题与后续回复都会实时刷新，点击后仍在原 Chat 话题位置展开正文；文件页支持“全部 / 图片 / 视频 / 文件”和文件名/来源消息搜索。文件页与 Agents 列表复用 `components/SearchField.tsx` 的胶囊搜索框，只显示产品自己的清除按钮，输入框焦点使用浅色内描边而不是黑框。
 - 频道设置是聚合面板内的临时管理场景，不是第四个 Tab。进入后以同一面板承载设置首页及“常规 / 成员 / 通知”三个钻取页，并保持原聚合 Tab、文件筛选和搜索状态挂载；返回内容场景时恢复原状态。常规页显式保存名称、描述和公开/私密可见性；成员页以实际 Human 名称加“你”标识固定展示唯一 Human，agent 通过带搜索的单选弹窗添加，移除前要求二次确认；通知页即时持久化“所有消息 / 仅提及 / 不通知”。未保存常规修改在返回、关闭、切换频道、隐藏 Chat、刷新或浏览器历史后退前要求确认放弃；取消后保留当前 URL 和表单草稿。
-- **消息流密度重构（代码已实现，待手动视觉验收）**：主会话、话题、Showcase、action card 与加载 Skeleton 复用同一消息骨架；外层消息行不绘制卡片，改为“32px 头像 + 紧凑发送者行 + 随内容收缩的气泡”，普通消息链尾间距为 20px。同一天相邻且发送者相同的 Human/Agent 普通消息形成连续消息组：后续消息隐藏重复头像和发送者行，组内间距收紧为 6px，hover/focus 时在头像槽显示时分；日期分隔、发送者变化、系统消息和 action card 会打断分组。Human 使用 `#eff4fb` 浅蓝色表面、Agent 使用中性浅灰表面，正文为 `14.5px / 1.55`，消息流、日期分隔和 Composer 对齐到 `900px` 上限。Agent/Human 消息昵称真实使用 `14.5px / 700 / 20px`，时间使用 `11px / 400 / 16px`；两者按基线对齐、间距 6px，消息头不继承全局额外字距。侧栏 Agent 名称使用 600；Agent 在线/工作/休眠状态只由头像右下角状态点表达，不在发送者行重复显示文字。消息时间默认隐藏，hover 整条消息或消息内控件获得焦点时显示；当天消息只显示时分，历史消息保留完整日期和时分，无 hover 设备常驻显示。消息正文不再额外减去 `64px`，Agent 职责不在每条消息重复。存在回复的父消息在气泡底部展示话题摘要：参与者头像、总回复数、最新活跃时间、最近三条 Human/Agent 单行回复和“在话题中回复”入口随气泡宽度收缩并统一打开既有话题；任务流转等 system 事件不进入预览行，正文与摘要之间不绘制分隔线。52px Chat 标题栏、14px 消息区上留白和 88px Composer 预留已落地。主消息悬浮工具外显“加表情、话题、复制、更多”，收藏保留在更多菜单；工具栏仅由气泡 hover/focus 触发，默认位于气泡右侧，右侧空间不足时切换到气泡上方，首次 reaction 不再在气泡下方单独占位。归档与 Showcase 共用只读边界，不显示收藏、reaction、转任务、action 执行或新建话题等写入口，但复制和打开已有话题仍可用；response mode、任务状态、附件、深链和临时回复预览契约不变。浏览器视觉矩阵依用户要求留待手动验收。完整尺寸与验收阈值见 `../superpowers/specs/2026-07-15-chat-message-ui-density-design.md`。
+- **消息流密度重构（代码已实现，待手动视觉验收）**：主会话、话题、action card 与加载 Skeleton 复用同一消息骨架；外层消息行不绘制卡片，改为“32px 头像 + 紧凑发送者行 + 随内容收缩的气泡”，普通消息链尾间距为 20px。同一天相邻且发送者相同的 Human/Agent 普通消息形成连续消息组：后续消息隐藏重复头像和发送者行，组内间距收紧为 6px，hover/focus 时在头像槽显示时分；日期分隔、发送者变化、系统消息和 action card 会打断分组。Human 使用 `#eff4fb` 浅蓝色表面、Agent 使用中性浅灰表面，正文为 `14.5px / 1.55`。Agent/Human 消息昵称真实使用 `14.5px / 700 / 20px`，时间使用 `11px / 400 / 16px`；两者按基线对齐、间距 6px，消息头不继承全局额外字距。侧栏 Agent 名称使用 600；Agent 在线/工作/休眠状态只由头像右下角状态点表达，不在发送者行重复显示文字。消息时间默认隐藏，hover 整条消息或消息内控件获得焦点时显示；当天消息只显示时分，历史消息保留完整日期和时分，无 hover 设备常驻显示。消息正文不再额外减去 `64px`，Agent 职责不在每条消息重复。存在回复的父消息在气泡底部展示话题摘要：参与者头像、总回复数、最新活跃时间、最近三条 Human/Agent 单行回复和“在话题中回复”入口随气泡宽度收缩并统一打开既有话题；任务流转等 system 事件不进入预览行，正文与摘要之间不绘制分隔线。52px Chat 标题栏、14px 消息区上留白和 88px Composer 预留已落地。主消息悬浮工具外显“加表情、话题、复制、更多”，收藏保留在更多菜单；工具栏仅由气泡 hover/focus 触发，右侧空间足够时位于气泡右侧，不足时切换到气泡上方；隐藏状态初始置于气泡上方，不再撑宽消息流，首次 reaction 不再在气泡下方单独占位。归档频道不显示收藏、reaction、转任务、action 执行或新建话题等写入口，但复制和打开已有话题仍可用；response mode、任务状态、附件、深链和临时回复预览契约不变。最新壳层实施把 Chat 标题栏固定在卡片左右 14px，与标题内容上下留白一致；ChatOnly 与 Split 统一使用 10px 消息 gutter 和 360px Chat 绝对下限，同时把日期分隔、消息流、Composer、提及菜单与校验提示统一到 1040px 居中内容轨道，并删除仍复用该表现层的 Showcase。完整消息尺寸与验收阈值见 `../superpowers/specs/2026-07-15-chat-message-ui-density-design.md`，壳层覆盖约定见 `../superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md`。
 - **Agent 响应模式（已实现）**：Agent Profile 的基本信息后、Skills 前有独立“响应模式”卡片，用三段式控件设置当前 Space 的主动/被动/静音默认值；私聊和明确任务指派不受该默认值限制。顶层频道及其话题中的当前成员 Agent 消息在昵称后显示当前有效模式徽标，约 250ms hover 或点击/键盘聚焦后打开覆盖菜单；菜单主层以四段式控件直接切换“默认 / 主动 / 被动 / 静音”，标题右侧显示 Agent 当前默认值。底部“修改 Agent 默认”在同一浮层内钻取到三段式默认设置，并明确只影响当前 Space 中跟随默认的频道；选择即时保存且浮层保持打开，不重复模式长说明。话题继承父频道，不出现独立设置；DM、Human、系统消息和已移除 Agent 不显示徽标；归档频道只读显示。第一版没有在频道设置成员页复制第二套编辑器。完整交互见 `../superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
 - **Composer 输入与动作（已实现）**：空输入和未接近右侧控制安全区的单行短文本保持 `48px` 高的胶囊输入框；只有实测文本宽度用尽当前剩余安全区、出现显式换行或存在待发送附件时才展开为多行面板，删除内容后可重新收紧。左下角 `32×32` 圆形“+”与右下角 `32×32` 圆形上箭头发送按钮对齐；“+”图标为 `18px`、较粗描边，在 hover、键盘聚焦和菜单打开时仍使用同尺寸圆形底，焦点反馈不额外外扩黑色轮廓。菜单合并“添加照片和文件”并包含“指派任务”；启用后，任务胶囊出现在“+”右侧并与正文共享单行空间，不会自行增高输入框，但会按实际占位缩短正文可用安全宽度。任务文字与正文始终复用同一字号变量（桌面 `14px`，小屏防输入缩放时同步为 `16px`）；hover/聚焦时使用图标库的 X 图标和更小的 `14px` 圆底替换任务图标，外层占位不变，点击即可取消。图片缩略图与文件卡片显示在输入框内部正文上方，带独立移除按钮；不提供参考图中的速度和麦克风动作。
   “+”菜单以整个 Composer 外框为锚点，左边界和宽度与输入框对齐；只有输入框本身超过视口安全范围时，才按左右 `8px` 视口边距收缩。菜单使用上下 `4px`、左右 `5px` 内边距和 `16px` 外圆角；每个菜单项为 `30px` 高、`10px` 圆角和 `4px 10px` 内边距。菜单只靠浅色边框和圆角分层，不显示阴影。每次打开时首个可用项默认显示高亮；鼠标或键盘进入其他项后，高亮停留在最后经过的项，离开菜单项不回退。任务开关状态不使用常驻高亮或勾号表达，而是在“指派任务”后以淡色文案显示“开启指派任务 / 关闭指派任务”；实际 hover/键盘高亮仍与其他菜单项一致。`@` 候选菜单复用同一外框宽度、`16px` 外圆角、无阴影表面和 `30px`/`10px` 候选行；名称、`@handle`、范围说明与类型在一行内截断，首项及鼠标/键盘最后经过项沿用相同浅色高亮。
   展开态只增加上半部分正文/附件空间；下方控制区继续沿用紧凑态的 `48px` 视觉高度、左右 `10px` 控制内距、底部 `8px` 控制内距和 `24px` 底角，因此“+”和发送按钮在高低状态间不横向或纵向跳动。
-- **频道全体提及（已实现）**：Human 在可写频道及其话题的 Composer 输入 `@` 时，候选首项可出现带群组图标的本地化标签“所有人 / Everyone”和规范 token `@all`，副文案说明当前界面语言下的频道范围；消息正文始终渲染为一个不可导航的 `@all` mention token，不展开成员名单。DM、Showcase、归档频道不提供候选；启用“指派任务”后隐藏候选，手工输入 token 发送时也保留草稿并提示改为单一 `@Agent` 或未指派任务。Agent 发出的同名文本只按普通文字显示，不触发群体唤醒。
+- **频道全体提及（已实现）**：Human 在可写频道及其话题的 Composer 输入 `@` 时，候选首项可出现带群组图标的本地化标签“所有人 / Everyone”和规范 token `@all`，副文案说明当前界面语言下的频道范围；消息正文始终渲染为一个不可导航的 `@all` mention token，不展开成员名单。DM 与归档频道不提供候选；启用“指派任务”后隐藏候选，手工输入 token 发送时也保留草稿并提示改为单一 `@Agent` 或未指派任务。Agent 发出的同名文本只按普通文字显示，不触发群体唤醒。Showcase 已在壳层切片中完整退役。
 - **回复预览与话题边界**：required 唤醒可以在原会话显示 Agent 临时回复预览；若 Agent 直接在该会话发送正式消息，预览平滑收敛为持久化消息；若 Agent 按要求改在触发消息的话题中回复，则在首条正式回复持久化后移除对应 Agent 的父会话预览，单纯创建空话题不提前清理。工具调用后的“已回复”“没有待处理消息”等 runtime 尾部文本只留在轨迹，不显示为刷新即消失的主会话消息。
 - 实时轨迹只展示当前 base conversation 的本次前端会话缓冲；话题轨迹归一到父会话，无作用域或跨会话 ambiguous 事件不进入任何会话聚合面板。
 - 会话列表与聚合面板都沿物理边界把宽度变为 `0`，内容随边界裁切，不使用淡入淡出或贯穿全高的收起长条；两者使用 Chat 侧栏曲线，Module 保持自己的切换曲线。
@@ -133,6 +141,8 @@ Composer
 ```
 
 - 会话抽屉从 Chat 左侧覆盖打开，只覆盖 Chat Pane，不挤压或遮挡聚合面板与 Module。
+- 会话抽屉只组合“已保存、频道、私信”三个产品导航分组；置顶与已归档仍是频道内部结构。它不显示纵向模块入口、Chat、案例展示或固定侧栏底部的 agent 运行状态。
+- 抽屉切换会话后继续保留 active module、Chat 显隐和合法 module resource query；Escape、遮罩关闭与焦点返回沿用现有行为。
 - 话题和 agent profile 属于 Chat 内部临时层，不占用 Module Pane；模块打开且话题存在时，紧凑 Chat 只显示话题，不再并排保留父会话消息流；聚合面板仍由自己的标题图标控制。
 - Chat 被隐藏时，Chat 的临时层随之卸载；恢复后回到当前会话。
 
@@ -179,7 +189,9 @@ A5 已完成工作区入口与规范 URL 收口，但 `MessageContextSnapshot`�
 
 ## 7. 当前实现边界
 
-当前生产壳已完成 A5 入口收口与 P-A7 H4：`App` 只渲染 `WorkspaceFrame`；Agents、Human Settings、Desktop Settings 与 Home-only Spaces 已落地，登录/注册/邀请、Computers、Landing、Features、PWA、SSR/prerender、旧 `Layout` 与 `?legacy=1` 均已退出活跃代码。Agent 详情的“记忆”标签与概览路径通过兼容的 workspace-files API 展示并读取当前 Space 的 `<space>/.kith/agents/<agentId>`；`agentTab=workspace` 只作为既有深链兼容值保留，不再表示共享 Space 工作区。普通冷启动进入 stable Home，显式 ready 深链接仍优先；普通 Space 不显示也不能激活 Spaces。最终视觉与实际交互仍由用户在 H1-H4 验收中确认。
+当前生产壳已完成 A5 入口收口与 P-A7 H4：`App` 只渲染 `WorkspaceFrame`；Agents、Human Settings、Desktop Settings 与 Home-only Spaces 已落地，登录/注册/邀请、Computers、Landing、Features、PWA、SSR/prerender、旧 `Layout` 与 `?legacy=1` 均已退出活跃代码。Agent 详情的“记忆”标签与概览路径通过兼容的 workspace-files API 展示并读取当前 Space 的 `<space>/.kith/agents/<agentId>`；`agentTab=workspace` 只作为既有深链兼容值保留，不再表示共享 Space 工作区。普通冷启动进入 stable Home，显式 ready 深链接仍优先；普通 Space 不显示也不能激活 Spaces。
+
+决策 28 的 Chat 壳层切片**已完成代码与自动化验证**：`SidebarModuleNavigation` 提供 ChatOnly 纵向模块入口，`ConversationListContent` 由固定侧栏和 Split 窄抽屉共享；ChatOnly 不挂载 Dock，模块打开态仍使用含 Chat 控制的 `WorkspaceDock`。案例展示的入口、产品路由、视图、数据、资产与专属表现分支已删除，旧 URL 仅作 SPA 兼容并规范化到当前 Space 默认频道。当前等待用户手动视觉验收，状态以 `docs/progress.md` 为准。
 
 单窗口壳按职责拆在 `web/src/shell/`：
 
@@ -189,14 +201,14 @@ A5 已完成工作区入口与规范 URL 收口，但 `MessageContextSnapshot`�
 - `paneConstraints.ts`：集中计算 Chat 响应式下限、聚合面板目标宽度、三栏可见阈值、各模块下限、单 Pane 阈值和比例到像素的夹取结果。
 - `shellStore.ts`：`useSyncExternalStore` 保存版本化模块宽度比例，并按 Space 持久化最近 Chat 位置；模块与 Chat 显隐由 URL 表达，避免双重状态源。
 - `workspaceRoute.ts`：解析规范会话 pathname，把 `module/chat` 与模块拥有的 `taskScope/agent/agentTab/settings` query 映射回三态，并在会话导航时只保留持久布局/模块资源；Human profile、机器旧路由和旧模块实体路径均不再映射模块。
-- `ChatWorkspace.tsx`：固定/抽屉会话列表和 Chat 工作面；不再拥有轨迹数据或旧顶部工具条。
+- `ChatWorkspace.tsx`：当前负责固定/抽屉会话列表和 Chat 工作面；新切片继续由它编排侧栏/抽屉挂载，但共享会话内容不再通过完整 `ChatSidebar` 在两处复用。
 - `conversation-aggregate/`：轨迹、话题、文件三个会话级子视图；通用滑动 Tab 独立位于 `components/SlidingTabs.tsx`。
 - `channel-settings/`：设置场景壳、常规/成员/通知钻取页与永久删除确认；宽窄布局复用同一组件。`ArchivedChannelGroup.tsx` 单独负责默认收起的归档频道入口。
 - `ModuleWorkspace.tsx`：现有业务视图薄适配。
-- `WorkspaceDock.tsx` / `WorkspaceTopBar.tsx`：Dock 与顶部工具组。
+- `WorkspaceDock.tsx` / `WorkspaceTopBar.tsx`：模块打开态 Dock 与顶部工具组；实施后 `WorkspaceDock` 不在 ChatOnly 挂载。
 - `workspaceModules.tsx`：模块注册、路由和图标元数据。
 
-复用 `Chat.tsx`、`ChatSidebar.tsx`、`LiveTrace.tsx`、`TaskBoard.tsx`、Inbox、Settings 与现有 agent 列表能力；Chat 不再内嵌 Tasks/Files Tab，文件筛选与话题索引也不继续堆入大文件。产品模块已从 Members 收敛为 Agents（内部文件名 `Members.tsx` 暂留）；Computers 与旧 `Layout` 已删除。旧 `OverviewShell`、`SpaceShell`、`IconRail`、`RightDock` 和 `ChatSlot` 已被新壳取代。
+复用 `Chat.tsx`、`LiveTrace.tsx`、`TaskBoard.tsx`、Inbox、Settings 与现有 agent 列表能力；Chat 不再内嵌 Tasks/Files Tab，文件筛选与话题索引也不继续堆入大文件。新切片把 `ChatSidebar.tsx` 收敛为常驻侧栏组合，并新增独立纵向模块导航与共享会话分组；这不是恢复旧的全局 `IconRail`。产品模块已从 Members 收敛为 Agents（内部文件名 `Members.tsx` 暂留）；Computers 与旧 `Layout` 已删除。旧 `OverviewShell`、`SpaceShell`、`IconRail`、`RightDock` 和 `ChatSlot` 继续保持删除。
 
 P-A8 已新增独立 `agent-response-mode/` feature：默认卡片、频道徽标、浮层菜单和每频道一次装载/实时失效 hook 各自负责单一职责；`Members.tsx` 与 `Chat.tsx` 只插入组件和传递上下文，不承载请求、有效值解析或浮层状态。Composer 的多 Agent 任务校验收口在 `composerTaskMentions.ts`，频道全体 token 识别与候选匹配收口在 `composerChannelAllMention.ts`；新增 `composer/ComposerActions.tsx`、`ComposerAttachments.tsx` 和 `useComposerExpansion.ts` 分别承担动作菜单、附件预览和宽度驱动的紧凑/展开判断，没有把交互状态继续堆进视图组件。
 
@@ -210,4 +222,4 @@ P-A8 已新增独立 `agent-response-mode/` feature：默认卡片、频道徽�
 - Desktop 设置区只在检测到 `window.kithDesktop` 窄 preload bridge 时显示；普通浏览器直接进入该路由会回落到 Human 设置，并且服务端对管理 API 返回 404。隐藏入口不是唯一安全边界。
 - LAN 模式首次开启会先展示确认面板，明确说明 HTTP 未加密、只限受信任私网、禁止端口转发/公网暴露；用户确认后才改变监听。自动生成/轮换的访问 Token 保持一次性显示，直到用户主动确认已保存。
 
-一句话：**Chat 是基础工作面，模块是可并行、可独占的第二工作面，Dock 是两者之间唯一稳定的布局控制器。**
+一句话：**Chat 是基础工作面；ChatOnly 用左侧纵向入口打开模块，模块打开后由 Dock 统一切换模块和控制 Chat 显隐。**

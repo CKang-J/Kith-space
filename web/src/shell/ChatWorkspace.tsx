@@ -2,8 +2,7 @@ import { X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { useLocation } from "react-router-dom";
 import { Chat } from "../views/Chat.tsx";
-import { ChatSidebar } from "../views/ChatSidebar.tsx";
-import { Showcase } from "../views/Showcase.tsx";
+import { ChatSidebar, ConversationDrawerSidebar } from "../views/ChatSidebar.tsx";
 import { Saved } from "../views/misc.tsx";
 
 interface ChatWorkspaceProps {
@@ -20,7 +19,7 @@ interface ChatWorkspaceProps {
   onNavigateConversation(target: string): void;
   settingsDrawer?: ReactNode;
   settingsDrawerOpen?: boolean;
-  dock?: ReactNode;
+  moduleNavigation?: ReactNode;
   style?: CSSProperties;
 }
 
@@ -33,7 +32,7 @@ interface ChatSurfaceProps {
   aggregateOpen: boolean;
   aggregateAvailable: boolean;
   aggregateToggleRef: RefObject<HTMLButtonElement>;
-  onToggleConversationList(): void;
+  onToggleConversationList?(): void;
   onToggleAggregate(): void;
   onOpenTasks(conversationId: string): void;
   onOpenChannelSettings(channelId: string, trigger?: HTMLButtonElement): void;
@@ -56,7 +55,6 @@ function ChatSurface({
   onNavigateConversation,
 }: ChatSurfaceProps) {
   if (/\/saved\/?$/.test(pathname)) return <Saved embedded />;
-  if (/\/showcase\/?$/.test(pathname)) return <Showcase embedded />;
   return (
     <Chat
       embedded
@@ -90,12 +88,11 @@ export function ChatWorkspace({
   onNavigateConversation,
   settingsDrawer,
   settingsDrawerOpen = false,
-  dock,
+  moduleNavigation,
   style,
 }: ChatWorkspaceProps) {
   const { pathname } = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [conversationsCollapsed, setConversationsCollapsed] = useState(false);
   const conversationsTriggerRef = useRef<HTMLButtonElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const drawerWasOpenRef = useRef(false);
@@ -124,10 +121,9 @@ export function ChatWorkspace({
     if (compact) conversationsTriggerRef.current?.focus();
   }, [compact, drawerOpen]);
 
-  const conversationListOpen = compact ? drawerOpen : !conversationsCollapsed;
+  const conversationListOpen = compact ? drawerOpen : true;
   const toggleConversationList = () => {
     if (compact) setDrawerOpen((open) => !open);
-    else setConversationsCollapsed((collapsed) => !collapsed);
   };
   const openChannelSettings = (channelId: string, trigger?: HTMLButtonElement) => {
     setDrawerOpen(false);
@@ -137,13 +133,14 @@ export function ChatWorkspace({
   return (
     <section
       className={`shell-chat-workspace shell-chat-workspace--${compact ? "compact shell-work-panel" : "full"}`}
-      data-conversations-collapsed={!compact && conversationsCollapsed ? "true" : undefined}
       style={style}
       aria-label={compact ? "紧凑 Chat 工作区" : "Chat 工作区"}
     >
-      <aside className="shell-work-panel shell-chat-conversations" aria-label="会话列表">
-        <ChatSidebar channelIdOverride={channelId ?? undefined} onNavigate={onNavigateConversation} />
-      </aside>
+      {!compact ? (
+        <div className="shell-work-panel shell-chat-conversations" aria-label="会话列表">
+          <ChatSidebar channelIdOverride={channelId ?? undefined} moduleNavigation={moduleNavigation} onNavigate={onNavigateConversation} />
+        </div>
+      ) : null}
       <section className="shell-work-panel shell-chat-main-card" aria-label="当前会话">
         <div className="shell-chat-surface">
           <ChatSurface
@@ -155,14 +152,13 @@ export function ChatWorkspace({
             aggregateOpen={aggregateOpen}
             aggregateAvailable={aggregateAvailable}
             aggregateToggleRef={aggregateToggleRef}
-            onToggleConversationList={toggleConversationList}
+            onToggleConversationList={compact ? toggleConversationList : undefined}
             onToggleAggregate={onToggleAggregate}
             onOpenTasks={onOpenTasks}
             onOpenChannelSettings={openChannelSettings}
             onNavigateConversation={onNavigateConversation}
           />
         </div>
-        {dock ? <footer className="shell-dock-zone">{dock}</footer> : null}
       </section>
       {drawerOpen ? (
         <div className="shell-chat-drawer-scrim" role="presentation" onMouseDown={() => setDrawerOpen(false)}>
@@ -176,7 +172,7 @@ export function ChatWorkspace({
             <button ref={drawerCloseRef} className="shell-chat-drawer__close" type="button" aria-label="关闭会话抽屉" onClick={() => setDrawerOpen(false)}>
               <X size={16} />
             </button>
-            <ChatSidebar channelIdOverride={channelId ?? undefined} preserveSearch={layoutSearch} onNavigate={onNavigateConversation} />
+            <ConversationDrawerSidebar channelIdOverride={channelId ?? undefined} preserveSearch={layoutSearch} onNavigate={onNavigateConversation} />
           </aside>
         </div>
       ) : null}

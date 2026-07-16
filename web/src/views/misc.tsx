@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Star, Bookmark, Lock, MessageCircle, Eye } from "lucide-react";
+import { Star, Bookmark, Lock, MessageCircle } from "lucide-react";
 import { useStore } from "../store.tsx";
 import { fmtDateTime } from "../format";
 import { ChatSidebar } from "./ChatSidebar.tsx";
@@ -68,11 +68,10 @@ const INBOX_FILTERS: { key: string; label: string }[] = [
   { key: "unread", label: "misc.inboxFilterUnread" },
   { key: "mentions", label: "misc.inboxFilterMentions" },
 ];
-// Channel type glyph: private/thread/showcase use lucide SVG icons; public channels/DMs use # / @ text characters
+// Channel type glyph: private and thread channels use SVG icons; public channels and DMs use text glyphs.
 function KindGlyph({ type }: { type: string }) {
   if (type === "private") return <Lock size={13} />;
   if (type === "thread") return <MessageCircle size={13} />;
-  if (type === "showcase") return <Eye size={13} />;
   return <>{type === "dm" ? "@" : "#"}</>;
 }
 
