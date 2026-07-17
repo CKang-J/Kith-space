@@ -8,6 +8,7 @@ export interface AgentReplyEvent {
   streamId: string;
   name?: string;
   text?: string;
+  triggerMessageId?: string;
 }
 
 export const AGENT_REPLY_PREVIEW_TYPE = "agent_reply_preview";
@@ -32,6 +33,7 @@ export interface AgentReplyPreviewMsg extends Msg {
   streamDone?: boolean;
   streamError?: boolean;
   streamFinalMessage?: Msg;
+  streamTriggerMessageId?: string;
 }
 
 export function agentReplyPreviewId(agentId: string, streamId: string): string {
@@ -67,6 +69,9 @@ export function applyAgentReplyPreview(messages: Msg[], e: AgentReplyEvent, agen
     return messages.map((m, i) => i === idx ? { ...m, streamDone: true, streamError: false, streamSettledAt: undefined } as AgentReplyPreviewMsg : m);
   }
   if (idx >= 0) {
+    if (e.op === "start" && e.triggerMessageId) return messages.map((m, i) => i === idx
+      ? { ...m, streamTriggerMessageId: e.triggerMessageId } as AgentReplyPreviewMsg
+      : m);
     if (e.op === "delta" && e.text) return messages.map((m, i) => {
       if (i !== idx) return m;
       const current = m as AgentReplyPreviewMsg;
@@ -99,6 +104,7 @@ export function applyAgentReplyPreview(messages: Msg[], e: AgentReplyEvent, agen
     streamThinkingVisible: false,
     streamThinkingAt: now + AGENT_REPLY_PREVIEW_DELAY_MS + AGENT_REPLY_THINKING_DELAY_MS,
     streamRevealAt: now + AGENT_REPLY_PREVIEW_DELAY_MS,
+    streamTriggerMessageId: e.triggerMessageId,
   };
   return [...withoutSuperseded, preview];
 }
@@ -106,6 +112,19 @@ export function applyAgentReplyPreview(messages: Msg[], e: AgentReplyEvent, agen
 export function dropAgentReplyPreviewsForMessage(messages: Msg[], msg: Msg): Msg[] {
   if (msg.senderType !== "agent" || !msg.senderId) return messages;
   return messages.filter((m) => !(m.messageType === AGENT_REPLY_PREVIEW_TYPE && m.channelId === msg.channelId && m.senderId === msg.senderId));
+}
+
+export function dropAgentReplyPreviewForThreadReply(
+  messages: Msg[],
+  event: { parentMessageId?: string; senderId?: string | null; senderType?: string; replyCount?: number },
+): Msg[] {
+  const replyCount = Number(event.replyCount);
+  if (event.senderType !== "agent" || !event.parentMessageId || !event.senderId || !Number.isFinite(replyCount) || replyCount <= 0) return messages;
+  const matchesReply = (message: Msg) => message.messageType === AGENT_REPLY_PREVIEW_TYPE
+    && message.senderId === event.senderId
+    && (message as AgentReplyPreviewMsg).streamTriggerMessageId === event.parentMessageId;
+  if (!messages.some(matchesReply)) return messages;
+  return messages.filter((message) => !matchesReply(message));
 }
 
 export function absorbPersistedAgentMessagePreview(messages: Msg[], msg: Msg): { messages: Msg[]; consumed: boolean } {

@@ -80,3 +80,40 @@ test("As Task with multiple addressable Agents rejects before message or members
     assert.equal((await db.select().from(schema.channelAgentMembers)).length, 0);
   });
 });
+
+test("As Task with @all rejects before message or membership persistence", async () => {
+  await withChannel(async ({ spaceId, channelId }) => {
+    const db = dbForSpace(spaceId);
+    await assert.rejects(createMessage({
+      spaceId,
+      channelId,
+      senderType: "human",
+      senderId: "human-1",
+      senderName: "human",
+      content: "@all prepare the release notes",
+      asTask: true,
+    }), (error: unknown) => error instanceof TaskOperationError && error.code === "INVALID_ARGUMENT");
+
+    assert.equal((await db.select().from(schema.messages)).length, 0);
+    assert.equal((await db.select().from(schema.channelAgentMembers)).length, 0);
+  });
+});
+
+test("DM As Task with a manually typed @all token also rejects without side effects", async () => {
+  await withChannel(async ({ spaceId }) => {
+    const db = dbForSpace(spaceId);
+    const [dm] = await db.insert(schema.channels).values({ spaceId, name: "direct", type: "dm" }).returning();
+    await assert.rejects(createMessage({
+      spaceId,
+      channelId: dm!.id,
+      senderType: "human",
+      senderId: "human-1",
+      senderName: "human",
+      content: "@all prepare the release notes",
+      asTask: true,
+    }), (error: unknown) => error instanceof TaskOperationError && error.code === "INVALID_ARGUMENT");
+
+    assert.equal((await db.select().from(schema.messages)).length, 0);
+    assert.equal((await db.select().from(schema.channelAgentMembers)).length, 0);
+  });
+});

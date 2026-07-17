@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { SlidingSegmentedControl, type SlidingSegmentOption } from "../../components/SlidingTabs.tsx";
 import { useStore } from "../../store.tsx";
 import { AGENT_RESPONSE_MODES, isAgentResponseMode, type AgentResponseMode } from "./responseModeModel.ts";
 import { RESPONSE_MODE_COPY } from "./responseModeCopy.ts";
@@ -16,6 +17,11 @@ export function AgentDefaultResponseModeCard({ agentId, value, onSaved }: AgentD
   const [selected, setSelected] = useState(value);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const modeOptions: readonly SlidingSegmentOption<AgentResponseMode>[] = AGENT_RESPONSE_MODES.map((mode) => ({
+    value: mode,
+    label: t(RESPONSE_MODE_COPY[mode].labelKey),
+    disabled: saving,
+  }));
 
   useEffect(() => {
     if (!saving) setSelected(value);
@@ -51,21 +57,13 @@ export function AgentDefaultResponseModeCard({ agentId, value, onSaved }: AgentD
     <section className="card agent-response-mode-card" aria-labelledby={`agent-response-mode-${agentId}`}>
       <h3 id={`agent-response-mode-${agentId}`}>{t("responseMode.title")}</h3>
       <p className="meta agent-response-mode-card__description">{t("responseMode.defaultDescription")}</p>
-      <div className="agent-response-mode-card__segments" role="radiogroup" aria-label={t("responseMode.title")}>
-        {AGENT_RESPONSE_MODES.map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            role="radio"
-            aria-checked={selected === mode}
-            className={selected === mode ? "is-selected" : ""}
-            disabled={saving}
-            onClick={() => void save(mode)}
-          >
-            {t(RESPONSE_MODE_COPY[mode].labelKey)}
-          </button>
-        ))}
-      </div>
+      <SlidingSegmentedControl<AgentResponseMode>
+        value={selected}
+        options={modeOptions}
+        onChange={(mode) => void save(mode)}
+        ariaLabel={t("responseMode.title")}
+        className="agent-response-mode-card__segments"
+      />
       <p className="agent-response-mode-card__hint">{t(RESPONSE_MODE_COPY[selected].descriptionKey)}</p>
       <p className="agent-response-mode-card__hint">{t("responseMode.directMessageException")}</p>
       {error ? <div className="agent-response-mode-card__error" role="alert">{error}</div> : null}

@@ -2,7 +2,7 @@
 
 这是日常开发的命令速查。低频环境变量、浏览器访问、数据库和 E2E 联调见 [`dev-debugging.md`](./dev-debugging.md)。
 
-项目使用 **pnpm**。脚本参数直接跟在命令后，不要额外添加 `--`：
+项目使用根目录 `packageManager` 固定的 **pnpm 11.13.1**；CI 与启用 Corepack 的本机环境会读取该版本。脚本参数直接跟在命令后，不要额外添加 `--`：
 
 ```powershell
 pnpm test --unit

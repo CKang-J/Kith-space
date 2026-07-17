@@ -1,9 +1,10 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
 import type { SpaceCtx } from "./ctx.js";
-import { and, asc, desc, eq, gt, like, inArray, isNull, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, like, inArray, lt, sql } from "drizzle-orm";
 import { dbForSpace, schema } from "../../db/index.js";
 import { addReaction, checkSaved, createMessage, listSaved, removeReaction, saveMessage, unsaveMessage } from "../core.js";
 import { parseMsgPageParams } from "../messagePage.js";
+import { escapeLikePattern, loadMessageSearchPresentation, messageSearchDisplay, messageSearchSnippet } from "../messageSearchPresentation.js";
 import { publish } from "../realtime.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { attachMentions, humanChannels } from "./shared.js";
@@ -104,14 +105,23 @@ export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
     if (!q) return (sendJson(res, 200, { hasMore: false, results: [] }), true);
     const chIds = (await activeChannels(spaceId, await humanChannels(spaceId))).map((channel) => channel.id);
     if (!chIds.length) return (sendJson(res, 200, { hasMore: false, results: [] }), true);
+    const escapedQuery = escapeLikePattern(q);
     const rows = await db.select().from(schema.messages)
-      .where(and(eq(schema.messages.spaceId, spaceId), inArray(schema.messages.channelId, chIds), like(schema.messages.content, `%${q}%`)))
+      .where(and(
+        eq(schema.messages.spaceId, spaceId),
+        inArray(schema.messages.channelId, chIds),
+        sql`${schema.messages.content} LIKE ${`%${escapedQuery}%`} ESCAPE '\\'`,
+      ))
       .orderBy(desc(schema.messages.seq)).limit(limit + 1).offset(offset);
     const hasMore = rows.length > limit;
-    const chs = await db.select().from(schema.channels).where(inArray(schema.channels.id, chIds));
-    const cname = (cid: string) => chs.find((c) => c.id === cid)?.name ?? "";
-    const snip = (s: string) => { const i = s.toLowerCase().indexOf(q.toLowerCase()); return i < 0 ? s.slice(0, 90) : (i > 24 ? "…" : "") + s.slice(Math.max(0, i - 24), i + 66); };
-    const results = rows.slice(0, limit).map((m) => ({ id: m.id, seq: m.seq, channelId: m.channelId, channelName: cname(m.channelId), senderType: m.senderType, senderName: m.senderName, content: m.content, snippet: snip(m.content), createdAt: m.createdAt }));
+    const presentation = await loadMessageSearchPresentation(spaceId, chIds);
+    const serialized = await attachMentions(spaceId, rows.slice(0, limit));
+    const results = serialized.map((m) => ({
+        id: m.id, seq: m.seq, channelId: m.channelId,
+        ...messageSearchDisplay(m, presentation),
+        senderType: m.senderType, senderName: m.senderName, senderDeleted: m.senderDeleted,
+        content: m.content, snippet: messageSearchSnippet(m.content, q), createdAt: m.createdAt,
+      }));
     return (sendJson(res, 200, { hasMore, results }), true);
   }
   const cmsg = /^\/api\/messages\/channel\/([^/]+)$/.exec(p);

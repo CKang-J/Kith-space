@@ -1,65 +1,201 @@
-// Cmd/Ctrl+K global quick switcher: aggregates channels, Human-agent DMs, and agents with text filter, arrow-key navigation, and Enter to jump.
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useStore } from "./store.tsx";
-import { Avatar } from "./Avatar.tsx";
-import { Search } from "lucide-react";
+import { FolderKanban, Hash, ListTodo, Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Avatar } from "./Avatar.tsx";
+import { MessageSearchResultRow } from "./quick-switcher/MessageSearchResultRow.tsx";
+import type { MessageSearchResult } from "./quick-switcher/messageSearchPresentation.ts";
+import { useStore } from "./store.tsx";
 import { workspaceLocationForConversation, workspaceLocationForModule } from "./shell/workspaceRoute.ts";
 
-interface QSItem { kind: "channel" | "dm" | "agent"; id: string; label: string; sub: string; go: () => void }
+interface QuickItem {
+  key: string;
+  section: string;
+  label: string;
+  detail?: string;
+  icon: ReactNode;
+  message?: MessageSearchResult;
+  go(): void;
+}
+
+interface QuickSection {
+  title: string;
+  items: QuickItem[];
+}
 
 export function QuickSwitcher({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
-  const { channels, dms, visibleAgents: agents, slug } = useStore(); // visibleAgents: keep showcase demo props out of the quick switcher
+  const { api, channels, dms, visibleAgents: agents, slug, spaceId, spaces } = useStore();
   const nav = useNavigate();
   const location = useLocation();
-  const [q, setQ] = useState("");
-  const [hi, setHi] = useState(0);
+  const [query, setQuery] = useState("");
+  const [highlighted, setHighlighted] = useState(0);
+  const [messageResults, setMessageResults] = useState<MessageSearchResult[]>([]);
+  const [searchingMessages, setSearchingMessages] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const searchGeneration = useRef(0);
+  const normalizedQuery = query.trim().toLowerCase();
+  const isHome = spaces.some((space) => space.id === spaceId && space.isHome);
+
   useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => {
+    const value = query.trim();
+    const generation = ++searchGeneration.current;
+    if (!value) {
+      setMessageResults([]);
+      setSearchingMessages(false);
+      return;
+    }
+    setMessageResults([]);
+    setSearchingMessages(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await api("GET", `/api/messages/search?q=${encodeURIComponent(value)}&limit=30`);
+        if (searchGeneration.current === generation) setMessageResults(response?.results ?? []);
+      } catch {
+        if (searchGeneration.current === generation) setMessageResults([]);
+      } finally {
+        if (searchGeneration.current === generation) setSearchingMessages(false);
+      }
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [api, query]);
 
-  const ql = q.toLowerCase().trim();
-  const openChannel = (channelId: string) => nav(workspaceLocationForConversation(`/s/${slug}/channel/${channelId}`, location.pathname, location.search));
-  const all: QSItem[] = [
-    ...channels.filter((c) => c.type !== "dm").map((c): QSItem => ({ kind: "channel", id: c.id, label: c.name, sub: t("qs.subChannel"), go: () => openChannel(c.id) })),
-    ...dms.map((d): QSItem => ({ kind: "dm", id: d.id, label: d.peerDisplayName || d.peerName || t("qs.unknownAgent"), sub: t("qs.subDm"), go: () => openChannel(d.id) })),
-    ...agents.map((a): QSItem => ({ kind: "agent", id: a.id, label: a.displayName || a.name, sub: t("qs.subAgent"), go: () => nav(workspaceLocationForModule(location.pathname, location.search, { moduleId: "agents", agent: a.id })) })),
-  ];
-  const items = (ql ? all.filter((it) => it.label.toLowerCase().includes(ql)) : all).slice(0, 40);
+  const openConversation = (target: string) => nav(workspaceLocationForConversation(target, location.pathname, location.search));
+  const openModule = (moduleId: "spaces" | "tasks" | "agents" | "settings", agentId?: string) => nav(workspaceLocationForModule(
+    location.pathname,
+    location.search,
+    { moduleId, ...(agentId ? { agent: agentId } : {}) },
+  ));
+  const messageTarget = (message: MessageSearchResult) => message.channelType === "thread" && message.parentChannelId && message.parentMessageId
+    ? `/s/${slug}/channel/${message.parentChannelId}?thread=${message.parentMessageId}&threadMsg=${message.id}`
+    : `/s/${slug}/channel/${message.channelId}?msg=${message.id}`;
 
-  const pick = (it?: QSItem) => { if (!it) return; it.go(); onClose(); };
-  const move = (d: number) => setHi((h) => {
-    const n = Math.max(0, Math.min(h + d, items.length - 1));
-    listRef.current?.children[n]?.scrollIntoView({ block: "nearest" });
-    return n;
-  });
-  const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
-    else if (e.key === "Enter") { e.preventDefault(); pick(items[hi]); }
-    else if (e.key === "Escape") { e.preventDefault(); onClose(); }
+  const sections = useMemo<QuickSection[]>(() => {
+    const matches = (label: string) => !normalizedQuery || label.toLowerCase().includes(normalizedQuery);
+    const channelItems: QuickItem[] = channels.filter((channel) => channel.type !== "dm" && matches(channel.name)).map((channel) => ({
+      key: `channel:${channel.id}`,
+      section: "channels",
+      label: channel.name,
+      icon: <Hash size={16} aria-hidden="true" />,
+      go: () => openConversation(`/s/${slug}/channel/${channel.id}`),
+    }));
+    const dmItems: QuickItem[] = dms.filter((dm) => matches(dm.peerDisplayName || dm.peerName || dm.name)).map((dm) => ({
+      key: `dm:${dm.id}`,
+      section: "dms",
+      label: dm.peerDisplayName || dm.peerName || t("qs.unknownAgent"),
+      icon: <Avatar seed={dm.peerDisplayName || dm.peerName || dm.name} size={20} />,
+      go: () => openConversation(`/s/${slug}/channel/${dm.id}`),
+    }));
+    const agentItems: QuickItem[] = agents.filter((agent) => matches(agent.displayName || agent.name)).map((agent) => ({
+      key: `agent:${agent.id}`,
+      section: "agents",
+      label: agent.displayName || agent.name,
+      detail: `@${agent.name}`,
+      icon: <Avatar seed={agent.name} size={20} />,
+      go: () => openModule("agents", agent.id),
+    }));
+
+    if (!normalizedQuery) {
+      const recommended: QuickItem[] = [
+        { key: "recommend:tasks", section: "recommended", label: t("qs.openTasks"), icon: <ListTodo size={16} aria-hidden="true" />, go: () => openModule("tasks") },
+        ...(isHome ? [{ key: "recommend:spaces", section: "recommended", label: t("qs.openSpaces"), icon: <FolderKanban size={16} aria-hidden="true" />, go: () => openModule("spaces") } as QuickItem] : []),
+        { key: "recommend:settings", section: "recommended", label: t("qs.openSettings"), icon: <Settings size={16} aria-hidden="true" />, go: () => openModule("settings") },
+      ];
+      return [
+        { title: t("qs.sectionRecommended"), items: recommended },
+        { title: t("qs.sectionChannels"), items: channelItems.slice(0, 8) },
+        { title: t("qs.sectionDms"), items: dmItems.slice(0, 8) },
+        { title: t("qs.sectionAgents"), items: agentItems.slice(0, 8) },
+      ].filter((section) => section.items.length > 0);
+    }
+
+    const messageItems = messageResults.map((message): QuickItem => ({
+      key: `message:${message.id}`,
+      section: message.channelType === "thread" ? "topicMessages" : message.channelType === "dm" ? "dmMessages" : "channelMessages",
+      label: message.conversationName || message.channelName || t("qs.topic"),
+      icon: null,
+      message,
+      go: () => openConversation(messageTarget(message)),
+    }));
+    const messageSection = (section: QuickItem["section"], title: string): QuickSection => ({ title, items: messageItems.filter((item) => item.section === section) });
+    return [
+      { title: t("qs.sectionChannels"), items: channelItems },
+      { title: t("qs.sectionDms"), items: dmItems },
+      { title: t("qs.sectionAgents"), items: agentItems },
+      messageSection("channelMessages", t("qs.sectionChannelMessages")),
+      messageSection("topicMessages", t("qs.sectionTopicMessages")),
+      messageSection("dmMessages", t("qs.sectionDmMessages")),
+    ].filter((section) => section.items.length > 0);
+  }, [agents, channels, dms, isHome, messageResults, normalizedQuery, t]);
+
+  const items = sections.flatMap((section) => section.items).slice(0, 60);
+  const boundedHighlight = Math.min(highlighted, Math.max(0, items.length - 1));
+  const pick = (item?: QuickItem) => {
+    if (!item) return;
+    item.go();
+    onClose();
+  };
+  const move = (delta: number) => {
+    if (!items.length) return;
+    const next = Math.max(0, Math.min(boundedHighlight + delta, items.length - 1));
+    setHighlighted(next);
+    listRef.current?.querySelector<HTMLElement>(`[data-quick-index="${next}"]`)?.scrollIntoView({ block: "nearest" });
+  };
+  const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown") { event.preventDefault(); move(1); }
+    else if (event.key === "ArrowUp") { event.preventDefault(); move(-1); }
+    else if (event.key === "Enter") { event.preventDefault(); pick(items[boundedHighlight]); }
+    else if (event.key === "Escape") { event.preventDefault(); onClose(); }
   };
 
+  let itemIndex = -1;
   return (
     <div className="modal-bg qs-bg" onClick={onClose}>
-      <div className="qs" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={t("qs.ariaLabel")}>
+      <div className="qs" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={t("qs.ariaLabel")}>
         <div className="qs-search">
-          <Search size={16} />
-          <input ref={inputRef} value={q} onChange={(e) => { setQ(e.target.value); setHi(0); }} onKeyDown={onKey} placeholder={t("qs.placeholder")} aria-label={t("qs.inputAriaLabel")} />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(event) => { setQuery(event.target.value); setHighlighted(0); }}
+            onKeyDown={onKeyDown}
+            placeholder={t("qs.placeholder")}
+            aria-label={t("qs.inputAriaLabel")}
+          />
         </div>
         <div className="qs-list" ref={listRef}>
-          {items.length === 0 ? <div className="qs-empty">{t("qs.noMatch")}</div> :
-            items.map((it, i) => (
-              <button key={it.kind + it.id} className={"qs-item" + (i === hi ? " on" : "")} onMouseEnter={() => setHi(i)} onClick={() => pick(it)}>
-                {it.kind === "channel" ? <span className="qs-hash">#</span> : <Avatar seed={it.label} size={20} />}
-                <span className="qs-label">{it.label}</span>
-                <span className="qs-kind">{it.sub}</span>
-              </button>
-            ))}
+          {sections.map((section) => (
+            <section className="qs-section" key={section.title}>
+              <div className="qs-section__title">{section.title}</div>
+              {section.items.map((item) => {
+                itemIndex += 1;
+                const index = itemIndex;
+                if (index >= 60) return null;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    data-quick-index={index}
+                    className={`qs-item${item.message ? " qs-item--message" : ""}${index === boundedHighlight ? " on" : ""}`}
+                    onMouseEnter={() => setHighlighted(index)}
+                    onClick={() => pick(item)}
+                  >
+                    {item.message
+                      ? <MessageSearchResultRow result={item.message} query={query} />
+                      : <>
+                        <span className="qs-item__icon">{item.icon}</span>
+                        <span className="qs-label">{item.label}</span>
+                        {item.detail ? <span className="qs-detail">{item.detail}</span> : null}
+                      </>}
+                  </button>
+                );
+              })}
+            </section>
+          ))}
+          {!sections.length && searchingMessages ? <div className="qs-empty">{t("qs.searching")}</div> : null}
+          {!sections.length && !searchingMessages ? <div className="qs-empty">{t("qs.noMatch")}</div> : null}
         </div>
-        <div className="qs-foot"><kbd>↑↓</kbd> {t("qs.footSelect")} · <kbd>↵</kbd> {t("qs.footGo")} · <kbd>esc</kbd> {t("qs.footClose")}</div>
       </div>
     </div>
   );

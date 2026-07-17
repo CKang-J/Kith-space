@@ -14,6 +14,8 @@ import { readySpace, routeSpaceAvailability } from "./spaces/spaceAvailability.t
 import { SpaceRecovery } from "./spaces/SpaceRecovery.tsx";
 import "./i18n";
 import "./styles.css";
+import "./components/SlidingTabs.css";
+import "./views/chat-message/chatMessage.css";
 import "./components/SearchField.css";
 import "./scrollbar";
 

@@ -2,19 +2,21 @@
 // Placeholder blocks use a restrained shimmer that is disabled under prefers-reduced-motion in styles.css.
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
+import { ChatMessageItem, MessageHeader } from "./chat-message/ChatMessageItem.tsx";
 
 const WORKSPACE_MODULES = new Set(["inbox", "tasks", "agents", "settings", "search"]);
 
 // One placeholder message row: avatar block plus name and body lines of varied width.
 function SkelMsg({ w }: { w: string }) {
   return (
-    <div className="skel-msg" aria-hidden="true">
-      <div className="skel-box skel-ava" />
-      <div className="skel-msg-body">
-        <div className="skel-box skel-line skel-line-name" />
-        <div className="skel-box skel-line" style={{ width: w }} />
-      </div>
-    </div>
+    <ChatMessageItem
+      surface="agent"
+      className="skel-msg"
+      avatar={<div className="skel-box skel-ava" />}
+      header={<MessageHeader sender={<div className="skel-box skel-line skel-line-name" />} />}
+    >
+      <div className="skel-box skel-line" style={{ width: w }} />
+    </ChatMessageItem>
   );
 }
 
@@ -36,9 +38,6 @@ function TopBarSkeleton() {
       <div className="skel-box skel-topbar-space" />
       <div className="skel-box skel-topbar-context" />
       <div className="shell-topbar__spacer" />
-      <div className="shell-topbar__tools skel-topbar-tools">
-        {Array.from({ length: 3 }).map((_, i) => <div key={i} className="skel-box skel-topbar-tool" />)}
-      </div>
     </header>
   );
 }

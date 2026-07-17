@@ -17,6 +17,22 @@ test("renders an agent mention with the agent tag", () => {
   assert.equal(out, "[@bot](tag:agent:a-bot) run it");
 });
 
+test("renders canonical @all as an inert broadcast tag", () => {
+  const out = processMessageContent("@all please review", { mentions: [{ type: "channel_all", id: "channel-1", name: "all" }], channels: ch });
+  assert.equal(out, "[@all](tag:broadcast:channel-1) please review");
+});
+
+test("the @all marker wins over an Agent with the reserved-looking name regardless of mention row order", () => {
+  const out = processMessageContent("@all please review", {
+    mentions: [
+      { type: "channel_all", id: "channel-1", name: "all" },
+      { type: "agent", id: "agent-all", name: "all" },
+    ],
+    channels: ch,
+  });
+  assert.equal(out, "[@all](tag:broadcast:channel-1) please review");
+});
+
 test("a non-member @ (not in mentions[]) stays plain text — no fake clickable mention", () => {
   // ghost is a workspace member but NOT recorded as a mention on this message (e.g. a private channel non-member)
   const out = processMessageContent("@ghost secret", { mentions: [], channels: ch });

@@ -4,7 +4,7 @@
 // Run: npx tsx --test --test-force-exit test/format.unit.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fmtDateTime } from "../web/src/format.ts";
+import { fmtDateTime, fmtMessageTime, fmtMessageTimestamp } from "../web/src/format.ts";
 
 test("fmtDateTime renders year-month-day and time, not a bare time-of-day", () => {
   const out = fmtDateTime("2026-06-25T14:30:00Z");
@@ -16,4 +16,23 @@ test("fmtDateTime renders year-month-day and time, not a bare time-of-day", () =
 test("fmtDateTime is empty for missing/invalid input", () => {
   assert.equal(fmtDateTime(undefined), "");
   assert.equal(fmtDateTime(""), "");
+});
+
+test("fmtMessageTimestamp uses time only for today and keeps the date for older messages", () => {
+  const now = new Date(2026, 6, 15, 12, 0);
+  const today = new Date(2026, 6, 15, 9, 5).toISOString();
+  const older = new Date(2026, 6, 14, 19, 50).toISOString();
+
+  assert.match(fmtMessageTimestamp(today, now), /^\d{2}:\d{2}$/);
+  assert.match(fmtMessageTimestamp(older, now), /2026/);
+});
+
+test("fmtMessageTimestamp is empty for missing or invalid input", () => {
+  assert.equal(fmtMessageTimestamp(undefined), "");
+  assert.equal(fmtMessageTimestamp("not-a-date"), "");
+});
+
+test("fmtMessageTime keeps continuation rows compact on historical dates", () => {
+  assert.match(fmtMessageTime("2026-06-25T14:30:00Z"), /^\d{2}:\d{2}$/);
+  assert.equal(fmtMessageTime("not-a-date"), "");
 });

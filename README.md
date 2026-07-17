@@ -25,7 +25,11 @@ Kith 意为"你熟识信任的一圈自己人"——正是这些懂你（有记�
 
 本机化 A2-A6 原定代码切片与 P-A7 H1-H4 已完成并进入用户验收：中央 `app.db`、唯一 Human、canonical Space 契约、安装级唯一 Local Runtime Worker、19 表 workspace.db baseline、浏览器 Token/Cookie 安全边界和 Electron Desktop 宿主均已落地；app data 与默认 Space 容器已经分离，Home 使用 app.db 中的稳定身份并默认位于用户可见的 `~/Kith-space/Home`；Claude Code、Codex、opencode 以所属 Space root 为 cwd，Agent Memory 随 Space 存放；用户可在 Home-only Spaces 模块搜索、刷新、新建、接入、重连并同窗打开普通 Space。顶部 SpaceSwitcher 只负责快速切换、失联恢复和进入 Home Spaces。普通冷启动默认进入 Home Chat，显式可用 Space 深链接仍优先；普通 Space 不显示也不能激活 Spaces 模块。H5 与 Runtime 契约 v2 都保持暂停，等待用户完成 H1-H4 验收。完整补充规格见 [`Home 与 Space root 设计`](./docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md)。
 
-P-A8 Agent 频道响应模式已实现并等待用户验收：当前 Space 的 Agent 默认值可由顶层频道 membership 覆盖，三档为主动/被动/静音；Human-Agent 私聊和明确任务指派始终直达，话题继承父频道。“作为任务 + 单一 @Agent”会形成真实 assignee，无 `@` 保持未指派，多个 Agent mention 在发送前拒绝。实时 wake、Worker reconnect、Agent message check 与 prompt 共用统一响应指令，Agent 详情默认卡片和频道昵称后覆盖菜单已落地。完整边界见 [`Agent 频道响应模式设计`](./docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md)。
+P-A8 Agent 频道响应模式与频道全体提及已实现并等待用户验收：当前 Space 的 Agent 默认值可由顶层频道 membership 覆盖，三档为主动/被动/静音；Human-Agent 私聊和明确任务指派始终直达，话题继承父频道。“指派任务 + 单一 @Agent”会形成真实 assignee，无 `@` 保持未指派，多个 Agent mention 或 `@all` 在任务模式发送前拒绝。Human 在频道/话题发送语言无关的规范 token `@all` 时，按发送瞬间的父频道 Agent 成员生成接收者快照，主动/被动目标必须回应，静音目标不自动唤醒；Agent-authored 与 DM 文本不会群体展开。界面标签通过 i18n 显示“所有人 / Everyone”，历史消息和协议始终保留 `@all`。实时 wake、Worker reconnect、Agent message check 与 prompt 共用统一响应指令，Agent 详情默认卡片、频道昵称后覆盖菜单和 Composer 全体候选均已落地。Composer 已把照片/文件与“指派任务”合并到左下角圆形“+”菜单，任务启用后显示可移除胶囊并与正文共享单行空间；短单行草稿保持紧凑，只有任务胶囊与文字的合计占位接近右侧安全区、显式换行或附件存在时才展开。完整边界见 [`Agent 频道响应模式设计`](./docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md)。
+
+聊天消息流密度与交互重构的代码已完成，等待用户手动视觉验收：主会话、话题、action card 与加载 Skeleton 已统一到“32px 头像 + 紧凑发送者行 + 内容气泡”表现层；Human 使用 `#eff4fb` 气泡、Agent 使用中性浅灰气泡，正文保持 `14.5px / 1.55`。Chat 标题栏相对卡片左右固定 14px，与标题内容上下留白一致；消息流、日期分隔和 Composer 统一使用 `1040px` 居中上限。普通链尾间距为 20px；同一天相邻且同发送者的 Human/Agent 普通消息隐藏重复头像与昵称，组内间距为 6px。父消息气泡内的话题摘要显示参与者头像、总回复数、最新时间、最近三条 Human/Agent 单行回复和“在话题中回复”，system 任务事件不显示为预览行，正文与摘要之间不绘制分隔线；摘要复用既有批量元数据接口。Agent 状态文字从发送者行移除，只保留头像右下角状态点；主消息工具仅在气泡 hover/focus 时出现，外显“加表情、话题、复制、更多”，收藏保留在更多菜单；右侧空间足够时工具栏位于气泡右侧，不足时切换到气泡上方，隐藏状态不会撑宽消息流。消息容器只允许纵向滚动。归档频道隐藏写入口，同时保留复制和打开已有话题；任务、附件、响应模式和深链契约不变。完整边界见 [`聊天消息流密度与交互重构设计`](./docs/superpowers/specs/2026-07-15-chat-message-ui-density-design.md)。
+
+Chat 壳层与侧栏模块导航代码已完成，等待用户手动视觉验收：ChatOnly 在左侧常驻栏顶部纵向显示“图标 + 文字”的模块入口，不显示 Chat，也不显示底部 Dock；点击模块后固定侧栏隐藏，并继续使用现有 Split / ModuleOnly 与 Module Pane 底部横向 Dock。Split 会话抽屉复用独立会话内容，只保留已保存、频道、私信。中心 Chat 保持原有圆角卡片、间隙与配色；常驻会话导航取消独立卡片底板，直接使用应用画布背景，模块入口和会话抽屉不绘制贯穿式分隔线。功能文字统一无衬线字体；Chat 标题栏固定左右 14px，并与标题内容上下留白一致，日期分隔、消息与 Composer 使用共用 `1040px` 居中内容轨道。案例展示入口、产品路由、静态视图、演示数据/资产及专属表现分支已删除；旧 URL 只由 SPA fallback 接住并规范化到当前 Space 默认频道。全局 `Ctrl/Command + K` 消息搜索第一阶段也已完成：结果采用双行结构，展示可读会话、发送者、相对时间和查询词高亮，话题补充父消息摘要与回复数，界面不再暴露内部 DM/thread 名称。完整边界见 [`Chat 壳层与侧栏模块导航设计`](./docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md)。
 
 ## Desktop 开发启动
 
@@ -38,7 +42,7 @@ pnpm install
 pnpm run desktop:dev        # 构建 Electron main/preload，并启动 Core + Worker + Vite + Electron
 ```
 
-Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。日常启动见 [`docs/dev-commands.md`](./docs/dev-commands.md)，Web 模式、访问 Token 与低频联调见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。测试：`pnpm test --unit` / `pnpm test --integration`；当前验收单测基线为 581/581。
+Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。日常启动见 [`docs/dev-commands.md`](./docs/dev-commands.md)，Web 模式、访问 Token 与低频联调见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。测试：`pnpm test --unit` / `pnpm test --integration`；当前验收单测基线为 640/640。
 
 Windows 构建分为四层：
 
@@ -56,6 +60,7 @@ pnpm run desktop:dist        # x64、per-user、assisted NSIS 安装器
 - 当前进度与续接指南（新会话先读）：[`docs/progress.md`](./docs/progress.md)
 - Home 总控 Space、路径/cwd/记忆与跨 Space 委派：[`2026-07-12-home-space-and-space-root-design.md`](./docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md)
 - Agent 默认/频道覆盖、任务指派与唤醒矩阵：[`2026-07-14-agent-channel-response-mode-design.md`](./docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md)
+- ChatOnly 侧栏模块入口、模块打开态 Dock 与案例展示退役：[`2026-07-15-chat-shell-sidebar-module-navigation-design.md`](./docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md)
 - 日常开发命令（启动/测试/打包）：[`docs/dev-commands.md`](./docs/dev-commands.md)
 - 高级开发与调试（Token/Web/数据库/E2E）：[`docs/dev-debugging.md`](./docs/dev-debugging.md)
 - 理念与长远愿景：[`docs/vision.md`](./docs/vision.md)

@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { addChannelMembers, createMessage, getOrCreateThread } from "../src/server/core.ts";
 import { registerWorker, unregisterWorker, updateWorkerSnapshot } from "../src/local-runtime/workerHub.ts";
+import { CHANNEL_ALL_MENTION_TYPE } from "../src/channels/channelAllMention.ts";
 
 const { db, schema, spaceId, human } = integrationDatabase("agent-response-delivery");
 const [channel] = await db.insert(schema.channels).values({ spaceId, name: "response-delivery", type: "channel" }).returning();
@@ -51,13 +52,34 @@ try {
   ].sort());
 
   reset();
+  const broadcast = await createMessage({
+    spaceId,
+    channelId: channel.id,
+    senderType: "human",
+    senderId: human.id,
+    senderName: human.name,
+    content: "@all please review",
+  });
+  assert.deepEqual(deliveries().map((message) => [message.agentId, message.responseDirective, message.responseReason]).sort(), [
+    [active.id, "required", "explicit_mention"],
+    [passive.id, "required", "explicit_mention"],
+  ].sort());
+  const broadcastMentions = await db.select().from(schema.messageMentions).where(eq(schema.messageMentions.messageId, broadcast.id));
+  assert.deepEqual(broadcastMentions.filter((mention) => mention.mentionType === "agent").map((mention) => mention.mentionId).sort(), [
+    active.id,
+    passive.id,
+    silent.id,
+  ].sort(), "recipient rows snapshot every Agent who belonged to the channel at send time");
+  assert.ok(broadcastMentions.some((mention) => mention.mentionType === CHANNEL_ALL_MENTION_TYPE && mention.mentionId === channel.id));
+
+  reset();
   await createMessage({
     spaceId,
     channelId: channel.id,
     senderType: "agent",
     senderId: active.id,
     senderName: active.name,
-    content: "ambient agent progress",
+    content: "@all ambient agent progress",
   });
   assert.equal(deliveries().length, 0, "Agent ambient chatter must not create response loops");
 
@@ -70,7 +92,21 @@ try {
     content: "thread root",
   });
   const thread = await getOrCreateThread(spaceId, root.id, { type: "human", id: human.id });
-  await addChannelMembers(spaceId, thread.id, [active, passive, silent].map((agent) => ({ type: "agent", id: agent.id })));
+  reset();
+  await createMessage({
+    spaceId,
+    channelId: thread.id,
+    senderType: "human",
+    senderId: human.id,
+    senderName: human.name,
+    content: "@all join this topic",
+  });
+  assert.deepEqual(deliveries().map((message) => [message.agentId, message.responseDirective, message.responseReason]).sort(), [
+    [active.id, "required", "explicit_mention"],
+    [passive.id, "required", "explicit_mention"],
+  ].sort());
+  const broadcastThreadMembers = await db.select().from(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, thread.id));
+  assert.deepEqual(broadcastThreadMembers.map((member) => member.agentId).sort(), [active.id, passive.id, silent.id].sort());
   reset();
   await createMessage({
     spaceId,
@@ -96,11 +132,13 @@ try {
     senderType: "human",
     senderId: human.id,
     senderName: human.name,
-    content: "direct request",
+    content: "@all direct request",
   });
   assert.deepEqual(deliveries().map((message) => [message.agentId, message.responseDirective, message.responseReason]), [
     [silent.id, "required", "direct_message"],
   ]);
+  const dmBroadcastMarkers = await db.select().from(schema.messageMentions).where(eq(schema.messageMentions.mentionType, CHANNEL_ALL_MENTION_TYPE));
+  assert.equal(dmBroadcastMarkers.some((mention) => mention.mentionId === dm.id), false, "DM text must not create a channel-all mention");
 
   reset();
   const assigned = await createMessage({

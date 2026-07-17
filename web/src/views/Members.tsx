@@ -34,7 +34,7 @@ interface AgentsProps {
 
 export function Agents({ agentIdOverride }: AgentsProps = {}) {
   const { t } = useTranslation();
-  const { visibleAgents: agents, attachmentUrl } = useStore(); // visibleAgents: showcase demo props are hidden from the roster (they stay in the store for #showcase history)
+  const { visibleAgents: agents, attachmentUrl } = useStore();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
   const agentId = agentIdOverride;
   const nav = useNavigate();

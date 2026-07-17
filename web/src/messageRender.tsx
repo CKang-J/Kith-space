@@ -37,7 +37,7 @@ const alertConfig: Record<string, { label: string; Icon: LucideIcon }> = {
 
 type NameItem = { name?: string; id?: string };
 type MentionItem = { type?: string; id?: string; name?: string };
-type Nav = (type: string, args: string[]) => void;
+type Nav = (type: string, args: string[], trigger?: HTMLElement) => void;
 const lc = (x?: string) => (x ?? "").toLowerCase();
 
 function textFromReact(node: ReactNode): string {
@@ -166,11 +166,15 @@ export function processMessageContent(raw: string, ctx: { mentions: MentionItem[
     .replace(/`[^`\n]+`/g, (m) => `\u0000C${codes.push(m) - 1}\u0000`);          // inline code placeholder
   const refs: string[] = [];
   const ref = (markdownLink: string) => `\u0000R${refs.push(markdownLink) - 1}\u0000`;
-  const mMap = new Map(ctx.mentions.map((x) => [lc(x.name), x]));
+  const mMap = new Map<string, MentionItem>();
+  for (const mention of ctx.mentions) {
+    const key = lc(mention.name);
+    if (!mMap.has(key) || mention.type === "channel_all") mMap.set(key, mention);
+  }
   const cMap = new Map(ctx.channels.map((c) => [lc(c.name), c]));
   s = s
     .replace(/#([\p{L}\p{N}_-]+):([\da-f]{6,8})/giu, (m, name: string, short: string) => { const c = cMap.get(lc(name)); return c ? ref(`[#${name}:${short}](tag:thread:${c.id}:${short})`) : m; })  // thread reference first (prevent #channel from consuming it)
-    .replace(/@([\p{L}\p{N}_-]+)/gu, (m, name: string) => { const mn = mMap.get(lc(name)); return mn ? ref(`[@${name}](tag:${mn.type === "agent" ? "agent" : "human"}:${mn.id})`) : m; })  // only @ the server actually recorded as a mention
+    .replace(/@([\p{L}\p{N}_-]+)/gu, (m, name: string) => { const mn = mMap.get(lc(name)); return mn ? ref(`[@${name}](tag:${mn.type === "channel_all" ? "broadcast" : mn.type === "agent" ? "agent" : "human"}:${mn.id})`) : m; })  // only @ the server actually recorded as a mention
     .replace(/(^|[^\w/])(?:task\s+)#([1-9]\d*)\b/giu, (_m, pre: string, num: string) => `${pre}${ref(`[task #${num}](tag:task:${num})`)}`)  // only "task #N" (bare #N not rendered yet: no knownTaskNumbers whitelist, avoids false positives)
     .replace(/#([\p{L}\p{N}_-]+)/gu, (m, name: string) => { const c = cMap.get(lc(name)); return c ? ref(`[#${name}](tag:channel:${c.id})`) : m; });
   return s
@@ -351,8 +355,9 @@ export function MessageContent({ content, mentions, channels, nav }: { content: 
               const color = colorValueFromTag(href);
               if (color) return <ColorSwatch value={color} />;
               const [, type, ...args] = href.split(":");
+              if (type === "broadcast") return <span className="mention ref-at ref-broadcast">{children}</span>;
               const cls = type === "agent" ? "mention ref-at ref-agent" : type === "human" ? "mention ref-at ref-human" : type === "channel" ? "ref-chan" : type === "thread" ? "ref-thread" : "ref-task";
-              return <a className={cls} onClick={(e) => { e.preventDefault(); nav(type, args); }}>{children}</a>;
+              return <a className={cls} href={href} aria-haspopup={type === "agent" || type === "human" ? "dialog" : undefined} onClick={(e) => { e.preventDefault(); nav(type, args, e.currentTarget); }}>{children}</a>;
             }
             return <a href={href} target="_blank" rel="noreferrer">{children}</a>;
           },

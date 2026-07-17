@@ -22,7 +22,7 @@ export interface Me { id: string; name: string; email?: string | null; descripti
 export interface Att { id: string; filename: string; mimeType?: string; sizeBytes?: number }
 export interface Reaction { emoji: string; count: number; reactorIds: string[]; reactorNames: string[] }
 export interface ActionMeta { kind: string; state: "prepared" | "executed"; action: { type: string; name: string; description?: string | null; visibility?: string; initialAgents?: string[] }; executedByUserName?: string | null; result?: { kind: string; id: string; name: string } | null }
-export interface Msg { id: string; seq: number; channelId: string; senderType: string; senderId?: string | null; senderName: string; content: string; messageType?: string; actionMetadata?: ActionMeta | null; createdAt?: string; taskStatus?: string | null; taskNumber?: number | null; taskAssigneeType?: string | null; taskAssigneeId?: string | null; mentions?: { type?: string; id?: string; name: string }[]; attachments?: Att[]; reactions?: Reaction[] }
+export interface Msg { id: string; seq: number; channelId: string; senderType: string; senderId?: string | null; senderName: string; senderDeleted?: boolean; content: string; messageType?: string; actionMetadata?: ActionMeta | null; createdAt?: string; taskStatus?: string | null; taskNumber?: number | null; taskAssigneeType?: string | null; taskAssigneeId?: string | null; mentions?: { type?: string; id?: string; name: string }[]; attachments?: Att[]; reactions?: Reaction[] }
 type Ev = { type: string; [k: string]: any };
 
 interface Store {
@@ -38,8 +38,8 @@ interface Store {
   switchSpace: (slug: string) => void;                           // client-side Space switch: re-point the active Space, reset per-Space state, reconnect the socket (no full-page reload)
   clearBrowserAccess: () => Promise<void>;
   channels: Channel[]; archivedChannels: Channel[]; dms: Dm[]; unread: Record<string, number>;
-  agents: Agent[];        // ALL agents incl. system-seeded showcase demo agents — resolve a sender's avatar/name/profile by id (incl. #showcase history)
-  visibleAgents: Agent[]; // agents minus system-seeded showcase demo agents — use for member rosters and every agent picker / @mention candidate list
+  agents: Agent[];        // all persisted agent identities, including system-owned records needed for attribution
+  visibleAgents: Agent[]; // interactive agents available to rosters, pickers, and @mention reachability
   trajByConversation: TrajectoryBuckets;                          // per-base-conversation live trace buffers; each bucket is independently bounded
   api: (m: string, p: string, b?: unknown) => Promise<any>;
   reload: () => Promise<void>;
@@ -402,7 +402,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sock.on("agent:reply", (p: any) => dispatch({ type: "agent:reply", ...p }));
       sock.on("agent:response-mode-updated", (p: any) => dispatch({ ...p, type: "agent:response-mode-updated" }));
       sock.on("agent:created", () => reload());
-      sock.on("agent:deleted", () => reload());
+      sock.on("agent:deleted", (p: any) => { reload(); dispatch({ type: "agent:deleted", id: p?.id }); });
       // Real-time: new DM / agent membership change → reload lists + subscribe to the affected transport room.
       // The server validates Space access for the Human; this socket event does not create domain membership.
       sock.on("dm:new", (p: any) => { reload(); if (p?.channelId) sockRef.current?.emit("join:channel", p.channelId); });
@@ -424,8 +424,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; sock?.close(); sockRef.current = null; if (unreadTimer) clearTimeout(unreadTimer); };
   }, [activeSpaceId]);
 
-  // Showcase demo agents (creatorType="system") stay in `agents` so #showcase history still resolves their
-  // avatar/name/profile by id — but they are not real members, so every roster / picker uses `visibleAgents`.
+  // System-owned identities remain available for historical attribution but are never interactive members.
   const visibleAgents = agents.filter((a) => a.creatorType !== "system");
   return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, spaceAvatar, spaces, createSpace, relocateSpace, renameSpace, removeSpace, refreshSpaces, switchSpace, clearBrowserAccess, uploadSpaceAvatar, uploadAgentAvatar, channels, archivedChannels, dms, unread, agents, visibleAgents, trajByConversation, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
 }

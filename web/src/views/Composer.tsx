@@ -1,43 +1,58 @@
-import { useState, useRef, useEffect, useMemo, type ChangeEvent, type ClipboardEvent as RClipboardEvent, type DragEvent as RDragEvent, type CSSProperties } from "react";
-import { ImagePlus, Paperclip, Send, CheckCircle2 } from "lucide-react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent as RClipboardEvent, type DragEvent as RDragEvent } from "react";
+import { ArrowUp, Users } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useStore, type Agent } from "../store.tsx";
 import { Avatar, resolveAvatar } from "../Avatar.tsx";
-import { IconFile } from "../icons.tsx";
 import { autosizeComposerInput, observeComposerInputWidth } from "./composerAutosize.ts";
 import { uniqueMentionedAgentIds } from "./composerTaskMentions.ts";
-
-const isImage = (m?: string) => !!m && m.startsWith("image/");
+import { ComposerActions } from "./composer/ComposerActions.tsx";
+import { ComposerAttachments, type PendingAttachment } from "./composer/ComposerAttachments.tsx";
+import { useComposerExpansion } from "./composer/useComposerExpansion.ts";
+import { useComposerReserve } from "./composer/useComposerReserve.ts";
+import {
+  CHANNEL_ALL_MENTION_NAME,
+  containsChannelAllMention,
+  matchesChannelAllMentionQuery,
+} from "./composerChannelAllMention.ts";
+import { insertAgentMention } from "./composerMention.ts";
 
 // Shared message composer for channels, DMs, and threads. Owns text, attachment upload
 // (button / paste / drag-drop, with per-file progress), @mention autocomplete, and send.
-// The only per-context difference is "As Task" (channels/DMs only), gated by `allowAsTask` —
+// The only per-context difference is task assignment (channels/DMs only), gated by `allowAsTask` —
 // threads leave it falsy so a thread reply is never a task. Sending POSTs to `channelId`; the
 // message echoes back over the socket, so the *parent* owns the message list + scroll, not this.
-export function Composer({ channelId, placeholder, allowAsTask = false, validateChannelTaskMentions = true, dmAgent, className }: {
+export interface ComposerHandle {
+  mentionAgent(agentName: string): void;
+}
+
+interface ComposerProps {
   channelId: string;
-  placeholder: string;       // base placeholder; when As Task is checked the component swaps in the task placeholder
-  allowAsTask?: boolean;     // channels/DMs pass true → show the As Task toggle + ⌘/Ctrl+Shift+Enter shortcut
+  placeholder: string;       // base placeholder; when task assignment is active the component swaps in the task placeholder
+  allowAsTask?: boolean;     // channels/DMs pass true → offer Assign Task + ⌘/Ctrl+Shift+Enter shortcut
+  allowChannelAllMention?: boolean; // top-level channels and their topics only; DMs omit
   validateChannelTaskMentions?: boolean; // false for DMs: Agent assignment-by-mention is a channel-only contract
   dmAgent?: Agent;           // DM peer agent (channels/threads omit) → drives the single-peer sleeping nudge
   className?: string;        // extra class on the .composer root (threads pass "thread-composer")
-}) {
+}
+
+export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer({ channelId, placeholder, allowAsTask = false, allowChannelAllMention = false, validateChannelTaskMentions = true, dmAgent, className }, ref) {
   const { t } = useTranslation();
-  const { api, visibleAgents: agents, uploadOne, attachmentUrl } = useStore(); // visibleAgents: only real agents are @-mention candidates / reachability targets (not showcase demo props)
+  const { api, visibleAgents: agents, uploadOne, attachmentUrl } = useStore();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
   const [text, setText] = useState("");
   const [asTask, setAsTask] = useState(false);
   const [atQuery, setAtQuery] = useState<string | null>(null); // @ mention autocomplete: null = hidden
   const [atSel, setAtSel] = useState(0); // highlighted candidate index for ↑/↓ keyboard nav
-  const [pendingAtts, setPendingAtts] = useState<any[]>([]); // uploaded attachments queued to send with the next message
+  const [pendingAtts, setPendingAtts] = useState<PendingAttachment[]>([]); // uploaded attachments queued to send with the next message
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
   const [taskMentionError, setTaskMentionError] = useState("");
   const sendingRef = useRef(false);
   const atPosRef = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
-  const imgRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const { boxRef, textNeedsExpansion } = useComposerExpansion(text, inputRef, asTask);
+  const composerRootRef = useComposerReserve();
   useEffect(() => { const el = inputRef.current; if (el) autosizeComposerInput(el); }, [text]); // textarea auto-grows up to 160px
   useEffect(() => { const el = inputRef.current; return el ? observeComposerInputWidth(el) : undefined; }, []); // reflowed placeholders/drafts shrink again when a hidden Chat pane expands
 
@@ -61,15 +76,45 @@ export function Composer({ channelId, placeholder, allowAsTask = false, validate
     t("chat.agentSleepingComposerPlaceholder", { name: reach.names })
   ) : null;
   const effectivePlaceholder = reachPlaceholder ?? (allowAsTask && asTask ? t("chat.taskPlaceholder") : placeholder);
+  const expanded = textNeedsExpansion || pendingAtts.length > 0;
+
+  const changeTaskMode = (active: boolean) => {
+    setAsTask(active);
+    setTaskMentionError("");
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  useImperativeHandle(ref, () => ({
+    mentionAgent(agentName: string) {
+      const input = inputRef.current;
+      const start = input?.selectionStart ?? text.length;
+      const end = input?.selectionEnd ?? start;
+      const insertion = insertAgentMention(text, start, end, agentName);
+      setText(insertion.text);
+      setAtQuery(null);
+      setTaskMentionError("");
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.setSelectionRange(insertion.caret, insertion.caret);
+      });
+    },
+  }), [text]);
 
   const send = async (forceTask?: boolean) => {
     if (sendingRef.current) return;
     const v = text.trim(); if ((!v && !pendingAtts.length) || !channelId) return;
     const asT = allowAsTask && (forceTask ?? asTask); // ⌘/Ctrl+Shift+Enter forces task; threads (allowAsTask=false) never send as task
-    if (asT && validateChannelTaskMentions && uniqueMentionedAgentIds(v, agents).length > 1) {
-      setTaskMentionError(t("chat.taskMultipleAgentMentions"));
-      inputRef.current?.focus();
-      return;
+    if (asT) {
+      if (containsChannelAllMention(v)) {
+        setTaskMentionError(t("chat.taskChannelAllMention"));
+        inputRef.current?.focus();
+        return;
+      }
+      if (validateChannelTaskMentions && uniqueMentionedAgentIds(v, agents).length > 1) {
+        setTaskMentionError(t("chat.taskMultipleAgentMentions"));
+        inputRef.current?.focus();
+        return;
+      }
     }
     setTaskMentionError("");
     const ids = pendingAtts.filter((a) => a.status === "done" || !a.status).map((a) => a.id); // only fully-uploaded attachments
@@ -116,10 +161,14 @@ export function Composer({ channelId, placeholder, allowAsTask = false, validate
     if (m) { setAtQuery(m[1]); atPosRef.current = pos - m[0].length; } else setAtQuery(null);
     setAtSel(0); // typing narrows the list → restart highlight at the top
   };
-  const cands = atQuery === null ? [] : agents
-    .map((agent) => ({ name: agent.name, label: agent.displayName || agent.name, kind: "agent", avatarUrl: agent.avatarUrl }))
-    .filter((candidate) => candidate.name && candidate.name.toLowerCase().includes((atQuery || "").toLowerCase()))
-    .slice(0, 8);
+  const cands = atQuery === null ? [] : [
+    ...(allowChannelAllMention && !asTask && matchesChannelAllMentionQuery(atQuery)
+      ? [{ name: CHANNEL_ALL_MENTION_NAME, label: t("chat.mentionEveryone"), kind: "channel_all" as const, avatarUrl: null }]
+      : []),
+    ...agents
+      .map((agent) => ({ name: agent.name, label: agent.displayName || agent.name, kind: "agent" as const, avatarUrl: agent.avatarUrl }))
+      .filter((candidate) => candidate.name && candidate.name.toLowerCase().includes((atQuery || "").toLowerCase())),
+  ].slice(0, 8);
   const pick = (c: { name: string }) => {
     const start = atPosRef.current;
     const after = text.slice(start + 1 + (atQuery?.length ?? 0));
@@ -128,34 +177,33 @@ export function Composer({ channelId, placeholder, allowAsTask = false, validate
   };
 
   return (
-    <div className={"composer" + (className ? " " + className : "")}>
+    <div ref={composerRootRef} className={"composer" + (className ? " " + className : "")}>
       {atQuery !== null && cands.length > 0 && (
         <div className="mention-menu">
           {cands.map((c, i) => (
             <button key={c.kind + c.name} className={"mention-opt" + (i === atSel ? " sel" : "")} aria-selected={i === atSel}
-              onMouseEnter={() => setAtSel(i)} onMouseDown={(e) => { e.preventDefault(); pick(c); }}>
-              <Avatar seed={c.name} url={avFor(c.avatarUrl)} size={22} />
-              <span className="grow">{c.label} <span className="mk-name">@{c.name}</span></span>
-              <span className="mk">{c.kind === "agent" ? "agent" : t("chat.humanKind")}</span>
+              onPointerEnter={() => setAtSel(i)} onMouseDown={(e) => { e.preventDefault(); pick(c); }}>
+              {c.kind === "channel_all"
+                ? <span className="mention-broadcast-icon"><Users size={14} aria-hidden="true" /></span>
+                : <Avatar seed={c.name} url={avFor(c.avatarUrl)} size={22} />}
+              <span className="mention-opt-copy">
+                <span className="mention-opt-label">{c.label}</span>
+                <span className="mk-name">@{c.name}</span>
+                {c.kind === "channel_all" ? <span className="mention-opt-desc">{t("chat.mentionEveryoneDescription")}</span> : null}
+              </span>
+              <span className="mk">{c.kind === "channel_all" ? t("chat.channelMentionKind") : "agent"}</span>
             </button>
           ))}
         </div>
       )}
-      {pendingAtts.length > 0 && <div className="pending-atts">{pendingAtts.map((a) => {
-        const img = isImage(a.mimeType);
-        const src = a.localUrl || (a.status !== "uploading" ? attachmentUrl(a.id) : "");
-        return <span key={a.id} className={"patt" + (img ? " patt-img" : "") + (a.status ? " st-" + a.status : "")} title={a.filename}>
-          {img && src ? <img src={src} alt={a.filename} /> : <><IconFile size={13} />{!img && a.filename}</>}
-          {a.status === "uploading" && <span className="patt-prog" style={{ ["--pct" as string]: (a.progress || 0) + "%" } as CSSProperties}>{a.progress || 0}%</span>}
-          {a.status === "done" && <span className="patt-ok"><CheckCircle2 size={13} /></span>}
-          {a.status === "error" && <span className="patt-err">!</span>}
-          <button onClick={() => setPendingAtts((p) => p.filter((x) => x.id !== a.id))}>×</button>
-        </span>;
-      })}</div>}
-      <input type="file" ref={imgRef} accept="image/*" multiple style={{ display: "none" }} onChange={onPickFiles} />
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={onPickFiles} />
       {taskMentionError ? <div className="composer-validation-error" role="alert">{taskMentionError}</div> : null}
-      <div className="composer-box" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
+      <div ref={boxRef} className={`composer-box ${expanded ? "is-expanded" : "is-compact"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
+        <ComposerAttachments
+          attachments={pendingAtts}
+          attachmentUrl={attachmentUrl}
+          onRemove={(id) => setPendingAtts((pending) => pending.filter((attachment) => attachment.id !== id))}
+        />
         <textarea className="composer-input" ref={inputRef} rows={1} value={text} onChange={onInput} onPaste={onPaste} readOnly={sending}
           placeholder={effectivePlaceholder}
           onKeyDown={(e) => {
@@ -174,15 +222,20 @@ export function Composer({ channelId, placeholder, allowAsTask = false, validate
           }} />
         <div className="composer-bar">
           <div className="cb-left">
-            <button className="cb-icon" title={t("chat.uploadImage")} disabled={uploading || sending} onClick={() => imgRef.current?.click()}><ImagePlus size={16} /></button>
-            <button className="cb-icon" title={t("chat.uploadFile")} disabled={uploading || sending} onClick={() => fileRef.current?.click()}><Paperclip size={16} /></button>
+            <ComposerActions
+              allowTask={allowAsTask}
+              taskActive={asTask}
+              uploadDisabled={uploading || sending}
+              taskDisabled={sending}
+              onAddFiles={() => fileRef.current?.click()}
+              onTaskChange={changeTaskMode}
+            />
           </div>
           <div className="cb-right">
-            {allowAsTask && <label className={"astask" + (asTask ? " on" : "")} title={t("chat.sendAsTaskTitle")}><input type="checkbox" checked={asTask} disabled={sending} onChange={(e) => { setAsTask(e.target.checked); setTaskMentionError(""); }} />{t("chat.asTask")}</label>}
-            <button className="send-btn" title={t("chat.sendTitle")} disabled={sending || (!text.trim() && !pendingAtts.length)} onClick={() => send()}><Send size={15} /></button>
+            <button className="send-btn" title={t("chat.sendTitle")} disabled={sending || (!text.trim() && !pendingAtts.length)} onClick={() => send()}><ArrowUp size={17} aria-hidden="true" /></button>
           </div>
         </div>
       </div>
     </div>
   );
-}
+});

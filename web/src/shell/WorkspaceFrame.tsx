@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useConfirm } from "../ConfirmModal.tsx";
+import { QuickSwitcher } from "../QuickSwitcher.tsx";
 import { useStore } from "../store.tsx";
 import { ChannelSettingsPanel } from "../views/channel-settings/index.ts";
 import { ConversationAggregatePanel } from "../views/conversation-aggregate/ConversationAggregatePanel.tsx";
@@ -9,6 +10,7 @@ import { LiveTrace } from "../views/LiveTrace.tsx";
 import { ChatWorkspace } from "./ChatWorkspace.tsx";
 import { DragDivider } from "./DragDivider.tsx";
 import { ModuleWorkspace } from "./ModuleWorkspace.tsx";
+import { SidebarModuleNavigation } from "./SidebarModuleNavigation.tsx";
 import { WorkspaceDock } from "./WorkspaceDock.tsx";
 import { WorkspaceTopBar } from "./WorkspaceTopBar.tsx";
 import {
@@ -49,6 +51,7 @@ export function WorkspaceFrame() {
   const aggregateMotionTimerRef = useRef<number | null>(null);
   const [workspaceWidth, setWorkspaceWidth] = useState(() => typeof window === "undefined" ? 1280 : window.innerWidth);
   const [aggregateOpen, setAggregateOpen] = useState(true);
+  const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [aggregateTransitioning, setAggregateTransitioning] = useState(false);
   const beginAggregateMotion = useCallback(() => {
     setAggregateTransitioning(true);
@@ -110,6 +113,16 @@ export function WorkspaceFrame() {
     setAggregateOpen(true);
   }, [spaceId]);
 
+  useEffect(() => {
+    const openQuickSwitcher = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
+      event.preventDefault();
+      setQuickSwitcherOpen(true);
+    };
+    window.addEventListener("keydown", openQuickSwitcher);
+    return () => window.removeEventListener("keydown", openQuickSwitcher);
+  }, []);
+
   useEffect(() => () => {
     if (aggregateMotionTimerRef.current !== null) window.clearTimeout(aggregateMotionTimerRef.current);
   }, []);
@@ -134,11 +147,14 @@ export function WorkspaceFrame() {
 
   const rememberedChat = storedChatLocation(slug);
   const fallbackConversation = channels.find((channel) => channel.name === "all") ?? channels[0] ?? dms[0];
-  const currentChannelId = routeChannelId ?? rememberedChat?.channelId ?? fallbackConversation?.id ?? null;
-  const chatPath = rememberedChat?.path ?? `/s/${slug}/channel${currentChannelId ? `/${currentChannelId}` : ""}`;
+  const fallbackConversationId = fallbackConversation?.id ?? null;
+  const fallbackChatPathname = `/s/${slug}/channel${fallbackConversationId ? `/${fallbackConversationId}` : ""}`;
+  const currentChannelId = routeChannelId ?? rememberedChat?.channelId ?? fallbackConversationId;
+  const chatPath = rememberedChat?.path ?? fallbackChatPathname;
   const chatQueryIndex = chatPath.indexOf("?");
   const rememberedChatPathname = chatQueryIndex === -1 ? chatPath : chatPath.slice(0, chatQueryIndex);
   const rememberedChatSearch = chatQueryIndex === -1 ? "" : chatPath.slice(chatQueryIndex);
+  const retiredShowcaseRoute = /\/showcase\/?$/.test(location.pathname);
   const layoutPathname = route.isChatRoute ? location.pathname : rememberedChatPathname;
   const layoutBaseSearch = route.isChatRoute ? location.search : rememberedChatSearch;
   const layoutSearch = workspaceSearchForShellState(location.search, layoutState);
@@ -171,6 +187,16 @@ export function WorkspaceFrame() {
   const settingsChannel = settingsChannelId
     ? [...channels, ...archivedChannels].find((channel) => channel.id === settingsChannelId) ?? null
     : null;
+
+  useEffect(() => {
+    if (route.isChatRoute) return;
+    if (retiredShowcaseRoute && !fallbackConversationId) return;
+    const normalizationLayout: WorkspaceLayoutState = activeModule === null
+      ? INITIAL_WORKSPACE_LAYOUT
+      : { activeModule, chatVisible };
+    const normalizationPathname = retiredShowcaseRoute ? fallbackChatPathname : rememberedChatPathname;
+    navigate(`${normalizationPathname}${workspaceSearchForShellState(location.search, normalizationLayout)}`, { replace: true });
+  }, [activeModule, chatVisible, fallbackChatPathname, fallbackConversationId, location.search, navigate, rememberedChatPathname, retiredShowcaseRoute, route.isChatRoute]);
 
   const navigateLayout = (next: WorkspaceLayoutState) => {
     navigate(`${layoutPathname}${workspaceSearchForLayout(layoutBaseSearch, next)}`);
@@ -222,6 +248,7 @@ export function WorkspaceFrame() {
   const updateConversationFocus = (key: "thread" | "msg", value: string) => {
     const params = new URLSearchParams(location.search);
     params.delete(key === "thread" ? "msg" : "thread");
+    params.delete("threadMsg");
     params.set(key, value);
     params.delete("chatTab");
     const encoded = params.toString();
@@ -249,6 +276,14 @@ export function WorkspaceFrame() {
       unreadCount={unreadCount}
       isHome={isHome}
       onChatToggle={() => void toggleChatPane()}
+      onModuleSelect={(moduleId: DockModuleId) => void selectModule(moduleId)}
+    />
+  );
+  const sidebarModuleNavigation = (
+    <SidebarModuleNavigation
+      isHome={isHome}
+      unreadCount={unreadCount}
+      onSearch={() => setQuickSwitcherOpen(true)}
       onModuleSelect={(moduleId: DockModuleId) => void selectModule(moduleId)}
     />
   );
@@ -283,7 +318,6 @@ export function WorkspaceFrame() {
         activeModule={activeModule}
         channelId={currentChannelId}
         layoutSearch={layoutSearch}
-        onOpenSearch={() => void selectModule("search")}
       />
       <div ref={workspaceRef} className="shell-workspace-canvas">
         {renderChat ? (
@@ -301,7 +335,7 @@ export function WorkspaceFrame() {
             onNavigateConversation={(target) => void requestConversationNavigation(target)}
             settingsDrawer={settingsInDrawer ? channelSettings : undefined}
             settingsDrawerOpen={settingsInDrawer && aggregateOpen}
-            dock={animatedLayout.activeModule === null ? dock : undefined}
+            moduleNavigation={sidebarModuleNavigation}
             style={paneStyle(animatedWidths.chat)}
           />
         ) : null}
@@ -347,6 +381,7 @@ export function WorkspaceFrame() {
           />
         ) : null}
       </div>
+      {quickSwitcherOpen ? <QuickSwitcher onClose={() => setQuickSwitcherOpen(false)} /> : null}
     </main>
   );
 }

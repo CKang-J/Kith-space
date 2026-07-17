@@ -2,14 +2,23 @@
 
 本文件是当前进度的权威来源。新会话先读本文件和 `AGENTS.md`，再按文档地图进入专项资料。
 
-最后更新：2026-07-14。
+最后更新：2026-07-16。
 
 ## 一、现在在哪
 
 - 主干：`main`。临时工作分支不作为阶段进度记录。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A1-A6 原定代码切片、P-A7 H1-H4、P4 Chat 聚合面板与频道设置/归档切片、P-A8 Agent 频道响应模式均已完成，等待用户验收**。P-A8 已落地 schema v5、统一响应策略/设置模块、任务指派语义、Runtime 指令与 UI。不要自动进入 H5 或 Runtime 契约 v2；由用户验收后再决定顺序。
-- P4 的其余视觉微调仍暂停；本轮实现范围只覆盖 `2026-07-14-chat-aggregate-panel-design.md` 与 `2026-07-14-channel-settings-and-archive-design.md` 已锁定边界，不据此扩张到其他页面重做。
+- 当前阶段：**A1-A6 原定代码切片、P-A7 H1-H4、P4 Chat 聚合面板与频道设置/归档切片、P-A8 Agent 频道响应模式及频道全体提及，以及聊天消息密度和 Chat 壳层侧栏导航代码均已完成，等待用户验收**。P-A8 已落地 schema v5、统一响应策略/设置模块、任务指派语义、Human `@all` 接收者快照、Runtime 指令与 UI。不要自动进入 H5 或 Runtime 契约 v2；先完成当前聊天与壳层的手动视觉验收。
+- 聊天消息流已从全宽描边卡片迁入统一 `ChatMessageItem` 表现层，主会话、话题、action card 与加载 Skeleton 共用 32px 头像、紧凑发送者行和 Human/Agent 语义气泡；1040px 居中流宽、14.5px/1.55 正文、52px 标题、14px 顶部留白、88px Composer 预留和气泡内话题摘要已落地。普通链尾间距为 20px；同一天相邻且同发送者的 Human/Agent 普通消息隐藏重复头像/昵称并以 6px 组内间距连续展示，hover/focus 在头像槽显示时分，系统消息、action card、日期和发送者变化会打断分组。Human 消息昵称使用真实的 `14.5px / 700 / 20px`，Agent 昵称始终保持 500 字重、hover/focus 只转为深色；时间为 `11px / 400 / 16px`，二者按基线对齐且消息头无额外字距；侧栏 Agent 名称继续使用 600。发送者行状态文字移除并只保留头像状态点；Agent 私聊标题改为头像加昵称并移除 `@` 前缀，状态文字复用 Agents 页面中文映射。父消息话题摘要新增参与者头像、总数、最新时间、最近三条 Human/Agent 单行回复和“在话题中回复”，system 任务事件不进入预览行且正文与摘要之间无分隔线；主消息流中的 system 任务事件与内部 Markdown 已纳入 1040px 中心轨道并居中。摘要复用批量 thread metadata 接口并实时刷新变更父消息，不产生逐话题请求。主消息工具外显“加表情、话题、复制、更多”，收藏保留在更多菜单，工具栏只由气泡 hover/focus 触发并按右侧空间自动切换到气泡右侧或上方；隐藏状态初始置于气泡上方，消息流只允许纵向滚动，不再出现底部横向滚动条。归档频道隐藏写入口并保留复制和打开已有话题；Showcase 已由后续壳层切片完整退役。当前已完成真实页面的 Split、ChatOnly 与滚动场景验证，等待用户继续视觉验收。
+- **Chat 壳层与侧栏模块导航代码已完成，等待手动视觉验收**：ChatOnly 在左侧常驻 Chat 导航栏顶部纵向展示“图标 + 文字”的 Spaces（Home only）、Inbox、Tasks、Agents、Settings，不显示 Chat、顶部“对话”总标题或底部 Dock；模块图标与“频道 / 私信”分组标题共用左侧基线。点击模块后固定侧栏隐藏，继续进入现有 Split/ModuleOnly，并在 Module Pane 底部显示含 Chat 图标的横向 Dock。Split 的会话抽屉复用 `ConversationListContent`，只组合已保存、频道、私信，不含模块入口与 `LiveAgentBar`，并保留抽屉自身标题。中心 Chat 保持原有圆角卡片、画布间隙与配色；常驻会话导航取消独立卡片底板并直接使用画布背景，新增模块入口与会话抽屉不绘制贯穿式横线或竖线。功能文字统一无衬线字体；Chat 标题栏固定左右 14px，与标题内容上下留白一致；ChatOnly 与 Split 使用同一 10px 消息 gutter，ChatOnly 主卡片沿用 360px Chat 绝对下限，日期分隔/消息/Composer 使用 1040px 居中共轨；消息流只允许纵向滚动，隐藏工具栏不会撑出横向滚动条。案例展示入口、产品路由、视图、演示数据/资产和专属分支均已删除。旧 `/showcase` 只保留 SPA fallback，由 `WorkspaceFrame` 规范化到当前 Space 默认频道并保留合法模块 query。完整规格见 `docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md`。
+- 最新轨道校准已把 Composer 的左边界对齐消息头像槽、右边界对齐消息内容列最大边界；消息滚动区使用 `stable both-edges`，Composer 随消息区保留 10px gutter，标题栏独立使用 14px 左右内距并与标题内容上下留白一致。两者分别保持自身视觉对称，并避免 `scrollbar-width: thin` 与 WebKit 尺寸不一致、滚动条出现/消失或重复预留造成水平偏移。
+- Agent 卡片、Agent 默认响应模式与聚合面板已统一复用公共滑块式分段控件：轨道使用 `#f5f5f5`，白色滑块使用多层低透明阴影和 240ms 横移动画，并保留 tabs/radio 各自正确的键盘与读屏语义；Agent 卡片采用 38px 紧凑规格，“发消息”按钮使用 `#f7f7f7` 与 `#f0f0f0` hover。频道卡片仍只写当前频道覆盖，不改变 Agent 默认值。
+- Agent 消息昵称已改为点击提及入口：默认使用 500 字重，hover 或键盘聚焦时显现前置 `@`、名称右移 14px 并转为深色，字重不变；点击主消息、action card 或话题消息昵称会把 Agent 规范 handle 插入对应 Composer 当前光标位置并恢复输入焦点。Human 昵称已移除点击和下划线，Human 头像点击打开只含头像与“昵称（我）”的身份卡片；Agent/Human 卡片复用同一锚定、焦点和关闭外壳。归档只读会话不暴露 Agent 写交互。该增量已通过类型检查、627/627 单测和 Web build（2626 modules）；未执行浏览器视觉自测。
+- ChatOnly 会话导航的频道行已与私信行统一为 4px 相邻间距；hover 改用 `#ececeb`，选中态改用 `#ffffff`，且不引入分割线、边框或卡片阴影，以便在 `#f5f5f5` 画布上清楚区分状态并保持轻量层级。频道名前的文本 `#` 已替换为 14px 线性 Hash 图标；Chat 标题栏的会话列表开关选中态、聚合文件的未选中筛选项与搜索框、Spaces 搜索框统一使用 `#f5f5f5`，Spaces 搜索输入聚焦时不改变底色。该增量通过类型检查、637/637 单测和 Web build（2631 modules）；按用户约定未执行浏览器视觉自测。
+- 消息正文中的 Agent/Human `@昵称` 已改为无底块蓝色身份链接，hover/focus 显示细下划线；点击复用消息头像对应的 Agent/Human 身份卡片并以 token 自身定位，不再跳转详情模块。频道、话题、任务引用与不可点击的 `@all` 行为不变。
+- Composer 展开态已把附件和正文收口到距上/左边界统一的 10px 基线，附件移除圆钮缩至 16px 并保证 X 居中；非图片附件新增 MD/PDF/DOC/XLS/PPT/ZIP/代码/数据/音视频等类型化缩写图标。主 Chat 的消息底部预留改为由 `ResizeObserver` 跟随 Composer 实际高度并额外保留 12px 间距，原本贴底时会在输入框增高后继续贴底，不再遮挡最后一条消息。该增量已通过类型检查、628/628 单测和 Web build（2628 modules）；未执行浏览器视觉自测。
+- 附件视觉验收增量已把类型图标改为无描边、无折页线的纯色底，并把附件卡片外圆角从 11px 提高到 13px、图标圆角提高到 10px。Composer、主消息与话题消息现复用同一个 `AttachmentCard`，附件按消息宽度自动换行且不溢出；聚合面板文件页同步复用相同文件类型图标。Composer 和消息图片统一进入共享查看器，支持按钮、滚轮和 `+`/`-`/`0` 快捷键缩放/复位、拖动、关闭按钮、`Escape` 与点击图片外区域关闭。查看器 100% 状态完整适配安全视口，放大后的图片使用全视口舞台，不再出现半透明内层卡片或被内层容器裁切。当前私聊/频道已加载消息会组成各自图片序列，话题以父消息加当前回复组成独立序列；可通过上一张/下一张按钮或左右方向键切换并显示当前位置，不跨会话；快速切换话题时会丢弃旧话题的过期加载结果。只有一个图片附件的消息使用保持原比例、最大 320px 的大预览，多附件继续使用紧凑布局。该增量通过类型检查、633/633 单测和 Web build（2631 modules）；按用户要求未执行浏览器视觉自测。
+- 壳层切片验证：`pnpm run typecheck`、610/610 单测、完整 integration 与 Web build（2622 modules）通过；按用户要求未启动浏览器，视觉与真实三态交互由用户手动验收。
 - 频道设置已进入聚合面板临时场景并提供常规/成员/通知钻取页；成员页显示真实 Human 名称与“你”标识，agent 使用搜索单选弹窗添加并在移除前二次确认。归档频道进入默认收起分组并全链路只读，支持恢复与精确名称确认后的永久删除。`# all` 的归档、删除、名称和可见性由 UI 与服务端双重保护，删除入口显式置灰解释限制，历史误归档/软删除会在 Space 数据库打开时自动恢复。
 - 底座为 open-tag 衍生开发副本；`reference/` 只读。OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
 
@@ -23,7 +32,7 @@
 - LAN 浏览器拥有完整产品能力，v1 使用 HTTP + 访问 Token，只限受信任私网。
 - 删除多真人、邀请/RBAC、Machines/Computers、远程 daemon、服务器部署、云同步、S3、Docker、PWA 和独立 Web 发行路线。
 - 中央 registry 已扩展并更名为 `app.db`；每个 Space 继续使用 `<space>/.kith/workspace.db`。app data 默认 `~/.kith-space`，默认 Space 容器独立为 `~/Kith-space`，Home 默认根为 `~/Kith-space/Home`。
-- 普通 Space Dock 为 `Chat | Inbox | Tasks | Agents | Settings`；Home Dock 为 `Chat | Spaces | Inbox | Tasks | Agents | Settings`。旧 `Layout` 回退、Landing 与 PWA 保持删除，Spaces 是同一 WorkspaceFrame 中的真实模块，不是旧 OverviewShell。
+- 普通 Space 的业务模块集合为 `Inbox | Tasks | Agents | Settings`，Home 额外包含 `Spaces`；ChatOnly 通过左侧模块列表进入，模块打开态使用含 Chat 的 Dock。旧 `Layout` 回退、Landing 与 PWA 保持删除，Spaces 是同一 WorkspaceFrame 中的真实模块，不是旧 OverviewShell。
 - 允许破坏性重置当前开发数据，不做旧 `.kith` schema 迁移。
 
 本机化边界见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`；Home/Space root 补充见 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。决策推理见 `docs/decisions.md` 决策 21/23，工程顺序见 `docs/roadmap.md` P-A7。
@@ -100,8 +109,14 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - **轨迹会话隔离已实现**：Worker 将目标解析为 `scoped | unscoped | ambiguous`，Core 把 thread channel 归一到父频道/DM 后再向 Socket 广播；无明确单一会话归属的轨迹不进入任何会话聚合面板。前端按 `conversationId` 保存各自最多 300 条实时缓冲，并在切换 Space 时清空。新增 `/api/channels/:channelId/thread-summaries` 提供当前会话全量话题摘要；`/files` 补充来源消息文本，继续复用当前 Space、会话与成员权限边界。
 - 聚合面板切片验证：`pnpm run typecheck`、549/549 单测、完整集成测试和 Web build（2588 modules）通过；真实浏览器 smoke 已覆盖 ChatOnly/Split/ModuleOnly、任务会话作用域、话题外置打开、文件分类/来源消息搜索及其跨 Tab 状态保留、成员入口、会话列表/聚合面板横向动画、1024px 响应式隐藏与状态恢复，控制台无 warning/error。按用户约定只执行了一次完整只读 review；发现的失败投递作用域残留、Worker 消息异步乱序、文件筛选卸载重置和空话题不实时刷新四项问题均已由主线修复并补针对性验证，未再发起第二轮 review。
 - **频道设置与归档切片已实现**：设置不是第四个聚合 Tab，而是保留原聚合内容挂载状态的临时场景；ChatOnly/Split 优先占用聚合面板，空间不足时复用同一组件进入 Chat 右侧抽屉。常规页、agent 成员页与三档通知偏好已落地；通知值持久化在 `human_channel_states.notification_level`，该切片当时把 workspace.db 升级为 schema v4，当前 P-A8 之后为 v5。会话列表分别加载活跃/归档频道，默认收起归档分组；归档详情保留历史读取并禁用 Human/agent 消息、话题、附件、reaction、action card、成员与任务写入。恢复保留当前频道，永久删除要求精确输入名称；`# all` 由集中 helper、API 冲突错误和数据库打开时的幂等修复共同保护。后续 UI 验收修正已补真实 Human 名称、“你”标识、添加 agent 弹窗、移除二次确认、`# all` 置灰删除解释，以及 Space 卡片项目菜单和通用搜索框。该切片验证时 `pnpm run typecheck`、562/562 单测、完整集成测试、Web build（2605 modules）与 Desktop build 通过；真实浏览器覆盖频道成员弹窗/确认、必需频道禁用动作、Space 搜索焦点、卡片菜单和重命名弹窗，控制台无 warning/error。按用户约定未对该轮 UI 修正派发子代理 review，当前等待用户验收。
-- **P-A8 Agent 频道响应模式已实现**：workspace.db 升级为 schema v5，当前 Space 的 Agent 默认值加顶层频道 membership 可空覆盖，三档为 `active | mention_only | silent`；独立 ambient/mention wake watermark 保证模式重新开放时不补唤醒旧事件，也不推进 read cursor。实时 wake、Worker reconnect、`/agent-api/message/check` 和 prompt 共用 `required | optional | observe` 响应指令；DM 与明确任务指派始终 required，话题继承父频道。Human“作为任务 + 单一 @Agent”会形成真实 assignee，无 `@` 保持未指派，多个 Agent mention 在持久化与 membership 变化前拒绝。前端独立 `agent-response-mode/` feature 提供 Agent 默认卡片、频道昵称后徽标/覆盖菜单和窄实时失效；频道菜单主层以“默认 / 主动 / 被动 / 静音”四段式控件切换本频道来源和覆盖，标题显示当前 Agent 默认值，底部可在同一浮层钻取并修改当前 Space 的 Agent 默认值；选择即时保存且浮层保持打开，完整模式解释只留在 Agent 默认设置卡片。归档频道与话题只读继承，DM 不显示。完整规格见 `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
-- P-A8 验证：菜单定稿后 `pnpm test --unit` 582/582、`pnpm run typecheck` 与 `pnpm run web:build`（2612 modules）通过，`pnpm test --integration` 沿用同轮 P-A8 实现的全量通过结果。真实应用内浏览器此前覆盖默认值切换、频道覆盖、恢复继承、两个窗口的实时同步和“作为任务 + 多个 Agent”提交前拦截/草稿保留，最终菜单由用户实测通过。菜单定稿后的单轮 Standards + Spec 子代理 review 未发现 Standards/High 问题；发现的旧 PATCH 回包覆盖较新实时结果问题已用 mutation 版本与权威重载修复，未再发起第二轮 review。组件挂载级菜单钻取、键盘和焦点自动化仍是透明测试债。
+- **P-A8 Agent 频道响应模式已实现**：workspace.db 升级为 schema v5，当前 Space 的 Agent 默认值加顶层频道 membership 可空覆盖，三档为 `active | mention_only | silent`；独立 ambient/mention wake watermark 保证模式重新开放时不补唤醒旧事件，也不推进 read cursor。实时 wake、Worker reconnect、`/agent-api/message/check` 和 prompt 共用 `required | optional | observe` 响应指令；DM 与明确任务指派始终 required，话题继承父频道。Human“指派任务 + 单一 @Agent”会形成真实 assignee，无 `@` 保持未指派，多个 Agent mention 在持久化与 membership 变化前拒绝。前端独立 `agent-response-mode/` feature 保留 Agent 默认卡片和每频道一次装载/窄实时失效；消息昵称后的模式徽标与 hover 菜单已退役，点击 Agent 消息头像改为打开 `chat-message/AgentMessageCard`。卡片只提供“发消息”和“本频道响应模式”：三段式选择仅写当前频道覆盖，可恢复跟随 Agent 默认，但不能在此修改当前 Space 的 Agent 默认值。话题复用父频道设置，归档只读，DM 卡片不显示频道模式。完整规格见 `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
+- **频道全体提及已实现**：Human 在可写频道或其话题发送语言无关的规范 token `@all` 时，服务端按父频道当时全部 Agent membership 固化接收者快照，同时保存一个 `channel_all` 展示标记和普通 Agent mention 行；主动/被动目标按明确 mention 得到 required 投递，静音目标不自动唤醒。话题会以当前消息可处理的边界补齐快照 Agent membership，后续新增成员不追溯旧消息。Agent-authored、DM、Showcase 与归档场景不展开；“指派任务 + @all”在任何消息、membership 或任务副作用前拒绝。Composer 候选标签通过 i18n 显示“所有人 / Everyone”并插入 `@all`，消息正文不展开名单。
+- **Composer 输入框重设计已实现**：照片与文件上传合并为左下角圆形“+”菜单中的“添加照片和文件”，“指派任务”也迁入该菜单；启用任务后在“+”右侧显示可 hover/聚焦切换为 × 的胶囊，并与正文共享同一行，不自行触发增高。图片缩略图和文件卡片位于输入框内部；短单行草稿保持 `48px` 胶囊，只有任务胶囊与文字的实际合计占位接近右侧安全区、换行或附件存在时才展开。左侧“+”与右侧上箭头发送按钮都固定为 `32×32` 圆形，hover/菜单打开态不改变轮廓。
+  “+”菜单通过 portal 与整个输入框左边界、宽度对齐，窄视口才按左右 `8px` 安全边距收缩；外框使用 `16px` 圆角，菜单项固定为 `30px` 高和 `10px` 圆角，长文案保持单行省略，仅保留浅色边框，不显示阴影。菜单每次打开默认高亮首个可用项，随后保留鼠标或键盘最后经过的项；任务项不再使用常驻选中底色和勾号，而以淡色“开启指派任务 / 关闭指派任务”说明当前点击动作。`@` 候选菜单同步复用输入框宽度、`16px` 圆角、无阴影表面、`30px` 候选行和同一浅色高亮，名称、handle、范围说明与类型保持单行截断。
+  展开态只增加上方内容空间，下方控制区继续使用紧凑态的左右 `10px`、底部 `8px` 内距与 `24px` 底角，按钮不会随高度切换改变位置。
+- Composer 重设计验证：`pnpm run typecheck`、`pnpm test --unit` 599/599、完整 `pnpm test --integration` 与 Web build（2616 modules）通过。真实应用内浏览器已验证空/短草稿保持 `48px`，任务胶囊与正文共享宽度且单独启用不增高，同一中等草稿在有任务胶囊时展开、移除后收紧；展开态控制区保持左右 `10px`、底部 `8px` 与 `24px` 底角；“+”/发送按钮均为 `32×32`，菜单宽度与输入框完全相等、菜单项实际 `30px`、无阴影。任务 hover 使用 `14px` SVG X 圆标；“+”菜单打开时默认高亮首项、离开菜单后保留末次经过项，任务项以“开启/关闭指派任务”说明代替勾选态；`@` 候选菜单与输入框同宽，采用 `16px` 圆角、无阴影和 `30px` 单行候选项，指针与键盘选择均正常。最终草稿、任务状态和菜单均已清空，控制台无 warning/error。
+- **全局命令搜索与 Agent 删除语义已实现**：顶部栏搜索入口退役；Chat 导航侧栏在模块列表上方新增搜索入口，并与 `Ctrl/Command + K` 共用一个按推荐、频道、私信、Agent 及三类消息结果分组的紧凑圆角命令面板。消息搜索复用当前 Space/Human 可读边界，频道消息定位原消息，话题消息定位并高亮具体回复，私信消息定位原私聊。第一阶段结果展示已把消息行改为独立双行结构：首行使用可读的频道、私信对象或话题父消息摘要与回复数，并补充来源和相对时间；次行显示发送者与正文上下文，对查询词做蓝色强调，不再暴露 `dm:*` / `thread:*` 内部标识。删除 Agent 会在同一 workspace 事务内物理删除所有包含它的私聊、直接话题、消息、关联状态和本地附件元数据，再清理本地附件对象；公共频道/话题历史保留发送者快照并实时在消息及话题预览标记“已删除”，删除对象不再进入私信列表、Inbox、Agent 列表或命令面板。该增量已通过类型检查、640/640 单测、完整集成测试和 Web build（2635 modules）；按用户约定未执行浏览器视觉自测。
+- P-A8 验证：频道全体提及及话题回复预览修正完成后，`pnpm test --unit` 592/592、完整 `pnpm test --integration`、`pnpm run typecheck` 与 Web build（2613 modules）通过。自动化覆盖规范 token/跨层一致性、接收者去重快照、主动/被动/静音投递、话题 membership、Agent-authored/DM 非展开、频道与 DM 任务无副作用拒绝、正文 token 渲染、同名 Agent 冲突优先级，以及 Agent 在触发消息的话题正式回复后移除父频道临时预览、空话题创建不提前清理、其他 Agent/父消息不误删和迟到 runtime 尾部文本不复活预览。真实应用内浏览器已覆盖“所有人 `@all`”候选及范围说明、任务模式隐藏和页面无 warning/error，测试草稿已清空；后续真实群体消息验证发现并复现了话题回复后的父频道幽灵预览，现已按非空 `thread:updated` 的 `parentMessageId + senderId` 精确修正。此前默认值、频道覆盖、恢复继承、双窗口实时同步和多 Agent 任务拦截也已验证，最终响应模式菜单由用户实测通过。本次按约定只执行一次 Standards + Spec 子代理 review：发现的空话题事件过早清理、DM 手工 `@all` 任务放行和架构行号失真均已修复，未发起第二轮 review。组件挂载级响应模式菜单钻取、键盘和焦点自动化仍是透明测试债。
 - 产品登录/注册、成员/RBAC/邀请 API、Web Human roster、Human-Human DM、Machines API 和 Computers UI 已删除；Dock/模块使用 Agents，频道成员只增删 agent，Human 资料入口位于 Settings。A3 进一步删除了 Human JWT、dev-login、`?as=`、localStorage/Bearer 会话和附件/Socket URL token；A5 删除 Landing、旧 Layout/PWA 与剩余账户入口，A6 删除 Docker、公共 server/daemon/npm/docs-site 发布与远程部署资产。未授权浏览器只看到 Access Token Gate。
 - Core Service 启动时从 app.db 读取 Web 模式：off（默认）与 local 均绑定 `127.0.0.1`，lan 绑定 `0.0.0.0`。off 只留 Desktop/Worker 私有传输，普通浏览器壳被拒绝；LAN 只允许匹配 Host 的 Origin。`/health` 只对 loopback/Desktop 可见并暴露 `workerConnected`。
 - 访问 Token 可自定义 16-256 字符，留空自动生成 32 字节；app.db 只存 scrypt 哈希和 revision。原始 browser session token 只进 HttpOnly、SameSite=Strict Cookie，DB 只存 SHA-256 哈希；写请求同时校验 Origin 和 CSRF。Token 轮换或 Desktop 全量撤销会使旧会话失效。
@@ -121,9 +136,10 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 五、下一步顺序
 
-1. 由用户统一验收 P-A7 H1-H4、会话聚合面板、频道管理与 P-A8 响应模式，重点查看 Home 默认入口、Home/普通 Dock 差异、Spaces 卡片、文件夹选择与同窗切换，以及聚合面板、话题/文件/轨迹、任务作用域、设置钻取、归档只读/恢复/删除、Agent 默认响应卡片、频道覆盖菜单和“作为任务”指派语义。
-2. P-A8 验收重点：普通频道消息、明确 `@`、话题跟进、DM、单一/零/多个 Agent 的频道任务及 Worker 重连符合三档矩阵；模式切换不追溯唤醒、不伪造已读；两个窗口的默认值/覆盖值实时收敛。
-3. 验收通过后由用户决定 Runtime 契约 v2 与 H5 跨 Space 编排的顺序；生产力模块、Message Context Snapshot 与 P4 其余视觉收尾继续在后。当前不要自动推进。
+1. 由用户统一手动验收聊天与三态：重点检查 Home/普通 Space 模块差异、ChatOnly 无 Dock、Split/ModuleOnly 的 Chat 恢复、抽屉三组内容、短/长消息密度、Human/Agent 气泡、工具栏、话题摘要、Composer、聚合面板与归档只读；Showcase 不再进入验收矩阵。
+2. 用户验收前保持 H5 与 Runtime 契约 v2 暂停；若视觉验收发现偏差，只在本规格边界内做局部修正。
+3. P-A7 H1-H4、频道管理与 P-A8 其余验收继续覆盖 Spaces 卡片/文件夹/同窗切换、响应模式矩阵、单一明确 `@`、`@all`、话题跟进、DM、频道任务、Worker 重连、模式不追溯唤醒以及双窗口实时收敛。
+4. 既有验收通过后由用户决定 Runtime 契约 v2 与 H5 跨 Space 编排的顺序；生产力模块、Message Context Snapshot 与 P4 其余视觉收尾继续在后。当前不要自动推进。
 
 每阶段独立验证、独立中文提交。未获得用户明确指示，不合并 main、不推远端、不发布。
 
@@ -132,7 +148,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - 包管理使用 pnpm；脚本参数直接跟在后面，例如 `pnpm test --unit`。
 - 常规验证：`pnpm run typecheck`、`pnpm test --unit`、`pnpm test --integration`、`pnpm --dir web run build`。
 - 测试 runner 同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向同一个随机临时 profile 的不同子目录；手写测试若绕过 runner，必须显式覆盖默认 Space 容器或直接传 rootPath，绝不在真实 `~/Kith-space` 生成 fixture。
-- 当前验收单测基线为 581/581；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6、H1-H4 与聚合面板/频道设置小节里的旧数字只描述当时检查点，不是当前基线。
+- 当前验收单测基线为 640/640；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6、H1-H4 与聚合面板/频道设置小节里的旧数字只描述当时检查点，不是当前基线。
 - 新功能优先拆到职责清楚的模块；不整块重写 `src/server/core.ts` 或大型 React 组件。
 - 代码、命令、架构、UI、术语或阶段变化时，同一提交同步相应文档。
 - 用户未要求时不修改或提交 `.agents/`、`.claude/`、`.codegraph/daemon.pid`、`skills-lock.json` 等外部/个人工具文件。
@@ -144,6 +160,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - `docs/superpowers/specs/2026-07-14-chat-aggregate-panel-design.md`：会话聚合面板、话题/文件索引、会话任务入口与轨迹作用域规格。
 - `docs/superpowers/specs/2026-07-14-channel-settings-and-archive-design.md`：频道设置钻取场景、归档分组、删除语义、通知偏好与 `# all` 必需频道保护规格。
 - `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`：Agent 默认/频道覆盖、唤醒矩阵、任务指派、Runtime 指令与响应模式 UI 规格。
+- `docs/superpowers/specs/2026-07-15-chat-message-ui-density-design.md`：聊天消息流密度、气泡层级、消息工具、表现层组件边界、实施切片与量化验收规格；代码与自动化验证已完成，待用户手动视觉验收。
 - `docs/vision.md`：长期北极星与永久边界。
 - `docs/decisions.md`：锁定决策、推理和被推翻路线。
 - `docs/roadmap.md`：阶段与后续能力顺序。

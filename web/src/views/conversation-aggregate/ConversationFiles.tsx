@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { Download, ExternalLink, FileText, Search, Video } from "lucide-react";
+import { Download, ExternalLink, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { AttachmentTypeIcon } from "../../components/AttachmentCard.tsx";
 import { SearchField } from "../../components/SearchField.tsx";
 import { fmtDateTime } from "../../format.ts";
 import { useStore } from "../../store.tsx";
@@ -191,13 +192,9 @@ export function ConversationFiles({ conversationId, onJumpToMessage }: Conversat
               return (
                 <article key={file.id} className="conversation-file">
                   <a className="conversation-file__main" href={attachmentUrl(file.id)} target="_blank" rel="noreferrer">
-                    <span className="conversation-file__preview" data-kind={category}>
-                      {category === "image"
-                        ? <img src={attachmentUrl(file.id)} alt="" loading="lazy" />
-                        : category === "video"
-                          ? <Video size={22} aria-hidden="true" />
-                          : <FileText size={22} aria-hidden="true" />}
-                    </span>
+                    {category === "image"
+                      ? <span className="conversation-file__preview"><img src={attachmentUrl(file.id)} alt="" loading="lazy" /></span>
+                      : <AttachmentTypeIcon filename={file.filename} mimeType={file.mimeType} />}
                     <span className="conversation-file__copy">
                       <strong>{file.filename}</strong>
                       {meta ? <span>{meta}</span> : null}

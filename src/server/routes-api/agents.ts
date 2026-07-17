@@ -15,6 +15,7 @@ import {
   AgentResponseSettingsError,
   setAgentDefaultResponseMode,
 } from "../../agents/agentResponseSettings.js";
+import { deleteAgentAndPrivateConversations } from "../../agents/agentDeletion.js";
 
 export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   const { req, res, url, method, p, humanId, spaceId } = ctx;
@@ -24,9 +25,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   }
   if (p === "/api/agents" && method === "GET") {
     const agents = await db.select().from(schema.agents).where(and(eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt)));
-    // creatorType lets the client distinguish system-seeded showcase agents (creatorType="system") from
-    // real members — they stay in the store so #showcase history renders their avatar/name, but are filtered
-    // out of member rosters and agent pickers (see web/src/store.tsx visibleAgents).
+    // creatorType lets the client exclude non-interactive system-owned identities from rosters and pickers.
     return (sendJson(res, 200, agents.map((a) => ({ id: a.id, name: a.name, displayName: a.displayName, description: a.description, status: a.status, activity: a.activity, model: a.model, runtime: a.runtime, avatarUrl: a.avatarUrl, creatorType: a.creatorType, defaultResponseMode: a.defaultResponseMode }))), true);
   }
   if (p === "/api/agents" && method === "POST") {
@@ -111,8 +110,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   }
   if (am && method === "DELETE") {
     await stopAgent(spaceId, am[1]!).catch(() => {}); // stop the local process before deleting
-    await db.delete(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.agentId, am[1]!));
-    await db.update(schema.agents).set({ deletedAt: new Date(), status: "inactive", activity: "offline", agentTokenHash: null }).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.spaceId, spaceId))); // soft delete: row is kept so historical messages/DM names remain resolvable by id, no orphans; clear the token hash so a still-running deleted agent can no longer authenticate (C4, with resolveAgent's deletedAt filter)
+    await deleteAgentAndPrivateConversations(spaceId, am[1]!);
     clearAgentIntroductionTurns(spaceId, am[1]!);
     await publish(spaceId, { type: "agent:deleted", id: am[1]! });
     return (sendJson(res, 200, { ok: true }), true);

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { absorbPersistedAgentMessagePreview, agentReplyPreviewId, applyAgentReplyPreview, dropAgentReplyPreviewsForMessage, renderKeyForMessage, tickAgentReplyPreviews, hasStreamingAgentReplyPreview, AGENT_REPLY_PREVIEW_TYPE, AGENT_REPLY_STREAM_TICK_MS, AGENT_REPLY_PREVIEW_DELAY_MS, AGENT_REPLY_ENTER_DURATION_MS, AGENT_REPLY_THINKING_DELAY_MS, AGENT_REPLY_THINKING_SHIMMER_MS, AGENT_REPLY_FINAL_SETTLE_MS, AGENT_REPLY_CHARS_PER_TICK } from "../web/src/lib/agentReplyPreview.ts";
+import { absorbPersistedAgentMessagePreview, agentReplyPreviewId, applyAgentReplyPreview, dropAgentReplyPreviewForThreadReply, dropAgentReplyPreviewsForMessage, renderKeyForMessage, tickAgentReplyPreviews, hasStreamingAgentReplyPreview, AGENT_REPLY_PREVIEW_TYPE, AGENT_REPLY_STREAM_TICK_MS, AGENT_REPLY_PREVIEW_DELAY_MS, AGENT_REPLY_ENTER_DURATION_MS, AGENT_REPLY_THINKING_DELAY_MS, AGENT_REPLY_THINKING_SHIMMER_MS, AGENT_REPLY_FINAL_SETTLE_MS, AGENT_REPLY_CHARS_PER_TICK } from "../web/src/lib/agentReplyPreview.ts";
 import type { Msg } from "../web/src/store.tsx";
 
 test("agent reply preview streams text into an ephemeral chat message", () => {
@@ -325,6 +325,74 @@ test("a late delta for an already-absorbed stream does not spawn a ghost preview
   assert.equal(afterLateDelta[0], realMessage);
 });
 
+test("an agent thread reply removes the matching parent-channel preview before trailing runtime text can become a ghost message", () => {
+  const matching = applyAgentReplyPreview([], {
+    type: "agent:reply",
+    op: "start",
+    agentId: "agent-1",
+    channelId: "chan-1",
+    streamId: "stream-1",
+    triggerMessageId: "parent-1",
+  });
+  const withOtherAgent = applyAgentReplyPreview(matching, {
+    type: "agent:reply",
+    op: "start",
+    agentId: "agent-2",
+    channelId: "chan-1",
+    streamId: "stream-2",
+    triggerMessageId: "parent-1",
+  });
+  const withTrailingText = applyAgentReplyPreview(withOtherAgent, {
+    type: "agent:reply",
+    op: "delta",
+    agentId: "agent-1",
+    channelId: "chan-1",
+    streamId: "stream-1",
+    text: "already replied in the thread",
+  });
+
+  const afterEmptyThread = dropAgentReplyPreviewForThreadReply(withTrailingText, {
+    parentMessageId: "parent-1",
+    senderId: "agent-1",
+    senderType: "agent",
+    replyCount: 0,
+  });
+  assert.equal(afterEmptyThread, withTrailingText, "creating an empty thread must not remove the parent preview before a reply is persisted");
+
+  const afterIncompleteEvent = dropAgentReplyPreviewForThreadReply(withTrailingText, {
+    parentMessageId: "parent-1",
+    senderId: "agent-1",
+    senderType: "agent",
+  });
+  assert.equal(afterIncompleteEvent, withTrailingText, "an incomplete thread update must fail closed");
+
+  const afterOtherParent = dropAgentReplyPreviewForThreadReply(withTrailingText, {
+    parentMessageId: "parent-2",
+    senderId: "agent-1",
+    senderType: "agent",
+    replyCount: 1,
+  });
+  assert.equal(afterOtherParent, withTrailingText, "a reply under another parent must not remove the current preview");
+
+  const afterThreadReply = dropAgentReplyPreviewForThreadReply(withTrailingText, {
+    parentMessageId: "parent-1",
+    senderId: "agent-1",
+    senderType: "agent",
+    replyCount: 1,
+  });
+
+  assert.deepEqual(afterThreadReply.map((message) => message.id), [agentReplyPreviewId("agent-2", "stream-2")]);
+  const afterLateDelta = applyAgentReplyPreview(afterThreadReply, {
+    type: "agent:reply",
+    op: "delta",
+    agentId: "agent-1",
+    channelId: "chan-1",
+    streamId: "stream-1",
+    text: "late summary",
+  });
+  assert.equal(afterLateDelta, afterThreadReply, "late runtime text must not recreate the removed parent preview");
+});
+
 test("a late done/error for an already-absorbed stream is a no-op (already covered by idx<0 guard, kept as a regression pin)", () => {
   const realMessage = { id: "real-msg-1", channelId: "chan-1", senderType: "agent", senderId: "agent-1", senderName: "Xiaos", content: "posted", messageType: "text", createdAt: new Date().toISOString(), seq: 6 } as any;
   const before = [realMessage];
@@ -408,6 +476,7 @@ test("main chat and thread panel both consume agent reply preview events", () =>
   assert.match(chatSrc, /hasStreamingAgentReplyPreview\(msgs\)/, "main chat should run the typewriter loop while a preview has pending text");
   assert.match(chatSrc, /tickAgentReplyPreviews/, "thread panel should use the same preview typewriter loop");
   assert.match(chatSrc, /dropAgentReplyPreviewsForMessage\(m, e\.message\), e\.message/);
+  assert.match(chatSrc, /dropAgentReplyPreviewForThreadReply\(m, \{[\s\S]*?parentMessageId: e\.parentMessageId,[\s\S]*?senderId: e\.senderId,[\s\S]*?senderType: e\.senderType,[\s\S]*?replyCount: e\.replyCount,[\s\S]*?\}\)/, "an Agent thread reply should remove its matching parent-channel preview only after a reply exists");
   assert.match(chatSrc, /key=\{renderKeyForMessage\(m\)\}/, "finalized previews should keep the same React key instead of remounting");
   assert.match(chatSrc, /newMsgOrderRef\.current\.delete\(e\.message\.id\)/, "persisted messages absorbed by a preview should not get a second enter animation");
   assert.match(chatSrc, /forceBottomPinRef\.current = true/, "own messages and agent previews should force the chat viewport back to the live tail");

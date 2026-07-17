@@ -20,7 +20,7 @@ test("parses Chat routes and channel ids", () => {
     isChannelRoute: true,
   });
   assert.equal(parseWorkspaceRoute("/s/kith-space/saved").isChatRoute, true);
-  assert.equal(parseWorkspaceRoute("/s/kith-space/showcase").isChatRoute, true);
+  assert.equal(parseWorkspaceRoute("/s/kith-space/showcase").isChatRoute, false);
 });
 
 test("legacy module detail paths no longer activate workspace modules", () => {
@@ -53,6 +53,19 @@ test("unknown routes do not activate a module", () => {
     isChatRoute: false,
     isChannelRoute: false,
   });
+});
+
+test("retired Showcase paths keep valid module state for client normalization", () => {
+  const retired = parseWorkspaceRoute("/s/space/showcase");
+  assert.equal(retired.isChatRoute, false);
+  assert.deepEqual(workspaceLayoutFromRoute(retired, "?module=tasks&taskScope=channel-1&chat=0"), {
+    activeModule: "tasks",
+    chatVisible: false,
+  });
+  assert.equal(
+    workspaceSearchForShellState("?module=tasks&taskScope=channel-1&chat=0", { activeModule: "tasks", chatVisible: false }),
+    "?module=tasks&chat=0&taskScope=channel-1",
+  );
 });
 
 test("URL can encode a channel and module at the same time", () => {

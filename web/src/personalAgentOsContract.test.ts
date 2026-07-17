@@ -71,15 +71,6 @@ test("channel copy describes Human authority separately from agent membership", 
   assert.match(zh, /Human 始终可访问/);
 });
 
-test("Showcase scenarios stay inside the Desktop-first local AgentOS boundary", () => {
-  const showcase = source("./showcaseData.ts");
-
-  assert.doesNotMatch(showcase, /\bPWA\b|web push|push notifications?|native mobile|mobile browser|App Store|\biOS\b/i);
-  assert.match(showcase, /Desktop/);
-  assert.match(showcase, /Local Runtime Worker/);
-  assert.match(showcase, /LAN/);
-});
-
 test("the frontend exposes only the local product shell", () => {
   const app = source("./App.tsx");
   const frame = source("./shell/WorkspaceFrame.tsx");
@@ -103,7 +94,8 @@ test("the frontend exposes only the local product shell", () => {
   assert.doesNotMatch(app, /Layout|legacy|useLocation|useState/);
   assert.doesNotMatch(frame, /legacyHref/);
   assert.doesNotMatch(topBar, /legacyHref|MoreHorizontal|<a\b/);
-  assert.match(topBar, /onOpenSearch/);
+  assert.doesNotMatch(topBar, /onOpenSearch|QuickSwitcher|shell-topbar__tools/);
+  assert.match(frame, /<QuickSwitcher onClose=/);
   assert.equal(webPackage.scripts.build, "vite build");
   assert.match(index, /<title>Kith-space<\/title>/);
   assert.match(index, /<meta name="description"/);

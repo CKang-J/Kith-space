@@ -178,6 +178,14 @@ async function main() {
   check("raw thread id is not a sidebar unread key", unread.body?.[thread.id] == null);
 
   console.log("\n[2] the Human's own thread reply is not unread");
+  await createMessage({
+    spaceId,
+    channelId: thread.id,
+    senderType: "system",
+    senderId: null,
+    senderName: "system",
+    content: "task moved to done",
+  });
   await markThreadRead(thread.id);
   await humanMessage(thread.id, "my own thread reply");
   const threadMetadata = await apiCall({
@@ -187,6 +195,11 @@ async function main() {
   check("thread metadata returns 200", threadMetadata.status === 200);
   check("own reply leaves unreadCount at zero", threadMetadata.body?.[parent.id]?.unreadCount === 0);
   check("thread metadata reports the Human follow", threadMetadata.body?.[parent.id]?.followed === true);
+  check("thread metadata reply count still includes the system event", threadMetadata.body?.[parent.id]?.replyCount === 3);
+  check("thread metadata includes recent reply previews", threadMetadata.body?.[parent.id]?.previews?.length === 2);
+  check("thread metadata excludes system events from reply previews", threadMetadata.body?.[parent.id]?.previews?.every((reply: any) => reply.senderType !== "system"));
+  check("reply previews retain sender and content", threadMetadata.body?.[parent.id]?.previews?.at(-1)?.content === "my own thread reply"
+    && threadMetadata.body?.[parent.id]?.previews?.at(-1)?.senderName === "Ada");
 
   const unfollow = await apiCall({
     method: "POST",

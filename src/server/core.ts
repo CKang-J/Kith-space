@@ -19,6 +19,11 @@ import { assignTaskRecord, claimTaskRecord, convertMessageRecord, createTaskReco
 import { taskAssigneeFromMentions } from "./tasks/taskMentionAssignment.js";
 import { TASK_STATUSES, TaskOperationError, isTaskStatus, type TaskStatus } from "./tasks/taskTypes.js";
 import { assertChannelWritable, channelLifecycleState } from "../channels/channelLifecycle.js";
+import {
+  containsChannelAllMention,
+  mergeChannelAllMentions,
+  type MessageMention,
+} from "../channels/channelAllMention.js";
 import { initialAgentResponseWakeWatermarks, resolveAgentResponseMode } from "../agents/agentResponseSettings.js";
 import { decideAgentMessageResponse } from "../agents/agentResponseDelivery.js";
 
@@ -63,6 +68,14 @@ export const INVALID_AGENT_NAME = `Agent name must be 1-${MAX_AGENT_NAME} charac
 export const invalidAgentName = (s: unknown): boolean => typeof s !== "string" || s.length > MAX_AGENT_NAME || !AGENT_NAME_RE.test(s);
 
 export interface Member { type: "human" | "agent"; id: string; name: string; displayName: string; }
+
+function persistedMessageMention(row: typeof schema.messageMentions.$inferSelect): MessageMention {
+  return {
+    type: row.mentionType as MessageMention["type"],
+    id: row.mentionId,
+    name: row.mentionName,
+  };
+}
 
 export async function channelMembers(spaceId: string, channelId: string): Promise<Member[]> {
   const db = dbForSpace(spaceId);
@@ -138,11 +151,8 @@ export async function spaceMembers(spaceId: string): Promise<Member[]> {
   const out: Member[] = [];
   const human = getHumanIdentity();
   if (human) out.push({ type: "human", id: human.id, name: human.handle, displayName: human.displayName });
-  // Exclude system-seeded showcase demo agents (creatorType="system"): they are display-only props for the
-  // read-only #showcase channel, NOT @-reachable members. This pool feeds @-mention auto-join in public
-  // channels — without the filter, @-ing a word that happens to match a prop's name (e.g. "Pat") would
-  // auto-join it into a real channel and fire a no-op wake (it has no runtime process). Message rendering resolves a
-  // sender by id elsewhere, so props still render correctly in #showcase history.
+  // System-owned identities have no runtime process and are not reachable teammates. Keep them out of the
+  // membership pool so public-channel mention matching cannot auto-join or wake a non-interactive record.
   const ags = await db.select().from(schema.agents).where(and(eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt), ne(schema.agents.creatorType, "system")));
   for (const a of ags) out.push({ type: "agent", id: a.id, name: a.name, displayName: a.displayName });
   return out;
@@ -176,6 +186,26 @@ async function mentionAutoJoinPool(spaceId: string, ch: typeof schema.channels.$
   return target.type === "channel" ? await spaceMembers(spaceId) : await channelMembers(spaceId, target.id);
 }
 
+async function channelAllMentionScope(
+  spaceId: string,
+  channel: typeof schema.channels.$inferSelect,
+): Promise<typeof schema.channels.$inferSelect | null> {
+  if (channel.type === "channel" || channel.type === "private") return channel;
+  if (channel.type !== "thread" || !channel.parentMessageId) return null;
+  const db = dbForSpace(spaceId);
+  const parentMessage = (await db.select({ channelId: schema.messages.channelId }).from(schema.messages).where(and(
+    eq(schema.messages.id, channel.parentMessageId),
+    eq(schema.messages.spaceId, spaceId),
+  )))[0];
+  if (!parentMessage) return null;
+  const parentChannel = (await db.select().from(schema.channels).where(and(
+    eq(schema.channels.id, parentMessage.channelId),
+    eq(schema.channels.spaceId, spaceId),
+    isNull(schema.channels.deletedAt),
+  )))[0];
+  return parentChannel?.type === "channel" || parentChannel?.type === "private" ? parentChannel : null;
+}
+
 /** Add @-mentioned non-members to a channel, drawn from `pool` (its @-reach — see mentionAutoJoinPool); returns
  *  those added. Idempotent via onConflictDoNothing; broadcasts a membership update so every client refreshes. */
 async function autoJoinMentioned(spaceId: string, channelId: string, content: string, current: Member[], pool: Member[], watermark: number): Promise<Member[]> {
@@ -190,7 +220,7 @@ async function autoJoinMentioned(spaceId: string, channelId: string, content: st
 
 // Message serialization shape for message:new socket event (omits internal searchVector/agentSendKey).
 export interface ReactionAgg { emoji: string; count: number; reactorIds: string[]; reactorNames: string[]; }
-export function serializeMsg(msg: typeof schema.messages.$inferSelect, mentions: Member[], atts: (typeof schema.attachments.$inferSelect)[] = [], reactions: ReactionAgg[] = []) {
+export function serializeMsg(msg: typeof schema.messages.$inferSelect, mentions: MessageMention[], atts: (typeof schema.attachments.$inferSelect)[] = [], reactions: ReactionAgg[] = []) {
   return {
     id: msg.id, seq: msg.seq, channelId: msg.channelId, threadId: msg.threadId,
     senderType: msg.senderType, senderId: msg.senderId, senderName: msg.senderName, senderMembershipStatus: "active",
@@ -335,7 +365,7 @@ async function serializeMessageById(spaceId: string, messageId: string) {
   const msg = (await db.select().from(schema.messages).where(eq(schema.messages.id, messageId)))[0];
   if (!msg) return null;
   const mts = await db.select().from(schema.messageMentions).where(eq(schema.messageMentions.messageId, messageId));
-  const mentions: Member[] = mts.map((x) => ({ type: x.mentionType as "human" | "agent", id: x.mentionId, name: x.mentionName, displayName: x.mentionName }));
+  const mentions = mts.map(persistedMessageMention);
   const atts = await db.select().from(schema.attachments).where(eq(schema.attachments.messageId, messageId));
   const reactions = (await aggregateReactions(spaceId, [messageId])).get(messageId) ?? [];
   return serializeMsg(msg, mentions, atts, reactions);
@@ -469,6 +499,16 @@ export async function createMessage(opts: {
     ? await mentionAutoJoinPool(opts.spaceId, ch)
     : members;
   const addressableMentions = parseMentions(opts.content, mentionPool);
+  const hasHumanChannelAllToken = opts.senderType === "human" && containsChannelAllMention(opts.content);
+  if (opts.asTask && hasHumanChannelAllToken) {
+    throw new TaskOperationError("INVALID_ARGUMENT", "As Task does not support @all; mention exactly one Agent or leave the task unassigned");
+  }
+  const channelAllScope = ch && hasHumanChannelAllToken
+    ? await channelAllMentionScope(opts.spaceId, ch)
+    : null;
+  const channelAllRecipients = channelAllScope
+    ? (await channelMembers(opts.spaceId, channelAllScope.id)).filter((member) => member.type === "agent")
+    : [];
   const taskAssigneeId = taskAssigneeFromMentions({
     asTask: Boolean(opts.asTask),
     senderType: opts.senderType,
@@ -565,9 +605,21 @@ export async function createMessage(opts: {
     const joined = await autoJoinMentioned(opts.spaceId, opts.channelId, opts.content, members, mentionPool, seq - 1);
     if (joined.length) members = [...members, ...joined];
   }
+  if (channelAllScope && ch?.type === "thread") {
+    const currentAgentIds = new Set(members.filter((member) => member.type === "agent").map((member) => member.id));
+    const joined = channelAllRecipients.filter((member) => !currentAgentIds.has(member.id));
+    if (joined.length) {
+      await addChannelMembers(opts.spaceId, opts.channelId, joined.map((member) => ({ type: "agent", id: member.id })), { watermark: seq - 1 });
+      await publish(opts.spaceId, { type: "channel:members-updated", channelId: opts.channelId });
+      members = [...members, ...joined];
+    }
+  }
   // A targeted task may address a public-channel Agent without granting parent-channel membership. Keep the
   // validated mention on the task message while the assignment service grants only the owning thread access.
-  const mentions = taskAssigneeId ? addressableMentions : parseMentions(opts.content, members);
+  const ordinaryMentions = taskAssigneeId ? addressableMentions : parseMentions(opts.content, members);
+  const mentions: MessageMention[] = channelAllScope
+    ? mergeChannelAllMentions(ordinaryMentions, channelAllRecipients, channelAllScope.id)
+    : ordinaryMentions;
   if (mentions.length) {
     await db.insert(schema.messageMentions).values(
       mentions.map((x) => ({ messageId: msg.id, mentionType: x.type, mentionId: x.id, mentionName: x.name })),
@@ -833,10 +885,10 @@ export async function getOrCreateThread(spaceId: string, parentMessageId: string
 }
 
 // ── Tasks (message-as-task): convert / claim / unclaim / status, all emit task:updated ──────
-async function taskMentions(spaceId: string, messageId: string): Promise<Member[]> {
+async function taskMentions(spaceId: string, messageId: string): Promise<MessageMention[]> {
   const db = dbForSpace(spaceId);
   const mts = await db.select().from(schema.messageMentions).where(eq(schema.messageMentions.messageId, messageId));
-  return mts.map((x) => ({ type: x.mentionType as "human" | "agent", id: x.mentionId, name: x.mentionName, displayName: x.mentionName }));
+  return mts.map(persistedMessageMention);
 }
 async function emitTaskUpdated(spaceId: string, msg: typeof schema.messages.$inferSelect): Promise<void> {
   await publish(spaceId, { type: "task", op: "updated", task: serializeMsg(msg, await taskMentions(spaceId, msg.id)) });

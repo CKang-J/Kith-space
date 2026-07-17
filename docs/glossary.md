@@ -65,6 +65,9 @@
 **频道响应模式覆盖**
 : 某 Agent 在某个顶层频道 membership 上的可空覆盖，字段为 `channel_agent_members.response_mode_override`；有效模式等于“频道覆盖 ?? Agent 默认”。“跟随 Agent 默认”表示覆盖为 `NULL`，不是第四种模式。话题继承父频道，不拥有自己的覆盖。
 
+**频道全体提及（`@all`）**
+: 由唯一 Human 在可写频道或其话题中发起的特殊 mention。`@all` 是不随界面语言变化的规范 token，候选标签通过 i18n 显示“所有人 / Everyone”。服务端在发送时快照父频道的全部 Agent 成员，保存一个 `channel_all` 展示标记和对应的普通 Agent mention 行；主动/被动 Agent 按明确 mention 必须回应，静音 Agent 不自动唤醒。正文始终显示一个 `@all`，不展开名单。它不适用于 Human-Agent DM、归档频道或“指派任务”，Agent 发出的同名文本也不会群体唤醒；待退役的只读 Showcase 在删除前同样禁用该能力。
+
 **Human channel state**
 : 唯一 Human 在频道中的 read cursor、Human-Agent DM 对端、thread follow/done 状态和频道通知级别，物理表为 `human_channel_states`。`notification_level` 固定为 `all | mentions | none`，默认 `all`；它不改变 agent 唤醒、消息持久化、未读或 Inbox 语义。该表是会话状态而非 membership；收藏和 Space 偏好分别存于 `human_saved_messages` 与 `human_space_preferences`。
 
@@ -161,10 +164,10 @@
 : 当前唯一顶层工作壳。应用直接进入当前 Space，Chat 与一个 Module Pane 在同一窗口中按三态协作；此前“双壳 / 空间总览态 / 空间内部态”术语已废止。
 
 **ChatOnly**
-: 只有 Chat 可见、没有打开模块的状态。Chat 是唯一工作面时不能被隐藏；全宽 Chat 可同时展示会话列表、当前会话和当前会话聚合面板。
+: 只有 Chat 可见、没有打开模块的状态。Chat 是唯一工作面时不能被隐藏；全宽 Chat 可同时展示 Chat 导航侧栏、当前会话和当前会话聚合面板。模块以左侧纵向图标文字入口打开，不显示重复的 Chat 项或底部 Dock。
 
 **Split**
-: Chat 与一个模块同时可见的分屏状态。Chat 与 Module 间隙可拖拽；Chat 使用紧凑形态，会话列表改为抽屉，宽度允许时聚合面板固定显示在 Chat 与 Module 之间。
+: Chat 与一个模块同时可见的分屏状态。固定 Chat 导航侧栏隐藏，Chat 与 Module 间隙可拖拽；Chat 使用紧凑形态，会话列表改为只含已保存、频道、私信的抽屉，宽度允许时聚合面板固定显示在 Chat 与 Module 之间。
 
 **ModuleOnly**
 : 模块可见、Chat 暂时隐藏的专注状态。点击 Dock 的 Chat 可恢复 Split。
@@ -173,10 +176,13 @@
 : Inbox、Tasks、Agents、Settings 等功能模块的第二工作面。一次只打开一个模块，可与 Chat 分屏或独占窗口；当前阶段全部服从当前 Space。
 
 **Dock**
-: 当前主要工作面板底部的统一控制器。Home 为 Chat、Spaces、Inbox、Tasks、Agents、Settings，普通 Space 为 Chat、Inbox、Tasks、Agents、Settings；当前模块横向展开，Chat 始终只显示图标。它同时负责模块切换与 Chat 显隐。
+: 只在模块已打开时位于 Module Pane 底部的横向工作姿态控制器。Home 为 Chat、Spaces、Inbox、Tasks、Agents、Settings，普通 Space 为 Chat、Inbox、Tasks、Agents、Settings；当前模块横向展开，Chat 始终只显示图标。它同时负责模块切换与 Split / ModuleOnly 间的 Chat 显隐；ChatOnly 改用左侧纵向模块入口，不挂载 Dock。
+
+**Chat 导航侧栏**
+: ChatOnly 左侧常驻导航面。顶部以“图标 + 文字”纵向列出当前 Space 可用模块，但不显示 Chat；下方依次承载已保存、频道、私信和底部 agent 运行状态。模块打开后该侧栏隐藏，Split 通过只含会话分组的临时抽屉切换会话。
 
 **Spaces 模块 / 空间模块**
-: 只在 Home Dock 出现的真实 Space registry 页面，用卡片提供搜索、刷新、创建、接入、失联重连和同窗打开普通 Space；规范 module id 为 `spaces`。它不聚合尚未实现的 Inbox/Tasks，也不是旧空间总览壳。
+: 只在 Home 模块集合出现的真实 Space registry 页面，用卡片提供搜索、刷新、创建、接入、失联重连和同窗打开普通 Space；规范 module id 为 `spaces`。ChatOnly 从 Chat 导航侧栏进入，模块打开态在 Dock 中切换。它不聚合尚未实现的 Inbox/Tasks，也不是旧空间总览壳。
 
 **规范工作区 URL**
 : 用当前 Space 的会话 pathname 表达频道或 Human-Agent DM，用 `module`/`chat` 表达工作区三态，并由 `taskScope`、`agent`/`agentTab`、`settings` 分别表达模块资源的唯一 URL 形式。切换会话时保留 active module 及其资源，替换旧 `msg`/`thread` 临时焦点；旧模块实体路径不属于规范 URL。
