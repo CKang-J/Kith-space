@@ -22,8 +22,9 @@ test("route guards render the skeleton (not a blank null) while bootstrapping / 
 test("workspace skeleton follows the current single-window shell and panel language", () => {
   assert.match(skeletonTsx, /className="shell-workspace-frame skel-workspace"/, "skeleton must reuse the workspace frame");
   assert.match(skeletonTsx, /className="shell-workspace-canvas skel-workspace-canvas"/, "skeleton must reuse the gray workspace canvas");
-  assert.match(skeletonTsx, /className="shell-topbar skel-topbar"/, "skeleton must include the current top bar");
-  assert.doesNotMatch(skeletonTsx, /shell-topbar__tools|skel-topbar-tools/, "removed top-bar search tools must not remain in the skeleton");
+  assert.doesNotMatch(skeletonTsx, /shell-topbar|skel-topbar/, "the retired global top bar must not remain in the skeleton");
+  assert.match(skeletonTsx, /<SidebarContextSkeleton \/>/, "the workspace context must load inside the conversation list");
+  assert.match(skeletonTsx, /skel-sidebar-context/, "the sidebar context must have a dedicated placeholder");
   assert.match(skeletonTsx, /shell-work-panel shell-chat-main-card/, "ChatOnly must use an independent work panel");
   assert.match(skeletonTsx, /shell-work-panel shell-module-workspace/, "module loading must use an independent work panel");
   assert.match(skeletonTsx, /WORKSPACE_MODULES\.has\(requestedModule\)/, "only legal module query values may change the skeleton mode");

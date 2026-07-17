@@ -1,5 +1,6 @@
 :root{
-  --canvas:#f5f5f5;--canvas-soft:#fafafa;--surface:#fff;--surface-strong:#f0efed;
+  --ui-canvas-bg:#eeeeee;--ui-muted-bg:#ececec;
+  --canvas:var(--ui-canvas-bg);--canvas-soft:#fafafa;--surface:#fff;--surface-strong:var(--ui-muted-bg);
   --ink:#0c0a09;--ink-2:#292524;--body:#4e4e4e;--muted:#777169;--muted-soft:#a8a29e;
   --hair:#e7e5e4;--hair-strong:#d6d3d1;--card-line:rgba(87,96,106,.22);--card-line-strong:rgba(87,96,106,.35);--card-shadow:rgba(15,23,42,.035);--success:#16a34a;--amber:#b9770e;
   --status-blue:#92B6FF;--status-blue-ink:#4f6fae;--status-sleeping:#9c9894;--status-green:hsl(137 36% 64%);--status-green-ink:#32734a;--status-orange:hsl(46 66% 50%);--status-orange-ink:#805400;--status-red:#c36a6a;--status-badge-bg:rgba(240,239,237,.4);
@@ -201,7 +202,7 @@ mark{background:var(--g-peach);color:var(--ink);padding:0 2px;border-radius:4px}
    Uses .seg-pill (pill border-radius:9999px) to distinguish from the rect .seg
    used in the task-toolbar Board/List toggle (border-radius:8px, defined below). */
 .lang-row{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:26px;padding-top:18px;border-top:1px solid var(--hair)}
-.seg-pill{display:inline-flex;border:1px solid var(--hair-strong);border-radius:9999px;overflow:hidden;flex:0 0 auto}
+.seg-pill{display:inline-flex;border:1px solid var(--hair-strong);border-radius:9999px;overflow:hidden;flex:0 0 auto;background:var(--ui-muted-bg)}
 .seg-opt{border:0;background:transparent;padding:6px 16px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;font-family:inherit;line-height:1.6}
 .seg-opt.on{background:var(--ink-2);color:var(--on-ink)}
 .seg-opt:not(.on):hover{color:var(--ink);background:var(--surface-strong)}
@@ -583,7 +584,7 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .qs-section+.qs-section{margin-top:4px}
 .qs-section__title{padding:4px 7px 3px;color:#929292;font-size:12px;font-weight:500;line-height:18px}
 .qs-item{display:flex;width:100%;min-height:34px;align-items:center;gap:9px;padding:5px 8px;border:0;border-radius:10px;background:transparent;color:var(--body);cursor:pointer;text-align:left}
-.qs-item.on{background:#f1f1f1;color:var(--ink)}
+.qs-item.on{background:var(--ui-muted-bg);color:var(--ink)}
 .qs-item__icon{display:inline-flex;width:20px;flex:0 0 20px;align-items:center;justify-content:center;color:#656565}
 .qs-label{min-width:0;flex:1;overflow:hidden;color:inherit;font-size:14px;font-weight:400;text-overflow:ellipsis;white-space:nowrap}
 .qs-detail{max-width:46%;overflow:hidden;color:#929292;font-size:11.5px;text-overflow:ellipsis;white-space:nowrap}
@@ -605,10 +606,10 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 /* Task board toolbar: Board/List toggle + Creator/Assignee filter + New Task */
 .task-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap}
 .task-toolbar .grow{flex:1}
-.seg{display:inline-flex;border:1px solid var(--hair-strong);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg{display:inline-flex;border:1px solid var(--hair-strong);border-radius:8px;overflow:hidden;background:var(--ui-muted-bg)}
 .seg button{background:none;border:0;padding:6px 14px;font-size:13px;color:var(--muted);cursor:pointer}
 .seg button+button{box-shadow:-1px 0 0 var(--hair-strong)}
-.seg button.on{background:var(--surface-strong);color:var(--ink);font-weight:600}
+.seg button.on{background:var(--surface);color:var(--ink);font-weight:600}
 .seg-icon button{display:flex;align-items:center;padding:6px 10px} /* icon-only segment; active state inherited from .seg button.on */
 .tfilter{font-family:var(--sans);font-size:13px;color:var(--body);background:var(--surface);border:1px solid var(--hair-strong);border-radius:8px;padding:6px 10px;outline:none;cursor:pointer;max-width:180px}
 .newtask{font-size:14px;font-weight:500;color:var(--on-ink);background:var(--ink-2);border:0;padding:7px 16px;border-radius:9999px;cursor:pointer}
@@ -1007,9 +1008,10 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
 .skel-box::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.5) 50%,transparent 100%);animation:skel-shimmer 1.5s var(--ease-decel) infinite}
 @keyframes skel-shimmer{100%{transform:translateX(100%)}}
 @media (prefers-reduced-motion:reduce){.skel-box::after{display:none}}
-.skel-topbar-brand{width:30px;height:30px;border-radius:9px;background:var(--hair-strong)}
-.skel-topbar-space{width:92px;height:13px;border-radius:5px}
-.skel-topbar-context{width:150px;height:11px;border-radius:5px}
+.skel-sidebar-context{display:flex;min-width:0;min-height:30px;align-items:center;gap:8px;margin-bottom:1px}
+.skel-sidebar-context-brand{width:30px;height:30px;flex:none;border-radius:9px;background:var(--hair-strong)}
+.skel-sidebar-context-space{width:72px;height:13px;flex:none;border-radius:5px}
+.skel-sidebar-context-current{width:52px;height:11px;border-radius:5px}
 .skel-chat-full{width:100%}
 .skel-conversations,.skel-trace{display:flex;min-width:0;flex-direction:column;gap:13px;padding:20px 18px;background:var(--shell-panel,#fff)}
 .skel-panel-title{width:56%;height:16px;margin-bottom:8px;border-radius:6px}
@@ -1048,6 +1050,5 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
   .skel-workspace[data-layout-mode="split"] .skel-module-panel{flex:1}
 }
 @media (max-width:820px){
-  .skel-topbar-context{display:none}
   .skel-chat-full{grid-template-columns:190px minmax(280px,1fr) 210px}
 }

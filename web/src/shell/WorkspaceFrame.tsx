@@ -12,7 +12,7 @@ import { DragDivider } from "./DragDivider.tsx";
 import { ModuleWorkspace } from "./ModuleWorkspace.tsx";
 import { SidebarModuleNavigation } from "./SidebarModuleNavigation.tsx";
 import { WorkspaceDock } from "./WorkspaceDock.tsx";
-import { WorkspaceTopBar } from "./WorkspaceTopBar.tsx";
+import { WorkspaceContextRow } from "./WorkspaceContextRow.tsx";
 import {
   shellActions,
   storedChatLocation,
@@ -280,12 +280,19 @@ export function WorkspaceFrame() {
     />
   );
   const sidebarModuleNavigation = (
-    <SidebarModuleNavigation
-      isHome={isHome}
-      unreadCount={unreadCount}
-      onSearch={() => setQuickSwitcherOpen(true)}
-      onModuleSelect={(moduleId: DockModuleId) => void selectModule(moduleId)}
-    />
+    <>
+      <WorkspaceContextRow
+        activeModule={activeModule}
+        channelId={currentChannelId}
+        layoutSearch={layoutSearch}
+      />
+      <SidebarModuleNavigation
+        isHome={isHome}
+        unreadCount={unreadCount}
+        onSearch={() => setQuickSwitcherOpen(true)}
+        onModuleSelect={(moduleId: DockModuleId) => void selectModule(moduleId)}
+      />
+    </>
   );
 
   const settingsInDrawer = !!settingsChannel && !aggregateAvailable;
@@ -314,11 +321,6 @@ export function WorkspaceFrame() {
       data-aggregate-transitioning={aggregateTransitioning ? "true" : undefined}
       data-visual-mode={visualMode}
     >
-      <WorkspaceTopBar
-        activeModule={activeModule}
-        channelId={currentChannelId}
-        layoutSearch={layoutSearch}
-      />
       <div ref={workspaceRef} className="shell-workspace-canvas">
         {renderChat ? (
           <ChatWorkspace

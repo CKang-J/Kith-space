@@ -211,7 +211,7 @@
 
 ## 决策 14：模块集合与工作姿态控制器
 
-**当前结论（2026-07-15 再修正）**：Home 的模块集合为 `Spaces | Inbox | Tasks | Agents | Settings`，普通 Space 为 `Inbox | Tasks | Agents | Settings`；Chat 是基础工作面而不是业务模块。ChatOnly 通过左侧常驻栏的纵向图标文字列表打开模块，不显示重复的 Chat 项或底部 Dock。模块打开后，横向 Dock 迁入 Module Pane 底部，并增加 Chat 图标负责 Split / ModuleOnly 切换；当前模块横向展开并显示名称。`Spaces` 只在 Home 有效，`Members` 收敛为当前 Space 的 `Agents`，`Computers` 删除，唯一 Human 的资料位于全局 Settings，Search 位于顶部入口。一次只打开一个模块。模块不拥有独立 pathname，而是在当前频道、DM 或收藏会话路径上使用 `?module=<id>`；合法 resource query 分别为 Tasks 的 `taskScope`、Agents 的 `agent`/`agentTab` 与 Settings 的 `settings`。切换会话保留当前模块及其 resource，切换模块则清除不属于新模块的 resource。完整修正见决策 28。
+**当前结论（2026-07-17 再修正）**：Home 的模块集合为 `Spaces | Inbox | Tasks | Agents | Settings`，普通 Space 为 `Inbox | Tasks | Agents | Settings`；Chat 是基础工作面而不是业务模块。ChatOnly 通过左侧常驻栏的纵向图标文字列表打开模块，不显示重复的 Chat 项或底部 Dock。模块打开后，横向 Dock 迁入 Module Pane 底部，并增加 Chat 图标负责 Split / ModuleOnly 切换；当前模块横向展开并显示名称。`Spaces` 只在 Home 有效，`Members` 收敛为当前 Space 的 `Agents`，`Computers` 删除，唯一 Human 的资料位于全局 Settings；Search 位于 ChatOnly 左侧列表的 Space/会话上下文下方。一次只打开一个模块。模块不拥有独立 pathname，而是在当前频道、DM 或收藏会话路径上使用 `?module=<id>`；合法 resource query 分别为 Tasks 的 `taskScope`、Agents 的 `agent`/`agentTab` 与 Settings 的 `settings`。切换会话保留当前模块及其 resource，切换模块则清除不属于新模块的 resource。完整修正见决策 28。
 
 **原决定**：Dock 曾被限定为“窄右栏容器自身的底部导航”，实时轨迹也曾作为右栏模块之一；随后 Dock 又被设为 ChatOnly、Split、ModuleOnly 都常驻的统一底部控制器。最新方向保留模块作为可伸缩第二工作面和模块打开态 Dock，但 ChatOnly 改用更符合会话浏览上下文的左侧纵向入口。
 

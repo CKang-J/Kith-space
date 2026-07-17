@@ -5,8 +5,8 @@
   --chat-message-font-size:14.5px;
   --chat-message-line-height:1.55;
   --chat-message-radius:10px;
-  --chat-message-agent-bg:#f6f6f4;
-  --chat-message-agent-bg-hover:#f2f2ef;
+  --chat-message-agent-bg:var(--ui-muted-bg);
+  --chat-message-agent-bg-hover:var(--ui-muted-bg);
   --chat-message-human-bg:#eff4fb;
   --chat-message-human-bg-hover:#e6eef8;
   --chat-message-text:#292524;

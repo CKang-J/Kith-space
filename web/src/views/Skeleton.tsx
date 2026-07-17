@@ -31,14 +31,13 @@ export function ChatSkeleton() {
   );
 }
 
-function TopBarSkeleton() {
+function SidebarContextSkeleton() {
   return (
-    <header className="shell-topbar skel-topbar" aria-hidden="true">
-      <div className="skel-box skel-topbar-brand" />
-      <div className="skel-box skel-topbar-space" />
-      <div className="skel-box skel-topbar-context" />
-      <div className="shell-topbar__spacer" />
-    </header>
+    <div className="skel-sidebar-context">
+      <div className="skel-box skel-sidebar-context-brand" />
+      <div className="skel-box skel-sidebar-context-space" />
+      <div className="skel-box skel-sidebar-context-current" />
+    </div>
   );
 }
 
@@ -55,6 +54,7 @@ function DockSkeleton() {
 function ConversationListSkeleton() {
   return (
     <aside className="shell-work-panel shell-chat-conversations skel-conversations" aria-hidden="true">
+      <SidebarContextSkeleton />
       <div className="skel-box skel-panel-title" />
       {Array.from({ length: 7 }).map((_, i) => (
         <div key={i} className="skel-box skel-panel-line" style={{ width: `${72 - (i % 3) * 12}%` }} />
@@ -143,7 +143,6 @@ export function WorkspaceSkeleton({ chat = false }: { chat?: boolean }) {
       aria-busy="true"
       aria-label={t("common.loadingWorkspace")}
     >
-      <TopBarSkeleton />
       <div className="shell-workspace-canvas skel-workspace-canvas">
         {chatVisible ? <ChatPanelSkeleton compact={mode === "split"} dock={mode === "chat-only"} /> : null}
         {mode === "split" ? <div className="shell-drag-divider skel-divider" aria-hidden="true" /> : null}

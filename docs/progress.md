@@ -2,7 +2,9 @@
 
 本文件是当前进度的权威来源。新会话先读本文件和 `AGENTS.md`，再按文档地图进入专项资料。
 
-最后更新：2026-07-16。
+最后更新：2026-07-17。
+
+- **壳层间距与上下文位置增量，等待用户手动视觉验收**：全局 40px 顶部上下文栏已退役，SpaceSwitcher、Space 名称和当前会话上下文迁入 ChatOnly 左侧会话列表首行；工作区画布统一使用 `--shell-gap: 10px` 作为四周内边距，因此面板与窗口顶部、底部均保持 10px。加载 Skeleton 与静态契约同步采用新结构；按用户约定不执行浏览器视觉自测。
 
 ## 一、现在在哪
 
@@ -75,7 +77,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - H3 的 Desktop preload 窄桥调用 Electron 原生目录选择器；授权浏览器通过 Core 的受限主机目录浏览器选择宿主路径，不使用浏览器本机文件选择器冒充宿主路径，也不读取文件内容。失联深链会转到可用 Space，全部 Space 失联时由独立恢复页保持 relocate 可达。H4 后 `SpaceSwitcher` 收敛为快速切换、失联重连和进入 Home Spaces 的入口；默认创建与已有文件夹接入统一位于 Home Spaces 模块，并使用紧凑模态弹窗。
 - H3 验证：`pnpm run typecheck`、497/497 单测、完整集成测试、Web build（2569 modules）和 Desktop build 通过；创建/接入/稳定 ID/slug 冲突/重复 root/损坏与不兼容数据库/symlink/失联深链与全失联恢复/无隐式重建/relocate 回滚，以及 Desktop bridge 与浏览器主机路径 UI 均有回归覆盖。
 - H3 测试遗留透明记录：一次已修正的子代理测试隔离失误在 `C:\Users\Administrator\.kith-space\workspace-baseline-test\<随机 UUID>` 下留下 3 个未登记目录；registry 记录已移除，当前未枚举也未删除这些目录。只有用户明确授权后才能单独清理，后续任务不得把该路径当作产品数据或擅自递归操作。
-- **H4 已完成**：`GET /api/spaces` 以 app.db 的稳定 `homeSpaceId` 返回 `isHome`，`POST /api/spaces/:id/open` 只为可用 Space 更新 `lastOpenedAt`；普通冷启动优先进入 ready Home，显式 ready Space 深链接仍优先。Home Dock 注册 `spaces`，模块展示真实 registry 中除 Home 外的普通 Space，支持通用搜索、刷新、默认创建、已有文件夹接入、失联重连和同窗进入；卡片显示名称、宿主路径、状态与最近打开时间，并提供打开、Desktop 文件管理器定位、复制路径、重命名、本地收藏排序和只注销 registry 的移除菜单。普通 Space 隐藏 Spaces Dock，并会移除无效 `module=spaces` query；顶部 SpaceSwitcher 保留快速切换和应急重连，通过“管理空间”同窗跳转 Home Spaces。未加入 H5 的跨 Space Inbox/Tasks/dispatch 或伪摘要。
+- **H4 已完成**：`GET /api/spaces` 以 app.db 的稳定 `homeSpaceId` 返回 `isHome`，`POST /api/spaces/:id/open` 只为可用 Space 更新 `lastOpenedAt`；普通冷启动优先进入 ready Home，显式 ready Space 深链接仍优先。Home Dock 注册 `spaces`，模块展示真实 registry 中除 Home 外的普通 Space，支持通用搜索、刷新、默认创建、已有文件夹接入、失联重连和同窗进入；卡片显示名称、宿主路径、状态与最近打开时间，并提供打开、Desktop 文件管理器定位、复制路径、重命名、本地收藏排序和只注销 registry 的移除菜单。普通 Space 隐藏 Spaces Dock，并会移除无效 `module=spaces` query；ChatOnly 左侧列表顶部的 SpaceSwitcher 保留快速切换和应急重连，通过“管理空间”同窗跳转 Home Spaces。未加入 H5 的跨 Space Inbox/Tasks/dispatch 或伪摘要。
 - H4 验证：`pnpm run typecheck`、502/502 单测、完整集成测试、Web build（2571 modules）和 Desktop build 通过；针对 Home 选择/显式深链、Home/普通 Dock、URL 规范化、registry Home 标记、ready-only 最近打开、创建/重连与 Spaces 页面契约均有覆盖。单轮轻量复核发现并补齐刷新操作，之后未发现其余 High/Medium 问题。当前未启动本地产品服务做 H4 交互 smoke，最终视觉与实际交互留给用户本轮验收。
 - 数据层是 SQLite：中央 `app.db` 保存唯一 Human 与 `spaces` registry；每 Space 使用 `<rootPath>/.kith/workspace.db`。canonical 连接入口为 `dbForSpace(spaceId)` / `listSpaces()`；`dbFor`、`listWorkspaces`、`registerWorkspace` 等 workspace facade 已删除。
 - `src/app-data/appDatabase.ts` 是 app.db 事实源：除唯一 Human/Space registry 外，A3 增加单例 `browser_access_settings` 与 `browser_sessions`。REST、附件读取和 Socket 的 Human authority 只来自 Desktop 私有信任或已验证的浏览器 Cookie 会话，不再查询 `server_members`，也不存在 Human JWT/Bearer/dev-login。`src/human/humanIdentity.ts` 继续提供稳定 `@you` handle 与 app.db 展示名。

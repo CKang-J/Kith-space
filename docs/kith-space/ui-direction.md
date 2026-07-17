@@ -11,7 +11,7 @@
 借鉴参考产品的布局关系与空间层次，不复制其源码、品牌或具体实现。Kith-space 保留自身已有组件与业务视觉，只统一工作窗口的骨架：
 
 - 窗口沿用原有浅灰画布；中心 Chat 保持独立白色圆角卡片，会话导航取消卡片底板并直接使用画布背景，两者以既有间隙分开。
-- 顶部栏高 40px；标题、导航、正文和元信息统一使用系统无衬线字体，不为功能标题单独使用衬线字体。
+- 全局 40px 顶部栏已退役；工作区画布四周统一保留 10px，共用面板采用 18px 圆角；Space、当前会话上下文和快速切换入口位于 ChatOnly 左侧会话列表顶部。标题、导航、正文和元信息统一使用系统无衬线字体，不为功能标题单独使用衬线字体。
 - 原有中心 Chat 卡片式 UI、圆角、间隙和表面层级不得因壳层导航改造被拉平或移除；常驻会话导航不再使用独立卡片表面。
 - 新增纵向模块入口、会话列表和 Split 会话抽屉不使用贯穿式横线或竖线分割；归档频道入口与常驻 agent 状态区同样只用留白、分组标题与行底色组织层级。
 - ChatOnly 常驻会话导航不显示“对话”总标题；上方模块图标与下方“频道 / 私信”分组标题共用左侧基线。Split 临时抽屉仍保留自身标题。
@@ -30,7 +30,7 @@
 应用只有一个 `WorkspaceFrame`：
 
 ```text
-顶部栏：当前 Space / 当前会话与模块；全局搜索不再占用顶部栏，统一由左侧入口或 `Ctrl/Command + K` 唤出
+ChatOnly 左侧列表首行：当前 Space / 当前会话 / Space 快速切换；全局搜索由其下方入口或 `Ctrl/Command + K` 唤出
 ┌────────────────────────────────────────────────────────────┐
 │ Chat Pane       │ 聚合面板（可选） │ 10px 可拖拽区 │ Module Pane │
 │                 │ 轨迹/话题/文件   │                 │ Dock        │
@@ -38,8 +38,8 @@
 ```
 
 - 未初始化时进入本地 Human 资料页；普通冷启动进入自动创建的 Home Chat，显式 Space 深链接直达目标，托盘恢复保留现有窗口现场。
-- Space 名称保留快速切换入口；H4 已把默认创建、已有文件夹接入和完整目录管理移入 Home 的 Spaces 模块。顶部入口只保留快速切换、失联重连和“管理空间”跳转。
-- Search 位于顶部工具组，通过按钮和 `Cmd/Ctrl + K` 进入，不占 Dock 槽位。
+- Space 名称保留快速切换入口；H4 已把默认创建、已有文件夹接入和完整目录管理移入 Home 的 Spaces 模块。ChatOnly 左侧列表首行只保留快速切换、失联重连和“管理空间”跳转。
+- Search 位于 ChatOnly 左侧列表的 Space/会话上下文下方，通过按钮和 `Cmd/Ctrl + K` 进入，不占 Dock 槽位。
 - 同时最多显示一个 Chat Pane、一个当前会话聚合面板和一个 Module Pane；聚合面板只依附可见 Chat，不是第二个 Module。
 - Split 默认让 Chat 占可用工作区的 25%、Module 占其余空间；Chat 下限为 `max(360px, 25%)`。ChatOnly 的主 Chat 卡片沿用同一 360px 绝对下限。Tasks / Search 的模块下限为 560px，其余现有模块为 640px；模块不再使用固定 960px 上限。
 - 分区间完整 10px 间隙都是拖拽热区，悬停或拖动时才显示短握柄，不显示贯穿全高的分隔线。
@@ -80,7 +80,7 @@ ChatOnly 的左侧常驻栏按 Space 类型显示纵向“图标 + 文字”模�
 - Home：`Spaces | Inbox | Tasks | Agents | Settings`。
 - 普通 Space：`Inbox | Tasks | Agents | Settings`。
 
-- Chat 不进入列表；Search 继续位于顶部入口。
+- Chat 不进入列表；Search 位于 Space/会话上下文下方，并继续支持 `Ctrl/Command + K`。
 - 入口复用同一模块注册表，行高 36–40px、图标 18px、标签 14px，使用轻量 hover/active 表面，不绘制行边框或阴影。
 - 点击入口写入现有 `module` query；固定左侧栏随后隐藏，工作区进入 Split 或响应式 ModuleOnly。
 - ChatOnly 不挂载底部 Dock，也不再为 Dock 预留 Composer 下方空间。
@@ -113,7 +113,7 @@ ChatOnly 由当前会话工作面和可独立收起的辅助面板组成：
 Chat 导航侧栏 | 当前会话与 Composer | 聚合面板（轨迹 / 话题 / 文件）
 ```
 
-- Chat 导航侧栏从上到下包含全局搜索入口、纵向模块入口、已保存、频道、私信和底部 agent 运行状态。全局搜索入口与 `Ctrl/Command + K` 打开同一个白色圆角命令面板：空查询按“推荐 / 频道 / 私信 / Agent”分组，输入后同时匹配频道、私信、Agent 以及当前 Space 可读的频道消息、话题消息和私信消息；点击消息直接定位原消息或打开所属话题。普通命令保持 34px 紧凑单行，消息命中改用独立双行结果：第一行展示可读的频道名、私信对象或“父消息摘要 + 回复数”，右侧显示来源频道和相对时间；第二行展示发送者与命中上下文，并以蓝色语义 `mark` 高亮查询词。DM 内部复合 ID 和 thread 内部名称不得进入 UI；单 Human 私信使用对端 Agent 头像与展示名，Agent-Agent 私信使用参与者展示名组合。面板使用灰色小标题，不显示快捷键胶囊。顶部栏不再保留独立搜索按钮，也不再把消息搜索导向单独模块。频道保留未读、置顶、新建和切换行为，并以 14px 线性 Hash 图标替代文本 `#`；不提供 Human-Human DM。归档频道不混入活跃频道，而是进入仅在有数据时显示、默认收起并按归档时间倒序排列的“已归档”子分组。案例展示不再属于目标信息架构。频道行与私信行的相邻项统一保留 4px 轻量间距；画布式会话导航使用 `#ececeb` hover 和纯白选中底色增强状态辨识，不增加分割线、边框或卡片阴影。会话抽屉、Agents 模块侧栏及 Agent 选择器中的相邻 Agent 行同样保持一致的轻量间距。
+- Chat 导航侧栏从上到下包含 Space/当前会话上下文、全局搜索入口、纵向模块入口、已保存、频道、私信和底部 agent 运行状态。全局搜索入口与 `Ctrl/Command + K` 打开同一个白色圆角命令面板：空查询按“推荐 / 频道 / 私信 / Agent”分组，输入后同时匹配频道、私信、Agent 以及当前 Space 可读的频道消息、话题消息和私信消息；点击消息直接定位原消息或打开所属话题。普通命令保持 34px 紧凑单行，消息命中改用独立双行结果：第一行展示可读的频道名、私信对象或“父消息摘要 + 回复数”，右侧显示来源频道和相对时间；第二行展示发送者与命中上下文，并以蓝色语义 `mark` 高亮查询词。DM 内部复合 ID 和 thread 内部名称不得进入 UI；单 Human 私信使用对端 Agent 头像与展示名，Agent-Agent 私信使用参与者展示名组合。面板使用灰色小标题，不显示快捷键胶囊。全局顶栏不再挂载，消息搜索也不导向单独模块。频道保留未读、置顶、新建和切换行为，并以 14px 线性 Hash 图标替代文本 `#`；不提供 Human-Human DM。归档频道不混入活跃频道，而是进入仅在有数据时显示、默认收起并按归档时间倒序排列的“已归档”子分组。案例展示不再属于目标信息架构。频道行与私信行的相邻项统一保留 4px 轻量间距；画布式会话导航使用 `#ececeb` hover 和纯白选中底色增强状态辨识，不增加分割线、边框或卡片阴影。会话抽屉、Agents 模块侧栏及 Agent 选择器中的相邻 Agent 行同样保持一致的轻量间距。
 - 中间复用现有 `Chat`、Composer、Thread、附件和 @mention 能力；用户界面统一称“话题”，内部数据、API 与 query 继续使用 `thread`。Agent 私聊标题区保留直达当前 Agent 详情页的入口；话题打开时默认与当前会话各占一半宽度，并可通过中间分割线继续拖拽调整。话题标题栏以普通铃铛表示“已关注”、划线铃铛表示“未关注”，关注切换不关闭面板，关闭仍由独立的 × 按钮负责。
 - 删除 Agent 时，所有包含它的私聊、私聊下的话题、消息、附件记录及本地附件对象一并永久删除，私信列表、Inbox 与命令面板不再显示该 Agent。公共频道及其话题中的历史消息继续保留，以消息发送时保存的名称展示，并在主消息与话题回复预览中实时标记“已删除”；已删除身份不可再打开 Agent 卡片或被命令面板检索。
 - 删除旧“会话 / Chat / 轨迹”顶栏。会话列表纯图标开关迁入当前会话标题最左侧；标题右侧依次提供当前会话 Tasks、频道成员、聚合面板和频道设置等纯图标入口。Tasks 始终导航到 `module=tasks&taskScope=<当前会话ID>`，点击已打开的同一 Tasks 不解释为关闭。
@@ -153,7 +153,7 @@ Composer
 
 ## 5. 模块工作面与作用域
 
-- 当前模块包括 Inbox、Tasks、Agents、Settings；Home 另有 Spaces；Search 由顶部入口打开。Computers/Machines 不再是产品模块。
+- 当前模块包括 Inbox、Tasks、Agents、Settings；Home 另有 Spaces；Search 由 ChatOnly 左侧入口打开。Computers/Machines 不再是产品模块。
 - 一次只显示一个 Module Pane，切换 Dock 项直接替换模块。
 - Inbox、Tasks、Agents、Settings 只读取当前 Space 数据；Spaces 只读取 app.db registry 和真实摘要。切换 Space 时 Chat 与普通模块数据源一起切换。
 - Web Store 与路由状态只使用 `SpaceInfo/spaceId/spaces` 和 `/s/:slug`；请求只发送 `x-space-id`，不得在前端保留旧 Server 双命名。
@@ -208,7 +208,7 @@ A5 已完成工作区入口与规范 URL 收口，但 `MessageContextSnapshot`�
 - `conversation-aggregate/`：轨迹、话题、文件三个会话级子视图；`components/SlidingTabs.tsx` 统一承载 tab/radio 两类滑动分段控件，聚合 Tab 与响应模式不再维护两套选中底板。
 - `channel-settings/`：设置场景壳、常规/成员/通知钻取页与永久删除确认；宽窄布局复用同一组件。`ArchivedChannelGroup.tsx` 单独负责默认收起的归档频道入口。
 - `ModuleWorkspace.tsx`：现有业务视图薄适配。
-- `WorkspaceDock.tsx` / `WorkspaceTopBar.tsx`：模块打开态 Dock 与顶部工具组；实施后 `WorkspaceDock` 不在 ChatOnly 挂载。
+- `WorkspaceDock.tsx` / `WorkspaceContextRow.tsx`：模块打开态 Dock 与 ChatOnly 左侧列表中的 Space/会话上下文；`WorkspaceDock` 不在 ChatOnly 挂载，全局 `WorkspaceTopBar` 已退役。
 - `workspaceModules.tsx`：模块注册、路由和图标元数据。
 
 复用 `Chat.tsx`、`LiveTrace.tsx`、`TaskBoard.tsx`、Inbox、Settings 与现有 agent 列表能力；Chat 不再内嵌 Tasks/Files Tab，文件筛选与话题索引也不继续堆入大文件。新切片把 `ChatSidebar.tsx` 收敛为常驻侧栏组合，并新增独立纵向模块导航与共享会话分组；这不是恢复旧的全局 `IconRail`。产品模块已从 Members 收敛为 Agents（内部文件名 `Members.tsx` 暂留）；Computers 与旧 `Layout` 已删除。旧 `OverviewShell`、`SpaceShell`、`IconRail`、`RightDock` 和 `ChatSlot` 继续保持删除。

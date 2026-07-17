@@ -38,7 +38,7 @@ test("message density tokens match the approved design", () => {
   assert.match(messageCss, /--chat-message-font-size:\s*14\.5px/);
   assert.match(messageCss, /--chat-message-line-height:\s*1\.55/);
   assert.match(messageCss, /--chat-message-human-bg:\s*#eff4fb/i);
-  assert.match(messageCss, /--chat-message-agent-bg:\s*#f6f6f4/i);
+  assert.match(messageCss, /--chat-message-agent-bg:\s*var\(--ui-muted-bg\)/i);
   assert.match(messageCss, /grid-template-columns:\s*var\(--chat-message-avatar\) minmax\(0,1fr\)/);
   assert.match(messageCss, /width:\s*fit-content/);
   assert.match(messageCss, /margin:\s*0 auto 20px/);

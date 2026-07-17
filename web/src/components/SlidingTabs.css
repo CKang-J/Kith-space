@@ -10,7 +10,7 @@
   padding: var(--sliding-tabs-inset);
   overflow: visible;
   border-radius: 13px;
-  background: #f5f5f5;
+  background: var(--ui-muted-bg);
   isolation: isolate;
 }
 

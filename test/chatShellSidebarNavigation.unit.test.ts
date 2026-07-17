@@ -9,7 +9,7 @@ const chatWorkspace = read("../web/src/shell/ChatWorkspace.tsx");
 const moduleNavigation = read("../web/src/shell/SidebarModuleNavigation.tsx");
 const quickSwitcher = read("../web/src/QuickSwitcher.tsx");
 const messageSearchResultRow = read("../web/src/quick-switcher/MessageSearchResultRow.tsx");
-const topBar = read("../web/src/shell/WorkspaceTopBar.tsx");
+const workspaceContext = read("../web/src/shell/WorkspaceContextRow.tsx");
 const sidebar = read("../web/src/views/ChatSidebar.tsx");
 const conversations = read("../web/src/views/ConversationListContent.tsx");
 const archivedChannels = read("../web/src/views/ArchivedChannelGroup.tsx");
@@ -23,7 +23,14 @@ test("ChatOnly uses the shared module registry as a vertical text navigation wit
   assert.match(moduleNavigation, /sidebar-module-navigation__label/);
   assert.doesNotMatch(moduleNavigation, /MessageCircle/);
   assert.match(frame, /<SidebarModuleNavigation/);
+  assert.match(frame, /<WorkspaceContextRow[\s\S]*?<SidebarModuleNavigation/);
   assert.match(frame, /moduleNavigation=\{sidebarModuleNavigation\}/);
+  assert.doesNotMatch(frame, /<WorkspaceTopBar|shell-topbar/);
+  assert.match(workspaceContext, /<SpaceSwitcher/);
+  assert.match(shellCss, /\.shell-workspace-canvas\s*\{[^}]*padding:\s*var\(--shell-gap\)/);
+  assert.match(shellCss, /--shell-gap:\s*10px/);
+  assert.match(shellCss, /--shell-radius:\s*18px/);
+  assert.match(shellCss, /\.shell-chat-workspace--full\s*\{[^}]*overflow:\s*visible/, "ChatOnly layout must not clip panel edge shadows");
 });
 
 test("Ctrl+K is the categorized global search and its visible entry lives above sidebar modules", () => {
@@ -31,7 +38,7 @@ test("Ctrl+K is the categorized global search and its visible entry lives above 
   assert.match(moduleNavigation, /<Search size=\{18\}/);
   assert.match(frame, /event\.key\.toLowerCase\(\) !== "k"/);
   assert.match(frame, /<QuickSwitcher onClose=/);
-  assert.doesNotMatch(topBar, /<Search\b|QuickSwitcher|onOpenSearch|shell-topbar__tools/);
+  assert.doesNotMatch(workspaceContext, /<Search\b|QuickSwitcher|onOpenSearch|shell-topbar__tools/);
   assert.match(quickSwitcher, /\/api\/messages\/search\?q=/);
   assert.match(quickSwitcher, /sectionChannelMessages/);
   assert.match(quickSwitcher, /sectionTopicMessages/);
@@ -94,9 +101,20 @@ test("channel rows use an icon instead of a text hash", () => {
 });
 
 test("the shell preserves the Chat card while the conversation navigation sits directly on the canvas", () => {
+  assert.match(globalCss, /--ui-canvas-bg:#eeeeee/);
+  assert.match(globalCss, /--ui-muted-bg:#ececec/);
+  assert.match(globalCss, /--canvas:var\(--ui-canvas-bg\)/);
+  assert.match(globalCss, /--surface-strong:var\(--ui-muted-bg\)/);
+  assert.match(shellCss, /--shell-bg:\s*var\(--ui-canvas-bg\)/);
   assert.match(shellCss, /\.shell-work-panel\s*\{[\s\S]*?border-radius:\s*var\(--shell-radius\)/);
+  assert.doesNotMatch(shellCss, /--shell-panel-outline/);
+  assert.match(shellCss, /--shell-panel-shadow:[\s\S]*?0 1px 1px rgb\(0 0 0 \/ 8%\)[\s\S]*?inset 0 1px 0 rgb\(255 255 255 \/ 72%\)/);
+  assert.doesNotMatch(shellCss, /0 5px 14px/);
+  assert.match(shellCss, /\.shell-work-panel\s*\{[\s\S]*?border:\s*0;[\s\S]*?box-shadow:\s*var\(--shell-panel-shadow\)/);
   assert.match(shellCss, /\.shell-chat-workspace--full > \.shell-chat-conversations\s*\{[\s\S]*?margin-right:\s*var\(--shell-gap\)/);
-  assert.match(shellCss, /\.shell-chat-conversations\s*\{[\s\S]*?border-radius:\s*0;[\s\S]*?background:\s*transparent/);
+  assert.match(shellCss, /\.shell-chat-conversations\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none/);
+  assert.match(shellCss, /\.shell-chat-workspace--compact > \.shell-chat-main-card\s*\{[\s\S]*?border:\s*0;[\s\S]*?box-shadow:\s*none/);
+  assert.match(shellCss, /\.shell-conversation-aggregate > \.conversation-aggregate\s*\{[\s\S]*?border-left:\s*0/);
   assert.doesNotMatch(shellCss.match(/\.sidebar-module-navigation\s*\{([^}]*)\}/)?.[1] ?? "", /border/);
   assert.doesNotMatch(shellCss.match(/\.shell-chat-conversations > \.sidebar\s*\{([^}]*)\}/)?.[1] ?? "", /border-right/);
   assert.match(shellCss, /\.shell-chat-conversations > \.sidebar\s*\{[\s\S]*?background:\s*transparent/);
@@ -104,8 +122,11 @@ test("the shell preserves the Chat card while the conversation navigation sits d
   assert.match(shellCss, /\.chat-navigation-sidebar \.archived-channel-group,[\s\S]*?border-top:\s*0/);
   assert.match(shellCss, /\.chat-navigation-sidebar \.live-bar\s*\{[\s\S]*?border-top:\s*0;[\s\S]*?background:\s*transparent/);
   assert.match(shellCss, /\.chat-navigation-sidebar \.chan-row \+ \.chan-row\s*\{[\s\S]*?margin-top:\s*4px/);
-  assert.match(shellCss, /\.chat-navigation-sidebar \.item:hover:not\(\.active\)\s*\{[\s\S]*?background:\s*#ececeb/);
-  assert.match(shellCss, /\.chat-navigation-sidebar \.item\.active,[\s\S]*?\.chat-navigation-sidebar \.item\.active:hover\s*\{[\s\S]*?background:\s*#ffffff/);
+  assert.match(shellCss, /\.chat-navigation-sidebar \.item:hover:not\(\.active\)\s*\{[\s\S]*?background:\s*var\(--ui-muted-bg\)/);
+  assert.match(shellCss, /\.chat-navigation-sidebar \.item\.active,[\s\S]*?\.chat-navigation-sidebar \.item\.active:hover\s*\{[\s\S]*?background:\s*var\(--ui-muted-bg\)/);
+  assert.match(globalCss, /\.seg-pill\{[^}]*background:var\(--ui-muted-bg\)/);
+  assert.match(globalCss, /\.seg\{[^}]*background:var\(--ui-muted-bg\)/);
+  assert.match(globalCss, /\.seg button\.on\{background:var\(--surface\)/);
   assert.match(shellCss, /\.shell-chat-drawer > \.sidebar\s*\{[\s\S]*?border:\s*0/);
   assert.match(globalCss, /\.sb-title\{[^}]*font-family:var\(--sans\)/);
   assert.match(messageCss, /\.chat-message\{[\s\S]*?margin:0 auto 20px/);

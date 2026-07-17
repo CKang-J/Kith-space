@@ -86,7 +86,7 @@ test("shared sliding control owns the card and aggregate panel selection visuals
   assert.match(slidingControlSrc, /semantics === "tabs" \? "tablist" : "radiogroup"/);
   assert.match(slidingControlSrc, /role: "radio" as const/);
   const track = ruleBody(".sliding-tabs", slidingControlCss);
-  assert.match(track, /background\s*:\s*#f5f5f5/);
+  assert.match(track, /background\s*:\s*var\(--ui-muted-bg\)/);
   const indicator = ruleBody(".sliding-tabs__indicator", slidingControlCss);
   assert.match(indicator, /0 1px 2px rgb\(0 0 0 \/ 7%\)/);
   assert.match(indicator, /0 3px 8px rgb\(0 0 0 \/ 6%\)/);
