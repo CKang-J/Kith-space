@@ -13,5 +13,5 @@
     "types": ["node"],
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "drizzle.config.ts"]
+  "include": ["src/**/*.ts", "scripts/p-a9/**/*.ts", "scripts/p-a9/**/*.mts", "drizzle.config.ts"]
 }

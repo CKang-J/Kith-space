@@ -4,13 +4,14 @@
 
 最后更新：2026-07-18。
 
-- **本轮 UI 验收已结束，P-A9 架构收敛方案及独立审查修正已锁定**：用户于 2026-07-18 确认聊天、壳层与相关 Space/频道 UI 的本轮手动验收结束；现有行为与视觉成为架构改造回归基线。独立子代理两轮审查提出的 Worker admission/幂等重放、依赖护栏自冲突、消息/任务提交点、调用方/端点覆盖、性能口径及阶段顺序问题均已并入规格，最终窄核对结论为 Go。下一步只进入 P-A9.0 当前行为特征测试、依赖护栏、Core/UI 性能基线和 P-A9.4 目标契约清单，不在 P-A9.0 提前实现或声称已有 admission ack。
+- **P-A9.0 基线、护栏与性能测量已完成**：当前行为 characterization、精确依赖 allowlist、1/5/10/20 Agent Core 基线、100/500/1000 消息 Chat 浏览器基线、fake Runtime harness 和 P-A9.4 admission/replay 目标清单均已落地。socket-send 始终只记为同步 enqueue 诊断指标；本切片没有实现或声称已有 admission ack、持久 get-or-reserve、RuntimeSession 容量队列或 Worker admission SLO。下一步只进入 P-A9.1a Message/Task 等价提取。
 
 ## 一、现在在哪
 
 - 主干：`main`。临时工作分支不作为阶段进度记录。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A1-A6、P-A7 H1-H4、P4/P-A8 与本轮聊天/壳层 UI 已完成实现、自动化验证和用户验收；P-A9 Desktop 监督的模块化单体架构收敛方案已锁定并完成独立审查，代码实施尚未开始**。保留 Electron/Core/Worker 拓扑与 TypeScript 主栈；先做 P-A9.0 基线、护栏和性能测量，再按 Message/Task、Agent Transport、领域依赖、Runtime admission/session 容量、Chat 控制层渐进迁移。完整规格见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
+- 当前阶段：**A1-A6、P-A7 H1-H4、P4/P-A8、本轮聊天/壳层 UI 与 P-A9.0 均已完成实现和验证；P-A9 下一步只进入 P-A9.1a**。继续保留 Electron/Core/Worker 拓扑与 TypeScript 主栈，随后再按 Agent Transport、领域依赖、Runtime admission/session 容量、Chat 控制层渐进迁移。完整规格见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
+- **P-A9.0 完成事实**：依赖护栏禁止 `src/{messages,tasks,agents,channels,files}` 新增对 `src/{server,desktop}` 的生产依赖，仅精确放行现有 `src/agents/agentDeletion.ts -> src/server/storage.ts`，该 allowlist 必须在 P-A9.3 删除；机器矩阵冻结 11 个生产写入用例及全部 7 个 `createMessage` 生产调用点、31 个 Agent HTTP 端点和 16 项 P-A9.4 目标契约。Core、fake Runtime current-fact smoke、安装 CLI 观测 smoke 与 Chat 实测数据及绝对 SLO 见 `docs/performance/p-a9-baseline.md`，契约与删除条件见 `docs/architecture/p-a9-contract-matrices.md`。
 - 聊天消息流已从全宽描边卡片迁入统一 `ChatMessageItem` 表现层，主会话、话题、action card 与加载 Skeleton 共用 32px 头像、紧凑发送者行和 Human/Agent 语义气泡；1040px 居中流宽、14.5px/1.55 正文、52px 标题、14px 顶部留白、88px Composer 预留和气泡内话题摘要已落地。普通链尾间距为 20px；同一天相邻且同发送者的 Human/Agent 普通消息隐藏重复头像/昵称并以 6px 组内间距连续展示，hover/focus 在头像槽显示时分，系统消息、action card、日期和发送者变化会打断分组。Human 消息昵称使用真实的 `14.5px / 700 / 20px`，Agent 昵称始终保持 500 字重、hover/focus 只转为深色；时间为 `11px / 400 / 16px`，二者按基线对齐且消息头无额外字距；侧栏 Agent 名称继续使用 600。发送者行状态文字移除并只保留头像状态点；Agent 私聊标题改为头像加昵称并移除 `@` 前缀，状态文字复用 Agents 页面中文映射。父消息话题摘要新增参与者头像、总数、最新时间、最近三条 Human/Agent 单行回复和“在话题中回复”，system 任务事件不进入预览行且正文与摘要之间无分隔线；主消息流中的 system 任务事件与内部 Markdown 已纳入 1040px 中心轨道并居中。摘要复用批量 thread metadata 接口并实时刷新变更父消息，不产生逐话题请求。主消息工具外显“加表情、话题、复制、更多”，收藏保留在更多菜单，工具栏只由气泡 hover/focus 触发并按右侧空间自动切换到气泡右侧或上方；隐藏状态初始置于气泡上方，消息流只允许纵向滚动，不再出现底部横向滚动条。归档频道隐藏写入口并保留复制和打开已有话题；Showcase 已由后续壳层切片完整退役。真实页面的 Split、ChatOnly、滚动场景和用户手动视觉验收均已完成。
 - **Chat 壳层与侧栏模块导航已完成并通过本轮用户验收**：ChatOnly 在左侧常驻 Chat 导航栏顶部纵向展示“图标 + 文字”的 Spaces（Home only）、Inbox、Tasks、Agents、Settings，不显示 Chat、顶部“对话”总标题或底部 Dock；模块图标与“频道 / 私信”分组标题共用左侧基线。点击模块后固定侧栏隐藏，继续进入现有 Split/ModuleOnly，并在 Module Pane 底部显示含 Chat 图标的横向 Dock。Split 的会话抽屉复用 `ConversationListContent`，只组合已保存、频道、私信，不含模块入口与 `LiveAgentBar`，并保留抽屉自身标题。中心 Chat 保持原有圆角卡片、画布间隙与配色；常驻会话导航取消独立卡片底板并直接使用画布背景，新增模块入口与会话抽屉不绘制贯穿式横线或竖线。功能文字统一无衬线字体；Chat 标题栏固定左右 14px，与标题内容上下留白一致；ChatOnly 与 Split 使用同一 10px 消息 gutter，ChatOnly 主卡片沿用 360px Chat 绝对下限，日期分隔/消息/Composer 使用 1040px 居中共轨；消息流只允许纵向滚动，隐藏工具栏不会撑出横向滚动条。案例展示入口、产品路由、视图、演示数据/资产和专属分支均已删除。旧 `/showcase` 只保留 SPA fallback，由 `WorkspaceFrame` 规范化到当前 Space 默认频道并保留合法模块 query。完整规格见 `docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md`。
 - 最新轨道校准已把 Composer 的左边界对齐消息头像槽、右边界对齐消息内容列最大边界；消息滚动区使用 `stable both-edges`，Composer 随消息区保留 10px gutter，标题栏独立使用 14px 左右内距并与标题内容上下留白一致。两者分别保持自身视觉对称，并避免 `scrollbar-width: thin` 与 WebKit 尺寸不一致、滚动条出现/消失或重复预留造成水平偏移。
@@ -138,10 +139,10 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 五、下一步顺序
 
-1. 进入 P-A9.0：冻结全部生产消息/任务写入调用方、Agent 逐端点、当前 Worker socket-send/reconnect 和 Chat 特征矩阵；依赖护栏仅对当前 `agentDeletion -> server/storage` 反向边保留精确临时 allowlist；建立 1/5/10/20 Agent 的 Core/UI 基线与绝对 SLO，并产出 P-A9.4 admission/replay 目标契约清单。当前 socket-send 只记诊断基线，不冒充 Worker admission。
-2. P-A9.0 通过前不搬迁 `createMessage`，不引入 Runtime 容量默认值，不做 Rust 试验；基线通过后才进入 P-A9.1 MessagePostingModule。
-3. 后续按 Agent Transport、领域依赖、Runtime 容量/背压、Chat 控制层和证据驱动优化逐切片实施；每片保留短期 facade、迁移完调用方后删除旧 Implementation。
-4. Runtime 契约 v2 与 H5 跨 Space 编排继续暂停，分别等待 P-A9 的 Runtime 与消息/任务/Agent Interface 稳定；生产力模块与 Message Context Snapshot 继续在后。
+1. 只进入 P-A9.1a：按已冻结的写入矩阵等价提取 MessagePostingModule 与独立 TaskModule Interface，保持 P-A9.0 characterization 记录的事务、错误和副作用顺序；不在同一切片收拢事务。
+2. P-A9.1a 只建立 `WakeDispatchPort` / `ConversationEventSink` 等窄 seam 和短期 facade；不实现 admission ack、get-or-reserve、容量队列，不改变 schema、公开 URL、Agent CLI 或产品行为。
+3. P-A9.1a 完成并独立验证后，才单独进入 P-A9.1b 失败注入与同库事务收拢；后续仍按 Agent Transport、领域依赖、Runtime 容量/背压、Chat 控制层和证据驱动优化逐切片实施。
+4. Runtime 契约 v2、H5、Rust 试验与 UI 重做继续暂停；生产力模块与 Message Context Snapshot 继续在后。
 
 每阶段独立验证、独立中文提交。未获得用户明确指示，不合并 main、不推远端、不发布。
 
@@ -150,7 +151,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - 包管理使用 pnpm；脚本参数直接跟在后面，例如 `pnpm test --unit`。
 - 常规验证：`pnpm run typecheck`、`pnpm test --unit`、`pnpm test --integration`、`pnpm --dir web run build`。
 - 测试 runner 同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向同一个随机临时 profile 的不同子目录；手写测试若绕过 runner，必须显式覆盖默认 Space 容器或直接传 rootPath，绝不在真实 `~/Kith-space` 生成 fixture。
-- 当前验收单测基线为 640/640；旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6、H1-H4 与聚合面板/频道设置小节里的旧数字只描述当时检查点，不是当前基线。
+- 当前验收单测基线为 667/667；P-A9.0 同时通过完整 integration、Web build（2636 modules）与 Desktop build。旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6、H1-H4 与聚合面板/频道设置小节里的旧数字只描述当时检查点，不是当前基线。
 - 新功能优先拆到职责清楚的模块；不整块重写 `src/server/core.ts` 或大型 React 组件。
 - 代码、命令、架构、UI、术语或阶段变化时，同一提交同步相应文档。
 - 用户未要求时不修改或提交 `.agents/`、`.claude/`、`.codegraph/daemon.pid`、`skills-lock.json` 等外部/个人工具文件。

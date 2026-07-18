@@ -133,13 +133,13 @@ H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integrati
 
 ### P-A9 Desktop 监督的模块化单体架构收敛
 
-状态：方案已锁定并完成独立审查，代码实施尚未开始；下一步只进入 P-A9.0 基线、护栏与性能测量。
+状态：P-A9.0 基线、护栏、实测与完整验证已完成；下一步只进入 P-A9.1a Message/Task 等价提取。
 
 - 保留 Electron Desktop Supervisor、Core Service、唯一 Local Runtime Worker、React UI 与外部 runtime 的进程拓扑；Core/Worker 都是 Desktop 内部边界，不恢复服务器部署或远程 daemon。
 - 保留 TypeScript / Node / Electron / React / SQLite 主技术栈，不做 Rust 全量重写。Rust 只在性能基线与 profiler 证明单一稳定 CPU 热点后，才可作为窄 Adapter 单独评估。
 - 以高内聚低耦合、单一职责、开放封闭、KISS、DRY、迪米特法则、依赖倒置和分层架构为约束，依次收敛 Message/Task、Agent 数据面、频道/文件、Runtime 与 Chat 控制层。
 - `src/server/` 收窄为组合根和 Transport Adapter；业务 Module 不反向依赖 server/desktop，Human、Agent CLI 与未来 MCP 复用同一用例 Interface。P-A9.0 对当前唯一 `agentDeletion -> server/storage` 反向边做精确临时 allowlist，P-A9.3 强制删除。
-- P-A9.0 先冻结全部消息写入调用方、Agent 逐端点、当前 Worker socket-send/reconnect 与 Chat 特征矩阵，建立 1/5/10/20 Agent 的 Core/UI 基线和绝对 SLO；当前 socket-send 只作诊断指标，同时产出 P-A9.4 admission/replay 目标契约清单。真正的 Worker admission 测试、绝对 SLO、RuntimeSession 容量/背压在 P-A9.4 随 ack 一起落地。
+- P-A9.0 已冻结全部消息写入调用方、31 个 Agent 端点、当前 Worker socket-send/reconnect 与 Chat 特征矩阵，建立 1/5/10/20 Agent Core 基线、100/500/1000 消息 UI 基线与各自绝对 SLO，并产出 16 项 P-A9.4 admission/replay 目标契约清单。当前 socket-send 只作诊断指标；真正的 Worker admission 测试、绝对 SLO、RuntimeSession 容量/背压仍在 P-A9.4 随 ack 一起落地。冻结数据见 `docs/performance/p-a9-baseline.md`，矩阵见 `docs/architecture/p-a9-contract-matrices.md`。
 - Message/Task 通过 `WakeDispatchPort` 隔离唤醒副作用；Core→Worker 使用稳定 deliveryId 和 `admitted | queued | rejected` ack。wake 复用 reservationId，手动/生命周期命令使用独立 commandId；Core 只在接纳后 commit wake，断线按同一逻辑键重放而不重复消耗 wake budget，`lastReadSeq` 关闭未读重放窗口。
 - 全阶段不改现有产品行为、公开 URL、Agent CLI 或 `/daemon/connect` 路径；默认不改 schema，若现有表无法保证重放幂等则停下并单独设计迁移。每个切片独立验证、独立回滚。
 

@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述个人 AgentOS 的目标模块边界。A2-A6 原定代码切片、Home/Space root 的 H1-H4 前置修复、P-A8 Agent 频道响应模式及本轮聊天/壳层 UI 已完成实现、自动化验证和用户验收。当前进入 P-A9 Desktop 监督的模块化单体架构收敛；Runtime 契约 v2 与 H5 等待对应 Module Interface 稳定后再实施。P-A9 完整规格见 `../superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
+> 本文描述个人 AgentOS 的目标模块边界。A2-A6 原定代码切片、Home/Space root 的 H1-H4 前置修复、P-A8 Agent 频道响应模式及本轮聊天/壳层 UI 已完成实现、自动化验证和用户验收。P-A9.0 当前行为、依赖护栏与 Core/UI 性能基线已冻结，下一步只进入 P-A9.1a 等价提取；Runtime 契约 v2 与 H5 等待对应 Module Interface 稳定后再实施。P-A9 完整规格见 `../superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
 
 ## 1. 架构原则
 
@@ -291,7 +291,7 @@ Windows Desktop 是 v1 唯一正式发行物；系统能力选型不得无必要
 
 P-A9 保留 `Electron Desktop -> Core Service -> Local Runtime Worker -> 外部 runtime` 拓扑。Core 为 sandboxed renderer、授权浏览器和 Agent CLI 提供同一份本机权威，不是服务器部署遗留；Worker 隔离外部 runtime 进程、每 Agent 顺序和未来安装级容量，不是远程 daemon。不得把业务逻辑重新塞入 Electron main，也不得为“去 server 化”取消本机 Core。
 
-`src/server/` 的目标职责只有组合根、认证、HTTP/Socket 解析、错误/DTO 映射与兼容入口。消息、任务、Agent、频道、文件、Space 与 Runtime 控制分别形成高内聚 Module；业务 Module 不导入 `src/server/` 或 `src/desktop/`。当前反向依赖 `src/agents/agentDeletion.ts:3 -> src/server/storage.ts` 必须在文件 Module 切片中消除。
+`src/server/` 的目标职责只有组合根、认证、HTTP/Socket 解析、错误/DTO 映射与兼容入口。消息、任务、Agent、频道、文件、Space 与 Runtime 控制分别形成高内聚 Module；业务 Module 不导入 `src/server/` 或 `src/desktop/`。`scripts/p-a9/module-dependency-guard.mjs:9` 已把当前唯一反向依赖 `src/agents/agentDeletion.ts -> src/server/storage.ts` 固定为精确源文件、specifier 与目标文件 allowlist；任何新增领域反向边或 allowlist 失效都会失败，P-A9.3 必须删除该临时项。
 
 ### 10.2 首要拆分面
 
@@ -304,6 +304,8 @@ P-A9 保留 `Electron Desktop -> Core Service -> Local Runtime Worker -> 外部 
 
 Human HTTP、Agent data plane 与未来 MCP 必须通过同一消息/任务 Interface。普通消息、action proposal、reminder 与 introduction 使用受控判别联合；任务创建通过独立 Task Interface，并只与消息 Module 共享内部 ConversationJournal，不能形成公开循环依赖。Message/Task Module 通过 `WakeDispatchPort` 提交唤醒 effect，Core 控制层在其 Production Implementation 中编排 reservation/recovery。Core→Worker 是会断线/重连的真实进程 Seam，使用更低层的 `RuntimeWorkerPort`：Production Adapter 走受信 raw WebSocket，Module/协议测试使用进程内 Implementation。外部 Claude/Codex/opencode 继续实现 `src/daemon/runtime.ts:36` 的 Runtime Interface；实时发布通过窄事件 sink 隔离。
 
+P-A9.0 已增加只发布 `spaceId/type/observedAt` 的 realtime diagnostics channel（`src/server/realtimeDiagnostics.ts:14`、`src/server/realtime.ts:12`），以及 in-memory Event/Worker Adapter 与 fake Runtime harness（`src/server/testing/inMemoryEventAdapter.ts:3`、`src/local-runtime/testing/inMemoryWorkerAdapter.ts:5`、`src/daemon/testing/fakeRuntimeHarness.ts:24`）；这些测试 Implementation 不复制消息正文或改变生产事件。当前 transport 特征测试明确：`ws.send()` 返回只代表同步 enqueue，Worker 发出的 `agent:deliver:ack` 尚未被 Core 消费，pending delivery 当前恰好为最新 10 条且默认 TTL 边界为 14999/15000 ms。当前未读 reconnect 在新 Worker lease 会新建另一条 success reservation，直到 `lastReadSeq` 推进才停止重放；这是 P-A9.4 要替换的缺陷，不是已有 get-or-reserve。完整当前矩阵与删除条件见 `../architecture/p-a9-contract-matrices.md`。
+
 `RuntimeWorkerPort.start/deliver` 必须携带稳定 deliveryId 并等待 `admitted | queued | rejected` ack；wake 命令使用 reservationId，手动与 stop/reset 等生命周期命令使用独立 commandId，不消耗 wake budget。`ws.send()` 未抛错不代表接纳成功。Core 的 get-or-reserve 以 `(spaceId, chainId, messageId, targetAgentId)` 为持久逻辑键并复用原 reservationId；只在接纳后 commit wake，明确拒绝时释放仍为 reserved 的记录，断线在新 lease 上重放同一 reservation。重复 command/ack 与 reconnect 不得重复增加 wake count，Agent check/read 推进的 `lastReadSeq` 关闭未读重放窗口。现有表若无法证明持久唯一性，先补独立 schema/迁移设计。
 
 该边界只保证接纳确认与未读重放，不把现有 Runtime 契约夸大为端到端 exactly-once：Agent 已 check/read 后、回复前崩溃的恢复仍等待 Runtime 契约 v2 的 turn completion 语义。
@@ -312,12 +314,12 @@ SQLite 与本地文件系统属于可在临时目录真实替代的进程内依�
 
 ### 10.4 性能与 Rust 边界
 
-P-A9.0 先用真实临时 SQLite 与 in-memory Worker/Event Adapter 建立 1/5/10/20 Agent 的 post p50/p95、SQL 数、event-loop delay、内存和 fan-out 基线，并用 fake Runtime harness 记录当前 session 启停事实；当前 socket-send 只作诊断基线，不称为 admission。每场景至少 5 个 round、每 round 100 次操作，报告 median p95、离散度和机器配置，并冻结 Core durable commit 与 UI 的绝对 SLO；同时产出 P-A9.4 admission/replay、容量、公平、取消与排空目标契约清单。P-A9.4 消费真实 ack 后再建立 Worker admission 的绝对 SLO，并用 fake Runtime 与可用时的真实 CLI 启动/RSS smoke 决定首版存活 RuntimeSession 容量；turn-complete 与 turn 级限流留给 Runtime 契约 v2。之后优先批量解析响应模式/scope，再按 React profiler 决定是否需要列表虚拟化。
+P-A9.0 已用真实临时 SQLite 与 in-memory Worker/Event Adapter 建立 1/5/10/20 Agent 的 post p50/p95、SQL 数、event-loop delay、内存和 fan-out 基线（`scripts/p-a9/core-baseline.ts:9`），并用 fake Runtime harness 记录当前 session 启停事实（`scripts/p-a9/runtime-baseline.ts:5`）；fake Runtime 是确定性 fact smoke，不声称延迟 p95，当前 socket-send 也只作诊断基线，不称为 admission。Chat 已在 100/500/1000 成对数据集上完成预热 100 次后的 5×100 首次可见、5×100 独立实时追加与 5×100 全量挂载滚动样本（`scripts/p-a9/prepare-chat-baseline.ts:30`、`scripts/p-a9/chat-browser-probe.js:100`）。P-A9 TypeScript 基线脚本纳入 `pnpm run typecheck`。冻结数据与绝对 Core/UI SLO 见 `../performance/p-a9-baseline.md`；P-A9.4 admission/replay、容量、公平、取消与排空目标清单见 `../architecture/p-a9-contract-matrices.md`。P-A9.4 消费真实 ack 后再建立 Worker admission 的绝对 SLO，并用 fake Runtime 与可用时的真实 CLI 启动/RSS smoke 决定首版存活 RuntimeSession 容量；turn-complete 与 turn 级限流留给 Runtime 契约 v2。之后优先批量解析响应模式/scope，再按 React profiler 决定是否需要列表虚拟化。
 
 当前主栈继续是 TypeScript / Node / Electron / React / SQLite；`better-sqlite3` 已包含原生数据库实现。只有稳定基线仍未达标、结构性问题已消除、profiler 将多数可控 CPU 时间定位到一个稳定 Module，且三端构建收益为正时，才可另立 ADR 用 Rust Adapter 替换该窄 Implementation。全量 Rust 重写不属于路线。
 
 ### 10.5 实施与验收
 
-实施顺序固定为：P-A9.0 基线/护栏 -> Message/Task -> Agent Transport -> 领域依赖 -> Runtime admission/session 容量 -> Chat 控制层 -> 证据驱动性能优化 -> 兼容清理。每个切片先补特征测试，保留短期 facade，迁移完调用方后删除旧 Implementation；不改公开 URL、Agent CLI 或现有产品交互。默认不改 schema，若 Worker 重放幂等需要迁移则暂停对应切片并单独设计，不能夹带。
+实施顺序固定为：P-A9.0 基线/护栏 -> Message/Task -> Agent Transport -> 领域依赖 -> Runtime admission/session 容量 -> Chat 控制层 -> 证据驱动性能优化 -> 兼容清理。P-A9.0 已完成，下一步只做 P-A9.1a Message/Task 等价提取并保持冻结的失败语义；每个切片先补特征测试，保留短期 facade，迁移完调用方后删除旧 Implementation。不改公开 URL、Agent CLI 或现有产品交互；默认不改 schema，若 Worker 重放幂等需要迁移则暂停对应切片并单独设计，不能夹带。
 
 阶段完成时，`core.ts` 不再拥有消息/任务/频道/Runtime 投递业务 Implementation，Agent route 不直接访问数据库，Agent 删除不依赖 server，Chat 组合层不直接持有网络/Socket 生命周期，Runtime 有安装级容量与停机排空测试，并且 typecheck、全量 unit/integration、Web/Desktop build 与相关 packaged smoke 全部通过。量化门、风险和回滚见 P-A9 规格。

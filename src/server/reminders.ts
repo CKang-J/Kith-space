@@ -22,11 +22,11 @@ export function startReminderScheduler(): void {
 async function tick(): Promise<void> {
   for (const { db } of allSpaceDbs()) {
     const due = await db.select().from(schema.reminders).where(and(eq(schema.reminders.status, "scheduled"), lte(schema.reminders.remindAt, new Date())));
-    for (const r of due) await fire(r).catch((e) => log.warn("fire failed", { id: r.id, detail: String(e?.message ?? e) }));
+    for (const r of due) await fireReminder(r).catch((e) => log.warn("fire failed", { id: r.id, detail: String(e?.message ?? e) }));
   }
 }
 
-async function fire(r: typeof schema.reminders.$inferSelect): Promise<void> {
+export async function fireReminder(r: typeof schema.reminders.$inferSelect): Promise<void> {
   const db = dbForSpace(r.spaceId);
   const now = new Date();
   const sec = r.recurrence ? Number(r.recurrence) : 0;

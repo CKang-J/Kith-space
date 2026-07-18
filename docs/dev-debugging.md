@@ -111,3 +111,43 @@ pnpm run desktop:dist    # x64、per-user、assisted NSIS 安装器
 ```
 
 `desktop:pack` 和 `desktop:dist` 会先为 Electron x64 强制重建 `better-sqlite3`，打包结束或失败后再恢复本地 Node ABI。安装器当前未签名，公开分发前必须配置 Windows 代码签名证书。A6 的具体构建与 smoke 验收记录以 [`progress.md`](./progress.md) 为准。
+
+## 8. P-A9.0 Chat 浏览器基线
+
+Chat 基线只能在全新临时 profile 上运行。先创建一个绝对临时目录并保存 fixture 输出：
+
+```powershell
+$profile = Join-Path $env:TEMP ("kith-space-p-a9-ui-" + [guid]::NewGuid().ToString("N"))
+pnpm exec tsx scripts/p-a9/prepare-chat-baseline.ts --profile $profile --port 7777
+```
+
+fixture 要求 `$profile` 尚不存在，并为 100/500/1000 各创建一对等量频道、5 个独立 realtime 频道和随机生成的 local browser access token（都在一次性 JSON 输出中）。随后按第 1、2 节配置同一个 profile、临时 Desktop/Worker credential，启动 Core 与 Vite：
+
+```powershell
+$env:KITH_SPACE_HOME = Join-Path $profile "app-data"
+$env:KITH_SPACE_SPACES_DIR = Join-Path $profile "spaces"
+```
+
+不要复用真实 app data，也不要把 fixture 输出的临时 token 当正式凭据。
+
+在授权的内置 Browser 打开 Vite，注入 `scripts/p-a9/chat-browser-probe.js`。首次可见使用 fixture 的 `channelPairs`，把每对 A/B 的 `name` 映射为 `channelName` 后先交替预热 100 次，再记录 5 个独立的 100 次 round：
+
+```js
+const targets = [pair.a, pair.b].map(({ name, targetText }) => ({ channelName: name, targetText }));
+await pA9BrowserProbe.renderRound(targets, 100); // warmup，不记录
+const rounds = [];
+for (let round = 0; round < 5; round += 1) rounds.push(await pA9BrowserProbe.renderRound(targets, 100));
+```
+
+每个记录 round 的 `durationsMs.length` 必须为 100；不得用一次频道打开伪称 p95。实时轮次使用独立 `appendChannels`，先 `armRealtime(round, 100)`，再从终端执行：
+
+```powershell
+pnpm exec tsx scripts/p-a9/append-chat-baseline.ts `
+  --server http://127.0.0.1:7777 `
+  --desktop-token <temporary-desktop-token> `
+  --space-id <fixture-space-id> `
+  --channel-id <fixture-append-channel-id> `
+  --round 1
+```
+
+追加完成后调用 `readRealtime()`。滚动样本先调用 `loadHistory(100|500|1000)`，确认 article 全量挂载，再执行 5 次 `scrollRound(100)`。结束时调用 `cleanup()`、停止 Core/Vite 并删除本轮临时 profile。统计口径、真实样本和绝对 SLO 见 [`performance/p-a9-baseline.md`](./performance/p-a9-baseline.md)。

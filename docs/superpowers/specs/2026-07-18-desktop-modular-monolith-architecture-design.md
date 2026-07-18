@@ -2,13 +2,14 @@
 
 - 日期：2026-07-18
 - 阶段：P-A9
-- 状态：方案已锁定，独立审查修正已并入，实施尚未开始
-- 当前代码基线：`codex/feat-ui-updates` @ `0b539d8`
+- 状态：P-A9.0 基线、护栏、实测与完整验证已完成；下一步只进入 P-A9.1a
+- 方案锁定基线：`codex/feat-ui-updates` @ `0b539d8`
+- P-A9.0 实施起始基线：`codex/feat-ui-updates` @ `ec2ef82`
 - 前置条件：用户已于 2026-07-18 确认本轮 UI 手动验收结束
 - 独立审查：2026-07-18 已完成两轮审查与最终窄核对（Go）；原 No-go 项及复审发现的 P-A9.0/P-A9.4 阶段冲突均已纳入本文修正
-- 关联文档：`docs/progress.md`、`docs/roadmap.md`、`docs/decisions.md` 决策 29、`docs/kith-space/architecture-proposal.md`
+- 关联文档：`docs/progress.md`、`docs/roadmap.md`、`docs/decisions.md` 决策 29、`docs/kith-space/architecture-proposal.md`、`docs/performance/p-a9-baseline.md`、`docs/architecture/p-a9-contract-matrices.md`
 
-> 本文只确定下一阶段的架构收敛方案、切片顺序和验收标准，不在本次文档工作中改动生产代码。实现必须逐切片迁移、逐切片验证；不得借“架构优化”之名重写产品、改变既有交互，或把尚未测量的性能问题归因给 TypeScript。
+> 本文确定 P-A9 的架构收敛方案、切片顺序和验收标准。P-A9.0 已按本文完成基线与护栏，后续仍必须逐切片迁移、逐切片验证；不得借“架构优化”之名重写产品、改变既有交互，或把尚未测量的性能问题归因给 TypeScript。
 
 ## 1. 结论摘要
 
@@ -268,6 +269,8 @@ Interface 是主要测试表面。旧内部 helper 测试只有在等价行为�
 
 范围：不改产品行为，只建立安全网。
 
+状态：已完成。当前行为矩阵与 P-A9.4 删除条件见 `docs/architecture/p-a9-contract-matrices.md`，机器与浏览器实测、绝对 Core/UI SLO 及复跑入口见 `docs/performance/p-a9-baseline.md`。
+
 - 建立全部生产写入调用方矩阵：Human message/asTask、Agent send/thread/task、action prepare、reminder、introduction 与内部 task audit；为每类指定 Message/Task/Action/Reminder 的唯一所有者；
 - 补 `createMessage` 特征矩阵：归档拒写、mention auto-join、`@all` 快照、任务单 assignee/无副作用拒绝、介绍 token、action proposal、reminder、附件绑定、话题 follow、dispatch reservation 失败释放、当前分段写入的提交点、任务已创建但 audit/assignment 失败、事件顺序与提交后失败返回；
 - 补 Agent HTTP 逐端点矩阵：认证/scope/Space、freshness hold/draft、message check/read watermark、action normalization、上传回滚、reaction、thread ACL、search、task CAS、attachment ACL、reminder anchor 与稳定错误；
@@ -436,17 +439,17 @@ P-A9 只有同时满足以下条件才算完成：
 ### 当前状态
 
 - 用户已确认本轮 UI 手动验收结束；既有 UI/行为成为 P-A9 回归基线；
-- 当前工作分支为 `codex/feat-ui-updates`，文档工作开始前 HEAD 为 `0b539d8`，工作区干净；
-- 代码架构分析与本方案已完成，生产代码未改动；
-- 独立子代理首轮因 admission/重放幂等与依赖护栏自冲突给出 No-go，复审又指出 P-A9.0 不应要求尚未落地的 admission 测试/SLO 变绿；相关 Blocker 与 Major 均已纳入本版，最终窄核对结论为 Go。当前 P-A9.0 只冻结现状并产出 P-A9.4 目标清单，可安全进入实施；
-- 当前权威单测基线仍是文档记录的 640/640，本次只写文档，未重新运行代码测试。
+- 当前工作分支为 `codex/feat-ui-updates`，P-A9.0 实施起始 HEAD 为 `ec2ef82`；
+- P-A9.0 已增加绿色 characterization、精确依赖护栏、in-memory Event/Worker Adapter、fake Runtime harness、可重复 Core/UI 测量与 Runtime current-fact smoke 脚本，以及 P-A9.4 目标契约清单；
+- 独立方案审查提出的 admission/重放幂等、依赖护栏与阶段冲突均已落实：P-A9.0 只冻结现状并产出 P-A9.4 目标清单，没有实现 ack、get-or-reserve 或容量队列；
+- 当前权威单测基线为 667/667；typecheck、完整 integration、Web build（2636 modules）和 Desktop build 均通过。1/5/10/20 Agent Core、fake Runtime current-fact smoke、安装 CLI 离线观测 smoke 与 100/500/1000 消息真实 Chat 浏览器样本已记录。
 
 ### 下一阶段
 
-只进入 **P-A9.0 基线、护栏与性能测量**：建立当前行为的绿色特征测试、Core/UI 基线和 P-A9.4 admission/replay 契约清单，不实现目标 ack/队列。在该阶段完成前，不开始 `createMessage` 搬迁，不进入 Runtime 契约 v2、H5 或 Rust 试验。
+只进入 **P-A9.1a Message/Task 等价提取**：保持 P-A9.0 冻结的当前事务、错误与副作用语义，用窄 Interface 和临时 facade 迁移矩阵中的调用方。该切片不进入 P-A9.1b 事务收拢，不实现目标 ack/get-or-reserve/队列，也不进入 Runtime 契约 v2、H5、Rust 试验或 UI 重做。
 
 ### 工作区与提交边界
 
-- 本次只修改架构/进度文档；
+- P-A9.0 代码、测试、脚本和文档保持同一切片；
 - 未获得用户明确要求，不创建提交、不推送、不合并；
 - 后续每个代码切片独立中文提交、独立验证，避免多个 Agent 同时修改 `core.ts`、`routes-agent.ts` 或 `Chat.tsx`。

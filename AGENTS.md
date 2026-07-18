@@ -16,7 +16,7 @@ Kith-space 是一个**桌面优先、单人使用的个人 AgentOS**：一个 Hu
 - `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md` — **Agent 频道响应模式规格**：Space 默认、频道覆盖、唤醒/响应指令矩阵、任务指派与 UI；已实现并通过本轮用户验收。
 - `docs/superpowers/specs/2026-07-15-chat-message-ui-density-design.md` — **聊天消息流密度与交互重构规格**：消息气泡、字体与间距、工具交互、表现层组件边界、实施切片和量化验收；代码、自动化验证与用户手动视觉验收均已完成。
 - `docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md` — **Chat 壳层与侧栏模块导航规格**：ChatOnly 纵向模块入口、模块打开态 Dock、三组会话抽屉、中心 Chat 卡片保护、画布式会话导航与案例展示退役；代码、自动化验证与用户手动视觉验收均已完成。
-- `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md` — **P-A9 桌面模块化单体架构收敛规格**：保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，按深 Module、窄 Interface、可替换 Seam 和性能基线渐进拆分；方案与独立审查修正已锁定，实施未开始。
+- `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md` — **P-A9 桌面模块化单体架构收敛规格**：保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，按深 Module、窄 Interface、可替换 Seam 和性能基线渐进拆分；P-A9.0 基线与护栏已完成，下一步只进入 P-A9.1a 等价提取。
 - `docs/vision.md` — 北极星：完整理念 + **超越 MVP 的长远愿景**。理解"为什么"从这里开始。
 - `docs/decisions.md` — 全部决策（29 条）+ 推理 + 权衡 + **被推翻/修正的决策**演化脉络。理解"凭什么这样定"看这里。
 - `docs/roadmap.md` — 产品能力分期：当前 A1-A6 与其后的本机能力路线，并区分延后能力和永久非目标。
@@ -65,7 +65,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 - 技术栈：TypeScript / Node（Core Service + 安装级唯一 Local Runtime Worker；目录/命令仍暂用 server/daemon）、Electron 43.1.0 + electron-builder 26.15.3（正式 Desktop 宿主与 Windows 打包）、React + Vite（共享 UI）、Drizzle ORM。
 - 包管理：**pnpm 11.13.1**（由根目录 `packageManager` 固定；workspace 仅根目录 + `web/`，`pnpm-lock.yaml`）。安装 `pnpm install`。注意 pnpm 的传参约定：脚本参数**直接跟在后面、不加 `--`**——用 `pnpm test --unit` / `pnpm test --integration`，**不要**写 `pnpm test -- --integration`。公共 daemon 包与 npm/OIDC 发布 workflow 已在 A6 删除；仓库不再维护公共 npm 发行路线。
 - 数据层：**SQLite**。每 Space 一个 `<folder>/.kith/workspace.db`；中央 `app.db` 保存唯一 Human、稳定 Home 身份、Space registry、Web 模式、访问 Token 哈希/版本、浏览器会话与 Desktop 关闭/自启动设置。A2.2b 已落地单一 19 表 baseline；当前 workspace schema v5 在不增加表的前提下加入 Agent 默认响应模式、顶层频道覆盖与非追溯 wake watermark。app data 默认 `~/.kith-space`，默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`；`KITH_SPACE_HOME` 只覆盖 app data，`KITH_SPACE_SPACES_DIR` 独立覆盖开发/测试默认 Space 容器。P-A7 H2 已把 Claude Code、Codex、opencode 的 cwd 切到所属 Space root，把 Agent Memory 放入 `<space>/.kith/agents/<agentId>`，把 adapter 临时状态留在 app data runtime 目录；Agents 详情的“记忆”文件浏览器只读取当前 agentMemoryDir。Copilot/Kimi/Cursor 仍为 experimental adapter 并暂用 runtime state cwd。H3 已补默认创建、已有文件夹接入、稳定 ID 复用、失联状态与重新定位；普通 API 不会隐式重建失联 Space。H4 已以稳定 homeSpaceId 区分 Home，在 Home Dock 提供真实 registry 驱动的 Spaces 模块，并让普通冷启动进入 Home；普通 Space 不接受 `module=spaces`。旧 schema 不自动迁移或删除。详见 `architecture-proposal.md §5`、Home/Space root 补充规格与 P-A8 响应模式规格。
-- 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。测试 runner 会同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向随机临时 profile，零 Postgres/Redis 即可全绿；当前验收单测基线为 640/640，旧 `publicNavContract` 失败已随失效的 public landing 路线删除。改动配套跑测试再提交。
+- 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。测试 runner 会同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向随机临时 profile，零 Postgres/Redis 即可全绿；当前验收单测基线为 667/667，旧 `publicNavContract` 失败已随失效的 public landing 路线删除。改动配套跑测试再提交。
 - 启动与发行：推荐 `pnpm install` → `pnpm run desktop:dev`。全新数据目录由 Desktop 首次初始化界面收集 Human 名称（必填）、邮箱和描述（选填），并创建 `Home`，不再要求预先执行 `seed`；`pnpm run seed` 只保留为手动分进程调试或 fixture 辅助。Desktop 统一启动 Core Service、唯一 Local Runtime Worker、开发期 Vite 与 Electron；每次进程组启动/重启生成相互独立的 Desktop/Worker 临时凭据，普通用户和渲染器都不接触它们。`desktop:build` 只构建 Electron main/preload；`desktop:bundle` 生成 Web + Core/Worker/agent CLI 生产 bundle；`desktop:pack` 生成 Windows unpacked 目录；`desktop:dist` 生成 x64、per-user、assisted NSIS 安装器，输出在 `dist/desktop/`。当前安装器是可复现的本地/CI **未签名**产物，公开分发前必须配置 Windows 代码签名证书；尚未完成真实 NSIS 安装/卸载验收。`server`、`daemon`、`web`、`browser-access:dev` 和 `dev:e2e:up` 继续作为分进程调试入口；只有这类手动调试才从可选本地 `.env` 或进程环境注入独立内部凭据。日常命令以 `docs/dev-commands.md` 为准，低频参数以 `docs/dev-debugging.md` 为准。
 - Git/PR：采用轻量 GitHub Flow，只保留长期分支 `main`；从最新 `main` 创建短分支，通过 PR 和 CI 后 Squash 合入。提交使用中文 Conventional Commits，必要时用中文要点说明原因、边界和验证结果。完整流程见 `CONTRIBUTING.md`。
 - 提交权限：只在用户明确要求时创建提交、推送或 PR；先分支，不直推 `main`。
@@ -96,7 +96,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 ## 当前进展
 
-**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-18：A2-A6、P-A7 H1-H4、P4/P-A8 及本轮聊天与壳层 UI 已完成实现、自动化验证和用户验收；当前进入 P-A9 桌面模块化单体架构收敛，方案已锁定，代码实施从 P-A9.0 基线与护栏开始。H5 与 Runtime 契约 v2 均未开始。做到哪、下一步与关键发行边界全部见 `docs/progress.md`。
+**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-18：A2-A6、P-A7 H1-H4、P4/P-A8、本轮聊天与壳层 UI，以及 P-A9.0 基线/护栏均已完成实现和验证；下一步只进入 P-A9.1a Message/Task 等价提取。H5 与 Runtime 契约 v2 均未开始。做到哪、下一步与关键发行边界全部见 `docs/progress.md`。
 
 <!-- CODEGRAPH_START -->
 

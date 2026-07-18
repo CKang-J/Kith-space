@@ -428,7 +428,7 @@
 
 **实施方式**：P-A9.0 先冻结全部消息写入与 Agent 端点所有权矩阵、静态依赖基线、当前 Worker socket-send/reconnect 行为和 1/5/10/20 Agent Core/UI 基线，并产出 P-A9.4 admission/replay 目标契约清单；不要求尚未实现的 ack 测试提前变绿，也不把 socket-send 指标命名为 admission SLO。之后按 Message/Task、Agent Transport、领域依赖、Runtime admission/session 容量、Chat 控制层和证据驱动性能优化逐切片迁移。依赖测试对当前唯一 `agents/agentDeletion -> server/storage` 采用精确临时 allowlist，P-A9.3 强制清除；每个切片保留短期兼容 facade、迁移调用方后删除旧 Implementation。默认不改 schema、公开 URL、Agent CLI 或 `/daemon/connect` 路径；可靠性需要 schema 时必须单独设计。完整规格见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
 
-**实施状态**：方案已锁定，生产代码尚未开始改造。2026-07-18 独立子代理两轮审查指出的 Worker admission/重放幂等、依赖护栏自冲突、消息提交点、调用方/端点矩阵、性能口径与阶段顺序均已纳入规格，最终窄核对结论为 Go；下一步仅进入 P-A9.0 当前行为基线、护栏与目标契约清单。Runtime 契约 v2 与 H5 继续等待 P-A9 的对应 Module Interface 稳定。
+**实施状态**：方案已锁定，P-A9.0 当前行为特征测试、精确依赖护栏、Core/UI 性能基线、fake Runtime harness 与 P-A9.4 目标契约清单已于 2026-07-18 完成；socket-send 仍只作为同步 enqueue 诊断指标，尚未实现 admission ack、持久 get-or-reserve 或 RuntimeSession 容量队列。当前下一步仅进入 P-A9.1a Message/Task 等价提取；Runtime 契约 v2 与 H5 继续等待 P-A9 的对应 Module Interface 稳定。
 
 ---
 
