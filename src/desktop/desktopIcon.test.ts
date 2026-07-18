@@ -22,3 +22,7 @@ test("Desktop window and tray share the branded icon", () => {
   assert.match(mainSource, /new Tray\(nativeImage\.createFromPath\(desktopIconPath\)\)/);
   assert.match(mainSource, /new BrowserWindow\(\{[\s\S]*?icon: desktopIconPath,/);
 });
+
+test("Desktop window does not expose Electron's application menu bar", () => {
+  assert.match(mainSource, /Menu\.setApplicationMenu\(null\);/);
+});

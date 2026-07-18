@@ -538,6 +538,14 @@
     "removeConfirmDescription": "空间会从 Kith-space 列表中移除，但不会删除本机文件夹或其中的数据。",
     "removeFailed": "无法移除空间",
     "removeSuccess": "空间已移除",
+    "bulkManage": "批量管理",
+    "cancelBulkManage": "取消管理",
+    "selectSpace": "选择 {{name}}",
+    "bulkRemove": "移除已选（{{count}}）",
+    "bulkRemoveConfirmTitle": "移除 {{count}} 个空间？",
+    "bulkRemoveConfirmDescription": "所选空间会从 Kith-space 列表中移除，但不会删除本机文件夹或其中的数据。Home 空间无法被选择。",
+    "bulkRemoveFailed": "无法移除 {{count}} 个空间，请重试。",
+    "bulkRemoveSuccess": "已移除 {{count}} 个空间",
     "cancel": "取消"
   },
   "select": {

@@ -321,6 +321,7 @@
 }
 
 .sidebar-module-navigation__label {
+  color: var(--ink);
   min-width: 0;
   flex: 1;
   overflow: hidden;

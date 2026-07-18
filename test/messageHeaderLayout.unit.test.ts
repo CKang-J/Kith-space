@@ -109,7 +109,7 @@ test("chat chrome is compact while non-chat page headings keep their existing ty
 
 test("agent DM header uses the peer avatar, plain name, and localized lifecycle label", () => {
   assert.match(chatSrc, /import \{ agentStatusLabel \} from "\.\.\/agentStatus\.ts"/);
-  assert.match(chatSrc, /className=\{isDm \? "chat-head__dm-title" : undefined\}/);
+  assert.match(chatSrc, /className=\{isDm \? "chat-head__dm-title" : "chat-head__channel-title"\}/);
   assert.match(chatSrc, /<Avatar seed=\{dmAgent\.name\} url=\{avFor\(dmAgent\.avatarUrl\)\} size=\{24\} \/>/);
   assert.match(chatSrc, /agentStatusLabel\(t, agentLiveState\(dmAgent\)\)/);
   assert.doesNotMatch(chatSrc, /isDm \? "@ " \+/);

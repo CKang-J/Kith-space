@@ -142,7 +142,10 @@ export function WorkspaceFrame() {
   useEffect(() => {
     const previousModule = previousActiveModuleRef.current;
     previousActiveModuleRef.current = activeModule;
-    if (previousModule === null && activeModule !== null) shellActions.resetModuleRatio();
+    if (previousModule === null && activeModule !== null) {
+      shellActions.resetModuleRatio();
+      setAggregateOpen(false);
+    }
   }, [activeModule]);
 
   const rememberedChat = storedChatLocation(slug);

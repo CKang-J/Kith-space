@@ -243,6 +243,8 @@ main.content-col{display:flex;flex-direction:column;height:100vh;background:var(
 .chat-head{position:relative;height:52px;flex:none;padding:0 14px;border-bottom:1px solid var(--hair);background:var(--surface);z-index:11}
 .chat-head__rail{display:flex;width:100%;max-width:none;min-width:0;height:100%;align-items:center;gap:8px;margin:0}
 .chat-head__rail>h1{flex-shrink:0;font-family:var(--sans);font-size:20px;font-weight:600;line-height:1.2;letter-spacing:-.2px}
+.chat-head__rail>.chat-head__channel-title{display:flex;align-items:center;gap:4px}
+.chat-head__channel-title .channel-row-icon{flex:none;color:var(--muted-soft)}
 .chat-head__rail>.chat-head__dm-title{display:flex;align-items:center;gap:7px;font-size:16px;font-weight:700;letter-spacing:-.1px}
 .chat-head__dm-title .av-img{border-radius:50%}
 .chat-head__rail>small,.chat-head__rail>.head-status{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

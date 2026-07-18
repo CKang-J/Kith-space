@@ -8,7 +8,7 @@ import { PAGE_SIZE, appendWithCap, nextScrollState } from "../lib/msgPaging";
 import { AGENT_REPLY_PREVIEW_TYPE, AGENT_REPLY_STREAM_TICK_MS, absorbPersistedAgentMessagePreview, applyAgentReplyPreview, dropAgentReplyPreviewForThreadReply, dropAgentReplyPreviewsForMessage, hasStreamingAgentReplyPreview, renderKeyForMessage, tickAgentReplyPreviews, type AgentReplyEvent, type AgentReplyPreviewMsg } from "../lib/agentReplyPreview";
 import { MessageContent } from "../messageRender.tsx";
 import { nextThreadMeta, type ThreadMeta } from "../threadUnread";
-import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Link2, Clipboard, Bookmark, CheckSquare, Circle, Play, Eye, Ban, ArrowDown, Bell, BellOff, Archive, MessagesSquare, ListTodo, UsersRound, PanelsTopLeft } from "lucide-react";
+import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Link2, Clipboard, Bookmark, CheckSquare, Circle, Play, Eye, Ban, ArrowDown, Bell, BellOff, Archive, MessagesSquare, ListTodo, PanelsTopLeft, Hash } from "lucide-react";
 // Task badge per message row: icon changes with task status; color tokens from DESIGN.md (see .task-pill.st-* styles)
 const TASK_ICON: Record<string, typeof Circle> = { todo: Circle, in_progress: Play, in_review: Eye, done: CheckCircle2, closed: Ban };
 import { Avatar, resolveAvatar } from "../Avatar.tsx";
@@ -291,7 +291,6 @@ export function Chat({
   const [loaded, setLoaded] = useState(false); // first fetch for the current channel done — gates the empty-channel state so it never flashes mid-load
   const [loadError, setLoadError] = useState(false); // first fetch failed — exits the skeleton into a retryable error state
   const [sub, setSub] = useState("");
-  const [showMembers, setShowMembers] = useState(false);
   const [thread, setThread] = useState<{ channelId: string; parent: Msg; followed: boolean } | null>(null); // currently open thread panel
   const [threadWidth, setThreadWidth] = useState<number | null>(null);
   const [chatSurfaceWidth, setChatSurfaceWidth] = useState(() => typeof window === "undefined" ? 1000 : window.innerWidth);
@@ -672,11 +671,6 @@ export function Chat({
       <button type="button" className="chat-head-icon-btn" title={t("nav.tasks")} aria-label={t("nav.tasks")} onClick={openCurrentTasks}>
         <ListTodo size={17} />
       </button>
-      {!isDm ? (
-        <button type="button" className="chat-head-icon-btn" title={t("chat.channelMembers")} aria-label={t("chat.channelMembers")} onClick={() => setShowMembers(true)}>
-          <UsersRound size={17} />
-        </button>
-      ) : null}
       {renderAggregateControl()}
       {!isDm && onOpenChannelSettings ? (
         <button type="button" className="chat-head-icon-btn" title={t("chat.channelSettings")} aria-label={t("chat.channelSettings")} onClick={(event) => onOpenChannelSettings(cur.id, event.currentTarget)}>
@@ -694,10 +688,10 @@ export function Chat({
         <div className="head chat-head">
           <div className="chat-head__rail">
             {renderConversationListControl()}
-            <h1 className={isDm ? "chat-head__dm-title" : undefined}>
+            <h1 className={isDm ? "chat-head__dm-title" : "chat-head__channel-title"}>
               {isDm
                 ? <>{dmAgent ? <Avatar seed={dmAgent.name} url={avFor(dmAgent.avatarUrl)} size={24} /> : null}{cur?.name || ""}</>
-                : "# " + (cur?.name || "…")}
+                : <><Hash size={18} className="channel-row-icon" aria-hidden="true" />{cur?.name || "…"}</>}
             </h1>
             {dmAgent
               ? <span className="head-status"><span className={"dot " + agentLiveState(dmAgent)} aria-hidden="true" />{agentStatusLabel(t, agentLiveState(dmAgent))}</span>
@@ -893,7 +887,6 @@ export function Chat({
             />
           </>
         : !embedded && <aside className="traj-col"><LiveTrace conversationId={cur?.id} /></aside>}
-      {showMembers && cur && <ChannelMembersModal channelId={cur.id} channelName={cur.name} readOnly={conversationReadOnly} onClose={() => setShowMembers(false)} />}
       {ctxMenu && (() => {
         const m = ctxMenu.m;
         const close = () => setCtxMenu(null);
@@ -1123,23 +1116,8 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
     </aside>
   );
 }
+/* Removed direct channel-member modal; member management lives in channel settings.
 
-// Channel agent membership: the Human has implicit Space access and is not a channel member row.
-function ChannelMembersModal({ channelId, channelName, readOnly = false, onClose }: { channelId: string; channelName: string; readOnly?: boolean; onClose: () => void }) {
-  const { t } = useTranslation();
-  useEscClose(onClose);
-  const { api, visibleAgents: agents, attachmentUrl } = useStore();
-  const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
-  const [members, setMembers] = useState<any[]>([]);
-  const load = async () => { const data = await api("GET", `/api/channels/${channelId}/members`); setMembers(data?.agents || []); };
-  useEffect(() => { load(); }, [channelId]);
-  const inCh = new Set(members.map((agent) => agent.id));
-  const addable = agents.filter((a) => !inCh.has(a.id));
-  const add = async (agentId: string) => { await api("POST", `/api/channels/${channelId}/members`, { agentId }); load(); };
-  const remove = async (agentId: string) => { await api("DELETE", `/api/channels/${channelId}/members`, { agentId }); load(); };
-  return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3># {channelName} · {t("chat.membersCount", { count: members.length })}</h3>
         <div className="sec">{t("common.agents")} <span className="cnt">{members.length}</span></div>
         {members.map((a) => (
@@ -1156,3 +1134,4 @@ function ChannelMembersModal({ channelId, channelName, readOnly = false, onClose
     </div>
   );
 }
+*/

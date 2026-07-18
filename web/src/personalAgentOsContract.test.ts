@@ -52,8 +52,7 @@ test("Human membership, invite, and profile surfaces are absent", () => {
   assert.doesNotMatch(agents, /HumanProfile|InviteHumanModal|manageMembers/);
   assert.doesNotMatch(chatSidebar, /\bhumans\b|\buserIds\b|\bjoinChannel\b/);
   assert.doesNotMatch(chat, /data\?\.humans|\{\s*userId\s*\}|\/members\/(?:join|leave)|chat\.memberKind|chat\.join/);
-  assert.match(chat, /setMembers\(data\?\.agents \|\| \[\]\)/);
-  assert.match(chat, /\/members`, \{ agentId \}/);
+  assert.doesNotMatch(chat, /ChannelMembersModal|chat\.channelMembers|UsersRound/);
   assert.doesNotMatch(quickSwitcher, /kind:\s*"human"|channels\/dm[^\n]+userId|unknownUser/);
   assert.doesNotMatch(settings, /InvitesSettings|NotificationsSettings|notification-settings|settingsNavInvites/);
   assert.match(settings, /\/api\/human\/profile/);

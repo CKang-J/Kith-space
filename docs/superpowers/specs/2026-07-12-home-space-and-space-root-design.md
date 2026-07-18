@@ -268,6 +268,10 @@ idempotency key
 
 验证：typecheck、502/502 单测、完整集成测试、Web build（2571 modules）与 Desktop build 通过；单轮轻量复核发现的刷新入口遗漏已修复。实际 Desktop/Web 交互与视觉由用户在 H1-H4 验收中确认。
 
+### 2026-07-18 增量：Spaces 批量移除
+
+Home Spaces 增加批量管理模式：仅普通 Space 卡片可选，确认后逐个调用现有注册表移除接口；不会删除本地目录或数据，Home 始终不可选。批次中失败的项目保留选中状态，供用户修复后重试；这不是 H5 跨 Space 编排能力。
+
 ### H5 跨 Space 编排
 
 - 先实现真实只读摘要，再实现 task/message/agent dispatch。

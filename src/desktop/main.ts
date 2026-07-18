@@ -265,6 +265,7 @@ function createTray(): void {
 }
 
 async function createMainWindow(desktopSession: Electron.Session): Promise<void> {
+  Menu.setApplicationMenu(null);
   mainWindow = new BrowserWindow({
     icon: desktopIconPath,
     width: 1440,

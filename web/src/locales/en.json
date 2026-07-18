@@ -538,6 +538,14 @@
     "removeConfirmDescription": "The Space will be removed from Kith-space, but its local folder and data will not be deleted.",
     "removeFailed": "Could not remove the Space",
     "removeSuccess": "Space removed",
+    "bulkManage": "Manage multiple",
+    "cancelBulkManage": "Cancel management",
+    "selectSpace": "Select {{name}}",
+    "bulkRemove": "Remove selected ({{count}})",
+    "bulkRemoveConfirmTitle": "Remove {{count}} Spaces?",
+    "bulkRemoveConfirmDescription": "The selected Spaces will be removed from Kith-space, but their local folders and data will not be deleted. Home cannot be selected.",
+    "bulkRemoveFailed": "Could not remove {{count}} Spaces. Try again.",
+    "bulkRemoveSuccess": "Removed {{count}} Spaces",
     "cancel": "Cancel"
   },
   "select": {
