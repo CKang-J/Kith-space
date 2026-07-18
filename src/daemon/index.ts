@@ -22,6 +22,7 @@ let conn: Connection;
 let admissions: RuntimeAdmissionController;
 const mgr = new AgentManager((m) => conn.send(m), {
   onSessionEnded(agentId) { admissions?.sessionEnded(agentId); },
+  onSessionIdle(agentId) { admissions?.sessionIdle(agentId); },
 });
 admissions = new RuntimeAdmissionController({
   isRunning(agentId) { return mgr.running().includes(agentId); },

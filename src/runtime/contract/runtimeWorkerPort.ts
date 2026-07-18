@@ -83,6 +83,8 @@ export interface WorkerQueueOutcome {
   status: QueueTerminalStatus;
   queuedMs: number;
   reason?: string;
+  channelId?: string;
+  streamId?: string;
 }
 
 export interface RuntimeWorkerAvailability {

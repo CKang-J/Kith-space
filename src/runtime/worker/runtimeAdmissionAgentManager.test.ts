@@ -95,3 +95,111 @@ test("fake Runtime sessions obey install capacity and release on exit/stop/shutd
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("AgentManager reports a completed runtime turn as an idle session", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "kith-admission-idle-"));
+  const harness = createFakeRuntimeHarness();
+  const idleAgents: string[] = [];
+  const manager = new AgentManager(() => {}, {
+    runtimeStateRoot: path.join(root, "runtime"),
+    binDir: root,
+    runtimeResolver: () => harness.runtime,
+    onSessionIdle(agentId) { idleAgents.push(agentId); },
+  });
+
+  try {
+    await manager.start("agent-idle", {
+      agentId: "agent-idle",
+      spaceId: "space-1",
+      workspaceRoot: path.join(root, "workspace"),
+      name: "agent-idle",
+      displayName: "Idle Agent",
+      runtime: "fake",
+      serverUrl: "http://127.0.0.1:7777",
+      introduced: true,
+    }, "wake");
+    harness.activity("fake-session-1", "online");
+    assert.deepEqual(idleAgents, ["agent-idle"]);
+  } finally {
+    manager.stopAll();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("AgentManager counts a delivery batch as one runtime turn before reporting idle", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "kith-admission-batch-idle-"));
+  const harness = createFakeRuntimeHarness();
+  const idleAgents: string[] = [];
+  const manager = new AgentManager(() => {}, {
+    runtimeStateRoot: path.join(root, "runtime"),
+    binDir: root,
+    deliverDebounceMs: 0,
+    runtimeResolver: () => harness.runtime,
+    onSessionIdle(agentId) { idleAgents.push(agentId); },
+  });
+
+  try {
+    await manager.start("agent-batch", {
+      agentId: "agent-batch",
+      spaceId: "space-1",
+      workspaceRoot: path.join(root, "workspace"),
+      name: "agent-batch",
+      displayName: "Batch Agent",
+      runtime: "fake",
+      serverUrl: "http://127.0.0.1:7777",
+      introduced: true,
+    }, "wake");
+    manager.deliver("agent-batch", "Human", "channel-1", true, { msgShort: "one" });
+    manager.deliver("agent-batch", "Human", "channel-1", true, { msgShort: "two" });
+
+    harness.activity("fake-session-1", "online");
+    assert.deepEqual(idleAgents, [], "the accepted delivery batch still owns one turn");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(harness.snapshot().totalDeliveries, 1);
+
+    harness.activity("fake-session-1", "working");
+    harness.activity("fake-session-1", "online");
+    assert.deepEqual(idleAgents, ["agent-batch"]);
+  } finally {
+    manager.stopAll();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("AgentManager settles one terminal signal per batch and releases a failed final turn", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "kith-admission-error-idle-"));
+  const harness = createFakeRuntimeHarness();
+  const idleAgents: string[] = [];
+  const manager = new AgentManager(() => {}, {
+    runtimeStateRoot: path.join(root, "runtime"),
+    binDir: root,
+    runtimeResolver: () => harness.runtime,
+    onSessionIdle(agentId) { idleAgents.push(agentId); },
+  });
+
+  try {
+    await manager.start("agent-error", {
+      agentId: "agent-error",
+      spaceId: "space-1",
+      workspaceRoot: path.join(root, "workspace"),
+      name: "agent-error",
+      displayName: "Error Agent",
+      runtime: "fake",
+      serverUrl: "http://127.0.0.1:7777",
+      introduced: true,
+    }, "wake");
+    manager.deliver("agent-error", "Human", "channel-1", true, { msgShort: "queued follow-up" });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    harness.activity("fake-session-1", "error", "initial turn failed");
+    harness.activity("fake-session-1", "online");
+    assert.deepEqual(idleAgents, [], "a duplicate terminal signal must not consume the queued batch");
+
+    harness.activity("fake-session-1", "working");
+    harness.activity("fake-session-1", "error", "follow-up failed");
+    assert.deepEqual(idleAgents, ["agent-error"]);
+  } finally {
+    manager.stopAll();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -5,6 +5,7 @@ import {
   type RuntimeAdmissionBackend,
   type WorkerAdmissionCommand,
 } from "./runtimeAdmissionController.js";
+import type { WorkerQueueOutcome } from "../contract/runtimeWorkerPort.js";
 
 function backendHarness(): RuntimeAdmissionBackend & {
   events: string[];
@@ -25,7 +26,12 @@ function backendHarness(): RuntimeAdmissionBackend & {
   };
 }
 
-const wake = (id: string, agentId: string, spaceId: string, directive: "required" | "optional" = "required"): WorkerAdmissionCommand => ({
+const wake = (
+  id: string,
+  agentId: string,
+  spaceId: string,
+  directive: "required" | "optional" = "required",
+): Extract<WorkerAdmissionCommand, { type: "agent:start"; source: "wake" }> => ({
   type: "agent:start",
   source: "wake",
   generation: 1,
@@ -170,5 +176,93 @@ test("sleep releases a live session slot exactly once", async () => {
   assert.equal(result.status, "admitted");
   assert.equal(controller.snapshot().activeOrStarting, 0);
   assert.equal(controller.sessionEnded("sleep-agent"), false);
+  await controller.shutdown();
+});
+
+test("an idle session yields its slot when another agent is queued", async () => {
+  const backend = backendHarness();
+  const controller = new RuntimeAdmissionController(backend, { capacity: 1 });
+  await controller.admit(wake("holder", "holder-agent", "space-1"));
+  await controller.settled();
+  assert.equal((await controller.admit(wake("waiting", "waiting-agent", "space-2"))).status, "queued");
+
+  assert.equal(controller.sessionIdle("holder-agent"), true);
+  await controller.settled();
+
+  assert.deepEqual(backend.events.filter((entry) => entry.startsWith("sleep:") || entry.startsWith("start:")), [
+    "start:holder-agent",
+    "sleep:holder-agent",
+    "start:waiting-agent",
+  ]);
+  assert.equal(controller.snapshot().queued, 0);
+  assert.equal(controller.snapshot().activeOrStarting, 1);
+  await controller.shutdown();
+});
+
+test("a duplicate manual start does not hide a warm idle session from queued work", async () => {
+  const backend = backendHarness();
+  const controller = new RuntimeAdmissionController(backend, { capacity: 1 });
+  await controller.admit(wake("holder", "holder-agent", "space-1"));
+  await controller.settled();
+  assert.equal(controller.sessionIdle("holder-agent"), false);
+  assert.equal((await controller.admit({
+    type: "agent:start",
+    source: "manual",
+    generation: 1,
+    commandId: "duplicate-manual",
+    spaceId: "space-1",
+    agentId: "holder-agent",
+    config: {},
+    reason: "manual",
+  })).status, "admitted");
+  assert.equal((await controller.admit(wake("waiting", "waiting-agent", "space-2"))).status, "queued");
+  await controller.settled();
+
+  assert.equal(backend.events.includes("sleep:holder-agent"), true);
+  assert.equal(backend.events.includes("start:waiting-agent"), true);
+  await controller.shutdown();
+});
+
+test("a warm idle session yields immediately when later work arrives", async () => {
+  const backend = backendHarness();
+  const controller = new RuntimeAdmissionController(backend, { capacity: 1 });
+  await controller.admit(wake("holder", "holder-agent", "space-1"));
+  await controller.settled();
+  assert.equal(controller.sessionIdle("holder-agent"), false, "idle sessions stay warm without queue pressure");
+
+  assert.equal((await controller.admit(wake("waiting", "waiting-agent", "space-2"))).status, "queued");
+  await controller.settled();
+
+  assert.deepEqual(backend.events.filter((entry) => entry.startsWith("sleep:") || entry.startsWith("start:")), [
+    "start:holder-agent",
+    "sleep:holder-agent",
+    "start:waiting-agent",
+  ]);
+  assert.equal(controller.snapshot().queued, 0);
+  await controller.shutdown();
+});
+
+test("a failed queued wake identifies the reply preview it must terminate", async () => {
+  let now = 0;
+  const backend = backendHarness();
+  const outcomes: WorkerQueueOutcome[] = [];
+  const controller = new RuntimeAdmissionController(backend, {
+    capacity: 1,
+    queueTtlMs: 10,
+    now: () => now,
+    onOutcome: (outcome) => outcomes.push(outcome),
+  });
+  await controller.admit(wake("holder", "holder-agent", "space-1"));
+  const waiting = wake("waiting", "waiting-agent", "space-2");
+  waiting.delivery.streamId = "stream-1";
+  await controller.admit(waiting);
+
+  now = 11;
+  controller.sweepExpired();
+
+  assert.equal(outcomes.length, 1);
+  assert.equal(outcomes[0]?.status, "expired");
+  assert.equal(outcomes[0]?.channelId, "channel");
+  assert.equal(outcomes[0]?.streamId, "stream-1");
   await controller.shutdown();
 });

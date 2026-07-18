@@ -37,7 +37,7 @@ export interface AgentConfig extends AgentWorkspaceRef {
 export type DeliverResponseDirective = "required" | "optional";
 interface DeliverBuf { count: number; from: string; target: string; targetName: string; firstShort: string; latestShort: string; isTask: boolean; mentioned: boolean; responseDirective: DeliverResponseDirective; targets: Set<string>; timer: ReturnType<typeof setTimeout>; streamId?: string; trajectoryScope: TrajectoryScopeState; }
 export interface DeliverMeta { targetName?: string; msgShort?: string; isTask?: boolean; streamId?: string; responseDirective?: DeliverResponseDirective; responseReason?: string; }
-interface Running { session: RuntimeSession; config: AgentConfig; sessionId: string | null; exited: Promise<void>; markExited: () => void; trajectoryScopes: TrajectoryScopeTracker; idleTimer?: ReturnType<typeof setTimeout>; deliverBuf?: DeliverBuf; }
+interface Running { session: RuntimeSession; config: AgentConfig; sessionId: string | null; exited: Promise<void>; markExited: () => void; trajectoryScopes: TrajectoryScopeTracker; outstandingTurns: number; terminalSeen: boolean; idleTimer?: ReturnType<typeof setTimeout>; deliverBuf?: DeliverBuf; }
 interface PendingDeliver { from: string; target: string; mentioned: boolean; meta: DeliverMeta; }
 interface PendingDeliverQueue { items: PendingDeliver[]; timer: ReturnType<typeof setTimeout>; }
 interface ActiveReplyPreview { channelId: string; streamId: string; name: string; }
@@ -50,6 +50,7 @@ export interface AgentManagerOptions {
   pendingDeliverTtlMs?: number;
   runtimeResolver?: (name: string) => Runtime | null;
   onSessionEnded?: (agentId: string, reason: "stop" | "sleep" | "reset" | "exit") => void;
+  onSessionIdle?: (agentId: string) => void;
 }
 
 function strongestResponseDirective(a: DeliverResponseDirective, b: DeliverResponseDirective): DeliverResponseDirective {
@@ -71,6 +72,7 @@ export class AgentManager {
   private pendingDeliverTtlMs: number;
   private runtimeResolver: (name: string) => Runtime | null;
   private onSessionEnded: NonNullable<AgentManagerOptions["onSessionEnded"]>;
+  private onSessionIdle: NonNullable<AgentManagerOptions["onSessionIdle"]>;
   private log = createLogger("daemon:agents");
   constructor(private send: (msg: unknown) => void, opts: AgentManagerOptions = {}) {
     this.binDir = opts.binDir ?? ensureKithSpaceBin();
@@ -81,6 +83,7 @@ export class AgentManager {
     this.pendingDeliverTtlMs = opts.pendingDeliverTtlMs ?? PENDING_DELIVER_TTL_MS;
     this.runtimeResolver = opts.runtimeResolver ?? getRuntime;
     this.onSessionEnded = opts.onSessionEnded ?? (() => {});
+    this.onSessionIdle = opts.onSessionIdle ?? (() => {});
   }
 
   running(): string[] { return [...this.agents.keys()]; }
@@ -266,13 +269,21 @@ export class AgentManager {
       exited,
       markExited,
       trajectoryScopes: new TrajectoryScopeTracker(initialTrajectoryScope),
+      outstandingTurns: 1,
+      terminalSeen: false,
     };
     const cb: RuntimeCallbacks = {
       onSession: (sid) => { running.sessionId = sid; this.send({ type: "agent:session", agentId, sessionId: sid }); },
       onActivity: (activity, detail) => {
         this.resetIdle(agentId);
+        if (activity === "working" || activity === "thinking") running.terminalSeen = false;
         this.sendRuntimeActivity(agentId, running, activity, detail ?? "");
         if (activity === "online" || activity === "sleeping" || activity === "offline" || activity === "error") this.finishReplyPreview(agentId, activity === "error" ? "error" : "done");
+        if ((activity === "online" || activity === "error") && !running.terminalSeen) {
+          running.terminalSeen = true;
+          running.outstandingTurns = Math.max(0, running.outstandingTurns - 1);
+          if (running.outstandingTurns === 0) this.onSessionIdle(agentId);
+        }
       },
       onTrajectory: (entries) => {
         this.send({ type: "agent:trajectory", agentId, entries, ...trajectoryScopePayload(running.trajectoryScopes.current()) });
@@ -377,6 +388,10 @@ export class AgentManager {
       if (responseDirective === "required") this.startReplyPreview(agentId, r, target, b.streamId);
     }
     const buf: DeliverBuf = b ?? { count: 1, from, target, targetName: tname, firstShort: short, latestShort: short, isTask: !!meta.isTask, mentioned, responseDirective, targets: new Set([tname]), timer: undefined as any, streamId: meta.streamId, trajectoryScope: deliveryScope };
+    if (!b) {
+      if (r.outstandingTurns === 0) r.terminalSeen = false;
+      r.outstandingTurns++;
+    }
     if (!b && responseDirective === "required") this.startReplyPreview(agentId, r, target, buf.streamId);
     buf.timer = setTimeout(() => {
       r.deliverBuf = undefined;
@@ -385,6 +400,11 @@ export class AgentManager {
       try { r.session.deliver(note); this.resetIdle(agentId); this.log.debug("inbox notice -> agent", { agentId, count: buf.count, mentioned: buf.mentioned, responseDirective: buf.responseDirective, trajectoryScope: buf.trajectoryScope.kind }); }
       catch (e) {
         r.trajectoryScopes.rollback(scopeToken);
+        r.outstandingTurns = Math.max(0, r.outstandingTurns - 1);
+        if (r.outstandingTurns === 0) {
+          r.terminalSeen = true;
+          this.onSessionIdle(agentId);
+        }
         this.finishReplyPreview(agentId, "error");
         this.log.warn("deliver failed", { agentId, detail: String(e) });
       }

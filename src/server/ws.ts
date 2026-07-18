@@ -12,6 +12,8 @@ import { locateAgent } from "../local-runtime/agentLocator.js";
 import { WORKER_TOKEN_HEADER, isLoopbackAddress, workerBootstrapToken } from "../local-runtime/internalCredentials.js";
 import { resolveTrajectoryScope } from "./trajectoryScope.js";
 import { createWorkerMessageQueue } from "./workerMessageQueue.js";
+import { terminalWakeReplyEvent } from "./workerQueueOutcome.js";
+import type { WorkerQueueOutcome } from "../runtime/contract/runtimeWorkerPort.js";
 import {
   isWorkerLeaseCurrent,
   isWorkerLeaseLatest,
@@ -98,10 +100,16 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
         resolveWorkerAdmission(lease, msg);
       }
       else if (msg.type === "worker:queue:outcome") {
+        const outcome = msg as WorkerQueueOutcome;
         if (msg.source === "wake" && typeof msg.id === "string" && typeof msg.spaceId === "string"
           && (msg.status === "cancelled" || msg.status === "expired" || msg.status === "failed")) {
           const { SqliteDispatchState } = await import("./dispatchGuard.js");
           await new SqliteDispatchState(msg.spaceId).markWakePending(msg.id);
+          const located = typeof msg.agentId === "string" ? await locateAgent(msg.agentId) : null;
+          if (located && located.spaceId === msg.spaceId && isWorkerLeaseCurrent(lease)) {
+            const reply = terminalWakeReplyEvent(outcome, located.agent.displayName ?? located.agent.name);
+            if (reply) await publish(located.spaceId, reply);
+          }
         }
         log.debug("runtime queue outcome", {
           status: msg.status,

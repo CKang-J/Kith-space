@@ -902,8 +902,10 @@ export async function startAgent(spaceId: string, agentId: string, reason: Exclu
     setAgentIntroductionTurn(spaceId, agentId, null);
     return { ok: false, reason: admission.reason ?? "local runtime worker rejected start" };
   }
-  await db.update(schema.agents).set({ status: "active", activity: "working" }).where(eq(schema.agents.id, agentId));
-  await publishAgentState(spaceId, agentId);
+  if (admission.status === "admitted") {
+    await db.update(schema.agents).set({ status: "active", activity: "working" }).where(eq(schema.agents.id, agentId));
+    await publishAgentState(spaceId, agentId);
+  }
   return { ok: true };
 }
 export async function stopAgent(spaceId: string, agentId: string): Promise<boolean> {

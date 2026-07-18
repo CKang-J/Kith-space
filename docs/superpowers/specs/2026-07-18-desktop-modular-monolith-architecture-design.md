@@ -2,7 +2,7 @@
 
 - 日期：2026-07-18
 - 阶段：P-A9
-- 状态：P-A9.0–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审已完成；当前未提交并等待用户授权
+- 状态：P-A9.0–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审已完成并提交；真实存量数据暴露的 Runtime admission 队列饥饿与错误状态传播回归也已完成根因修复
 - 方案锁定基线：`codex/feat-ui-updates` @ `0b539d8`
 - P-A9.0 实施起始基线：`codex/feat-ui-updates` @ `ec2ef82`
 - 前置条件：用户已于 2026-07-18 确认本轮 UI 手动验收结束
@@ -315,7 +315,7 @@ Interface 是主要测试表面。旧内部 helper 测试只有在等价行为�
 ### P-A9.4 Runtime 边界与容量控制
 
 - 先把 P-A9.0 的 admission/replay 契约清单变成可执行测试，再以持久逻辑键实现幂等 get-or-reserve，并用带 deliveryId/admission ack 的 `RuntimeWorkerPort` 替换 P-A9.1 的临时 WakeDispatch Production Implementation；若需要 schema，先完成独立迁移设计。P-A9.4 不做批量目录搬迁，纯 move 留到 P-A9.7；
-- 首版容量只定义为 Worker 中**存活的 RuntimeSession 数**，slot 在 stop/sleep/exit 时释放；统一 turn-complete 属于 Runtime 契约 v2，P-A9 不做 turn 级限流；
+- 首版容量只定义为 Worker 中**存活的 RuntimeSession 数**，slot 在 stop/sleep/exit 时释放；本次真实数据回归只复用 AgentManager 既有批处理边界和 adapter `online/error` activity 作为本地 idle hint，在队列压力下触发既有 sleep，不新增跨 Core/Worker 的 turn-complete 协议，也不做 turn 级限流；统一 turn-complete 仍属于 Runtime 契约 v2；
 - 保留每 Agent 顺序和现有投递合并；增加安装级 session 容量、等待队列、取消、停机排空与 Space 间公平。优先级为用户手动控制/启动 > required 的 DM/任务/mention > optional ambient，并通过 aging 防止低优先级永久饥饿；
 - 用 P-A9.0 建立的 fake Runtime harness 验证 session 上限、公平、取消与排空；容量默认值综合该压测、真实 CLI 可用时的进程 RSS/启动 smoke 与本切片冻结的 Worker admission 绝对 SLO 决定，首轮只作为内部策略，不增加用户设置；
 - 明确 admission、超时、断线、重复 ack、Worker generation、重放、队列满/过期及 stop/reset 的状态机；wake 命令复用 reservationId，手动/生命周期命令使用独立 commandId；接纳后未 read 的消息以 `lastReadSeq` 为持久重放依据，重放不重复消耗 wake budget；
@@ -439,17 +439,17 @@ P-A9 只有同时满足以下条件才算完成：
 ### 当前状态
 
 - 用户已确认本轮 UI 手动验收结束；既有 UI/行为继续作为 P-A9 回归基线；
-- 当前工作分支为 `codex/feat-ui-updates`，P-A9.0 实施起始 HEAD 为 `ec2ef82`，P-A9.1a–P-A9.7 本轮起始 HEAD 为 `9de04fa`；尚未创建后续提交；
-- Message/Task 深 Module、同库原子事务、Agent Transport 分组、领域依赖收口、持久 wake get-or-reserve、generation-aware admission ack、安装级 RuntimeSession 容量/队列/TTL、Chat data/model 组合层、批量 fan-out 优化与兼容清理均已落地；
-- 当前权威单测基线为 679/679；typecheck、完整 integration、Web build（2641 modules）、Desktop build、依赖护栏、契约矩阵、Core/Runtime/UI SLO、最新 desktop:pack 与 unpacked Desktop smoke 均通过；真实授权 Browser 已验证现有 URL、话题/频道/历史行为、布局和 100/500/1000 消息回归；
+- 当前工作分支为 `codex/feat-ui-updates`，P-A9.0 实施起始 HEAD 为 `ec2ef82`，P-A9.1a–P-A9.7 本轮起始 HEAD 为 `9de04fa`，P-A9 收口提交为 `d5261c1`；
+- Message/Task 深 Module、同库原子事务、Agent Transport 分组、领域依赖收口、持久 wake get-or-reserve、generation-aware admission ack、安装级 RuntimeSession 容量/队列/TTL、Chat data/model 组合层、批量 fan-out 优化与兼容清理均已落地；后续真实数据回归在不引入 Runtime 契约 v2 的前提下，以 AgentManager 既有批处理/activity 终态补齐空闲会话按队列压力让位、未完成批次保护、queued 状态延迟确认和失败 wake 回复终态；
+- 当前权威单测基线为 689/689；typecheck、完整 integration、Web build（2641 modules）、Desktop build、依赖护栏、契约矩阵、Core/Runtime/UI SLO、最新 desktop:pack 与 unpacked Desktop smoke 均通过；真实授权 Browser 已验证既有 URL/行为/性能回归，以及休眠 Agent 的唤醒、实时轨迹、回复完成和占位清理；
 - 约定的一次独立只读终审已完成：无功能、安全或回归阻塞；唯一低严重度入口文档单测基线漂移已由主任务修正，没有发起第二轮审查。Runtime 契约 v2、H5、Rust 试验、公开 Web/H5、Message Context Snapshot 与 UI 重做均未开始。
 
 ### 下一阶段
 
-保持当前未提交工作树，等待用户明确授权提交；不推送、不合并、不发布。任何 Runtime 契约 v2、H5 或其他后续阶段都必须另行授权。
+P-A9 与本次真实数据回归修复均已收口；不自动推送、不合并、不发布。任何 Runtime 契约 v2、H5 或其他后续阶段都必须另行授权。
 
 ### 工作区与提交边界
 
-- P-A9.0–P-A9.7 代码、测试、脚本和文档保持当前未提交工作树；
-- 未获得用户明确要求，不创建提交、不推送、不合并；
+- P-A9.0–P-A9.7 代码、测试、脚本和文档已提交，真实数据回归修复与验证证据同步进入权威文档；
+- 未获得用户明确要求，不推送、不合并；
 - Runtime 契约 v2、H5 或其他后续阶段必须另行授权，不能夹带到本轮收口。

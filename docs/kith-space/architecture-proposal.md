@@ -306,7 +306,7 @@ Core→Worker 通过 `src/runtime/contract/runtimeWorkerPort.ts` 的窄命令契
 
 Wake 使用 `src/server/dispatchGuard.ts:173` 的持久 get-or-reserve 逻辑键复用 reservationId；accepted/queued 后 commit，明确 rejected 时 release，断线或 ack 不确定时在新 lease 重放同一 reservation。重复命令、ack 与 reconnect 不重复增加 wake count，Agent check/read 推进 `lastReadSeq` 后关闭未读重放窗口。这个边界只保证接纳确认和未读重放，不声称 Agent 已读后、回复前崩溃的端到端 exactly-once；turn completion 仍属于尚未开始的 Runtime 契约 v2。
 
-Worker 内 `src/runtime/worker/runtimeAdmissionController.ts:48` 维护安装级容量 4、最大队列 128 和 120 秒 TTL，保持同 Agent 命令顺序，并以 required/生命周期优先、等待老化和跨 Agent 公平选择队列；stop/reset/sleep、session exit 和 shutdown 都精确释放或排空。`src/daemon/index.ts:72` 拒绝缺少 admission identity 的旧 raw 生命周期命令，P-A9.7 已删除 `agent:deliver:ack` 等兼容路径。
+Worker 内 `src/runtime/worker/runtimeAdmissionController.ts:48` 维护安装级容量 4、最大队列 128 和 120 秒 TTL，保持同 Agent 命令顺序，并以 required/生命周期优先、等待老化和跨 Agent 公平选择队列；stop/reset/sleep、session exit 和 shutdown 都精确释放或排空。AgentManager 在既有消息合并边界登记实际 batch turn，并用 adapter 已有 `online/error` activity 结算：没有排队工作时完成会话继续保温，一旦其他 Agent 等待容量就立即 sleep 并释放 slot；尚未完成的批次会阻止上一轮结束时误休眠。该 idle hint 不新增跨 Core/Worker 的 turn-complete 协议或 turn 级 admission，Runtime 契约 v2 边界不变。Core 只有在手动启动实际 `admitted` 后才写入 active/working；failed/cancelled/expired wake 的终态带回 channel/stream，由 Core 结束对应回复占位并保留待重试 wake。`src/daemon/index.ts:75` 拒绝缺少 admission identity 的旧 raw 生命周期命令，P-A9.7 已删除 `agent:deliver:ack` 等兼容路径。
 
 ### 10.4 Chat 组合层与证据驱动性能
 

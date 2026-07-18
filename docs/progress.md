@@ -4,14 +4,14 @@
 
 最后更新：2026-07-18。
 
-- **P-A9.0-P-A9.7 已完整完成，当前等待用户授权提交**：Message/Task 深 Module、同库原子事务、Agent Transport 分组、领域依赖收口、Worker admission/session 容量、Chat data/model 组合层、基线可归因优化与兼容清理均已落地，权威文档、全量门禁、性能回归、packaged/browser smoke 和约定的一次独立只读终审均已结束。终审无功能、安全或回归阻塞，唯一低严重度入口文档单测基线漂移已修正；未发起第二轮审查。Electron/Core/Worker 拓扑、TypeScript 主栈、公开 URL、Agent CLI、workspace schema 和现有 UI/交互保持不变；Runtime 契约 v2、H5、Rust 重写与 UI 重做未开始。当前工作树保持未提交。
+- **P-A9.0-P-A9.7 已完整完成并提交，真实数据回归已修复**：Message/Task 深 Module、同库原子事务、Agent Transport 分组、领域依赖收口、Worker admission/session 容量、Chat data/model 组合层、基线可归因优化与兼容清理均已落地。P-A9 收口提交为 `d5261c1`；其后用现有本机数据复现并根治了常驻空闲会话占满容量造成的 admission 队列饥饿，同时修复 queued 手动启动误报“工作中”和失败 wake 不结束回复占位。Electron/Core/Worker 拓扑、TypeScript 主栈、公开 URL、Agent CLI、workspace schema 和现有 UI/交互保持不变；Runtime 契约 v2、H5、Rust 重写与 UI 重做未开始。
 
 ## 一、现在在哪
 
 - 主干：`main`。临时工作分支不作为阶段进度记录。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A1-A6、P-A7 H1-H4、P4/P-A8、本轮聊天/壳层 UI 与 P-A9.0-P-A9.7 均已完成；P-A9 代码、权威文档、全量门禁、性能回归、packaged/browser smoke 和唯一一次独立只读终审已收口**。当前工作树基于 `9de04fa`，未创建后续提交，等待用户授权提交。完整规格见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
-- **P-A9 最终模块事实**：`src/messages/messagePostingModule.ts` 与 `src/tasks/taskLifecycleModule.ts` 封装消息/任务写入和生命周期，同库事务原子提交 seq、消息、dispatch、follow、附件、membership、mentions、任务与 system audit；实时发布和 wake 作为明确 post-commit effect。`src/server/routes-agent.ts` 只分派 `src/server/agent-http/` 的七组 Transport Adapter；频道、Agent、文件与 task 领域不再依赖 server/desktop，依赖护栏没有 allowlist。`src/runtime/` 提供 generation-aware admission ack、持久 get-or-reserve 重放和容量 4/队列 128/TTL 120 秒的 Worker admission；旧 raw 生命周期命令被拒绝。`web/src/features/conversation/` 拥有 Chat 请求、消息/话题模型与视口语义，`Chat.tsx` 保持组合层和局部交互状态。P-A9.7 已删除旧 facade、旧 Implementation、兼容 ack 和临时 allowlist。
+- 当前阶段：**A1-A6、P-A7 H1-H4、P4/P-A8、本轮聊天/壳层 UI 与 P-A9.0-P-A9.7 均已完成；P-A9 已提交，真实数据下的 Runtime admission 回归也已完成修复和验证**。完整规格见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
+- **P-A9 最终模块事实**：`src/messages/messagePostingModule.ts` 与 `src/tasks/taskLifecycleModule.ts` 封装消息/任务写入和生命周期，同库事务原子提交 seq、消息、dispatch、follow、附件、membership、mentions、任务与 system audit；实时发布和 wake 作为明确 post-commit effect。`src/server/routes-agent.ts` 只分派 `src/server/agent-http/` 的七组 Transport Adapter；频道、Agent、文件与 task 领域不再依赖 server/desktop，依赖护栏没有 allowlist。`src/runtime/` 提供 generation-aware admission ack、持久 get-or-reserve 重放和容量 4/队列 128/TTL 120 秒的 Worker admission；AgentManager 按实际消息合并批次与既有 `online/error` activity 终态提供本地 idle hint，排队出现时由真正空闲且没有未完成批次的会话立即让出容量，不新增 Runtime v2 的跨边界 turn-complete 协议。queued 手动启动只有在实际 admitted 后才进入工作态，失败/cancelled/expired wake 会携带会话终态并关闭可见回复占位。旧 raw 生命周期命令被拒绝。`web/src/features/conversation/` 拥有 Chat 请求、消息/话题模型与视口语义，`Chat.tsx` 保持组合层和局部交互状态。P-A9.7 已删除旧 facade、旧 Implementation、兼容 ack 和临时 allowlist。
 - **P-A9 性能事实**：最终 1/5/10/20 Agent Core 总 p95 为 3.489/9.632/14.661/50.481 ms，SQL 为 18/46/81/151，20 Agent 低于 120 ms SLO；Runtime admission 三轮中位数为 0.213/0.496/0.574/0.342 ms，均低于 25 ms SLO。P-A9.1b 统一事务让 20 Agent durable-prefix 相对 P-A9.0 增加但绝对值仍低于 10 ms，作为原子一致性权衡单独记录。Chat 首次可见 100/500/1000 档 median p95 为 62.8/65.2/62.4 ms，全量滚动为 70.6/311.5/621.9 ms，实时追加为 231 ms，均通过绝对 SLO 且对应 median p95 未相对冻结值退化超过 10%；没有虚拟化或视觉调整。完整统计、波动与口径见 `docs/performance/p-a9-baseline.md`，契约与删除证据见 `docs/architecture/p-a9-contract-matrices.md`。
 - 聊天消息流已从全宽描边卡片迁入统一 `ChatMessageItem` 表现层，主会话、话题、action card 与加载 Skeleton 共用 32px 头像、紧凑发送者行和 Human/Agent 语义气泡；1040px 居中流宽、14.5px/1.55 正文、52px 标题、14px 顶部留白、88px Composer 预留和气泡内话题摘要已落地。普通链尾间距为 20px；同一天相邻且同发送者的 Human/Agent 普通消息隐藏重复头像/昵称并以 6px 组内间距连续展示，hover/focus 在头像槽显示时分，系统消息、action card、日期和发送者变化会打断分组。Human 消息昵称使用真实的 `14.5px / 700 / 20px`，Agent 昵称始终保持 500 字重、hover/focus 只转为深色；时间为 `11px / 400 / 16px`，二者按基线对齐且消息头无额外字距；侧栏 Agent 名称继续使用 600。发送者行状态文字移除并只保留头像状态点；Agent 私聊标题改为头像加昵称并移除 `@` 前缀，状态文字复用 Agents 页面中文映射。父消息话题摘要新增参与者头像、总数、最新时间、最近三条 Human/Agent 单行回复和“在话题中回复”，system 任务事件不进入预览行且正文与摘要之间无分隔线；主消息流中的 system 任务事件与内部 Markdown 已纳入 1040px 中心轨道并居中。摘要复用批量 thread metadata 接口并实时刷新变更父消息，不产生逐话题请求。主消息工具外显“加表情、话题、复制、更多”，收藏保留在更多菜单，工具栏只由气泡 hover/focus 触发并按右侧空间自动切换到气泡右侧或上方；隐藏状态初始置于气泡上方，消息流只允许纵向滚动，不再出现底部横向滚动条。归档频道隐藏写入口并保留复制和打开已有话题；Showcase 已由后续壳层切片完整退役。真实页面的 Split、ChatOnly、滚动场景和用户手动视觉验收均已完成。
 - **Chat 壳层与侧栏模块导航已完成并通过本轮用户验收**：ChatOnly 在左侧常驻 Chat 导航栏顶部纵向展示“图标 + 文字”的 Spaces（Home only）、Inbox、Tasks、Agents、Settings，不显示 Chat、顶部“对话”总标题或底部 Dock；模块图标与“频道 / 私信”分组标题共用左侧基线。点击模块后固定侧栏隐藏，继续进入现有 Split/ModuleOnly，并在 Module Pane 底部显示含 Chat 图标的横向 Dock。Split 的会话抽屉复用 `ConversationListContent`，只组合已保存、频道、私信，不含模块入口与 `LiveAgentBar`，并保留抽屉自身标题。中心 Chat 保持原有圆角卡片、画布间隙与配色；常驻会话导航取消独立卡片底板并直接使用画布背景，新增模块入口与会话抽屉不绘制贯穿式横线或竖线。功能文字统一无衬线字体；Chat 标题栏固定左右 14px，与标题内容上下留白一致；ChatOnly 与 Split 使用同一 10px 消息 gutter，ChatOnly 主卡片沿用 360px Chat 绝对下限，日期分隔/消息/Composer 使用 1040px 居中共轨；消息流只允许纵向滚动，隐藏工具栏不会撑出横向滚动条。案例展示入口、产品路由、视图、演示数据/资产和专属分支均已删除。旧 `/showcase` 只保留 SPA fallback，由 `WorkspaceFrame` 规范化到当前 Space 默认频道并保留合法模块 query。完整规格见 `docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md`。
@@ -140,7 +140,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 ## 五、下一步顺序
 
-1. 保持当前未提交工作树，等待用户明确授权提交；不推送、不合并、不发布，也不做仓库外清理。
+1. P-A9 与本次 Runtime admission 真实数据回归修复完成后停止本阶段；不自动推送、不合并、不发布，也不做仓库外数据清理。
 2. Runtime 契约 v2、H5、Rust 试验、UI 重做、生产力模块与 Message Context Snapshot 继续暂停，只有新授权后才进入后续阶段。
 
 ## 六、验证与工作约定
@@ -148,7 +148,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - 包管理使用 pnpm；脚本参数直接跟在后面，例如 `pnpm test --unit`。
 - 常规验证：`pnpm run typecheck`、`pnpm test --unit`、`pnpm test --integration`、`pnpm --dir web run build`。
 - 测试 runner 同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向同一个随机临时 profile 的不同子目录；手写测试若绕过 runner，必须显式覆盖默认 Space 容器或直接传 rootPath，绝不在真实 `~/Kith-space` 生成 fixture。
-- 当前 P-A9 全量 unit 为 679/679；typecheck、完整 integration、Web build（2641 modules）、Desktop build、无 allowlist 依赖护栏、契约矩阵、Core/Runtime/UI SLO 与最新 `desktop:pack` 均通过。全新仓库内隔离 profile 的 unpacked Desktop smoke Exit 0、创建 app.db、Core ready，退出后受管进程和 5273/7777 监听均为 0。真实授权 Browser 已覆盖频道/话题切换、URL、历史加载/锚点、实时追加和 100/500/1000 档性能；视觉保持原布局，控制台无应用错误。旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6、H1-H4 与聚合面板/频道设置小节里的旧数字只描述当时检查点，不是当前基线。
+- 当前全量 unit 为 689/689；typecheck、完整 integration、Web build（2641 modules）、Desktop build、无 allowlist 依赖护栏、契约矩阵、Core/Runtime/UI SLO 与最新 `desktop:pack` 均通过。全新仓库内隔离 profile 的 unpacked Desktop smoke Exit 0、创建 app.db、Core ready，退出后受管进程和 5273/7777 监听均为 0。真实授权 Browser 除既有频道/话题、历史和性能回归外，还用现有 Home 数据验证休眠 Codex 在约 11 秒内唤醒并出现实时轨迹、约 21 秒内回复，随后无残留“正在思考”，页面控制台无错误或警告。旧 `publicNavContract` 随 public landing 路线一起删除，不再接受把它列为可忽略失败。A2-A6、H1-H4 与聚合面板/频道设置小节里的旧数字只描述当时检查点，不是当前基线。
 - 新功能优先拆到职责清楚的模块；不整块重写 `src/server/core.ts` 或大型 React 组件。
 - 代码、命令、架构、UI、术语或阶段变化时，同一提交同步相应文档。
 - 用户未要求时不修改或提交 `.agents/`、`.claude/`、`.codegraph/daemon.pid`、`skills-lock.json` 等外部/个人工具文件。

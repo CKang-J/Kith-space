@@ -26,6 +26,7 @@ export function createFakeRuntimeHarness(name = "fake"): {
   sessions(): FakeRuntimeSessionRecord[];
   snapshot(): FakeRuntimeSnapshot;
   trajectory(sessionId: string, entries: TrajectoryEntry[]): void;
+  activity(sessionId: string, activity: string, detail?: string): void;
   exit(sessionId: string, code: number | null): void;
 } {
   const records: InternalSession[] = [];
@@ -92,6 +93,11 @@ export function createFakeRuntimeHarness(name = "fake"): {
       const record = records.find((candidate) => candidate.id === sessionId);
       if (!record || record.exitCode !== undefined) return;
       record.callbacks.onTrajectory(entries);
+    },
+    activity(sessionId, activity, detail = "") {
+      const record = records.find((candidate) => candidate.id === sessionId);
+      if (!record || record.exitCode !== undefined) return;
+      record.callbacks.onActivity(activity, detail);
     },
     exit,
   };

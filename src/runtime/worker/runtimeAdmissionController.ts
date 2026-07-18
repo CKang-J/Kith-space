@@ -54,6 +54,7 @@ export class RuntimeAdmissionController {
   private readonly autoTimers: boolean;
   private readonly onOutcome: (outcome: WorkerQueueOutcome) => void;
   private readonly activeOrStarting = new Set<string>();
+  private readonly idleSessions = new Set<string>();
   private readonly queue: QueuedCommand[] = [];
   private readonly results = new Map<string, { fingerprint: string; result: AdmissionResult }>();
   private readonly inFlight = new Set<Promise<void>>();
@@ -108,8 +109,13 @@ export class RuntimeAdmissionController {
     }
 
     if (this.backend.isRunning(command.agentId)) {
-      if (command.type === "agent:deliver") this.backend.deliver(command);
-      else if (command.source === "wake") this.backend.deliver(deliveryCommand(command));
+      const delivery = command.type === "agent:deliver"
+        ? command
+        : command.source === "wake" ? deliveryCommand(command) : null;
+      if (delivery) {
+        this.idleSessions.delete(command.agentId);
+        this.backend.deliver(delivery);
+      }
       return this.remember(key, fingerprint, this.result(command, "admitted"));
     }
 
@@ -133,13 +139,22 @@ export class RuntimeAdmissionController {
     this.queue.push({ command, id, enqueuedAt: this.now(), sequence: ++this.sequence });
     this.armExpiryTimer();
     this.log.debug("runtime command queued", { id, agentId: command.agentId, spaceId: command.spaceId, queued: this.queue.length });
+    this.yieldIdleSession();
     return this.remember(key, fingerprint, this.result(command, "queued"));
   }
 
   sessionEnded(agentId: string): boolean {
+    this.idleSessions.delete(agentId);
     if (!this.activeOrStarting.delete(agentId)) return false;
     this.schedulePump();
     return true;
+  }
+
+  /** Keep completed sessions warm only while no other Agent is waiting for capacity. */
+  sessionIdle(agentId: string): boolean {
+    if (!this.activeOrStarting.has(agentId) || !this.backend.isRunning(agentId)) return false;
+    this.idleSessions.add(agentId);
+    return this.queue.length ? this.yieldIdleSession(agentId) : false;
   }
 
   sweepExpired(): number {
@@ -177,9 +192,11 @@ export class RuntimeAdmissionController {
     await this.settled();
     await this.backend.stopAllAndWait();
     this.activeOrStarting.clear();
+    this.idleSessions.clear();
   }
 
   private startAccepted(command: StartCommand, queuedMs: number): void {
+    this.idleSessions.delete(command.agentId);
     this.activeOrStarting.add(command.agentId);
     this.peakActiveOrStarting = Math.max(this.peakActiveOrStarting, this.activeOrStarting.size);
     const operation = (async () => {
@@ -207,6 +224,25 @@ export class RuntimeAdmissionController {
     this.pumping = Promise.resolve().then(() => this.pump()).finally(() => { this.pumping = null; });
   }
 
+  private yieldIdleSession(preferredAgentId?: string): boolean {
+    const agentId = preferredAgentId && this.idleSessions.has(preferredAgentId)
+      ? preferredAgentId
+      : this.idleSessions.values().next().value as string | undefined;
+    if (!agentId || !this.activeOrStarting.has(agentId) || !this.backend.isRunning(agentId)) {
+      if (agentId) this.idleSessions.delete(agentId);
+      return false;
+    }
+    try {
+      this.backend.sleep(agentId);
+      this.sessionEnded(agentId);
+      return true;
+    } catch (error) {
+      this.idleSessions.delete(agentId);
+      this.log.warn("idle runtime session did not yield capacity", { agentId, detail: errorMessage(error) });
+      return false;
+    }
+  }
+
   private pump(): void {
     this.removeExpired(this.now());
     while (true) {
@@ -221,7 +257,9 @@ export class RuntimeAdmissionController {
         continue;
       }
       if (this.backend.isRunning(next.command.agentId)) {
-        if (next.command.source === "wake") this.backend.deliver(deliveryCommand(next.command));
+        if (next.command.source === "wake") {
+          this.backend.deliver(deliveryCommand(next.command));
+        }
         this.emitOutcome(next, "completed");
         continue;
       }
@@ -322,6 +360,9 @@ function priority(command: RuntimeWorkerCommand): number {
 }
 
 function outcomeFor(command: WorkerAdmissionCommand, status: WorkerQueueOutcome["status"], queuedMs: number, reason?: string): WorkerQueueOutcome {
+  const delivery = command.source === "wake"
+    ? command.type === "agent:start" ? command.delivery : command
+    : null;
   return {
     id: workerCommandId(command),
     source: command.source,
@@ -331,6 +372,10 @@ function outcomeFor(command: WorkerAdmissionCommand, status: WorkerQueueOutcome[
     status,
     queuedMs,
     ...(reason ? { reason } : {}),
+    ...(delivery ? {
+      channelId: delivery.target,
+      ...(delivery.streamId ? { streamId: delivery.streamId } : {}),
+    } : {}),
   };
 }
 
