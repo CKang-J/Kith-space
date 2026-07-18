@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述个人 AgentOS 的目标模块边界。A2-A6 原定代码切片、Home/Space root 的 H1-H4 前置修复与 P-A8 Agent 频道响应模式均已完成，当前等待用户验收；验收前不进入 H5 或 Runtime 契约 v2。P-A8 完整规格见 `../superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
+> 本文描述个人 AgentOS 的目标模块边界。A2-A6 原定代码切片、Home/Space root 的 H1-H4 前置修复、P-A8 Agent 频道响应模式及本轮聊天/壳层 UI 已完成实现、自动化验证和用户验收。当前进入 P-A9 Desktop 监督的模块化单体架构收敛；Runtime 契约 v2 与 H5 等待对应 Module Interface 稳定后再实施。P-A9 完整规格见 `../superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
 
 ## 1. 架构原则
 
@@ -10,6 +10,8 @@
 - 模块能力经 MCP 暴露，UI、HTTP、agent data plane 和 MCP handler 复用同一领域服务。
 - app data、Space 自包含数据和 runtime state 分层；应用内部根默认 `~/.kith-space`，用户 Space 容器默认 `~/Kith-space`。
 - Space root 是所属 agent 的共享 cwd，但不是安全沙箱；保留 Space 作用域、路径校验、浏览器鉴权和 runtime 权限边界，删除多租户/RBAC 和远程主机抽象。
+- 采用 Desktop 监督的模块化单体：Core 收窄为组合根与 Transport Adapter，业务能力形成深 Module；依赖方向、高内聚/低耦合、KISS 与测试 Seam 优先于机械拆文件。
+- 性能优化以可重复基线和 profiler 为前提；TypeScript / Node / Electron / SQLite 继续作为主栈，Rust 只可能替换经证据确认的窄热点 Implementation。
 
 ## 2. 进程与信任边界
 
@@ -187,7 +189,7 @@ P-A8 的 schema v5 仍保持 19 张产品表：`agents.default_response_mode` �
 4. A2.4 已完成：删除 Machine 服务/API/UI、machine key/心跳/调度与 agent machine 选择；保留安装级唯一 Worker 进程协议，并让 Worker 事件跨 Space 定位。
 5. A2.2b 已完成：破坏性重建 workspace.db baseline，把保留表的 `servers/server_id` 改为 `spaces/space_id`，拆出单 Human 状态/收藏/偏好，并删除旧物理表与兼容边界。
 6. A2 已完成：附件目录纳入 Space 根路径，旧 app 级上传配置、命名 facade 与不兼容维护脚本已删除，并完成整阶段验收。
-7. H1-H4 已完成：稳定 homeSpaceId，分离 app data/默认 Space 容器，把主要 runtime cwd、Agent Memory 与 runtime state 归入三路径契约，完成默认创建、文件夹接入、失联重连，并交付 Home-only Spaces 模块、默认 Home 启动和同窗切换。当前等待用户验收。
+7. H1-H4 已完成：稳定 homeSpaceId，分离 app data/默认 Space 容器，把主要 runtime cwd、Agent Memory 与 runtime state 归入三路径契约，完成默认创建、文件夹接入、失联重连，并交付 Home-only Spaces 模块、默认 Home 启动和同窗切换；2026-07-18 本轮用户验收已完成。
 8. P-A8 已完成：schema v5、统一响应策略/设置、任务 assignee 语义、Human 频道 `@all` 接收者快照、实时/reconnect/message check/prompt 指令与前端默认值/频道覆盖 UI 已同步落地，未启动 H5 或 Runtime 契约 v2。
 
 不执行无边界的整仓替换；每个切片都需 schema、service、route 和 UI 契约测试。
@@ -282,3 +284,40 @@ Electron 固定为 43.1.0，electron-builder 固定为 26.15.3，`@electron/rebu
 `.github/workflows/desktop-release.yml:1`-`:40` 仅支持手动触发 Windows x64 构建，并上传未签名 installer artifact 14 天；它不创建 Release、不签名、不自动发布。本地最终安装器 `dist/desktop/Kith-space-Setup-0.1.0-x64.exe` 为 113625983 bytes，SHA-256 `D314DAE15A8E9AB598901D2E3DF8B90DE1C7B46E79824CC8575BD4C742B89646`，Authenticode `NotSigned`。最终 unpacked Desktop smoke Exit 0、`app.db` 创建、残留进程 0、端口监听 0；packaged Core、内置 Web/Drizzle/CLI 与优雅退出也已 smoke。真实 NSIS 安装/卸载尚未执行。公开分发前必须配置 Windows 代码签名证书并补齐安装流程验收，不能把可复现的未签名 artifact 描述为已签名或已发布。
 
 Windows Desktop 是 v1 唯一正式发行物；系统能力选型不得无必要绑定 Windows，为 macOS/Linux 留出实现空间。
+
+## 10. P-A9 模块化单体收敛目标
+
+### 10.1 进程拓扑不变，代码所有权收敛
+
+P-A9 保留 `Electron Desktop -> Core Service -> Local Runtime Worker -> 外部 runtime` 拓扑。Core 为 sandboxed renderer、授权浏览器和 Agent CLI 提供同一份本机权威，不是服务器部署遗留；Worker 隔离外部 runtime 进程、每 Agent 顺序和未来安装级容量，不是远程 daemon。不得把业务逻辑重新塞入 Electron main，也不得为“去 server 化”取消本机 Core。
+
+`src/server/` 的目标职责只有组合根、认证、HTTP/Socket 解析、错误/DTO 映射与兼容入口。消息、任务、Agent、频道、文件、Space 与 Runtime 控制分别形成高内聚 Module；业务 Module 不导入 `src/server/` 或 `src/desktop/`。当前反向依赖 `src/agents/agentDeletion.ts:3 -> src/server/storage.ts` 必须在文件 Module 切片中消除。
+
+### 10.2 首要拆分面
+
+- `src/server/core.ts` 当前 1412 行；`createMessage`（`:481`-`:738`）混合写权限、mention/`@all`、任务、介绍 token、附件、membership、实时发布、响应决策和 Worker 投递。普通 message insert 后的 dispatch chain、follow、附件、membership、mention 与频道时间目前还是分段写入（`:580`-`:628`），任务 system audit/assignment 也在任务事务之后（`:630`-`:637`）。P-A9.1a 先等价提取，P-A9.1b 再以失败注入测试收拢同库事务；目标由深 `MessagePostingModule`/`TaskModule` 封装完整用例，Transport 只调用公开命令；
+- `src/server/routes-agent.ts` 当前 659 行，`handleAgentApi`（`:105`）同时承担路由、认证、查询和领域判断，并直接导入数据库（`:5`）。迁移后只保留按 messages/context、channels/threads、tasks、actions、files、profile/space、reminders 分组的 Agent Transport Adapter，并复用业务 Module Interface；
+- `web/src/views/Chat.tsx` 当前 1137 行，主组件从 `:256` 开始并直接承担请求、Socket、分页、视口、话题和动作。P-A9 将按 data/model/ui 分离，但保持相关交互状态的 Locality，不以文件行数为 KPI；
+- Runtime 行为逐步归位到 `src/runtime/{contract,control,worker,adapters}`。迁移期保留 `daemon` 命令与 `/daemon/connect` 协议兼容，不提前实现 Runtime 契约 v2。
+
+### 10.3 Interface、Seam 与测试面
+
+Human HTTP、Agent data plane 与未来 MCP 必须通过同一消息/任务 Interface。普通消息、action proposal、reminder 与 introduction 使用受控判别联合；任务创建通过独立 Task Interface，并只与消息 Module 共享内部 ConversationJournal，不能形成公开循环依赖。Message/Task Module 通过 `WakeDispatchPort` 提交唤醒 effect，Core 控制层在其 Production Implementation 中编排 reservation/recovery。Core→Worker 是会断线/重连的真实进程 Seam，使用更低层的 `RuntimeWorkerPort`：Production Adapter 走受信 raw WebSocket，Module/协议测试使用进程内 Implementation。外部 Claude/Codex/opencode 继续实现 `src/daemon/runtime.ts:36` 的 Runtime Interface；实时发布通过窄事件 sink 隔离。
+
+`RuntimeWorkerPort.start/deliver` 必须携带稳定 deliveryId 并等待 `admitted | queued | rejected` ack；wake 命令使用 reservationId，手动与 stop/reset 等生命周期命令使用独立 commandId，不消耗 wake budget。`ws.send()` 未抛错不代表接纳成功。Core 的 get-or-reserve 以 `(spaceId, chainId, messageId, targetAgentId)` 为持久逻辑键并复用原 reservationId；只在接纳后 commit wake，明确拒绝时释放仍为 reserved 的记录，断线在新 lease 上重放同一 reservation。重复 command/ack 与 reconnect 不得重复增加 wake count，Agent check/read 推进的 `lastReadSeq` 关闭未读重放窗口。现有表若无法证明持久唯一性，先补独立 schema/迁移设计。
+
+该边界只保证接纳确认与未读重放，不把现有 Runtime 契约夸大为端到端 exactly-once：Agent 已 check/read 后、回复前崩溃的恢复仍等待 Runtime 契约 v2 的 turn completion 语义。
+
+SQLite 与本地文件系统属于可在临时目录真实替代的进程内依赖，不为每张表建立 Repository Interface。Module 的公开 Interface 是主要测试表面；只有在等价行为已经由新 Interface 覆盖后，才能删除旧 helper 测试。每个抽象必须隐藏真实变化点或提供必要测试 Seam，不引入通用 DI/事件总线框架。
+
+### 10.4 性能与 Rust 边界
+
+P-A9.0 先用真实临时 SQLite 与 in-memory Worker/Event Adapter 建立 1/5/10/20 Agent 的 post p50/p95、SQL 数、event-loop delay、内存和 fan-out 基线，并用 fake Runtime harness 记录当前 session 启停事实；当前 socket-send 只作诊断基线，不称为 admission。每场景至少 5 个 round、每 round 100 次操作，报告 median p95、离散度和机器配置，并冻结 Core durable commit 与 UI 的绝对 SLO；同时产出 P-A9.4 admission/replay、容量、公平、取消与排空目标契约清单。P-A9.4 消费真实 ack 后再建立 Worker admission 的绝对 SLO，并用 fake Runtime 与可用时的真实 CLI 启动/RSS smoke 决定首版存活 RuntimeSession 容量；turn-complete 与 turn 级限流留给 Runtime 契约 v2。之后优先批量解析响应模式/scope，再按 React profiler 决定是否需要列表虚拟化。
+
+当前主栈继续是 TypeScript / Node / Electron / React / SQLite；`better-sqlite3` 已包含原生数据库实现。只有稳定基线仍未达标、结构性问题已消除、profiler 将多数可控 CPU 时间定位到一个稳定 Module，且三端构建收益为正时，才可另立 ADR 用 Rust Adapter 替换该窄 Implementation。全量 Rust 重写不属于路线。
+
+### 10.5 实施与验收
+
+实施顺序固定为：P-A9.0 基线/护栏 -> Message/Task -> Agent Transport -> 领域依赖 -> Runtime admission/session 容量 -> Chat 控制层 -> 证据驱动性能优化 -> 兼容清理。每个切片先补特征测试，保留短期 facade，迁移完调用方后删除旧 Implementation；不改公开 URL、Agent CLI 或现有产品交互。默认不改 schema，若 Worker 重放幂等需要迁移则暂停对应切片并单独设计，不能夹带。
+
+阶段完成时，`core.ts` 不再拥有消息/任务/频道/Runtime 投递业务 Implementation，Agent route 不直接访问数据库，Agent 删除不依赖 server，Chat 组合层不直接持有网络/Socket 生命周期，Runtime 有安装级容量与停机排空测试，并且 typecheck、全量 unit/integration、Web/Desktop build 与相关 packaged smoke 全部通过。量化门、风险和回滚见 P-A9 规格。

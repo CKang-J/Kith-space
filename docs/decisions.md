@@ -2,7 +2,7 @@
 
 ## 前言
 
-这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）；随后授权浏览器的目录选择收敛为受限主机目录浏览器（决策 24）。2026-07-14 又锁定会话聚合面板（决策 25）与 Agent 频道响应模式（决策 26）；2026-07-15 在该响应机制上补充 Human 专属的频道全体提及（决策 27），并把 ChatOnly 的模块导航迁入左侧栏、模块打开态继续使用 Dock，同时退役案例展示（决策 28）。当前结论以每条决策中的最新修正和决策 21-28 为准。
+这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）；随后授权浏览器的目录选择收敛为受限主机目录浏览器（决策 24）。2026-07-14 又锁定会话聚合面板（决策 25）与 Agent 频道响应模式（决策 26）；2026-07-15 在该响应机制上补充 Human 专属的频道全体提及（决策 27），并把 ChatOnly 的模块导航迁入左侧栏、模块打开态继续使用 Dock，同时退役案例展示（决策 28）。2026-07-18 本轮 UI 验收结束后，项目锁定“保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，以模块化单体渐进收敛、性能证据驱动 Rust 决策”的工程路线（决策 29）。当前结论以每条决策中的最新修正和决策 21-29 为准。
 
 盘问的方式是一次给一个决策、每次给一个明确建议，让用户在 either/or 之间做取舍。会话过程中有几条决策被推翻或修正过（底座、runtime、Redis 的真实用途、聊天历史随文件夹走的成本），这些演化本身是理解项目为什么长成现在这样的关键，因此单列一节保留。
 
@@ -42,6 +42,7 @@
 | 26 | Agent 频道响应模式 | Agent 默认值加频道成员覆盖；私聊与明确任务指派不受模式限制 |
 | 27 | 频道全体提及 | Human 的规范 token `@all` 快照当前频道 Agent；主动/被动必回，静音不唤醒 |
 | 28 | Chat 壳层导航 | ChatOnly 使用左侧纵向模块入口；模块打开态使用 Dock；案例展示退役 |
+| 29 | 代码架构与性能语言 | 保留 Desktop/Core/Worker 与 TypeScript 主栈；模块化单体渐进收敛，Rust 只由性能证据触发 |
 
 ---
 
@@ -311,7 +312,7 @@
 
 **Windows 发行姿态**：Desktop 是唯一正式发行路径，但“有安装器文件”和“已公开发行”必须分开。A6 锁定 x64、per-user、assisted NSIS；本地/CI 产物默认未签名，CI 只上传 artifact。代码签名证书是公开分发的硬前置，真实安装/卸载测试也是正式发布验收的一部分。该约束不改变未来 macOS/Linux 路线，只规定当前 Windows v1 的可验证边界。
 
-**实施状态（2026-07-12）**：A2-A6 的原定代码切片与 P-A7 H1-H4 已落地；app data/Space root 分离、Space root cwd、可移植 Agent Memory、文件夹创建/接入/重连、stable Home 默认入口与 Home-only Spaces 模块均已完成。当前等待用户验收；H5 与 Runtime 契约 v2 继续暂停。
+**实施状态（2026-07-18 更新）**：A2-A6 的原定代码切片与 P-A7 H1-H4 已落地；app data/Space root 分离、Space root cwd、可移植 Agent Memory、文件夹创建/接入/重连、stable Home 默认入口与 Home-only Spaces 模块均已完成，并通过本轮用户验收。H5 与 Runtime 契约 v2 继续等待决策 29 的 P-A9 Module Interface 稳定。
 
 ---
 
@@ -337,7 +338,7 @@
 
 **实施边界**：H1-H4（路径、cwd/记忆、文件夹接入、Home Spaces UI）属于 A1-A6 验收前置修复。跨 Space 写编排 H5 后续渐进实现，先只读真实摘要，再接 task/message/dispatch；没有真实数据前不做占位视图。完整规格见 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
 
-**实施状态**：P-A7 H1-H4 已完成。`src/paths.ts` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，并以 `KITH_SPACE_SPACES_DIR` 独立隔离默认 Space 容器；app.db 保存稳定 homeSpaceId，Home 默认根为 `~/Kith-space/Home`。`src/agents/agentWorkspacePaths.ts` 与 `AgentManager` 已把主要 runtime cwd、Agent Memory 和 runtime state 拆为三个路径，并对派生删除路径做容器逃逸校验；项目 skills 使用 Space root，profile/reset 与 Human 侧记忆浏览使用对应 Agent Memory，同 agent reset/start 串行。OpenCode 已用 child-only inline execution agent 替代覆盖用户 `AGENTS.md`。H3 的 `SpaceRootService` 和 Space API 已实现默认创建、普通目录接入、兼容 workspace.db 稳定 ID 复用、`ready | missing | error` 列表状态与移动后重新定位；重复 root/ID、损坏或不兼容数据库、symlink 和身份不匹配会拒绝，冲突 slug 只调整本机路由别名，接入/打开共用 SQLite 完整性与表列校验。普通 API 不隐式重建缺失 root，relocate 失败回滚 registry；失联深链和全失联恢复保持 relocate 可达。H4 已以 stable Home 身份实现普通冷启动 Home、Home-only Spaces Dock/卡片、搜索/刷新/创建/接入/重连、最近打开记录与同窗导航；普通 Space 不能激活该模块。SpaceSwitcher 只保留快速切换、应急重连和 Home Spaces 入口。当前等待用户验收，H5 未开始。
+**实施状态**：P-A7 H1-H4 已完成。`src/paths.ts` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，并以 `KITH_SPACE_SPACES_DIR` 独立隔离默认 Space 容器；app.db 保存稳定 homeSpaceId，Home 默认根为 `~/Kith-space/Home`。`src/agents/agentWorkspacePaths.ts` 与 `AgentManager` 已把主要 runtime cwd、Agent Memory 和 runtime state 拆为三个路径，并对派生删除路径做容器逃逸校验；项目 skills 使用 Space root，profile/reset 与 Human 侧记忆浏览使用对应 Agent Memory，同 agent reset/start 串行。OpenCode 已用 child-only inline execution agent 替代覆盖用户 `AGENTS.md`。H3 的 `SpaceRootService` 和 Space API 已实现默认创建、普通目录接入、兼容 workspace.db 稳定 ID 复用、`ready | missing | error` 列表状态与移动后重新定位；重复 root/ID、损坏或不兼容数据库、symlink 和身份不匹配会拒绝，冲突 slug 只调整本机路由别名，接入/打开共用 SQLite 完整性与表列校验。普通 API 不隐式重建缺失 root，relocate 失败回滚 registry；失联深链和全失联恢复保持 relocate 可达。H4 已以 stable Home 身份实现普通冷启动 Home、Home-only Spaces Dock/卡片、搜索/刷新/创建/接入/重连、最近打开记录与同窗导航；普通 Space 不能激活该模块。SpaceSwitcher 只保留快速切换、应急重连和 Home Spaces 入口。2026-07-18 本轮用户验收已完成，H5 未开始。
 
 ---
 
@@ -405,7 +406,29 @@
 
 **推理与权衡**：ChatOnly 的左侧栏天然承载“我要去哪里”，纵向文字标签比悬浮纯图标更易扫读，也能把中心区域还给消息与 Composer。模块打开后隐藏固定栏，可以避免左侧栏和 Dock 同时存在；Dock 中保留 Chat 是因为它此时承担布局控制而非重复导航。代价是模块入口会随工作姿态从左侧纵向列表迁移到横向 Dock，但迁移条件只有“模块是否打开”一个，且 URL 状态机不变。完整规格见 `docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md`。
 
-**实施状态**：代码与自动化验证已完成。`SidebarModuleNavigation` 复用统一模块注册表，`ConversationListContent` 为常驻侧栏与 Split 抽屉提供共享会话分组；ChatOnly 不再挂载 Dock，模块态仍由 `WorkspaceDock` 控制。中心 Chat 卡片、圆角、画布间隙和配色已经恢复，常驻会话导航直接使用画布背景，新模块入口与会话抽屉不绘制贯穿分隔线；统一无衬线字体，Chat 标题栏固定左右 14px，与标题内容上下留白一致；ChatOnly 与 Split 统一为 10px 消息 gutter，ChatOnly 主卡片沿用 360px Chat 绝对下限，消息、日期分隔与 Composer 使用 1040px 居中轨道。消息流只承担纵向滚动，隐藏工具栏不会再撑出横向滚动条。案例展示的入口、产品路由、视图、数据、资产及专属分支已删除；服务端仅保留旧 URL 的 SPA fallback，由客户端规范化到当前 Space 默认频道。当前等待用户手动视觉验收。
+**实施状态**：代码与自动化验证已完成。`SidebarModuleNavigation` 复用统一模块注册表，`ConversationListContent` 为常驻侧栏与 Split 抽屉提供共享会话分组；ChatOnly 不再挂载 Dock，模块态仍由 `WorkspaceDock` 控制。中心 Chat 卡片、圆角、画布间隙和配色已经恢复，常驻会话导航直接使用画布背景，新模块入口与会话抽屉不绘制贯穿分隔线；统一无衬线字体，Chat 标题栏固定左右 14px，与标题内容上下留白一致；ChatOnly 与 Split 统一为 10px 消息 gutter，ChatOnly 主卡片沿用 360px Chat 绝对下限，消息、日期分隔与 Composer 使用 1040px 居中轨道。消息流只承担纵向滚动，隐藏工具栏不会再撑出横向滚动条。案例展示的入口、产品路由、视图、数据、资产及专属分支已删除；服务端仅保留旧 URL 的 SPA fallback，由客户端规范化到当前 Space 默认频道。用户已于 2026-07-18 完成本轮手动视觉验收。
+
+---
+
+## 决策 29：保留 Desktop/Core/Worker 拓扑，以模块化单体渐进收敛；Rust 只由性能证据触发
+
+**结论（2026-07-18）**：Kith-space 继续使用 Electron Desktop Supervisor + Node/TypeScript Core Service + 安装级唯一 Local Runtime Worker + React UI + SQLite 的本机拓扑。Core 收窄为组合根和 HTTP/Socket Transport Adapter，Worker 负责外部 runtime 进程隔离；消息、任务、Agent、频道、文件、Space 与 Runtime 控制逐步形成高内聚的深 Module。P-A9 不做全量 Rust 重写、微服务化或把 Core 塞回 Electron main。
+
+**职责与依赖约束**：设计遵循高内聚低耦合、单一职责、开放封闭、KISS、DRY、迪米特法则、依赖倒置和关注点分离。Transport 只做认证、解析、序列化；业务用例通过窄 Interface 暴露；SQLite、Socket、外部 CLI 和 OS 行为由必要 Adapter 实现。领域 Module 不导入 `src/server/` 或 `src/desktop/`，Human HTTP、Agent data plane 与未来 MCP 复用同一消息/任务 Interface。SQLite 与本地文件系统用真实临时资源测试，不为每张表建立通用 Repository。
+
+**为何保留 Core 与 Worker**：Core 为 sandboxed renderer、Desktop 与授权本机/LAN 浏览器、Agent CLI 提供同一份本机权威、Space guard 和实时行为；这不是公网 server 路线。Worker 隔离长时间运行且可能崩溃/取消的外部 runtime 进程，并承载每 Agent 顺序、容量和停机排空；这不是远程 daemon。合并二者会降低故障隔离，合并进 Electron main 会让宿主生命周期重新耦合业务与数据库。
+
+**Worker 接纳与重放边界**：Core 写入 WebSocket 不等于 Worker 已接纳。Message/Task Module 通过 `WakeDispatchPort` 提交 effect，Core 控制层再用 `RuntimeWorkerPort` 的稳定 deliveryId 等待 `admitted | queued | rejected`；wake 使用 reservationId，手动与生命周期命令使用独立 commandId 且不占 wake budget。Core 的 get-or-reserve 以 `(spaceId, chainId, messageId, targetAgentId)` 为持久逻辑键，只在接纳 ack 后提交 wake；断线用同一 reservation 重放，重复 command/ack 与 reconnect 不得重复消耗 wake budget，Agent check/read 推进的 `lastReadSeq` 关闭未读重放窗口。若现有 `dispatch_wakes` 不能证明持久唯一性，必须先补独立 schema/迁移/恢复设计，不能只用内存去重。
+
+**可靠性口径**：上述契约保证接纳确认与未读重放，不保证外部 runtime 端到端 exactly-once。Agent 已 check/read、推进 `lastReadSeq` 后若在回复前崩溃，恢复仍需要 Runtime 契约 v2 的 turn completion 语义；P-A9 不得把该已知窗口表述成“绝不丢工作”。
+
+**为何不全量换 Rust**：当前负载主要是 SQLite、WebSocket、文件与子进程 I/O，以及外部模型/工具等待；`better-sqlite3` 已使用原生实现。现有瓶颈首先是职责集中、fan-out 重复查询、缺少安装级 runtime 背压和 Chat 控制层拥挤，语言重写不能解决这些结构问题，反而增加 Electron/Node/Rust IPC、三端原生产物、签名、ABI、诊断和双语言维护成本。
+
+**Rust 决策门**：只有可重复性能基线显示产品 SLO 未达标、结构性问题已经消除、profiler 把多数可控 CPU 时间归因到一个稳定且可独立输入输出的 Module，并且 Windows/macOS/Linux 构建维护收益为正时，才另立 ADR 评估 sidecar、N-API 或独立二进制 Adapter。替换必须保持 Module Interface 和可回滚路径；全量 Core/项目重写不属于当前路线。
+
+**实施方式**：P-A9.0 先冻结全部消息写入与 Agent 端点所有权矩阵、静态依赖基线、当前 Worker socket-send/reconnect 行为和 1/5/10/20 Agent Core/UI 基线，并产出 P-A9.4 admission/replay 目标契约清单；不要求尚未实现的 ack 测试提前变绿，也不把 socket-send 指标命名为 admission SLO。之后按 Message/Task、Agent Transport、领域依赖、Runtime admission/session 容量、Chat 控制层和证据驱动性能优化逐切片迁移。依赖测试对当前唯一 `agents/agentDeletion -> server/storage` 采用精确临时 allowlist，P-A9.3 强制清除；每个切片保留短期兼容 facade、迁移调用方后删除旧 Implementation。默认不改 schema、公开 URL、Agent CLI 或 `/daemon/connect` 路径；可靠性需要 schema 时必须单独设计。完整规格见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
+
+**实施状态**：方案已锁定，生产代码尚未开始改造。2026-07-18 独立子代理两轮审查指出的 Worker admission/重放幂等、依赖护栏自冲突、消息提交点、调用方/端点矩阵、性能口径与阶段顺序均已纳入规格，最终窄核对结论为 Go；下一步仅进入 P-A9.0 当前行为基线、护栏与目标契约清单。Runtime 契约 v2 与 H5 继续等待 P-A9 的对应 Module Interface 稳定。
 
 ---
 

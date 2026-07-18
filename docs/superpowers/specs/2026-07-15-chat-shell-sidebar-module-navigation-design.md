@@ -1,7 +1,7 @@
 # Kith-space Chat 壳层与侧栏模块导航重构设计
 
 - 日期：2026-07-15
-- 状态：设计、代码与自动化验证已完成，等待用户手动视觉验收
+- 状态：设计、代码、自动化验证与用户手动视觉验收均已完成（2026-07-18）
 - 范围：ChatOnly 左侧栏、模块入口、Split 会话抽屉、Dock 显示条件、工作区视觉骨架、案例展示退役
 - 关联规格：`2026-07-10-kith-space-single-window-workspace-design.md`、`2026-07-14-chat-aggregate-panel-design.md`、`2026-07-15-chat-message-ui-density-design.md`
 
@@ -289,7 +289,7 @@ font-family: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 - 已抽取 `ConversationListContent`，由常驻 `ChatSidebar` 与 `ConversationDrawerSidebar` 共享；抽屉不组合模块入口或 `LiveAgentBar`。
 - 已恢复并锁定中心 Chat 卡片、圆角、画布间隙与配色；常驻会话导航取消卡片底板并直接使用画布背景，新增模块入口和会话抽屉不使用贯穿分隔线。统一无衬线字体；Chat 标题栏固定左右 14px，与标题内容上下留白一致；ChatOnly 与 Split 使用同一 10px 消息 gutter 和 360px Chat 卡片绝对下限，日期分隔、消息与 Composer 使用 1040px 居中内容轨道，Human 气泡继续使用 `#eff4fb`。
 - 已删除 Showcase 产品入口、路由识别、视图、数据、资产、i18n、样式和专属测试/表现分支；旧 URL 仅保留服务端 SPA fallback，并由客户端规范化到当前 Space 默认频道。
-- 自动化验证：`pnpm run typecheck`、610/610 unit、完整 integration、Web build（2622 modules）通过。按用户要求未启动浏览器，视觉与真实三态交互等待手动验收。
+- 自动化验证：`pnpm run typecheck`、610/610 unit、完整 integration、Web build（2622 modules）通过。当时按用户要求未由 Agent 启动浏览器；用户已于 2026-07-18 完成本轮视觉与真实三态交互验收。
 
 ## 10. 验收标准
 

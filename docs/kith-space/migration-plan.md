@@ -1,14 +1,14 @@
 # Kith-space 分阶段改造计划
 
-本文记录从当前 open-tag 衍生实现收敛到本机个人 AgentOS 的工程顺序。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`，权威转向规格见 `../superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，Home/Space root 补充见 `../superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
+本文记录从当前 open-tag 衍生实现收敛到本机个人 AgentOS 的工程顺序。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`，权威转向规格见 `../superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，Home/Space root 补充见 `../superpowers/specs/2026-07-12-home-space-and-space-root-design.md`，当前 P-A9 架构收敛见 `../superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
 
-截至 2026-07-12，A1-A6 原定代码切片与 A7 H1-H4 已完成，当前等待用户验收；H5 与 Runtime 契约 v2 继续暂停。
+截至 2026-07-18，A1-A6 原定代码切片与 A7 H1-H4 已完成并通过本轮用户验收；当前先实施 P-A9 模块化单体架构收敛，H5 与 Runtime 契约 v2 继续暂停。
 
 ## 1. 已完成基线
 
 P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完成 ChatOnly / Split / ModuleOnly 单窗口壳、可拖拽面板、常驻 Dock 与任务作用域侧栏。它们作为本机化改造的可用基线保留。
 
-旧计划中的“多用户/多机器机制休眠保留”“P6 云化/多真人”和“localhost Web 后再升级公网”全部失效。P4 视觉微调暂停，先处理领域与宿主边界。
+旧计划中的“多用户/多机器机制休眠保留”“P6 云化/多真人”和“localhost Web 后再升级公网”全部失效。P4 与本轮 UI 验收已经结束，现有交互作为 P-A9 回归基线；当前先处理领域、Runtime 与宿主边界。
 
 ## 2. 改造原则
 
@@ -97,7 +97,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A6 继承资产清理与总审计
 
-当前进度：A6 已完成并进入用户验收；P-A7 是验收中新确认的后续修复块。
+历史进度：A6 当时已完成并进入用户验收，P-A7 是该轮验收中新确认的后续修复块；截至 2026-07-18，P-A7 H1-H4 与本轮用户验收均已完成，当前阶段以 P-A9 为准。
 
 已落地边界：
 
@@ -114,7 +114,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 ### A7 Home 总控 Space 与 Space root 归位
 
-当前进度：产品与架构设计、H1-H4 代码切片和自动验证已完成，等待用户进行实际 UI/目录验收。A7 是 A1-A6 用户验收前置修复；当前不要启动 H5。
+当前进度：产品与架构设计、H1-H4 代码切片、自动验证和本轮实际 UI/目录验收已完成。A7 是 A1-A6 用户验收前置修复；当前进入 P-A9，不启动 H5。
 
 实施顺序：
 
@@ -126,7 +126,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 
 模块边界：优先新增职责清楚的路径/Home/目录/跨 Space service 与薄 UI module，不整块重写 `src/server/core.ts`、Electron main 或 `WorkspaceFrame`。实现细节以补充规格为准。
 
-验证：每个 H 切片独立测试和中文提交。H1-H4 自动验证已通过 typecheck、502/502 unit、完整 integration、2571-module Web build 与 Desktop build；此前 cwd/目录探针已覆盖 H1-H3。H4 真实 Desktop/Web 交互与视觉仍由用户验收，不得用单测替代实际观察。
+验证：每个 H 切片独立测试和中文提交。H1-H4 自动验证已通过 typecheck、502/502 unit、完整 integration、2571-module Web build 与 Desktop build；此前 cwd/目录探针已覆盖 H1-H3。H4 真实 Desktop/Web 交互与视觉已由用户在 2026-07-18 完成本轮验收；这不改变“单测不能替代实际观察”的原则。
 
 ## 4. 强制依赖
 
@@ -135,7 +135,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 - A3 已在 LAN 绑定前建立 Token/会话/Origin/CSRF 安全门；后续不得绕过该门直接暴露新路由。
 - A4 已接管配置、内部凭据与受管进程；手动分进程 `.env` 仅保留为仓库调试入口。
 - A5 已在稳定的领域/API/Desktop 能力边界上删除旧入口；A6 没有恢复旧兼容面，只保留内部开发调试入口。
-- A6 已完成旧路线与发行面收口；A7 H1-H4 代码已完成但尚待用户验收。验收通过后 Runtime 契约 v2 才成为生产力模块、可靠 usage 预算和统一 MCP bootstrap 的直接前置；H5 与 Runtime v2 的先后由用户决定。
+- A6 已完成旧路线与发行面收口；A7 H1-H4 代码与本轮用户验收均已完成。当前先执行 P-A9；其 Runtime Interface 稳定后，Runtime 契约 v2 才成为生产力模块、可靠 usage 预算和统一 MCP bootstrap 的直接前置，H5 则等待消息/任务/Agent Interface 稳定。
 
 ## 5. 主要风险
 
