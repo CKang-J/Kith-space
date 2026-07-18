@@ -7,7 +7,12 @@ import { DESC_TOO_LONG, INVALID_AGENT_NAME, addChannelMembers, descTooLong, inva
 import { requestWorker } from "../../local-runtime/workerHub.js";
 import { publish } from "../realtime.js";
 import { clearAgentIntroductionTurns } from "../agentIntroduction.js";
-import { ALL_SCOPE_KEYS, SCOPES, effectiveScopes, isScopeLiteral } from "../scopes.js";
+import {
+  AGENT_SCOPES as SCOPES,
+  ALL_AGENT_SCOPE_KEYS as ALL_SCOPE_KEYS,
+  effectiveAgentScopes as effectiveScopes,
+  isAgentScopeLiteral as isScopeLiteral,
+} from "../../agents/agentScopes.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { validateRuntimeModel } from "../../local-runtime/runtimeCatalog.js";
 import { resolveAgentMemoryDir } from "../../agents/agentWorkspacePaths.js";

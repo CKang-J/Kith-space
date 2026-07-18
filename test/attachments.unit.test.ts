@@ -16,7 +16,7 @@ process.env.KITH_SPACE_UPLOAD_DIR = path.join(home, "must-not-be-used");
 const { closeAppDatabase, registerSpace } = await import("../src/app-data/appDatabase.ts");
 const { spaceUploadsDir } = await import("../src/paths.ts");
 const { parseUpload } = await import("../src/server/attachments.ts");
-const { readObject } = await import("../src/server/storage.ts");
+const { readObject } = await import("../src/files/localObjectStorage.ts");
 const spaceId = "attachments-unit-space";
 registerSpace({ id: spaceId, name: "Attachments", slug: spaceId, rootPath: spaceRoot });
 

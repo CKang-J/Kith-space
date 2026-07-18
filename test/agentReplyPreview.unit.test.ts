@@ -470,16 +470,19 @@ test("persisted agent message consumes all same-agent same-channel previews", ()
 
 test("main chat and thread panel both consume agent reply preview events", () => {
   const chatSrc = fs.readFileSync(new URL("../web/src/views/Chat.tsx", import.meta.url), "utf8");
+  const messageModelSrc = fs.readFileSync(new URL("../web/src/features/conversation/model/useConversationMessages.ts", import.meta.url), "utf8");
+  const threadModelSrc = fs.readFileSync(new URL("../web/src/features/conversation/model/useConversationThreads.ts", import.meta.url), "utf8");
+  const realtimeSrc = messageModelSrc + "\n" + threadModelSrc;
 
-  assert.match(chatSrc, /e\.type === "agent:reply" && e\.channelId === cur\?\.id/);
-  assert.match(chatSrc, /e\.type === "agent:reply" && e\.channelId === channelId/);
-  assert.match(chatSrc, /hasStreamingAgentReplyPreview\(msgs\)/, "main chat should run the typewriter loop while a preview has pending text");
-  assert.match(chatSrc, /tickAgentReplyPreviews/, "thread panel should use the same preview typewriter loop");
-  assert.match(chatSrc, /dropAgentReplyPreviewsForMessage\(m, e\.message\), e\.message/);
-  assert.match(chatSrc, /dropAgentReplyPreviewForThreadReply\(m, \{[\s\S]*?parentMessageId: e\.parentMessageId,[\s\S]*?senderId: e\.senderId,[\s\S]*?senderType: e\.senderType,[\s\S]*?replyCount: e\.replyCount,[\s\S]*?\}\)/, "an Agent thread reply should remove its matching parent-channel preview only after a reply exists");
+  assert.match(messageModelSrc, /event\.type === "agent:reply" && event\.channelId === channelId/);
+  assert.match(threadModelSrc, /event\.type === "agent:reply" && event\.channelId === channelId/);
+  assert.match(realtimeSrc, /hasStreamingAgentReplyPreview\(messages\)/, "main chat should run the typewriter loop while a preview has pending text");
+  assert.match(threadModelSrc, /tickAgentReplyPreviews/, "thread panel should use the same preview typewriter loop");
+  assert.match(threadModelSrc, /dropAgentReplyPreviewsForMessage\(current, event\.message\), event\.message/);
+  assert.match(messageModelSrc, /dropAgentReplyPreviewForThreadReply\(current, \{[\s\S]*?parentMessageId: event\.parentMessageId,[\s\S]*?senderId: event\.senderId,[\s\S]*?senderType: event\.senderType,[\s\S]*?replyCount: event\.replyCount,[\s\S]*?\}\)/, "an Agent thread reply should remove its matching parent-channel preview only after a reply exists");
   assert.match(chatSrc, /key=\{renderKeyForMessage\(m\)\}/, "finalized previews should keep the same React key instead of remounting");
-  assert.match(chatSrc, /newMsgOrderRef\.current\.delete\(e\.message\.id\)/, "persisted messages absorbed by a preview should not get a second enter animation");
-  assert.match(chatSrc, /forceBottomPinRef\.current = true/, "own messages and agent previews should force the chat viewport back to the live tail");
+  assert.match(messageModelSrc, /newMessageOrderRef\.current\.delete\(message\.id\)/, "persisted messages absorbed by a preview should not get a second enter animation");
+  assert.match(messageModelSrc, /forceBottomPinRef\.current = true/, "own messages and agent previews should force the chat viewport back to the live tail");
 });
 
 test("empty agent reply start previews render a visible thinking state", () => {
@@ -502,10 +505,12 @@ test("empty agent reply start previews render a visible thinking state", () => {
 });
 
 test("server starts agent reply previews as soon as a message wakes an agent", () => {
+  const postingSrc = fs.readFileSync(new URL("../src/messages/messagePostingModule.ts", import.meta.url), "utf8");
+  const adapterSrc = fs.readFileSync(new URL("../src/server/messageWakeDispatchAdapter.ts", import.meta.url), "utf8");
   const coreSrc = fs.readFileSync(new URL("../src/server/core.ts", import.meta.url), "utf8");
-  assert.match(coreSrc, /const replyStreamId = agentReplyStreamId\(msg!\.id, mem\.id\);/, "createMessage should derive a stable preview stream id from trigger message + agent");
-  assert.match(coreSrc, /await publish\(opts\.spaceId, \{ type: "agent:reply", agentId: mem\.id, channelId: opts\.channelId, streamId: replyStreamId,[\s\S]*?op: "start"/, "createMessage should publish preview start before waiting for daemon runtime output");
-  assert.match(coreSrc, /streamId: replyStreamId/, "agent:deliver payload should pass the same stream id through to the daemon");
+  assert.match(postingSrc, /streamId: agentReplyStreamId\(message\.id, member\.id\)/, "message dispatch should derive a stable preview stream id from trigger message + agent");
+  assert.match(adapterSrc, /type: "agent:reply"[\s\S]*?streamId,[\s\S]*?op: "start"[\s\S]*?runtimeWorker\.start\(/, "the wake adapter should publish preview start before waiting for Worker admission");
+  assert.match(coreSrc, /input\.delivery\.streamId \? \{ streamId: input\.delivery\.streamId \}/, "the Worker start command should carry the same stable stream id");
 });
 
 test("daemon reply preview can reuse a server-provided stream id", () => {
@@ -516,5 +521,5 @@ test("daemon reply preview can reuse a server-provided stream id", () => {
   assert.doesNotMatch(daemonSrc, /if \(existing\?\.channelId === channelId && streamId\) return;/, "a later server stream id in the same channel should not be ignored");
   assert.match(daemonSrc, /b\.streamId = meta\.streamId \?\? b\.streamId/, "debounced deliver should keep the latest server stream id so only the active preview receives deltas");
   assert.match(daemonSrc, /this\.startReplyPreview\(agentId, r, target, b\.streamId\)/, "debounced deliver should publish a new preview start when the active stream id changes");
-  assert.match(indexSrc, /streamId: msg\.streamId/, "daemon websocket bridge should forward agent:deliver streamId into AgentManager");
+  assert.match(indexSrc, /streamId: command\.streamId/, "the Worker admission backend should forward the delivery stream id into AgentManager");
 });

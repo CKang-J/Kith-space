@@ -4,8 +4,8 @@ import { sql, eq } from "drizzle-orm";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { unregisterSpace } from "../src/db/index.ts";
 import { assignTask, claimTask, convertMessageToTask, createMessage, setTaskStatus } from "../src/server/core.ts";
-import { getTaskDetails, reportTask, submitTaskDelivery } from "../src/server/tasks/taskService.ts";
-import { TaskOperationError, parseTaskActionMetadata } from "../src/server/tasks/taskTypes.ts";
+import { getTaskDetails, reportTask, submitTaskDelivery } from "../src/tasks/taskService.ts";
+import { TaskOperationError, parseTaskActionMetadata } from "../src/tasks/taskTypes.ts";
 
 async function fixture(name: string) {
   const f = integrationDatabase(name);

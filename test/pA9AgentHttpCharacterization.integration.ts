@@ -9,7 +9,7 @@ import { closeAllDatabases } from "../src/db/index.ts";
 import { spaceUploadsDir } from "../src/paths.ts";
 import { addChannelMembers, agentConfig, createMessage } from "../src/server/core.ts";
 import { handleAgentApi } from "../src/server/routes-agent.ts";
-import { saveObject } from "../src/server/storage.ts";
+import { saveObject } from "../src/files/localObjectStorage.ts";
 
 type Capture = { status: number; body: any };
 

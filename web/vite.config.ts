@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { Agent } from "node:http";
 
 // Load ports and proxy target from the root .env so parallel worktrees can use distinct ports.
 // Vite runs from web/, and loadEnvFile intentionally preserves values already exported by the shell.
@@ -7,13 +8,14 @@ if (process.env.KITH_SPACE_DESKTOP_MANAGED !== "1") {
   try { (process as { loadEnvFile?: (p?: string) => void }).loadEnvFile?.("../.env"); } catch { /* use defaults when .env is absent */ }
 }
 const API = `http://127.0.0.1:${process.env.PORT ?? 7777}`;
+const coreProxyAgent = new Agent({ keepAlive: true });
 export default defineConfig({
   plugins: [react()],
   server: {
     port: Number(process.env.VITE_PORT ?? 5273),
     strictPort: true,
     proxy: {
-      "/api": { target: API, changeOrigin: true },
+      "/api": { target: API, changeOrigin: true, agent: coreProxyAgent },
       "/socket.io": { target: API, ws: true, changeOrigin: true },
     },
   },

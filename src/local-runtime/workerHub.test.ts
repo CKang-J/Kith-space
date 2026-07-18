@@ -59,8 +59,8 @@ test("send, request correlation, and ready snapshot share the current worker", a
   assert.deepEqual(workerRuntimes(), ["claude", "codex"]);
   assert.deepEqual(workerRunningAgents(), ["a1", "a2"]);
 
-  assert.equal(sendToWorker({ type: "agent:stop", agentId: "a1" }), true);
-  assert.deepEqual(JSON.parse(sent[0]!), { type: "agent:stop", agentId: "a1" });
+  assert.equal(sendToWorker({ type: "agent:profile", agentId: "a1" }), true);
+  assert.deepEqual(JSON.parse(sent[0]!), { type: "agent:profile", agentId: "a1" });
 
   const response = requestWorker({ type: "probe-models", runtime: "codex" });
   const request = JSON.parse(sent[1]!);

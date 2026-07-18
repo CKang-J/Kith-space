@@ -36,14 +36,14 @@ try {
     senderType: "human",
     senderId: human.id,
     senderName: human.name,
-    content: "message survives later chain failure",
+    content: "message rolls back with chain failure",
   }), /p-a9 dispatch chain failure/);
-  const partialMessage = await db.select().from(schema.messages).where(eq(
+  const rolledBackMessage = await db.select().from(schema.messages).where(eq(
     schema.messages.content,
-    "message survives later chain failure",
+    "message rolls back with chain failure",
   )).get();
-  assert.ok(partialMessage, "current message insert commits before dispatch-chain persistence");
-  assert.deepEqual(realtime.events().map((event) => event.type), [], "failure before publish returns after commit with no realtime event");
+  assert.equal(rolledBackMessage, undefined, "message and dispatch-chain persistence commit atomically");
+  assert.deepEqual(realtime.events().map((event) => event.type), [], "failed durable work emits no realtime event");
   sqlite.exec("DROP TRIGGER p_a9_fail_dispatch_chain;");
 
   realtime.clear();
@@ -61,21 +61,36 @@ try {
     senderType: "human",
     senderId: human.id,
     senderName: human.name,
-    content: "task survives audit failure",
+    content: "task rolls back with audit failure",
     asTask: true,
   }), /p-a9 task audit failure/);
-  const partialTask = await db.select().from(schema.messages).where(and(
-    eq(schema.messages.content, "task survives audit failure"),
+  const rolledBackTask = await db.select().from(schema.messages).where(and(
+    eq(schema.messages.content, "task rolls back with audit failure"),
     isNotNull(schema.messages.taskStatus),
   )).get();
-  assert.ok(partialTask?.threadId, "current task and owning thread commit before the system audit message");
-  assert.ok(await db.select().from(schema.channels).where(eq(schema.channels.id, partialTask.threadId)).get());
+  assert.equal(rolledBackTask, undefined, "task, owning thread, and system audit commit atomically");
+  assert.equal(
+    (await db.select().from(schema.channels).where(eq(schema.channels.type, "thread"))).length,
+    0,
+    "a rolled-back task leaves no owning thread",
+  );
   assert.deepEqual(
     realtime.events().map((event) => event.type),
-    ["message", "task"],
-    "task creation publishes message then task before the later audit failure is returned",
+    [],
+    "a rolled-back task emits no realtime event",
   );
   sqlite.exec("DROP TRIGGER p_a9_fail_task_audit;");
+
+  const assignmentTask = await createMessage({
+    spaceId,
+    channelId: channel.id,
+    senderType: "human",
+    senderId: human.id,
+    senderName: human.name,
+    content: "task for assignment audit",
+    asTask: true,
+  });
+  assert.ok(assignmentTask.threadId);
 
   realtime.clear();
   sqlite.exec(`
@@ -87,28 +102,28 @@ try {
     END;
   `);
   await assert.rejects(
-    () => assignTask(spaceId, partialTask.id, agent.id, { type: "human", id: human.id }),
+    () => assignTask(spaceId, assignmentTask.id, agent.id, { type: "human", id: human.id }),
     /p-a9 task assignment failure/,
   );
-  const assignedBeforeFailure = await db.select().from(schema.messages).where(eq(
+  const rolledBackAssignment = await db.select().from(schema.messages).where(eq(
     schema.messages.id,
-    partialTask.id,
+    assignmentTask.id,
   )).get();
   assert.deepEqual({
-    assigneeType: assignedBeforeFailure?.taskAssigneeType,
-    assigneeId: assignedBeforeFailure?.taskAssigneeId,
-    status: assignedBeforeFailure?.taskStatus,
-    revision: assignedBeforeFailure?.taskRevision,
+    assigneeType: rolledBackAssignment?.taskAssigneeType,
+    assigneeId: rolledBackAssignment?.taskAssigneeId,
+    status: rolledBackAssignment?.taskStatus,
+    revision: rolledBackAssignment?.taskRevision,
   }, {
-    assigneeType: "agent",
-    assigneeId: agent.id,
-    status: "in_progress",
-    revision: 2,
-  }, "assignment commits before its audit message fails");
+    assigneeType: null,
+    assigneeId: null,
+    status: "todo",
+    revision: 1,
+  }, "assignment and its audit message commit atomically");
   assert.deepEqual(
     realtime.events().map((event) => event.type),
-    ["task"],
-    "assignment publishes task updated before returning the later audit failure",
+    [],
+    "a rolled-back assignment emits no realtime event",
   );
   sqlite.exec("DROP TRIGGER p_a9_fail_task_assignment_audit;");
 

@@ -2,14 +2,14 @@
 
 - 日期：2026-07-18
 - 阶段：P-A9
-- 状态：P-A9.0 基线、护栏、实测与完整验证已完成；下一步只进入 P-A9.1a
+- 状态：P-A9.0–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审已完成；当前未提交并等待用户授权
 - 方案锁定基线：`codex/feat-ui-updates` @ `0b539d8`
 - P-A9.0 实施起始基线：`codex/feat-ui-updates` @ `ec2ef82`
 - 前置条件：用户已于 2026-07-18 确认本轮 UI 手动验收结束
 - 独立审查：2026-07-18 已完成两轮审查与最终窄核对（Go）；原 No-go 项及复审发现的 P-A9.0/P-A9.4 阶段冲突均已纳入本文修正
 - 关联文档：`docs/progress.md`、`docs/roadmap.md`、`docs/decisions.md` 决策 29、`docs/kith-space/architecture-proposal.md`、`docs/performance/p-a9-baseline.md`、`docs/architecture/p-a9-contract-matrices.md`
 
-> 本文确定 P-A9 的架构收敛方案、切片顺序和验收标准。P-A9.0 已按本文完成基线与护栏，后续仍必须逐切片迁移、逐切片验证；不得借“架构优化”之名重写产品、改变既有交互，或把尚未测量的性能问题归因给 TypeScript。
+> 本文确定 P-A9 的架构收敛方案、切片顺序和验收标准。P-A9.0–P-A9.7 已按本文顺序完成实现与验证；不得借“架构优化”之名重写产品、改变既有交互，或把尚未测量的性能问题归因给 TypeScript。
 
 ## 1. 结论摘要
 
@@ -438,18 +438,18 @@ P-A9 只有同时满足以下条件才算完成：
 
 ### 当前状态
 
-- 用户已确认本轮 UI 手动验收结束；既有 UI/行为成为 P-A9 回归基线；
-- 当前工作分支为 `codex/feat-ui-updates`，P-A9.0 实施起始 HEAD 为 `ec2ef82`；
-- P-A9.0 已增加绿色 characterization、精确依赖护栏、in-memory Event/Worker Adapter、fake Runtime harness、可重复 Core/UI 测量与 Runtime current-fact smoke 脚本，以及 P-A9.4 目标契约清单；
-- 独立方案审查提出的 admission/重放幂等、依赖护栏与阶段冲突均已落实：P-A9.0 只冻结现状并产出 P-A9.4 目标清单，没有实现 ack、get-or-reserve 或容量队列；
-- 当前权威单测基线为 667/667；typecheck、完整 integration、Web build（2636 modules）和 Desktop build 均通过。1/5/10/20 Agent Core、fake Runtime current-fact smoke、安装 CLI 离线观测 smoke 与 100/500/1000 消息真实 Chat 浏览器样本已记录。
+- 用户已确认本轮 UI 手动验收结束；既有 UI/行为继续作为 P-A9 回归基线；
+- 当前工作分支为 `codex/feat-ui-updates`，P-A9.0 实施起始 HEAD 为 `ec2ef82`，P-A9.1a–P-A9.7 本轮起始 HEAD 为 `9de04fa`；尚未创建后续提交；
+- Message/Task 深 Module、同库原子事务、Agent Transport 分组、领域依赖收口、持久 wake get-or-reserve、generation-aware admission ack、安装级 RuntimeSession 容量/队列/TTL、Chat data/model 组合层、批量 fan-out 优化与兼容清理均已落地；
+- 当前权威单测基线为 679/679；typecheck、完整 integration、Web build（2641 modules）、Desktop build、依赖护栏、契约矩阵、Core/Runtime/UI SLO、最新 desktop:pack 与 unpacked Desktop smoke 均通过；真实授权 Browser 已验证现有 URL、话题/频道/历史行为、布局和 100/500/1000 消息回归；
+- 约定的一次独立只读终审已完成：无功能、安全或回归阻塞；唯一低严重度入口文档单测基线漂移已由主任务修正，没有发起第二轮审查。Runtime 契约 v2、H5、Rust 试验、公开 Web/H5、Message Context Snapshot 与 UI 重做均未开始。
 
 ### 下一阶段
 
-只进入 **P-A9.1a Message/Task 等价提取**：保持 P-A9.0 冻结的当前事务、错误与副作用语义，用窄 Interface 和临时 facade 迁移矩阵中的调用方。该切片不进入 P-A9.1b 事务收拢，不实现目标 ack/get-or-reserve/队列，也不进入 Runtime 契约 v2、H5、Rust 试验或 UI 重做。
+保持当前未提交工作树，等待用户明确授权提交；不推送、不合并、不发布。任何 Runtime 契约 v2、H5 或其他后续阶段都必须另行授权。
 
 ### 工作区与提交边界
 
-- P-A9.0 代码、测试、脚本和文档保持同一切片；
+- P-A9.0–P-A9.7 代码、测试、脚本和文档保持当前未提交工作树；
 - 未获得用户明确要求，不创建提交、不推送、不合并；
-- 后续每个代码切片独立中文提交、独立验证，避免多个 Agent 同时修改 `core.ts`、`routes-agent.ts` 或 `Chat.tsx`。
+- Runtime 契约 v2、H5 或其他后续阶段必须另行授权，不能夹带到本轮收口。

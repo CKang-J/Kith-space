@@ -28,7 +28,7 @@ import { eq } from "drizzle-orm";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { handleAgentApi } from "../src/server/routes-agent.ts";
 import { hashToken } from "../src/server/auth.ts";
-import { saveObject } from "../src/server/storage.ts";
+import { saveObject } from "../src/files/localObjectStorage.ts";
 
 const ts = Date.now();
 const fixture = integrationDatabase("attachment-short-id");

@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   AGENT_ENDPOINT_OWNERS,
+  AGENT_ENDPOINT_MODULE_SOURCES,
   CURRENT_CREATE_MESSAGE_CALL_SITES,
   P_A9_4_TARGET_CONTRACTS,
   PRODUCTION_WRITE_OWNERS,
@@ -32,8 +33,9 @@ test("P-A9 production write ownership evidence remains complete", () => {
 });
 
 test("P-A9 Agent endpoint ownership matrix matches every implemented route", () => {
-  const source = readFileSync(path.join(root, "src/server/routes-agent.ts"), "utf8");
-  const implemented = extractAgentEndpointBranches(source);
+  const implemented = AGENT_ENDPOINT_MODULE_SOURCES.flatMap((source) =>
+    extractAgentEndpointBranches(readFileSync(path.join(root, source), "utf8")),
+  ).sort();
   const owned = AGENT_ENDPOINT_OWNERS.map((entry) => `${entry.method} ${entry.path}`).sort();
 
   assert.deepEqual(owned, implemented);
@@ -47,6 +49,8 @@ test("P-A9 Agent endpoint ownership matrix matches every implemented route", () 
     "ProfileSpaceModule",
     "ReminderModule",
   ]));
+  const routeIndex = readFileSync(path.join(root, "src/server/routes-agent.ts"), "utf8");
+  assert.doesNotMatch(routeIndex, /dbForSpace|schema\./, "Agent route index must not access the database");
 });
 
 test("P-A9 Agent endpoint inventory is independent of comparison order", () => {
@@ -60,25 +64,17 @@ test("P-A9 Agent endpoint inventory is independent of comparison order", () => {
   );
 });
 
-test("P-A9.4 admission and replay targets remain a non-executable target checklist", () => {
-  assert.deepEqual(P_A9_4_TARGET_CONTRACTS, [
-    { id: "persistent-get-or-reserve", stage: "target-p-a9.4", target: "A durable (spaceId, chainId, messageId, targetAgentId) key returns the existing reservationId without spending wake budget twice." },
-    { id: "admission-ack-commit", stage: "target-p-a9.4", target: "Core commits a wake only after the current Worker generation returns admitted or queued for the matching deliveryId." },
-    { id: "duplicate-command-ack", stage: "target-p-a9.4", target: "Duplicate commands and admission acknowledgements are idempotent within one Worker generation." },
-    { id: "disconnect-before-ack", stage: "target-p-a9.4", target: "Disconnect or timeout before admission keeps the same reservation pending and replays the same deliveryId on the new Worker lease." },
-    { id: "stale-worker-generation", stage: "target-p-a9.4", target: "Acknowledgements from an obsolete Worker generation cannot commit a wake." },
-    { id: "live-session-capacity", stage: "target-p-a9.4", target: "Installation capacity counts live RuntimeSession instances and is never exceeded." },
-    { id: "slot-release", stage: "target-p-a9.4", target: "stop, sleep, and exit release a live-session slot exactly once." },
-    { id: "per-agent-order", stage: "target-p-a9.4", target: "Queued and merged deliveries preserve per-Agent ordering." },
-    { id: "priority-aging-fairness", stage: "target-p-a9.4", target: "Manual control outranks required delivery, which outranks optional ambient delivery, with aging across Spaces." },
-    { id: "queued-cancel-reset", stage: "target-p-a9.4", target: "Queued stop and reset cancel or replace work with a deterministic outcome." },
-    { id: "shutdown-drain", stage: "target-p-a9.4", target: "Worker shutdown has a deterministic queue drain or cancel outcome." },
-    { id: "queue-full-expiry", stage: "target-p-a9.4", target: "Queue-full and expiry outcomes are explicit and do not leak reservations." },
-    { id: "unread-replay", stage: "target-p-a9.4", target: "Accepted but unread messages replay from lastReadSeq with the same reservationId and without consuming wake budget again." },
-    { id: "command-identities", stage: "target-p-a9.4", target: "Wake commands reuse reservationId as deliveryId; manual and lifecycle commands use an independent commandId." },
-    { id: "manual-command-budget", stage: "target-p-a9.4", target: "Manual and lifecycle commands never consume message wake budget." },
-    { id: "read-before-reply-limit", stage: "target-p-a9.4", target: "A crash after read but before reply remains a documented Runtime contract v2 limitation, not a P-A9 guarantee." },
+test("P-A9.4 admission and replay contracts have executable evidence", () => {
+  assert.deepEqual(P_A9_4_TARGET_CONTRACTS.map((entry) => entry.id), [
+    "persistent-get-or-reserve", "admission-ack-commit", "duplicate-command-ack", "disconnect-before-ack",
+    "stale-worker-generation", "live-session-capacity", "slot-release", "per-agent-order",
+    "priority-aging-fairness", "queued-cancel-reset", "shutdown-drain", "queue-full-expiry",
+    "unread-replay", "command-identities", "manual-command-budget", "read-before-reply-limit",
   ]);
-  assert.equal(P_A9_4_TARGET_CONTRACTS.every((entry) => entry.stage === "target-p-a9.4"), true);
+  assert.equal(P_A9_4_TARGET_CONTRACTS.every((entry) => entry.stage === "implemented-p-a9.4"), true);
   assert.equal(P_A9_4_TARGET_CONTRACTS.every((entry) => entry.target.length > 0), true);
+  for (const entry of P_A9_4_TARGET_CONTRACTS) {
+    assert.ok(entry.evidence.length > 0, `${entry.id} must name executable or documentation evidence`);
+    for (const evidence of entry.evidence) assert.equal(readFileSync(path.join(root, evidence), "utf8").length > 0, true);
+  }
 });

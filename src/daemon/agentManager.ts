@@ -26,7 +26,7 @@ import {
 const IDLE_MS = Number(process.env.KITH_SPACE_IDLE_MS ?? 10 * 60 * 1000); // how long before idle sleep (kills process to save memory; next wake uses --resume)
 const DELIVER_DEBOUNCE_MS = Number(process.env.KITH_SPACE_DELIVER_DEBOUNCE_MS ?? 3000); // batching window for deliveries while agent is busy (saves tokens, reduces interruptions)
 const ONE_SHOT_DELIVER_DEBOUNCE_MS = Number(process.env.KITH_SPACE_ONE_SHOT_DELIVER_DEBOUNCE_MS ?? process.env.KITH_SPACE_HERMES_DELIVER_DEBOUNCE_MS ?? 500); // One-shot runtimes need a short fixed wait when there is only one live notice.
-const PENDING_DELIVER_TTL_MS = Number(process.env.KITH_SPACE_PENDING_DELIVER_TTL_MS ?? 15_000); // start+deliver can arrive back-to-back; keep deliver briefly while start prepares workspace
+const PENDING_DELIVER_TTL_MS = Number(process.env.KITH_SPACE_PENDING_DELIVER_TTL_MS ?? 120_000); // admitted start+deliver may wait for workspace preparation; outer admission queue owns overload expiry
 const LEGACY_INSTRUCTION_FILE_RUNTIMES = new Set(["copilot", "kimi", "cursor"]);
 
 export interface AgentConfig extends AgentWorkspaceRef {
@@ -41,7 +41,7 @@ interface Running { session: RuntimeSession; config: AgentConfig; sessionId: str
 interface PendingDeliver { from: string; target: string; mentioned: boolean; meta: DeliverMeta; }
 interface PendingDeliverQueue { items: PendingDeliver[]; timer: ReturnType<typeof setTimeout>; }
 interface ActiveReplyPreview { channelId: string; streamId: string; name: string; }
-interface AgentManagerOptions {
+export interface AgentManagerOptions {
   runtimeStateRoot?: string;
   binDir?: string;
   removePath?: (target: string) => Promise<void>;
@@ -49,6 +49,7 @@ interface AgentManagerOptions {
   oneShotDeliverDebounceMs?: number;
   pendingDeliverTtlMs?: number;
   runtimeResolver?: (name: string) => Runtime | null;
+  onSessionEnded?: (agentId: string, reason: "stop" | "sleep" | "reset" | "exit") => void;
 }
 
 function strongestResponseDirective(a: DeliverResponseDirective, b: DeliverResponseDirective): DeliverResponseDirective {
@@ -69,6 +70,7 @@ export class AgentManager {
   private oneShotDeliverDebounceMs: number;
   private pendingDeliverTtlMs: number;
   private runtimeResolver: (name: string) => Runtime | null;
+  private onSessionEnded: NonNullable<AgentManagerOptions["onSessionEnded"]>;
   private log = createLogger("daemon:agents");
   constructor(private send: (msg: unknown) => void, opts: AgentManagerOptions = {}) {
     this.binDir = opts.binDir ?? ensureKithSpaceBin();
@@ -78,6 +80,7 @@ export class AgentManager {
     this.oneShotDeliverDebounceMs = opts.oneShotDeliverDebounceMs ?? ONE_SHOT_DELIVER_DEBOUNCE_MS;
     this.pendingDeliverTtlMs = opts.pendingDeliverTtlMs ?? PENDING_DELIVER_TTL_MS;
     this.runtimeResolver = opts.runtimeResolver ?? getRuntime;
+    this.onSessionEnded = opts.onSessionEnded ?? (() => {});
   }
 
   running(): string[] { return [...this.agents.keys()]; }
@@ -103,11 +106,11 @@ export class AgentManager {
     }
   }
   // Tear down process: clear timers + remove from map first (critical: deletion before session.stop() lets the onExit has() guard recognize this as an intentional stop, suppressing unexpected sleeping status) + stop runtime. Returns whether the agent was found.
-  private teardown(agentId: string): TrajectoryScopeState | null { this.clearPendingDeliver(agentId); this.finishReplyPreview(agentId); const r = this.agents.get(agentId); if (!r) return null; if (r.idleTimer) clearTimeout(r.idleTimer); if (r.deliverBuf) clearTimeout(r.deliverBuf.timer); const scope = r.trajectoryScopes.finishTurn(); this.agents.delete(agentId); r.session.stop(); return scope; }
+  private teardown(agentId: string, reason: "stop" | "sleep" | "reset"): TrajectoryScopeState | null { this.clearPendingDeliver(agentId); this.finishReplyPreview(agentId); const r = this.agents.get(agentId); if (!r) return null; if (r.idleTimer) clearTimeout(r.idleTimer); if (r.deliverBuf) clearTimeout(r.deliverBuf.timer); const scope = r.trajectoryScopes.finishTurn(); this.agents.delete(agentId); try { r.session.stop(); } finally { this.onSessionEnded(agentId, reason); } return scope; }
   // User-initiated stop: emits inactive/offline
-  stop(agentId: string): void { const scope = this.teardown(agentId); if (!scope) return; this.send({ type: "agent:status", agentId, status: "inactive" }); this.send({ type: "agent:activity", agentId, activity: "offline", detail: "", ...trajectoryScopePayload(scope) }); }
+  stop(agentId: string): void { const scope = this.teardown(agentId, "stop"); if (!scope) return; this.send({ type: "agent:status", agentId, status: "inactive" }); this.send({ type: "agent:activity", agentId, activity: "offline", detail: "", ...trajectoryScopePayload(scope) }); }
   // Idle sleep: emits sleeping/sleeping (activity also set to sleeping so the frontend activity+status dual mapping stays consistent; session is preserved for --resume on next wake)
-  sleep(agentId: string): void { const scope = this.teardown(agentId); if (!scope) return; this.log.info("sleep", { agentId }); this.send({ type: "agent:status", agentId, status: "sleeping" }); this.send({ type: "agent:activity", agentId, activity: "sleeping", detail: "", ...trajectoryScopePayload(scope) }); }
+  sleep(agentId: string): void { const scope = this.teardown(agentId, "sleep"); if (!scope) return; this.log.info("sleep", { agentId }); this.send({ type: "agent:status", agentId, status: "sleeping" }); this.send({ type: "agent:activity", agentId, activity: "sleeping", detail: "", ...trajectoryScopePayload(scope) }); }
   /** Reset runtime-local state; an explicit full reset also clears only this agent's Space-local memory. */
   async reset(ref: AgentWorkspaceRef, options: { clearAgentMemory?: boolean } = {}): Promise<void> {
     const previous = this.resetting.get(ref.agentId) ?? Promise.resolve();
@@ -120,7 +123,7 @@ export class AgentManager {
   private async resetNow(ref: AgentWorkspaceRef, options: { clearAgentMemory?: boolean }): Promise<void> {
     const starting = this.starting.get(ref.agentId);
     if (starting) await starting.catch(() => {});
-    const trajectoryScope = this.teardown(ref.agentId) ?? UNSCOPED_TRAJECTORY; // skip stop() to avoid double inactive emit; reset sends its own inactive/offline+detail=reset below
+    const trajectoryScope = this.teardown(ref.agentId, "reset") ?? UNSCOPED_TRAJECTORY; // skip stop() to avoid double inactive emit; reset sends its own inactive/offline+detail=reset below
     this.send({ type: "agent:session", agentId: ref.agentId, sessionId: null });
     const paths = resolveAgentWorkspacePaths(ref, this.runtimeStateRoot);
     try { await this.removePath(paths.runtimeStateDir); this.log.info("runtime state cleared", { agentId: ref.agentId }); }
@@ -279,7 +282,10 @@ export class AgentManager {
         running.markExited();
         this.log.info("agent exited", { agentId, code });
         if (!this.agents.has(agentId)) return; // intentional stop/sleep/reset already called teardown (removed from map) — they sent their own status, don't overwrite
+        if (running.idleTimer) clearTimeout(running.idleTimer);
+        if (running.deliverBuf) clearTimeout(running.deliverBuf.timer);
         this.agents.delete(agentId);
+        this.onSessionEnded(agentId, "exit");
         // Process died on its own (not intentionally stopped): keep status=sleeping (session preserved, @ can --resume to recover);
         // Non-zero exit code (crash/signal kill) → activity=error to surface the failure; clean exit → sleeping.
         const crashed = code !== 0;

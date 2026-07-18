@@ -5,6 +5,7 @@ import fs from "node:fs";
 const wsSrc = fs.readFileSync(new URL("../src/server/ws.ts", import.meta.url), "utf8");
 const socketSrc = fs.readFileSync(new URL("../src/server/socketio.ts", import.meta.url), "utf8");
 const coreSrc = fs.readFileSync(new URL("../src/server/core.ts", import.meta.url), "utf8");
+const wakeAdapterSrc = fs.readFileSync(new URL("../src/server/messageWakeDispatchAdapter.ts", import.meta.url), "utf8");
 
 test("agent activity detail is forwarded to the UI activity signal", () => {
   assert.match(
@@ -19,21 +20,21 @@ test("agent activity detail is forwarded to the UI activity signal", () => {
   );
 });
 
-test("agent wake delivery handles local worker send failure without leaving a required preview stuck", () => {
+test("agent wake delivery preserves reservations on uncertain admission and closes rejected previews", () => {
   assert.match(
-    coreSrc,
-    /const startSent = sendAgentStart\(target, mem\.id, "wake"\);/,
-    "message wake should check whether agent:start was actually sent",
+    wakeAdapterSrc,
+    /admission = await dependencies\.runtimeWorker\.start\(/,
+    "message wake should cross the RuntimeWorkerPort admission boundary",
   );
   assert.match(
-    coreSrc,
-    /const deliverSent = startSent && sendAgentDeliver\(target, \{\s*agentId: mem\.id,/,
-    "message wake should only deliver after a successful start send",
+    wakeAdapterSrc,
+    /error instanceof WorkerAdmissionUncertainError[\s\S]*?status: "pending"/,
+    "uncertain admission must keep the durable reservation for reconnect replay",
   );
   assert.match(
-    coreSrc,
-    /if \(!deliverSent\) \{[\s\S]*?op: "error", text: "local runtime worker offline"[\s\S]*?await markAgentUnavailable\(opts\.spaceId, mem\.id, "local runtime worker offline"\);[\s\S]*?continue;/,
-    "send failure should mark the agent unavailable and close the preview instead of leaving a stuck thinking card",
+    wakeAdapterSrc,
+    /if \(admission\.status === "rejected"\) \{[\s\S]*?releaseWake\(reservation\.reservationId\)[\s\S]*?op: "error"/,
+    "an explicit rejection should release the reservation and close the required preview",
   );
 });
 
@@ -45,8 +46,8 @@ test("agent lifecycle control targets the one local runtime worker", () => {
   );
   assert.match(
     coreSrc,
-    /function sendAgentControl\([^)]*AgentControlTarget, msg: Record<string, unknown>\): boolean \{[\s\S]*?return sendToWorker\(msg\);/,
-    "lifecycle controls should use the installation-local worker",
+    /runtimeWorkerPort\.stop\(\{ type: "agent:stop", source: "lifecycle", commandId: randomUUID\(\), spaceId, agentId \}\)/,
+    "stop should wait for an admission ack from the installation-local worker",
   );
   assert.match(
     coreSrc,
@@ -55,13 +56,13 @@ test("agent lifecycle control targets the one local runtime worker", () => {
   );
   assert.match(
     coreSrc,
-    /sendAgentControl\(target, \{ type: "agent:stop", agentId \}\)/,
-    "stop should target the local worker",
+    /if \(admission\.status === "rejected"\) log\.warn\("agent stop rejected"/,
+    "stop should handle an explicit Worker rejection",
   );
   assert.match(
     coreSrc,
-    /sendAgentControl\(target, \{ type: "agent:reset", agentId, spaceId: target\.spaceId, workspaceRoot: target\.workspaceRoot, clearAgentMemory \}\)/,
-    "reset should send resolved Space paths to the local worker",
+    /runtimeWorkerPort\.reset\(\{ type: "agent:reset", source: "lifecycle", commandId: randomUUID\(\), agentId, spaceId: target\.spaceId, workspaceRoot: target\.workspaceRoot, clearAgentMemory \}\)/,
+    "reset should send resolved Space paths with a stable command id",
   );
   assert.match(
     coreSrc,

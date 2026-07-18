@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import type { WebSocket } from "ws";
 import { dbForSpace, registerSpace, schema } from "../db/index.js";
 import { kithSpaceHome } from "../paths.js";
-import { registerWorker, unregisterWorker } from "../local-runtime/workerHub.js";
+import { registerWorker, resolveWorkerAdmission, unregisterWorker, type WorkerLease } from "../local-runtime/workerHub.js";
 import { resumeSpaceDispatch, resumeTaskDispatch, stopSpaceDispatch, stopTaskDispatch } from "./dispatchControl.js";
 import { SqliteDispatchState } from "./dispatchGuard.js";
 
@@ -28,15 +28,27 @@ test("task stop interrupts involved agents while space stop interrupts every liv
   ]);
 
   const sent: Record<string, unknown>[] = [];
+  let workerLease: WorkerLease;
   const socket = {
     readyState: 1,
-    send(data: string) { sent.push(JSON.parse(data)); },
+    send(data: string) {
+      const message = JSON.parse(data);
+      sent.push(message);
+      if (typeof message.generation === "number" && typeof message.commandId === "string") {
+        queueMicrotask(() => resolveWorkerAdmission(workerLease, {
+          type: "worker:admission",
+          generation: message.generation,
+          commandId: message.commandId,
+          status: "admitted",
+        }));
+      }
+    },
   } as unknown as WebSocket;
-  const workerLease = registerWorker(socket);
+  workerLease = registerWorker(socket);
   try {
     const state = new SqliteDispatchState(spaceId);
     await state.ensureChain({ chainId: taskId, dispatchDepth: 0, taskMessageId: taskId, rootMessageId: taskId, channelId });
-    const wake = await state.reserveWake({ chainId: taskId, dispatchDepth: 0, taskMessageId: taskId, messageId: taskId, targetAgentId: involvedAgentId });
+    const wake = await state.getOrReserveWake({ chainId: taskId, dispatchDepth: 0, taskMessageId: taskId, messageId: taskId, targetAgentId: involvedAgentId });
     assert.equal(wake.allowed, true);
     if (!wake.allowed) return;
     await state.commitWake(wake.reservationId, { agentId: involvedAgentId, channelId, chainId: taskId, dispatchDepth: 0 });

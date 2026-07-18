@@ -1,19 +1,19 @@
-# P-A9.0 Core/UI 性能与 Runtime 事实基线
+# P-A9 Core/UI/Worker 性能基线与收口回归
 
-状态：2026-07-18 冻结。后续 P-A9 切片的 Core/UI 性能场景必须在相同硬件、数据和 Adapter 下比较；median p95 退化超过 10% 必须解释，安全/正确性换时延需要用户确认。fake Runtime 与 CLI 小节只记录事实/smoke，不适用该性能回归门。
+状态：P-A9.0 Core/UI 与 P-A9.4 Worker 基线保留冻结；P-A9.6/P-A9.7 同口径回归记录于 §4.1。后续场景仍须在相同硬件、数据和 Adapter 下比较；median p95 退化超过 10% 必须解释。fake Runtime 外部执行与 CLI 小节只记录事实 / smoke，不作为模型或工具时延 SLO。
 
 ## 1. 方法与机器
 
 - Windows 10.0.26200 x64；AMD Ryzen 7 9800X3D，16 logical CPU；31.2 GiB RAM。
 - Node v24.14.0；Core 最终采样启用 `--expose-gc`，每个 round 使用新临时 Space/SQLite、独立 in-memory Worker/Event Adapter，先预热 100 次并显式 GC，再测 100 次。
 - 每个 Agent 档 5 个 round；percentile 使用 nearest-rank，最终值是 5 个 round p95 的 median，离散度是 round p95 的总体变异系数（CV）。
-- Chat 使用授权的内置 Browser、隔离 profile 与固定 fixture；首次可见为每档一对等量频道，先交替预热 100 次，再做 5 个独立 round × 每轮 100 次交替切换；实时追加使用 5 个独立空频道 × 每轮 100 条，滚动在全量加载 100/500/1000 article 后执行 5 轮 × 每轮 100 次上下往返。
+- Chat 使用授权的内置 Browser、隔离 profile 与固定 fixture；首次可见为每档一对等量频道，先交替预热 100 次，再做 5 个独立 round × 每轮 100 次交替切换；实时追加使用 5 个独立空频道 × 每轮 100 条，滚动在全量加载 100/500/1000 article 后执行 5 轮 × 每轮 100 次上下往返。记录前必须确认测试页处于前台且 `requestAnimationFrame` 约为显示器刷新频率；后台/遮挡页在本机被降到约 1 Hz，其样本无效。
 - `scripts/p-a9/statistics.mjs`、`core-baseline.ts`、`runtime-baseline.ts`、`runtime-cli-smoke.ps1`、`prepare-chat-baseline.ts`、`append-chat-baseline.ts` 与 `chat-browser-probe.js` 是可重复原始工具。
 - `pnpm run typecheck` 覆盖 `scripts/p-a9/**/*.ts|mts`；shell/JS/MJS 工具由脚本单测和实际 smoke 覆盖。
 
 ## 2. Core current-behavior baseline
 
-`durable prefix` 是进入 `createMessage` 到首次 `message` realtime publication；该 publication 位于当前 message/chain/follow/attachment/mention/channel-time 写入之后。它不是 P-A9.1b 的目标统一事务承诺。`total` 还包含当前响应决策、wake reservation 与同步 socket enqueue。
+`durable prefix` 是进入 `createMessage` 到首次 `message` realtime publication；P-A9.0 时这些 durable 写入仍分段执行。冻结的 `total` 还包含当时的响应决策、wake reservation 与同步 socket enqueue，但不等待 Worker admission ack。此定义必须保留为历史对照，不能把它改写成 P-A9.4 之后的新总时延。
 
 | 候选 Agent | total median p50 / p95 | total round p95（ms） | CV | durable median p50 / p95 | durable round p95（ms） | CV | SQL p95 | fan-out p95 | heap peak |
 | ---: | ---: | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: |
@@ -33,20 +33,57 @@
 这些是架构迁移安全上限，不是对现有 UX 的理想化评价：
 
 - Core durable-prefix：1/5/10/20 Agent 各档 median p95 均须 ≤ 10 ms。
-- Core total：20 Agent median p95 须 ≤ 120 ms；同时与本表基线相比不得无解释退化 >10%。这仍只到同步 socket enqueue，不包含 Worker admission。
+- Core total：20 Agent median p95 须 ≤ 120 ms；同时与本表基线相比不得无解释退化 >10%。P-A9.0 冻结值只到同步 socket enqueue；P-A9.4 之后的当前总时延会等待 admission ack 并提交 reservation，比较时必须同时报告 `wake routing` 分段。
 - Chat 首次可见提交：100/500/1000 数据集各档 median p95 ≤ 250 ms。
 - Chat 独立频道实时追加：单消息端到端 median p95 ≤ 400 ms；100 条批次应用 round median ≤ 1.2 s。
 - 全量挂载滚动操作 median p95：100 article ≤ 120 ms，500 article ≤ 500 ms，1000 article ≤ 1000 ms；长任务 median p95 分别 ≤ 120/450/900 ms。
 
-真正的 Worker admission 绝对 SLO 只能在 P-A9.4 Core 消费 generation + deliveryId ack 后建立。
+真正的 Worker admission 绝对 SLO 已在 P-A9.4 冻结为 `admission p95 <= 25 ms`、`capacity = 4`；`Runtime contract v2` 负责的是 read-after-reply 崩溃恢复，不改变这里的 admission 预算。
 
-## 4. fake Runtime 与已安装 CLI smoke
+## 4. P-A9.4 Worker admission 与 fake Runtime 事实基线
 
-fake Runtime 记录的是当前 `AgentManager -> Runtime` seam，不模拟外部模型或 admission。它是确定性的 current-fact smoke，不采集或声称延迟 p95/SLO。1/5/10/20 Agent 各跑 5 轮，每轮 `totalStarts`、`peakActiveSessions`、`totalStops`、`totalExits` 都恰好等于该档 Agent 数，`activeAfterStop` 都为 0。它只证明当前 seam 可启动并完整停止 20 个存活 session，**不**是容量目标、性能结论或公平性保证。
+`scripts/p-a9/runtime-baseline.ts` 记录的是同步 admission 决策和受限的 AgentManager/Runtime seam；它在 `admitted/queued/rejected` 处结束，不包含外部 CLI、模型或工具时延。冻结 SLO 是 `admission p95 <= 25 ms`、`capacity = 4`。本节冻结的是你提供的 5 轮汇总值。
 
-本机已安装 CLI 只运行离线 `--version`，5 轮 median launcher startup / median launcher peak working set：Claude Code 2.1.205 为 125.8 ms / 175.4 MiB，Codex CLI 0.144.1 为 336.9 ms / 75.0 MiB，opencode 1.17.18 为 595.3 ms / 74.7 MiB。Windows PATH 中的脚本 shim 会经隐藏 PowerShell launcher 执行，因此 working set 只描述 launcher，不代表完整子进程树。这是环境观测 smoke，不是模型支持的 Runtime session、网络耗时、回归 SLO 或容量结论；P-A9.4 仍须结合真实 admission 与进程策略重新决定内部默认值。
+| 候选 Agent | median admission p95 (ms) | peak RuntimeSession | admitted/queued | rejected | activeAfterStop |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 0.2233 | 1 | 1/0 | 0 | 0 |
+| 5 | 0.7466 | 4 | 4/1 | 0 | 0 |
+| 10 | 0.6786 | 4 | 4/6 | 0 | 0 |
+| 20 | 0.3404 | 4 | 4/16 | 0 | 0 |
 
-## 5. Chat browser baseline
+这组数据说明：1 Agent 场景仅保留 1 个活跃 `RuntimeSession`；5/10/20 Agent 场景都被同一安装级上限截断到 4 个活跃 session，没有 reject，`activeAfterStop` 始终为 0。`runtime-baseline.ts` 仍是可重复原始工具，但文档只冻结这组 5 轮汇总值，不展开每轮抖动。
+
+### 4.1 P-A9.6 / P-A9.7 同口径回归
+
+Core 最终回归继续使用 §1 的 5×100、预热 100 与显式 GC。P-A9.4 后当前 `total` 从 `createMessage` 入口一直量到 admission ack 后的 reservation commit；新增 `wake routing` 从首次 durable `message` publication 量到该返回点，包含响应策略、reservation、Runtime target、admission ack 与 commit，但不包含外部 CLI、模型或工具执行。
+
+| 候选 Agent | current total median p50 / p95 | total round p95（ms） | CV | current durable median p50 / p95 | durable round p95（ms） | CV | wake routing median p95 | SQL p95 | fan-out p95 |
+| ---: | ---: | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: |
+| 1 | 2.4446 / 3.4889 ms | 8.3239 / 3.2771 / 3.4889 / 3.2057 / 3.6082 | 45.1% | 1.0761 / 1.6080 ms | 3.4039 / 1.5412 / 1.6080 / 1.5181 / 1.8049 | 36.5% | 1.9364 ms | 18 | 1 |
+| 5 | 5.3289 / 9.6319 ms | 10.4873 / 11.1440 / 9.6319 / 9.3664 / 9.5069 | 6.8% | 1.0857 / 1.8477 ms | 1.9962 / 2.0888 / 1.8477 / 1.7002 / 1.5314 | 10.9% | 7.5962 ms | 46 | 5 |
+| 10 | 8.8805 / 14.6606 ms | 14.6328 / 14.6606 / 14.0622 / 14.6812 / 15.8125 | 3.9% | 1.1364 / 1.7636 ms | 2.0098 / 1.7401 / 1.6520 / 1.9843 / 1.7636 | 7.7% | 13.0789 ms | 81 | 10 |
+| 20 | 29.3090 / 50.4807 ms | 48.5477 / 50.4807 / 45.1817 / 59.0573 / 57.4274 | 10.1% | 2.2954 / 5.7119 ms | 2.2967 / 5.6010 / 5.7119 / 7.0137 / 10.7477 | 43.4% | 44.9090 ms | 151 | 16 |
+
+结果与归因：
+
+- 1/5/10/20 Agent 的 current total 相对 P-A9.0 分别为 `+6.9% / -22.6% / -54.4% / +3.9%`；20-Agent 绝对值 50.4807 ms，低于 120 ms。虽然 current total 多等待了 admission ack 与 commit，四档仍没有超过 10% 的相对退化。
+- durable median p95 分别为 1.6080/1.8477/1.7636/5.7119 ms，全部低于 10 ms。20-Agent 相对冻结值增加 78.2%，是唯一相对门例外，且该档 CV 为 43.4%。P-A9.1b 把 message、chain、mention/membership、attachment 与 task audit 收进同库事务，这是权威规格明确要求并由用户授权实施的正确性换时延；报告保留该代价，不用低轮次掩盖。
+- `test/pA9DispatchBatching.integration.ts` 证明 1 与 20 个候选 Agent 的 membership/response-mode/scope 解析保持批量大小，Runtime target 也只解析一次。总 SQL 仍包含每条 durable reservation/commit，因此会随真实 fan-out 增长；20-Agent 总 SQL 从 260 降至 151（-41.9%），不再把可合并的策略查询做成 per-recipient N+1。
+- Chat 没有 profiler 证据要求虚拟化，因此 P-A9.5 只移动 data/model ownership，没有引入列表框架或额外 memoization；UI 继续受 §6 冻结基线约束。
+
+Worker admission 又做了 3 次独立 5-round 回归；每次先各自产生 median p95，再取三次的中位数。1/5/10/20 Agent 分别为 0.2133/0.4956/0.5737/0.3420 ms，对应三次范围为 `0.1955–0.2379 / 0.4489–0.6134 / 0.5270–0.7609 / 0.2941–0.5396` ms。四档都远低于 25 ms，且相对 P-A9.4 冻结值没有超过 10% 的退化；peak session 仍为 1/4/4/4，admitted/queued 仍为 1/0、4/1、4/6、4/16，reject 与 active-after-stop 都为 0。
+
+四段口径因此是：Core durable commit；Core→Worker wake routing/admission；外部 Runtime（本报告不测）；UI（沿用授权 Browser 冻结数据）。不得把 fake Runtime admission 当作外部模型完成时间，也不得把 UI DOM 提交时间当作 Worker queue 时间。
+
+Chat 最终回归也继续使用 §1 的相同 fixture、数据量与授权 Browser。Vite 的 `/api` 开发代理显式复用 keep-alive 连接，避免高频切换在 Windows 上耗尽临时端口；这只稳定测量路径，不改变生产 URL、API 或产品交互。P-A9.5 同时恢复了旧 `Chat` 的首屏就绪语义：首屏消息与初始 thread metadata 都完成（metadata 失败则按可选空结果降级）后才解除 loading，避免提取 hook 后的中间提交被误计为可见完成。
+
+## 5. fake Runtime 与已安装 CLI smoke
+
+fake Runtime 记录的是当前 `AgentManager -> Runtime` seam 的 start/session/deliver/stop/exit 事实；它与 §4 的 admission 基线共用同一 harness，但本身仍然不模拟外部模型或工具时延。`runtime-cli-smoke.ps1` 只运行离线 `--version`，因此 launcher 结果只是一条环境观测，不是 Runtime session、网络耗时、回归 SLO 或容量结论。
+
+本机已安装 CLI 只运行离线 `--version`，5 轮 median launcher startup / median launcher peak working set：Claude Code 2.1.205 为 125.8 ms / 175.4 MiB，Codex CLI 0.144.1 为 336.9 ms / 75.0 MiB，opencode 1.17.18 为 595.3 ms / 74.7 MiB。Windows PATH 中的脚本 shim 会经隐藏 PowerShell launcher 执行，因此 working set 只描述 launcher，不代表完整子进程树。这是环境观测 smoke，不是模型支持的 Runtime session、网络耗时、回归 SLO 或容量结论。
+
+## 6. Chat browser baseline
 
 ### 首次可见提交
 
@@ -71,14 +108,38 @@ fake Runtime 记录的是当前 `AgentManager -> Runtime` seam，不模拟外部
 `loadHistory` 先滚到顶部直到挂载全部 article；每 round 做 100 次 top/bottom 往返并逐次等到下一 animation frame：
 
 | 挂载 article | operation round p95（ms） | median p95 | CV | long-task round p95 / median | 每轮总时长 |
-| ---: | --- | ---: | ---: | --- | --- |
+| ---: | --- | ---: | ---: | --- | ---: |
 | 100 | 91.3 / 83.4 / 82.0 / 82.7 / 79.9 | 82.7 ms | 4.7% | 87/77/76/86/74 → 77 ms | 7.28–7.90 s |
 | 500 | 399.5 / 396.3 / 403.0 / 395.8 / 403.6 | 399.5 ms | 0.8% | 378/369/372/367/373 → 372 ms | 34.85–35.95 s |
 | 1000 | 871.2 / 858.5 / 861.5 / 868.1 / 856.4 | 861.5 ms | 0.7% | 743/733/736/733/733 → 733 ms | 75.42–78.09 s |
 
 这是稳定的线性/超线性 UI 热点证据；P-A9.0 只记录，不在基线切片引入虚拟列表或改 Chat 行为。
 
-## 6. 重跑入口
+### 6.1 P-A9.5 / P-A9.6 同口径回归
+
+最终回归仍在同一台机器、全新隔离 profile 和相同 fixture 上执行；每个表格单元保留 5 个独立 round 的原始值。首次可见与实时追加均先完成规定预热；滚动先确认全量 article 挂载。测试页保持前台，实测 animation frame 约 75 Hz；一次后台页约 1 Hz 的无效试跑已丢弃，没有混入以下结果。
+
+首次可见提交：
+
+| 数据集 | round p95（ms） | median p95 | 相对冻结基线 | CV | long-task round p95 / median | 每轮 100 次总时长 |
+| ---: | --- | ---: | ---: | ---: | --- | --- |
+| 100 | 62.5 / 63.1 / 62.8 / 66.0 / 62.7 | 62.8 ms | -0.8% | 2.1% | 60/59/0/51/0 → 51 ms | 6.08–6.44 s |
+| 500 | 66.4 / 64.5 / 65.2 / 70.4 / 63.5 | 65.2 ms | +6.2% | 3.6% | 63/0/59/66/59 → 59 ms | 6.16–6.45 s |
+| 1000 | 60.5 / 67.1 / 58.8 / 67.8 / 62.4 | 62.4 ms | +3.7% | 5.6% | 58/62/59/51/0 → 58 ms | 6.09–6.41 s |
+
+实时追加的 5 个独立频道 latency p95 为 `229/251/248/218/231` ms，median p95 231 ms，相对冻结值改善 5.7%，低于 400 ms SLO。100 条批次应用分别为 `688.9/817.9/823.2/830.5/759.4` ms，round median 817.9 ms，低于 1.2 s 绝对 SLO；它相对冻结的 740.8 ms 增加 10.4%，但该值是每轮单一批次标量，不是规格中的对应 median p95，故不伪称通过 p95 相对门。长任务 p95 为 `78/84/83/89/69` ms，median 83 ms；每轮最终均挂载 100 article。诊断性的 Node append 请求 p95 为 15.1–18.9 ms，说明本轮差异不来自 Core POST 热点。
+
+全量历史滚动：
+
+| 挂载 article | operation round p95（ms） | median p95 | 相对冻结基线 | CV | long-task round p95 / median | 每轮总时长 |
+| ---: | --- | ---: | ---: | ---: | --- | --- |
+| 100 | 72.4 / 66.1 / 72.9 / 67.3 / 70.6 | 70.6 ms | -14.6% | 3.9% | 70/71/71/66/71 → 71 ms | 5.51–5.98 s |
+| 500 | 310.5 / 327.4 / 305.7 / 311.5 / 322.7 | 311.5 ms | -22.0% | 2.6% | 310/318/297/305/315 → 310 ms | 26.7–27.9 s |
+| 1000 | 621.9 / 606.2 / 613.5 / 868.3 / 857.3 | 621.9 ms | -27.8% | 17.1% | 609/594/596/855/845 → 609 ms | 54.66/54.94/55.47/76.66/77.92 s |
+
+1000 档后两轮受同机宿主活动影响升高，因此 CV 为 17.1%；报告保留高值而不重采低值。即便如此，中位数和所有单轮 p95 都低于 1000 ms 绝对 SLO，long-task 各轮也都低于 900 ms；100/500 档同样通过各自绝对门。当前数据没有形成引入虚拟列表或视觉改动的证据，P-A9.6 因此只保留已归因的查询批处理与测量稳定性修正。
+
+## 7. 重跑入口
 
 ```powershell
 # Core：固定 5×100，预热 100；使用显式 GC 的冻结口径
@@ -92,7 +153,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/p-a9/runtime-cli-smo
 pnpm exec tsx scripts/p-a9/prepare-chat-baseline.ts --profile <absolute-temp-profile> --port 7777
 ```
 
-按 `docs/dev-debugging.md` 的 P-A9 小节用该 profile 启动 Core/Vite，在授权 Browser 中注入 `scripts/p-a9/chat-browser-probe.js`。首次可见把 `channelPairs` 中的 `name` 映射为 probe 的 `channelName`，先调用一次 `renderRound(targets, 100)` 预热，再记录 5 次 `renderRound(targets, 100)`；每次返回值必须有 100 个 `durationsMs`。实时轮次调用 `armRealtime/readRealtime`，滚动轮次调用 `loadHistory/scrollRound`。实时追加使用 fixture 输出的 5 个 `appendChannels`：
+按 `docs/dev-debugging.md` 的 P-A9 小节用该 profile 启动 Core/Vite，在授权 Browser 中注入 `scripts/p-a9/chat-browser-probe.js`。先确认测试页保持前台且 rAF 频率正常；后台/遮挡导致的 1 Hz 样本必须丢弃。首次可见把 `channelPairs` 中的 `name` 映射为 probe 的 `channelName`，先调用一次 `renderRound(targets, 100)` 预热，再记录 5 次 `renderRound(targets, 100)`；每次返回值必须有 100 个 `durationsMs`。实时轮次调用 `armRealtime/readRealtime`，滚动轮次调用 `loadHistory/scrollRound`。实时追加使用 fixture 输出的 5 个 `appendChannels`：
 
 ```powershell
 pnpm exec tsx scripts/p-a9/append-chat-baseline.ts --server http://127.0.0.1:7777 --desktop-token <temporary-desktop-token> --space-id <space-id> --channel-id <append-channel-id> --round 1

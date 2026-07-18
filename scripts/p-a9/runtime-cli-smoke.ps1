@@ -58,6 +58,14 @@ function Stop-Pa9ProcessTree([System.Diagnostics.Process]$Process) {
   }
 }
 
+function Read-Pa9CapturedOutput([System.Threading.Tasks.Task[string]]$Task) {
+  try {
+    return $Task.GetAwaiter().GetResult().Trim()
+  } catch {
+    return ""
+  }
+}
+
 $results = @()
 $hasFailure = $false
 foreach ($spec in Resolve-Pa9CliSpecs) {
@@ -105,8 +113,8 @@ foreach ($spec in Resolve-Pa9CliSpecs) {
       timedOut = $timedOut
       exitCode = $exitCode
       failure = $failure
-      version = $stdout.Result.Trim()
-      stderr = $stderr.Result.Trim()
+      version = Read-Pa9CapturedOutput $stdout
+      stderr = Read-Pa9CapturedOutput $stderr
     }
     $process.Dispose()
   }

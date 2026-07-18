@@ -1,7 +1,7 @@
 // Attachment multipart upload parser: streams via busboy into the local attachment object store.
 import Busboy from "busboy";
 import type { IncomingMessage } from "node:http";
-import { saveObject } from "./storage.js";
+import { saveObject } from "../files/localObjectStorage.js";
 
 export interface UploadedFile { filename: string; mimeType: string; size: number; storageKey: string }
 

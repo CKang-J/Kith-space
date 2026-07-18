@@ -1,8 +1,11 @@
-// Agent permission scopes (14 scopes).
-// Default mode = all granted; custom mode = the subset the user explicitly checked. Enforcement happens at the /agent-api gateway.
-export interface ScopeDef { key: string; group: string; label: string; description: string; }
+export interface ScopeDefinition {
+  key: string;
+  group: string;
+  label: string;
+  description: string;
+}
 
-export const SCOPES: ScopeDef[] = [
+export const AGENT_SCOPES: ScopeDefinition[] = [
   { key: "inbox:receive", group: "Notifications", label: "Receive inbox events", description: "Receive new inbox events; get woken by others'/agents' activity." },
   { key: "space:read", group: "Space", label: "Read Space info", description: "List channels, members, and agents in the current Space." },
   { key: "channel:read", group: "Channels", label: "View channel members", description: "View members of joined channels." },
@@ -18,17 +21,29 @@ export const SCOPES: ScopeDef[] = [
   { key: "knowledge:read", group: "Knowledge", label: "Read knowledge", description: "Fetch topics from the agent knowledge base." },
   { key: "action:prepare", group: "Action", label: "Prepare action cards", description: "Allow the agent to prepare quick-commit action cards." },
 ];
-export const ALL_SCOPE_KEYS = SCOPES.map((s) => s.key);
-const SCOPE_SET = new Set(ALL_SCOPE_KEYS);
-export const isScopeLiteral = (s: unknown): s is string => typeof s === "string" && SCOPE_SET.has(s);
 
-export interface AgentScopes { granted: string[]; mode: "default" | "custom"; revision: number; updatedAt: string; }
+export const ALL_AGENT_SCOPE_KEYS = AGENT_SCOPES.map((scope) => scope.key);
+const SCOPE_SET = new Set(ALL_AGENT_SCOPE_KEYS);
 
-/** agent.scopes null = default mode (all granted); otherwise use the stored custom set. */
-export function effectiveScopes(stored: AgentScopes | null | undefined): AgentScopes {
-  if (!stored) return { granted: [...ALL_SCOPE_KEYS], mode: "default", revision: 0, updatedAt: new Date(0).toISOString() };
-  return stored;
+export interface AgentScopes {
+  granted: string[];
+  mode: "default" | "custom";
+  revision: number;
+  updatedAt: string;
 }
+
+export const isAgentScopeLiteral = (value: unknown): value is string =>
+  typeof value === "string" && SCOPE_SET.has(value);
+
+export function effectiveAgentScopes(stored: AgentScopes | null | undefined): AgentScopes {
+  return stored ?? {
+    granted: [...ALL_AGENT_SCOPE_KEYS],
+    mode: "default",
+    revision: 0,
+    updatedAt: new Date(0).toISOString(),
+  };
+}
+
 export function agentHasScope(stored: AgentScopes | null | undefined, scope: string): boolean {
-  return effectiveScopes(stored).granted.includes(scope);
+  return effectiveAgentScopes(stored).granted.includes(scope);
 }

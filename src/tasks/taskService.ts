@@ -1,15 +1,30 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { dbForSpace, schema } from "../../db/index.js";
-import { getHumanIdentity } from "../../human/humanIdentity.js";
-import { humanChannelState, reactivateFollowedHumanThread } from "../../human/humanChannelState.js";
-import { nextSeq, publish } from "../realtime.js";
-import { serializeMsg } from "../core.js";
-import { assertChannelWritable } from "../../channels/channelLifecycle.js";
+import { assertChannelWritable } from "../channels/channelLifecycle.js";
+import { nextSeq } from "../counters.js";
+import { dbForSpace, schema } from "../db/index.js";
+import { getHumanIdentity } from "../human/humanIdentity.js";
+import { humanChannelState, reactivateFollowedHumanThread } from "../human/humanChannelState.js";
+import { serializeMessage } from "../messages/messageSerialization.js";
 import { isTaskStatus, parseTaskActionMetadata, TaskOperationError, type TaskArtifactRef, type TaskReportKind } from "./taskTypes.js";
 
 type Actor = { type: "human" | "agent"; id: string; name: string };
 type Message = typeof schema.messages.$inferSelect;
+
+export interface TaskWorkflowEventSink {
+  publish(spaceId: string, event: unknown): Promise<void>;
+}
+
+let eventSink: TaskWorkflowEventSink | null = null;
+
+export function configureTaskWorkflowEvents(sink: TaskWorkflowEventSink): void {
+  eventSink = sink;
+}
+
+async function publish(spaceId: string, event: unknown): Promise<void> {
+  if (!eventSink) throw new Error("Task workflow event sink is not configured");
+  await eventSink.publish(spaceId, event);
+}
 
 function currentView(task: Message) {
   return { id: task.id, status: task.taskStatus, revision: task.taskRevision, assigneeId: task.taskAssigneeId };
@@ -110,7 +125,7 @@ export async function reportTask(input: {
   });
   await reactivateFollowedHumanThread(input.spaceId, report.channelId);
   const thread = (await db.select().from(schema.channels).where(eq(schema.channels.id, report.channelId)))[0];
-  await publish(input.spaceId, { type: "message", channelId: report.channelId, message: { ...serializeMsg(report, []), channelType: thread?.type ?? null } });
+  await publish(input.spaceId, { type: "message", channelId: report.channelId, message: { ...serializeMessage(report, []), channelType: thread?.type ?? null } });
   await publishThreadUpdate(input.spaceId, report.channelId, task.id, input.actor);
   return { task, report };
 }
@@ -204,8 +219,8 @@ export async function submitTaskDelivery(input: {
     tx.update(schema.channels).set({ lastMessageAt: new Date() }).where(eq(schema.channels.id, current.channelId)).run();
   });
   const channel = (await db.select().from(schema.channels).where(eq(schema.channels.id, delivery.channelId)))[0];
-  await publish(input.spaceId, { type: "message", channelId: delivery.channelId, message: { ...serializeMsg(delivery, []), channelType: channel?.type ?? null } });
-  await publish(input.spaceId, { type: "task", op: "updated", task: serializeMsg(task, []) });
+  await publish(input.spaceId, { type: "message", channelId: delivery.channelId, message: { ...serializeMessage(delivery, []), channelType: channel?.type ?? null } });
+  await publish(input.spaceId, { type: "task", op: "updated", task: serializeMessage(task, []) });
   return { task, delivery, children, reportMessageIds };
 }
 

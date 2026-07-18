@@ -8,6 +8,9 @@ import { detectRuntimes } from "./runtimes.js";
 import { listModels } from "./listModels.js";
 import { createLogger } from "../log.js";
 import { workerBootstrapToken } from "../local-runtime/internalCredentials.js";
+import { RuntimeAdmissionController } from "../runtime/worker/runtimeAdmissionController.js";
+import type { AgentConfig } from "./agentManager.js";
+import type { WorkerAdmissionCommand } from "../runtime/contract/runtimeWorkerPort.js";
 
 const log = createLogger("daemon");
 // The installation-level Worker and Core Service always share one physical computer.
@@ -16,17 +19,73 @@ const serverUrl = `http://127.0.0.1:${process.env.PORT ?? 7777}`;
 const workerToken = workerBootstrapToken();
 
 let conn: Connection;
-const mgr = new AgentManager((m) => conn.send(m));
+let admissions: RuntimeAdmissionController;
+const mgr = new AgentManager((m) => conn.send(m), {
+  onSessionEnded(agentId) { admissions?.sessionEnded(agentId); },
+});
+admissions = new RuntimeAdmissionController({
+  isRunning(agentId) { return mgr.running().includes(agentId); },
+  async start(command) {
+    await mgr.start(command.agentId, command.config as AgentConfig, command.reason);
+    return mgr.running().includes(command.agentId);
+  },
+  deliver(command) {
+    mgr.deliver(command.agentId, command.from, command.target, command.mentioned, {
+      targetName: command.targetName,
+      msgShort: command.msgShort,
+      isTask: command.isTask,
+      streamId: command.streamId,
+      responseDirective: command.responseDirective,
+      responseReason: command.responseReason,
+    });
+  },
+  stop(agentId) { mgr.stop(agentId); },
+  sleep(agentId) { mgr.sleep(agentId); },
+  async reset(agentId, command) {
+    await mgr.reset({ agentId, spaceId: command.spaceId, workspaceRoot: command.workspaceRoot }, { clearAgentMemory: command.clearAgentMemory });
+  },
+  stopAllAndWait() { return mgr.stopAllAndWait(); },
+}, {
+  capacity: Number(process.env.KITH_SPACE_RUNTIME_CAPACITY ?? 4),
+  maxQueue: Number(process.env.KITH_SPACE_RUNTIME_QUEUE_LIMIT ?? 128),
+  queueTtlMs: Number(process.env.KITH_SPACE_RUNTIME_QUEUE_TTL_MS ?? 120_000),
+  onOutcome(outcome) { conn.send({ type: "worker:queue:outcome", ...outcome }); },
+});
+
+async function admitAndAck(message: WorkerAdmissionCommand): Promise<void> {
+  const result = await admissions.admit(message);
+  conn.send({
+    type: "worker:admission",
+    generation: result.generation,
+    ...(message.source === "wake" ? { deliveryId: result.id } : { commandId: result.id }),
+    status: result.status,
+    ...(result.reason ? { reason: result.reason } : {}),
+  });
+}
+
+function isAdmissionCommand(message: any): message is WorkerAdmissionCommand {
+  return Number.isInteger(message?.generation)
+    && (message?.source === "wake" || message?.source === "manual" || message?.source === "lifecycle")
+    && (typeof message?.deliveryId === "string" || typeof message?.commandId === "string");
+}
+
+function admitWorkerCommand(message: any): void {
+  if (!isAdmissionCommand(message)) {
+    log.warn("rejected Worker command without admission identity", { type: message?.type, agentId: message?.agentId });
+    return;
+  }
+  void admitAndAck(message);
+}
 
 conn = new Connection(serverUrl, workerToken, (msg) => {
   if (msg.type !== "ping") log.debug("recv", { type: msg.type, agentId: msg.agentId });
   switch (msg.type) {
     case "ready:ack": break;
-    case "agent:start": void mgr.start(msg.agentId, msg.config, msg.reason ?? "manual"); break;
-    case "agent:deliver": mgr.deliver(msg.agentId, msg.from ?? "someone", msg.target ?? "", !!msg.mentioned, { targetName: msg.targetName, msgShort: msg.msgShort, isTask: msg.isTask, streamId: msg.streamId, responseDirective: msg.responseDirective, responseReason: msg.responseReason }); conn.send({ type: "agent:deliver:ack", agentId: msg.agentId, seq: msg.seq }); break;
-    case "agent:stop": mgr.stop(msg.agentId); break;
-    case "agent:sleep": mgr.sleep(msg.agentId); break;
-    case "agent:reset": void mgr.reset({ agentId: msg.agentId, spaceId: msg.spaceId ?? "", workspaceRoot: msg.workspaceRoot ?? "" }, { clearAgentMemory: !!msg.clearAgentMemory }).catch((error) => log.warn("agent reset rejected", { agentId: msg.agentId, detail: String(error) })); break;
+    case "agent:start": admitWorkerCommand(msg); break;
+    case "agent:deliver": admitWorkerCommand(msg); break;
+    case "agent:stop": admitWorkerCommand(msg); break;
+    case "agent:sleep": admitWorkerCommand(msg); break;
+    case "agent:reset": admitWorkerCommand(msg); break;
     case "agent:profile": void mgr.syncProfile({ agentId: msg.agentId, spaceId: msg.spaceId ?? "", workspaceRoot: msg.workspaceRoot ?? "" }, msg.displayName ?? "", msg.description).catch((error) => log.warn("agent profile sync rejected", { agentId: msg.agentId, detail: String(error) })); break;
     case "agent:workspace:list": void listWorkspace(msg.workspaceRoot ?? "", msg.path ?? "").then((r) => conn.send({ type: "workspace:file_tree", requestId: msg.requestId, agentId: msg.agentId, ...r })); break;
     case "agent:workspace:read": void readWorkspaceFile(msg.workspaceRoot ?? "", msg.path ?? "").then((r) => conn.send({ type: "workspace:file_content", requestId: msg.requestId, agentId: msg.agentId, ...r })); break;
@@ -49,7 +108,7 @@ let shutdownPromise: Promise<void> | null = null;
 const shutdown = () => {
   if (shutdownPromise) return shutdownPromise;
   log.info("shutting down");
-  shutdownPromise = mgr.stopAllAndWait().then(() => {
+  shutdownPromise = admissions.shutdown().then(() => {
     conn.close();
     process.exit(0);
   }).catch((error) => {

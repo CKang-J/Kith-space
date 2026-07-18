@@ -4,6 +4,7 @@ import {
   isAgentResponseMode,
   type AgentResponseMode,
 } from "./agentResponsePolicy.js";
+import type { AgentScopes } from "./agentScopes.js";
 
 export type AgentResponseModeSource = "agent_default" | "channel_override";
 
@@ -16,6 +17,11 @@ export interface ResolvedAgentResponseMode {
   responseModeSource: AgentResponseModeSource;
   ambientWakeAfterSeq: number;
   mentionWakeAfterSeq: number;
+}
+
+export interface ResolvedAgentDispatchSettings {
+  responseMode: ResolvedAgentResponseMode;
+  scopes: AgentScopes | null;
 }
 
 export type AgentResponseSettingsErrorCode =
@@ -123,6 +129,15 @@ function resolveInTransaction(
   } else if (channel.type !== "dm") {
     responseModeOverride = member.responseModeOverride;
   }
+  return resolveFromRows(channel, member, agent, responseModeOverride);
+}
+
+function resolveFromRows(
+  channel: ChannelRow,
+  member: MemberRow,
+  agent: typeof schema.agents.$inferSelect,
+  responseModeOverride: AgentResponseMode | null,
+): ResolvedAgentResponseMode {
   const effectiveResponseMode = responseModeOverride ?? agent.defaultResponseMode;
   return {
     agentId: agent.id,
@@ -134,6 +149,56 @@ function resolveInTransaction(
     ambientWakeAfterSeq: member.ambientWakeAfterSeq,
     mentionWakeAfterSeq: member.mentionWakeAfterSeq,
   };
+}
+
+function resolveManyInTransaction(
+  tx: SpaceTransaction,
+  spaceId: string,
+  channel: ChannelRow,
+  requestedAgentIds?: readonly string[],
+): ResolvedAgentDispatchSettings[] {
+  if (requestedAgentIds && !requestedAgentIds.length) return [];
+  const memberFilter = requestedAgentIds
+    ? and(
+        eq(schema.channelAgentMembers.channelId, channel.id),
+        inArray(schema.channelAgentMembers.agentId, [...requestedAgentIds]),
+      )
+    : eq(schema.channelAgentMembers.channelId, channel.id);
+  const members = tx.select().from(schema.channelAgentMembers).where(memberFilter).all();
+  if (!members.length) return [];
+  const agentIds = members.map((member) => member.agentId);
+  const agents = tx.select().from(schema.agents).where(and(
+    inArray(schema.agents.id, agentIds),
+    eq(schema.agents.spaceId, spaceId),
+    isNull(schema.agents.deletedAt),
+  )).all();
+  const agentById = new Map(agents.map((agent) => [agent.id, agent]));
+
+  let parentMemberByAgentId = new Map<string, MemberRow>();
+  if (channel.type === "thread") {
+    const parentId = parentChannelId(tx, spaceId, channel);
+    if (parentId) {
+      const parentMembers = tx.select().from(schema.channelAgentMembers).where(and(
+        eq(schema.channelAgentMembers.channelId, parentId),
+        inArray(schema.channelAgentMembers.agentId, agentIds),
+      )).all();
+      parentMemberByAgentId = new Map(parentMembers.map((member) => [member.agentId, member]));
+    }
+  }
+
+  return members.flatMap((member) => {
+    const agent = agentById.get(member.agentId);
+    if (!agent) return [];
+    const responseModeOverride = channel.type === "thread"
+      ? parentMemberByAgentId.get(agent.id)?.responseModeOverride ?? null
+      : channel.type === "dm"
+        ? null
+        : member.responseModeOverride;
+    return [{
+      responseMode: resolveFromRows(channel, member, agent, responseModeOverride),
+      scopes: agent.scopes,
+    }];
+  });
 }
 
 export function parseAgentResponseMode(value: unknown): AgentResponseMode {
@@ -180,20 +245,20 @@ export async function listChannelAgentResponseModes(
   return db.transaction((tx) => {
     const channel = liveChannel(tx, spaceId, channelId);
     if (!channel) return [];
-    const members = tx.select().from(schema.channelAgentMembers)
-      .where(eq(schema.channelAgentMembers.channelId, channelId)).all();
-    if (!members.length) return [];
-    const agentIds = members.map((member) => member.agentId);
-    const agents = tx.select().from(schema.agents).where(and(
-      inArray(schema.agents.id, agentIds),
-      eq(schema.agents.spaceId, spaceId),
-      isNull(schema.agents.deletedAt),
-    )).all();
-    const agentById = new Map(agents.map((agent) => [agent.id, agent]));
-    return members.flatMap((member) => {
-      const agent = agentById.get(member.agentId);
-      return agent ? [resolveInTransaction(tx, spaceId, channel, member, agent)] : [];
-    });
+    return resolveManyInTransaction(tx, spaceId, channel).map((settings) => settings.responseMode);
+  });
+}
+
+export async function resolveAgentDispatchSettings(
+  spaceId: string,
+  channelId: string,
+  agentIds: readonly string[],
+): Promise<ResolvedAgentDispatchSettings[]> {
+  if (!agentIds.length) return [];
+  const db = dbForSpace(spaceId);
+  return db.transaction((tx) => {
+    const channel = liveChannel(tx, spaceId, channelId);
+    return channel ? resolveManyInTransaction(tx, spaceId, channel, agentIds) : [];
   });
 }
 

@@ -1,19 +1,59 @@
-import { randomUUID } from "node:crypto";
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import { allocateTaskNumber, taskNumberKey, type SpaceTransaction } from "../../counters.js";
-import { dbForSpace, schema } from "../../db/index.js";
+import { allocateTaskNumber, taskNumberKey, type SpaceTransaction } from "../counters.js";
+import { initialAgentResponseWakeWatermarks } from "../agents/agentResponseSettings.js";
+import { dbForSpace, schema } from "../db/index.js";
 import { assertTaskTransition } from "./taskPolicy.js";
+import { insertTaskOwningThread } from "./taskCreation.js";
 import { isTaskStatus, TaskOperationError, type TaskStatus } from "./taskTypes.js";
-import { initialAgentResponseWakeWatermarks } from "../../agents/agentResponseSettings.js";
 
 type Message = typeof schema.messages.$inferSelect;
 type MessageInsert = typeof schema.messages.$inferInsert;
-type Channel = typeof schema.channels.$inferSelect;
 
 export interface TaskMutationResult {
   task: Message;
   changed: boolean;
   audit?: Message;
+}
+
+export interface TaskDispatchChainInsert {
+  id: string;
+  spaceId: string;
+  rootMessageId: string;
+  taskMessageId: string;
+  channelId: string;
+  dispatchDepth: number;
+}
+
+export interface TaskAuditWrite {
+  message: MessageInsert;
+  dispatchChain?: TaskDispatchChainInsert;
+  agentMembership?: { channelId: string; agentId: string; watermark: number };
+}
+
+function insertAudit(tx: SpaceTransaction, write: TaskAuditWrite | undefined): Message | undefined {
+  if (!write) return undefined;
+  if (write.dispatchChain) {
+    tx.insert(schema.dispatchChains).values({
+      id: write.dispatchChain.id,
+      spaceId: write.dispatchChain.spaceId,
+      rootMessageId: write.dispatchChain.rootMessageId,
+      taskMessageId: write.dispatchChain.taskMessageId,
+      channelId: write.dispatchChain.channelId,
+      maxDepthSeen: write.dispatchChain.dispatchDepth,
+    }).onConflictDoNothing().run();
+  }
+  if (write.agentMembership) {
+    tx.insert(schema.channelAgentMembers).values({
+      channelId: write.agentMembership.channelId,
+      agentId: write.agentMembership.agentId,
+      lastReadSeq: write.agentMembership.watermark,
+      ...initialAgentResponseWakeWatermarks(write.agentMembership.watermark),
+    }).onConflictDoNothing().run();
+  }
+  const audit = tx.insert(schema.messages).values(write.message).returning().get();
+  tx.update(schema.channels).set({ lastMessageAt: new Date() })
+    .where(eq(schema.channels.id, audit.channelId)).run();
+  return audit;
 }
 
 function snapshot(task: Message) {
@@ -39,92 +79,13 @@ function checkExpected(task: Message, expectedRevision?: number, expectedStatus?
   if (expectedStatus != null && task.taskStatus !== expectedStatus) conflict("task status changed", task);
 }
 
-function insertThread(
-  tx: SpaceTransaction,
-  task: { id: string; spaceId: string; senderType: string; senderId?: string | null },
-  assigneeId?: string | null,
-  membershipWatermark = 0,
-): string {
-  const threadId = randomUUID();
-  tx.insert(schema.channels).values({
-    id: threadId,
-    spaceId: task.spaceId,
-    type: "thread",
-    parentMessageId: task.id,
-    name: `thread-${task.id.slice(0, 8)}`,
-  }).run();
-  if (task.senderType === "human") {
-    const followedAt = new Date();
-    tx.insert(schema.humanChannelStates).values({
-      channelId: threadId,
-      threadFollowedAt: followedAt,
-      updatedAt: followedAt,
-    }).onConflictDoUpdate({
-      target: schema.humanChannelStates.channelId,
-      set: { threadFollowedAt: followedAt, updatedAt: followedAt },
-    }).run();
-  }
-  const agentMembers = new Set<string>();
-  if (task.senderType === "agent" && task.senderId) agentMembers.add(task.senderId);
-  if (assigneeId) agentMembers.add(assigneeId);
-  if (agentMembers.size) {
-    tx.insert(schema.channelAgentMembers).values([...agentMembers].map((agentId) => ({
-      channelId: threadId,
-      agentId,
-      lastReadSeq: membershipWatermark,
-      ...initialAgentResponseWakeWatermarks(membershipWatermark),
-    }))).onConflictDoNothing().run();
-  }
-  return threadId;
-}
-
-export function createTaskRecord(input: {
-  spaceId: string;
-  channel: Channel;
-  message: MessageInsert;
-  parentTaskId?: string | null;
-  assigneeId?: string | null;
-}): Message {
-  const db = dbForSpace(input.spaceId);
-  let created!: Message;
-  db.transaction((tx) => {
-    if (input.parentTaskId) {
-      const parent = tx.select({ id: schema.messages.id, channelId: schema.messages.channelId }).from(schema.messages).where(and(
-        eq(schema.messages.id, input.parentTaskId),
-        eq(schema.messages.spaceId, input.spaceId),
-        isNotNull(schema.messages.taskStatus),
-      )).get();
-      if (!parent) throw new TaskOperationError("INVALID_ARGUMENT", "parent task not found");
-      if (parent.channelId !== input.channel.id) throw new TaskOperationError("INVALID_ARGUMENT", "parent and child tasks must use the same channel");
-    }
-    const taskNumber = allocateTaskNumber(tx, taskNumberKey(input.spaceId, input.channel));
-    const threadId = insertThread(tx, {
-      id: String(input.message.id),
-      spaceId: input.spaceId,
-      senderType: input.message.senderType,
-      senderId: input.message.senderId,
-    }, input.assigneeId, Number(input.message.seq ?? 0));
-    created = tx.insert(schema.messages).values({
-      ...input.message,
-      taskStatus: input.assigneeId ? "in_progress" : "todo",
-      taskNumber,
-      taskParentId: input.parentTaskId ?? null,
-      taskAssigneeType: input.assigneeId ? "agent" : null,
-      taskAssigneeId: input.assigneeId ?? null,
-      taskClaimedAt: input.assigneeId ? new Date() : null,
-      taskRevision: 1,
-      threadId,
-    }).returning().get();
-  });
-  return created;
-}
-
 class ConversionLost extends Error {}
 
 export function convertMessageRecord(input: {
   spaceId: string;
   messageId: string;
   executionMode: "autopilot" | "plan-first";
+  audit?: (task: Message) => TaskAuditWrite;
 }): TaskMutationResult | null {
   const db = dbForSpace(input.spaceId);
   let result: TaskMutationResult | null = null;
@@ -144,7 +105,7 @@ export function convertMessageRecord(input: {
         eq(schema.channels.type, "thread"),
         eq(schema.channels.parentMessageId, current.id),
       )).get();
-      const threadId = existingThread?.id ?? insertThread(tx, current);
+      const threadId = existingThread?.id ?? insertTaskOwningThread(tx, current);
       const updated = tx.update(schema.messages).set({
         taskStatus: "todo",
         taskNumber,
@@ -158,7 +119,8 @@ export function convertMessageRecord(input: {
         isNull(schema.messages.taskStatus),
       )).returning().get();
       if (!updated) throw new ConversionLost();
-      result = { task: updated, changed: true };
+      const audit = insertAudit(tx, input.audit?.(updated));
+      result = { task: updated, changed: true, audit };
     });
   } catch (error) {
     if (!(error instanceof ConversionLost)) throw error;
@@ -178,6 +140,7 @@ export function claimTaskRecord(input: {
   assigneeType: "human" | "agent";
   assigneeId: string;
   expectedRevision?: number;
+  audit?: (task: Message) => TaskAuditWrite;
 }): TaskMutationResult | null {
   const db = dbForSpace(input.spaceId);
   let result: TaskMutationResult | null = null;
@@ -214,7 +177,8 @@ export function claimTaskRecord(input: {
       isNull(schema.messages.taskAssigneeId),
     )).returning().get();
     if (!updated) conflict("task claim lost a concurrent race", current);
-    result = { task: updated, changed: true };
+    const audit = insertAudit(tx, input.audit?.(updated));
+    result = { task: updated, changed: true, audit };
   });
   return result;
 }
@@ -224,6 +188,7 @@ export function unclaimTaskRecord(input: {
   messageId: string;
   by?: { type: "human" | "agent"; id: string };
   expectedRevision?: number;
+  audit?: (task: Message) => TaskAuditWrite;
 }): TaskMutationResult | null {
   const db = dbForSpace(input.spaceId);
   let result: TaskMutationResult | null = null;
@@ -254,7 +219,8 @@ export function unclaimTaskRecord(input: {
       eq(schema.messages.taskStatus, status),
     )).returning().get();
     if (!updated) conflict("task release lost a concurrent race", current);
-    result = { task: updated, changed: true };
+    const audit = insertAudit(tx, input.audit?.(updated));
+    result = { task: updated, changed: true, audit };
   });
   return result;
 }
@@ -265,6 +231,7 @@ export function assignTaskRecord(input: {
   assigneeId: string;
   by?: { type: "human" | "agent"; id: string };
   expectedRevision?: number;
+  audit?: (task: Message) => TaskAuditWrite;
 }): TaskMutationResult | null {
   const db = dbForSpace(input.spaceId);
   let result: TaskMutationResult | null = null;
@@ -305,7 +272,8 @@ export function assignTaskRecord(input: {
         : eq(schema.messages.taskAssigneeId, current.taskAssigneeId),
     )).returning().get();
     if (!updated) conflict("task assignment lost a concurrent race", current);
-    result = { task: updated, changed: true };
+    const audit = insertAudit(tx, input.audit?.(updated));
+    result = { task: updated, changed: true, audit };
   });
   return result;
 }
@@ -317,6 +285,8 @@ export function transitionTaskRecord(input: {
   from?: TaskStatus;
   expectedRevision?: number;
   audit?: MessageInsert;
+  dispatchChain?: TaskDispatchChainInsert;
+  agentMembership?: TaskAuditWrite["agentMembership"];
 }): TaskMutationResult | null {
   const db = dbForSpace(input.spaceId);
   let result: TaskMutationResult | null = null;
@@ -344,8 +314,13 @@ export function transitionTaskRecord(input: {
       eq(schema.messages.taskStatus, status),
     )).returning().get();
     if (!updated) conflict("task transition lost a concurrent race", current);
-    const audit = input.audit ? tx.insert(schema.messages).values(input.audit).returning().get() : undefined;
-    if (audit) tx.update(schema.channels).set({ lastMessageAt: new Date() }).where(eq(schema.channels.id, audit.channelId)).run();
+    const audit = insertAudit(tx, input.audit
+      ? {
+          message: input.audit,
+          dispatchChain: input.dispatchChain,
+          agentMembership: input.agentMembership,
+        }
+      : undefined);
     result = { task: updated, changed: true, audit };
   });
   return result;

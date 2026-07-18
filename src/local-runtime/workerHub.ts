@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
 import { WORKER_REPLACED_CODE } from "../daemonProtocol.js";
+import {
+  workerCommandId,
+  type AdmissionResult,
+  type RuntimeWorkerCommand,
+} from "../runtime/contract/runtimeWorkerPort.js";
 
 export interface WorkerSnapshot {
   runtimes: string[];
@@ -11,6 +16,20 @@ type PendingRequest = {
   resolve: (value: any) => void;
   timer: ReturnType<typeof setTimeout>;
 };
+
+type PendingAdmission = {
+  promise: Promise<AdmissionResult>;
+  resolve: (value: AdmissionResult) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
+export class WorkerAdmissionUncertainError extends Error {
+  constructor(message: string, public readonly generation: number, public readonly id: string) {
+    super(message);
+    this.name = "WorkerAdmissionUncertainError";
+  }
+}
 
 /**
  * Capability for one accepted Worker connection. The monotonically increasing generation lets
@@ -25,12 +44,24 @@ let currentLease: WorkerLease | null = null;
 let latestGeneration = 0;
 let snapshot: WorkerSnapshot = { runtimes: [], runningAgents: [] };
 const pendingRequests = new Map<string, PendingRequest>();
+const pendingAdmissions = new Map<string, PendingAdmission>();
+const resolvedAdmissions = new Map<string, AdmissionResult>();
 
 function settlePending(error: string): void {
   for (const [requestId, pending] of pendingRequests) {
     clearTimeout(pending.timer);
     pending.resolve({ error });
     pendingRequests.delete(requestId);
+  }
+}
+
+function rejectAdmissions(generation: number, error: string): void {
+  for (const [key, pending] of pendingAdmissions) {
+    if (!key.startsWith(`${generation}:`)) continue;
+    clearTimeout(pending.timer);
+    const id = key.slice(key.indexOf(":") + 1);
+    pending.reject(new WorkerAdmissionUncertainError(error, generation, id));
+    pendingAdmissions.delete(key);
   }
 }
 
@@ -43,6 +74,7 @@ export function registerWorker(ws: WebSocket): WorkerLease {
   snapshot = { runtimes: [], runningAgents: [] };
   if (!previous) return lease;
   settlePending("local worker replaced");
+  rejectAdmissions(previous.generation, "local worker replaced before admission ack");
   try {
     if (previous.socket.readyState === 1) {
       previous.socket.close(WORKER_REPLACED_CODE, "replaced by a newer local runtime worker");
@@ -57,6 +89,7 @@ export function unregisterWorker(lease: WorkerLease): boolean {
   currentLease = null;
   snapshot = { runtimes: [], runningAgents: [] };
   settlePending("local worker disconnected");
+  rejectAdmissions(lease.generation, "local worker disconnected before admission ack");
   return true;
 }
 
@@ -77,6 +110,10 @@ export function isWorkerConnected(): boolean {
   return currentLease?.socket.readyState === 1;
 }
 
+export function currentWorkerGeneration(): number | null {
+  return currentLease?.generation ?? null;
+}
+
 export function sendToWorker(message: unknown): boolean {
   const lease = currentLease;
   if (!lease) return false;
@@ -92,6 +129,67 @@ export function sendToWorkerForLease(lease: WorkerLease, message: unknown): bool
   } catch {
     return false;
   }
+}
+
+export function requestWorkerAdmission(
+  command: RuntimeWorkerCommand,
+  timeoutMs = 6_000,
+  lease: WorkerLease | null = currentLease,
+): Promise<AdmissionResult> {
+  const id = workerCommandId(command);
+  if (!lease || !isWorkerLeaseCurrent(lease) || lease.socket.readyState !== 1) {
+    return Promise.reject(new WorkerAdmissionUncertainError("no local worker online", lease?.generation ?? 0, id));
+  }
+  const key = `${lease.generation}:${id}`;
+  const resolved = resolvedAdmissions.get(key);
+  if (resolved) return Promise.resolve(resolved);
+  const existing = pendingAdmissions.get(key);
+  if (existing) return existing.promise;
+
+  let resolveAdmission!: (value: AdmissionResult) => void;
+  let rejectAdmission!: (error: Error) => void;
+  const promise = new Promise<AdmissionResult>((resolve, reject) => {
+    resolveAdmission = resolve;
+    rejectAdmission = reject;
+  });
+  const timer = setTimeout(() => {
+    pendingAdmissions.delete(key);
+    rejectAdmission(new WorkerAdmissionUncertainError("local worker admission timeout", lease.generation, id));
+  }, timeoutMs);
+  timer.unref?.();
+  pendingAdmissions.set(key, { promise, resolve: resolveAdmission, reject: rejectAdmission, timer });
+  if (!sendToWorkerForLease(lease, { ...command, generation: lease.generation })) {
+    clearTimeout(timer);
+    pendingAdmissions.delete(key);
+    rejectAdmission(new WorkerAdmissionUncertainError("local worker admission send failed", lease.generation, id));
+  }
+  return promise;
+}
+
+export function resolveWorkerAdmission(lease: WorkerLease, message: Record<string, unknown>): boolean {
+  if (!isWorkerLeaseCurrent(lease) || message.generation !== lease.generation) return false;
+  const id = typeof message.deliveryId === "string"
+    ? message.deliveryId
+    : typeof message.commandId === "string"
+      ? message.commandId
+      : null;
+  if (!id || (message.status !== "admitted" && message.status !== "queued" && message.status !== "rejected")) return false;
+  const key = `${lease.generation}:${id}`;
+  if (resolvedAdmissions.has(key)) return true;
+  const pending = pendingAdmissions.get(key);
+  if (!pending) return false;
+  clearTimeout(pending.timer);
+  pendingAdmissions.delete(key);
+  const result: AdmissionResult = {
+    status: message.status,
+    id,
+    generation: lease.generation,
+    ...(typeof message.reason === "string" ? { reason: message.reason } : {}),
+  };
+  resolvedAdmissions.set(key, result);
+  if (resolvedAdmissions.size > 10_000) resolvedAdmissions.delete(resolvedAdmissions.keys().next().value!);
+  pending.resolve(result);
+  return true;
 }
 
 export function requestWorker(message: Record<string, unknown>, timeoutMs = 6000): Promise<any> {

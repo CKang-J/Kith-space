@@ -1,6 +1,6 @@
 import { and, eq, inArray, or } from "drizzle-orm";
 import { dbForSpace, schema } from "../db/index.js";
-import { deleteObject } from "../server/storage.js";
+import { deleteObject } from "../files/localObjectStorage.js";
 
 /**
  * Permanently remove the Human↔Agent private conversation while leaving the

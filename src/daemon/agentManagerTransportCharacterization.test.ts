@@ -65,7 +65,7 @@ test("current pre-start delivery queue retains exactly the newest ten distinguis
   }
 });
 
-test("current pre-start delivery queue uses a 15 second default TTL", async (t) => {
+test("AgentManager's admitted-start safety buffer uses the admission queue TTL", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const retainedRoot = mkdtempSync(path.join(tmpdir(), "kith-worker-default-ttl-retained-"));
   const expiredRoot = mkdtempSync(path.join(tmpdir(), "kith-worker-default-ttl-expired-"));
@@ -86,7 +86,7 @@ test("current pre-start delivery queue uses a 15 second default TTL", async (t) 
   try {
     retained.deliver("agent-1", "Human", "retained", true, { streamId: "retained" });
     expired.deliver("agent-1", "Human", "expired", true, { streamId: "expired" });
-    t.mock.timers.tick(14_999);
+    t.mock.timers.tick(119_999);
     await retained.start("agent-1", config(retainedRoot), "manual");
     retainedHarness.trajectory("fake-session-1", [{ kind: "text", text: "working" }]);
     assert.ok(retainedSent.some((message) => message.type === "agent:trajectory" && message.streamId === "retained"));

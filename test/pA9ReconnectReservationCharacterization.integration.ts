@@ -5,6 +5,7 @@ import { integrationDatabase } from "./helpers/workspace.ts";
 import { closeAllDatabases } from "../src/db/index.ts";
 import {
   registerWorker,
+  resolveWorkerAdmission,
   unregisterWorker,
   updateWorkerSnapshot,
   type WorkerLease,
@@ -14,16 +15,35 @@ import { catchUpAgentsOnWorker, computeBacklog } from "../src/server/reconnectCa
 const { db, schema, spaceId, human } = integrationDatabase("p-a9-reconnect-reservation-characterization");
 let currentLease: WorkerLease | null = null;
 
-function connectWorker(messages: Record<string, unknown>[]): WorkerLease {
+function connectWorker(messages: Record<string, unknown>[], autoAck = true): WorkerLease {
+  let lease: WorkerLease;
   const socket = {
     readyState: 1,
-    send(payload: string) { messages.push(JSON.parse(payload) as Record<string, unknown>); },
+    send(payload: string) {
+      const message = JSON.parse(payload) as Record<string, unknown>;
+      messages.push(message);
+      if (autoAck && typeof message.generation === "number" && (typeof message.deliveryId === "string" || typeof message.commandId === "string")) {
+        queueMicrotask(() => resolveWorkerAdmission(lease, {
+          type: "worker:admission",
+          generation: message.generation,
+          ...(typeof message.deliveryId === "string" ? { deliveryId: message.deliveryId } : { commandId: message.commandId }),
+          status: "admitted",
+        }));
+      }
+    },
     close() { /* reconnect generations are controlled explicitly by the test */ },
   } as unknown as WebSocket;
-  const lease = registerWorker(socket);
+  lease = registerWorker(socket);
   updateWorkerSnapshot(lease, { runtimes: ["fake"], runningAgents: [] });
   currentLease = lease;
   return lease;
+}
+
+async function waitForMessage(messages: Record<string, unknown>[]): Promise<void> {
+  for (let attempt = 0; attempt < 100 && messages.length === 0; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  assert.ok(messages.length > 0, "Worker command was not sent");
 }
 
 try {
@@ -66,8 +86,9 @@ try {
   assert.equal((await computeBacklog(spaceId, agent.id, null))?.messageId, message.id);
 
   const firstMessages: Record<string, unknown>[] = [];
-  const firstLease = connectWorker(firstMessages);
-  await catchUpAgentsOnWorker([], firstLease);
+  const firstLease = connectWorker(firstMessages, false);
+  const pendingCatchUp = catchUpAgentsOnWorker([], firstLease);
+  await waitForMessage(firstMessages);
   assert.deepEqual(firstMessages.map(({ type, agentId }) => ({ type, agentId })), [{
     type: "agent:start",
     agentId: agent.id,
@@ -76,9 +97,10 @@ try {
     schema.dispatchWakes.messageId,
     message.id,
   ));
-  assert.equal(firstWake?.status, "success");
+  assert.equal(firstWake?.status, "reserved", "Core does not commit before a matching admission ack");
   assert.equal(unregisterWorker(firstLease), true);
   currentLease = null;
+  await pendingCatchUp;
 
   const membershipBeforeRead = await db.select().from(schema.channelAgentMembers).where(and(
     eq(schema.channelAgentMembers.channelId, channel.id),
@@ -97,18 +119,25 @@ try {
     schema.dispatchWakes.messageId,
     message.id,
   ));
-  assert.equal(wakes.length, 2);
-  assert.notEqual(wakes[0]!.id, wakes[1]!.id, "current reconnect replay creates a new reservation rather than get-or-reserve reuse");
+  assert.equal(wakes.length, 1);
+  assert.equal(wakes[0]!.id, firstWake!.id, "unread reconnect replay reuses the durable reservation id");
   assert.deepEqual(wakes.map(({ chainId, targetAgentId, status }) => ({ chainId, targetAgentId, status })), [
     { chainId: message.id, targetAgentId: agent.id, status: "success" },
-    { chainId: message.id, targetAgentId: agent.id, status: "success" },
   ]);
+
+  assert.equal(unregisterWorker(replayLease), true);
+  currentLease = null;
+  const admittedUnreadMessages: Record<string, unknown>[] = [];
+  const admittedUnreadLease = connectWorker(admittedUnreadMessages);
+  await catchUpAgentsOnWorker([], admittedUnreadLease);
+  assert.equal(admittedUnreadMessages[0]?.deliveryId, firstWake!.id, "acknowledged but unread replay retains deliveryId");
+  assert.equal((await db.select().from(schema.dispatchWakes).where(eq(schema.dispatchWakes.messageId, message.id))).length, 1);
 
   await db.update(schema.channelAgentMembers).set({ lastReadSeq: message.seq }).where(and(
     eq(schema.channelAgentMembers.channelId, channel.id),
     eq(schema.channelAgentMembers.agentId, agent.id),
   ));
-  assert.equal(unregisterWorker(replayLease), true);
+  assert.equal(unregisterWorker(admittedUnreadLease), true);
   currentLease = null;
   const afterReadMessages: Record<string, unknown>[] = [];
   const afterReadLease = connectWorker(afterReadMessages);
@@ -117,7 +146,7 @@ try {
   assert.equal((await db.select().from(schema.dispatchWakes).where(eq(
     schema.dispatchWakes.messageId,
     message.id,
-  ))).length, 2);
+  ))).length, 1);
 } finally {
   if (currentLease) unregisterWorker(currentLease);
   closeAllDatabases();

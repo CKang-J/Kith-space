@@ -165,7 +165,12 @@ export class SqliteDispatchState {
     }
   }
 
-  async reserveWake(input: ReserveWakeInput): Promise<WakeReservation> {
+  /**
+   * The installation has one Core writer and each Space uses one synchronous better-sqlite3
+   * connection. This transaction therefore serializes the logical-key lookup and insert without
+   * requiring a schema migration; concurrent calls cannot interleave between them.
+   */
+  async getOrReserveWake(input: ReserveWakeInput): Promise<WakeReservation> {
     const db = dbForSpace(this.spaceId);
     let result: WakeReservation = { allowed: false, code: "WAKE_BUDGET", reason: "dispatch chain not found", wakeCount: 0 };
     db.transaction((tx) => {
@@ -185,6 +190,21 @@ export class SqliteDispatchState {
         eq(schema.dispatchStops.scopeType, "task"),
         eq(schema.dispatchStops.scopeId, taskMessageId),
       )).get());
+      if (spaceStopped || taskStopped) {
+        const decision = decideDispatch({ dispatchDepth: input.dispatchDepth, wakeCount: chain.wakeCount, spaceStopped, taskStopped }, this.limits);
+        result = { allowed: false, code: decision.code!, reason: decision.reason!, wakeCount: chain.wakeCount };
+        return;
+      }
+      const existing = tx.select().from(schema.dispatchWakes).where(and(
+        eq(schema.dispatchWakes.spaceId, this.spaceId),
+        eq(schema.dispatchWakes.chainId, input.chainId),
+        eq(schema.dispatchWakes.messageId, input.messageId),
+        eq(schema.dispatchWakes.targetAgentId, input.targetAgentId),
+      )).get();
+      if (existing) {
+        result = { allowed: true, reservationId: existing.id, wakeCount: chain.wakeCount };
+        return;
+      }
       const decision = decideDispatch({
         dispatchDepth: input.dispatchDepth,
         wakeCount: chain.wakeCount,
@@ -251,13 +271,22 @@ export class SqliteDispatchState {
         eq(schema.dispatchWakes.id, reservationId),
         eq(schema.dispatchWakes.spaceId, this.spaceId),
       )).get();
-      if (!wake) return;
+      if (!wake || wake.status !== "reserved") return;
       tx.delete(schema.dispatchWakes).where(eq(schema.dispatchWakes.id, reservationId)).run();
       tx.update(schema.dispatchChains).set({
         wakeCount: sql`max(${schema.dispatchChains.wakeCount} - 1, 0)`,
         updatedAt: new Date(),
       }).where(eq(schema.dispatchChains.id, wake.chainId)).run();
     });
+  }
+
+  /** Return an acknowledged-but-not-executed queue item to replayable pending state without refunding budget. */
+  async markWakePending(reservationId: string): Promise<void> {
+    dbForSpace(this.spaceId).update(schema.dispatchWakes).set({ status: "reserved" }).where(and(
+      eq(schema.dispatchWakes.id, reservationId),
+      eq(schema.dispatchWakes.spaceId, this.spaceId),
+      eq(schema.dispatchWakes.status, "success"),
+    )).run();
   }
 
   async stopTask(taskMessageId: string, reason?: string): Promise<void> {

@@ -7,7 +7,7 @@ import { normalizeTaskExecutionMode } from "../dispatchGuard.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { attachMentions } from "./shared.js";
 import { canHumanReadChannel } from "../channelAccess.js";
-import { getTaskDetails, reportTask, submitTaskDelivery } from "../tasks/taskService.js";
+import { getTaskDetails, reportTask, submitTaskDelivery } from "../taskWorkflowAdapter.js";
 import { sendTaskOperationError } from "../tasks/taskHttp.js";
 import { humanIdentityForId } from "../../human/humanIdentity.js";
 import { activeChannels } from "../../channels/channelLifecycle.js";

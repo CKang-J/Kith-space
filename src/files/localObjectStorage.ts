@@ -1,13 +1,16 @@
 // Local-only attachment object storage, rooted inside each registered Space.
+import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
 import { getSpaceRecord } from "../app-data/appDatabase.js";
 import { spaceUploadsDir } from "../paths.js";
 
-export interface Saved { key: string; size: number }
+export interface SavedObject {
+  key: string;
+  size: number;
+}
 
 function uploadsForSpace(spaceId: string): string {
   const space = getSpaceRecord(spaceId);
@@ -22,8 +25,7 @@ function localObjectPath(spaceId: string, key: string): string {
   return path.join(uploadsForSpace(spaceId), key);
 }
 
-/** Stream-save an object under one registered Space and return its flat storage key plus byte count. */
-export async function saveObject(spaceId: string, filename: string, stream: Readable): Promise<Saved> {
+export async function saveObject(spaceId: string, filename: string, stream: Readable): Promise<SavedObject> {
   const safe = (filename || "file").replace(/[^\w.\-\u4e00-\u9fa5]/g, "_");
   const key = `${randomUUID()}__${safe}`;
   const uploads = uploadsForSpace(spaceId);

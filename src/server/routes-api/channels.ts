@@ -19,7 +19,7 @@ import { addChannelMembers, getOrCreateDM, getOrCreateThread } from "../core.js"
 import { publish } from "../realtime.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { canHumanReadChannel } from "../channelAccess.js";
-import { listThreadSummaries } from "../channels/threadSummaries.js";
+import { listThreadSummaries } from "../../channels/threadSummaries.js";
 import { activeChannels, assertChannelWritable, isRequiredChannel } from "../../channels/channelLifecycle.js";
 import { deletedAgentIds, humanChannels } from "./shared.js";
 import {

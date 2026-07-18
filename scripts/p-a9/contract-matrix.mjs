@@ -23,37 +23,37 @@ export const PRODUCTION_WRITE_OWNERS = Object.freeze([
   },
   {
     id: "agent-message",
-    source: "src/server/routes-agent.ts",
+    source: "src/server/agent-http/messagesContextModule.ts",
     owner: "MessagePostingModule",
-    evidence: ["const post = async", 'senderType: "agent"', "attachmentIds: attachmentIds.length"],
+    evidence: ["const post = async", 'senderType: "agent"', "attachmentIds: ids.length"],
   },
   {
     id: "agent-introduction",
-    source: "src/server/routes-agent.ts",
+    source: "src/server/agent-http/messagesContextModule.ts",
     owner: "MessagePostingModule",
-    evidence: ["introductionAgentId: introductionTurn ? agent.id", "introductionToken: introductionTurn ? introductionToken!"],
+    evidence: ['introductionAgentId: humanDm && introductionStatus === "active" ? agent.id', 'introductionToken: humanDm && introductionStatus === "active" ? introductionToken!'],
   },
   {
     id: "agent-thread-reply",
-    source: "src/server/routes-agent.ts",
+    source: "src/server/agent-http/channelsThreadsModule.ts",
     owner: "MessagePostingModule",
-    evidence: ["channelId: th.id", "content: b.content"],
+    evidence: ["channelId: thread.id", "content: body.content"],
   },
   {
     id: "agent-task",
-    source: "src/server/routes-agent.ts",
+    source: "src/server/agent-http/tasksModule.ts",
     owner: "TaskModule",
     evidence: ["for (const task of tasks)", "asTask: true", "taskParentId: parentTaskId"],
   },
   {
     id: "action-prepare",
-    source: "src/server/routes-agent.ts",
+    source: "src/server/agent-http/actionsModule.ts",
     owner: "ActionModule",
     evidence: ['messageType: "action"', "actionMetadata"],
   },
   {
     id: "reminder-write",
-    source: "src/server/routes-agent.ts",
+    source: "src/server/agent-http/remindersModule.ts",
     owner: "ReminderModule",
     evidence: ["db.insert(schema.reminders)", "db.update(schema.reminders)"],
   },
@@ -65,15 +65,18 @@ export const PRODUCTION_WRITE_OWNERS = Object.freeze([
   },
   {
     id: "internal-task-audit",
-    source: "src/server/core.ts",
+    source: "src/tasks/taskLifecycleModule.ts",
     owner: "TaskModule",
-    evidence: ["async function sysTaskMsg", 'messageType: "system"', "publishTaskSystemMessage"],
+    evidence: ["function systemAudit", 'messageType: "system"', "publishAudit"],
   },
 ]);
 
 export const CURRENT_CREATE_MESSAGE_CALL_SITES = Object.freeze([
+  Object.freeze({ source: "src/server/agent-http/actionsModule.ts", count: 1 }),
+  Object.freeze({ source: "src/server/agent-http/channelsThreadsModule.ts", count: 1 }),
+  Object.freeze({ source: "src/server/agent-http/messagesContextModule.ts", count: 1 }),
+  Object.freeze({ source: "src/server/agent-http/tasksModule.ts", count: 1 }),
   Object.freeze({ source: "src/server/reminders.ts", count: 1 }),
-  Object.freeze({ source: "src/server/routes-agent.ts", count: 4 }),
   Object.freeze({ source: "src/server/routes-api/messages.ts", count: 1 }),
   Object.freeze({ source: "src/server/routes-api/tasks.ts", count: 1 }),
 ]);
@@ -174,6 +177,16 @@ const endpoints = {
   ],
 };
 
+export const AGENT_ENDPOINT_MODULE_SOURCES = Object.freeze([
+  "src/server/agent-http/messagesContextModule.ts",
+  "src/server/agent-http/channelsThreadsModule.ts",
+  "src/server/agent-http/tasksModule.ts",
+  "src/server/agent-http/actionsModule.ts",
+  "src/server/agent-http/filesModule.ts",
+  "src/server/agent-http/profileSpaceModule.ts",
+  "src/server/agent-http/remindersModule.ts",
+]);
+
 export const AGENT_ENDPOINT_OWNERS = Object.freeze(Object.entries(endpoints).flatMap(([owner, ownedEndpoints]) =>
   ownedEndpoints.map(([method, path]) => Object.freeze({ owner, method, path })),
 ));
@@ -202,7 +215,7 @@ export function extractAgentEndpointBranches(sourceText) {
     if (ts.isIfStatement(node)) {
       const matches = new Map();
       inspectCondition(node.expression, matches);
-      const routePath = matches.get("p");
+      const routePath = matches.get("path") ?? matches.get("p");
       const method = matches.get("method");
       if (routePath && method) implemented.add(`${method} ${routePath}`);
     }
@@ -213,20 +226,20 @@ export function extractAgentEndpointBranches(sourceText) {
 }
 
 export const P_A9_4_TARGET_CONTRACTS = Object.freeze([
-  ["persistent-get-or-reserve", "A durable (spaceId, chainId, messageId, targetAgentId) key returns the existing reservationId without spending wake budget twice."],
-  ["admission-ack-commit", "Core commits a wake only after the current Worker generation returns admitted or queued for the matching deliveryId."],
-  ["duplicate-command-ack", "Duplicate commands and admission acknowledgements are idempotent within one Worker generation."],
-  ["disconnect-before-ack", "Disconnect or timeout before admission keeps the same reservation pending and replays the same deliveryId on the new Worker lease."],
-  ["stale-worker-generation", "Acknowledgements from an obsolete Worker generation cannot commit a wake."],
-  ["live-session-capacity", "Installation capacity counts live RuntimeSession instances and is never exceeded."],
-  ["slot-release", "stop, sleep, and exit release a live-session slot exactly once."],
-  ["per-agent-order", "Queued and merged deliveries preserve per-Agent ordering."],
-  ["priority-aging-fairness", "Manual control outranks required delivery, which outranks optional ambient delivery, with aging across Spaces."],
-  ["queued-cancel-reset", "Queued stop and reset cancel or replace work with a deterministic outcome."],
-  ["shutdown-drain", "Worker shutdown has a deterministic queue drain or cancel outcome."],
-  ["queue-full-expiry", "Queue-full and expiry outcomes are explicit and do not leak reservations."],
-  ["unread-replay", "Accepted but unread messages replay from lastReadSeq with the same reservationId and without consuming wake budget again."],
-  ["command-identities", "Wake commands reuse reservationId as deliveryId; manual and lifecycle commands use an independent commandId."],
-  ["manual-command-budget", "Manual and lifecycle commands never consume message wake budget."],
-  ["read-before-reply-limit", "A crash after read but before reply remains a documented Runtime contract v2 limitation, not a P-A9 guarantee."],
-].map(([id, target]) => Object.freeze({ id, stage: "target-p-a9.4", target })));
+  ["persistent-get-or-reserve", "A durable (spaceId, chainId, messageId, targetAgentId) key returns the existing reservationId without spending wake budget twice.", ["test/pA9WakeReservationIdempotency.integration.ts"]],
+  ["admission-ack-commit", "Core commits a wake only after the current Worker generation returns admitted or queued for the matching deliveryId.", ["src/runtime/control/runtimeWorkerAdmission.test.ts", "test/pA9ReconnectReservationCharacterization.integration.ts"]],
+  ["duplicate-command-ack", "Duplicate commands and admission acknowledgements are idempotent within one Worker generation.", ["src/runtime/control/runtimeWorkerAdmission.test.ts", "src/runtime/worker/runtimeAdmissionController.test.ts"]],
+  ["disconnect-before-ack", "Disconnect or timeout before admission keeps the same reservation pending and replays the same deliveryId on the new Worker lease.", ["test/pA9ReconnectReservationCharacterization.integration.ts"]],
+  ["stale-worker-generation", "Acknowledgements from an obsolete Worker generation cannot commit a wake.", ["src/runtime/control/runtimeWorkerAdmission.test.ts"]],
+  ["live-session-capacity", "Installation capacity counts live RuntimeSession instances and is never exceeded.", ["src/runtime/worker/runtimeAdmissionAgentManager.test.ts"]],
+  ["slot-release", "stop, sleep, and exit release a live-session slot exactly once.", ["src/runtime/worker/runtimeAdmissionController.test.ts", "src/runtime/worker/runtimeAdmissionAgentManager.test.ts"]],
+  ["per-agent-order", "Queued and merged deliveries preserve per-Agent ordering.", ["src/runtime/worker/runtimeAdmissionController.test.ts"]],
+  ["priority-aging-fairness", "Manual control outranks required delivery, which outranks optional ambient delivery, with aging across Spaces.", ["src/runtime/worker/runtimeAdmissionController.test.ts"]],
+  ["queued-cancel-reset", "Queued stop and reset cancel or replace work with a deterministic outcome.", ["src/runtime/worker/runtimeAdmissionController.test.ts"]],
+  ["shutdown-drain", "Worker shutdown has a deterministic queue drain or cancel outcome.", ["src/runtime/worker/runtimeAdmissionController.test.ts", "src/runtime/worker/runtimeAdmissionAgentManager.test.ts"]],
+  ["queue-full-expiry", "Queue-full and expiry outcomes are explicit and do not leak reservations.", ["src/runtime/worker/runtimeAdmissionController.test.ts", "test/pA9WakeReservationIdempotency.integration.ts"]],
+  ["unread-replay", "Accepted but unread messages replay from lastReadSeq with the same reservationId and without consuming wake budget again.", ["test/pA9ReconnectReservationCharacterization.integration.ts"]],
+  ["command-identities", "Wake commands reuse reservationId as deliveryId; manual and lifecycle commands use an independent commandId.", ["src/runtime/control/runtimeWorkerAdmission.test.ts", "test/pA9ManualRuntimeCommand.integration.ts"]],
+  ["manual-command-budget", "Manual and lifecycle commands never consume message wake budget.", ["test/pA9ManualRuntimeCommand.integration.ts"]],
+  ["read-before-reply-limit", "A crash after read but before reply remains a documented Runtime contract v2 limitation, not a P-A9 guarantee.", ["docs/performance/p-a9-baseline.md"]],
+].map(([id, target, evidence]) => Object.freeze({ id, stage: "implemented-p-a9.4", target, evidence: Object.freeze(evidence) })));

@@ -29,6 +29,7 @@ const [{ eq }, database, appDatabase, core, eventTesting, workerTesting] = await
 interface RoundResult {
   totalLatencyMs: number[];
   durablePrefixLatencyMs: number[];
+  wakeRoutingLatencyMs: number[];
   sqlStatements: number[];
   fanout: number[];
   socketSendEnqueueDiagnosticMs: number[];
@@ -98,6 +99,7 @@ try {
         const delay = monitorEventLoopDelay({ resolution: 1 });
         const totalLatencyMs: number[] = [];
         const durablePrefixLatencyMs: number[] = [];
+        const wakeRoutingLatencyMs: number[] = [];
         const sqlStatements: number[] = [];
         const fanout: number[] = [];
         const heapBefore = process.memoryUsage().heapUsed;
@@ -118,8 +120,11 @@ try {
 
             totalLatencyMs.push(completedAt - startedAt);
             durablePrefixLatencyMs.push(messageEvent.observedAt - startedAt);
+            wakeRoutingLatencyMs.push(completedAt - messageEvent.observedAt);
             sqlStatements.push(statementCount - sqlBefore);
-            fanout.push(worker.messages().slice(workerOffset).filter((message) => message.type === "agent:deliver").length);
+            fanout.push(worker.messages().slice(workerOffset).filter((message) =>
+              message.type === "agent:deliver"
+              || (message.type === "agent:start" && message.source === "wake" && typeof message.deliveryId === "string")).length);
             heapPeak = Math.max(heapPeak, process.memoryUsage().heapUsed);
             // Let the histogram's timer observe the synchronous SQLite/wake-routing block.
             // The yield is outside both latency measurements above.
@@ -134,6 +139,7 @@ try {
         results[String(agentCount)]!.push({
           totalLatencyMs,
           durablePrefixLatencyMs,
+          wakeRoutingLatencyMs,
           sqlStatements,
           fanout,
           socketSendEnqueueDiagnosticMs: worker.socketSendDurationsMs(),
@@ -175,6 +181,7 @@ try {
     definitions: {
       durablePrefixLatencyMs: "createMessage entry to first message realtime publication, after the current durable-write prefix",
       totalLatencyMs: "createMessage entry to resolution, including current wake routing and synchronous socket enqueue",
+      wakeRoutingLatencyMs: "first message realtime publication to createMessage resolution, including policy, reservation, admission ack, and commit but excluding external Runtime execution",
       socketSendEnqueueDiagnosticMs: "JSON parse/capture time inside the fake socket send call; this is not Worker admission and is not an admission SLO",
     },
     summaries: Object.fromEntries(agentCounts.map((count) => {
@@ -182,6 +189,7 @@ try {
       return [String(count), {
         totalLatencyMs: summarizeRounds(countRounds.map((round) => round.totalLatencyMs)),
         durablePrefixLatencyMs: summarizeRounds(countRounds.map((round) => round.durablePrefixLatencyMs)),
+        wakeRoutingLatencyMs: summarizeRounds(countRounds.map((round) => round.wakeRoutingLatencyMs)),
         sqlStatements: summarizeRounds(countRounds.map((round) => round.sqlStatements)),
         fanout: summarizeRounds(countRounds.map((round) => round.fanout)),
         socketSendEnqueueDiagnosticMs: summarizeRounds(countRounds.map((round) => round.socketSendEnqueueDiagnosticMs)),

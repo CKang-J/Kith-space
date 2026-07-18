@@ -1,5 +1,5 @@
 import { and, count, eq, gt, inArray, isNotNull, isNull, max, ne, or } from "drizzle-orm";
-import { dbForSpace, schema } from "../../db/index.js";
+import { dbForSpace, schema } from "../db/index.js";
 
 export interface ThreadSummary {
   threadChannelId: string;

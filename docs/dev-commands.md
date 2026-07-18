@@ -103,7 +103,7 @@ pnpm run desktop:dist    # Windows x64 NSIS 安装器
 
 ## 6. P-A9 架构基线与护栏
 
-这些命令只用于 P-A9 迁移回归，不是日常启动流程：
+这些命令只用于 P-A9 迁移回归和 admission p95 / capacity 证据采集，不是日常启动流程：
 
 ```powershell
 node scripts/p-a9/module-dependency-guard.mjs
@@ -112,4 +112,4 @@ pnpm exec tsx scripts/p-a9/runtime-baseline.ts
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/p-a9/runtime-cli-smoke.ps1
 ```
 
-Core 与 fake Runtime 默认执行 1/5/10/20 Agent、5 个 round；Core 每轮先预热 100 次，再测 100 次，fake Runtime 只核对确定性的 session 启停事实，不输出延迟 p95 或 SLO。`pnpm run typecheck` 同时覆盖 P-A9 TypeScript 基线脚本。浏览器 Chat fixture 与探针属于低频调试，见 [`dev-debugging.md`](./dev-debugging.md#8-p-a90-chat-浏览器基线)。冻结结果、SLO 与 socket-send/admission 口径见 [`performance/p-a9-baseline.md`](./performance/p-a9-baseline.md)。
+Core 与 fake Runtime 默认执行 1/5/10/20 Agent、5 个 round；Core 每轮先预热 100 次，再测 100 次，最终用于观察 RuntimeWorkerPort admission ack 后的 p95 与容量表现。fake Runtime 只核对确定性的 session 启停事实，不承担最终 SLO 证据；P-A9.6 的 20-Agent SQL 已从 260 降到 151，绝对 SLO 通过。`pnpm run typecheck` 同时覆盖 P-A9 TypeScript 基线脚本。浏览器 Chat fixture 与探针属于低频调试，见 [`dev-debugging.md`](./dev-debugging.md#8-p-a9-chat-浏览器基线与回归)。冻结结果、SLO 与 socket-send/admission 口径见 [`performance/p-a9-baseline.md`](./performance/p-a9-baseline.md)。

@@ -1,6 +1,6 @@
 # Kith-space 产品路线图
 
-> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式；2026-07-15 锁定 ChatOnly 侧栏模块导航与模块打开态 Dock；2026-07-18 在本轮 UI 验收结束后锁定 P-A9 桌面模块化单体架构收敛。完整边界见对应 `docs/superpowers/specs/` 规格，当前工程状态见 `docs/progress.md`。
+> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式；2026-07-15 锁定 ChatOnly 侧栏模块导航与模块打开态 Dock；2026-07-18 在本轮 UI 验收结束后锁定 P-A9 桌面模块化单体架构收敛，P-A9.0–P-A9.7 的实现、文档、最终门禁和一次独立只读终审已完成；当前未提交并等待用户授权。完整边界见对应 `docs/superpowers/specs/` 规格，当前工程状态见 `docs/progress.md`。
 
 ## 1. 产品终点与永久边界
 
@@ -133,14 +133,14 @@ H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integrati
 
 ### P-A9 Desktop 监督的模块化单体架构收敛
 
-状态：P-A9.0 基线、护栏、实测与完整验证已完成；下一步只进入 P-A9.1a Message/Task 等价提取。
+状态：P-A9.0–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审已完成；终审无阻塞发现，唯一低严重度入口文档基线漂移已修正。当前未提交并等待用户授权，不再扩张架构范围。
 
 - 保留 Electron Desktop Supervisor、Core Service、唯一 Local Runtime Worker、React UI 与外部 runtime 的进程拓扑；Core/Worker 都是 Desktop 内部边界，不恢复服务器部署或远程 daemon。
 - 保留 TypeScript / Node / Electron / React / SQLite 主技术栈，不做 Rust 全量重写。Rust 只在性能基线与 profiler 证明单一稳定 CPU 热点后，才可作为窄 Adapter 单独评估。
 - 以高内聚低耦合、单一职责、开放封闭、KISS、DRY、迪米特法则、依赖倒置和分层架构为约束，依次收敛 Message/Task、Agent 数据面、频道/文件、Runtime 与 Chat 控制层。
-- `src/server/` 收窄为组合根和 Transport Adapter；业务 Module 不反向依赖 server/desktop，Human、Agent CLI 与未来 MCP 复用同一用例 Interface。P-A9.0 对当前唯一 `agentDeletion -> server/storage` 反向边做精确临时 allowlist，P-A9.3 强制删除。
-- P-A9.0 已冻结全部消息写入调用方、31 个 Agent 端点、当前 Worker socket-send/reconnect 与 Chat 特征矩阵，建立 1/5/10/20 Agent Core 基线、100/500/1000 消息 UI 基线与各自绝对 SLO，并产出 16 项 P-A9.4 admission/replay 目标契约清单。当前 socket-send 只作诊断指标；真正的 Worker admission 测试、绝对 SLO、RuntimeSession 容量/背压仍在 P-A9.4 随 ack 一起落地。冻结数据见 `docs/performance/p-a9-baseline.md`，矩阵见 `docs/architecture/p-a9-contract-matrices.md`。
-- Message/Task 通过 `WakeDispatchPort` 隔离唤醒副作用；Core→Worker 使用稳定 deliveryId 和 `admitted | queued | rejected` ack。wake 复用 reservationId，手动/生命周期命令使用独立 commandId；Core 只在接纳后 commit wake，断线按同一逻辑键重放而不重复消耗 wake budget，`lastReadSeq` 关闭未读重放窗口。
+- `src/server/` 已收窄为组合根和 Transport Adapter；业务 Module 不反向依赖 server/desktop，Human、Agent CLI 与未来 MCP 复用同一用例 Interface。P-A9.3 已把 Agent 删除与本地对象存储迁入领域目录，P-A9.7 已删除旧 facade 和依赖护栏的临时 allowlist 机制。
+- P-A9.0 已冻结全部消息写入调用方、31 个 Agent 端点、当前 Worker socket-send/reconnect 与 Chat 特征矩阵，建立 1/5/10/20 Agent Core 基线、100/500/1000 消息 UI 基线与各自绝对 SLO，并产出 16 项 P-A9.4 admission/replay 目标契约清单。P-A9.6 的 20-Agent SQL 已从 260 降到 151，绝对 SLO 通过。当前 socket-send 只作诊断指标；P-A9.0 的 total 仍止于 socket enqueue，而当前 total 口径已经等到 admission ack，RuntimeSession 容量/背压与持久 get-or-reserve 也已落地。冻结数据见 `docs/performance/p-a9-baseline.md`，矩阵见 `docs/architecture/p-a9-contract-matrices.md`。
+- Message/Task 通过 `WakeDispatchPort` 隔离唤醒副作用；Core 的 dispatch guard 按逻辑键持久 `get-or-reserve`，Core→Worker 的 `RuntimeWorkerPort` 使用稳定 deliveryId 和 `admitted | queued | rejected` ack，Worker admission 容量为 `capacity=4`、`queue=128`、`ttl=120s`。wake 复用 reservationId，手动与生命周期命令使用独立 commandId；Core 只在接纳后 commit wake，断线按同一逻辑键重放而不重复消耗 wake budget，`lastReadSeq` 关闭未读重放窗口。
 - 全阶段不改现有产品行为、公开 URL、Agent CLI 或 `/daemon/connect` 路径；默认不改 schema，若现有表无法保证重放幂等则停下并单独设计迁移。每个切片独立验证、独立回滚。
 
 完整规格：`docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。

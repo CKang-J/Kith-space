@@ -42,7 +42,7 @@
 | 26 | Agent 频道响应模式 | Agent 默认值加频道成员覆盖；私聊与明确任务指派不受模式限制 |
 | 27 | 频道全体提及 | Human 的规范 token `@all` 快照当前频道 Agent；主动/被动必回，静音不唤醒 |
 | 28 | Chat 壳层导航 | ChatOnly 使用左侧纵向模块入口；模块打开态使用 Dock；案例展示退役 |
-| 29 | 代码架构与性能语言 | 保留 Desktop/Core/Worker 与 TypeScript 主栈；模块化单体渐进收敛，Rust 只由性能证据触发 |
+| 29 | 代码架构与性能语言 | 保留 Desktop/Core/Worker 与 TypeScript 主栈；P-A9.0–P-A9.7 的实现、最终门禁与一次独立只读终审已完成，Rust 只由性能证据触发 |
 
 ---
 
@@ -428,7 +428,7 @@
 
 **实施方式**：P-A9.0 先冻结全部消息写入与 Agent 端点所有权矩阵、静态依赖基线、当前 Worker socket-send/reconnect 行为和 1/5/10/20 Agent Core/UI 基线，并产出 P-A9.4 admission/replay 目标契约清单；不要求尚未实现的 ack 测试提前变绿，也不把 socket-send 指标命名为 admission SLO。之后按 Message/Task、Agent Transport、领域依赖、Runtime admission/session 容量、Chat 控制层和证据驱动性能优化逐切片迁移。依赖测试对当前唯一 `agents/agentDeletion -> server/storage` 采用精确临时 allowlist，P-A9.3 强制清除；每个切片保留短期兼容 facade、迁移调用方后删除旧 Implementation。默认不改 schema、公开 URL、Agent CLI 或 `/daemon/connect` 路径；可靠性需要 schema 时必须单独设计。完整规格见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
 
-**实施状态**：方案已锁定，P-A9.0 当前行为特征测试、精确依赖护栏、Core/UI 性能基线、fake Runtime harness 与 P-A9.4 目标契约清单已于 2026-07-18 完成；socket-send 仍只作为同步 enqueue 诊断指标，尚未实现 admission ack、持久 get-or-reserve 或 RuntimeSession 容量队列。当前下一步仅进入 P-A9.1a Message/Task 等价提取；Runtime 契约 v2 与 H5 继续等待 P-A9 的对应 Module Interface 稳定。
+**实施状态**：方案已锁定，P-A9.0 当前行为特征测试、精确依赖护栏、Core/UI 性能基线、fake Runtime harness 与 P-A9.4 目标契约清单已完成；P-A9.1a–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审也已完成。终审无功能、安全或回归阻塞，唯一低严重度入口文档基线漂移已修正；当前工作树未提交并等待用户授权。socket-send 仍只作为同步 enqueue 诊断指标，total 口径已切到 admission ack，持久 get-or-reserve、RuntimeSession 容量队列以及 P-A9.6 的 20-Agent SQL 260→151 绝对 SLO 结果都已落地。Runtime 契约 v2 与 H5 继续未开始。
 
 ---
 

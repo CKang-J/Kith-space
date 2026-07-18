@@ -13,7 +13,7 @@
 
 一个桌面优先、单人使用的**个人 AgentOS**：一个 Human 和本机一队有身份、职责、记忆的 agent，在多个本地 Space 中持续协作。
 
-本轮 UI 实现、自动化验证与用户手动验收已结束。P-A9 桌面模块化单体架构收敛已完成 P-A9.0 当前行为、依赖护栏与 Core/UI 性能基线；下一步只进入 P-A9.1a Message/Task 等价提取，继续保留 Electron/Core/Worker 拓扑与 TypeScript 主栈。
+本轮 UI 实现、自动化验证与用户手动验收已结束。P-A9 桌面模块化单体架构收敛已完成 P-A9.0–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审；终审无功能、安全或回归阻塞，继续保留 Electron/Core/Worker 拓扑与 TypeScript 主栈。当前工作树保持未提交，等待用户授权提交。
 
 你在频道里群聊、也能和每个 agent 私聊；agent 由你本机的 Claude Code / Codex / opencode 承载，隔着 MCP 操控你的模块（任务、记忆，后续邮箱 / 日历 / 画布）。你 @leader 提一个需求，它能自己拆解、分派给其他 agent、最后汇总交付给你。
 
@@ -33,7 +33,7 @@ P-A8 Agent 频道响应模式与频道全体提及已实现并通过本轮用户
 
 Chat 壳层与侧栏模块导航已完成代码、自动化验证和用户手动视觉验收：ChatOnly 在左侧常驻栏顶部纵向显示“图标 + 文字”的模块入口，不显示 Chat，也不显示底部 Dock；点击模块后固定侧栏隐藏，并继续使用现有 Split / ModuleOnly 与 Module Pane 底部横向 Dock。Split 会话抽屉复用独立会话内容，只保留已保存、频道、私信。中心 Chat 保持原有圆角卡片、间隙与配色；常驻会话导航取消独立卡片底板，直接使用应用画布背景，模块入口和会话抽屉不绘制贯穿式分隔线。功能文字统一无衬线字体；Chat 标题栏固定左右 14px，并与标题内容上下留白一致，日期分隔、消息与 Composer 使用共用 `1040px` 居中内容轨道。案例展示入口、产品路由、静态视图、演示数据/资产及专属表现分支已删除；旧 URL 只由 SPA fallback 接住并规范化到当前 Space 默认频道。全局 `Ctrl/Command + K` 消息搜索第一阶段也已完成：结果采用双行结构，展示可读会话、发送者、相对时间和查询词高亮，话题补充父消息摘要与回复数，界面不再暴露内部 DM/thread 名称。完整边界见 [`Chat 壳层与侧栏模块导航设计`](./docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md)。
 
-P-A9 采用 Desktop 监督的模块化单体：保留 Core 作为 Desktop、授权浏览器和 Agent CLI 的本机权威，保留 Worker 隔离外部 runtime；`src/server/` 收窄为组合根与 Transport Adapter，业务按深 Module 与窄 Interface 收敛。P-A9.0 已冻结生产写入/Agent 端点/Worker transport 当前事实，建立 1/5/10/20 Agent Core、100/500/1000 消息 Chat 实测基线和 fake Runtime harness；socket-send 仅是诊断指标，Worker admission SLO 仍须等 P-A9.4 真正消费 ack 后建立。完整方案见 [`桌面模块化单体架构收敛设计`](./docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md)，冻结数据见 [`P-A9 性能基线`](./docs/performance/p-a9-baseline.md)。
+P-A9 采用 Desktop 监督的模块化单体：保留 Core 作为 Desktop、授权浏览器和 Agent CLI 的本机权威，保留 Worker 隔离外部 runtime；`src/server/` 收窄为组合根与 Transport Adapter，业务按深 Module 与窄 Interface 收敛。P-A9.0 已冻结生产写入/Agent 端点/Worker transport 当前事实，P-A9.1a–P-A9.7 的实现与最终门禁已完成；当前 Core total 口径已切到 `admission ack`，P-A9.0 total 只止于 socket enqueue。持久 wake `get-or-reserve`、`RuntimeWorkerPort` admission ack、`capacity=4`、`queue=128`、`ttl=120s` 与 1/5/10/20 Agent Core、100/500/1000 消息 Chat 基线/回归都已落地，P-A9.6 的 20-Agent SQL 已从 260 降到 151 且 Core/Runtime/UI 绝对 SLO 通过。完整方案见 [`桌面模块化单体架构收敛设计`](./docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md)，冻结数据见 [`P-A9 性能基线`](./docs/performance/p-a9-baseline.md)。
 
 ## Desktop 开发启动
 
@@ -46,7 +46,7 @@ pnpm install
 pnpm run desktop:dev        # 构建 Electron main/preload，并启动 Core + Worker + Vite + Electron
 ```
 
-Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。日常启动见 [`docs/dev-commands.md`](./docs/dev-commands.md)，Web 模式、访问 Token 与低频联调见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。测试：`pnpm test --unit` / `pnpm test --integration`；当前验收单测基线为 667/667。
+Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。日常启动见 [`docs/dev-commands.md`](./docs/dev-commands.md)，Web 模式、访问 Token 与低频联调见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。测试：`pnpm test --unit` / `pnpm test --integration`；当前验收单测基线为 679/679。
 
 Windows 构建分为四层：
 

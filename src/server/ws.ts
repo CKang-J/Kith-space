@@ -16,6 +16,7 @@ import {
   isWorkerLeaseCurrent,
   isWorkerLeaseLatest,
   registerWorker,
+  resolveWorkerAdmission,
   resolveWorkerRequest,
   unregisterWorker,
   updateWorkerSnapshot,
@@ -62,7 +63,7 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
         if (!updateWorkerSnapshot(lease, { runtimes, runningAgents })) return;
         if (!await reconcileWorkerReady(runningAgents, lease)) return;
         if (!isWorkerLeaseCurrent(lease)) return;
-        try { ws.send(JSON.stringify({ type: "ready:ack" })); } catch { /* */ }
+        try { ws.send(JSON.stringify({ type: "ready:ack", generation: lease.generation })); } catch { /* */ }
         void catchUpAgentsOnWorker(runningAgents, lease)
           .catch((e: any) => log.error("worker reconnect catch-up failed", { detail: String(e?.message ?? e) }));
         log.info("local runtime worker ready", { runtimes, runningAgents: runningAgents.length, daemonVersion: msg.daemonVersion });
@@ -92,6 +93,23 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
         const located = await locateAgent(msg.agentId);
         if (!located || !isWorkerLeaseCurrent(lease)) return;
         await publish(located.spaceId, { type: "agent:reply", agentId: msg.agentId, channelId: msg.channelId, streamId: msg.streamId, name: msg.name ?? located.agent.displayName ?? located.agent.name, op: msg.op, text: msg.text ?? "" });
+      }
+      else if (msg.type === "worker:admission") {
+        resolveWorkerAdmission(lease, msg);
+      }
+      else if (msg.type === "worker:queue:outcome") {
+        if (msg.source === "wake" && typeof msg.id === "string" && typeof msg.spaceId === "string"
+          && (msg.status === "cancelled" || msg.status === "expired" || msg.status === "failed")) {
+          const { SqliteDispatchState } = await import("./dispatchGuard.js");
+          await new SqliteDispatchState(msg.spaceId).markWakePending(msg.id);
+        }
+        log.debug("runtime queue outcome", {
+          status: msg.status,
+          source: msg.source,
+          agentId: msg.agentId,
+          spaceId: msg.spaceId,
+          queuedMs: msg.queuedMs,
+        });
       }
       else if ((msg.type === "workspace:file_tree" || msg.type === "workspace:file_content" || msg.type === "skills:list" || msg.type === "models") && msg.requestId) resolveWorkerRequest(msg.requestId, msg);
     } catch (e: any) { log.error("ws handler error", { type: msg?.type, detail: String(e?.message ?? e) }); }
