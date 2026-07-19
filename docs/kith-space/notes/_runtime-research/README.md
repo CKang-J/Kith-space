@@ -8,6 +8,10 @@
 
 背景约束见 `../../decisions.md` 决策 2（不自研 runtime、模块经 MCP 暴露），现有适配器现状见 `../runtime-adapters-current-state.md`。
 
+同类产品实测参考：[`../helio-agent-context-memory-tools-research.md`](../helio-agent-context-memory-tools-research.md) 记录 Helio Desktop 的 per-surface session、跨频道/私信/话题上下文桥接、三种记忆投影与设置面板、公开/私有频道 ACL、Heliox CLI/MCP、消息发送链、snapshot/Dream/compaction、Claude/Codex adapter、空闲逐出恢复与安全边界，并给出对 Kith-space Runtime Contract v2 和记忆分层的建议。
+
+对应的 Kith-space 目标架构提案见 [`../../../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`](../../../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md)：它把研究结论收敛为 P-A10 的 session generation、durable delivery/logical turn/attempt、Context Envelope、revisioned memory、capability broker、schema、NFR 与实施切片；已完成两路对抗性补全，尚未实现。
+
 ## 三家能力对照
 
 | 维度 | Claude Code | Codex | opencode |

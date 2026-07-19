@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述个人 AgentOS 的目标模块边界。A2-A6、Home/Space root 的 H1-H4、P-A8 Agent 频道响应模式、本轮聊天/壳层 UI，以及 P-A9.0-P-A9.7 桌面模块化单体收敛均已完成实现；P-A9 保留 Electron/Core/Worker 拓扑与 TypeScript 主栈，并把 Core、Agent Transport、领域模块、Runtime admission 与 Chat 组合层收口到下述最终边界。Runtime 契约 v2 与 H5 仍未开始。P-A9 完整规格见 `../superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
+> 本文描述个人 AgentOS 的目标模块边界。A2-A6、Home/Space root 的 H1-H4、P-A8 Agent 频道响应模式、本轮聊天/壳层 UI，以及 P-A9.0-P-A9.7 桌面模块化单体收敛均已完成实现；P-A9 保留 Electron/Core/Worker 拓扑与 TypeScript 主栈，并把 Core、Agent Transport、领域模块、Runtime admission 与 Chat 组合层收口到下述最终边界。2026-07-19 又形成并经两路独立对抗性补全 P-A10 Agent Harness v2 架构提案，但 Runtime 契约 v2、per-surface session、durable delivery/turn、结构化记忆与 H5 均未开始实现。P-A9 完整规格见 `../superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`，P-A10 提案见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
 
 ## 1. 架构原则
 
@@ -321,3 +321,37 @@ P-A9.6 只优化冻结基线可复现的路径：频道 membership 和响应设�
 P-A9.1a-P-A9.7 已按 Message/Task、同库事务、Agent Transport、领域依赖、Runtime admission/session 容量、Chat 控制层、证据驱动优化和兼容清理顺序完成。旧 Implementation、失效 facade、临时 allowlist 和 admission 兼容路径已删除；公开 URL、Agent CLI、workspace schema、Electron/Core/Worker 拓扑和产品交互未改变。契约矩阵及删除证据见 `../architecture/p-a9-contract-matrices.md`。
 
 Runtime 契约 v2、H5、Message Context Snapshot、Rust 试验、公开 Web/H5 产品化和 UI 重做仍未开始；它们不得被解释为 P-A9 的隐含交付。阶段验证和当前唯一续接状态以 `../progress.md` 为准。
+
+## 11. P-A10 Agent Harness v2 目标边界（提案，未实现）
+
+P-A10 在 P-A9 深 Module 与 Worker admission 地基上增加一层 runtime-neutral Agent Harness，不改变 Desktop/Core/Worker 拓扑：
+
+```text
+Message / Task durable fact
+  -> response policy
+  -> same-transaction AgentDeliveryItem
+  -> Delivery / Turn / Attempt Modules
+  -> Context Assembler
+  -> WakeDispatchPort / Worker scheduler
+  -> per-surface RuntimeSessionV2
+  -> session-bound capability broker
+  -> MCP/CLI Capability Gateway
+  -> Message/Task/Memory Module
+  -> SQLite + realtime UI
+```
+
+目标职责：
+
+- `DeliveryModule`：Message/Task事务逐Agent持久delivery item、触发时policy、来源cursor owner与dispatch wake binding；post-commit失败可扫描恢复；
+- `SessionModule`：以 `(spaceId, agentId, surfaceKind, surfaceId)` 持久 per-surface engine session generation、runtime/config fingerprint、snapshot 和 idle/evicted/resume 状态；Chat cursor继续归来源membership，不在session复制；
+- `TurnModule`：把未绑定delivery items冻结为logical turn，为每次执行追加带Worker generation/lease的attempt，并以operation/output/逐输入obligation原子实现reply/cede/fail finalize与cursor结算；
+- `ContextAssembler`：构造并审计 root、as-of parent snapshot、当前 batch、object snapshot、episodic recall 和文件 memory refs，不把全部历史无界拼入 prompt；
+- `MemoryModule`：保留三层文件记忆，另以 canonical item + immutable revision + typed evidence/relation/suppression、continuity bundle和中文2/3-gram/FTS提供Agent episodic memory、advisor、Human manage/Agent recall/debug三view；
+- `CapabilityGateway`：让MCP与受控CLI调用同一领域Interface；常驻runtime通过session broker激活当前attempt，不在固定env保存per-turn bearer；turn capability固定output surface、input IDs、seen watermarks、scope、expiry和披露投影；
+- `RuntimeV2 Adapter`：只统一session/attempt、usage、tool、completion、cancel、MCP bootstrap、context metadata与compaction telemetry，不统一Claude/Codex/opencode的内层transcript/summary schema。
+
+目标数据分两期迁移：workspace schema v6增加harness cutover、runtime session、delivery、logical turn/attempt、operation/output、context、capability/disclosure、checklist和short wake；v7增加episodic canonical/revision/evidence/relation/tag/suppression/advisor/mutation与normalized FTS。app.db在User structured memory前建立正式版本/migration runner。`agents.session_id`和`agent_activity_log`仅在兼容期保留；v2按Agent互斥cutover且不把旧全局session backfill到任意surface。Core继续是SQLite唯一业务写入者；Worker只持可重建process/session/broker handle并向Core上报normalized event/非权威snapshot。
+
+P-A10把公开频道从“未加入也可读正文”收紧为“可发现、加入后读取/参与”，私有频道继续只对成员可见；跨频道原文不自动注入，Agent通过ACL查询、continuity/query recall和canonical/internal/shareable/ref disclosure projection获得连续性。Human顶层direct mention默认由服务端原子创建root/thread/membership/delivery并把Agent reply target锁定为该thread；silent可加入但不wake。普通thread每次同时校验父频道，撤权同步失效membership/session/capability。
+
+完整类型、11条ADR、失败模式、NFR、P-A10.0-P-A10.7切片、P-A11/P-A12/P-S1后续边界和43个验收场景见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。该提案已按两路独立对抗性审查补全，但仍未获得代码实现授权；现有schema v5、单Agent `RuntimeSession`、Agent CLI与UI仍是权威实现事实。

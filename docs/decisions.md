@@ -43,6 +43,7 @@
 | 27 | 频道全体提及 | Human 的规范 token `@all` 快照当前频道 Agent；主动/被动必回，静音不唤醒 |
 | 28 | Chat 壳层导航 | ChatOnly 使用左侧纵向模块入口；模块打开态使用 Dock；案例展示退役 |
 | 29 | 代码架构与性能语言 | 保留 Desktop/Core/Worker 与 TypeScript 主栈；P-A9.0–P-A9.7 的实现、最终门禁与一次独立只读终审已完成，Rust 只由性能证据触发 |
+| 30 | Agent Harness v2（提案） | per-surface session + durable delivery/logical turn/attempt + Context Envelope + revisioned episodic memory + broker-backed MCP/CLI Gateway；已完成对抗性补全，尚未实现 |
 
 ---
 
@@ -429,6 +430,36 @@
 **实施方式**：P-A9.0 先冻结全部消息写入与 Agent 端点所有权矩阵、静态依赖基线、当前 Worker socket-send/reconnect 行为和 1/5/10/20 Agent Core/UI 基线，并产出 P-A9.4 admission/replay 目标契约清单；不要求尚未实现的 ack 测试提前变绿，也不把 socket-send 指标命名为 admission SLO。之后按 Message/Task、Agent Transport、领域依赖、Runtime admission/session 容量、Chat 控制层和证据驱动性能优化逐切片迁移。依赖测试对当前唯一 `agents/agentDeletion -> server/storage` 采用精确临时 allowlist，P-A9.3 强制清除；每个切片保留短期兼容 facade、迁移调用方后删除旧 Implementation。默认不改 schema、公开 URL、Agent CLI 或 `/daemon/connect` 路径；可靠性需要 schema 时必须单独设计。完整规格见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
 
 **实施状态**：方案已锁定，P-A9.0 当前行为特征测试、精确依赖护栏、Core/UI 性能基线、fake Runtime harness 与 P-A9.4 目标契约清单已完成；P-A9.1a–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审也已完成，并以 `d5261c1` 收口提交。随后真实存量数据暴露了空闲常驻 RuntimeSession 占满容量、队列在 120 秒 TTL 后过期的回归；修复保持容量/队列参数不变，由 AgentManager 按既有消息合并批次和 adapter `online/error` activity 终态产生本地 idle hint，再结合队列压力决定空闲会话是否立即让位，同时让 queued 手动启动延迟到实际 admitted 才进入工作态，并让失败 wake 终止可见回复占位。这不新增跨 Core/Worker 的 turn-complete 协议。socket-send 仍只作为同步 enqueue 诊断指标，total 口径已切到 admission ack，持久 get-or-reserve、RuntimeSession 容量队列以及 P-A9.6 的 20-Agent SQL 260→151 绝对 SLO 结果都已落地。Runtime 契约 v2 与 H5 继续未开始。
+
+---
+
+## 决策 30：Agent Harness v2 采用 per-surface session、durable delivery/turn、Context Envelope 与双层记忆（提案）
+
+**状态**：Proposed；已完成两路独立对抗性审查并补全事务、重放、迁移、隐私与记忆生命周期契约；代码、schema 和 UI 均未实现。
+
+**结论**：同一 Agent 的频道、Human-Agent DM 与话题使用独立、可恢复的 runtime session；automation 只保留未来扩展类型，P-A10 不启用。消息事务先逐 Agent 持久化 durable delivery item，scheduler 再按 target session 形成 logical turn；每次执行追加带 Worker generation/lease 的 attempt。Core 持久 Context Envelope、逐输入 obligation、operation/output、usage 与 reply/cede/fail 终态，Worker 只持可重建的 engine process/session handle。Human 顶层 direct mention 默认由服务端原子创建 root/thread/membership/delivery，并锁定 Agent reply target；模型 stdout 不直接成为消息。
+
+记忆继续保留 User/Space/Agent 三层 `MEMORY.md + notes/`，另加 Agent-scoped structured episodic memory：canonical item指向不可变 revision，typed evidence/relation、disclosure projection、forget suppression、稳定 continuity bundle、中文2/3-gram+FTS recall、advisor，以及 Human manage/Agent recall/debug 三个显式 view。消息记录仍是事实源，记忆只是带来源、可纠正、可归档的派生线索；embedding仅作为后置可替换 Port。
+
+工具由 Capability Gateway 统一：turn/session 原子能力和生产力模块优先 MCP，受控 CLI/shell 可用时现有 `kith-space` CLI 作为兼容 Adapter；二者调用同一领域 Module。常驻 runtime 不通过普通环境变量持有 per-turn bearer，而由 session-bound broker 激活当前 attempt；Core实时校验 Agent/Space/surface/input/watermark/scope/expiry。授权、错发、operation冲突与确定性披露失败 fail-closed；recall/advisor/consolidation失败 fail-open。Gateway是唯一受支持产品 API，但在OS sandbox前不是物理隔离。公开频道目标语义收紧为“可发现、加入后读写”，私有频道只对成员可见；跨频道不自动注入原文，私密来源按canonical/internal/shareable/ref投影披露并审计。
+
+**推理与权衡**：Helio实测证明“像真实同事”不需要一个全局无限session，而来自局部session、自动recall、权威历史查询、私有wiki、turn ledger和严格消息交付协议的组合。两路对抗性审查进一步证明，若消息提交后才创建turn、只存一个可变attempt、让模型自带随机幂等key或只保存current memory text，仍会在崩溃、合批、父频道root、撤权和forget时失去正确性。Kith-space因此在P-A9地基上增加durable delivery inbox、logical turn/attempt/output、broker与immutable memory revision，而不是复制Helio的云控制面或继续依赖prompt。代价是v6/v7表与迁移显著增加，消息事务多出有界fan-out写入，必须以P-A9 SLO、RSS/FD和中文recall基线验证。
+
+**备选方案**：
+
+- 每 Agent 一个全局 session：因跨频道污染、无法独立逐出/压缩/审计而否决；
+- 每消息冷 session：因连续性、成本和工具状态丢失而否决；
+- 只用三层文件记忆：保留但不足以承担低延迟 top-k、纠错链和管理面板；
+- 只用向量记忆：无法替代权威消息和来源审计；
+- 全 CLI 或全 MCP：前者结构脆弱，后者不能覆盖支持不完整的 runtime，故采用共享领域实现的双 Adapter；
+- Worker 直接写 workspace.db：破坏 Core 单一写入权威和 P-A9 模块边界，否决。
+- 仅在 post-commit 创建 pending turn：Core 崩溃会丢 required work，改为消息事务写 durable delivery；
+- per-turn token 固定注入常驻进程 env：无法轮换且可被 shell 读取，改为 broker activation；
+- memory只保存current text或hard delete：无法重建历史revision且会被advisor重新学习，改为revision+suppression。
+
+**提案默认值**：direct mention总是开话题（`@all`例外）；公开频道join后可读；通过严格evidence门槛的agent-private候选可自动active且可关闭；detail默认90天；同一Agent单turn串行；silent可加入thread但不wake；记忆删除拆成archive/delete/forget+suppress；OS sandbox前只声明产品内私有。这些值仍可由用户在编码前推翻，推翻需同步规格/ADR/验收。P-A10.0只冻结契约和修复migration前置，不改变UI行为。
+
+完整规格：`docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
 
 ---
 

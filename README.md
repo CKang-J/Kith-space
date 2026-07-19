@@ -15,6 +15,8 @@
 
 本轮 UI 实现、自动化验证与用户手动验收已结束。P-A9 桌面模块化单体架构收敛已完成 P-A9.0–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审，并已提交；继续保留 Electron/Core/Worker 拓扑与 TypeScript 主栈。真实存量数据随后暴露的 Runtime admission 队列饥饿、queued 假工作态与失败 wake 残留回复占位也已完成根因修复。
 
+基于 Helio Desktop 的本机实测，P-A10 Agent Harness v2 架构提案已完成两路对抗性补全：计划用 per-surface session generation、消息事务内 durable delivery、logical turn/attempt/operation/output、Context Envelope、server-owned thread reply、session broker、revisioned episodic memory、disclosure/suppression 与 continuity+中文 FTS recall 构建跨私聊/频道/话题的长期连续感。当前仍只是设计，schema v5、现有 Runtime/CLI/UI 均未改变；获得实现授权后必须从 P-A10.0 的迁移前置、契约冻结和真实 adapter/recall 基线开始。
+
 你在频道里群聊、也能和每个 agent 私聊；agent 由你本机的 Claude Code / Codex / opencode 承载，隔着 MCP 操控你的模块（任务、记忆，后续邮箱 / 日历 / 画布）。你 @leader 提一个需求，它能自己拆解、分派给其他 agent、最后汇总交付给你。
 
 Kith 意为"你熟识信任的一圈自己人"——正是这些懂你（有记忆）、各有职责的 agent；`-space` 是你和它们共处的协作空间。
@@ -25,7 +27,7 @@ Kith 意为"你熟识信任的一圈自己人"——正是这些懂你（有记�
 
 当前最高优先级是 2026-07-11 锁定的本机化转向：正式产品只有 Electron Desktop，一个 Human、一个本机 Local Runtime Worker、多个本地 Space；浏览器入口是 Desktop 可选开放的本机/LAN 附属能力。多真人、多机器、服务器部署、云同步、Docker、账户登录和独立 Web 发行路线已经取消。完整规格见 [`个人 AgentOS 本机化路线设计`](./docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md)。
 
-本机化 A2-A6 原定代码切片与 P-A7 H1-H4 已完成并通过本轮用户验收：中央 `app.db`、唯一 Human、canonical Space 契约、安装级唯一 Local Runtime Worker、19 表 workspace.db baseline、浏览器 Token/Cookie 安全边界和 Electron Desktop 宿主均已落地；app data 与默认 Space 容器已经分离，Home 使用 app.db 中的稳定身份并默认位于用户可见的 `~/Kith-space/Home`；Claude Code、Codex、opencode 以所属 Space root 为 cwd，Agent Memory 随 Space 存放；用户可在 Home-only Spaces 模块搜索、刷新、新建、接入、重连并同窗打开普通 Space。ChatOnly 左侧列表顶部的 SpaceSwitcher 只负责快速切换、失联恢复和进入 Home Spaces。普通冷启动默认进入 Home Chat，显式可用 Space 深链接仍优先；普通 Space 不显示也不能激活 Spaces 模块。H5 与 Runtime 契约 v2 继续等待 P-A9 的对应 Module Interface 稳定。完整补充规格见 [`Home 与 Space root 设计`](./docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md)。
+本机化 A2-A6 原定代码切片与 P-A7 H1-H4 已完成并通过本轮用户验收：中央 `app.db`、唯一 Human、canonical Space 契约、安装级唯一 Local Runtime Worker、19 表 workspace.db baseline、浏览器 Token/Cookie 安全边界和 Electron Desktop 宿主均已落地；app data 与默认 Space 容器已经分离，Home 使用 app.db 中的稳定身份并默认位于用户可见的 `~/Kith-space/Home`；Claude Code、Codex、opencode 以所属 Space root 为 cwd，Agent Memory 随 Space 存放；用户可在 Home-only Spaces 模块搜索、刷新、新建、接入、重连并同窗打开普通 Space。ChatOnly 左侧列表顶部的 SpaceSwitcher 只负责快速切换、失联恢复和进入 Home Spaces。普通冷启动默认进入 Home Chat，显式可用 Space 深链接仍优先；普通 Space 不显示也不能激活 Spaces 模块。H5 与 Runtime 契约 v2 尚未实现，Runtime 契约的后续边界已纳入 P-A10 提案。完整补充规格见 [`Home 与 Space root 设计`](./docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md)。
 
 P-A8 Agent 频道响应模式与频道全体提及已实现并通过本轮用户验收：当前 Space 的 Agent 默认值可由顶层频道 membership 覆盖，三档为主动/被动/静音；Human-Agent 私聊和明确任务指派始终直达，话题继承父频道。“指派任务 + 单一 @Agent”会形成真实 assignee，无 `@` 保持未指派，多个 Agent mention 或 `@all` 在任务模式发送前拒绝。Human 在频道/话题发送语言无关的规范 token `@all` 时，按发送瞬间的父频道 Agent 成员生成接收者快照，主动/被动目标必须回应，静音目标不自动唤醒；Agent-authored 与 DM 文本不会群体展开。界面标签通过 i18n 显示“所有人 / Everyone”，历史消息和协议始终保留 `@all`。实时 wake、Worker reconnect、Agent message check 与 prompt 共用统一响应指令，Agent 详情默认卡片、消息头像 Agent 卡片内的频道覆盖控件和 Composer 全体候选均已落地。Composer 已把照片/文件与“指派任务”合并到左下角圆形“+”菜单，任务启用后显示可移除胶囊并与正文共享单行空间；短单行草稿保持紧凑，只有任务胶囊与文字的合计占位接近右侧安全区、显式换行或附件存在时才展开。完整边界见 [`Agent 频道响应模式设计`](./docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md)。
 
@@ -66,6 +68,7 @@ pnpm run desktop:dist        # x64、per-user、assisted NSIS 安装器
 - Agent 默认/频道覆盖、任务指派与唤醒矩阵：[`2026-07-14-agent-channel-response-mode-design.md`](./docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md)
 - ChatOnly 侧栏模块入口、模块打开态 Dock 与案例展示退役：[`2026-07-15-chat-shell-sidebar-module-navigation-design.md`](./docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md)
 - Desktop/Core/Worker 模块边界、实施切片与 Rust 决策门：[`2026-07-18-desktop-modular-monolith-architecture-design.md`](./docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md)
+- per-surface session、Context Envelope、结构化记忆与 MCP/CLI Gateway 提案：[`2026-07-19-agent-harness-session-context-memory-tools-design.md`](./docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md)
 - 日常开发命令（启动/测试/打包）：[`docs/dev-commands.md`](./docs/dev-commands.md)
 - 高级开发与调试（Token/Web/数据库/E2E）：[`docs/dev-debugging.md`](./docs/dev-debugging.md)
 - 理念与长远愿景：[`docs/vision.md`](./docs/vision.md)

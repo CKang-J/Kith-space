@@ -226,3 +226,18 @@ P-A8 的前端边界保持独立：`agent-response-mode/` feature 承担 Agent �
 - LAN 模式首次开启会先展示确认面板，明确说明 HTTP 未加密、只限受信任私网、禁止端口转发/公网暴露；用户确认后才改变监听。自动生成/轮换的访问 Token 保持一次性显示，直到用户主动确认已保存。
 
 一句话：**Chat 是基础工作面；ChatOnly 用左侧纵向入口打开模块，模块打开后由 Dock 统一切换模块和控制 Chat 显隐。**
+
+## 9. P-A10 Agent Harness v2 的拟议 UI 增量（未实现）
+
+P-A10 不改变 WorkspaceFrame、ChatOnly/Split/ModuleOnly、中心 Chat 卡片或 Module Dock，只扩展现有 Chat/Agents 信息架构：
+
+- Human 在顶层频道明确 `@Agent` 后，root 消息下创建/复用话题，required reply placeholder 和持久 Agent 回复都归入该话题；父频道不显示引用式伪回复。`@all` 继续是频道广播，不自动建立高 fan-out 话题。
+- 消息“展开步骤”从单一轨迹扩展为“上下文 / 步骤 / 用量 / 结果”：区分 turn 前自动注入、Agent 后续主动查询、因隐私只给 projection/ref 和因预算/故障省略的来源；步骤按 attempt 展示安全 thinking summary 与工具事件；结果显示逐 delivery obligation、operation/output、replied/ceded/failed/cancelled 和重试/lease。
+- optional turn 的 `cede` 不产生 Chat 气泡；required turn 的 text delta 只更新 ephemeral placeholder，只有 Message Module 成功提交后才收敛成持久消息。失败/cancelled 必须结束 placeholder。
+- Agents 详情“记忆”页形成“结构化记忆 / 文件记忆”两个一级视图。结构化记忆按 Active/Proposals/Archived、服务端搜索、kind/scope/source/tag/source-revoked/suppressed 过滤，并展示 canonical ID、revision、typed evidence、disclosure projection、correction relation、continuity bundle状态；常用动作是归档，破坏性动作分为删除item和forget+suppress。文件记忆继续读取当前 `agentMemoryDir`。
+- Agents 开发诊断区可查看 per-surface session generation 的 cold/idle/running/evicted/resume_failed、runtime/config fingerprint、来源 delivery frontier、logical turn/attempt lease、snapshot、recall/advisor/compaction 状态；普通用户默认不展示内部 JSON。
+- 频道设置继续使用公开/私有可见性，但提案建议把公开频道解释为“所有 Space Agent 可发现，加入后读写”，私有频道解释为“仅选择的 Agent 可发现/读取”；改变可见性时确认现有 membership，不自动批量增删 Agent。
+- `silent` Agent 被 Human direct mention 时仍可加入话题但不出现回复 placeholder；在 OS sandbox 前，私有设置使用“产品内私有”准确文案，不承诺同一系统用户下的 runtime 进程无法访问或修改本机路径。
+- MessageContextSnapshot 只保存产品对象引用与 revision，不采集 DOM、截图、剪贴板或未提交表单；它在 turn 的“上下文”中显示为独立来源。
+
+这些 UI 均属于已完成对抗性补全、但尚未实现的 P-A10 目标态，不能写成当前产品行为。完整机制、提案默认值和实施切片见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。

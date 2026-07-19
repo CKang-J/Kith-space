@@ -1,6 +1,6 @@
 # Kith-space 产品路线图
 
-> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式；2026-07-15 锁定 ChatOnly 侧栏模块导航与模块打开态 Dock；2026-07-18 在本轮 UI 验收结束后锁定 P-A9 桌面模块化单体架构收敛，P-A9.0–P-A9.7 的实现、文档、最终门禁和一次独立只读终审已完成；当前未提交并等待用户授权。完整边界见对应 `docs/superpowers/specs/` 规格，当前工程状态见 `docs/progress.md`。
+> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式；2026-07-15 锁定 ChatOnly 侧栏模块导航与模块打开态 Dock；2026-07-18 完成 P-A9 桌面模块化单体架构收敛；2026-07-19 基于 Helio 实测形成并经两路对抗性补全 P-A10 Agent Harness v2 架构提案，当前尚未实现。完整边界见对应 `docs/superpowers/specs/` 规格，当前工程状态见 `docs/progress.md`。
 
 ## 1. 产品终点与永久边界
 
@@ -24,7 +24,7 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 - P4：单窗口 ChatOnly / Split / ModuleOnly 工作区、可拖拽面板、模块切换与任务范围侧栏；ChatOnly 使用侧栏模块入口，模块打开态使用 Module Pane 底部 Dock。
 - Runtime 调研：Claude Code、Codex、opencode 适配边界与 Runtime 契约 v2 草案。
 
-聊天消息流密度与交互重构、Chat 壳层与侧栏模块导航均已按对应 2026-07-15 规格完成代码、自动化验证与用户手动视觉验收。当前已落地 ChatOnly 纵向模块入口、Split 三组会话抽屉、模块打开态 Dock、中心 Chat 卡片保护、直接使用画布背景且无直线分隔的常驻会话导航，以及案例展示退役；全局 `Ctrl/Command + K` 消息搜索的第一阶段展示优化也已完成，以双行结果提供可读会话、发送者、相对时间、查询词高亮及话题父消息摘要/回复数，不再显示内部 DM/thread 名称。A1-A6 原定代码切片、P-A7 H1-H4 与 P-A8 Agent 频道响应模式的本轮验收门已经结束；当前先实施 P-A9 架构收敛，再进入 Runtime 契约 v2 或 H5 跨 Space 编排。
+聊天消息流密度与交互重构、Chat 壳层与侧栏模块导航均已按对应 2026-07-15 规格完成代码、自动化验证与用户手动视觉验收。当前已落地 ChatOnly 纵向模块入口、Split 三组会话抽屉、模块打开态 Dock、中心 Chat 卡片保护、直接使用画布背景且无直线分隔的常驻会话导航，以及案例展示退役；全局 `Ctrl/Command + K` 消息搜索的第一阶段展示优化也已完成，以双行结果提供可读会话、发送者、相对时间、查询词高亮及话题父消息摘要/回复数，不再显示内部 DM/thread 名称。A1-A6、P-A7 H1-H4、P-A8 与 P-A9 均已完成；下一阶段候选已收敛为 P-A10 Agent Harness v2，获得实现授权后从 P-A10.0 的 migration 前置、契约冻结和真实 adapter/中文 recall 基线开始。
 
 ## 3. 当前路线：个人 AgentOS 本机化
 
@@ -133,7 +133,7 @@ H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integrati
 
 ### P-A9 Desktop 监督的模块化单体架构收敛
 
-状态：P-A9.0–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审已完成；终审无阻塞发现，唯一低严重度入口文档基线漂移已修正。当前未提交并等待用户授权，不再扩张架构范围。
+状态：P-A9.0–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审已完成并提交；真实存量数据暴露的 Runtime admission 队列饥饿和错误状态传播也已修复，不再扩张 P-A9 范围。
 
 - 保留 Electron Desktop Supervisor、Core Service、唯一 Local Runtime Worker、React UI 与外部 runtime 的进程拓扑；Core/Worker 都是 Desktop 内部边界，不恢复服务器部署或远程 daemon。
 - 保留 TypeScript / Node / Electron / React / SQLite 主技术栈，不做 Rust 全量重写。Rust 只在性能基线与 profiler 证明单一稳定 CPU 热点后，才可作为窄 Adapter 单独评估。
@@ -149,7 +149,14 @@ H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integrati
 
 ### 4.1 Runtime 契约 v2
 
-统一 Claude Code、Codex、opencode 的生命周期、usage 回调、取消、完成事件和 MCP bootstrap。它是模块、记忆写入和可靠编排的共同前置。
+该能力已纳入 P-A10 Agent Harness v2 提案：
+
+- 以 `(spaceId, agentId, surfaceKind, surfaceId)` 建立 per-surface resumable session；
+- 统一 Claude Code、Codex、opencode 的 turn lifecycle、usage、取消、completion、tool/compaction event 和 MCP bootstrap，但保留各 engine 内层语义；
+- 建立消息事务内 durable delivery、logical turn/attempt/operation/output ledger、来源 delivery frontier、server-owned reply target 和逐输入 reply/cede/fail finalize gate；
+- 依次实施 P-A10.0–P-A10.4，不直接从自动记忆或 UI 开始。
+
+完整提案：`docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
 
 ### 4.2 生产力模块
 
@@ -157,7 +164,7 @@ H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integrati
 
 ### 4.3 记忆与上下文
 
-实现结构化 `memory_save`、检索和衰减策略；实现 `MessageContextSnapshot`，让消息携带当前 Space、模块、打开对象和 focused item 的结构化快照。
+在 P-A10.3–P-A10.7 分阶段实现 Context Envelope、MessageContextSnapshot、权威历史查询、canonical+immutable revision 结构化 episodic memory、disclosure/suppression、continuity+中文 FTS recall、Human 管理/Agent recall/debug 三 view、advisor、session checklist、snapshot 与 compaction telemetry。现有 User/Space/Agent 三层 `MEMORY.md + notes/` 继续保留，结构化记忆是带 typed evidence/relation 的附加层，不替代文件记忆。受限 consolidation、skill reconciliation 和 runtime security/approval/Vault 分别后置为 P-A11、P-A12、P-S1，不再捆成一个 P-A10.8。
 
 ### 4.4 本机跨 Space 聚合
 

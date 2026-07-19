@@ -2,15 +2,16 @@
 
 本文件是当前进度的权威来源。新会话先读本文件和 `AGENTS.md`，再按文档地图进入专项资料。
 
-最后更新：2026-07-18。
+最后更新：2026-07-19。
 
 - **P-A9.0-P-A9.7 已完整完成并提交，真实数据回归已修复**：Message/Task 深 Module、同库原子事务、Agent Transport 分组、领域依赖收口、Worker admission/session 容量、Chat data/model 组合层、基线可归因优化与兼容清理均已落地。P-A9 收口提交为 `d5261c1`；其后用现有本机数据复现并根治了常驻空闲会话占满容量造成的 admission 队列饥饿，同时修复 queued 手动启动误报“工作中”和失败 wake 不结束回复占位。Electron/Core/Worker 拓扑、TypeScript 主栈、公开 URL、Agent CLI、workspace schema 和现有 UI/交互保持不变；Runtime 契约 v2、H5、Rust 重写与 UI 重做未开始。
+- **P-A10 Agent Harness v2 提案已完成对抗性补全，代码尚未开始**：基于 Helio 本机实测及两路独立只读审查，方案现包含 per-surface session generation、消息事务内 durable delivery、logical turn/attempt lease、operation/output/逐输入 obligation、Context Envelope、server-owned thread reply、session-bound capability broker、revisioned episodic memory、disclosure/suppression、continuity+中文 FTS recall、版本化 v6/v7/app.db 迁移、P-A10.0–P-A10.7 与独立 P-A11/P-A12/P-S1 边界。提案位于 `docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`；产品默认值已在第 27 节给出可实施建议但仍可由用户在编码前推翻。当前 schema v5、`agents.session_id`、单 Agent RuntimeSession、现有 Agent CLI 与 UI 均未改变。
 
 ## 一、现在在哪
 
 - 主干：`main`。临时工作分支不作为阶段进度记录。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**A1-A6、P-A7 H1-H4、P4/P-A8、本轮聊天/壳层 UI 与 P-A9.0-P-A9.7 均已完成；P-A9 已提交，真实数据下的 Runtime admission 回归也已完成修复和验证**。完整规格见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
+- 当前阶段：**A1-A6、P-A7 H1-H4、P4/P-A8、本轮聊天/壳层 UI 与 P-A9.0-P-A9.7 均已完成；P-A9 已提交，真实数据下的 Runtime admission 回归也已完成修复和验证；P-A10 只有已补全提案、没有实现**。P-A9 事实见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`，P-A10 目标态见 `docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
 - **P-A9 最终模块事实**：`src/messages/messagePostingModule.ts` 与 `src/tasks/taskLifecycleModule.ts` 封装消息/任务写入和生命周期，同库事务原子提交 seq、消息、dispatch、follow、附件、membership、mentions、任务与 system audit；实时发布和 wake 作为明确 post-commit effect。`src/server/routes-agent.ts` 只分派 `src/server/agent-http/` 的七组 Transport Adapter；频道、Agent、文件与 task 领域不再依赖 server/desktop，依赖护栏没有 allowlist。`src/runtime/` 提供 generation-aware admission ack、持久 get-or-reserve 重放和容量 4/队列 128/TTL 120 秒的 Worker admission；AgentManager 按实际消息合并批次与既有 `online/error` activity 终态提供本地 idle hint，排队出现时由真正空闲且没有未完成批次的会话立即让出容量，不新增 Runtime v2 的跨边界 turn-complete 协议。queued 手动启动只有在实际 admitted 后才进入工作态，失败/cancelled/expired wake 会携带会话终态并关闭可见回复占位。旧 raw 生命周期命令被拒绝。`web/src/features/conversation/` 拥有 Chat 请求、消息/话题模型与视口语义，`Chat.tsx` 保持组合层和局部交互状态。P-A9.7 已删除旧 facade、旧 Implementation、兼容 ack 和临时 allowlist。
 - **P-A9 性能事实**：最终 1/5/10/20 Agent Core 总 p95 为 3.489/9.632/14.661/50.481 ms，SQL 为 18/46/81/151，20 Agent 低于 120 ms SLO；Runtime admission 三轮中位数为 0.213/0.496/0.574/0.342 ms，均低于 25 ms SLO。P-A9.1b 统一事务让 20 Agent durable-prefix 相对 P-A9.0 增加但绝对值仍低于 10 ms，作为原子一致性权衡单独记录。Chat 首次可见 100/500/1000 档 median p95 为 62.8/65.2/62.4 ms，全量滚动为 70.6/311.5/621.9 ms，实时追加为 231 ms，均通过绝对 SLO 且对应 median p95 未相对冻结值退化超过 10%；没有虚拟化或视觉调整。完整统计、波动与口径见 `docs/performance/p-a9-baseline.md`，契约与删除证据见 `docs/architecture/p-a9-contract-matrices.md`。
 - 聊天消息流已从全宽描边卡片迁入统一 `ChatMessageItem` 表现层，主会话、话题、action card 与加载 Skeleton 共用 32px 头像、紧凑发送者行和 Human/Agent 语义气泡；1040px 居中流宽、14.5px/1.55 正文、52px 标题、14px 顶部留白、88px Composer 预留和气泡内话题摘要已落地。普通链尾间距为 20px；同一天相邻且同发送者的 Human/Agent 普通消息隐藏重复头像/昵称并以 6px 组内间距连续展示，hover/focus 在头像槽显示时分，系统消息、action card、日期和发送者变化会打断分组。Human 消息昵称使用真实的 `14.5px / 700 / 20px`，Agent 昵称始终保持 500 字重、hover/focus 只转为深色；时间为 `11px / 400 / 16px`，二者按基线对齐且消息头无额外字距；侧栏 Agent 名称继续使用 600。发送者行状态文字移除并只保留头像状态点；Agent 私聊标题改为头像加昵称并移除 `@` 前缀，状态文字复用 Agents 页面中文映射。父消息话题摘要新增参与者头像、总数、最新时间、最近三条 Human/Agent 单行回复和“在话题中回复”，system 任务事件不进入预览行且正文与摘要之间无分隔线；主消息流中的 system 任务事件与内部 Markdown 已纳入 1040px 中心轨道并居中。摘要复用批量 thread metadata 接口并实时刷新变更父消息，不产生逐话题请求。主消息工具外显“加表情、话题、复制、更多”，收藏保留在更多菜单，工具栏只由气泡 hover/focus 触发并按右侧空间自动切换到气泡右侧或上方；隐藏状态初始置于气泡上方，消息流只允许纵向滚动，不再出现底部横向滚动条。归档频道隐藏写入口并保留复制和打开已有话题；Showcase 已由后续壳层切片完整退役。真实页面的 Split、ChatOnly、滚动场景和用户手动视觉验收均已完成。
@@ -134,14 +135,14 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - Windows agent 命令/编码链已按宿主收口：`ensureKithSpaceBin` 在 Windows 开发态与打包态只保留可执行 `kith-space.cmd` 并清理会触发“选择打开方式”的旧 POSIX 文件，Linux/macOS 继续生成可执行 `#!/bin/sh` wrapper；system prompt 在 Windows 明确 `.cmd` 与 UTF-8 `$OutputEncoding`，优先给出 PowerShell 写法但允许 runtime 明确提供的 POSIX shell，在 Linux/macOS 使用 POSIX sh/heredoc。`spawnRuntimeProcess` 对全部 runtime stdout/stderr 启用有状态 UTF-8 解码，CLI 的 message/thread/action stdin 也经独立 `readUtf8Stdin` 模块解码。真实 Windows PowerShell 5.1 探针从默认 `????` 恢复为 UTF-8 字节，生成的 `.cmd` 也已从 Git Bash smoke 成功执行；针对性 26/26、typecheck、全量单测 470/470、全量集成、Web build（2566 modules）与 `desktop:bundle` 均通过。
 - Agent 首轮生命周期已拆成三种显式场景：`create` 只向 `dm:@you` 做一次简短自我介绍，`manual` 启动/恢复在空收件箱时静默，`wake` 处理真实持久化投递并在每个原目标回复。Core 会把创建、消息/任务和 reconnect backlog 的原因传给唯一 Worker；启动准备期的投递被合并为单个 wake turn。候选 introduction turn 使用一次性 token，只有 Worker 实际选择 introduction prompt 才注入进程，CLI 也只在 `message send --introduction` 时附带；普通 wake 回复不携带 token。真实 wake 会撤销 active token 并拒绝迟到问候，completed token 的重复问候同样拒绝。Human DM 在异步校验后、事务前同步消费，因此被忽略的重复 start 和普通回复都不会误记为介绍。介绍消息与 `agents.introduced_at` 原子提交，普通重启保留，清 Agent Memory 的完整 reset 会清除介绍状态；schema v3 会安全升级 v2 并将已有 agent 回填为已介绍。定向 TDD、typecheck、476/476 全量单测、全量集成和 Web build 均通过。
 - LAN 浏览器具有完整产品能力，v1 仅支持桌面浏览器和 HTTP；只限受信任私网，禁止端口转发或公网暴露。
-- Message Context Snapshot 仍是设计契约，尚未持久化。
-- token 预算目前以唤醒次数为代理；真实 usage 等待 Runtime 契约 v2。
+- Message Context Snapshot 已纳入 P-A10 Context Envelope 提案，仍未持久化。
+- token 预算目前以唤醒次数为代理；P-A10 提案要求由 Runtime Contract v2 的 normalized usage 结算，但尚未实现。
 - 外接 runtime 仍使用高权限模式。邮箱/浏览器等不可信内容模块上线前必须补 HTTPS 与审批/沙箱权限升级。
 
 ## 五、下一步顺序
 
 1. P-A9 与本次 Runtime admission 真实数据回归修复完成后停止本阶段；不自动推送、不合并、不发布，也不做仓库外数据清理。
-2. Runtime 契约 v2、H5、Rust 试验、UI 重做、生产力模块与 Message Context Snapshot 继续暂停，只有新授权后才进入后续阶段。
+2. P-A10 已完成对抗性补全；获得代码实现授权后只能从 P-A10.0 的 compatibility/app.db migration前置、契约冻结和真实adapter/中文recall基线开始，不直接跳到自动记忆或UI。用户若要推翻第27节默认值，先同步ADR/验收。H5、Rust试验、生产力模块和P-S1安全升级继续按各自前置关系推进。
 
 ## 六、验证与工作约定
 

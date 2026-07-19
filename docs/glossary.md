@@ -111,6 +111,30 @@
 **Runtime 适配器**
 : 把某个 runtime CLI 接入统一 `Runtime` 接口的适配层，负责启动进程、驱动一轮对话、解析其输出、回吐 session/活动/轨迹。新增一个 runtime = 实现一个 `Runtime` 对象并注册。注册表已带 8 条，v1 只把三条做稳。
 
+**交流表面 / Surface**
+: Agent 一段局部对话所属的稳定产品对象，当前聊天类表面为公开频道、私有频道、Human-Agent DM 和话题。P-A10 目标态以 surface 隔离 runtime session；任务沿用其 owning thread，不另造聊天表面。automation 只保留未来类型，P-A10 不启用，必须等对应事实源/cursor/ACL另立契约。
+
+**per-surface Runtime Session / 表面会话**
+: P-A10 目标态中由 `(spaceId, agentId, surfaceKind, surfaceId)` 逻辑寻址、按 runtime/model/security config 形成 generation 的可恢复 engine session。同一 Agent 的 DM、两个频道和各话题彼此隔离，同一 generation 后续 turn 可 resume；Chat 消费 cursor 仍归来源 membership，不在 session 复制。当前代码仍只有 `agents.session_id` 对应的单 Agent session。
+
+**Durable Delivery Item / 持久投递项**
+: 消息事务为发送时有资格的每个 Agent 原子写入的工作事实，记录 source message/surface/seq、cursor owner、目标 session、触发时 response policy、directive、dispatch wake binding 与终态 disposition。它可以被 Core 直接标 observe，也可以被编入 logical turn；Worker 通知不是它的事实源。
+
+**Agent Turn / Agent 工作轮次**
+: 某 Agent 在一个 surface session 上处理一组已冻结 delivery items 的 logical 调度、上下文与交付原子。它有稳定 ID、Context Envelope、逐输入 obligation、聚合 usage/output 和终态；每次真实执行另追加 Turn Attempt。它不是一条消息、一次进程执行或整个 runtime session。
+
+**Turn Attempt / 工作轮次尝试**
+: logical turn 的一次外部 runtime 执行，保存 attempt number、Worker generation、CAS lease、engine session before/after、event、usage 与错误。崩溃重试追加新 attempt，不把旧 failed attempt 改回 running。
+
+**Turn Operation / Output / 工作轮次操作与输出**
+: turn-scoped 产品写入的持久幂等账本。operation 以 `(turn, tool, idempotency key)` 和 request hash 去重；output 链接实际消息等结果，并映射它结算的 delivery obligations。Chat reply 在同一 SQLite 事务提交 message、output、obligation、turn 与 cursor frontier。
+
+**Turn Ledger / 工作轮次账本**
+: P-A10 目标态由 Core 持久的 delivery、logical turn、attempt、上下文来源、operation/output、工具事件、usage、错误和恢复记录。它承担 Human 的“展开步骤”和 Agent 自我追溯，不等同于原始消息历史或 engine 私有 transcript。
+
+**Finalize Gate / 最终化闸门**
+: P-A10 目标态在 runtime 宣告 turn 结束前逐 delivery obligation 检查交付结果的系统规则：每个 `required` input 必须被已提交 output 明确覆盖，每个 `optional` input 必须回复或显式 cede；stdout/text preview 不算消息，缺少合法终态会有限重试后失败。
+
 **Agent 首轮触发场景**
 : Core 启动 agent 时传给 Local Runtime Worker 的显式原因：`create` 表示新建后的单次 Human 私信介绍，`manual` 表示手动启动/重启/恢复且空收件箱静默，`wake` 表示有真实持久化消息或任务需要在原目标处理。只有实际采用 introduction prompt 的 runtime 进程持有一次性 token，且仅 `message send --introduction` 会把它附到请求；服务端同步消费成功后才把介绍私信与 `agents.introduced_at` 原子写入。真实 wake 会撤销 token 并拒绝迟到问候，已完成 token 的重复问候同样拒绝；普通回复不携带 token。普通重启保留完成状态，清 Agent Memory 的完整 reset 会清除它。
 
@@ -124,6 +148,15 @@
 **MCP（模块即 MCP 工具）**
 : 自建生产力模块（v1 = 任务；后续 = 邮箱/日历/画布）不进 runtime，而是各自包成一个 MCP server 暴露给外接 agent。agent 像调用普通工具一样调用 `task_create` 等，落到我方服务端逻辑。这是"原生丝滑"的实现路径之一，与 UI 桥配合。
 
+**Capability Gateway / 能力网关**
+: P-A10 目标态中 Agent 操作 Kith-space 的唯一受支持产品 API。MCP Adapter 与受控 `kith-space` CLI Adapter 把请求解析成同一领域 command，复用 Message/Task/Memory 等深 Module；broker-backed turn capability 固定 Agent、Space、attempt、允许 input/output、seen watermarks、scope、披露权与过期时间。它在 OS sandbox 前不是阻止 runtime 直接读本机路径的物理边界。
+
+**Turn Capability Broker / 工作轮次能力代理**
+: 为常驻 runtime 提供稳定本机 handle、由 Worker 按 attempt 激活 opaque capability 的控制面。Core在每次MCP/CLI调用时校验实时lease/turn/ACL并在终态撤销，避免把无法轮换的per-turn bearer固定注入子进程环境。
+
+**cede / 让出回复**
+: optional turn 中 Agent 明确表示“已读取并判断无需回复”的成功终态。它与没收到、仍在运行或执行失败不同，不生成 Chat 消息，但进入 Turn Ledger；当前响应模式允许 optional 静默，P-A10 将把它升级为显式持久协议。
+
 **UI 桥**
 : 把 MCP 工具调用的副作用实时反映到界面（如任务看板随任务事件刷新）的机制，与 MCP 工具设计共同构成"丝滑"的两半。
 
@@ -133,6 +166,27 @@
 
 **三层记忆**
 : 用户级（app data 中的跨 Space 偏好，Human 策展）、Space 级（`<space>/.kith/memory/` 的共享规则和背景，agent 可写、Human 策展）、Agent 级（`<space>/.kith/agents/<agentId>/` 中由 agent 维护的 `MEMORY.md` + `notes/`）。读取一律用 runtime 原生文件工具，不做读 MCP 工具。
+
+**Episodic Memory / 情景记忆**
+: P-A10 目标态中由对话/turn evidence 派生的结构化长期线索。canonical item指向append-only revision，并使用typed evidence、disclosure projection、`supersedes/contradicts/confirms` relation与suppression支持跨surface recall、纠错和Human管理。它不替代消息事实源或三层文件记忆。
+
+**Continuity Bundle / 连续性记忆包**
+: 当前Agent/Human的少量active preference、relationship、habit和高重要role fact组成的有界自动注入集合，不依赖本轮词面查询；与query-shaped FTS recall互补，只包含已经active且通过当前ACL/disclosure的revision。
+
+**Memory Revision / 记忆修订版**
+: 某canonical memory的不可变正文版本，保存canonical/internal/shareable projection、HMAC、actor与有效期。canonical row只指向current revision；历史Context Envelope可按revision审计，forget后可删除正文并只留tombstone。
+
+**Memory Suppression / 记忆抑制**
+: Human选择“忘记并不再从这些来源学习”时持久保存的非原文 source ref + keyed claim fingerprint。它阻止advisor/consolidation从仍保留的来源重新生成同一事实，可单独解除；不同于archive或单纯删除item。
+
+**Memory Advisor / 记忆顾问**
+: P-A10 目标态中在eligible completed turn后异步提取episodic memory candidate的受限后台能力。它通过可证明tool isolation的独立MaintenanceRuntimePort运行，不复用user-facing session；exclude lineage、typed actor/source、secret/噪音、dedupe/disclosure验证后才能proposed/active，失败不阻塞原turn。
+
+**Memory Consolidation / 离线记忆巩固**
+: 独立 P-A11 目标能力，相当于受限、可审计的 Kith-space Dream：在 Agent 无 active turn 且未处理 turn 达到阈值时，按持久 cursor 复盘 Turn Ledger 与记忆，只生成 episodic/file-memory proposal，不直接发消息、改 User Memory、角色或 active skill，并强制继承exclude lineage与suppression。
+
+**Session Checklist / 会话清单**
+: P-A10 目标态中绑定一个 per-surface runtime session 的短期工作清单，跨该表面多轮与 idle/restart 持久，但不进入 Tasks 模块或跨 Space 聚合；用于当前对话的局部计划，不是团队任务板。
 
 **一事一文件 + 索引约定**
 : 借鉴 OpenLoaf 的记忆结构——每个知识点一个文件，`MEMORY.md` 作自足索引指向 `notes/` 里的细节，compaction 前后以 `MEMORY.md` 为恢复点。它是写进 system prompt 强制执行的**约定**，不是工具。写记忆的 MCP 工具（如 `memory_save`）v1 延后，agent 先用原生文件操作写。
@@ -197,7 +251,10 @@
 : 从频道标题进入、临时占用会话聚合面板的低频管理场景，包含常规、成员和通知三个钻取页以及归档、恢复和永久删除。宽度不足时复用同一组件进入 Chat 右侧抽屉；退出后恢复原聚合内容状态。
 
 **Message Context Snapshot**
-: 消息发送时固化的结构化界面上下文，包含 Space、会话、当前模块、Context Stack 与 focused item。Kith-space 保存自己的结构，不把 OpenLoaf `<stack>` XML 硬编码进核心模型；当前仍是待实现契约。
+: 消息发送时固化的结构化界面上下文，包含 Space、会话、当前模块、打开对象引用与 focused item。Kith-space 保存自己的结构，不把 OpenLoaf `<stack>` XML 硬编码进核心模型；它是 P-A10 Context Envelope 的一个来源，当前仍是待实现契约。
+
+**Context Envelope / 上下文信封**
+: P-A10 目标态中每个 logical turn 的可审计上下文 manifest，记录 delivery items、多source seen watermarks、continuity mode、root、as-of parent snapshot、当前 batch、object snapshot、continuity/query recall、文件记忆引用、capability activation、预算与 omission。它不等于复制完整 prompt，并区分可重建revision、仅hash/tombstone、turn前自动注入与后续主动查询。
 
 **跨 Space 视角**
 : 以 Home 为入口的本机全局视角：当前先由 Spaces 模块展示真实 registry，后续再基于 `scope = current | all` 增加 Inbox、Tasks、Calendar 和信息流聚合；不提供数据不真实的薄总览页，也不引入云端控制面。
