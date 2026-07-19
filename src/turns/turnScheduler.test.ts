@@ -80,6 +80,8 @@ test("scheduler binds a durable delivery and activates exactly one leased Worker
     assert.equal(activated.length, 1);
     assert.equal(admitted[0]!.session.surfaceId, f.channelId);
     assert.equal(admitted[0]!.turn.attemptId, admitted[0]!.commandId);
+    assert.match(admitted[0]!.turn.context, /@scheduler-agent work/);
+    assert.equal((f.db.select().from(schema.agentTurns).all()[0]?.contextEnvelope as any)?.session?.surfaceId, f.channelId);
     assert.equal(f.db.select().from(schema.agentDeliveryItems).where(eq(schema.agentDeliveryItems.id, f.deliveryId)).get()?.disposition, "bound");
     assert.equal(f.db.select().from(schema.agentTurns).all()[0]?.status, "running");
     assert.equal(f.db.select().from(schema.agentTurnAttempts).all()[0]?.status, "running");
@@ -90,6 +92,51 @@ test("scheduler binds a durable delivery and activates exactly one leased Worker
     assert.equal(f.db.select().from(schema.turnCapabilityActivations).all()[0]?.expiresAt.getTime(), renewedExpiry);
     await scheduler.schedule(f.spaceId);
     assert.equal(admitted.length, 1);
+  } finally {
+    await scheduler.shutdown();
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("expired task-scoped access is revoked before Worker admission or context disclosure", async () => {
+  const f = setup();
+  const admitted: TurnAdmitCommand[] = [];
+  const threadId = randomUUID();
+  const delivery = f.db.select().from(schema.agentDeliveryItems).where(eq(schema.agentDeliveryItems.id, f.deliveryId)).get()!;
+  f.db.update(schema.messages).set({ threadId }).where(eq(schema.messages.id, delivery.messageId)).run();
+  f.db.insert(schema.channels).values({ id: threadId, spaceId: f.spaceId, name: "expired-task", type: "thread", parentMessageId: delivery.messageId }).run();
+  f.db.delete(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, f.channelId)).run();
+  f.db.insert(schema.channelAgentMembers).values({
+    channelId: threadId,
+    agentId: f.agentId,
+    accessKind: "task_scoped",
+    taskScope: { taskId: delivery.messageId, allowedObjectIds: [delivery.messageId] },
+    accessExpiresAt: new Date(Date.now() - 1_000),
+  }).run();
+  f.db.update(schema.agentDeliveryItems).set({ targetSurfaceKind: "thread", targetSurfaceId: threadId })
+    .where(eq(schema.agentDeliveryItems.id, f.deliveryId)).run();
+  const worker: RuntimeWorkerPort = {
+    async start() { throw new Error("legacy path"); },
+    async deliver() { throw new Error("legacy path"); },
+    async stop() { throw new Error("legacy path"); },
+    async reset() { throw new Error("legacy path"); },
+    async admitTurn(command) { admitted.push(command); return { status: "admitted", id: command.commandId, generation: 4 }; },
+    activateTurn() { return true; },
+    cancelTurn() { return true; },
+    async closeTurnSessions(command) { return { status: "admitted", id: command.commandId, generation: 4 }; },
+    availability() { return { connected: true, generation: 4 }; },
+  };
+  const capabilities = new TurnCapabilityService(f.spaceId, new SessionCapabilityBroker(), f.db);
+  const scheduler = new HarnessTurnScheduler({ runtimeWorker: worker, capabilities: () => capabilities, agentConfig: async () => config(f) });
+  try {
+    await scheduler.schedule(f.spaceId);
+    assert.equal(admitted.length, 0);
+    assert.equal(f.db.select().from(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, threadId)).get(), undefined);
+    assert.equal(f.db.select().from(schema.runtimeSessions).where(eq(schema.runtimeSessions.surfaceId, threadId)).get()?.status, "disabled");
+    assert.equal(f.db.select().from(schema.agentTurns).all()[0]?.status, "cancelled");
+    assert.equal(f.db.select().from(schema.agentDeliveryItems).where(eq(schema.agentDeliveryItems.id, f.deliveryId)).get()?.disposition, "dismissed");
+    assert.equal(f.db.select().from(schema.turnContextSources).all().length, 0);
   } finally {
     await scheduler.shutdown();
     closeSpaceDb(f.spaceId);

@@ -51,6 +51,7 @@ import {
 } from "../tasks/taskLifecycleModule.js";
 import { SessionModule } from "../sessions/sessionModule.js";
 import { DeliveryJournal } from "../deliveries/deliveryJournal.js";
+import { normalizeMessageContextSnapshot } from "../context/messageContextSnapshot.js";
 import { harnessTurnScheduler, scheduleV2Turns, turnCapabilityService } from "./harnessComposition.js";
 
 export { TASK_STATUSES } from "../tasks/taskTypes.js";
@@ -332,6 +333,7 @@ export interface CreateMessageOptions {
   introductionAgentId?: string;
   introductionToken?: string;
   actionMetadata?: unknown;
+  contextSnapshot?: unknown;
 }
 
 const conversationEventSink: ConversationEventSink = { publish };
@@ -383,6 +385,19 @@ function conversationModules(): ReturnType<typeof createConversationModules> {
   return composedConversationModules;
 }
 
+export async function dispatchLegacyTurnOutputMentions(input: {
+  spaceId: string;
+  messageId: string;
+  targetSurfaceId: string;
+  targetAgentIds: string[];
+}): Promise<void> {
+  await conversationModules().legacyMentionDispatch.dispatch(input);
+}
+
+export async function recoverLegacyTurnOutputMentions(spaceId: string): Promise<void> {
+  await conversationModules().legacyMentionDispatch.recover(spaceId);
+}
+
 let composedTaskLifecycle: TaskLifecycleModule | null = null;
 
 function taskLifecycle(): TaskLifecycleModule {
@@ -391,6 +406,10 @@ function taskLifecycle(): TaskLifecycleModule {
     eventSink: conversationEventSink,
     threads: threadModule,
     scheduleDurableDeliveries: scheduleV2Turns,
+    onTaskScopeRevoked(spaceId, revoked) {
+      turnCapabilityService(spaceId).closeSessions(revoked.sessionIds);
+      harnessTurnScheduler.cancelRevokedAttempts(revoked.attempts);
+    },
     wake: {
       async prepare(input) {
         const dispatch = await new SqliteDispatchState(input.spaceId).resolveMessageContext({
@@ -483,6 +502,9 @@ function messageContext(options: CreateMessageOptions): MessageContext {
     channelId: options.channelId,
     sender: { type: options.senderType, id: options.senderId, name: options.senderName },
     threadId: options.threadId,
+    uiSnapshot: options.senderType === "human"
+      ? normalizeMessageContextSnapshot(options.contextSnapshot, options.spaceId)
+      : null,
   };
 }
 
@@ -560,15 +582,23 @@ export async function canAgentReadChannel(spaceId: string, channelId: string, ag
   const db = dbForSpace(spaceId);
   const lifecycle = await channelLifecycleState(spaceId, channelId);
   if (lifecycle === "deleted" || lifecycle === "missing") return false;
-  const member = (await db.select().from(schema.channelAgentMembers).where(and(eq(schema.channelAgentMembers.channelId, channelId), eq(schema.channelAgentMembers.agentId, agentId))))[0];
-  if (member) return true;
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, channelId)))[0];
   if (!ch || ch.spaceId !== spaceId || ch.deletedAt) return false;
-  if (ch.type === "channel") return true;                                  // public: any agent in the Space may read
-  if (ch.parentMessageId) {                                                // thread: visibility follows its parent message's channel
+  const member = (await db.select().from(schema.channelAgentMembers).where(and(eq(schema.channelAgentMembers.channelId, channelId), eq(schema.channelAgentMembers.agentId, agentId))))[0];
+  if (ch.type === "thread") {
+    if (!member || (member.accessExpiresAt && member.accessExpiresAt.getTime() <= Date.now())) return false;
+    if (member.accessKind === "task_scoped") return Boolean(member.taskScope);
+    if (!ch.parentMessageId) return false;
     const parent = (await db.select().from(schema.messages).where(eq(schema.messages.id, ch.parentMessageId)))[0];
-    if (parent) return canAgentReadChannel(spaceId, parent.channelId, agentId); // depth 1 (a parent channel is never itself a thread)
+    if (!parent) return false;
+    const parentMember = (await db.select().from(schema.channelAgentMembers).where(and(
+      eq(schema.channelAgentMembers.channelId, parent.channelId),
+      eq(schema.channelAgentMembers.agentId, agentId),
+    )))[0];
+    return Boolean(parentMember && (!parentMember.accessExpiresAt || parentMember.accessExpiresAt.getTime() > Date.now()));
   }
+  if (member && (!member.accessExpiresAt || member.accessExpiresAt.getTime() > Date.now())) return true;
+  if (ch.type === "channel") return true;                                  // public: any agent in the Space may read
   return false;                                                            // private / DM the agent is not a member of
 }
 

@@ -79,8 +79,24 @@ async function fixture() {
     leaseExpiresAt: new Date(Date.now() + 60_000),
   }).run();
   const events: unknown[] = [];
-  const output = new TurnOutputService(spaceId, { async publish(_spaceId, event) { events.push(event); } }, db);
-  return { spaceId, agentId, channelId, sessionId, turnId, attemptId, deliveries, db, output, events };
+  const legacyDispatches: unknown[] = [];
+  const legacyReservationCounts: number[] = [];
+  const legacyRecoveries: string[] = [];
+  const output = new TurnOutputService(spaceId, {
+    async publish(_spaceId, event) { events.push(event); },
+    async dispatchLegacyMentions(input) {
+      legacyReservationCounts.push(db.select().from(schema.dispatchWakes).where(and(
+        eq(schema.dispatchWakes.messageId, input.messageId),
+        eq(schema.dispatchWakes.status, "reserved"),
+      )).all().length);
+      legacyDispatches.push(input);
+    },
+    async recoverLegacyMentions(targetSpaceId) { legacyRecoveries.push(targetSpaceId); },
+  }, db);
+  return {
+    spaceId, agentId, channelId, sessionId, turnId, attemptId, deliveries, db, output, events,
+    legacyDispatches, legacyReservationCounts, legacyRecoveries,
+  };
 }
 
 test("two required inputs cannot finalize after only one is covered", async () => {
@@ -96,6 +112,168 @@ test("two required inputs cannot finalize after only one is covered", async () =
       eq(schema.channelAgentMembers.channelId, f.channelId),
       eq(schema.channelAgentMembers.agentId, f.agentId),
     )).get()?.lastReadSeq, 4);
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("v2 top-level mention dispatches a legacy peer once without creating a v2 delivery", async () => {
+  const f = await fixture();
+  try {
+    const legacyId = randomUUID();
+    f.db.insert(schema.agents).values({
+      id: legacyId,
+      spaceId: f.spaceId,
+      name: "legacy-peer",
+      displayName: "Legacy Peer",
+      status: "active",
+      defaultResponseMode: "mention_only",
+    }).run();
+    f.db.insert(schema.channelAgentMembers).values({ channelId: f.channelId, agentId: legacyId, lastReadSeq: 0 }).run();
+    const message = await f.output.reply({
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      idempotencyKey: "reply:legacy-peer",
+      body: "@legacy-peer please continue.",
+      handledInputIds: [f.deliveries[0]!],
+    });
+    assert.ok(message.threadId);
+    assert.equal(f.db.select().from(schema.agentDeliveryItems).where(and(
+      eq(schema.agentDeliveryItems.messageId, message.id),
+      eq(schema.agentDeliveryItems.agentId, legacyId),
+    )).get(), undefined);
+    assert.deepEqual(f.legacyDispatches, [{
+      spaceId: f.spaceId,
+      messageId: message.id,
+      targetSurfaceId: message.threadId,
+      targetAgentIds: [legacyId],
+    }]);
+    assert.deepEqual(f.legacyReservationCounts, [1], "the legacy dispatch intent commits atomically before post-commit dispatch");
+    const retried = await f.output.reply({
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      idempotencyKey: "reply:legacy-peer",
+      body: "@legacy-peer please continue.",
+      handledInputIds: [f.deliveries[0]!],
+    });
+    assert.equal(retried.id, message.id);
+    assert.equal(f.legacyDispatches.length, 1, "an idempotent output retry does not dispatch legacy work twice");
+    assert.deepEqual(f.legacyRecoveries, [f.spaceId], "an idempotent retry invokes durable legacy recovery");
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("silent legacy mention does not reserve or charge a dispatch wake", async () => {
+  const f = await fixture();
+  try {
+    const legacyId = randomUUID();
+    f.db.insert(schema.agents).values({
+      id: legacyId,
+      spaceId: f.spaceId,
+      name: "silent-peer",
+      displayName: "Silent Peer",
+      status: "active",
+      defaultResponseMode: "silent",
+    }).run();
+    f.db.insert(schema.channelAgentMembers).values({ channelId: f.channelId, agentId: legacyId, lastReadSeq: 0 }).run();
+    const message = await f.output.reply({
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      idempotencyKey: "reply:silent-peer",
+      body: "@silent-peer do not wake.",
+      handledInputIds: [f.deliveries[0]!],
+    });
+    assert.equal(f.db.select().from(schema.dispatchWakes).where(eq(schema.dispatchWakes.messageId, message.id)).all().length, 0);
+    assert.equal(f.db.select().from(schema.dispatchChains).where(eq(schema.dispatchChains.id, message.dispatchChainId!)).get()?.wakeCount, 0);
+    assert.deepEqual(f.legacyDispatches, []);
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("legacy mention behind the surface watermark does not reserve or charge a dispatch wake", async () => {
+  const f = await fixture();
+  try {
+    const root = f.db.select().from(schema.messages).where(eq(schema.messages.channelId, f.channelId)).get()!;
+    const threadId = randomUUID();
+    f.db.update(schema.messages).set({ threadId }).where(eq(schema.messages.id, root.id)).run();
+    f.db.insert(schema.channels).values({ id: threadId, spaceId: f.spaceId, name: "historical", type: "thread", parentMessageId: root.id }).run();
+    f.db.insert(schema.channelAgentMembers).values({ channelId: threadId, agentId: f.agentId, lastReadSeq: 0 }).run();
+    f.db.update(schema.runtimeSessions).set({ surfaceKind: "thread", surfaceId: threadId }).where(eq(schema.runtimeSessions.id, f.sessionId)).run();
+    f.db.update(schema.agentDeliveryItems).set({ targetSurfaceKind: "thread", targetSurfaceId: threadId })
+      .where(eq(schema.agentDeliveryItems.turnId, f.turnId)).run();
+    const legacyId = randomUUID();
+    f.db.insert(schema.agents).values({
+      id: legacyId,
+      spaceId: f.spaceId,
+      name: "historical-peer",
+      displayName: "Historical Peer",
+      status: "active",
+      defaultResponseMode: "mention_only",
+    }).run();
+    f.db.insert(schema.channelAgentMembers).values([
+      { channelId: f.channelId, agentId: legacyId, lastReadSeq: 0 },
+      { channelId: threadId, agentId: legacyId, lastReadSeq: 0, mentionWakeAfterSeq: 999 },
+    ]).run();
+    const message = await f.output.reply({
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      idempotencyKey: "reply:historical-peer",
+      body: "@historical-peer this is behind your wake boundary.",
+      handledInputIds: [f.deliveries[0]!],
+    });
+    assert.equal(f.db.select().from(schema.dispatchWakes).where(eq(schema.dispatchWakes.messageId, message.id)).all().length, 0);
+    assert.equal(f.db.select().from(schema.dispatchChains).where(eq(schema.dispatchChains.id, message.dispatchChainId!)).get()?.wakeCount, 0);
+    assert.deepEqual(f.legacyDispatches, []);
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("expired task-scoped membership cannot be mentioned or reserve a legacy wake", async () => {
+  const f = await fixture();
+  try {
+    const root = f.db.select().from(schema.messages).where(eq(schema.messages.channelId, f.channelId)).get()!;
+    const threadId = randomUUID();
+    f.db.update(schema.messages).set({ threadId }).where(eq(schema.messages.id, root.id)).run();
+    f.db.insert(schema.channels).values({ id: threadId, spaceId: f.spaceId, name: "expired-task", type: "thread", parentMessageId: root.id }).run();
+    f.db.insert(schema.channelAgentMembers).values({ channelId: threadId, agentId: f.agentId, lastReadSeq: 0 }).run();
+    f.db.update(schema.runtimeSessions).set({ surfaceKind: "thread", surfaceId: threadId }).where(eq(schema.runtimeSessions.id, f.sessionId)).run();
+    f.db.update(schema.agentDeliveryItems).set({ targetSurfaceKind: "thread", targetSurfaceId: threadId })
+      .where(eq(schema.agentDeliveryItems.turnId, f.turnId)).run();
+    const legacyId = randomUUID();
+    f.db.insert(schema.agents).values({
+      id: legacyId,
+      spaceId: f.spaceId,
+      name: "expired-peer",
+      displayName: "Expired Peer",
+      status: "active",
+      defaultResponseMode: "mention_only",
+    }).run();
+    f.db.insert(schema.channelAgentMembers).values({
+      channelId: threadId,
+      agentId: legacyId,
+      lastReadSeq: 0,
+      accessKind: "task_scoped",
+      taskScope: { taskId: root.id },
+      accessExpiresAt: new Date(Date.now() - 1),
+    }).run();
+    const message = await f.output.reply({
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      idempotencyKey: "reply:expired-peer",
+      body: "@expired-peer cannot be revived.",
+      handledInputIds: [f.deliveries[0]!],
+    });
+    assert.equal(f.db.select().from(schema.messageMentions).where(eq(schema.messageMentions.messageId, message.id)).get(), undefined);
+    assert.equal(f.db.select().from(schema.dispatchWakes).where(eq(schema.dispatchWakes.messageId, message.id)).get(), undefined);
+    assert.equal(f.db.select().from(schema.dispatchChains).where(eq(schema.dispatchChains.id, message.dispatchChainId!)).get()?.wakeCount, 0);
+    assert.deepEqual(f.legacyDispatches, []);
   } finally {
     closeSpaceDb(f.spaceId);
     unregisterSpace(f.spaceId);
@@ -141,6 +319,8 @@ test("server-owned reply persists member mentions and inherits one dispatch chai
     });
     assert.equal(message.dispatchChainId, source.messageId);
     assert.equal(message.dispatchDepth, 1);
+    assert.ok(message.threadId);
+    assert.equal(f.db.select().from(schema.channels).where(eq(schema.channels.id, message.threadId!)).get()?.parentMessageId, message.id);
     assert.equal(f.db.select().from(schema.messageMentions).where(eq(schema.messageMentions.messageId, message.id)).get()?.mentionId, peerId);
     const peerDelivery = f.db.select().from(schema.agentDeliveryItems).where(and(
       eq(schema.agentDeliveryItems.messageId, message.id),
@@ -148,7 +328,66 @@ test("server-owned reply persists member mentions and inherits one dispatch chai
     )).get();
     assert.equal(peerDelivery?.directive, "required");
     assert.equal(peerDelivery?.disposition, "pending");
+    assert.equal(peerDelivery?.targetSurfaceKind, "thread");
+    assert.equal(peerDelivery?.targetSurfaceId, message.threadId);
+    assert.equal(f.db.select().from(schema.channelAgentMembers).where(and(
+      eq(schema.channelAgentMembers.channelId, message.threadId!),
+      eq(schema.channelAgentMembers.agentId, peerId),
+    )).get()?.agentId, peerId);
     assert.deepEqual((f.events[0] as any).message.mentions, [{ type: "agent", id: peerId, name: "peer" }]);
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("thread reply can join and wake only an Agent who already belongs to the parent", async () => {
+  const f = await fixture();
+  try {
+    const root = f.db.select().from(schema.messages).where(eq(schema.messages.channelId, f.channelId)).get()!;
+    const threadId = randomUUID();
+    f.db.update(schema.messages).set({ threadId }).where(eq(schema.messages.id, root.id)).run();
+    f.db.insert(schema.channels).values({ id: threadId, spaceId: f.spaceId, name: "delegation", type: "thread", parentMessageId: root.id }).run();
+    f.db.insert(schema.channelAgentMembers).values({ channelId: threadId, agentId: f.agentId, lastReadSeq: 0 }).run();
+    f.db.update(schema.runtimeSessions).set({ surfaceKind: "thread", surfaceId: threadId }).where(eq(schema.runtimeSessions.id, f.sessionId)).run();
+    f.db.update(schema.agentDeliveryItems).set({ targetSurfaceKind: "thread", targetSurfaceId: threadId })
+      .where(eq(schema.agentDeliveryItems.turnId, f.turnId)).run();
+    const peerId = randomUUID();
+    const outsiderId = randomUUID();
+    f.db.insert(schema.agents).values([
+      { id: peerId, spaceId: f.spaceId, name: "thread-peer", displayName: "Thread Peer", status: "active" },
+      { id: outsiderId, spaceId: f.spaceId, name: "outsider", displayName: "Outsider", status: "active" },
+    ]).run();
+    f.db.insert(schema.channelAgentMembers).values({ channelId: f.channelId, agentId: peerId, lastReadSeq: 0 }).run();
+    f.db.insert(schema.agentHarnessState).values({ agentId: outsiderId, mode: "v2" }).run();
+    const message = await f.output.reply({
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      idempotencyKey: "reply:thread-peer",
+      body: "@thread-peer please continue; @outsider cannot join.",
+      handledInputIds: [f.deliveries[0]!],
+    });
+    assert.equal(message.channelId, threadId);
+    assert.equal(message.threadId, null);
+    assert.equal(f.db.select().from(schema.channelAgentMembers).where(and(
+      eq(schema.channelAgentMembers.channelId, threadId),
+      eq(schema.channelAgentMembers.agentId, peerId),
+    )).get()?.agentId, peerId);
+    assert.equal(f.db.select().from(schema.channelAgentMembers).where(and(
+      eq(schema.channelAgentMembers.channelId, threadId),
+      eq(schema.channelAgentMembers.agentId, outsiderId),
+    )).get(), undefined);
+    assert.deepEqual(f.db.select().from(schema.messageMentions).where(eq(schema.messageMentions.messageId, message.id)).all().map((row) => row.mentionId), [peerId]);
+    assert.equal(f.db.select().from(schema.agentDeliveryItems).where(and(
+      eq(schema.agentDeliveryItems.messageId, message.id),
+      eq(schema.agentDeliveryItems.agentId, peerId),
+    )).get(), undefined);
+    assert.deepEqual(f.legacyDispatches, [{
+      spaceId: f.spaceId,
+      messageId: message.id,
+      targetSurfaceId: threadId,
+      targetAgentIds: [peerId],
+    }]);
   } finally {
     closeSpaceDb(f.spaceId);
     unregisterSpace(f.spaceId);
@@ -235,6 +474,43 @@ test("explicit cancellation terminates the attempt and requeues only unsettled i
     assert.equal(f.db.select().from(schema.agentTurnAttempts).where(eq(schema.agentTurnAttempts.id, f.attemptId)).get()?.status, "cancelled");
     assert.equal(f.db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, f.turnId)).get()?.status, "cancelled");
     assert.deepEqual(f.db.select().from(schema.agentDeliveryItems).where(eq(schema.agentDeliveryItems.disposition, "pending")).all().map((row) => row.id).sort(), [...f.deliveries].sort());
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("reply fails with stale_context when the output surface changed after its frozen watermark", async () => {
+  const f = await fixture();
+  try {
+    f.db.update(schema.agentTurns).set({
+      contextEnvelope: {
+        schemaVersion: 1,
+        turnId: f.turnId,
+        session: { spaceId: f.spaceId, agentId: f.agentId, surfaceKind: "channel", surfaceId: f.channelId },
+        responseDirective: "required",
+        deliveryItemIds: f.deliveries,
+        seenWatermarks: [{ channelId: f.channelId, throughSeq: 2 }],
+        continuityMode: "cold",
+        currentBatch: f.deliveries.map((id, index) => ({
+          sourceKind: "message", sourceId: id, sourceRevision: index + 1, snapshotId: null,
+          contentHmac: "hash", visibility: "public", disclosureProjection: "canonical", injectionMode: "content",
+          estimatedTokens: 1, reason: "delivery",
+        })),
+        recentSurface: [], objectSnapshots: [], recalledMemories: [], fileMemoryRefs: [],
+        capabilityActivationId: "activation", budget: { available: 8000, used: 2, estimator: "test" }, omissions: [], assembledAt: 1,
+      },
+    }).where(eq(schema.agentTurns.id, f.turnId)).run();
+    const laterSeq = await nextSeq(f.spaceId);
+    f.db.insert(schema.messages).values({ id: randomUUID(), seq: laterSeq, spaceId: f.spaceId, channelId: f.channelId, senderType: "human", senderId: "human", senderName: "Human", content: "new information" }).run();
+    await assert.rejects(() => f.output.reply({
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      idempotencyKey: "reply:stale",
+      body: "Outdated answer",
+      handledInputIds: f.deliveries,
+    }), (error: any) => error?.code === "stale_context" && error?.details?.laterSeq === laterSeq);
+    assert.equal(f.db.select().from(schema.messages).all().filter((message) => message.senderType === "agent").length, 0);
   } finally {
     closeSpaceDb(f.spaceId);
     unregisterSpace(f.spaceId);

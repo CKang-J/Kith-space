@@ -124,10 +124,10 @@ pnpm exec tsx scripts/p-a10/baseline.ts
 
 它预填 10 万条消息和 1 万条结构化记忆候选，测量 1/5/20 Agent 同事务 fan-out、英文与中文 2 字 FTS 查询，并报告临时数据库体积。该脚本只冻结本机起点，不等于 P-A10.5 的最终 recall 质量/SLO。Runtime adapter 的 fixture 与 live smoke边界见 [`dev-debugging.md`](./dev-debugging.md#9-p-a10-runtime-contract-基线)。
 
-P-A10.2 durable turn定向回归使用项目测试runner的随机profile运行；不要直接绕过runner复用真实`~/.kith-space`：
+P-A10.3 durable turn/context定向回归使用项目测试runner的随机profile运行；不要直接绕过runner复用真实`~/.kith-space`：
 
 ```powershell
 pnpm test --unit
 ```
 
-当前unit门覆盖migration前缀、cutover/backfill/rollback窗口、message+delivery回滚、task observe与分页frontier、dispatch reservation、logical turn/lease+broker续租、cancel/requeue、operation幂等、reply mention+chain/depth、逐输入finalize、admission/event上限、terminal重传和Worker generation重开session。完整integration仍使用`pnpm test --integration`。`kith-space turn context|reply|cede`只在Worker注入的active v2 turn中可用，不是Human手动调试命令；缺少activation时按设计返回`capability_inactive`。
+当前unit门覆盖migration前缀、cutover/backfill/rollback窗口、message+delivery回滚、task observe与分页frontier、dispatch reservation、logical turn/lease+broker续租、cancel/requeue、operation幂等、reply mention+chain/depth、逐输入finalize、admission/event上限、terminal重传、原子direct-mention thread、Context Envelope/HMAC tombstone、父级ACL撤权、stale output与turn inspector。完整integration仍使用`pnpm test --integration`。`kith-space turn context|reply|cede`只在Worker注入的active v2 turn中可用，不是Human手动调试命令；缺少activation时按设计返回`capability_inactive`。

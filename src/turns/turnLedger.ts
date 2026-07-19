@@ -4,6 +4,11 @@ import { dbForSpace, schema, type SpaceDb } from "../db/index.js";
 import { HarnessError } from "../harness/errors.js";
 import type { RuntimeEventEnvelope, RuntimeTurnResult } from "../runtime/contract/v2/runtimeContract.js";
 import type { RuntimeSessionRecord } from "../sessions/sessionModule.js";
+import {
+  boundedContextContent,
+  estimateContextTokens,
+  FALLBACK_DYNAMIC_CONTEXT_BUDGET,
+} from "../context/contextBudget.js";
 
 const ACTIVE_ATTEMPT_STATUSES = ["claimed", "admitted", "running", "finalizing"] as const;
 export const MAX_TURN_EVENTS_PER_ATTEMPT = 2_000;
@@ -30,7 +35,7 @@ export class TurnLedger {
         inArray(schema.agentTurns.status, ["pending", "running", "retry_wait"]),
       )).get();
       if (active && active.status !== "pending") return null;
-      const pending = tx.select().from(schema.agentDeliveryItems).where(and(
+      const pendingCandidates = tx.select().from(schema.agentDeliveryItems).where(and(
         eq(schema.agentDeliveryItems.spaceId, this.spaceId),
         eq(schema.agentDeliveryItems.agentId, session.agentId),
         eq(schema.agentDeliveryItems.targetSurfaceKind, session.surfaceKind),
@@ -38,6 +43,42 @@ export class TurnLedger {
         eq(schema.agentDeliveryItems.disposition, "pending"),
         isNull(schema.agentDeliveryItems.turnId),
       )).orderBy(asc(schema.agentDeliveryItems.sourceSeq)).limit(limit).all();
+      if (!pendingCandidates.length) return active ?? null;
+      const bound = active ? tx.select().from(schema.agentDeliveryItems).where(and(
+        eq(schema.agentDeliveryItems.turnId, active.id),
+        eq(schema.agentDeliveryItems.disposition, "bound"),
+      )).orderBy(asc(schema.agentDeliveryItems.sourceSeq)).all() : [];
+      const messageIds = [...new Set([...bound, ...pendingCandidates].map((delivery) => delivery.messageId))];
+      const messages = tx.select({ id: schema.messages.id, content: schema.messages.content }).from(schema.messages)
+        .where(inArray(schema.messages.id, messageIds)).all();
+      const contentById = new Map(messages.map((message) => [message.id, message.content]));
+      const counted = new Set<string>();
+      let requiredTokens = 0;
+      const surface = tx.select({ parentMessageId: schema.channels.parentMessageId }).from(schema.channels)
+        .where(eq(schema.channels.id, session.surfaceId)).get();
+      if (surface?.parentMessageId) {
+        const root = tx.select({ id: schema.messages.id, content: schema.messages.content }).from(schema.messages)
+          .where(eq(schema.messages.id, surface.parentMessageId)).get();
+        if (root) {
+          counted.add(root.id);
+          requiredTokens += estimateContextTokens(boundedContextContent(root.content));
+        }
+      }
+      for (const delivery of bound) {
+        if (counted.has(delivery.messageId)) continue;
+        counted.add(delivery.messageId);
+        requiredTokens += estimateContextTokens(boundedContextContent(contentById.get(delivery.messageId) ?? ""));
+      }
+      const pending = [] as typeof pendingCandidates;
+      for (const delivery of pendingCandidates) {
+        const nextTokens = counted.has(delivery.messageId)
+          ? 0
+          : estimateContextTokens(boundedContextContent(contentById.get(delivery.messageId) ?? ""));
+        if (requiredTokens + nextTokens > FALLBACK_DYNAMIC_CONTEXT_BUDGET) break;
+        pending.push(delivery);
+        counted.add(delivery.messageId);
+        requiredTokens += nextTokens;
+      }
       if (!pending.length) return active ?? null;
       const effectiveDirective = pending.some((delivery) => delivery.directive === "required") ? "required" : "optional";
       const turn = active ?? tx.insert(schema.agentTurns).values({

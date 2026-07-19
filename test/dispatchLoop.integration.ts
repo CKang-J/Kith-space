@@ -29,8 +29,9 @@ async function main() {
   const worker = connectAdmittingWorker({ runtimes: ["claude"] });
   try {
     const root = await createMessage({ spaceId, channelId: channel!.id, senderType: "human", senderId: owner!.id, senderName: owner!.name, content: "@leader coordinate this" });
-    const delegated = await createMessage({ spaceId, channelId: channel!.id, senderType: "agent", senderId: leader!.id, senderName: leader!.name, content: "@dev implement; @tester verify" });
-    const reported = await createMessage({ spaceId, channelId: channel!.id, senderType: "agent", senderId: dev!.id, senderName: dev!.name, content: "@leader implementation ready" });
+    if (!root.threadId) throw new Error("direct mention did not create a server-owned thread");
+    const delegated = await createMessage({ spaceId, channelId: root.threadId, senderType: "agent", senderId: leader!.id, senderName: leader!.name, content: "@dev implement; @tester verify" });
+    const reported = await createMessage({ spaceId, channelId: root.threadId, senderType: "agent", senderId: dev!.id, senderName: dev!.name, content: "@leader implementation ready" });
 
     check("Human wake starts at depth 0", root.dispatchDepth === 0);
     check("leader delegation inherits the chain at depth 1", delegated.dispatchChainId === root.dispatchChainId && delegated.dispatchDepth === 1);

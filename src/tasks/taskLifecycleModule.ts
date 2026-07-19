@@ -16,8 +16,10 @@ import {
   unclaimTaskRecord,
   type TaskAuditWrite,
   type TaskDispatchChainInsert,
+  type TaskMutationResult,
 } from "./taskRepository.js";
 import { isTaskStatus, TaskOperationError, type TaskStatus } from "./taskTypes.js";
+import type { RevokedTaskScopedAccess } from "../channels/taskScopedAccess.js";
 
 type ActorRef = { type: "human" | "agent"; id: string };
 type TaskExecutionMode = "autopilot" | "plan-first";
@@ -57,6 +59,7 @@ export interface TaskLifecycleDependencies {
   threads: ThreadModule;
   wake: TaskLifecycleWakePort;
   scheduleDurableDeliveries?(spaceId: string): Promise<void>;
+  onTaskScopeRevoked?(spaceId: string, revoked: RevokedTaskScopedAccess): Promise<void> | void;
   onPostCommitError?(operation: string, error: unknown): void;
 }
 
@@ -110,6 +113,13 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
     } catch (error) {
       dependencies.onPostCommitError?.(operation, error);
     }
+  }
+
+  async function closeRevokedTaskScope(spaceId: string, result: TaskMutationResult): Promise<void> {
+    if (!result.revokedTaskAccess?.count) return;
+    await runPostCommit("close revoked task scope", async () => {
+      await dependencies.onTaskScopeRevoked?.(spaceId, result.revokedTaskAccess!);
+    });
   }
 
   async function actorName(spaceId: string, actor: ActorRef | undefined): Promise<string> {
@@ -299,6 +309,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
       });
       if (!result) return null;
       if (!result.changed) return result.task;
+      await closeRevokedTaskScope(spaceId, result);
       await runPostCommit("publish released task", () => publishTask(spaceId, "updated", result.task));
       if (result.audit) await runPostCommit("publish release audit", () => publishAudit(spaceId, result.audit!, by));
       if (result.audit) await runPostCommit("schedule release delivery", () => dependencies.scheduleDurableDeliveries?.(spaceId) ?? Promise.resolve());
@@ -344,6 +355,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
       });
       if (!result) return null;
       if (!result.changed) return result.task;
+      await closeRevokedTaskScope(spaceId, result);
       if (!result.task.threadId) {
         db.update(schema.messages).set({ threadId: thread.id }).where(eq(schema.messages.id, result.task.id)).run();
         result.task.threadId = thread.id;
@@ -441,6 +453,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
       });
       if (!result) return null;
       if (!result.changed) return result.task;
+      await closeRevokedTaskScope(spaceId, result);
       if (!result.task.threadId) {
         db.update(schema.messages).set({ threadId: thread.id }).where(eq(schema.messages.id, result.task.id)).run();
         result.task.threadId = thread.id;
@@ -449,6 +462,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
       if (result.audit) await runPostCommit("publish status audit", () => publishAudit(spaceId, result.audit!, by));
       if (result.audit) await runPostCommit("schedule status delivery", () => dependencies.scheduleDurableDeliveries?.(spaceId) ?? Promise.resolve());
       if (result.audit && result.task.taskAssigneeType === "agent" && result.task.taskAssigneeId
+        && !result.revokedTaskAccess?.count
         && by?.id !== result.task.taskAssigneeId) {
         const target = db.select().from(schema.agents)
           .where(eq(schema.agents.id, result.task.taskAssigneeId)).get();

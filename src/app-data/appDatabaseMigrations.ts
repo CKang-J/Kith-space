@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 
-export const APP_DATABASE_SCHEMA_VERSION = 1;
+export const APP_DATABASE_SCHEMA_VERSION = 2;
 
 export type AppDatabaseCompatibilityReason = "integrity" | "future" | "schema";
 
@@ -88,6 +88,16 @@ const APP_SCHEMA_V1 = new Map<string, string[]>([
   ["app_migration_journal", ["version", "name", "checksum", "applied_at"]],
 ]);
 
+const APP_V2_CONTENT_HMAC_SQL = `
+  ALTER TABLE installation_state ADD COLUMN content_hmac_key TEXT;
+  UPDATE installation_state
+  SET content_hmac_key = lower(hex(randomblob(32)))
+  WHERE singleton_key = 1 AND content_hmac_key IS NULL;
+`;
+
+const APP_SCHEMA_V2 = new Map(APP_SCHEMA_V1);
+APP_SCHEMA_V2.set("installation_state", ["singleton_key", "home_space_id", "content_hmac_key"]);
+
 function baselineChecksum(): string {
   return createHash("sha256").update(APP_BASELINE_SQL).digest("hex");
 }
@@ -119,9 +129,10 @@ function assertIntegrity(sqlite: Database.Database, dbPath: string): void {
   }
 }
 
-function assertSchema(sqlite: Database.Database, dbPath: string): void {
+function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_DATABASE_SCHEMA_VERSION): void {
   const missing: string[] = [];
-  for (const [table, requiredColumns] of APP_SCHEMA_V1) {
+  const expectedSchema = version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
+  for (const [table, requiredColumns] of expectedSchema) {
     const actual = tableColumns(sqlite, table);
     if (actual.size === 0) {
       missing.push(`${table} (table)`);
@@ -139,15 +150,22 @@ function assertSchema(sqlite: Database.Database, dbPath: string): void {
   }
 }
 
-function assertJournal(sqlite: Database.Database, dbPath: string): void {
+function migrationChecksum(sql: string): string {
+  return createHash("sha256").update(sql).digest("hex");
+}
+
+function expectedJournal(version: number) {
+  return [
+    { version: 1, name: "installation-baseline", checksum: baselineChecksum() },
+    ...(version >= 2 ? [{ version: 2, name: "content-hmac-key", checksum: migrationChecksum(APP_V2_CONTENT_HMAC_SQL) }] : []),
+  ];
+}
+
+function assertJournal(sqlite: Database.Database, dbPath: string, version = APP_DATABASE_SCHEMA_VERSION): void {
   const rows = sqlite.prepare(`
     SELECT version, name, checksum FROM app_migration_journal ORDER BY version
   `).all() as Array<{ version: number; name: string; checksum: string }>;
-  const expected = [{
-    version: APP_DATABASE_SCHEMA_VERSION,
-    name: "installation-baseline",
-    checksum: baselineChecksum(),
-  }];
+  const expected = expectedJournal(version);
   if (JSON.stringify(rows) !== JSON.stringify(expected)) {
     throw new AppDatabaseMigrationError(
       "schema",
@@ -176,35 +194,53 @@ export function assertCompatibleAppDatabase(
         `app.db at ${dbPath} did not migrate to schema version ${APP_DATABASE_SCHEMA_VERSION}`,
       );
     }
-    assertSchema(sqlite, dbPath);
-    assertJournal(sqlite, dbPath);
+    assertSchema(sqlite, dbPath, version);
+    assertJournal(sqlite, dbPath, version);
   }
   return { version };
 }
 
 /** Migrate app.db transactionally. A failed migration leaves its prior version and rows untouched. */
 export function migrateAppDatabase(sqlite: Database.Database, dbPath: string): void {
-  const { version } = assertCompatibleAppDatabase(sqlite, dbPath);
+  let { version } = assertCompatibleAppDatabase(sqlite, dbPath);
   if (version === APP_DATABASE_SCHEMA_VERSION) {
     assertSchema(sqlite, dbPath);
     assertJournal(sqlite, dbPath);
     return;
   }
 
-  const applyBaseline = sqlite.transaction(() => {
-    sqlite.exec(APP_BASELINE_SQL);
-    assertSchema(sqlite, dbPath);
-    sqlite.pragma(`user_version = ${APP_DATABASE_SCHEMA_VERSION}`);
-    sqlite.prepare(`
-      INSERT INTO app_migration_journal (version, name, checksum, applied_at)
-      VALUES (?, ?, ?, ?)
-    `).run(
-      APP_DATABASE_SCHEMA_VERSION,
-      "installation-baseline",
-      baselineChecksum(),
-      Date.now(),
-    );
-  });
-  applyBaseline.immediate();
+  if (version === 0) {
+    const applyBaseline = sqlite.transaction(() => {
+      sqlite.exec(APP_BASELINE_SQL);
+      assertSchema(sqlite, dbPath, 1);
+      sqlite.pragma("user_version = 1");
+      sqlite.prepare(`
+        INSERT INTO app_migration_journal (version, name, checksum, applied_at)
+        VALUES (?, ?, ?, ?)
+      `).run(1, "installation-baseline", baselineChecksum(), Date.now());
+    });
+    applyBaseline.immediate();
+    version = 1;
+  }
+  if (version === 1) {
+    assertSchema(sqlite, dbPath, 1);
+    assertJournal(sqlite, dbPath, 1);
+    const applyContentHmacKey = sqlite.transaction(() => {
+      sqlite.exec(APP_V2_CONTENT_HMAC_SQL);
+      assertSchema(sqlite, dbPath, 2);
+      const key = sqlite.prepare(`
+        SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1
+      `).pluck().get();
+      if (typeof key !== "string" || !/^[0-9a-f]{64}$/.test(key)) {
+        throw new AppDatabaseMigrationError("schema", `app.db at ${dbPath} failed to initialize content HMAC key`);
+      }
+      sqlite.pragma("user_version = 2");
+      sqlite.prepare(`
+        INSERT INTO app_migration_journal (version, name, checksum, applied_at)
+        VALUES (?, ?, ?, ?)
+      `).run(2, "content-hmac-key", migrationChecksum(APP_V2_CONTENT_HMAC_SQL), Date.now());
+    });
+    applyContentHmacKey.immediate();
+  }
   assertCompatibleAppDatabase(sqlite, dbPath, { requireCurrentVersion: true });
 }

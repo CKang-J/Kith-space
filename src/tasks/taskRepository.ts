@@ -1,11 +1,12 @@
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { allocateTaskNumber, taskNumberKey, type SpaceTransaction } from "../counters.js";
-import { initialAgentResponseWakeWatermarks } from "../agents/agentResponseSettings.js";
 import { dbForSpace, schema } from "../db/index.js";
 import { assertTaskTransition } from "./taskPolicy.js";
-import { insertTaskOwningThread } from "./taskCreation.js";
+import { insertTaskOwningThread, taskThreadMembership } from "./taskCreation.js";
 import { isTaskStatus, TaskOperationError, type TaskStatus } from "./taskTypes.js";
 import { DeliveryJournal } from "../deliveries/deliveryJournal.js";
+import { revokeTaskScopedThreadAccessInTransaction } from "../channels/taskScopedAccess.js";
+import type { RevokedTaskScopedAccess } from "../channels/taskScopedAccess.js";
 
 type Message = typeof schema.messages.$inferSelect;
 type MessageInsert = typeof schema.messages.$inferInsert;
@@ -14,6 +15,7 @@ export interface TaskMutationResult {
   task: Message;
   changed: boolean;
   audit?: Message;
+  revokedTaskAccess?: RevokedTaskScopedAccess;
 }
 
 export interface TaskDispatchChainInsert {
@@ -44,12 +46,28 @@ function insertAudit(tx: SpaceTransaction, write: TaskAuditWrite | undefined): M
     }).onConflictDoNothing().run();
   }
   if (write.agentMembership) {
-    tx.insert(schema.channelAgentMembers).values({
-      channelId: write.agentMembership.channelId,
-      agentId: write.agentMembership.agentId,
-      lastReadSeq: write.agentMembership.watermark,
-      ...initialAgentResponseWakeWatermarks(write.agentMembership.watermark),
-    }).onConflictDoNothing().run();
+    const thread = tx.select().from(schema.channels).where(eq(schema.channels.id, write.agentMembership.channelId)).get();
+    const task = thread?.parentMessageId
+      ? tx.select().from(schema.messages).where(eq(schema.messages.id, thread.parentMessageId)).get()
+      : null;
+    if (thread && task) {
+      tx.insert(schema.channelAgentMembers).values(taskThreadMembership(tx, {
+        parentChannelId: task.channelId,
+        threadId: thread.id,
+        taskId: task.id,
+        agentId: write.agentMembership.agentId,
+        watermark: write.agentMembership.watermark,
+      })).onConflictDoUpdate({
+        target: [schema.channelAgentMembers.channelId, schema.channelAgentMembers.agentId],
+        set: taskThreadMembership(tx, {
+          parentChannelId: task.channelId,
+          threadId: thread.id,
+          taskId: task.id,
+          agentId: write.agentMembership.agentId,
+          watermark: write.agentMembership.watermark,
+        }),
+      }).run();
+    }
   }
   const audit = tx.insert(schema.messages).values(write.message).returning().get();
   new DeliveryJournal().persistChannelMessageInTransaction(tx, audit.spaceId, audit);
@@ -107,7 +125,7 @@ export function convertMessageRecord(input: {
         eq(schema.channels.type, "thread"),
         eq(schema.channels.parentMessageId, current.id),
       )).get();
-      const threadId = existingThread?.id ?? insertTaskOwningThread(tx, current);
+      const threadId = existingThread?.id ?? insertTaskOwningThread(tx, { ...current, channelId: current.channelId });
       const updated = tx.update(schema.messages).set({
         taskStatus: "todo",
         taskNumber,
@@ -222,7 +240,10 @@ export function unclaimTaskRecord(input: {
     )).returning().get();
     if (!updated) conflict("task release lost a concurrent race", current);
     const audit = insertAudit(tx, input.audit?.(updated));
-    result = { task: updated, changed: true, audit };
+    const revokedTaskAccess = current.taskAssigneeType === "agent" && current.taskAssigneeId && current.threadId
+      ? revokeTaskScopedThreadAccessInTransaction(tx, { threadId: current.threadId, agentIds: [current.taskAssigneeId] })
+      : undefined;
+    result = { task: updated, changed: true, audit, revokedTaskAccess };
   });
   return result;
 }
@@ -275,7 +296,11 @@ export function assignTaskRecord(input: {
     )).returning().get();
     if (!updated) conflict("task assignment lost a concurrent race", current);
     const audit = insertAudit(tx, input.audit?.(updated));
-    result = { task: updated, changed: true, audit };
+    const revokedTaskAccess = current.taskAssigneeType === "agent" && current.taskAssigneeId
+      && current.taskAssigneeId !== input.assigneeId && current.threadId
+      ? revokeTaskScopedThreadAccessInTransaction(tx, { threadId: current.threadId, agentIds: [current.taskAssigneeId] })
+      : undefined;
+    result = { task: updated, changed: true, audit, revokedTaskAccess };
   });
   return result;
 }
@@ -323,7 +348,11 @@ export function transitionTaskRecord(input: {
           agentMembership: input.agentMembership,
         }
       : undefined);
-    result = { task: updated, changed: true, audit };
+    // Revoke last so a terminal audit cannot recreate the bounded membership or leave a new delivery pending.
+    const revokedTaskAccess = finished && updated.threadId
+      ? revokeTaskScopedThreadAccessInTransaction(tx, { threadId: updated.threadId })
+      : undefined;
+    result = { task: updated, changed: true, audit, revokedTaskAccess };
   });
   return result;
 }

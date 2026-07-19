@@ -14,6 +14,7 @@ import {
 } from "../channels/channelAllMention.js";
 import { requireWritableChannel } from "../channels/channelLifecycle.js";
 import { nextSeq, type SpaceTransaction } from "../counters.js";
+import type { MessageContextSnapshot } from "../context/contracts.js";
 import { dbForSpace, schema } from "../db/index.js";
 import { getHumanIdentity } from "../human/humanIdentity.js";
 import { humanChannelState } from "../human/humanChannelState.js";
@@ -30,6 +31,8 @@ import {
   type ConversationMember,
 } from "../channels/channelMembership.js";
 import { serializeMessage } from "./messageSerialization.js";
+import { releaseDispatchWakeInTransaction } from "../dispatch/dispatchReservation.js";
+import { hasAgentSurfaceAccessInTransaction } from "../channels/agentSurfaceAccess.js";
 
 export type MessageSender = {
   type: "human" | "agent" | "system";
@@ -42,6 +45,7 @@ export interface MessageContext {
   channelId: string;
   sender: MessageSender;
   threadId?: string | null;
+  uiSnapshot?: MessageContextSnapshot | null;
 }
 
 export type PreparedAction =
@@ -100,6 +104,16 @@ export interface TaskModule {
   create(command: CreateTaskCommand): Promise<typeof schema.messages.$inferSelect>;
 }
 
+export interface LegacyMentionDispatchModule {
+  dispatch(input: {
+    spaceId: string;
+    messageId: string;
+    targetSurfaceId: string;
+    targetAgentIds: string[];
+  }): Promise<string[]>;
+  recover(spaceId: string): Promise<number>;
+}
+
 export interface ConversationEventSink {
   publish(spaceId: string, event: unknown): Promise<void>;
 }
@@ -117,6 +131,7 @@ export interface WakeDispatchInput {
   targetAgent: { id: string; name: string; displayName: string };
   fallbackChannelId: string;
   commitChannelId: string;
+  durableReservation?: boolean;
   delivery: {
     seq: number;
     from: string;
@@ -183,6 +198,7 @@ export interface DurableDeliveryJournalPort {
     explicitTaskAgentId?: string | null;
     targetSurface?: { kind: "channel" | "private" | "dm" | "thread"; id: string };
     forceObserveAgentIds?: string[];
+    forceObserveReason?: string;
   }): number;
   persistChannelMessageInTransaction?(tx: SpaceTransaction, spaceId: string, message: typeof schema.messages.$inferSelect): number;
   schedulePending?(spaceId: string): Promise<void>;
@@ -237,6 +253,7 @@ interface PersistedTaskAssignmentAudit {
 
 interface DurableWriteResult {
   message: typeof schema.messages.$inferSelect;
+  directThread: typeof schema.channels.$inferSelect | null;
   mentions: MessageMention[];
   attachments: (typeof schema.attachments.$inferSelect)[];
   memberUpdateCount: number;
@@ -286,6 +303,7 @@ export function agentReplyStreamId(messageId: string, agentId: string): string {
 export function createConversationModules(dependencies: ConversationModuleDependencies): {
   messagePosting: MessagePostingModule;
   tasks: TaskModule;
+  legacyMentionDispatch: LegacyMentionDispatchModule;
 } {
   const { eventSink, wakeDispatch, introductionProof, deliveryJournal } = dependencies;
 
@@ -352,6 +370,17 @@ export function createConversationModules(dependencies: ConversationModuleDepend
     return target.type === "channel" ? spaceMembers(spaceId) : channelMembers(spaceId, target.id);
   }
 
+  async function agentThreadMentionPool(
+    spaceId: string,
+    channel: typeof schema.channels.$inferSelect,
+  ): Promise<ConversationMember[]> {
+    if (channel.type !== "thread" || !channel.parentMessageId) return [];
+    const db = dbForSpace(spaceId);
+    const parent = db.select({ channelId: schema.messages.channelId }).from(schema.messages)
+      .where(eq(schema.messages.id, channel.parentMessageId)).get();
+    return parent ? channelMembers(spaceId, parent.channelId) : [];
+  }
+
   function channelAllMentionScope(
     spaceId: string,
     channel: typeof schema.channels.$inferSelect,
@@ -378,8 +407,12 @@ export function createConversationModules(dependencies: ConversationModuleDepend
     const channel = await requireWritableChannel(context.spaceId, context.channelId);
     let members = await channelMembersForChannel(context.spaceId, channel);
     const hasMentionToken = input.content.includes("@");
-    const mentionPool = canAutoJoinMentionedMembers(context.sender.type) && hasMentionToken
-      ? await mentionAutoJoinPool(context.spaceId, channel)
+    const mentionPool = hasMentionToken
+      ? canAutoJoinMentionedMembers(context.sender.type)
+        ? await mentionAutoJoinPool(context.spaceId, channel)
+        : context.sender.type === "agent" && channel.type === "thread"
+          ? await agentThreadMentionPool(context.spaceId, channel)
+          : members
       : members;
     const addressableMentions = hasMentionToken ? parseMentions(input.content, mentionPool) : [];
     const hasHumanChannelAllToken = context.sender.type === "human" && containsChannelAllMention(input.content);
@@ -538,16 +571,27 @@ export function createConversationModules(dependencies: ConversationModuleDepend
     const mentionedAgents = new Set(mentions
       .filter((mention) => mention.type === "agent")
       .map((mention) => mention.id));
+    const directMentionThread = message.threadId
+      && !message.taskStatus
+      && (prepared.channel.type === "channel" || prepared.channel.type === "private")
+      && !prepared.channelAllScope
+      ? db.select().from(schema.channels).where(and(
+          eq(schema.channels.id, message.threadId),
+          eq(schema.channels.spaceId, context.spaceId),
+          eq(schema.channels.type, "thread"),
+        )).get() ?? null
+      : null;
     const candidateAgents = prepared.taskAssigneeId
       ? []
       : prepared.members.filter((member): member is ConversationMember & { type: "agent" } =>
           member.type === "agent"
           && member.id !== context.sender.id
+          && (!directMentionThread || mentionedAgents.has(member.id))
           && !deliveryJournal?.usesV2(context.spaceId, member.id));
     if (!candidateAgents.length) return [];
     const dispatchSettings = await resolveAgentDispatchSettings(
       context.spaceId,
-      context.channelId,
+      directMentionThread?.id ?? context.channelId,
       candidateAgents.map((agent) => agent.id),
     );
     const dispatchSettingsByAgentId = new Map(dispatchSettings.map((settings) => [settings.responseMode.agentId, settings]));
@@ -557,7 +601,10 @@ export function createConversationModules(dependencies: ConversationModuleDepend
           taskAssigneeId: schema.messages.taskAssigneeId,
         }).from(schema.messages).where(eq(schema.messages.id, prepared.channel.parentMessageId)).get()
       : null;
-    const targetName = prepared.channel.type === "dm"
+    const deliveryChannel = directMentionThread ?? prepared.channel;
+    const targetName = directMentionThread
+      ? `thread:${message.id.slice(0, 8)}`
+      : prepared.channel.type === "dm"
       ? `dm:@${context.sender.name}`
       : `#${prepared.channel.name ?? context.channelId}`;
     const plannedWakes: WakeDispatchInput[] = [];
@@ -568,7 +615,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
       const responseMode = settings.responseMode;
       const decision = decideAgentMessageResponse({
         agentId: member.id,
-        channelType: prepared.channel.type as "channel" | "private" | "dm" | "thread",
+        channelType: deliveryChannel.type as "channel" | "private" | "dm" | "thread",
         senderType: context.sender.type,
         effectiveMode: responseMode.effectiveResponseMode,
         messageSeq: message.seq,
@@ -587,11 +634,11 @@ export function createConversationModules(dependencies: ConversationModuleDepend
         messageId: message.id,
         targetAgent: member,
         fallbackChannelId: context.channelId,
-        commitChannelId: message.threadId ?? context.channelId,
+        commitChannelId: directMentionThread?.id ?? message.threadId ?? context.channelId,
         delivery: {
           seq: message.seq,
           from: context.sender.name,
-          target: context.channelId,
+          target: directMentionThread?.id ?? context.channelId,
           targetName,
           msgShort: message.id.slice(0, 8),
           isTask: Boolean(message.taskStatus || parentTask?.taskStatus),
@@ -618,6 +665,176 @@ export function createConversationModules(dependencies: ConversationModuleDepend
       }
     }
     return woken;
+  }
+
+  async function dispatchPersistedLegacyMentions(input: {
+    spaceId: string;
+    messageId: string;
+    targetSurfaceId: string;
+    targetAgentIds: string[];
+  }): Promise<string[]> {
+    const db = dbForSpace(input.spaceId);
+    const releaseReservations = (agentIds: readonly string[]): void => {
+      if (!agentIds.length) return;
+      db.transaction((tx) => {
+        const reservations = tx.select().from(schema.dispatchWakes).where(and(
+          eq(schema.dispatchWakes.spaceId, input.spaceId),
+          eq(schema.dispatchWakes.messageId, input.messageId),
+          eq(schema.dispatchWakes.status, "reserved"),
+          inArray(schema.dispatchWakes.targetAgentId, [...agentIds]),
+        )).all();
+        for (const reservation of reservations) {
+          releaseDispatchWakeInTransaction(tx, {
+            spaceId: input.spaceId,
+            reservationId: reservation.id,
+          });
+        }
+      });
+    };
+    const message = db.select().from(schema.messages).where(and(
+      eq(schema.messages.id, input.messageId),
+      eq(schema.messages.spaceId, input.spaceId),
+    )).get();
+    const targetChannel = db.select().from(schema.channels).where(and(
+      eq(schema.channels.id, input.targetSurfaceId),
+      eq(schema.channels.spaceId, input.spaceId),
+    )).get();
+    if (!message || !targetChannel) {
+      releaseReservations(input.targetAgentIds);
+      return [];
+    }
+    const modes = db.select().from(schema.agentHarnessState)
+      .where(inArray(schema.agentHarnessState.agentId, input.targetAgentIds)).all();
+    const modeByAgent = new Map(modes.map((row) => [row.agentId, row.mode]));
+    const legacyIds = [...new Set(input.targetAgentIds)].filter((agentId) => (modeByAgent.get(agentId) ?? "legacy") === "legacy");
+    releaseReservations(input.targetAgentIds.filter((agentId) => !legacyIds.includes(agentId)));
+    if (!legacyIds.length) return [];
+    const targets = db.select().from(schema.agents).where(and(
+      inArray(schema.agents.id, legacyIds),
+      eq(schema.agents.spaceId, input.spaceId),
+      isNull(schema.agents.deletedAt),
+    )).all();
+    const targetIds = new Set(targets.map((target) => target.id));
+    releaseReservations(legacyIds.filter((agentId) => !targetIds.has(agentId)));
+    const settings = await resolveAgentDispatchSettings(input.spaceId, targetChannel.id, targets.map((target) => target.id));
+    const settingsByAgent = new Map(settings.map((item) => [item.responseMode.agentId, item]));
+    const parentTask = targetChannel.type === "thread" && targetChannel.parentMessageId
+      ? db.select({ id: schema.messages.id, taskStatus: schema.messages.taskStatus }).from(schema.messages)
+          .where(eq(schema.messages.id, targetChannel.parentMessageId)).get()
+      : null;
+    const dispatch: DispatchMessageContext = {
+      chainId: message.dispatchChainId ?? message.id,
+      dispatchDepth: message.dispatchDepth ?? 0,
+      taskMessageId: parentTask?.taskStatus ? parentTask.id : null,
+    };
+    const targetName = targetChannel.type === "thread" && targetChannel.parentMessageId
+      ? `thread:${targetChannel.parentMessageId.slice(0, 8)}`
+      : `#${targetChannel.name ?? targetChannel.id}`;
+    const planned: WakeDispatchInput[] = [];
+    for (const target of targets) {
+      const hasAccess = db.transaction((tx) => hasAgentSurfaceAccessInTransaction(tx, {
+        spaceId: input.spaceId,
+        channelId: targetChannel.id,
+        agentId: target.id,
+      }));
+      if (!hasAccess) {
+        releaseReservations([target.id]);
+        continue;
+      }
+      const setting = settingsByAgent.get(target.id);
+      if (!setting) {
+        releaseReservations([target.id]);
+        continue;
+      }
+      const responseMode = setting.responseMode;
+      const decision = decideAgentMessageResponse({
+        agentId: target.id,
+        channelType: targetChannel.type as "channel" | "private" | "dm" | "thread",
+        senderType: "agent",
+        effectiveMode: responseMode.effectiveResponseMode,
+        messageSeq: message.seq,
+        mentioned: true,
+        parentTaskAssigneeId: null,
+        isTask: Boolean(parentTask?.taskStatus),
+        ambientWakeAfterSeq: responseMode.ambientWakeAfterSeq,
+        mentionWakeAfterSeq: responseMode.mentionWakeAfterSeq,
+      });
+      if (!decision.wake || decision.directive === "observe") {
+        releaseReservations([target.id]);
+        continue;
+      }
+      planned.push({
+        spaceId: input.spaceId,
+        dispatch,
+        messageId: message.id,
+        targetAgent: target,
+        fallbackChannelId: message.channelId,
+        commitChannelId: targetChannel.id,
+        durableReservation: true,
+        delivery: {
+          seq: message.seq,
+          from: message.senderName,
+          target: targetChannel.id,
+          targetName,
+          msgShort: message.id.slice(0, 8),
+          isTask: Boolean(parentTask?.taskStatus),
+          content: message.content,
+          mentioned: true,
+          streamId: agentReplyStreamId(message.id, target.id),
+          responseDirective: decision.directive,
+          responseReason: decision.reason,
+        },
+      });
+    }
+    if (!planned.length) return [];
+    const dispatcher = await wakeDispatch.prepareTargets({
+      spaceId: input.spaceId,
+      targetAgents: planned.map((item) => item.targetAgent),
+    });
+    const results = await Promise.all(planned.map((item) => dispatchOne(item, dispatcher)));
+    return planned.filter((_, index) => results[index]?.status === "sent").map((item) => item.targetAgent.id);
+  }
+
+  async function recoverPersistedLegacyMentions(spaceId: string): Promise<number> {
+    const db = dbForSpace(spaceId);
+    const reserved = db.select().from(schema.dispatchWakes).where(and(
+      eq(schema.dispatchWakes.spaceId, spaceId),
+      eq(schema.dispatchWakes.status, "reserved"),
+    )).all();
+    const groups = new Map<string, { messageId: string; targetSurfaceId: string; targetAgentIds: string[] }>();
+    for (const wake of reserved) {
+      const message = db.select().from(schema.messages).where(and(
+        eq(schema.messages.id, wake.messageId),
+        eq(schema.messages.spaceId, spaceId),
+      )).get();
+      if (!message) {
+        db.transaction((tx) => releaseDispatchWakeInTransaction(tx, { spaceId, reservationId: wake.id }));
+        continue;
+      }
+      if (!message.producedByTurnId) continue;
+      const mention = db.select({ messageId: schema.messageMentions.messageId }).from(schema.messageMentions).where(and(
+        eq(schema.messageMentions.messageId, message.id),
+        eq(schema.messageMentions.mentionType, "agent"),
+        eq(schema.messageMentions.mentionId, wake.targetAgentId),
+      )).get();
+      if (!mention) {
+        db.transaction((tx) => releaseDispatchWakeInTransaction(tx, { spaceId, reservationId: wake.id }));
+        continue;
+      }
+      const sourceChannel = db.select().from(schema.channels).where(eq(schema.channels.id, message.channelId)).get();
+      const targetSurfaceId = message.threadId && (sourceChannel?.type === "channel" || sourceChannel?.type === "private")
+        ? message.threadId
+        : message.channelId;
+      const key = `${message.id}:${targetSurfaceId}`;
+      const group = groups.get(key) ?? { messageId: message.id, targetSurfaceId, targetAgentIds: [] };
+      group.targetAgentIds.push(wake.targetAgentId);
+      groups.set(key, group);
+    }
+    let recovered = 0;
+    for (const group of groups.values()) {
+      recovered += (await dispatchPersistedLegacyMentions({ spaceId, ...group })).length;
+    }
+    return recovered;
   }
 
   async function dispatchPersistedTaskAssignment(input: {
@@ -696,10 +913,12 @@ export function createConversationModules(dependencies: ConversationModuleDepend
       dispatchChainId: dispatch.chainId,
       dispatchDepth: dispatch.dispatchDepth,
       memoryPolicy: context.sender.type === "human" ? "eligible" : "exclude",
+      contextSnapshot: context.uiSnapshot ?? null,
     } satisfies typeof schema.messages.$inferInsert;
 
     const mentionJoined = !prepared.taskAssigneeId
-      && canAutoJoinMentionedMembers(context.sender.type)
+      && (canAutoJoinMentionedMembers(context.sender.type)
+        || (context.sender.type === "agent" && prepared.channel.type === "thread"))
       && input.content.includes("@")
       ? membersToAutoJoin(input.content, prepared.mentionPool, prepared.members)
       : [];
@@ -728,6 +947,15 @@ export function createConversationModules(dependencies: ConversationModuleDepend
           prepared.channelAllScope.id,
         )
       : ordinaryMentions;
+    const directlyMentionedAgents = mentions.filter((mention) => mention.type === "agent");
+    const shouldCreateDirectThread = !input.task
+      && input.messageType === "chat"
+      && (context.sender.type === "human" || context.sender.type === "agent")
+      && (prepared.channel.type === "channel" || prepared.channel.type === "private")
+      && !prepared.channelAllScope
+      && directlyMentionedAgents.length > 0;
+    const directThreadId = shouldCreateDirectThread ? randomUUID() : null;
+    if (directThreadId) messageValues.threadId = directThreadId;
 
     const actor = (context.sender.type === "human" || context.sender.type === "agent") && context.sender.id
       ? { type: context.sender.type, id: context.sender.id } as const
@@ -763,6 +991,15 @@ export function createConversationModules(dependencies: ConversationModuleDepend
           if (!claimed) throw new AgentIntroductionAlreadyCompletedError(proof.agentId);
         }
 
+        const directThread = directThreadId
+          ? tx.insert(schema.channels).values({
+              id: directThreadId,
+              spaceId: context.spaceId,
+              type: "thread",
+              parentMessageId: messageId,
+              name: `thread-${messageId.slice(0, 8)}`,
+            }).returning().get()
+          : null;
         const message = input.task
           ? createTaskRecordInTransaction(tx, {
               spaceId: context.spaceId,
@@ -779,11 +1016,11 @@ export function createConversationModules(dependencies: ConversationModuleDepend
           channelId: context.channelId,
         });
 
-        const insertAgentMembers = (members: ConversationMember[], watermark: number): void => {
+        const insertAgentMembers = (channelId: string, members: ConversationMember[], watermark: number): void => {
           const agents = members.filter((member) => member.type === "agent");
           if (!agents.length) return;
           tx.insert(schema.channelAgentMembers).values(agents.map((member) => ({
-            channelId: context.channelId,
+            channelId,
             agentId: member.id,
             lastReadSeq: watermark,
             ...initialAgentResponseWakeWatermarks(watermark),
@@ -803,7 +1040,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
               set: { threadFollowedAt: followedAt, threadDoneAt: null, updatedAt: followedAt },
             }).run();
           } else {
-            insertAgentMembers([{
+            insertAgentMembers(context.channelId, [{
               type: "agent",
               id: context.sender.id,
               name: context.sender.name,
@@ -815,8 +1052,37 @@ export function createConversationModules(dependencies: ConversationModuleDepend
             )).run();
           }
         }
-        insertAgentMembers(mentionJoined, seq - 1);
-        insertAgentMembers(channelAllJoined, seq - 1);
+        insertAgentMembers(context.channelId, mentionJoined, seq - 1);
+        insertAgentMembers(context.channelId, channelAllJoined, seq - 1);
+        if (directThread) {
+          const directParticipants: ConversationMember[] = directlyMentionedAgents.map((mention) => ({
+            type: "agent",
+            id: mention.id,
+            name: mention.name,
+            displayName: mention.name,
+          }));
+          if (context.sender.type === "agent" && context.sender.id) {
+            directParticipants.push({
+              type: "agent",
+              id: context.sender.id,
+              name: context.sender.name,
+              displayName: context.sender.name,
+            });
+          }
+          insertAgentMembers(directThread.id, directParticipants, seq - 1);
+          if (context.sender.type === "human") {
+            const followedAt = new Date();
+            tx.insert(schema.humanChannelStates).values({
+              channelId: directThread.id,
+              threadFollowedAt: followedAt,
+              threadDoneAt: null,
+              updatedAt: followedAt,
+            }).onConflictDoUpdate({
+              target: schema.humanChannelStates.channelId,
+              set: { threadFollowedAt: followedAt, threadDoneAt: null, updatedAt: followedAt },
+            }).run();
+          }
+        }
 
         let attachments: (typeof schema.attachments.$inferSelect)[] = [];
         if (input.attachmentIds?.length) {
@@ -833,21 +1099,51 @@ export function createConversationModules(dependencies: ConversationModuleDepend
             mentionName: mention.name,
           }))).run();
         }
-        deliveryJournal?.persistMessageInTransaction(tx, {
-          spaceId: context.spaceId,
-          channel: prepared.channel,
-          message,
-          senderType: context.sender.type,
-          senderId: context.sender.id,
-          candidateAgentIds: prepared.taskAssigneeId
-            ? [prepared.taskAssigneeId]
-            : prepared.members.filter((member) => member.type === "agent").map((member) => member.id),
-          mentions,
-          explicitTaskAgentId: prepared.taskAssigneeId,
-          targetSurface: prepared.taskAssigneeId && message.threadId
-            ? { kind: "thread", id: message.threadId }
-            : undefined,
-        });
+        if (directThread) {
+          const targetIds = directlyMentionedAgents.map((mention) => mention.id);
+          deliveryJournal?.persistMessageInTransaction(tx, {
+            spaceId: context.spaceId,
+            channel: directThread,
+            message,
+            senderType: context.sender.type,
+            senderId: context.sender.id,
+            candidateAgentIds: targetIds,
+            mentions,
+            targetSurface: { kind: "thread", id: directThread.id },
+          });
+          const observers = prepared.members
+            .filter((member) => member.type === "agent" && !targetIds.includes(member.id))
+            .map((member) => member.id);
+          if (observers.length) {
+            deliveryJournal?.persistMessageInTransaction(tx, {
+              spaceId: context.spaceId,
+              channel: prepared.channel,
+              message,
+              senderType: context.sender.type,
+              senderId: context.sender.id,
+              candidateAgentIds: observers,
+              mentions,
+              forceObserveAgentIds: observers,
+              forceObserveReason: "direct_mention_not_targeted",
+            });
+          }
+        } else {
+          deliveryJournal?.persistMessageInTransaction(tx, {
+            spaceId: context.spaceId,
+            channel: prepared.channel,
+            message,
+            senderType: context.sender.type,
+            senderId: context.sender.id,
+            candidateAgentIds: prepared.taskAssigneeId
+              ? [prepared.taskAssigneeId]
+              : prepared.members.filter((member) => member.type === "agent").map((member) => member.id),
+            mentions,
+            explicitTaskAgentId: prepared.taskAssigneeId,
+            targetSurface: prepared.taskAssigneeId && message.threadId
+              ? { kind: "thread", id: message.threadId }
+              : undefined,
+          });
+        }
         if (prepared.taskAssigneeId) {
           const observers = prepared.members.filter((member) => member.type === "agent" && member.id !== prepared.taskAssigneeId).map((member) => member.id);
           if (observers.length) {
@@ -939,6 +1235,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
         }
         return {
           message,
+          directThread,
           mentions,
           attachments,
           memberUpdateCount,
@@ -970,6 +1267,14 @@ export function createConversationModules(dependencies: ConversationModuleDepend
         channelType: prepared.channel.type,
       },
     }));
+    if (durable.directThread) {
+      await runPostCommit("publish direct mention thread", () => publishThreadUpdated(
+        context.spaceId,
+        durable.directThread ?? undefined,
+        context.sender.id,
+        context.sender.type,
+      ));
+    }
     if (input.task) {
       await runPostCommit("publish task creation", () => eventSink.publish(context.spaceId, {
         type: "task",
@@ -1087,5 +1392,9 @@ export function createConversationModules(dependencies: ConversationModuleDepend
       });
     },
   };
-  return { messagePosting, tasks };
+  return {
+    messagePosting,
+    tasks,
+    legacyMentionDispatch: { dispatch: dispatchPersistedLegacyMentions, recover: recoverPersistedLegacyMentions },
+  };
 }

@@ -8,6 +8,7 @@ import {
   resolveTarget,
 } from "../core.js";
 import { threadModule } from "../threadModuleAdapter.js";
+import { revokeChannelAgentAccess } from "../channelAccessRevocation.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import {
   findParentMessage,
@@ -106,10 +107,7 @@ export async function handleChannelsThreadsModule(context: AgentHttpContext): Pr
     const body = await readJson(req);
     const target = await resolveTarget(spaceId, body.target ?? body.channel ?? "", agent.id);
     if (!target) return (sendErr(res, 404, "channel not found"), true);
-    db.delete(schema.channelAgentMembers).where(and(
-      eq(schema.channelAgentMembers.channelId, target.channelId),
-      eq(schema.channelAgentMembers.agentId, agent.id),
-    )).run();
+    revokeChannelAgentAccess(spaceId, target.channelId, agent.id);
     sendJson(res, 200, { ok: true, left: body.target ?? body.channel });
     return true;
   }
@@ -118,10 +116,7 @@ export async function handleChannelsThreadsModule(context: AgentHttpContext): Pr
     const body = await readJson(req);
     const target = await resolveTarget(spaceId, body.target ?? body.channel ?? "", agent.id);
     if (!target) return (sendErr(res, 404, "thread not found"), true);
-    db.delete(schema.channelAgentMembers).where(and(
-      eq(schema.channelAgentMembers.channelId, target.channelId),
-      eq(schema.channelAgentMembers.agentId, agent.id),
-    )).run();
+    revokeChannelAgentAccess(spaceId, target.channelId, agent.id);
     sendJson(res, 200, { ok: true, unfollowed: body.target ?? body.channel });
     return true;
   }

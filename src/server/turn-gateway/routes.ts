@@ -5,6 +5,7 @@ import { HarnessError } from "../../harness/errors.js";
 import { requestPeerIsLoopback } from "../browserSessionHttp.js";
 import { coreSessionCapabilityBroker, turnCapabilityService, turnOutputService } from "../harnessComposition.js";
 import { readJson, sendErr, sendJson } from "../util.js";
+import { assertAgentSurfaceAccessInTransaction } from "../../channels/agentSurfaceAccess.js";
 
 function header(req: IncomingMessage, name: string): string {
   const value = req.headers[name];
@@ -20,6 +21,16 @@ function authorize(req: IncomingMessage, scope: "context.check" | "turn.reply" |
   }
   const claims = coreSessionCapabilityBroker.resolve({ sessionHandle, activationId, workerGeneration });
   turnCapabilityService(claims.spaceId).resolve({ sessionHandle, activationId, workerGeneration, scope });
+  const db = dbForSpace(claims.spaceId);
+  const session = db.select().from(schema.runtimeSessions).where(eq(schema.runtimeSessions.id, claims.sessionId)).get();
+  if (!session || session.sessionGeneration !== claims.sessionGeneration || session.retiredAt) {
+    throw new HarnessError("session_generation_stale", "Gateway session is no longer current", { sessionId: claims.sessionId });
+  }
+  db.transaction((tx) => assertAgentSurfaceAccessInTransaction(tx, {
+    spaceId: claims.spaceId,
+    channelId: session.surfaceId,
+    agentId: claims.agentId,
+  }));
   return { claims, sessionHandle };
 }
 
@@ -50,11 +61,13 @@ export async function handleTurnGateway(
         .where(inArray(schema.messages.id, deliveries.map((delivery) => delivery.messageId))).all() : [];
       const messageById = new Map(messages.map((message) => [message.id, message]));
       const session = db.select().from(schema.runtimeSessions).where(eq(schema.runtimeSessions.id, claims.sessionId)).get();
+      const turn = db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, claims.turnId)).get();
       sendJson(res, 200, {
         turnId: claims.turnId,
         attemptId: claims.attemptId,
         activationId: claims.activationId,
         target: session ? { surfaceKind: session.surfaceKind, surfaceId: session.surfaceId } : null,
+        contextEnvelope: turn?.contextEnvelope ?? null,
         inputs: deliveries.map((delivery) => ({
           id: delivery.id,
           directive: delivery.directive,

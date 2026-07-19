@@ -164,6 +164,16 @@ export class TurnCapabilityService {
       .where(eq(schema.turnCapabilityActivations.id, activation.id)).run();
   }
 
+  /** Closes stable broker handles after the owning channel transaction revoked their DB authority. */
+  closeSessions(sessionIds: readonly string[]): void {
+    for (const sessionId of sessionIds) {
+      const handle = this.handles.get(sessionId);
+      if (!handle) continue;
+      this.broker.closeSession(handle);
+      this.handles.delete(sessionId);
+    }
+  }
+
   expireStaleActivations(): number {
     const now = new Date(this.now());
     const expired = this.db.select({ id: schema.turnCapabilityActivations.id }).from(schema.turnCapabilityActivations).where(and(

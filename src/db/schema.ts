@@ -238,6 +238,7 @@ export const dispatchWakes = sqliteTable("dispatch_wakes", {
 }, (t) => ({
   byChain: index("dispatch_wakes_chain_idx").on(t.chainId),
   byAgent: index("dispatch_wakes_agent_idx").on(t.targetAgentId),
+  byStatus: index("dispatch_wakes_status_created_idx").on(t.status, t.createdAt),
 }));
 
 export const dispatchStops = sqliteTable("dispatch_stops", {

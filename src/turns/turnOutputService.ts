@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, ne, or } from "drizzle-orm";
 import { nextSeq, type SpaceTransaction } from "../counters.js";
 import { dbForSpace, schema, type SpaceDb } from "../db/index.js";
 import { HarnessError } from "../harness/errors.js";
@@ -8,10 +8,29 @@ import { NEW_AGENT_INTRO_REASON } from "../agents/agentHarnessLifecycle.js";
 import { DeliveryJournal } from "../deliveries/deliveryJournal.js";
 import { advanceDeliveryFrontierInTransaction } from "../deliveries/deliveryFrontier.js";
 import { parseMentions, type ConversationMember } from "../channels/channelMembership.js";
+import {
+  assertAgentSurfaceAccessInTransaction,
+  hasAgentSurfaceAccessInTransaction,
+} from "../channels/agentSurfaceAccess.js";
+import { ContextEnvelopeSchema } from "../context/contracts.js";
+import { decideAgentMessageResponse } from "../agents/agentResponseDelivery.js";
+import {
+  initialAgentResponseWakeWatermarks,
+  resolveAgentDispatchSettingsInTransaction,
+} from "../agents/agentResponseSettings.js";
+import { createLogger } from "../log.js";
+import { reserveDispatchWakeInTransaction } from "../dispatch/dispatchReservation.js";
 
 export interface TurnOutputEventSink {
   publish(spaceId: string, event: unknown): Promise<void>;
   schedulePending?(spaceId: string): Promise<void>;
+  dispatchLegacyMentions?(input: {
+    spaceId: string;
+    messageId: string;
+    targetSurfaceId: string;
+    targetAgentIds: string[];
+  }): Promise<void>;
+  recoverLegacyMentions?(spaceId: string): Promise<void>;
 }
 
 function canonicalJson(value: unknown): string {
@@ -29,6 +48,8 @@ function requestHash(value: unknown): string {
 
 /** Atomic operation/output/obligation settlement behind server-owned reply targets. */
 export class TurnOutputService {
+  private readonly log = createLogger("turns:output");
+
   constructor(
     private readonly spaceId: string,
     private readonly events: TurnOutputEventSink,
@@ -48,35 +69,62 @@ export class TurnOutputService {
     if (!handledInputIds.length) throw new HarnessError("required_input_unresolved", "reply must identify handled inputs");
     const hash = requestHash({ body: input.body, handledInputIds });
     const existing = this.existingReply(input.turnId, input.idempotencyKey, hash);
-    if (existing) return existing;
+    if (existing) {
+      await this.runPostCommit("recover legacy mentions", () => this.events.recoverLegacyMentions?.(this.spaceId) ?? Promise.resolve());
+      return existing;
+    }
     const seq = await nextSeq(this.spaceId);
     const now = new Date(this.now());
-    const message = this.db.transaction((tx) => {
+    const result = this.db.transaction((tx) => {
       const raced = this.operationInTransaction(tx, input.turnId, "turn.reply", input.idempotencyKey);
       if (raced) {
         if (raced.requestHash !== hash) throw new HarnessError("idempotency_conflict", "idempotency key was reused for another reply");
         const output = tx.select().from(schema.turnOutputs).where(eq(schema.turnOutputs.operationId, raced.id)).get();
         const prior = output?.messageId ? tx.select().from(schema.messages).where(eq(schema.messages.id, output.messageId)).get() : null;
-        if (prior) return prior;
+        if (prior) return { message: prior, legacyDispatch: null };
         throw new HarnessError("idempotency_conflict", "reply operation is incomplete and requires reconciliation");
       }
-      const { turn, attempt, session, agent, deliveries } = this.validateOperation(tx, input.turnId, input.attemptId, handledInputIds);
+      const { turn, attempt, session, agent, deliveries } = this.validateOperation(tx, input.turnId, input.attemptId, handledInputIds, true);
+      const surface = tx.select().from(schema.channels).where(and(
+        eq(schema.channels.id, session.surfaceId),
+        eq(schema.channels.spaceId, this.spaceId),
+      )).get();
+      if (!surface) throw new HarnessError("reply_target_denied", "reply surface no longer exists", { turnId: turn.id });
       const sourceMessages = tx.select({
         id: schema.messages.id,
         dispatchChainId: schema.messages.dispatchChainId,
         dispatchDepth: schema.messages.dispatchDepth,
       }).from(schema.messages).where(inArray(schema.messages.id, deliveries.map((delivery) => delivery.messageId))).all();
       const chainIds = new Set(sourceMessages.map((source) => source.dispatchChainId ?? source.id));
+      let mentionChannelIds = [session.surfaceId];
+      if (surface.type === "thread" && surface.parentMessageId) {
+        const parent = tx.select({ channelId: schema.messages.channelId }).from(schema.messages)
+          .where(eq(schema.messages.id, surface.parentMessageId)).get();
+        if (parent) mentionChannelIds = [...new Set([session.surfaceId, parent.channelId])];
+      }
       const memberRows = tx.select({
         id: schema.agents.id,
         name: schema.agents.name,
         displayName: schema.agents.displayName,
       }).from(schema.channelAgentMembers).innerJoin(schema.agents, eq(schema.agents.id, schema.channelAgentMembers.agentId)).where(and(
-        eq(schema.channelAgentMembers.channelId, session.surfaceId),
+        inArray(schema.channelAgentMembers.channelId, mentionChannelIds),
         eq(schema.agents.spaceId, this.spaceId),
         isNull(schema.agents.deletedAt),
       )).all();
-      const mentionPool: ConversationMember[] = memberRows.map((member) => ({ type: "agent", ...member }));
+      const mentionPool: ConversationMember[] = [...new Map(memberRows.map((member) => [member.id, member])).values()]
+        .filter((member) => hasAgentSurfaceAccessInTransaction(tx, {
+          spaceId: this.spaceId,
+          channelId: session.surfaceId,
+          agentId: member.id,
+          now: now.getTime(),
+        }) || (surface.type === "thread" && mentionChannelIds.some((channelId) => channelId !== session.surfaceId
+          && hasAgentSurfaceAccessInTransaction(tx, {
+            spaceId: this.spaceId,
+            channelId,
+            agentId: member.id,
+            now: now.getTime(),
+          }))))
+        .map((member) => ({ type: "agent" as const, ...member }));
       const mentions = input.body.includes("@") ? parseMentions(input.body, mentionPool) : [];
       if (mentions.length && chainIds.size !== 1) {
         throw new HarnessError("capability_scope_denied", "reply mentions require inputs from one dispatch chain", {
@@ -112,8 +160,19 @@ export class TurnOutputService {
         operationSlot: "reply:primary",
         status: "pending",
       }).returning().get();
+      const createdId = randomUUID();
+      const directThreadId = (surface.type === "channel" || surface.type === "private") && mentions.length
+        ? randomUUID()
+        : null;
+      const directThread = directThreadId ? tx.insert(schema.channels).values({
+        id: directThreadId,
+        spaceId: this.spaceId,
+        type: "thread",
+        parentMessageId: createdId,
+        name: `thread-${createdId.slice(0, 8)}`,
+      }).returning().get() : null;
       const created = tx.insert(schema.messages).values({
-        id: randomUUID(),
+        id: createdId,
         seq,
         spaceId: this.spaceId,
         channelId: session.surfaceId,
@@ -125,6 +184,7 @@ export class TurnOutputService {
         memoryPolicy: "exclude",
         producedByTurnId: turn.id,
         searchText: input.body,
+        threadId: directThread?.id ?? null,
         dispatchChainId,
         dispatchDepth,
       }).returning().get();
@@ -136,7 +196,117 @@ export class TurnOutputService {
           mentionName: mention.name,
         }))).run();
       }
-      new DeliveryJournal().persistChannelMessageInTransaction(tx, this.spaceId, created);
+      const mentionedIds = mentions.map((mention) => mention.id);
+      const harnessModes = mentionedIds.length ? tx.select().from(schema.agentHarnessState)
+        .where(inArray(schema.agentHarnessState.agentId, mentionedIds)).all() : [];
+      const harnessModeByAgent = new Map(harnessModes.map((row) => [row.agentId, row.mode]));
+      const legacyMentionedIds = mentionedIds.filter((agentId) => (harnessModeByAgent.get(agentId) ?? "legacy") === "legacy");
+      const joinIds = [...new Set([agent.id, ...mentionedIds])];
+      if (directThread || surface.type === "thread") {
+        const targetThreadId = directThread?.id ?? surface.id;
+        tx.insert(schema.channelAgentMembers).values(joinIds.map((agentId) => ({
+          channelId: targetThreadId,
+          agentId,
+          lastReadSeq: seq - 1,
+          ...initialAgentResponseWakeWatermarks(seq - 1),
+        }))).onConflictDoNothing().run();
+        if (!directThread && surface.type === "thread") {
+          const parentChannelId = mentionChannelIds.find((channelId) => channelId !== surface.id);
+          const rejoinIds = parentChannelId ? mentionedIds.filter((agentId) =>
+            !hasAgentSurfaceAccessInTransaction(tx, {
+              spaceId: this.spaceId,
+              channelId: surface.id,
+              agentId,
+              now: now.getTime(),
+            }) && hasAgentSurfaceAccessInTransaction(tx, {
+              spaceId: this.spaceId,
+              channelId: parentChannelId,
+              agentId,
+              now: now.getTime(),
+            })) : [];
+          if (rejoinIds.length) {
+            tx.update(schema.channelAgentMembers).set({
+              lastReadSeq: seq - 1,
+              ...initialAgentResponseWakeWatermarks(seq - 1),
+              accessKind: "member",
+              taskScope: null,
+              accessExpiresAt: null,
+            }).where(and(
+              eq(schema.channelAgentMembers.channelId, targetThreadId),
+              inArray(schema.channelAgentMembers.agentId, rejoinIds),
+            )).run();
+          }
+        }
+      }
+      const targetSurface = directThread ?? surface;
+      const legacySettings = resolveAgentDispatchSettingsInTransaction(
+        tx,
+        this.spaceId,
+        targetSurface.id,
+        legacyMentionedIds,
+      );
+      const actionableLegacyIds = legacySettings.flatMap(({ responseMode }) => {
+        if (!hasAgentSurfaceAccessInTransaction(tx, {
+          spaceId: this.spaceId,
+          channelId: targetSurface.id,
+          agentId: responseMode.agentId,
+          now: now.getTime(),
+        })) return [];
+        const decision = decideAgentMessageResponse({
+          agentId: responseMode.agentId,
+          channelType: targetSurface.type as "channel" | "private" | "dm" | "thread",
+          senderType: "agent",
+          effectiveMode: responseMode.effectiveResponseMode,
+          messageSeq: created.seq,
+          mentioned: true,
+          ambientWakeAfterSeq: responseMode.ambientWakeAfterSeq,
+          mentionWakeAfterSeq: responseMode.mentionWakeAfterSeq,
+        });
+        return decision.wake && decision.directive !== "observe" ? [responseMode.agentId] : [];
+      });
+      const reservedLegacyIds = actionableLegacyIds.filter((targetAgentId) => reserveDispatchWakeInTransaction(tx, {
+        spaceId: this.spaceId,
+        chainId: dispatchChainId!,
+        dispatchDepth: dispatchDepth ?? 0,
+        taskMessageId: null,
+        messageId: created.id,
+        targetAgentId,
+      }).allowed);
+      const journal = new DeliveryJournal();
+      if (directThread) {
+        journal.persistMessageInTransaction(tx, {
+          spaceId: this.spaceId,
+          channel: directThread,
+          message: created,
+          senderType: "agent",
+          senderId: agent.id,
+          candidateAgentIds: mentionedIds,
+          mentions,
+          targetSurface: { kind: "thread", id: directThread.id },
+        });
+        const observers = mentionPool.map((member) => member.id)
+          .filter((memberId) => memberId !== agent.id && !mentionedIds.includes(memberId));
+        if (observers.length) {
+          journal.persistMessageInTransaction(tx, {
+            spaceId: this.spaceId,
+            channel: surface,
+            message: created,
+            senderType: "agent",
+            senderId: agent.id,
+            candidateAgentIds: observers,
+            mentions,
+            forceObserveAgentIds: observers,
+            forceObserveReason: "direct_mention_not_targeted",
+          });
+        }
+      } else {
+        journal.persistChannelMessageInTransaction(tx, this.spaceId, created);
+      }
+      const legacyDispatch = reservedLegacyIds.length ? {
+        messageId: created.id,
+        targetSurfaceId: directThread?.id ?? surface.id,
+        targetAgentIds: reservedLegacyIds,
+      } : null;
       const output = tx.insert(schema.turnOutputs).values({
         id: randomUUID(),
         turnId: turn.id,
@@ -164,30 +334,58 @@ export class TurnOutputService {
       }
       this.advanceFrontiersInTransaction(tx, agent.id, deliveries.map((delivery) => delivery.cursorOwnerChannelId));
       if (attempt.status === "finalizing") this.finalizeInTransaction(tx, turn.id, attempt.id);
-      return created;
+      return { message: created, legacyDispatch };
     });
+    const { message, legacyDispatch } = result;
     const channel = this.db.select().from(schema.channels).where(eq(schema.channels.id, message.channelId)).get();
     const persistedMentions = this.db.select().from(schema.messageMentions).where(eq(schema.messageMentions.messageId, message.id)).all()
       .map(persistedMessageMention);
-    await this.events.publish(this.spaceId, {
+    await this.runPostCommit("publish reply", () => this.events.publish(this.spaceId, {
       type: "message",
       channelId: message.channelId,
       message: { ...serializeMessage(message, persistedMentions, []), channelType: channel?.type ?? null },
-    });
+    }));
     if (channel?.type === "thread" && channel.parentMessageId) {
       const parent = this.db.select({ channelId: schema.messages.channelId }).from(schema.messages)
         .where(eq(schema.messages.id, channel.parentMessageId)).get();
-      await this.events.publish(this.spaceId, {
+      await this.runPostCommit("publish thread update", () => this.events.publish(this.spaceId, {
         type: "thread:updated",
         threadChannelId: channel.id,
         parentMessageId: channel.parentMessageId,
         parentChannelId: parent?.channelId ?? null,
         senderId: message.senderId,
         senderType: "agent",
+      }));
+    } else if (message.threadId) {
+      await this.runPostCommit("publish direct mention thread", () => this.events.publish(this.spaceId, {
+        type: "thread:updated",
+        threadChannelId: message.threadId,
+        parentMessageId: message.id,
+        parentChannelId: message.channelId,
+        senderId: message.senderId,
+        senderType: "agent",
+      }));
+    }
+    if (legacyDispatch) {
+      await this.runPostCommit("dispatch legacy mentions", () => this.events.dispatchLegacyMentions?.({
+        spaceId: this.spaceId,
+        ...legacyDispatch,
+      }) ?? Promise.resolve());
+    }
+    await this.runPostCommit("schedule durable mentions", () => this.events.schedulePending?.(this.spaceId) ?? Promise.resolve());
+    return message;
+  }
+
+  private async runPostCommit(label: string, operation: () => Promise<void>): Promise<void> {
+    try {
+      await operation();
+    } catch (error) {
+      this.log.warn("post-commit output effect failed", {
+        operation: label,
+        spaceId: this.spaceId,
+        detail: error instanceof Error ? error.message : String(error),
       });
     }
-    await this.events.schedulePending?.(this.spaceId);
-    return message;
   }
 
   cede(input: {
@@ -276,7 +474,7 @@ export class TurnOutputService {
     )).get();
   }
 
-  private validateOperation(tx: SpaceTransaction, turnId: string, attemptId: string, inputIds: string[]) {
+  private validateOperation(tx: SpaceTransaction, turnId: string, attemptId: string, inputIds: string[], requireFreshOutput = false) {
     const turn = tx.select().from(schema.agentTurns).where(and(eq(schema.agentTurns.id, turnId), eq(schema.agentTurns.spaceId, this.spaceId))).get();
     const attempt = tx.select().from(schema.agentTurnAttempts).where(and(
       eq(schema.agentTurnAttempts.id, attemptId),
@@ -290,6 +488,35 @@ export class TurnOutputService {
     const agent = tx.select().from(schema.agents).where(eq(schema.agents.id, turn.agentId)).get();
     if (!session || session.retiredAt || session.sessionGeneration !== turn.sessionGeneration || !agent) {
       throw new HarnessError("session_generation_stale", "turn operation targets a stale session", { turnId });
+    }
+    assertAgentSurfaceAccessInTransaction(tx, {
+      spaceId: this.spaceId,
+      channelId: session.surfaceId,
+      agentId: turn.agentId,
+      now: this.now(),
+    });
+    if (requireFreshOutput && turn.contextEnvelope) {
+      const parsed = ContextEnvelopeSchema.safeParse(turn.contextEnvelope);
+      if (!parsed.success) throw new HarnessError("stale_context", "turn context manifest is invalid", { turnId });
+      const throughSeq = parsed.data.seenWatermarks.find((watermark) => watermark.channelId === session.surfaceId)?.throughSeq;
+      if (throughSeq === undefined) throw new HarnessError("stale_context", "turn context has no output-surface watermark", { turnId, channelId: session.surfaceId });
+      const later = tx.select({ id: schema.messages.id, seq: schema.messages.seq }).from(schema.messages).where(and(
+        eq(schema.messages.channelId, session.surfaceId),
+        gt(schema.messages.seq, throughSeq),
+        or(
+          eq(schema.messages.senderType, "human"),
+          and(eq(schema.messages.senderType, "agent"), or(isNull(schema.messages.senderId), ne(schema.messages.senderId, agent.id))),
+        ),
+      )).limit(1).get();
+      if (later) {
+        throw new HarnessError("stale_context", "the output surface changed after this turn was assembled", {
+          turnId,
+          channelId: session.surfaceId,
+          throughSeq,
+          laterMessageId: later.id,
+          laterSeq: later.seq,
+        });
+      }
     }
     const deliveries = tx.select().from(schema.agentDeliveryItems).where(and(
       eq(schema.agentDeliveryItems.turnId, turn.id),

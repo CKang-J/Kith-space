@@ -20,6 +20,7 @@ export interface PersistDeliveryInput {
   allowedHarnessModes?: Array<"migrating" | "v2">;
   targetSurface?: { kind: "channel" | "private" | "dm" | "thread"; id: string };
   forceObserveAgentIds?: string[];
+  forceObserveReason?: string;
 }
 
 /** Writes the durable v2 inbox inside the caller's message transaction. */
@@ -84,7 +85,7 @@ export class DeliveryJournal {
         targetSurfaceKind: input.targetSurface?.kind ?? input.channel.type as "channel" | "private" | "dm" | "thread",
         targetSurfaceId: input.targetSurface?.id ?? input.channel.id,
         directive,
-        reason: forceObserve.has(agentId) ? "task_not_assigned" : isSelf ? "self_message" : ambientScopeDenied ? "ambient_scope_denied" : decision.reason,
+        reason: forceObserve.has(agentId) ? (input.forceObserveReason ?? "task_not_assigned") : isSelf ? "self_message" : ambientScopeDenied ? "ambient_scope_denied" : decision.reason,
         policySnapshot: {
           defaultResponseMode: responseMode.defaultResponseMode,
           responseModeOverride: responseMode.responseModeOverride,

@@ -8,7 +8,14 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { and, eq } from "drizzle-orm";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { handleAgentApi } from "../src/server/routes-agent.ts";
-import { agentConfig, createMessage, convertMessageToTask } from "../src/server/core.ts";
+import {
+  agentConfig,
+  assignTask,
+  createMessage,
+  convertMessageToTask,
+  setTaskStatus,
+  unclaimTask,
+} from "../src/server/core.ts";
 
 const ts = Date.now();
 let failures = 0;
@@ -24,6 +31,7 @@ let privateChannelName = "";
 let dmChannelId = "";
 let assignerId = "";
 let assigneeId = "";
+let replacementId = "";
 let assignerToken = "";
 
 function mkReq(path: string, token: string, agentId: string, body?: unknown) {
@@ -88,6 +96,16 @@ async function setup() {
     creatorId: ownerId,
   }).returning();
   assigneeId = assignee!.id;
+  const [replacement] = await db.insert(schema.agents).values({
+    spaceId,
+    name: `replacement_${ts}`,
+    displayName: "Replacement",
+    runtime: "claude",
+    model: "sonnet",
+    creatorType: "human",
+    creatorId: ownerId,
+  }).returning();
+  replacementId = replacement!.id;
 
   await db.insert(schema.channelAgentMembers).values([
     { channelId, agentId: assignerId },
@@ -119,6 +137,7 @@ async function cleanup() {
 
   await db.delete(schema.agents).where(and(eq(schema.agents.spaceId, spaceId), eq(schema.agents.id, assignerId)));
   await db.delete(schema.agents).where(and(eq(schema.agents.spaceId, spaceId), eq(schema.agents.id, assigneeId)));
+  await db.delete(schema.agents).where(and(eq(schema.agents.spaceId, spaceId), eq(schema.agents.id, replacementId)));
 }
 
 async function main() {
@@ -182,6 +201,44 @@ async function main() {
   check("message check exposes thread:shortid instead of actor-relative dm target", texts.some((txt: string) => txt.includes(`[target=thread:${dmTask!.id.slice(0, 8)}`)));
   check("task assignment remains required in message check", checkedMessages.some((m: any) => m.responseDirective === "required" && m.responseReason === "explicit_task_assignment"));
   check("rendered task assignment carries its directive", texts.some((txt: string) => txt.includes("directive=required")));
+
+  console.log("\n[6] task-scoped grants follow release, reassignment, and terminal lifecycle");
+  await db.insert(schema.agentHarnessState).values([
+    { agentId: assigneeId, mode: "v2" },
+    { agentId: replacementId, mode: "v2" },
+  ]).onConflictDoUpdate({ target: schema.agentHarnessState.agentId, set: { mode: "v2" } });
+  const privateThreadId = privTask!.threadId!;
+  const currentPrivateTask = db.select().from(schema.messages).where(eq(schema.messages.id, privTask!.id)).get()!;
+  const released = await unclaimTask(spaceId, privTask!.id, { type: "human", id: ownerId }, currentPrivateTask.taskRevision);
+  check("release removes the old external assignee grant", !db.select().from(schema.channelAgentMembers).where(and(
+    eq(schema.channelAgentMembers.channelId, privateThreadId),
+    eq(schema.channelAgentMembers.agentId, assigneeId),
+  )).get());
+  check("release leaves no actionable delivery for the old assignee", !db.select().from(schema.agentDeliveryItems).where(and(
+    eq(schema.agentDeliveryItems.targetSurfaceId, privateThreadId),
+    eq(schema.agentDeliveryItems.agentId, assigneeId),
+  )).all().some((item) => item.disposition === "pending" || item.disposition === "bound"));
+  const reassignedToOld = await assignTask(spaceId, privTask!.id, assigneeId, { type: "human", id: ownerId }, released!.taskRevision);
+  const reassignedToNew = await assignTask(spaceId, privTask!.id, replacementId, { type: "human", id: ownerId }, reassignedToOld!.taskRevision);
+  check("reassign removes the prior external assignee grant", !db.select().from(schema.channelAgentMembers).where(and(
+    eq(schema.channelAgentMembers.channelId, privateThreadId),
+    eq(schema.channelAgentMembers.agentId, assigneeId),
+  )).get());
+  check("reassign grants only the replacement task scope", db.select().from(schema.channelAgentMembers).where(and(
+    eq(schema.channelAgentMembers.channelId, privateThreadId),
+    eq(schema.channelAgentMembers.agentId, replacementId),
+  )).get()?.accessKind === "task_scoped");
+  await setTaskStatus(spaceId, privTask!.id, "closed", { type: "human", id: ownerId }, {
+    from: "in_progress",
+    expectedRevision: reassignedToNew!.taskRevision,
+  });
+  check("terminal status removes every task-scoped grant", !db.select().from(schema.channelAgentMembers).where(and(
+    eq(schema.channelAgentMembers.channelId, privateThreadId),
+    eq(schema.channelAgentMembers.accessKind, "task_scoped"),
+  )).get());
+  check("terminal audit cannot recreate an actionable task delivery", !db.select().from(schema.agentDeliveryItems).where(
+    eq(schema.agentDeliveryItems.targetSurfaceId, privateThreadId),
+  ).all().some((item) => item.disposition === "pending" || item.disposition === "bound"));
 }
 
 main()

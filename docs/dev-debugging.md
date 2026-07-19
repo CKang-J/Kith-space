@@ -160,7 +160,7 @@ P-A10.0 的可执行 adapter fixture运行：
 pnpm exec tsx --test src/runtime/contract/v2/runtimeContract.test.ts src/daemon/runtimeContractBaseline.test.ts
 ```
 
-Claude/Codex fixture证明同一常驻进程可串行处理两轮，opencode fixture证明one-shot子进程会在第二轮携带首轮session ID；三者同时验证显式 completion 与可映射的 final usage。P-A10.1 v2 bridge另验证critical event ack、process cancel、stable broker activation和stale generation拒绝。P-A10.2增加admit/activate分离、event/terminal ACK、lease recovery、dispatch reservation和Core generation/broker变化后的reopen测试。Kith完整MCP、tool isolation、cwd relocation与compaction telemetry尚未实现，能力矩阵继续标`unsupported`。
+Claude/Codex fixture证明同一常驻进程可串行处理两轮，opencode fixture证明one-shot子进程会在第二轮携带首轮session ID；三者同时验证显式 completion 与可映射的 final usage。P-A10.1 v2 bridge另验证critical event ack、process cancel、stable broker activation和stale generation拒绝。P-A10.2增加admit/activate分离、event/terminal ACK、lease recovery、dispatch reservation和Core generation/broker变化后的reopen测试。P-A10.3增加Human/Agent/v2-output原子direct-mention thread、mixed-mode reserved wake崩溃恢复、Context Envelope bound frontier与8k拆批/HMAC tombstone、Human/Agent父级撤权、task-scoped release/reassign/终态/expiry、stale output和turn inspector injection-state定向回归；workspace v6会续跑`0006_legacy_dispatch_recovery`索引，app.db会从v1原位升级到v2并生成只保存在`installation_state`的content HMAC key。Kith完整MCP、tool isolation、cwd relocation与compaction telemetry尚未实现，能力矩阵继续标`unsupported`。
 
 v2 runtime子进程只看到stable `KITH_SPACE_BROKER_HANDLE`、loopback endpoint和mode `0600` activation file路径；activation file在每个attempt运行前写入、结束后删除。不要把handle、activation ID或文件内容复制到日志、fixture或问题报告；它们不是浏览器Access Token，也不能脱离当前lease使用。Gateway只接受loopback请求并再次核对DB中的attempt/session generation/input scope。Core或Worker重启时旧generation事件会被拒绝，scanner在lease过期后恢复；不要人工修改attempt状态来“解卡”。
 

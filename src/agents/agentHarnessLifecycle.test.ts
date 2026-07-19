@@ -44,9 +44,24 @@ test("existing Agent cutover backfills only messages after each membership curso
       { id: randomUUID(), seq: 1, spaceId, channelId, senderType: "human", senderId: "human", senderName: "Human", content: "already read" },
       { id: randomUUID(), seq: 2, spaceId, channelId, senderType: "human", senderId: "human", senderName: "Human", content: "unread" },
     ]).run();
+    const directRootId = randomUUID();
+    const directThreadId = randomUUID();
+    db.insert(schema.messages).values({
+      id: directRootId, seq: 3, spaceId, channelId, senderType: "human", senderId: "human", senderName: "Human",
+      content: "@legacy-agent direct", threadId: directThreadId,
+    }).run();
+    db.insert(schema.channels).values({ id: directThreadId, spaceId, name: "direct", type: "thread", parentMessageId: directRootId }).run();
+    db.insert(schema.channelAgentMembers).values({ channelId: directThreadId, agentId, lastReadSeq: 2 }).run();
+    db.insert(schema.messageMentions).values({
+      messageId: directRootId, mentionType: "agent", mentionId: agentId, mentionName: "legacy-agent",
+    }).run();
     new SessionModule(spaceId, db).beginCutover(agentId, { legacyDrained: true, reason: "simulated interrupted cutover" });
-    assert.equal(migrateExistingAgentToV2(spaceId, agentId, "resume"), 1);
-    assert.equal(db.select().from(schema.agentDeliveryItems).all().length, 1);
+    assert.equal(migrateExistingAgentToV2(spaceId, agentId, "resume"), 2);
+    assert.equal(db.select().from(schema.agentDeliveryItems).all().length, 2);
+    const directDelivery = db.select().from(schema.agentDeliveryItems).where(eq(schema.agentDeliveryItems.messageId, directRootId)).get();
+    assert.equal(directDelivery?.targetSurfaceKind, "thread");
+    assert.equal(directDelivery?.targetSurfaceId, directThreadId);
+    assert.equal(directDelivery?.cursorOwnerChannelId, channelId);
     assert.equal(new SessionModule(spaceId, db).harnessMode(agentId), "v2");
   } finally {
     closeSpaceDb(spaceId);

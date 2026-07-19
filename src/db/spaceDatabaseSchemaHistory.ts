@@ -18,6 +18,7 @@ export const WORKSPACE_MIGRATION_HISTORY: readonly WorkspaceMigrationHistoryEntr
   { version: 5, tag: "0003_agent_response_modes", createdAt: 1784024369419, hash: "e68d1bc76c3f3ab071fb460c130ddaba7f0adab64396e96deb4d9cccc192432e" },
   { version: 6, tag: "0004_agent_harness_sessions", createdAt: 1784457381025, hash: "9e9ffe6cd2fa1dd5953170e58f12eeacb84a98c21e4ec2bbaedb6479fab8ae1f" },
   { version: 6, tag: "0005_agent_durable_turns", createdAt: 1784458418697, hash: "25ec3ae6d1c99b89fbeacb6a69228ca9bf910974d78ab2b18512fea3e833a656" },
+  { version: 6, tag: "0006_legacy_dispatch_recovery", createdAt: 1784467852894, hash: "e0f08a473e9e545d5d278fd75f02c0ce4bc3dc7b2858de0652a852cefa14f979" },
 ];
 
 /** Immutable v2 baseline. Later schema entries are layered on explicitly below. */
@@ -165,6 +166,7 @@ export function requiredSpaceIndexes(version: number, migrationCount?: number): 
       "agent_delivery_items_cursor_owner_seq_idx", "agent_turns_active_session_uniq", "agent_turns_schedule_idx",
       "agent_turn_attempts_lease_idx", "turn_operations_key_uniq", "session_wakeups_due_idx",
     ] : []),
+    ...(tags.has("0006_legacy_dispatch_recovery") ? ["dispatch_wakes_status_created_idx"] : []),
   ];
 }
 

@@ -37,12 +37,12 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
     assert.equal(sqlite.pragma("user_version", { simple: true }), APP_DATABASE_SCHEMA_VERSION);
     assert.deepEqual(sqlite.prepare(`
       SELECT version, name, length(checksum) AS checksumLength
-      FROM app_migration_journal
-    `).get(), {
-      version: APP_DATABASE_SCHEMA_VERSION,
-      name: "installation-baseline",
-      checksumLength: 64,
-    });
+      FROM app_migration_journal ORDER BY version
+    `).all(), [
+      { version: 1, name: "installation-baseline", checksumLength: 64 },
+      { version: 2, name: "content-hmac-key", checksumLength: 64 },
+    ]);
+    assert.match(String(sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get()), /^[0-9a-f]{64}$/);
     for (const table of [
       "human_profile",
       "spaces",
@@ -75,6 +75,24 @@ test("unversioned legacy app.db preserves Space rows and backfills stable Home i
       SELECT home_space_id FROM installation_state WHERE singleton_key = 1
     `).pluck().get(), "legacy-home");
     assert.equal(sqlite.prepare("SELECT count(*) FROM spaces").pluck().get(), 1);
+  });
+});
+
+test("version 1 app.db upgrades in place with a stable installation content HMAC key", () => {
+  withAppDatabase((sqlite, dbPath) => {
+    migrateAppDatabase(sqlite, dbPath);
+    sqlite.exec(`
+      PRAGMA user_version = 1;
+      DELETE FROM app_migration_journal WHERE version = 2;
+      ALTER TABLE installation_state DROP COLUMN content_hmac_key;
+    `);
+    migrateAppDatabase(sqlite, dbPath);
+    const first = String(sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get());
+    migrateAppDatabase(sqlite, dbPath);
+    const second = String(sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get());
+    assert.match(first, /^[0-9a-f]{64}$/);
+    assert.equal(second, first);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 2);
   });
 });
 

@@ -149,7 +149,7 @@
 : 自建生产力模块（v1 = 任务；后续 = 邮箱/日历/画布）不进 runtime，而是各自包成一个 MCP server 暴露给外接 agent。agent 像调用普通工具一样调用 `task_create` 等，落到我方服务端逻辑。这是"原生丝滑"的实现路径之一，与 UI 桥配合。
 
 **Capability Gateway / 能力网关**
-: P-A10 中 Agent 操作 Kith-space 的唯一受支持产品 API。P-A10.2已实现loopback受控CLI Adapter的`turn context/reply/cede`最小面；P-A10.4再加入完整MCP与Message/Task/Memory等工具。broker-backed turn capability固定Agent、Space、attempt、允许input/output、seen watermarks、scope、披露权与过期时间。它在OS sandbox前不是阻止runtime直接读本机路径的物理边界。
+: P-A10 中 Agent 操作 Kith-space 的唯一受支持产品 API。P-A10.2已实现loopback受控CLI Adapter的`turn context/reply/cede`最小面；P-A10.3增加逐调用surface/父级ACL、冻结Context Envelope与确定性`stale_context`写入门；P-A10.4再加入完整MCP、later-query refresh与Message/Task/Memory等工具。broker-backed turn capability固定Agent、Space、attempt、允许input/output、seen watermarks、scope、披露权与过期时间。它在OS sandbox前不是阻止runtime直接读本机路径的物理边界。
 
 **Turn Capability Broker / 工作轮次能力代理**
 : 为常驻 runtime 提供稳定本机 handle、由 Worker 按 attempt 激活 opaque capability 的控制面。Core在每次MCP/CLI调用时校验实时lease/turn/ACL并在终态撤销，避免把无法轮换的per-turn bearer固定注入子进程环境。
@@ -254,10 +254,10 @@
 : 从频道标题进入、临时占用会话聚合面板的低频管理场景，包含常规、成员和通知三个钻取页以及归档、恢复和永久删除。宽度不足时复用同一组件进入 Chat 右侧抽屉；退出后恢复原聚合内容状态。
 
 **Message Context Snapshot**
-: 消息发送时固化的结构化界面上下文，包含 Space、会话、当前模块、打开对象引用与 focused item。Kith-space 保存自己的结构，不把 OpenLoaf `<stack>` XML 硬编码进核心模型；它是 P-A10 Context Envelope 的一个来源，当前仍是待实现契约。
+: 消息发送时固化的结构化界面上下文，包含Space、规范route ID、当前模块、打开对象引用与focused item。P-A10.3已由Renderer构造、Core按白名单重写权威spaceId并剥离URL/query/路径/临时字段后持久化；它不采集DOM、截图、剪贴板或未提交表单。
 
 **Context Envelope / 上下文信封**
-: P-A10 目标态中每个 logical turn 的可审计上下文 manifest，记录 delivery items、多source seen watermarks、continuity mode、root、as-of parent snapshot、当前 batch、object snapshot、continuity/query recall、文件记忆引用、capability activation、预算与 omission。它不等于复制完整 prompt，并区分可重建revision、仅hash/tombstone、turn前自动注入与后续主动查询。
+: P-A10.3起每个logical turn的可审计上下文manifest，记录delivery items、多source seen watermarks、continuity mode、root、as-of parent snapshot、当前batch、object snapshot、文件记忆引用、capability activation、预算与omission；后续切片再加入recall/later-query audit。它不等于复制完整prompt，并区分可重建revision、仅hash/tombstone、turn前自动注入与后续主动查询。
 
 **跨 Space 视角**
 : 以 Home 为入口的本机全局视角：当前先由 Spaces 模块展示真实 registry，后续再基于 `scope = current | all` 增加 Inbox、Tasks、Calendar 和信息流聚合；不提供数据不真实的薄总览页，也不引入云端控制面。
@@ -300,7 +300,7 @@
 : Desktop 信任凭据和 Local Runtime Worker 控制凭据的统称。两者彼此独立，也不与浏览器 Access Token 或 agent session token 复用。Desktop 每次启动/重启受管进程组都会重新生成；只有手动分进程开发才临时使用 `KITH_SPACE_DESKTOP_TOKEN` 和 `KITH_SPACE_WORKER_TOKEN` 注入。
 
 **每工作区独立 SQLite 文件**
-: 每个 Space 把自己的元数据、消息、任务、频道、Agent、membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 schema v6 有34张产品表；连同Drizzle的`__drizzle_migrations`是35张物理表。v6先新增`agent_harness_state/runtime_sessions`，再以同版本后续journal前缀加入durable delivery/turn/output/context/capability/checklist/wakeup结构；P-A10.1的21表v6前缀仍可继续迁移。`agents.session_id`只作legacy rollback来源。
+: 每个 Space 把自己的元数据、消息、任务、频道、Agent、membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 schema v6 有34张产品表；连同Drizzle的`__drizzle_migrations`是35张物理表。v6先新增`agent_harness_state/runtime_sessions`，再以同版本后续journal前缀加入durable delivery/turn/output/context/capability/checklist/wakeup结构及`dispatch_wakes(status,created_at)`恢复索引；P-A10.1/P-A10.2的合法v6前缀仍可继续迁移。`agents.session_id`只作legacy rollback来源。
 
 **`.kith/`**
 : Space root 下承载其可移植状态的目录：`workspace.db`（Space 元数据、agent 阵容、频道、消息和任务）、`memory/`（Space Memory）、`agents/<agentId>/`（Agent Memory）和 `uploads/`（附件对象）。runtime prompt、日志和宿主临时状态不放在这里。

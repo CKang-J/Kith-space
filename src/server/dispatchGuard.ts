@@ -1,30 +1,28 @@
-import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { dbForSpace, schema } from "../db/index.js";
+import {
+  readDispatchLimits,
+  releaseDispatchWakeInTransaction,
+  reserveDispatchWakeInTransaction,
+  type DispatchLimits,
+  type WakeReservation,
+} from "../dispatch/dispatchReservation.js";
 
-export const DEFAULT_MAX_DISPATCH_DEPTH = 4;
-export const DEFAULT_MAX_DISPATCH_WAKES = 16;
+export {
+  DEFAULT_MAX_DISPATCH_DEPTH,
+  DEFAULT_MAX_DISPATCH_WAKES,
+  decideDispatch,
+  readDispatchLimits,
+} from "../dispatch/dispatchReservation.js";
+export type {
+  DispatchBlockCode,
+  DispatchDecision,
+  DispatchGuardInput,
+  DispatchLimits,
+  WakeReservation,
+} from "../dispatch/dispatchReservation.js";
 
 export type TaskExecutionMode = "autopilot" | "plan-first";
-export type DispatchBlockCode = "SPACE_STOPPED" | "TASK_STOPPED" | "DEPTH_LIMIT" | "WAKE_BUDGET";
-
-export interface DispatchLimits {
-  maxDepth: number;
-  maxWakes: number;
-}
-
-export interface DispatchGuardInput {
-  dispatchDepth: number;
-  wakeCount: number;
-  spaceStopped: boolean;
-  taskStopped: boolean;
-}
-
-export interface DispatchDecision {
-  allowed: boolean;
-  code?: DispatchBlockCode;
-  reason?: string;
-}
 
 export interface DispatchMessageContext {
   chainId: string;
@@ -32,40 +30,10 @@ export interface DispatchMessageContext {
   taskMessageId: string | null;
 }
 
-export type WakeReservation =
-  | { allowed: true; reservationId: string; wakeCount: number }
-  | { allowed: false; code: DispatchBlockCode; reason: string; wakeCount: number };
-
-const configuredInt = (value: string | undefined, fallback: number, minimum: number): number => {
-  if (value == null || value.trim() === "") return fallback;
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed >= minimum ? parsed : fallback;
-};
-
-export function readDispatchLimits(env: NodeJS.ProcessEnv = process.env): DispatchLimits {
-  return {
-    maxDepth: configuredInt(env.KITH_SPACE_MAX_DISPATCH_DEPTH, DEFAULT_MAX_DISPATCH_DEPTH, 0),
-    maxWakes: configuredInt(env.KITH_SPACE_MAX_DISPATCH_WAKES, DEFAULT_MAX_DISPATCH_WAKES, 1),
-  };
-}
 
 export function normalizeTaskExecutionMode(value: unknown): TaskExecutionMode | null {
   if (value == null || value === "") return "autopilot";
   return value === "autopilot" || value === "plan-first" ? value : null;
-}
-
-/** Pure guard decision. Wake count is deliberately a dispatch-count proxy: runtime adapters do not
- * currently expose structured token usage, so true token accounting remains a separate contract gap. */
-export function decideDispatch(input: DispatchGuardInput, limits: DispatchLimits = readDispatchLimits()): DispatchDecision {
-  if (input.spaceStopped) return { allowed: false, code: "SPACE_STOPPED", reason: "space dispatch is stopped" };
-  if (input.taskStopped) return { allowed: false, code: "TASK_STOPPED", reason: "task dispatch is stopped" };
-  if (input.dispatchDepth > limits.maxDepth) {
-    return { allowed: false, code: "DEPTH_LIMIT", reason: `dispatch depth ${input.dispatchDepth} exceeds maximum ${limits.maxDepth}` };
-  }
-  if (input.wakeCount >= limits.maxWakes) {
-    return { allowed: false, code: "WAKE_BUDGET", reason: `dispatch wake budget ${limits.maxWakes} is exhausted` };
-  }
-  return { allowed: true };
 }
 
 export interface EnsureChainInput extends DispatchMessageContext {
@@ -171,76 +139,10 @@ export class SqliteDispatchState {
    * requiring a schema migration; concurrent calls cannot interleave between them.
    */
   async getOrReserveWake(input: ReserveWakeInput): Promise<WakeReservation> {
-    const db = dbForSpace(this.spaceId);
-    let result: WakeReservation = { allowed: false, code: "WAKE_BUDGET", reason: "dispatch chain not found", wakeCount: 0 };
-    db.transaction((tx) => {
-      const chain = tx.select().from(schema.dispatchChains).where(and(
-        eq(schema.dispatchChains.id, input.chainId),
-        eq(schema.dispatchChains.spaceId, this.spaceId),
-      )).get();
-      if (!chain) return;
-      const spaceStopped = !!tx.select().from(schema.dispatchStops).where(and(
-        eq(schema.dispatchStops.spaceId, this.spaceId),
-        eq(schema.dispatchStops.scopeType, "space"),
-        eq(schema.dispatchStops.scopeId, this.spaceId),
-      )).get();
-      const taskMessageId = input.taskMessageId ?? chain.taskMessageId;
-      const taskStopped = !!(taskMessageId && tx.select().from(schema.dispatchStops).where(and(
-        eq(schema.dispatchStops.spaceId, this.spaceId),
-        eq(schema.dispatchStops.scopeType, "task"),
-        eq(schema.dispatchStops.scopeId, taskMessageId),
-      )).get());
-      if (spaceStopped || taskStopped) {
-        const decision = decideDispatch({ dispatchDepth: input.dispatchDepth, wakeCount: chain.wakeCount, spaceStopped, taskStopped }, this.limits);
-        result = { allowed: false, code: decision.code!, reason: decision.reason!, wakeCount: chain.wakeCount };
-        return;
-      }
-      const existing = tx.select().from(schema.dispatchWakes).where(and(
-        eq(schema.dispatchWakes.spaceId, this.spaceId),
-        eq(schema.dispatchWakes.chainId, input.chainId),
-        eq(schema.dispatchWakes.messageId, input.messageId),
-        eq(schema.dispatchWakes.targetAgentId, input.targetAgentId),
-      )).get();
-      if (existing) {
-        result = { allowed: true, reservationId: existing.id, wakeCount: chain.wakeCount };
-        return;
-      }
-      const decision = decideDispatch({
-        dispatchDepth: input.dispatchDepth,
-        wakeCount: chain.wakeCount,
-        spaceStopped,
-        taskStopped,
-      }, this.limits);
-      if (!decision.allowed) {
-        tx.update(schema.dispatchChains).set({
-          lastRejectionCode: decision.code!,
-          lastRejectionReason: decision.reason!,
-          lastRejectedAt: new Date(),
-          lastRejectedMessageId: input.messageId,
-          lastRejectedAgentId: input.targetAgentId,
-          updatedAt: new Date(),
-        }).where(eq(schema.dispatchChains.id, input.chainId)).run();
-        result = { allowed: false, code: decision.code!, reason: decision.reason!, wakeCount: chain.wakeCount };
-        return;
-      }
-      const reservationId = randomUUID();
-      tx.update(schema.dispatchChains).set({
-        wakeCount: sql`${schema.dispatchChains.wakeCount} + 1`,
-        maxDepthSeen: Math.max(chain.maxDepthSeen, input.dispatchDepth),
-        updatedAt: new Date(),
-      }).where(eq(schema.dispatchChains.id, input.chainId)).run();
-      tx.insert(schema.dispatchWakes).values({
-        id: reservationId,
-        spaceId: this.spaceId,
-        chainId: input.chainId,
-        messageId: input.messageId,
-        targetAgentId: input.targetAgentId,
-        dispatchDepth: input.dispatchDepth,
-        status: "reserved",
-      }).run();
-      result = { allowed: true, reservationId, wakeCount: chain.wakeCount + 1 };
-    });
-    return result;
+    return dbForSpace(this.spaceId).transaction((tx) => reserveDispatchWakeInTransaction(tx, {
+      spaceId: this.spaceId,
+      ...input,
+    }, this.limits));
   }
 
   async commitWake(reservationId: string, context: CommitWakeContext): Promise<void> {
@@ -266,18 +168,10 @@ export class SqliteDispatchState {
 
   async releaseWake(reservationId: string): Promise<void> {
     const db = dbForSpace(this.spaceId);
-    db.transaction((tx) => {
-      const wake = tx.select().from(schema.dispatchWakes).where(and(
-        eq(schema.dispatchWakes.id, reservationId),
-        eq(schema.dispatchWakes.spaceId, this.spaceId),
-      )).get();
-      if (!wake || wake.status !== "reserved") return;
-      tx.delete(schema.dispatchWakes).where(eq(schema.dispatchWakes.id, reservationId)).run();
-      tx.update(schema.dispatchChains).set({
-        wakeCount: sql`max(${schema.dispatchChains.wakeCount} - 1, 0)`,
-        updatedAt: new Date(),
-      }).where(eq(schema.dispatchChains.id, wake.chainId)).run();
-    });
+    db.transaction((tx) => releaseDispatchWakeInTransaction(tx, {
+      spaceId: this.spaceId,
+      reservationId,
+    }));
   }
 
   /** Return an acknowledged-but-not-executed queue item to replayable pending state without refunding budget. */

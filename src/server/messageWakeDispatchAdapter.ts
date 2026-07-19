@@ -36,7 +36,7 @@ export function createWakeDispatchPort<TTarget>(dependencies: {
     }
 
     if (!dependencies.isTarget(target)) {
-      await state.releaseWake(reservation.reservationId);
+      if (!input.durableReservation) await state.releaseWake(reservation.reservationId);
       if (target.reason !== "agent not found") {
         await dependencies.markUnavailable(input.spaceId, input.targetAgent.id, target.reason);
       }
@@ -67,7 +67,7 @@ export function createWakeDispatchPort<TTarget>(dependencies: {
       return { status: "pending" as const, reason: error instanceof Error ? error.message : String(error) };
     }
     if (admission.status === "rejected") {
-      await state.releaseWake(reservation.reservationId);
+      if (!input.durableReservation) await state.releaseWake(reservation.reservationId);
       if (input.delivery.responseDirective === "required" && streamId) {
         await dependencies.eventSink.publish(input.spaceId, {
           type: "agent:reply",

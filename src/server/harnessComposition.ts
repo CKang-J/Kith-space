@@ -24,8 +24,10 @@ export const harnessTurnScheduler = new HarnessTurnScheduler({
   },
 });
 
-export function scheduleV2Turns(spaceId: string): Promise<void> {
-  return harnessTurnScheduler.schedule(spaceId);
+export async function scheduleV2Turns(spaceId: string): Promise<void> {
+  const core = await import("./core.js");
+  await core.recoverLegacyTurnOutputMentions(spaceId);
+  await harnessTurnScheduler.schedule(spaceId);
 }
 
 export function turnCapabilityService(spaceId: string): TurnCapabilityService {
@@ -40,7 +42,18 @@ export function turnCapabilityService(spaceId: string): TurnCapabilityService {
 export function turnOutputService(spaceId: string): TurnOutputService {
   let service = outputs.get(spaceId);
   if (!service) {
-    service = new TurnOutputService(spaceId, { publish, schedulePending: scheduleV2Turns });
+    service = new TurnOutputService(spaceId, {
+      publish,
+      schedulePending: scheduleV2Turns,
+      async dispatchLegacyMentions(input) {
+        const core = await import("./core.js");
+        await core.dispatchLegacyTurnOutputMentions(input);
+      },
+      async recoverLegacyMentions(targetSpaceId) {
+        const core = await import("./core.js");
+        await core.recoverLegacyTurnOutputMentions(targetSpaceId);
+      },
+    });
     outputs.set(spaceId, service);
   }
   return service;

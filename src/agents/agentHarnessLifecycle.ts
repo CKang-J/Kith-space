@@ -117,19 +117,32 @@ export function migrateExistingAgentToV2(spaceId: string, agentId: string, reaso
         )).orderBy(asc(schema.messages.seq)).all();
         for (const message of messages) {
           const mentions = tx.select().from(schema.messageMentions).where(eq(schema.messageMentions.messageId, message.id)).all()
-            .map((mention) => ({ type: mention.mentionType as "agent" | "human", id: mention.mentionId, name: mention.mentionName }));
+            .map((mention) => ({ type: mention.mentionType as "agent" | "human" | "channel_all", id: mention.mentionId, name: mention.mentionName }));
+          const directThread = !message.taskStatus && message.threadId
+            && (channel.type === "channel" || channel.type === "private")
+            && mentions.some((mention) => mention.type === "agent" && mention.id === agentId)
+            && !mentions.some((mention) => mention.type === "channel_all")
+            ? tx.select().from(schema.channels).where(and(
+                eq(schema.channels.id, message.threadId),
+                eq(schema.channels.spaceId, spaceId),
+                eq(schema.channels.type, "thread"),
+              )).get()
+            : null;
+          const deliveryChannel = directThread ?? channel;
           count += journal.persistMessageInTransaction(tx, {
             spaceId,
-            channel,
+            channel: deliveryChannel,
             message,
             senderType: message.senderType as "human" | "agent" | "system",
             senderId: message.senderId,
             candidateAgentIds: [agentId],
             mentions,
             explicitTaskAgentId: message.taskAssigneeType === "agent" ? message.taskAssigneeId : null,
-            targetSurface: message.taskAssigneeType === "agent" && message.taskAssigneeId === agentId && message.threadId
-              ? { kind: "thread", id: message.threadId }
-              : undefined,
+            targetSurface: directThread
+              ? { kind: "thread", id: directThread.id }
+              : message.taskAssigneeType === "agent" && message.taskAssigneeId === agentId && message.threadId
+                ? { kind: "thread", id: message.threadId }
+                : undefined,
             allowedHarnessModes: ["migrating"],
           });
         }

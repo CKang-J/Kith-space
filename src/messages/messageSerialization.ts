@@ -47,6 +47,7 @@ export function serializeMessage(
     taskExecutionMode: message.taskExecutionMode,
     dispatchChainId: message.dispatchChainId,
     dispatchDepth: message.dispatchDepth,
+    producedByTurnId: message.producedByTurnId,
     attachments: attachments.map((attachment) => ({
       id: attachment.id,
       filename: attachment.filename,

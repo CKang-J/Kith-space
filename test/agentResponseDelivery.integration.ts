@@ -43,9 +43,8 @@ try {
     content: "@passive please inspect; @silent keep this as context",
   });
   assert.deepEqual(deliveries().map((message) => [message.agentId, message.responseDirective, message.responseReason]).sort(), [
-    [active.id, "optional", "human_ambient_message"],
     [passive.id, "required", "explicit_mention"],
-  ].sort());
+  ].sort(), "a direct mention wakes only its thread targets; ambient channel participants do not share that turn");
 
   reset();
   const broadcast = await createMessage({

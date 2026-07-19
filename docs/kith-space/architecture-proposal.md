@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述个人 AgentOS 的目标模块边界。A2-A6、Home/Space root 的 H1-H4、P-A8、本轮聊天/壳层 UI、P-A9.0-P-A9.7 与 P-A10.0–P-A10.2 均已完成。当前 workspace schema v6、per-surface SessionModule、三家 v2 bridge、durable delivery/turn、broker-backed最小CLI Gateway与Worker session host已落地；支持runtime的新Agent直接使用v2，既有Agent按显式drain/backfill互斥cutover。P-A10.3–P-A10.7、H5继续按规格实施。P-A9 完整规格见 `../superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`，P-A10 规格见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
+> 本文描述个人 AgentOS 的目标模块边界。A2-A6、Home/Space root 的 H1-H4、P-A8、本轮聊天/壳层 UI、P-A9.0-P-A9.7 与 P-A10.0–P-A10.3 均已完成。当前 workspace schema v6、app.db v2、per-surface SessionModule、三家 v2 bridge、durable delivery/turn、server-owned direct-mention thread、Context Envelope、实时父级ACL、broker-backed最小CLI Gateway、turn inspector与Worker session host已落地。P-A10.4–P-A10.7、H5继续按规格实施。P-A9 完整规格见 `../superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`，P-A10 规格见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
 
 ## 1. 架构原则
 
@@ -135,7 +135,7 @@ Home 的 Spaces 模块只读取 app.db registry 和真实摘要。未来 Home ag
 
 ### 5.1 app.db
 
-实现状态：A2.1 已落地 `src/app-data/appDatabase.ts`。旧 `registry.db/workspaces` 已被 `app.db/spaces` 取代；Human profile 为单例行。A3 增加单例 `browser_access_settings` 和 `browser_sessions`，A4 增加单例 `desktop_settings`，P-A7 H1 增加单例 `installation_state.home_space_id`（`src/app-data/appDatabase.ts:81`）。
+实现状态：A2.1 已落地 `src/app-data/appDatabase.ts`。旧 `registry.db/workspaces` 已被 `app.db/spaces` 取代；Human profile 为单例行。A3 增加单例 `browser_access_settings` 和 `browser_sessions`，A4 增加单例 `desktop_settings`，P-A7 H1 增加单例 `installation_state.home_space_id`。P-A10.0建立app.db migration journal，P-A10.3把schema升至v2并在`installation_state.content_hmac_key`生成稳定的32-byte安装级key；它只用于Context/memory lineage HMAC，不作为浏览器或Agent凭据。
 
 本机 app data root 默认 `~/.kith-space`，目标结构为：
 
@@ -322,7 +322,7 @@ P-A9.1a-P-A9.7 已按 Message/Task、同库事务、Agent Transport、领域依�
 
 Runtime 契约 v2、H5、Message Context Snapshot、Rust 试验、公开 Web/H5 产品化和 UI 重做仍未开始；它们不得被解释为 P-A9 的隐含交付。阶段验证和当前唯一续接状态以 `../progress.md` 为准。
 
-## 11. P-A10 Agent Harness v2 边界（P-A10.0–P-A10.2 已实现）
+## 11. P-A10 Agent Harness v2 边界（P-A10.0–P-A10.3 已实现）
 
 P-A10 在 P-A9 深 Module 与 Worker admission 地基上增加一层 runtime-neutral Agent Harness，不改变 Desktop/Core/Worker 拓扑：
 
@@ -354,4 +354,6 @@ Message / Task durable fact
 
 P-A10把公开频道从“未加入也可读正文”收紧为“可发现、加入后读取/参与”，私有频道继续只对成员可见；跨频道原文不自动注入，Agent通过ACL查询、continuity/query recall和canonical/internal/shareable/ref disclosure projection获得连续性。Human顶层direct mention默认由服务端原子创建root/thread/membership/delivery并把Agent reply target锁定为该thread；silent可加入但不wake。普通thread每次同时校验父频道，撤权同步失效membership/session/capability。
 
-完整类型、11条ADR、失败模式、NFR、P-A10.0-P-A10.7切片、P-A11/P-A12/P-S1后续边界和43个验收场景见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。P-A10.0 的 migration/contract/基线由 `src/app-data/appDatabaseMigrations.ts`、`src/db/spaceDatabaseCompatibility.ts`、`src/runtime/contract/v2/` 与 `src/memory/lexicalProjection.ts` 承担。P-A10.1 由 `src/sessions/sessionModule.ts`、broker、三家adapter bridge与Worker host承担。P-A10.2由`src/deliveries/deliveryJournal.ts`、`deliveryFrontier.ts`、`src/turns/turnLedger.ts`、`turnScheduler.ts`、`turnOutputService.ts`、`src/capabilities/turnCapabilityService.ts`、`src/server/turn-gateway/`和Worker `runtimeTurnController.ts`承担；`src/server/turnDispatchAdapter.ts`以窄端口复用既有dispatch guard。legacy Agent API、Worker event、reconnect和start在非legacy mode下拒绝；显式cutover先封锁新legacy HTTP请求并等待已进入请求drain。Runtime v2使用安装级Space FIFO和每Space/Agent有界批次，admission+execution总量受128上限约束，未activate admission 120秒过期；Core generation推进会取消旧preparing/running并停止旧terminal重传，shutdown最多等待10秒。terminal使用strict usage codec、128KiB envelope cap并重发到Core幂等ACK，event按64KiB单条、2000条/8MiB聚合上限与critical预留截断。runtime配置漂移退休旧turn并requeue到新session generation；rollback以副作用前的稳定acceptedAt授权。Gateway实时ACL仍明确留在P-A10.3，不把当前broker identity校验误写成已完成的撤权语义。
+P-A10.3由`src/messages/messagePostingModule.ts`与`src/turns/turnOutputService.ts`原子建立direct-mention root/thread/membership/delivery；mixed cutover按目标mode把v2送入DeliveryJournal，legacy仅在同一output事务通过共享响应模式/水位线判定后，才由`src/dispatch/dispatchReservation.ts`写actionable reserved wake并由Conversation Module执行/重启扫描恢复；设置或mode在post-commit后变化为确定性no-wake时，scanner原子退款chain budget，migrating留给cutover backfill。`0006_legacy_dispatch_recovery.sql`为该scanner增加`(status,created_at)`索引。`src/context/contextAssembler.ts`只在已绑定frontier内、逐次ACL复核后冻结可审计Context Envelope并以app.db v2安装级key生成lineage HMAC，`src/turns/turnLedger.ts`按保守8k required预算绑定连续前缀、把尾部留给下一logical turn。`src/channels/agentSurfaceAccess.ts`、`channelAgentAccessRevocation.ts`与`taskScopedAccess.ts`提供逐调用父级ACL及Human移除、Agent leave、task release/reassign/终态/自然到期的同事务撤权；DB提交后再关闭broker handle并取消Worker attempt，过期grant在admission前或运行中heartbeat越界时关闭。`src/turns/turnInspector.ts`与`web/src/views/chat-message/TurnDetailsButton.tsx`提供Context/Steps/Usage/Outcome、tombstone和真实injection state视图。`turn.reply`以output-surface watermark确定性拒绝later Human/other-Agent消息；later-query refresh与完整MCP仍属于P-A10.4。
+
+完整类型、11条ADR、失败模式、NFR、P-A10.0-P-A10.7切片、P-A11/P-A12/P-S1后续边界和43个验收场景见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。P-A10.0 的 migration/contract/基线由 `src/app-data/appDatabaseMigrations.ts`、`src/db/spaceDatabaseCompatibility.ts`、`src/runtime/contract/v2/` 与 `src/memory/lexicalProjection.ts` 承担。P-A10.1 由 `src/sessions/sessionModule.ts`、broker、三家adapter bridge与Worker host承担。P-A10.2由`src/deliveries/deliveryJournal.ts`、`deliveryFrontier.ts`、`src/turns/turnLedger.ts`、`turnScheduler.ts`、`turnOutputService.ts`、`src/capabilities/turnCapabilityService.ts`、`src/server/turn-gateway/`和Worker `runtimeTurnController.ts`承担；`src/server/turnDispatchAdapter.ts`以窄端口复用既有dispatch guard。legacy Agent API、Worker event、reconnect和start在非legacy mode下拒绝；显式cutover先封锁新legacy HTTP请求并等待已进入请求drain。Runtime v2使用安装级Space FIFO和每Space/Agent有界批次，admission+execution总量受128上限约束，未activate admission 120秒过期；Core generation推进会取消旧preparing/running并停止旧terminal重传，shutdown最多等待10秒。terminal使用strict usage codec、128KiB envelope cap并重发到Core幂等ACK，event按64KiB单条、2000条/8MiB聚合上限与critical预留截断。runtime配置漂移退休旧turn并requeue到新session generation；rollback以副作用前的稳定acceptedAt授权。P-A10.3已补逐调用实时membership/父话题ACL与撤权事务；完整MCP、later-query refresh与其余产品工具仍属P-A10.4。

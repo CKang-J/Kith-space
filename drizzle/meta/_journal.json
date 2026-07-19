@@ -43,6 +43,13 @@
       "when": 1784458418697,
       "tag": "0005_agent_durable_turns",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784467852894,
+      "tag": "0006_legacy_dispatch_recovery",
+      "breakpoints": true
     }
   ]
 }

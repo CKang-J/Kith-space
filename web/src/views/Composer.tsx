@@ -15,6 +15,7 @@ import {
   matchesChannelAllMentionQuery,
 } from "./composerChannelAllMention.ts";
 import { insertAgentMention } from "./composerMention.ts";
+import { messageContextSnapshot } from "../messageContextSnapshot.ts";
 
 // Shared message composer for channels, DMs, and threads. Owns text, attachment upload
 // (button / paste / drag-drop, with per-file progress), @mention autocomplete, and send.
@@ -37,7 +38,7 @@ interface ComposerProps {
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer({ channelId, placeholder, allowAsTask = false, allowChannelAllMention = false, validateChannelTaskMentions = true, dmAgent, className }, ref) {
   const { t } = useTranslation();
-  const { api, visibleAgents: agents, uploadOne, attachmentUrl } = useStore();
+  const { api, spaceId, visibleAgents: agents, uploadOne, attachmentUrl } = useStore();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
   const [text, setText] = useState("");
   const [asTask, setAsTask] = useState(false);
@@ -121,7 +122,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     sendingRef.current = true;
     setSending(true);
     try {
-      const result = await api("POST", "/api/messages", { channelId, content: v, asTask: asT, attachmentIds: ids });
+      const result = await api("POST", "/api/messages", {
+        channelId,
+        content: v,
+        asTask: asT,
+        attachmentIds: ids,
+        contextSnapshot: messageContextSnapshot(spaceId, channelId, className === "thread-composer"),
+      });
       if (result?.error) throw new Error(String(result.error));
       setText(""); setAtQuery(null); setAsTask(false); setPendingAtts([]);
     } catch (error) {

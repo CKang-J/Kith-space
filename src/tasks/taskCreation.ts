@@ -11,7 +11,7 @@ type Channel = typeof schema.channels.$inferSelect;
 
 export function insertTaskOwningThread(
   tx: SpaceTransaction,
-  task: { id: string; spaceId: string; senderType: string; senderId?: string | null },
+  task: { id: string; spaceId: string; channelId: string; senderType: string; senderId?: string | null },
   assigneeId?: string | null,
   membershipWatermark = 0,
 ): string {
@@ -38,14 +38,38 @@ export function insertTaskOwningThread(
   if (task.senderType === "agent" && task.senderId) agentMembers.add(task.senderId);
   if (assigneeId) agentMembers.add(assigneeId);
   if (agentMembers.size) {
-    tx.insert(schema.channelAgentMembers).values([...agentMembers].map((agentId) => ({
-      channelId: threadId,
-      agentId,
-      lastReadSeq: membershipWatermark,
-      ...initialAgentResponseWakeWatermarks(membershipWatermark),
-    }))).onConflictDoNothing().run();
+    tx.insert(schema.channelAgentMembers).values([...agentMembers].map((agentId) => taskThreadMembership(
+      tx,
+      { parentChannelId: task.channelId, threadId, taskId: task.id, agentId, watermark: membershipWatermark },
+    ))).onConflictDoNothing().run();
   }
   return threadId;
+}
+
+export function taskThreadMembership(
+  tx: SpaceTransaction,
+  input: { parentChannelId: string; threadId: string; taskId: string; agentId: string; watermark: number },
+): typeof schema.channelAgentMembers.$inferInsert {
+  const hasParentAccess = Boolean(tx.select({ agentId: schema.channelAgentMembers.agentId })
+    .from(schema.channelAgentMembers).where(and(
+      eq(schema.channelAgentMembers.channelId, input.parentChannelId),
+      eq(schema.channelAgentMembers.agentId, input.agentId),
+    )).get());
+  return {
+    channelId: input.threadId,
+    agentId: input.agentId,
+    lastReadSeq: input.watermark,
+    ...initialAgentResponseWakeWatermarks(input.watermark),
+    ...(hasParentAccess ? {
+      accessKind: "member" as const,
+      taskScope: null,
+      accessExpiresAt: null,
+    } : {
+      accessKind: "task_scoped" as const,
+      taskScope: { taskId: input.taskId, allowedObjectIds: [input.taskId] },
+      accessExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    }),
+  };
 }
 
 export function createTaskRecord(input: {
@@ -89,6 +113,7 @@ export function createTaskRecordInTransaction(
   const threadId = insertTaskOwningThread(tx, {
     id: String(input.message.id),
     spaceId: input.spaceId,
+    channelId: input.channel.id,
     senderType: input.message.senderType,
     senderId: input.message.senderId,
   }, input.assigneeId, Number(input.message.seq ?? 0));

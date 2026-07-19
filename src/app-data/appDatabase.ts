@@ -204,6 +204,17 @@ export function getHomeSpaceId(): string | undefined {
   return row?.home_space_id ?? undefined;
 }
 
+/** Stable installation-local key used only for irreversible context lineage HMACs. */
+export function getContentHmacKey(): Buffer {
+  const value = appDataConnection().prepare(`
+    SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1
+  `).pluck().get();
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
+    throw new Error("installation content HMAC key is unavailable");
+  }
+  return Buffer.from(value, "hex");
+}
+
 export function getHomeSpaceRecord(): SpaceRecord | undefined {
   const homeSpaceId = getHomeSpaceId();
   return homeSpaceId ? getSpaceRecord(homeSpaceId) : undefined;

@@ -35,6 +35,7 @@ import { MessageTopicPreview } from "./chat-message/MessageTopicPreview.tsx";
 import { shouldGroupMessage } from "./chat-message/messageGrouping.ts";
 import { surfaceForSender } from "./chat-message/messagePresentation.ts";
 import { buildMessageImageGallery, isSingleImageMessage } from "./chat-message/messageImageGallery.ts";
+import { TurnDetailsButton } from "./chat-message/TurnDetailsButton.tsx";
 import type { LightboxImage } from "../Lightbox.tsx";
 import { useConversationApi } from "../features/conversation/data/conversationApi.ts";
 import { useTaskApi } from "../features/conversation/data/taskApi.ts";
@@ -575,6 +576,7 @@ export function Chat({
                       timestamp={fmtMessageTimestamp(m.createdAt)}
                     />}
                     toolbar={<MessageToolbar>
+                      {m.producedByTurnId ? <TurnDetailsButton turnId={m.producedByTurnId} /> : null}
                       {!conversationReadOnly ? <ReactionToolbarButton onReact={(emoji) => react(m.id, emoji, false)} /> : null}
                       {!conversationReadOnly || tm?.threadChannelId ? <button title={t("chat.openThread")} aria-label={t("chat.openThread")} onClick={() => startThread(m)}><MessageCircle size={15} /></button> : null}
                       <button title={t("chat.copyMarkdown")} aria-label={t("chat.copyMarkdown")} onClick={() => copyMarkdown(m.content)}><Clipboard size={15} /></button>
@@ -785,6 +787,7 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
           timestamp={fmtMessageTimestamp(m.createdAt)}
         />}
         toolbar={<MessageToolbar>
+          {m.producedByTurnId ? <TurnDetailsButton turnId={m.producedByTurnId} /> : null}
           {!readOnly ? <ReactionToolbarButton onReact={(emoji) => react(m.id, emoji, false)} /> : null}
           <button title={t("chat.copyMarkdown")} aria-label={t("chat.copyMarkdown")} onClick={() => { navigator.clipboard?.writeText(m.content).catch(() => {}); }}><Clipboard size={15} /></button>
           <button title={t("chat.more")} aria-label={t("chat.more")} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setCtxMenu({ m, x: rect.right - 212, y: rect.bottom + 4 }); }}><MoreHorizontal size={15} /></button>

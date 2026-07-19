@@ -272,7 +272,7 @@ test("the P-A10.1 schema v6 journal prefix migrates to the complete v6 durable h
     assert.equal(sqlite.pragma("user_version", { simple: true }), 6);
     assert.ok(tables(sqlite).includes("agent_delivery_items"));
     assert.ok(tables(sqlite).includes("turn_capability_activations"));
-    assert.equal(sqlite.prepare("SELECT count(*) FROM __drizzle_migrations").pluck().get(), 6);
+    assert.equal(sqlite.prepare("SELECT count(*) FROM __drizzle_migrations").pluck().get(), WORKSPACE_MIGRATION_HISTORY.length);
   } finally {
     sqlite.close();
     unregisterSpace(spaceId);

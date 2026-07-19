@@ -14,6 +14,24 @@ export const ContextSourceRefSchema = z.object({
   reason: z.string().min(1),
 }).strict();
 
+export const MessageContextSnapshotSchema = z.object({
+  spaceId: z.string().min(1).max(128),
+  module: z.string().min(1).max(64),
+  routeId: z.string().min(1).max(128),
+  openObjectRefs: z.array(z.object({
+    type: z.string().min(1).max(64),
+    id: z.string().min(1).max(256),
+    revision: z.number().int().nonnegative().optional(),
+  }).strict()).max(16),
+  focusedRef: z.object({
+    type: z.string().min(1).max(64),
+    id: z.string().min(1).max(256),
+    field: z.string().min(1).max(64).optional(),
+  }).strict().optional(),
+  capturedAt: z.number().int().nonnegative(),
+}).strict();
+export type MessageContextSnapshot = z.infer<typeof MessageContextSnapshotSchema>;
+
 export const ContextEnvelopeSchema = z.object({
   schemaVersion: z.literal(1),
   turnId: z.string().min(1),
@@ -40,6 +58,7 @@ export const ContextEnvelopeSchema = z.object({
     projection: z.enum(["canonical", "internal_summary", "shareable_summary", "ref_only"]),
   }).strict()),
   fileMemoryRefs: z.array(z.object({ path: z.string().min(1), contentHash: z.string().min(1), reason: z.string().min(1) }).strict()),
+  uiSnapshot: MessageContextSnapshotSchema.optional(),
   capabilityActivationId: z.string().min(1),
   budget: z.object({ available: z.number().int().nonnegative(), used: z.number().int().nonnegative(), estimator: z.string().min(1) }).strict(),
   omissions: z.array(z.object({ sourceKind: z.string().min(1), reason: z.string().min(1), count: z.number().int().nonnegative() }).strict()),

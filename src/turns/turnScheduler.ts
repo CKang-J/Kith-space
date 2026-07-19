@@ -10,7 +10,10 @@ import { RUNTIME_V2_CAPABILITY_MATRIX } from "../runtime/adapters/runtimeV2Capab
 import { SessionModule, type RuntimeSessionRecord } from "../sessions/sessionModule.js";
 import { coreLoopbackUrl } from "../server/localEndpoint.js";
 import { TurnCapabilityService, type PreparedTurnCapability } from "../capabilities/turnCapabilityService.js";
+import { ContextAssembler, inferContinuityMode } from "../context/contextAssembler.js";
 import { TurnLedger } from "./turnLedger.js";
+import { revokeExpiredTaskScopedAccess } from "../channels/taskScopedAccess.js";
+import { assertAgentSurfaceAccessInTransaction } from "../channels/agentSurfaceAccess.js";
 
 const LEASE_MS = Number(process.env.KITH_SPACE_TURN_LEASE_MS ?? 90_000);
 const HEARTBEAT_MS = Math.max(1_000, Math.min(30_000, Math.floor(LEASE_MS / 3)));
@@ -65,6 +68,19 @@ export class HarnessTurnScheduler {
     if (heartbeat) clearInterval(heartbeat);
     this.heartbeats.delete(attemptId);
     void this.schedule(spaceId);
+  }
+
+  cancelRevokedAttempts(attempts: readonly { id: string; workerGeneration: number }[]): void {
+    for (const attempt of attempts) {
+      const heartbeat = this.heartbeats.get(attempt.id);
+      if (heartbeat) clearInterval(heartbeat);
+      this.heartbeats.delete(attempt.id);
+      this.options.runtimeWorker.cancelTurn({
+        type: "agent:turn:cancel",
+        generation: attempt.workerGeneration,
+        attemptId: attempt.id,
+      });
+    }
   }
 
   async cancelAgent(spaceId: string, agentId: string): Promise<void> {
@@ -226,7 +242,31 @@ export class HarnessTurnScheduler {
       if (config && isSupportedRuntime(config.runtime)) this.armAt(spaceId, this.now() + 1);
       return;
     }
+    const capabilityService = this.options.capabilities(spaceId);
+    const expiredScope = revokeExpiredTaskScopedAccess(spaceId, session.surfaceId, turn.agentId, db, this.now());
+    if (expiredScope.count) {
+      capabilityService.closeSessions(expiredScope.sessionIds);
+      this.cancelRevokedAttempts(expiredScope.attempts);
+      this.log.info("expired task-scoped turn was revoked before context assembly", {
+        spaceId, turnId, agentId: turn.agentId, surfaceId: session.surfaceId,
+      });
+      return;
+    }
+    try {
+      db.transaction((tx) => assertAgentSurfaceAccessInTransaction(tx, {
+        spaceId,
+        channelId: session.surfaceId,
+        agentId: turn.agentId,
+        now: this.now(),
+      }));
+    } catch (error) {
+      this.log.warn("turn surface access was denied before context assembly", {
+        spaceId, turnId, agentId: turn.agentId, surfaceId: session.surfaceId, detail: errorMessage(error),
+      });
+      return;
+    }
     const owner = `core-worker-${generation}`;
+    const continuityMode = inferContinuityMode(session);
     let claimed: ReturnType<TurnLedger["claimAttempt"]>;
     try {
       claimed = ledger.claimAttempt({ turnId, workerGeneration: generation, leaseOwner: owner, leaseMs: LEASE_MS });
@@ -234,11 +274,15 @@ export class HarnessTurnScheduler {
       if (error instanceof HarnessError && error.code === "attempt_lease_conflict") return;
       throw error;
     }
-    const capabilityService = this.options.capabilities(spaceId);
     let prepared: PreparedTurnCapability | null = null;
     const deadlineAt = this.now() + TURN_DEADLINE_MS;
     try {
       prepared = capabilityService.prepare(claimed.attempt.id);
+      const assembled = new ContextAssembler(spaceId, db, this.now).assemble(
+        turn.id,
+        prepared.claims.activationId,
+        continuityMode,
+      );
       const admission = await this.options.runtimeWorker.admitTurn({
         type: "agent:turn:admit",
         source: "turn",
@@ -251,7 +295,7 @@ export class HarnessTurnScheduler {
         turn: {
           turnId: turn.id,
           attemptId: claimed.attempt.id,
-          context: "A durable Kith-space turn is ready. Inspect it with `kith-space turn context`, then settle every input through the turn tools.",
+          context: assembled.renderedContext,
           capabilityActivationId: prepared.claims.activationId,
           deadlineAt,
         },
@@ -286,6 +330,7 @@ export class HarnessTurnScheduler {
     if (prior) clearInterval(prior);
     const timer = setInterval(() => {
       const live = this.options.runtimeWorker.availability();
+      if (this.revokeExpiredAttemptScope(spaceId, attemptId)) return;
       if (this.now() >= deadlineAt) {
         clearInterval(timer);
         this.heartbeats.delete(attemptId);
@@ -313,6 +358,23 @@ export class HarnessTurnScheduler {
     }, HEARTBEAT_MS);
     timer.unref?.();
     this.heartbeats.set(attemptId, timer);
+  }
+
+  private revokeExpiredAttemptScope(spaceId: string, attemptId: string): boolean {
+    const db = dbForSpace(spaceId);
+    const attempt = db.select({ turnId: schema.agentTurnAttempts.turnId }).from(schema.agentTurnAttempts)
+      .where(eq(schema.agentTurnAttempts.id, attemptId)).get();
+    const turn = attempt ? db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, attempt.turnId)).get() : null;
+    const session = turn ? db.select().from(schema.runtimeSessions).where(eq(schema.runtimeSessions.id, turn.runtimeSessionId)).get() : null;
+    if (!turn || !session) return false;
+    const revoked = revokeExpiredTaskScopedAccess(spaceId, session.surfaceId, turn.agentId, db, this.now());
+    if (!revoked.count) return false;
+    this.options.capabilities(spaceId).closeSessions(revoked.sessionIds);
+    this.cancelRevokedAttempts(revoked.attempts);
+    this.log.info("running task-scoped turn expired and was cancelled", {
+      spaceId, turnId: turn.id, attemptId, agentId: turn.agentId, surfaceId: session.surfaceId,
+    });
+    return true;
   }
 
   private armNext(spaceId: string): void {
