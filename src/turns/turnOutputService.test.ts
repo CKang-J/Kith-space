@@ -1,0 +1,242 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
+import { nextSeq } from "../counters.js";
+import { closeSpaceDb, dbForSpace, registerSpace, schema, unregisterSpace } from "../db/index.js";
+import { kithSpaceHome } from "../paths.js";
+import { MAX_TURN_EVENT_AGGREGATE_BYTES, TurnLedger } from "./turnLedger.js";
+import { TurnOutputService } from "./turnOutputService.js";
+
+async function fixture() {
+  const spaceId = randomUUID();
+  const agentId = randomUUID();
+  const channelId = randomUUID();
+  const sessionId = randomUUID();
+  const turnId = randomUUID();
+  const attemptId = randomUUID();
+  registerSpace({ id: spaceId, name: "Turn output", slug: `turn-output-${spaceId}`, rootPath: path.join(kithSpaceHome(), "turn-output", spaceId) });
+  const db = dbForSpace(spaceId);
+  db.insert(schema.agents).values({ id: agentId, spaceId, name: "output-agent", displayName: "Output Agent", status: "active" }).run();
+  db.insert(schema.channels).values({ id: channelId, spaceId, name: "output", type: "channel" }).run();
+  db.insert(schema.channelAgentMembers).values({ channelId, agentId, lastReadSeq: 0 }).run();
+  db.insert(schema.agentHarnessState).values({ agentId, mode: "v2" }).run();
+  db.insert(schema.runtimeSessions).values({
+    id: sessionId,
+    spaceId,
+    agentId,
+    surfaceKind: "channel",
+    surfaceId: channelId,
+    sessionGeneration: 1,
+    runtime: "claude",
+    runtimeConfigFingerprint: "config",
+    adapterVersion: "test",
+    workspaceRootFingerprint: "root",
+    status: "running",
+  }).run();
+  db.insert(schema.agentTurns).values({
+    id: turnId,
+    runtimeSessionId: sessionId,
+    sessionGeneration: 1,
+    spaceId,
+    agentId,
+    effectiveDirective: "required",
+    status: "running",
+  }).run();
+  const deliveries: string[] = [];
+  for (const content of ["first required", "second required"]) {
+    const messageId = randomUUID();
+    const seq = await nextSeq(spaceId);
+    db.insert(schema.messages).values({ id: messageId, seq, spaceId, channelId, senderType: "human", senderId: "human", senderName: "Human", content, memoryPolicy: "eligible" }).run();
+    const deliveryId = randomUUID();
+    db.insert(schema.agentDeliveryItems).values({
+      id: deliveryId,
+      spaceId,
+      agentId,
+      messageId,
+      sourceChannelId: channelId,
+      sourceSeq: seq,
+      cursorOwnerChannelId: channelId,
+      targetSurfaceKind: "channel",
+      targetSurfaceId: channelId,
+      targetRuntimeSessionId: sessionId,
+      directive: "required",
+      reason: "direct_mention",
+      policySnapshot: {},
+      disposition: "bound",
+      turnId,
+    }).run();
+    deliveries.push(deliveryId);
+  }
+  db.insert(schema.agentTurnAttempts).values({
+    id: attemptId,
+    turnId,
+    attemptNo: 1,
+    status: "running",
+    workerGeneration: 2,
+    leaseOwner: "test",
+    leaseExpiresAt: new Date(Date.now() + 60_000),
+  }).run();
+  const events: unknown[] = [];
+  const output = new TurnOutputService(spaceId, { async publish(_spaceId, event) { events.push(event); } }, db);
+  return { spaceId, agentId, channelId, sessionId, turnId, attemptId, deliveries, db, output, events };
+}
+
+test("two required inputs cannot finalize after only one is covered", async () => {
+  const f = await fixture();
+  try {
+    await f.output.reply({ turnId: f.turnId, attemptId: f.attemptId, idempotencyKey: "reply:first", body: "Handled the first.", handledInputIds: [f.deliveries[0]!] });
+    new TurnLedger(f.spaceId, f.db).markRuntimeTerminal(f.attemptId, { outcome: "completed", engineSessionId: "engine-1" });
+    assert.deepEqual(f.output.finalizeAttempt(f.attemptId), { finalized: false, unresolvedInputIds: [f.deliveries[1]!] });
+    assert.equal(f.db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, f.turnId)).get()?.status, "running");
+    await f.output.reply({ turnId: f.turnId, attemptId: f.attemptId, idempotencyKey: "reply:second", body: "Handled the second.", handledInputIds: [f.deliveries[1]!] });
+    assert.equal(f.db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, f.turnId)).get()?.status, "completed");
+    assert.equal(f.db.select().from(schema.channelAgentMembers).where(and(
+      eq(schema.channelAgentMembers.channelId, f.channelId),
+      eq(schema.channelAgentMembers.agentId, f.agentId),
+    )).get()?.lastReadSeq, 4);
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("reply operation retry returns one durable message and one sequence", async () => {
+  const f = await fixture();
+  try {
+    assert.throws(() => f.output.cede({
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      idempotencyKey: "cede:required",
+      inputIds: [f.deliveries[0]!],
+      reason: "skip",
+    }), /required or observe inputs cannot be ceded/);
+    const input = { turnId: f.turnId, attemptId: f.attemptId, idempotencyKey: "reply:all", body: "Handled both.", handledInputIds: f.deliveries };
+    const first = await f.output.reply(input);
+    const second = await f.output.reply(input);
+    assert.equal(second.id, first.id);
+    assert.equal(f.db.select().from(schema.messages).all().filter((message) => message.senderType === "agent").length, 1);
+    assert.equal(f.db.select().from(schema.turnOperations).where(eq(schema.turnOperations.turnId, f.turnId)).all().length, 1);
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("server-owned reply persists member mentions and inherits one dispatch chain and depth", async () => {
+  const f = await fixture();
+  try {
+    const peerId = randomUUID();
+    f.db.insert(schema.agents).values({ id: peerId, spaceId: f.spaceId, name: "peer", displayName: "Peer", status: "active" }).run();
+    f.db.insert(schema.channelAgentMembers).values({ channelId: f.channelId, agentId: peerId, lastReadSeq: 0 }).run();
+    f.db.insert(schema.agentHarnessState).values({ agentId: peerId, mode: "v2" }).run();
+    const source = f.db.select().from(schema.agentDeliveryItems).where(eq(schema.agentDeliveryItems.id, f.deliveries[0]!)).get()!;
+    const message = await f.output.reply({
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      idempotencyKey: "reply:peer",
+      body: "@peer please continue.",
+      handledInputIds: [f.deliveries[0]!],
+    });
+    assert.equal(message.dispatchChainId, source.messageId);
+    assert.equal(message.dispatchDepth, 1);
+    assert.equal(f.db.select().from(schema.messageMentions).where(eq(schema.messageMentions.messageId, message.id)).get()?.mentionId, peerId);
+    const peerDelivery = f.db.select().from(schema.agentDeliveryItems).where(and(
+      eq(schema.agentDeliveryItems.messageId, message.id),
+      eq(schema.agentDeliveryItems.agentId, peerId),
+    )).get();
+    assert.equal(peerDelivery?.directive, "required");
+    assert.equal(peerDelivery?.disposition, "pending");
+    assert.deepEqual((f.events[0] as any).message.mentions, [{ type: "agent", id: peerId, name: "peer" }]);
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("reply cannot mention another Agent while combining unrelated dispatch chains", async () => {
+  const f = await fixture();
+  try {
+    const peerId = randomUUID();
+    f.db.insert(schema.agents).values({ id: peerId, spaceId: f.spaceId, name: "peer", displayName: "Peer", status: "active" }).run();
+    f.db.insert(schema.channelAgentMembers).values({ channelId: f.channelId, agentId: peerId, lastReadSeq: 0 }).run();
+    f.db.insert(schema.agentHarnessState).values({ agentId: peerId, mode: "v2" }).run();
+    await assert.rejects(() => f.output.reply({
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      idempotencyKey: "reply:ambiguous",
+      body: "@peer these came from two chains.",
+      handledInputIds: f.deliveries,
+    }), /one dispatch chain/);
+    assert.equal(f.db.select().from(schema.messages).all().filter((message) => message.senderType === "agent").length, 0);
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("expired terminals and oversized event streams fail closed", async () => {
+  const f = await fixture();
+  try {
+    const ledger = new TurnLedger(f.spaceId, f.db, () => Date.now() + 120_000);
+    assert.throws(() => ledger.markRuntimeTerminal(f.attemptId, { outcome: "completed", engineSessionId: null }), /no live attempt lease/);
+    assert.throws(() => ledger.appendEvent({
+      schemaVersion: 2,
+      workerGeneration: 2,
+      sessionId: f.sessionId,
+      sessionGeneration: 1,
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      eventId: "too-many",
+      ordinal: 2_000,
+      kind: "activity",
+      payload: {},
+      createdAt: Date.now(),
+    }), /event count exceeds/);
+    assert.throws(() => new TurnLedger(f.spaceId, f.db).appendEvent({
+      schemaVersion: 2,
+      workerGeneration: 2,
+      sessionId: f.sessionId,
+      sessionGeneration: 1,
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      eventId: "too-large",
+      ordinal: 0,
+      kind: "activity",
+      payload: { text: "x".repeat(70_000) },
+      createdAt: Date.now(),
+    }), /payload exceeds/);
+    f.db.update(schema.agentTurnAttempts).set({ eventPayloadBytes: MAX_TURN_EVENT_AGGREGATE_BYTES })
+      .where(eq(schema.agentTurnAttempts.id, f.attemptId)).run();
+    assert.throws(() => new TurnLedger(f.spaceId, f.db).appendEvent({
+      schemaVersion: 2,
+      workerGeneration: 2,
+      sessionId: f.sessionId,
+      sessionGeneration: 1,
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      eventId: "aggregate-full",
+      ordinal: 0,
+      kind: "activity",
+      payload: { text: "small" },
+      createdAt: Date.now(),
+    }), /aggregate limit/);
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("explicit cancellation terminates the attempt and requeues only unsettled inputs", async () => {
+  const f = await fixture();
+  try {
+    new TurnLedger(f.spaceId, f.db).cancelAttempt(f.attemptId, "agent_stopped", true);
+    assert.equal(f.db.select().from(schema.agentTurnAttempts).where(eq(schema.agentTurnAttempts.id, f.attemptId)).get()?.status, "cancelled");
+    assert.equal(f.db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, f.turnId)).get()?.status, "cancelled");
+    assert.deepEqual(f.db.select().from(schema.agentDeliveryItems).where(eq(schema.agentDeliveryItems.disposition, "pending")).all().map((row) => row.id).sort(), [...f.deliveries].sort());
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});

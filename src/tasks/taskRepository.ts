@@ -5,6 +5,7 @@ import { dbForSpace, schema } from "../db/index.js";
 import { assertTaskTransition } from "./taskPolicy.js";
 import { insertTaskOwningThread } from "./taskCreation.js";
 import { isTaskStatus, TaskOperationError, type TaskStatus } from "./taskTypes.js";
+import { DeliveryJournal } from "../deliveries/deliveryJournal.js";
 
 type Message = typeof schema.messages.$inferSelect;
 type MessageInsert = typeof schema.messages.$inferInsert;
@@ -51,6 +52,7 @@ function insertAudit(tx: SpaceTransaction, write: TaskAuditWrite | undefined): M
     }).onConflictDoNothing().run();
   }
   const audit = tx.insert(schema.messages).values(write.message).returning().get();
+  new DeliveryJournal().persistChannelMessageInTransaction(tx, audit.spaceId, audit);
   tx.update(schema.channels).set({ lastMessageAt: new Date() })
     .where(eq(schema.channels.id, audit.channelId)).run();
   return audit;

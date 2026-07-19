@@ -13,6 +13,7 @@ import { handleTasksModule } from "./agent-http/tasksModule.js";
 import { resolveAgent } from "./auth.js";
 import { SessionModule } from "../sessions/sessionModule.js";
 import { agentIdHeader, bearer, sendErr } from "./util.js";
+import { enterLegacyDataPlane } from "../agents/legacyDataPlaneDrain.js";
 
 export { addressableTarget, formatAgentMessage as fmt } from "./agent-http/context.js";
 
@@ -79,6 +80,12 @@ export async function handleAgentApi(
     });
     return true;
   }
+  const releaseLegacyRequest = enterLegacyDataPlane(agent.id);
+  if (!releaseLegacyRequest) {
+    sendErr(res, 409, "legacy Agent API is draining for v2 cutover", { code: "HARNESS_MODE_CONFLICT", harnessMode: "migrating" });
+    return true;
+  }
+  try {
   const scope = requiredScope(path);
   if (scope && !agentHasScope(agent.scopes, scope)) {
     sendErr(res, 403, `missing scope: ${scope}`, { code: "SCOPE_DENIED", scope });
@@ -99,4 +106,7 @@ export async function handleAgentApi(
   }
   sendErr(res, 404, "not found");
   return true;
+  } finally {
+    releaseLegacyRequest();
+  }
 }

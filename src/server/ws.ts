@@ -25,6 +25,9 @@ import {
   type WorkerLease,
 } from "../local-runtime/workerHub.js";
 import { SessionModule } from "../sessions/sessionModule.js";
+import { MAX_RUNTIME_TERMINAL_BYTES, RuntimeEventEnvelopeSchema, RuntimeTurnResultSchema, type RuntimeTurnResult } from "../runtime/contract/v2/runtimeContract.js";
+import { TurnLedger } from "../turns/turnLedger.js";
+import { harnessTurnScheduler, scheduleV2Turns, turnCapabilityService, turnOutputService } from "./harnessComposition.js";
 
 const log = createLogger("server:ws");
 
@@ -69,7 +72,17 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
         try { ws.send(JSON.stringify({ type: "ready:ack", generation: lease.generation })); } catch { /* */ }
         void catchUpAgentsOnWorker(runningAgents, lease)
           .catch((e: any) => log.error("worker reconnect catch-up failed", { detail: String(e?.message ?? e) }));
+        for (const { space } of allSpaceDbs()) {
+          if (!isWorkerLeaseCurrent(lease)) return;
+          void scheduleV2Turns(space.id).catch((e: any) => log.error("v2 turn recovery failed", { spaceId: space.id, detail: String(e?.message ?? e) }));
+        }
         log.info("local runtime worker ready", { runtimes, runningAgents: runningAgents.length, daemonVersion: msg.daemonVersion });
+      }
+      else if (msg.type === "agent:turn:event") {
+        await onTurnEvent(ws, msg, lease);
+      }
+      else if (msg.type === "agent:turn:terminal") {
+        await onTurnTerminal(ws, msg, lease);
       }
       else if (msg.type === "agent:status" || msg.type === "agent:activity") await onAgentUpdate(msg, lease);
       else if (msg.type === "agent:session" && msg.agentId) {
@@ -151,6 +164,7 @@ export async function reconcileWorkerReady(runningIds: string[], lease: WorkerLe
     if (!isWorkerLeaseCurrent(lease)) return false;
     for (const agent of agents) {
       if (!isWorkerLeaseCurrent(lease)) return false;
+      if (new SessionModule(space.id, db).harnessMode(agent.id) !== "legacy") continue;
       if (running.has(agent.id)) {
         const activity = agent.activity === "offline" || agent.activity === "sleeping" ? "online" : agent.activity;
         if (agent.status === "active" && activity === agent.activity) continue;
@@ -180,6 +194,7 @@ export async function markAllAgentsOffline(lease: WorkerLease): Promise<boolean>
     if (!isWorkerLeaseLatest(lease)) return false;
     for (const agent of agents) {
       if (!isWorkerLeaseLatest(lease)) return false;
+      if (new SessionModule(space.id, db).harnessMode(agent.id) !== "legacy") continue;
       await db.update(schema.agents).set({ status: "inactive", activity: "offline" }).where(eq(schema.agents.id, agent.id));
       if (!isWorkerLeaseLatest(lease)) return false;
       await publish(space.id, { type: "agent", id: agent.id, name: agent.name, status: "inactive", activity: "offline" });
@@ -187,6 +202,168 @@ export async function markAllAgentsOffline(lease: WorkerLease): Promise<boolean>
     }
   }
   return isWorkerLeaseLatest(lease);
+}
+
+async function onTurnEvent(ws: WebSocket, msg: any, lease: WorkerLease): Promise<void> {
+  const eventId = typeof msg?.event?.eventId === "string" ? msg.event.eventId : "";
+  try {
+    if (!isWorkerLeaseCurrent(lease)) throw new Error("stale Worker lease");
+    const event = RuntimeEventEnvelopeSchema.parse(msg.event);
+    if (event.workerGeneration !== lease.generation) throw new Error("stale Worker generation");
+    const db = dbForSpaceForTurn(event.turnId, event.attemptId, event.sessionId);
+    if (!db) throw new Error("turn event target not found");
+    const inserted = new TurnLedger(db.spaceId, db.db).appendEvent(event);
+    if (inserted) {
+      await projectTurnEvent(db.spaceId, db.db, event).catch((error) => {
+        log.warn("v2 turn event projection failed after durable append", { eventId: event.eventId, detail: errorMessage(error) });
+      });
+    }
+    if (!isWorkerLeaseCurrent(lease)) throw new Error("Worker lease changed during event commit");
+    ws.send(JSON.stringify({ type: "agent:turn:event:ack", eventId: event.eventId, ok: true }));
+  } catch (error) {
+    if (eventId && isWorkerLeaseCurrent(lease)) {
+      ws.send(JSON.stringify({ type: "agent:turn:event:ack", eventId, ok: false, error: errorMessage(error) }));
+    }
+  }
+}
+
+async function onTurnTerminal(ws: WebSocket, msg: any, lease: WorkerLease): Promise<void> {
+  const attemptId = typeof msg.attemptId === "string" ? msg.attemptId : "";
+  let spaceId: string | null = null;
+  try {
+    if (Buffer.byteLength(JSON.stringify(msg), "utf8") > MAX_RUNTIME_TERMINAL_BYTES) throw new Error("runtime terminal envelope exceeds the byte limit");
+    if (!attemptId || msg.generation !== lease.generation || !isWorkerLeaseCurrent(lease)) throw new Error("stale Worker terminal state");
+    if (typeof msg.turnId !== "string" || typeof msg.sessionId !== "string" || !Number.isInteger(msg.sessionGeneration)) {
+      throw new Error("invalid Worker terminal identity");
+    }
+    const located = dbForSpaceForTurn(msg.turnId, attemptId, msg.sessionId);
+    if (!located) throw new Error("turn terminal target not found");
+    spaceId = located.spaceId;
+    const attempt = located.db.select().from(schema.agentTurnAttempts).where(eq(schema.agentTurnAttempts.id, attemptId)).get();
+    const turn = located.db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, msg.turnId)).get();
+    if (!attempt || !turn || attempt.workerGeneration !== lease.generation || turn.sessionGeneration !== msg.sessionGeneration
+      || msg.agentId !== turn.agentId || msg.spaceId !== turn.spaceId) {
+      throw new Error("turn terminal identity does not match its live attempt");
+    }
+    if (["succeeded", "failed", "cancelled", "lost"].includes(attempt.status)) {
+      if (!isWorkerLeaseCurrent(lease)) throw new Error("Worker lease changed before duplicate terminal acknowledgement");
+      ws.send(JSON.stringify({ type: "agent:turn:terminal:ack", attemptId, ok: true }));
+      return;
+    }
+    const result = runtimeTurnResult(msg.result);
+    const ledger = new TurnLedger(spaceId, located.db);
+    ledger.markRuntimeTerminal(attemptId, result);
+    turnCapabilityService(spaceId).revokeAttempt(attemptId);
+    let completed = false;
+    if (result.outcome === "completed") {
+      const finalized = turnOutputService(spaceId).finalizeAttempt(attemptId);
+      completed = finalized.finalized;
+      if (!finalized.finalized) ledger.failAttempt(attemptId, "required_input_unresolved");
+    }
+    await projectTurnTerminal(spaceId, located.db, turn, attemptId, result, completed).catch((error) => {
+      log.warn("v2 turn terminal projection failed after durable commit", { attemptId, detail: errorMessage(error) });
+    });
+    harnessTurnScheduler.finishAttempt(spaceId, attemptId);
+    if (!isWorkerLeaseCurrent(lease)) throw new Error("Worker lease changed during terminal commit");
+    ws.send(JSON.stringify({ type: "agent:turn:terminal:ack", attemptId, ok: true }));
+  } catch (error) {
+    if (attemptId && isWorkerLeaseCurrent(lease)) {
+      ws.send(JSON.stringify({ type: "agent:turn:terminal:ack", attemptId, ok: false, error: errorMessage(error) }));
+    }
+  }
+}
+
+function dbForSpaceForTurn(turnId: string, attemptId: string, sessionId: string): { spaceId: string; db: ReturnType<typeof dbForSpace> } | null {
+  for (const { space, db } of allSpaceDbs()) {
+    const turn = db.select().from(schema.agentTurns).where(and(
+      eq(schema.agentTurns.id, turnId),
+      eq(schema.agentTurns.runtimeSessionId, sessionId),
+    )).get();
+    if (!turn) continue;
+    const attempt = db.select().from(schema.agentTurnAttempts).where(and(
+      eq(schema.agentTurnAttempts.id, attemptId),
+      eq(schema.agentTurnAttempts.turnId, turnId),
+    )).get();
+    if (attempt) return { spaceId: space.id, db };
+  }
+  return null;
+}
+
+function runtimeTurnResult(value: unknown): RuntimeTurnResult {
+  return RuntimeTurnResultSchema.parse(value);
+}
+
+async function projectTurnEvent(
+  spaceId: string,
+  db: ReturnType<typeof dbForSpace>,
+  event: import("../runtime/contract/v2/runtimeContract.js").RuntimeEventEnvelope,
+): Promise<void> {
+  const turn = db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, event.turnId)).get();
+  const session = turn ? db.select().from(schema.runtimeSessions).where(eq(schema.runtimeSessions.id, turn.runtimeSessionId)).get() : null;
+  const agent = turn ? db.select().from(schema.agents).where(eq(schema.agents.id, turn.agentId)).get() : null;
+  if (!turn || !session || !agent) return;
+  const scope = { scope: "scoped", channelId: session.surfaceId, conversationId: session.surfaceId, streamId: turn.id };
+  const text = typeof event.payload.text === "string" ? event.payload.text : "";
+  const toolName = typeof event.payload.toolName === "string" ? event.payload.toolName : "";
+  const toolInput = typeof event.payload.toolInput === "string" ? event.payload.toolInput : "";
+  const activity = event.kind === "thinking_summary" ? "thinking" : "working";
+  if (event.kind === "turn_started" || event.kind === "thinking_summary" || event.kind === "tool_started" || event.kind === "activity") {
+    db.update(schema.agents).set({ status: "active", activity }).where(eq(schema.agents.id, agent.id)).run();
+    await publish(spaceId, { type: "agent", id: agent.id, name: agent.name, status: "active", activity, detail: text.slice(0, 200), ...scope });
+  }
+  if (event.kind === "thinking_summary" || event.kind === "text_preview" || event.kind === "tool_started" || event.kind === "tool_completed" || event.kind === "tool_failed") {
+    await publish(spaceId, {
+      type: "trajectory",
+      agentId: agent.id,
+      name: agent.name,
+      entries: [{
+        kind: toolName ? "tool" : event.kind === "thinking_summary" ? "thinking" : "text",
+        text: text.slice(0, 2_000),
+        ...(toolName ? { toolName, toolInput: toolInput.slice(0, 1_000) } : {}),
+      }],
+      ...scope,
+    });
+  }
+  if (turn.effectiveDirective === "required") {
+    if (event.kind === "turn_started") {
+      await publish(spaceId, { type: "agent:reply", agentId: agent.id, channelId: session.surfaceId, streamId: turn.id, name: agent.displayName || agent.name, op: "start", text: "" });
+    } else if (event.kind === "text_preview" && text) {
+      await publish(spaceId, { type: "agent:reply", agentId: agent.id, channelId: session.surfaceId, streamId: turn.id, name: agent.displayName || agent.name, op: "delta", text });
+    }
+  }
+  await logActivity(spaceId, agent.id, {
+    kind: toolName ? "tool" : event.kind,
+    activity,
+    detail: event.kind,
+    ...(toolName ? { toolName, toolInput: toolInput.slice(0, 500) } : {}),
+    ...(event.kind === "thinking_summary" ? { text: text.slice(0, 200) } : {}),
+  });
+}
+
+async function projectTurnTerminal(
+  spaceId: string,
+  db: ReturnType<typeof dbForSpace>,
+  turn: typeof schema.agentTurns.$inferSelect,
+  attemptId: string,
+  result: RuntimeTurnResult,
+  completed: boolean,
+): Promise<void> {
+  const session = db.select().from(schema.runtimeSessions).where(eq(schema.runtimeSessions.id, turn.runtimeSessionId)).get();
+  const agent = db.select().from(schema.agents).where(eq(schema.agents.id, turn.agentId)).get();
+  if (!session || !agent) return;
+  const activity = completed ? "online" : "error";
+  const detail = completed ? "" : result.outcome === "completed" ? "required input unresolved; retry scheduled" : result.errorCode ?? `runtime ${result.outcome}`;
+  db.update(schema.agents).set({ status: "active", activity }).where(eq(schema.agents.id, agent.id)).run();
+  const scope = { scope: "scoped", channelId: session.surfaceId, conversationId: session.surfaceId, streamId: turn.id };
+  await publish(spaceId, { type: "agent", id: agent.id, name: agent.name, status: "active", activity, detail, ...scope });
+  if (turn.effectiveDirective === "required") {
+    await publish(spaceId, { type: "agent:reply", agentId: agent.id, channelId: session.surfaceId, streamId: turn.id, name: agent.displayName || agent.name, op: completed ? "done" : "error", text: detail });
+  }
+  await logActivity(spaceId, agent.id, { kind: "status", activity, detail, attemptId });
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function onAgentUpdate(msg: any, lease: WorkerLease): Promise<void> {

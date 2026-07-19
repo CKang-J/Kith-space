@@ -46,9 +46,14 @@ test("stable broker handle only resolves the currently activated attempt", () =>
   assert.throws(() => broker.resolve({ sessionHandle: handle, activationId: "activation-1", workerGeneration: 6 }), /another Worker generation/);
   assert.throws(() => broker.activate(handle, claims({ activationId: "activation-2" })), /already has an active attempt/);
 
+  assert.equal(broker.renew(handle, "activation-1", 3_000).expiresAt, 3_000);
+  now = 2_001;
+  assert.equal(broker.resolve({ sessionHandle: handle, activationId: "activation-1", workerGeneration: 7 }).expiresAt, 3_000);
+
   assert.equal(broker.deactivate(handle, "activation-1"), true);
   assert.throws(() => broker.resolve({ sessionHandle: handle, activationId: "activation-1", workerGeneration: 7 }), /no matching active attempt/);
 
+  now = 1_000;
   broker.activate(handle, claims({ activationId: "activation-2", expiresAt: 1_100 }));
   now = 1_101;
   assert.throws(() => broker.resolve({ sessionHandle: handle, activationId: "activation-2", workerGeneration: 7 }), /expired/);

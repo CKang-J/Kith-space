@@ -56,6 +56,7 @@ export interface TaskLifecycleDependencies {
   eventSink: { publish(spaceId: string, event: unknown): Promise<void> };
   threads: ThreadModule;
   wake: TaskLifecycleWakePort;
+  scheduleDurableDeliveries?(spaceId: string): Promise<void>;
   onPostCommitError?(operation: string, error: unknown): void;
 }
 
@@ -203,6 +204,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
       senderName: "system",
       messageType: "system",
       content: input.content,
+      memoryPolicy: "exclude",
       searchText: input.content,
       dispatchChainId: input.dispatch?.chainId ?? null,
       dispatchDepth: input.dispatch?.dispatchDepth ?? null,
@@ -247,6 +249,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
       if (!result.changed) return result.task;
       await runPostCommit("publish converted task", () => publishTask(spaceId, "created", result.task));
       if (result.audit) await runPostCommit("publish conversion audit", () => publishAudit(spaceId, result.audit!, by));
+      if (result.audit) await runPostCommit("schedule conversion delivery", () => dependencies.scheduleDurableDeliveries?.(spaceId) ?? Promise.resolve());
       return result.task;
     },
 
@@ -273,6 +276,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
       if (!result.changed) return result.task;
       await runPostCommit("publish claimed task", () => publishTask(spaceId, "updated", result.task));
       if (result.audit) await runPostCommit("publish claim audit", () => publishAudit(spaceId, result.audit!, actor));
+      if (result.audit) await runPostCommit("schedule claim delivery", () => dependencies.scheduleDurableDeliveries?.(spaceId) ?? Promise.resolve());
       return result.task;
     },
 
@@ -297,6 +301,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
       if (!result.changed) return result.task;
       await runPostCommit("publish released task", () => publishTask(spaceId, "updated", result.task));
       if (result.audit) await runPostCommit("publish release audit", () => publishAudit(spaceId, result.audit!, by));
+      if (result.audit) await runPostCommit("schedule release delivery", () => dependencies.scheduleDurableDeliveries?.(spaceId) ?? Promise.resolve());
       return result.task;
     },
 
@@ -345,6 +350,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
       }
       await runPostCommit("publish assigned task", () => publishTask(spaceId, "updated", result.task));
       if (result.audit) await runPostCommit("publish assignment audit", () => publishAudit(spaceId, result.audit!, by));
+      if (result.audit) await runPostCommit("schedule assignment delivery", () => dependencies.scheduleDurableDeliveries?.(spaceId) ?? Promise.resolve());
       if (result.audit) {
         const decision = decideAgentMessageResponse({
           agentId: target.id,
@@ -441,6 +447,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
       }
       await runPostCommit("publish task status", () => publishTask(spaceId, "updated", result.task));
       if (result.audit) await runPostCommit("publish status audit", () => publishAudit(spaceId, result.audit!, by));
+      if (result.audit) await runPostCommit("schedule status delivery", () => dependencies.scheduleDurableDeliveries?.(spaceId) ?? Promise.resolve());
       if (result.audit && result.task.taskAssigneeType === "agent" && result.task.taskAssigneeId
         && by?.id !== result.task.taskAssigneeId) {
         const target = db.select().from(schema.agents)

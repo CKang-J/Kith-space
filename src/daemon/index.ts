@@ -11,6 +11,9 @@ import { workerBootstrapToken } from "../local-runtime/internalCredentials.js";
 import { RuntimeAdmissionController } from "../runtime/worker/runtimeAdmissionController.js";
 import type { AgentConfig } from "./agentManager.js";
 import type { WorkerAdmissionCommand } from "../runtime/contract/runtimeWorkerPort.js";
+import { RuntimeSessionHost } from "../runtime/worker/sessions/runtimeSessionHost.js";
+import { RuntimeTurnController } from "../runtime/worker/sessions/runtimeTurnController.js";
+import { getRuntimeV2 } from "../runtime/adapters/runtimeV2Bridge.js";
 
 const log = createLogger("daemon");
 // The installation-level Worker and Core Service always share one physical computer.
@@ -20,6 +23,14 @@ const workerToken = workerBootstrapToken();
 
 let conn: Connection;
 let admissions: RuntimeAdmissionController;
+const sessionHost = new RuntimeSessionHost(getRuntimeV2, {
+  activeTurnLimit: Number(process.env.KITH_SPACE_RUNTIME_CAPACITY ?? 4),
+  residentProcessLimit: Number(process.env.KITH_SPACE_RUNTIME_RESIDENT_LIMIT ?? 4),
+});
+const turns = new RuntimeTurnController(sessionHost, {
+  maxAdmitted: Number(process.env.KITH_SPACE_RUNTIME_QUEUE_LIMIT ?? 128),
+  send(message) { return conn?.send(message) ?? false; },
+});
 const mgr = new AgentManager((m) => conn.send(m), {
   onSessionEnded(agentId) { admissions?.sessionEnded(agentId); },
   onSessionIdle(agentId) { admissions?.sessionIdle(agentId); },
@@ -78,15 +89,36 @@ function admitWorkerCommand(message: any): void {
   void admitAndAck(message);
 }
 
+function admitTurnCommand(message: any): void {
+  if (!isAdmissionCommand(message) || message.type !== "agent:turn:admit" || message.source !== "turn") {
+    log.warn("rejected v2 turn command without admission identity", { type: message?.type, attemptId: message?.attemptId });
+    return;
+  }
+  const result = turns.admit(message);
+  conn.send({ type: "worker:admission", generation: result.generation, commandId: result.id, status: result.status, ...(result.reason ? { reason: result.reason } : {}) });
+}
+
+async function closeTurnSessionsAndAck(message: any): Promise<void> {
+  if (!isAdmissionCommand(message) || message.type !== "agent:turn:sessions:close" || message.source !== "turn") return;
+  const result = await turns.closeAgent(message);
+  conn.send({ type: "worker:admission", generation: result.generation, commandId: result.id, status: result.status, ...(result.reason ? { reason: result.reason } : {}) });
+}
+
 conn = new Connection(serverUrl, workerToken, (msg) => {
   if (msg.type !== "ping") log.debug("recv", { type: msg.type, agentId: msg.agentId });
   switch (msg.type) {
-    case "ready:ack": break;
+    case "ready:ack": void turns.advanceGeneration(Number(msg.generation)).catch((error) => log.warn("turn generation advance failed", { detail: String(error) })); break;
     case "agent:start": admitWorkerCommand(msg); break;
     case "agent:deliver": admitWorkerCommand(msg); break;
     case "agent:stop": admitWorkerCommand(msg); break;
     case "agent:sleep": admitWorkerCommand(msg); break;
     case "agent:reset": admitWorkerCommand(msg); break;
+    case "agent:turn:admit": admitTurnCommand(msg); break;
+    case "agent:turn:activate": void turns.activate(msg); break;
+    case "agent:turn:cancel": void turns.cancel(msg).catch((error) => log.warn("turn cancel failed", { attemptId: msg.attemptId, detail: String(error) })); break;
+    case "agent:turn:sessions:close": void closeTurnSessionsAndAck(msg).catch((error) => log.warn("turn session close failed", { agentId: msg.agentId, detail: String(error) })); break;
+    case "agent:turn:event:ack": turns.acknowledgeEvent(msg); break;
+    case "agent:turn:terminal:ack": turns.acknowledgeTerminal(msg); break;
     case "agent:profile": void mgr.syncProfile({ agentId: msg.agentId, spaceId: msg.spaceId ?? "", workspaceRoot: msg.workspaceRoot ?? "" }, msg.displayName ?? "", msg.description).catch((error) => log.warn("agent profile sync rejected", { agentId: msg.agentId, detail: String(error) })); break;
     case "agent:workspace:list": void listWorkspace(msg.workspaceRoot ?? "", msg.path ?? "").then((r) => conn.send({ type: "workspace:file_tree", requestId: msg.requestId, agentId: msg.agentId, ...r })); break;
     case "agent:workspace:read": void readWorkspaceFile(msg.workspaceRoot ?? "", msg.path ?? "").then((r) => conn.send({ type: "workspace:file_content", requestId: msg.requestId, agentId: msg.agentId, ...r })); break;
@@ -98,7 +130,7 @@ conn = new Connection(serverUrl, workerToken, (msg) => {
   const runtimes = detectRuntimes();
   log.info("ready", { runtimes });
   conn.send({
-    type: "ready", capabilities: ["agent:start", "agent:stop", "agent:sleep", "agent:reset", "agent:profile", "agent:deliver", "agent:workspace"],
+    type: "ready", capabilities: ["agent:start", "agent:stop", "agent:sleep", "agent:reset", "agent:profile", "agent:deliver", "agent:workspace", "agent:turn:v2"],
     runtimes, runningAgents: mgr.running(), daemonVersion: process.env.DAEMON_VERSION ?? "dev",
   });
 });
@@ -109,7 +141,7 @@ let shutdownPromise: Promise<void> | null = null;
 const shutdown = () => {
   if (shutdownPromise) return shutdownPromise;
   log.info("shutting down");
-  shutdownPromise = admissions.shutdown().then(() => {
+  shutdownPromise = Promise.all([admissions.shutdown(), turns.shutdown()]).then(() => {
     conn.close();
     process.exit(0);
   }).catch((error) => {

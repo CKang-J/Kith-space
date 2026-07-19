@@ -55,6 +55,7 @@ export const RuntimeEventKindSchema = z.enum([
   "usage",
   "compaction_started",
   "compaction_completed",
+  "events_truncated",
   "turn_completed",
   "turn_failed",
 ]);
@@ -116,12 +117,14 @@ export interface RuntimeTurnInput {
   deadlineAt: number;
 }
 
-export interface RuntimeTurnResult {
-  outcome: "completed" | "failed" | "cancelled";
-  engineSessionId: string | null;
-  usage?: NormalizedUsage;
-  errorCode?: string;
-}
+export const MAX_RUNTIME_TERMINAL_BYTES = 128 * 1024;
+export const RuntimeTurnResultSchema = z.object({
+  outcome: z.enum(["completed", "failed", "cancelled"]),
+  engineSessionId: z.string().max(4_096).nullable(),
+  usage: NormalizedUsageSchema.optional(),
+  errorCode: z.string().min(1).max(128).optional(),
+}).strict();
+export type RuntimeTurnResult = z.infer<typeof RuntimeTurnResultSchema>;
 
 export interface RuntimeEventSink {
   emit(event: RuntimeEventEnvelope): Promise<void>;

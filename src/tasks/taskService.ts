@@ -7,6 +7,7 @@ import { getHumanIdentity } from "../human/humanIdentity.js";
 import { humanChannelState, reactivateFollowedHumanThread } from "../human/humanChannelState.js";
 import { serializeMessage } from "../messages/messageSerialization.js";
 import { isTaskStatus, parseTaskActionMetadata, TaskOperationError, type TaskArtifactRef, type TaskReportKind } from "./taskTypes.js";
+import { DeliveryJournal } from "../deliveries/deliveryJournal.js";
 
 type Actor = { type: "human" | "agent"; id: string; name: string };
 type Message = typeof schema.messages.$inferSelect;
@@ -106,6 +107,7 @@ export async function reportTask(input: {
       senderName: input.actor.name,
       messageType: "action",
       content,
+      memoryPolicy: input.actor.type === "human" ? "eligible" : "exclude",
       searchText: content,
       actionMetadata: { kind: "task-report", taskId: task.id, reportKind: input.kind, artifactRefs },
       dispatchChainId: task.dispatchChainId,
@@ -122,6 +124,7 @@ export async function reportTask(input: {
       tx.insert(schema.channelAgentMembers).values({ channelId: task.threadId, agentId: input.actor.id }).onConflictDoNothing().run();
     }
     tx.update(schema.channels).set({ lastMessageAt: new Date() }).where(eq(schema.channels.id, task.threadId)).run();
+    new DeliveryJournal().persistChannelMessageInTransaction(tx, input.spaceId, report);
   });
   await reactivateFollowedHumanThread(input.spaceId, report.channelId);
   const thread = (await db.select().from(schema.channels).where(eq(schema.channels.id, report.channelId)))[0];
@@ -192,6 +195,7 @@ export async function submitTaskDelivery(input: {
       senderName: input.actor.name,
       messageType: "action",
       content: summary,
+      memoryPolicy: input.actor.type === "human" ? "eligible" : "exclude",
       searchText: summary,
       actionMetadata: {
         kind: "task-delivery",
@@ -204,6 +208,7 @@ export async function submitTaskDelivery(input: {
       dispatchChainId: current.dispatchChainId,
       dispatchDepth: current.dispatchDepth,
     }).returning().get();
+    new DeliveryJournal().persistChannelMessageInTransaction(tx, input.spaceId, delivery);
     task = tx.update(schema.messages).set({
       taskStatus: "in_review",
       taskCompletedAt: null,

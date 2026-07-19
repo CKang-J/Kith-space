@@ -37,7 +37,15 @@ export class Connection {
   ) {}
 
   connect(): void { this.should = true; this.doConnect(); }
-  send(m: unknown): void { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(m)); }
+  send(m: unknown): boolean {
+    if (this.ws?.readyState !== WebSocket.OPEN) return false;
+    try {
+      this.ws.send(JSON.stringify(m));
+      return true;
+    } catch {
+      return false;
+    }
+  }
   close(): void {
     this.should = false;
     if (this.timer) clearTimeout(this.timer);

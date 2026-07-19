@@ -6,6 +6,7 @@ import {
   RuntimeCapabilitiesSchema,
   RuntimeEventEnvelopeSchema,
   RuntimeSessionKeySchema,
+  RuntimeTurnResultSchema,
 } from "./runtimeContract.js";
 
 test("P-A10 Runtime v2 codecs reject ambiguous or incomplete envelopes", () => {
@@ -18,6 +19,21 @@ test("P-A10 Runtime v2 codecs reject ambiguous or incomplete envelopes", () => {
   assert.throws(() => RuntimeSessionKeySchema.parse({ spaceId: "space-1", agentId: "agent-1", surfaceKind: "task", surfaceId: "task-1" }));
   assert.throws(() => RuntimeEventEnvelopeSchema.parse({ schemaVersion: 2, kind: "turn_completed" }));
   assert.equal(NormalizedUsageSchema.parse({ inputTokens: 10, source: "final" }).inputTokens, 10);
+  assert.equal(RuntimeTurnResultSchema.parse({
+    outcome: "completed",
+    engineSessionId: "engine-1",
+    usage: { inputTokens: 10, outputTokens: 3, source: "final" },
+  }).usage?.outputTokens, 3);
+  assert.throws(() => RuntimeTurnResultSchema.parse({
+    outcome: "completed",
+    engineSessionId: null,
+    usage: { inputTokens: -1, source: "final" },
+  }));
+  assert.throws(() => RuntimeTurnResultSchema.parse({
+    outcome: "completed",
+    engineSessionId: null,
+    usage: { source: "final", unexpected: "x" },
+  }));
 });
 
 test("P-A10.0 capability baseline reports unsupported v1 behavior honestly", () => {

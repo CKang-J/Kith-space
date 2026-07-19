@@ -50,6 +50,8 @@ import {
   type TaskLifecycleModule,
 } from "../tasks/taskLifecycleModule.js";
 import { SessionModule } from "../sessions/sessionModule.js";
+import { DeliveryJournal } from "../deliveries/deliveryJournal.js";
+import { harnessTurnScheduler, scheduleV2Turns, turnCapabilityService } from "./harnessComposition.js";
 
 export { TASK_STATUSES } from "../tasks/taskTypes.js";
 
@@ -300,8 +302,9 @@ async function agentConfigFromRow(a: typeof schema.agents.$inferSelect) {
   if (!space) return null;
   // Per-agent independent token (sk_agent_* prefix, slice10):
   // cache hit → reuse; first time → mint + store hash + cache raw; agent already running (cache lost after server restart but agent still running) → do not re-mint or send new token (daemon ignores agent:start for running agents, agent continues using old token, server verifies via DB hash) → zero desync.
-  let token = agentRawTokens.get(a.id);
-  if (!token && !(a.status === "active" && a.agentTokenHash)) {
+  const legacyHarness = new SessionModule(a.spaceId, db).harnessMode(a.id) === "legacy";
+  let token = legacyHarness ? agentRawTokens.get(a.id) : undefined;
+  if (legacyHarness && !token && !(a.status === "active" && a.agentTokenHash)) {
     token = newKey("sk_agent_");
     agentRawTokens.set(a.id, token);
     await db.update(schema.agents).set({ agentTokenHash: hashToken(token) }).where(eq(schema.agents.id, a.id));
@@ -375,6 +378,7 @@ function conversationModules(): ReturnType<typeof createConversationModules> {
       complete: completeAgentIntroductionTurn,
       restore: restoreAgentIntroductionTurn,
     },
+    deliveryJournal: new DeliveryJournal(scheduleV2Turns),
   });
   return composedConversationModules;
 }
@@ -386,6 +390,7 @@ function taskLifecycle(): TaskLifecycleModule {
   composedTaskLifecycle = createTaskLifecycleModule({
     eventSink: conversationEventSink,
     threads: threadModule,
+    scheduleDurableDeliveries: scheduleV2Turns,
     wake: {
       async prepare(input) {
         const dispatch = await new SqliteDispatchState(input.spaceId).resolveMessageContext({
@@ -402,6 +407,10 @@ function taskLifecycle(): TaskLifecycleModule {
         };
       },
       async dispatch(input) {
+        if (new SessionModule(input.spaceId).harnessMode(input.target.id) === "v2") {
+          await scheduleV2Turns(input.spaceId);
+          return;
+        }
         const state = new SqliteDispatchState(input.spaceId);
         const reservation = await reserveDispatchWake({
           state,
@@ -673,21 +682,28 @@ async function sysTaskMsg(
 ) {
   const db = dbForSpace(spaceId);
   const seq = await nextSeq(spaceId);
-  const [m] = await db.insert(schema.messages).values({
-    ...(dispatch?.messageId ? { id: dispatch.messageId } : {}),
-    seq,
-    spaceId,
-    channelId,
-    senderType: "system",
-    senderId: actor?.id ?? null,
-    senderName: "system",
-    messageType: "system",
-    content,
-    searchText: content,
-    dispatchChainId: dispatch?.chainId ?? null,
-    dispatchDepth: dispatch?.dispatchDepth ?? null,
-  }).returning();
+  const m = db.transaction((tx) => {
+    const inserted = tx.insert(schema.messages).values({
+      ...(dispatch?.messageId ? { id: dispatch.messageId } : {}),
+      seq,
+      spaceId,
+      channelId,
+      senderType: "system",
+      senderId: actor?.id ?? null,
+      senderName: "system",
+      messageType: "system",
+      content,
+      memoryPolicy: "exclude",
+      searchText: content,
+      dispatchChainId: dispatch?.chainId ?? null,
+      dispatchDepth: dispatch?.dispatchDepth ?? null,
+    }).returning().get();
+    new DeliveryJournal().persistChannelMessageInTransaction(tx, spaceId, inserted);
+    tx.update(schema.channels).set({ lastMessageAt: new Date() }).where(eq(schema.channels.id, channelId)).run();
+    return inserted;
+  });
   await publishTaskSystemMessage(spaceId, m!, actor);
+  await scheduleV2Turns(spaceId);
   return m!;
 }
 
@@ -883,6 +899,15 @@ async function agentControlTarget(spaceId: string, agentId: string): Promise<Age
 /** Start an agent (requires the installation-local runtime worker to be online). */
 export async function startAgent(spaceId: string, agentId: string, reason: Exclude<AgentStartReason, "wake"> = "manual"): Promise<{ ok: boolean; reason?: string }> {
   const db = dbForSpace(spaceId);
+  const harnessMode = new SessionModule(spaceId, db).harnessMode(agentId);
+  if (harnessMode === "v2") {
+    await db.update(schema.agents).set({ status: "active", activity: isWorkerConnected() ? "working" : "offline" })
+      .where(and(eq(schema.agents.id, agentId), eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt)));
+    await publishAgentState(spaceId, agentId);
+    await scheduleV2Turns(spaceId);
+    return { ok: true };
+  }
+  if (harnessMode === "migrating") return { ok: false, reason: "Agent harness migration is incomplete" };
   const target = await agentStartTarget(spaceId, agentId);
   if (!target.ok) {
     if (target.reason !== "agent not found") await markAgentUnavailable(spaceId, agentId, target.reason);
@@ -920,6 +945,17 @@ export async function startAgent(spaceId: string, agentId: string, reason: Exclu
 export async function stopAgent(spaceId: string, agentId: string): Promise<boolean> {
   const db = dbForSpace(spaceId);
   clearAgentIntroductionTurns(spaceId, agentId);
+  if (new SessionModule(spaceId, db).harnessMode(agentId) === "v2") {
+    await harnessTurnScheduler.cancelAgent(spaceId, agentId);
+    try {
+      if (isWorkerConnected()) await harnessTurnScheduler.closeAgentSessions(spaceId, agentId, "stop");
+    } catch (error) {
+      log.warn("v2 Agent session close was not acknowledged", { agentId, detail: String(error) });
+    }
+    await db.update(schema.agents).set({ status: "inactive", activity: "offline" }).where(and(eq(schema.agents.id, agentId), eq(schema.agents.spaceId, spaceId)));
+    await publishAgentState(spaceId, agentId);
+    return true;
+  }
   const target = await agentControlTarget(spaceId, agentId);
   if (target.ok) {
     try {
@@ -936,6 +972,21 @@ export async function stopAgent(spaceId: string, agentId: string): Promise<boole
 export async function resetAgent(spaceId: string, agentId: string, clearAgentMemory = false): Promise<boolean> {
   const db = dbForSpace(spaceId);
   clearAgentIntroductionTurns(spaceId, agentId);
+  const sessions = new SessionModule(spaceId, db);
+  if (sessions.harnessMode(agentId) === "v2") {
+    await harnessTurnScheduler.cancelAgent(spaceId, agentId);
+    try {
+      if (isWorkerConnected()) await harnessTurnScheduler.closeAgentSessions(spaceId, agentId, "reset");
+    } catch (error) {
+      log.warn("v2 Agent reset close was not acknowledged", { agentId, detail: String(error) });
+    }
+    const sessionIds = db.select({ id: schema.runtimeSessions.id }).from(schema.runtimeSessions).where(and(
+      eq(schema.runtimeSessions.agentId, agentId),
+      isNull(schema.runtimeSessions.retiredAt),
+    )).all();
+    for (const session of sessionIds) turnCapabilityService(spaceId).closeSession(session.id);
+    sessions.retireAgentSessions(agentId);
+  }
   const target = await agentControlTarget(spaceId, agentId);
   if (target.ok) {
     try {

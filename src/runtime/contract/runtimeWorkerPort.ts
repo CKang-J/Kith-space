@@ -1,5 +1,5 @@
 export type AdmissionStatus = "admitted" | "queued" | "rejected";
-export type WorkerCommandSource = "wake" | "manual" | "lifecycle";
+export type WorkerCommandSource = "wake" | "manual" | "lifecycle" | "turn";
 
 export interface WorkerDelivery {
   seq: number;
@@ -56,12 +56,59 @@ export interface ResetCommand extends WorkerCommandBase {
   clearAgentMemory: boolean;
 }
 
+export interface TurnAdmitCommand extends WorkerCommandBase {
+  type: "agent:turn:admit";
+  source: "turn";
+  commandId: string;
+  config: unknown;
+  session: {
+    id: string;
+    spaceId: string;
+    agentId: string;
+    surfaceKind: "channel" | "private" | "dm" | "thread";
+    surfaceId: string;
+    sessionGeneration: number;
+    runtime: string;
+    engineSessionId: string | null;
+  };
+  broker: { sessionHandle: string; endpoint: string };
+  turn: {
+    turnId: string;
+    attemptId: string;
+    context: string;
+    capabilityActivationId: string;
+    deadlineAt: number;
+  };
+}
+
+export interface TurnActivateCommand {
+  type: "agent:turn:activate";
+  generation: number;
+  attemptId: string;
+  activationId: string;
+}
+
+export interface TurnCancelCommand {
+  type: "agent:turn:cancel";
+  generation: number;
+  attemptId: string;
+}
+
+export interface TurnSessionsCloseCommand extends WorkerCommandBase {
+  type: "agent:turn:sessions:close";
+  source: "turn";
+  commandId: string;
+  reason: "stop" | "reset";
+}
+
 export type RuntimeWorkerCommand =
   | WakeStartCommand
   | ManualStartCommand
   | WakeDeliveryCommand
   | StopCommand
-  | ResetCommand;
+  | ResetCommand
+  | TurnAdmitCommand
+  | TurnSessionsCloseCommand;
 
 export type WorkerAdmissionCommand = RuntimeWorkerCommand & { generation: number };
 
@@ -97,6 +144,10 @@ export interface RuntimeWorkerPort {
   deliver(command: WakeDeliveryCommand): Promise<AdmissionResult>;
   stop(command: StopCommand): Promise<AdmissionResult>;
   reset(command: ResetCommand): Promise<AdmissionResult>;
+  admitTurn(command: TurnAdmitCommand): Promise<AdmissionResult>;
+  activateTurn(command: TurnActivateCommand): boolean;
+  cancelTurn(command: TurnCancelCommand): boolean;
+  closeTurnSessions(command: TurnSessionsCloseCommand): Promise<AdmissionResult>;
   availability(): RuntimeWorkerAvailability;
 }
 

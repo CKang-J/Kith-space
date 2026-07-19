@@ -1,10 +1,10 @@
 // Auto-extracted from the former routes-api.ts monolith — bodies are verbatim.
 import type { SpaceCtx } from "./ctx.js";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { ROLE_TEMPLATES, resolveRoleDescription } from "../../agents/roleTemplates.js";
 import { dbForSpace, schema, spaceRecord } from "../../db/index.js";
 import { DESC_TOO_LONG, INVALID_AGENT_NAME, addChannelMembers, descTooLong, invalidAgentName, resetAgent, startAgent, stopAgent, syncAgentProfile } from "../core.js";
-import { requestWorker } from "../../local-runtime/workerHub.js";
+import { isWorkerConnected, requestWorker, workerRuntimes } from "../../local-runtime/workerHub.js";
 import { publish } from "../realtime.js";
 import { clearAgentIntroductionTurns } from "../agentIntroduction.js";
 import {
@@ -21,6 +21,20 @@ import {
   setAgentDefaultResponseMode,
 } from "../../agents/agentResponseSettings.js";
 import { deleteAgentAndPrivateConversations } from "../../agents/agentDeletion.js";
+import {
+  canRollbackV2Agent,
+  initializeNewV2Agent,
+  migrateExistingAgentToV2,
+} from "../../agents/agentHarnessLifecycle.js";
+import { RUNTIME_V2_CAPABILITY_MATRIX } from "../../runtime/adapters/runtimeV2CapabilityMatrix.js";
+import { SessionModule } from "../../sessions/sessionModule.js";
+import { harnessTurnScheduler, scheduleV2Turns, turnCapabilityService } from "../harnessComposition.js";
+import { serializeMessage } from "../../messages/messageSerialization.js";
+import {
+  beginLegacyDataPlaneDrain,
+  endLegacyDataPlaneDrain,
+  waitForLegacyDataPlaneDrain,
+} from "../../agents/legacyDataPlaneDrain.js";
 
 export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   const { req, res, url, method, p, humanId, spaceId } = ctx;
@@ -56,15 +70,37 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
       envVars: b.envVars ?? {}, executionMode: b.fastMode ? "fast" : "auto", creatorType: "human", creatorId: humanId,
     }).onConflictDoNothing().returning();
     if (!agent) return (sendErr(res, 409, `an agent named "${b.name}" already exists`), true);
+    const runtime = agent!.runtime as keyof typeof RUNTIME_V2_CAPABILITY_MATRIX;
+    const useV2 = Object.prototype.hasOwnProperty.call(RUNTIME_V2_CAPABILITY_MATRIX, runtime);
+    let started = false;
+    if (useV2) {
+      try {
+        const introduction = await initializeNewV2Agent(spaceId, agent!.id);
+        const workerReady = isWorkerConnected() && workerRuntimes().includes(runtime);
+        await db.update(schema.agents).set({ activity: workerReady ? "working" : "offline" }).where(eq(schema.agents.id, agent!.id));
+        await publish(spaceId, { type: "dm:new", channelId: introduction.channel.id, participantHumanIds: [humanId] });
+        await publish(spaceId, {
+          type: "message",
+          channelId: introduction.channel.id,
+          message: { ...serializeMessage(introduction.message, [], []), channelType: "dm" },
+        });
+        started = workerReady;
+      } catch (error) {
+        await db.delete(schema.agents).where(eq(schema.agents.id, agent!.id));
+        throw error;
+      }
+    }
     const all = (await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.name, "all"))))[0];
     // Join #all at the channel watermark, NOT lastReadSeq=0 — a newly created agent must not have its first
     // `message check` flooded with the channel's entire pre-existing history (it only needs messages from now on).
     if (all) await addChannelMembers(spaceId, all.id, [{ type: "agent", id: agent!.id }]);
-    await publish(spaceId, { type: "agent:created", agent: { id: agent!.id, name: agent!.name, displayName: agent!.displayName, description: agent!.description, status: agent!.status, activity: agent!.activity, model: agent!.model, runtime: agent!.runtime, defaultResponseMode: agent!.defaultResponseMode } });
+    const created = db.select().from(schema.agents).where(eq(schema.agents.id, agent!.id)).get()!;
+    await publish(spaceId, { type: "agent:created", agent: { id: created.id, name: created.name, displayName: created.displayName, description: created.description, status: created.status, activity: created.activity, model: created.model, runtime: created.runtime, defaultResponseMode: created.defaultResponseMode } });
     // Start immediately on create: the client only POSTs /agents. If the local Worker is offline,
     // startAgent returns ok:false without blocking creation.
-    const started = await startAgent(spaceId, agent!.id, "create");
-    return (sendJson(res, 200, { id: agent!.id, name: agent!.name, started: started.ok }), true);
+    if (useV2) await scheduleV2Turns(spaceId);
+    else started = (await startAgent(spaceId, agent!.id, "create")).ok;
+    return (sendJson(res, 200, { id: agent!.id, name: agent!.name, started }), true);
   }
   const am = /^\/api\/agents\/([^/]+)$/.exec(p);
   if (am && method === "GET") {
@@ -82,6 +118,18 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     const b = await readJson(req); const patch: Record<string, unknown> = {};
     if (Object.prototype.hasOwnProperty.call(b, "machineId")) return (sendErr(res, 400, "machineId is no longer supported"), true);
     if (descTooLong(b.description)) return (sendErr(res, 400, DESC_TOO_LONG), true);
+    const harnessMode = new SessionModule(spaceId, db).harnessMode(am[1]!);
+    if (b.runtime !== undefined && harnessMode === "v2"
+      && !Object.prototype.hasOwnProperty.call(RUNTIME_V2_CAPABILITY_MATRIX, String(b.runtime))) {
+      return (sendErr(res, 409, "rollback the Agent to legacy before selecting a runtime without Harness v2 support", { code: "harness_runtime_unsupported" }), true);
+    }
+    if ((b.runtime !== undefined || b.model !== undefined) && harnessMode === "v2") {
+      const activeTurn = db.select({ id: schema.agentTurns.id }).from(schema.agentTurns).where(and(
+        eq(schema.agentTurns.agentId, am[1]!),
+        inArray(schema.agentTurns.status, ["pending", "running", "retry_wait"]),
+      )).get();
+      if (activeTurn) return (sendErr(res, 409, "runtime or model cannot change while an Agent turn is non-terminal", { code: "agent_turn_active", turnId: activeTurn.id }), true);
+    }
     for (const k of ["displayName", "description", "model", "runtime", "avatarUrl"]) if (b[k] !== undefined) patch[k] = b[k];
     if (b.envVars !== undefined) patch.envVars = b.envVars;
     let defaultResponseModeChanged = false;
@@ -132,6 +180,51 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     await resetAgent(spaceId, agId!, clearAgentMemory);
     if (b?.restart) await startAgent(spaceId, agId!); // Worker serializes same-agent reset/start so cleanup completes before the new runtime begins.
     return (sendJson(res, 200, { ok: true }), true);
+  }
+  const harness = /^\/api\/agents\/([^/]+)\/harness$/.exec(p);
+  if (harness && method === "POST") {
+    const agentId = harness[1]!;
+    const body = await readJson(req).catch(() => ({}));
+    const action = String(body.action ?? "");
+    const sessions = new SessionModule(spaceId, db);
+    if (action === "migrate") {
+      const currentMode = sessions.harnessMode(agentId);
+      if (currentMode !== "legacy" && currentMode !== "migrating") return (sendErr(res, 409, "Agent is not in a migratable harness mode"), true);
+      let backfilled: number;
+      if (currentMode === "legacy") {
+        beginLegacyDataPlaneDrain(agentId);
+        try {
+          await stopAgent(spaceId, agentId);
+          await waitForLegacyDataPlaneDrain(agentId);
+          backfilled = migrateExistingAgentToV2(spaceId, agentId, "human_requested_cutover");
+        } catch (error) {
+          return (sendErr(res, 409, error instanceof Error ? error.message : "legacy Agent data plane did not drain", { code: "harness_cutover_drain_failed" }), true);
+        } finally {
+          endLegacyDataPlaneDrain(agentId);
+        }
+      } else {
+        backfilled = migrateExistingAgentToV2(spaceId, agentId, "human_requested_cutover_resume");
+      }
+      await db.update(schema.agents).set({ status: "active", activity: "offline" }).where(eq(schema.agents.id, agentId));
+      await scheduleV2Turns(spaceId);
+      return (sendJson(res, 200, { ok: true, mode: "v2", backfilled }), true);
+    }
+    if (action === "rollback") {
+      let rollbackAcceptedAt: number;
+      try {
+        rollbackAcceptedAt = sessions.assertRollbackWindow(agentId);
+      } catch (error) {
+        return (sendErr(res, 409, error instanceof Error ? error.message : "Agent rollback window is unavailable", { code: "harness_rollback_unavailable" }), true);
+      }
+      if (!canRollbackV2Agent(spaceId, agentId)) return (sendErr(res, 409, "v2 turns or delivery items must be drained before rollback"), true);
+      if (isWorkerConnected()) await harnessTurnScheduler.closeAgentSessions(spaceId, agentId, "stop");
+      const sessionIds = db.select({ id: schema.runtimeSessions.id }).from(schema.runtimeSessions)
+        .where(and(eq(schema.runtimeSessions.agentId, agentId), isNull(schema.runtimeSessions.retiredAt))).all();
+      for (const session of sessionIds) turnCapabilityService(spaceId).closeSession(session.id);
+      sessions.rollbackToLegacy(agentId, { v2Drained: true, reason: "human_requested_rollback", acceptedAt: rollbackAcceptedAt });
+      return (sendJson(res, 200, { ok: true, mode: "legacy" }), true);
+    }
+    return (sendErr(res, 400, "action must be migrate or rollback"), true);
   }
   // Agent Memory browser. Keep the legacy workspace-files route/worker message names for deep-link and protocol compatibility.
   const awsList = /^\/api\/agents\/([^/]+)\/workspace-files$/.exec(p);

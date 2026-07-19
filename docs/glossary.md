@@ -149,7 +149,7 @@
 : 自建生产力模块（v1 = 任务；后续 = 邮箱/日历/画布）不进 runtime，而是各自包成一个 MCP server 暴露给外接 agent。agent 像调用普通工具一样调用 `task_create` 等，落到我方服务端逻辑。这是"原生丝滑"的实现路径之一，与 UI 桥配合。
 
 **Capability Gateway / 能力网关**
-: P-A10 目标态中 Agent 操作 Kith-space 的唯一受支持产品 API。MCP Adapter 与受控 `kith-space` CLI Adapter 把请求解析成同一领域 command，复用 Message/Task/Memory 等深 Module；broker-backed turn capability 固定 Agent、Space、attempt、允许 input/output、seen watermarks、scope、披露权与过期时间。它在 OS sandbox 前不是阻止 runtime 直接读本机路径的物理边界。
+: P-A10 中 Agent 操作 Kith-space 的唯一受支持产品 API。P-A10.2已实现loopback受控CLI Adapter的`turn context/reply/cede`最小面；P-A10.4再加入完整MCP与Message/Task/Memory等工具。broker-backed turn capability固定Agent、Space、attempt、允许input/output、seen watermarks、scope、披露权与过期时间。它在OS sandbox前不是阻止runtime直接读本机路径的物理边界。
 
 **Turn Capability Broker / 工作轮次能力代理**
 : 为常驻 runtime 提供稳定本机 handle、由 Worker 按 attempt 激活 opaque capability 的控制面。Core在每次MCP/CLI调用时校验实时lease/turn/ACL并在终态撤销，避免把无法轮换的per-turn bearer固定注入子进程环境。
@@ -158,7 +158,7 @@
 : 与 SQLite `user_version` 配对的不可变迁移前缀记录。workspace.db 校验 Drizzle migration 的时间与 hash，app.db 保存 version/name/checksum；两者不一致时在任何业务写入或降版本前拒绝，避免 journal ahead 跳迁移或 journal behind 重复 DDL。
 
 **cede / 让出回复**
-: optional turn 中 Agent 明确表示“已读取并判断无需回复”的成功终态。它与没收到、仍在运行或执行失败不同，不生成 Chat 消息，但进入 Turn Ledger；当前响应模式允许 optional 静默，P-A10 将把它升级为显式持久协议。
+: optional turn 中 Agent 明确表示“已读取并判断无需回复”的成功终态。它与没收到、仍在运行或执行失败不同，不生成Chat消息，但进入Turn Ledger；P-A10.2的v2 turn已通过`turn cede`实现显式持久协议，legacy路径仍沿用旧静默语义。
 
 **UI 桥**
 : 把 MCP 工具调用的副作用实时反映到界面（如任务看板随任务事件刷新）的机制，与 MCP 工具设计共同构成"丝滑"的两半。
@@ -300,7 +300,7 @@
 : Desktop 信任凭据和 Local Runtime Worker 控制凭据的统称。两者彼此独立，也不与浏览器 Access Token 或 agent session token 复用。Desktop 每次启动/重启受管进程组都会重新生成；只有手动分进程开发才临时使用 `KITH_SPACE_DESKTOP_TOKEN` 和 `KITH_SPACE_WORKER_TOKEN` 注入。
 
 **每工作区独立 SQLite 文件**
-: 每个 Space 把自己的元数据、消息、任务、频道、Agent、membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 schema v6 有 21 张产品表；连同 Drizzle 的 `__drizzle_migrations` 是 22 张物理表。v6 在 v5 的 19 表基础上新增 `agent_harness_state` 与 `runtime_sessions`，保存互斥 cutover 和 per-surface generation；`agents.session_id` 只作 legacy rollback 来源。所有领域外键使用 `space_id`；Human 资料和 Desktop 设置不随 Space 复制。
+: 每个 Space 把自己的元数据、消息、任务、频道、Agent、membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 schema v6 有34张产品表；连同Drizzle的`__drizzle_migrations`是35张物理表。v6先新增`agent_harness_state/runtime_sessions`，再以同版本后续journal前缀加入durable delivery/turn/output/context/capability/checklist/wakeup结构；P-A10.1的21表v6前缀仍可继续迁移。`agents.session_id`只作legacy rollback来源。
 
 **`.kith/`**
 : Space root 下承载其可移植状态的目录：`workspace.db`（Space 元数据、agent 阵容、频道、消息和任务）、`memory/`（Space Memory）、`agents/<agentId>/`（Agent Memory）和 `uploads/`（附件对象）。runtime prompt、日志和宿主临时状态不放在这里。

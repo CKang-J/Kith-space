@@ -17,10 +17,15 @@ test("workspace compatibility manifest is selected by the database version", () 
   assert.ok(!v4.get("agents")?.includes("default_response_mode"));
   assert.ok(v5.get("agents")?.includes("default_response_mode"));
   assert.ok(v5.get("channel_agent_members")?.includes("response_mode_override"));
-  assert.equal(v6.size, 21);
+  assert.equal(requiredSpaceSchema(6, 5).size, 21, "P-A10.1 v6 prefix remains migratable");
+  assert.equal(v6.size, 34);
   assert.ok(v6.has("agent_harness_state"));
   assert.ok(v6.has("runtime_sessions"));
+  assert.ok(v6.has("agent_delivery_items"));
+  assert.ok(v6.has("turn_operations"));
   assert.deepEqual(requiredSpaceIndexes(5), []);
   assert.ok(requiredSpaceIndexes(6).includes("runtime_sessions_current_uniq"));
-  assert.equal(requiredSpaceForeignKeys(6).filter((foreignKey) => foreignKey.onDelete === "CASCADE").length, 3);
+  assert.equal(requiredSpaceForeignKeys(6, 5).length, 3, "P-A10.1 prefix keeps only session foreign keys");
+  assert.ok(requiredSpaceForeignKeys(6).some((foreignKey) => foreignKey.table === "agent_turn_attempts" && foreignKey.targetTable === "agent_turns"));
+  assert.ok(requiredSpaceForeignKeys(6).some((foreignKey) => foreignKey.table === "agent_delivery_items" && foreignKey.from === "target_runtime_session_id" && foreignKey.onDelete === "SET NULL"));
 });

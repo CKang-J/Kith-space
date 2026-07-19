@@ -92,8 +92,36 @@ export function assertCompatibleSpaceDatabase(
     );
   }
 
+  const migrationColumns = tableColumns(sqlite, "__drizzle_migrations");
+  const missingMigrationColumns = ["id", "hash", "created_at"].filter((column) => !migrationColumns.has(column));
+  if (missingMigrationColumns.length) {
+    throw new SpaceDatabaseCompatibilityError(
+      "schema",
+      `workspace.db at ${dbPath} is missing required schema entries: ${missingMigrationColumns.map((column) => `__drizzle_migrations.${column}`).join(", ")}`,
+      tables,
+    );
+  }
+  const actualJournal = sqlite.prepare(`
+    SELECT hash, created_at AS createdAt
+    FROM __drizzle_migrations
+    ORDER BY created_at, id
+  `).all() as Array<{ hash: string; createdAt: number }>;
+  const expectedJournal = WORKSPACE_MIGRATION_HISTORY
+    .filter((entry) => entry.version <= version)
+    .map((entry) => ({ hash: entry.hash, createdAt: entry.createdAt }));
+  const journalIsPrefix = actualJournal.length <= expectedJournal.length
+    && actualJournal.every((entry, index) => JSON.stringify(entry) === JSON.stringify(expectedJournal[index]));
+  if (!journalIsPrefix || (options.requireCurrentVersion && actualJournal.length !== expectedJournal.length)) {
+    throw new SpaceDatabaseCompatibilityError(
+      "journal",
+      `workspace.db at ${dbPath} has a migration journal that does not match schema version ${version}`,
+      tables,
+    );
+  }
+
+  const migrationCount = actualJournal.length;
   const missing: string[] = [];
-  for (const [table, requiredColumns] of requiredSpaceSchema(version)) {
+  for (const [table, requiredColumns] of requiredSpaceSchema(version, migrationCount)) {
     const actual = tableColumns(sqlite, table);
     if (actual.size === 0) {
       missing.push(`${table} (table)`);
@@ -103,17 +131,13 @@ export function assertCompatibleSpaceDatabase(
       if (!actual.has(column)) missing.push(`${table}.${column}`);
     }
   }
-  const migrationColumns = tableColumns(sqlite, "__drizzle_migrations");
-  for (const column of ["id", "hash", "created_at"]) {
-    if (!migrationColumns.has(column)) missing.push(`__drizzle_migrations.${column}`);
-  }
   const actualIndexes = new Set((sqlite.prepare(`
     SELECT name FROM sqlite_master WHERE type = 'index'
   `).all() as Array<{ name: string }>).map((row) => row.name));
-  for (const index of requiredSpaceIndexes(version)) {
+  for (const index of requiredSpaceIndexes(version, migrationCount)) {
     if (!actualIndexes.has(index)) missing.push(`${index} (index)`);
   }
-  for (const expected of requiredSpaceForeignKeys(version)) {
+  for (const expected of requiredSpaceForeignKeys(version, migrationCount)) {
     const actual = sqlite.prepare(`PRAGMA foreign_key_list(${quoteIdentifier(expected.table)})`).all() as Array<{
       table: string;
       from: string;
@@ -127,21 +151,6 @@ export function assertCompatibleSpaceDatabase(
     throw new SpaceDatabaseCompatibilityError(
       "schema",
       `workspace.db at ${dbPath} is missing required schema entries: ${missing.join(", ")}`,
-      tables,
-    );
-  }
-  const actualJournal = sqlite.prepare(`
-    SELECT hash, created_at AS createdAt
-    FROM __drizzle_migrations
-    ORDER BY created_at, id
-  `).all() as Array<{ hash: string; createdAt: number }>;
-  const expectedJournal = WORKSPACE_MIGRATION_HISTORY
-    .filter((entry) => entry.version <= version)
-    .map((entry) => ({ hash: entry.hash, createdAt: entry.createdAt }));
-  if (JSON.stringify(actualJournal) !== JSON.stringify(expectedJournal)) {
-    throw new SpaceDatabaseCompatibilityError(
-      "journal",
-      `workspace.db at ${dbPath} has a migration journal that does not match schema version ${version}`,
       tables,
     );
   }

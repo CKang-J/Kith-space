@@ -15,6 +15,9 @@ const KEY = process.env.KITH_SPACE_AGENT_TOKEN;
 const AGENT = process.env.KITH_SPACE_AGENT_ID ?? "";
 const TURN_FILE = process.env.KITH_SPACE_TURN_FILE ?? "";
 const INTRODUCTION_TOKEN = process.env.KITH_SPACE_INTRODUCTION_TOKEN ?? "";
+const BROKER_HANDLE = process.env.KITH_SPACE_BROKER_HANDLE ?? "";
+const BROKER_ENDPOINT = process.env.KITH_SPACE_BROKER_ENDPOINT ?? BASE;
+const ACTIVATION_FILE = process.env.KITH_SPACE_ACTIVATION_FILE ?? "";
 
 function headers(extra: Record<string, string> = {}) {
   if (!KEY) {
@@ -49,6 +52,39 @@ async function api(method: string, path: string, body?: unknown, extraHeaders?: 
     process.exit(1);
   }
 }
+
+async function brokerApi(method: string, path: string, body?: unknown): Promise<any> {
+  if (!BROKER_HANDLE || !ACTIVATION_FILE) {
+    console.error("Error: no active Harness v2 turn");
+    console.error("Code: capability_inactive");
+    process.exit(1);
+  }
+  let activation: { activationId?: string; workerGeneration?: number };
+  try { activation = JSON.parse(await readFile(ACTIVATION_FILE, "utf8")); }
+  catch {
+    console.error("Error: turn activation is no longer active");
+    console.error("Code: capability_inactive");
+    process.exit(1);
+  }
+  const res = await fetch(BROKER_ENDPOINT + path, {
+    method,
+    headers: {
+      "content-type": "application/json",
+      "x-kith-session-handle": BROKER_HANDLE,
+      "x-kith-activation-id": String(activation.activationId ?? ""),
+      "x-kith-worker-generation": String(activation.workerGeneration ?? ""),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  let data: any = {}; try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+  if (!res.ok) {
+    console.error(`Error: ${data.error ?? res.statusText}`);
+    if (data.code) console.error(`Code: ${data.code}`);
+    process.exit(1);
+  }
+  return data;
+}
 function targetFromText(text: string): string | null {
   const m = /^\[target=([^\s\]]+)/.exec(text);
   return m?.[1] ?? null;
@@ -61,6 +97,42 @@ async function recordTurnEvent(event: Record<string, unknown>): Promise<void> {
 
 const program = new Command();
 program.name("kith-space").description("Kith-space agent CLI").version("0.1.0");
+
+const turn = program.command("turn").description("Harness v2 turn context and output");
+turn.command("context").description("show the authoritative inputs and server-owned output target for the active turn").action(async () => {
+  const data = await brokerApi("GET", "/agent-gateway/turn/context");
+  console.log(`Turn ${data.turnId} -> ${data.target?.surfaceKind ?? "unknown"}:${data.target?.surfaceId ?? "unknown"}`);
+  for (const input of data.inputs ?? []) {
+    const message = input.message ?? {};
+    console.log(`[input=${input.id} directive=${input.directive} channel=${input.sourceChannelId} seq=${input.sourceSeq}] @${message.senderName ?? "unknown"}: ${message.content ?? ""}`);
+  }
+});
+turn.command("reply").description("commit one server-targeted reply; body is read from UTF-8 stdin")
+  .requiredOption("--input <ids>", "handled delivery input ids, comma-separated")
+  .option("--idempotency-key <key>", "stable retry key", "reply:primary")
+  .action(async (opts) => {
+    const body = (await readUtf8Stdin()).trim();
+    const handledInputIds = String(opts.input).split(",").map((value) => value.trim()).filter(Boolean);
+    const data = await brokerApi("POST", "/agent-gateway/turn/reply", {
+      body,
+      handledInputIds,
+      idempotencyKey: opts.idempotencyKey,
+    });
+    console.log(`Replied (msg ${String(data.messageId).slice(0, 8)}, seq ${data.seq})`);
+  });
+turn.command("cede").description("explicitly cede optional inputs")
+  .requiredOption("--input <ids>", "optional delivery input ids, comma-separated")
+  .requiredOption("--reason <reason>")
+  .option("--idempotency-key <key>", "stable retry key", "cede:primary")
+  .action(async (opts) => {
+    const inputIds = String(opts.input).split(",").map((value) => value.trim()).filter(Boolean);
+    const data = await brokerApi("POST", "/agent-gateway/turn/cede", {
+      inputIds,
+      reason: opts.reason,
+      idempotencyKey: opts.idempotencyKey,
+    });
+    console.log(`Ceded ${(data.cededInputIds ?? []).length} input(s)`);
+  });
 
 const roleTemplate = program.command("role-template").description("optional role starting points for agent:create actions");
 roleTemplate.command("list").description("list role template ids and their editable starting prompts").action(() => {

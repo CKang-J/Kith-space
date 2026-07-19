@@ -36,6 +36,13 @@
       "when": 1784457381025,
       "tag": "0004_agent_harness_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1784458418697,
+      "tag": "0005_agent_durable_turns",
+      "breakpoints": true
     }
   ]
 }

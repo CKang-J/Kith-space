@@ -77,6 +77,27 @@ test("per-Agent cutover is mutually exclusive and never backfills the legacy glo
     assert.equal(db.select({ sessionId: schema.agents.sessionId }).from(schema.agents).where(eq(schema.agents.id, agentId)).get()?.sessionId, "legacy-global-session");
 
     now += 1;
+    const activeTurnId = randomUUID();
+    db.insert(schema.agentTurns).values({
+      id: activeTurnId,
+      runtimeSessionId: channel.id,
+      sessionGeneration: channel.sessionGeneration,
+      spaceId,
+      agentId,
+      effectiveDirective: "required",
+      status: "running",
+    }).run();
+    assert.throws(() => sessions.ensureSession({
+      address,
+      runtime: "claude",
+      model: "claude-new",
+      runtimeConfig: { alpha: 1, beta: 2 },
+      adapterVersion: "v2-bridge-1",
+      workspaceRootFingerprint: "root-1",
+      engineHostFingerprint: "host-1",
+    }), /cannot change while a turn is non-terminal/);
+    db.update(schema.agentTurns).set({ status: "completed", outcome: "replied", completedAt: new Date(now) })
+      .where(eq(schema.agentTurns.id, activeTurnId)).run();
     const changed = sessions.ensureSession({
       address,
       runtime: "claude",
@@ -100,7 +121,9 @@ test("per-Agent cutover is mutually exclusive and never backfills the legacy glo
     }).engineSessionId, "engine-new");
 
     assert.throws(() => sessions.rollbackToLegacy(agentId, { v2Drained: false, reason: "test" }), /must be drained/);
-    sessions.rollbackToLegacy(agentId, { v2Drained: true, reason: "test" });
+    const rollbackAcceptedAt = sessions.assertRollbackWindow(agentId);
+    now += 8 * 24 * 60 * 60 * 1000;
+    sessions.rollbackToLegacy(agentId, { v2Drained: true, reason: "test", acceptedAt: rollbackAcceptedAt });
     assert.equal(sessions.harnessMode(agentId), "legacy");
     assert.equal(sessions.currentSession(address), null);
   } finally {
@@ -112,4 +135,24 @@ test("per-Agent cutover is mutually exclusive and never backfills the legacy glo
 test("runtime config fingerprints are stable across object key order", () => {
   assert.equal(runtimeConfigFingerprint({ a: 1, b: { y: 2, x: 1 } }), runtimeConfigFingerprint({ b: { x: 1, y: 2 }, a: 1 }));
   assert.notEqual(runtimeConfigFingerprint({ a: 1 }), runtimeConfigFingerprint({ a: 2 }));
+});
+
+test("rollback to legacy is rejected after the explicit rollback window", () => {
+  const spaceId = randomUUID();
+  const agentId = randomUUID();
+  registerSpace({ id: spaceId, name: "Rollback", slug: `rollback-${spaceId}`, rootPath: path.join(kithSpaceHome(), "session-module-test", spaceId) });
+  const db = dbForSpace(spaceId);
+  let now = 10_000;
+  try {
+    db.insert(schema.agents).values({ id: agentId, spaceId, name: "rollback-agent", displayName: "Rollback Agent" }).run();
+    const sessions = new SessionModule(spaceId, db, () => now);
+    sessions.beginCutover(agentId, { legacyDrained: true, reason: "test", rollbackWindowMs: 100 });
+    sessions.completeCutover(agentId);
+    now = 10_101;
+    assert.throws(() => sessions.rollbackToLegacy(agentId, { v2Drained: true, reason: "late" }), /rollback window has expired/);
+    assert.equal(sessions.harnessMode(agentId), "v2");
+  } finally {
+    closeSpaceDb(spaceId);
+    unregisterSpace(spaceId);
+  }
 });

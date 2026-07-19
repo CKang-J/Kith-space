@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { dbForSpace, schema, type SpaceDb } from "../db/index.js";
 import { HarnessError } from "../harness/errors.js";
 import type { RuntimeSessionKey } from "../runtime/contract/v2/runtimeContract.js";
@@ -119,16 +119,18 @@ export class SessionModule {
     });
   }
 
-  rollbackToLegacy(agentId: string, options: { v2Drained: boolean; reason: string }): void {
+  rollbackToLegacy(agentId: string, options: { v2Drained: boolean; reason: string; acceptedAt?: number }): void {
     if (!options.v2Drained) {
       throw new HarnessError("harness_mode_conflict", "v2 sessions must be drained before rollback", { agentId });
     }
+    const acceptedAt = options.acceptedAt ?? this.now();
+    this.assertRollbackWindow(agentId, acceptedAt);
     const now = this.now();
     this.db.transaction((tx) => {
       const current = tx.select().from(schema.agentHarnessState)
         .where(eq(schema.agentHarnessState.agentId, agentId)).get();
-      if (current?.mode !== "v2") {
-        throw new HarnessError("harness_mode_conflict", "Agent is not in v2 mode", { agentId, actual: current?.mode ?? "legacy" });
+      if (current?.mode !== "v2" || !current.rollbackUntil || current.rollbackUntil.getTime() <= acceptedAt) {
+        throw new HarnessError("harness_mode_conflict", "Agent rollback authorization is no longer valid", { agentId });
       }
       const history = auditHistory(current.migrationAudit);
       history.push({ at: now, from: "v2", to: "legacy", reason: options.reason });
@@ -142,6 +144,21 @@ export class SessionModule {
         migrationAudit: { history },
       }).where(eq(schema.agentHarnessState.agentId, agentId)).run();
     });
+  }
+
+  assertRollbackWindow(agentId: string, acceptedAt = this.now()): number {
+    const current = this.db.select().from(schema.agentHarnessState)
+      .where(eq(schema.agentHarnessState.agentId, agentId)).get();
+    if (current?.mode !== "v2") {
+      throw new HarnessError("harness_mode_conflict", "Agent is not in v2 mode", { agentId, actual: current?.mode ?? "legacy" });
+    }
+    if (!current.rollbackUntil || current.rollbackUntil.getTime() <= acceptedAt) {
+      throw new HarnessError("harness_mode_conflict", "Agent rollback window has expired", {
+        agentId,
+        rollbackUntil: current.rollbackUntil?.toISOString() ?? null,
+      });
+    }
+    return acceptedAt;
   }
 
   ensureSession(configuration: RuntimeSessionConfiguration): RuntimeSessionRecord {
@@ -183,6 +200,17 @@ export class SessionModule {
         return current;
       }
       if (current) {
+        const activeTurn = tx.select({ id: schema.agentTurns.id }).from(schema.agentTurns).where(and(
+          eq(schema.agentTurns.runtimeSessionId, current.id),
+          inArray(schema.agentTurns.status, ["pending", "running", "retry_wait"]),
+        )).get();
+        if (activeTurn) {
+          throw new HarnessError("attempt_lease_conflict", "runtime session configuration cannot change while a turn is non-terminal", {
+            agentId: address.agentId,
+            sessionId: current.id,
+            turnId: activeTurn.id,
+          });
+        }
         tx.update(schema.runtimeSessions).set({ retiredAt: now, status: "disabled", updatedAt: now })
           .where(eq(schema.runtimeSessions.id, current.id)).run();
       }
@@ -249,5 +277,13 @@ export class SessionModule {
       eq(schema.runtimeSessions.surfaceId, address.surfaceId),
       isNull(schema.runtimeSessions.retiredAt),
     )).get() ?? null;
+  }
+
+  retireAgentSessions(agentId: string): number {
+    const now = new Date(this.now());
+    return this.db.update(schema.runtimeSessions).set({ status: "disabled", retiredAt: now, updatedAt: now }).where(and(
+      eq(schema.runtimeSessions.agentId, agentId),
+      isNull(schema.runtimeSessions.retiredAt),
+    )).run().changes;
   }
 }

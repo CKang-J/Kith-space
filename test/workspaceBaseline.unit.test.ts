@@ -44,6 +44,8 @@ test("fresh Space database uses the Personal AgentOS baseline and seeds its Spac
     const names = tables(sqlite);
     for (const expected of [
       "agent_harness_state",
+      "agent_delivery_items",
+      "agent_turns",
       "spaces",
       "agents",
       "channels",
@@ -53,6 +55,7 @@ test("fresh Space database uses the Personal AgentOS baseline and seeds its Spac
       "human_saved_messages",
       "human_space_preferences",
       "runtime_sessions",
+      "turn_operations",
     ]) assert.ok(names.includes(expected), `missing ${expected}`);
     for (const removed of ["users", "servers", "server_members", "machines", "join_links", "channel_members", "saved_messages", "server_sidebar_prefs"])
       assert.ok(!names.includes(removed), `legacy table remains: ${removed}`);
@@ -153,7 +156,7 @@ test("schema version 3 Space database migrates through the version-aware compati
   }
 });
 
-test("schema version 4 migrates response settings in place without adding product tables", () => {
+test("schema version 4 migrates response settings and the harness tables in place", () => {
   const spaceId = randomUUID();
   const rootPath = path.join(kithSpaceHome(), "workspace-v4-migration-test", spaceId);
   const dbPath = workspaceDbFile(rootPath);
@@ -181,7 +184,7 @@ test("schema version 4 migrates response settings in place without adding produc
   const sqlite = new Database(dbPath);
   try {
     assert.equal(sqlite.pragma("user_version", { simple: true }), 6);
-    assert.equal(tables(sqlite).filter((table) => table !== "__drizzle_migrations").length, 21);
+    assert.equal(tables(sqlite).filter((table) => table !== "__drizzle_migrations").length, 34);
     assert.equal(sqlite.prepare("SELECT default_response_mode FROM agents WHERE id = 'v4-agent'").pluck().get(), "active");
     assert.deepEqual(sqlite.prepare(`
       SELECT response_mode_override, ambient_wake_after_seq, mention_wake_after_seq, last_read_seq
@@ -234,6 +237,42 @@ test("schema version 5 preserves legacy Agent sessions while backfilling explici
       cutover_at: null,
     });
     assert.equal(sqlite.prepare("SELECT count(*) FROM runtime_sessions").pluck().get(), 0);
+  } finally {
+    sqlite.close();
+    unregisterSpace(spaceId);
+  }
+});
+
+test("the P-A10.1 schema v6 journal prefix migrates to the complete v6 durable harness", () => {
+  const spaceId = randomUUID();
+  const rootPath = path.join(kithSpaceHome(), "workspace-v6-prefix-test", spaceId);
+  const dbPath = workspaceDbFile(rootPath);
+  mkdirSync(path.dirname(dbPath), { recursive: true });
+  const prefix = new Database(dbPath);
+  for (const migrationFile of [
+    "0000_personal_agent_os.sql",
+    "0001_agent_introduction.sql",
+    "0002_channel_notification_level.sql",
+    "0003_agent_response_modes.sql",
+    "0004_agent_harness_sessions.sql",
+  ]) prefix.exec(readFileSync(new URL(`../drizzle/${migrationFile}`, import.meta.url), "utf8"));
+  prefix.exec(`
+    CREATE TABLE __drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric);
+    ${WORKSPACE_MIGRATION_HISTORY.slice(0, 5).map((entry) => `INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('${entry.hash}', ${entry.createdAt});`).join("\n")}
+    INSERT INTO spaces (id, name, slug, created_at) VALUES ('${spaceId}', 'V6 prefix', 'v6-prefix-${spaceId}', 1700000000000);
+  `);
+  prefix.close();
+  registerSpace({ id: spaceId, name: "V6 prefix", slug: `v6-prefix-${spaceId}`, rootPath });
+
+  dbForSpace(spaceId);
+  closeSpaceDb(spaceId);
+
+  const sqlite = new Database(dbPath);
+  try {
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 6);
+    assert.ok(tables(sqlite).includes("agent_delivery_items"));
+    assert.ok(tables(sqlite).includes("turn_capability_activations"));
+    assert.equal(sqlite.prepare("SELECT count(*) FROM __drizzle_migrations").pluck().get(), 6);
   } finally {
     sqlite.close();
     unregisterSpace(spaceId);

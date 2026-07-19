@@ -170,6 +170,24 @@ export interface AgentIntroductionProofPort {
   restore(spaceId: string, agentId: string, token: string): void;
 }
 
+export interface DurableDeliveryJournalPort {
+  usesV2(spaceId: string, agentId: string): boolean;
+  persistMessageInTransaction(tx: SpaceTransaction, input: {
+    spaceId: string;
+    channel: typeof schema.channels.$inferSelect;
+    message: typeof schema.messages.$inferSelect;
+    senderType: MessageSender["type"];
+    senderId: string | null;
+    candidateAgentIds: string[];
+    mentions: MessageMention[];
+    explicitTaskAgentId?: string | null;
+    targetSurface?: { kind: "channel" | "private" | "dm" | "thread"; id: string };
+    forceObserveAgentIds?: string[];
+  }): number;
+  persistChannelMessageInTransaction?(tx: SpaceTransaction, spaceId: string, message: typeof schema.messages.$inferSelect): number;
+  schedulePending?(spaceId: string): Promise<void>;
+}
+
 export class AgentIntroductionAlreadyCompletedError extends Error {
   constructor(public readonly agentId: string) {
     super(`agent introduction already completed: ${agentId}`);
@@ -188,6 +206,7 @@ interface ConversationModuleDependencies {
   eventSink: ConversationEventSink;
   wakeDispatch: WakeDispatchPort;
   introductionProof: AgentIntroductionProofPort;
+  deliveryJournal?: DurableDeliveryJournalPort;
 }
 
 interface PreparedWrite {
@@ -268,7 +287,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
   messagePosting: MessagePostingModule;
   tasks: TaskModule;
 } {
-  const { eventSink, wakeDispatch, introductionProof } = dependencies;
+  const { eventSink, wakeDispatch, introductionProof, deliveryJournal } = dependencies;
 
   async function runPostCommit(label: string, operation: () => Promise<void>): Promise<void> {
     try {
@@ -423,29 +442,36 @@ export function createConversationModules(dependencies: ConversationModuleDepend
     dispatch?: DispatchMessageContext & { messageId?: string };
   }): Promise<typeof schema.messages.$inferSelect> {
     const db = dbForSpace(input.spaceId);
-    const message = db.insert(schema.messages).values({
-      ...(input.dispatch?.messageId ? { id: input.dispatch.messageId } : {}),
-      seq: await nextSeq(input.spaceId),
-      spaceId: input.spaceId,
-      channelId: input.channelId,
-      senderType: "system",
-      senderId: input.actor?.id ?? null,
-      senderName: "system",
-      messageType: "system",
-      content: input.content,
-      searchText: input.content,
-      dispatchChainId: input.dispatch?.chainId ?? null,
-      dispatchDepth: input.dispatch?.dispatchDepth ?? null,
-    }).returning().get();
+    const seq = await nextSeq(input.spaceId);
+    const message = db.transaction((tx) => {
+      const inserted = tx.insert(schema.messages).values({
+        ...(input.dispatch?.messageId ? { id: input.dispatch.messageId } : {}),
+        seq,
+        spaceId: input.spaceId,
+        channelId: input.channelId,
+        senderType: "system",
+        senderId: input.actor?.id ?? null,
+        senderName: "system",
+        messageType: "system",
+        content: input.content,
+        memoryPolicy: "exclude",
+        searchText: input.content,
+        dispatchChainId: input.dispatch?.chainId ?? null,
+        dispatchDepth: input.dispatch?.dispatchDepth ?? null,
+      }).returning().get();
+      deliveryJournal?.persistChannelMessageInTransaction?.(tx, input.spaceId, inserted);
+      tx.update(schema.channels).set({ lastMessageAt: new Date() })
+        .where(eq(schema.channels.id, input.channelId)).run();
+      return inserted;
+    });
     const channel = db.select().from(schema.channels).where(eq(schema.channels.id, input.channelId)).get();
-    db.update(schema.channels).set({ lastMessageAt: new Date() })
-      .where(eq(schema.channels.id, input.channelId)).run();
     await eventSink.publish(input.spaceId, {
       type: "message",
       channelId: input.channelId,
       message: { ...serializeMessage(message, [], []), channelType: channel?.type ?? null },
     });
     await publishThreadUpdated(input.spaceId, channel, input.actor?.id ?? null, "system");
+    await deliveryJournal?.schedulePending?.(input.spaceId);
     return message;
   }
 
@@ -515,7 +541,9 @@ export function createConversationModules(dependencies: ConversationModuleDepend
     const candidateAgents = prepared.taskAssigneeId
       ? []
       : prepared.members.filter((member): member is ConversationMember & { type: "agent" } =>
-          member.type === "agent" && member.id !== context.sender.id);
+          member.type === "agent"
+          && member.id !== context.sender.id
+          && !deliveryJournal?.usesV2(context.spaceId, member.id));
     if (!candidateAgents.length) return [];
     const dispatchSettings = await resolveAgentDispatchSettings(
       context.spaceId,
@@ -667,6 +695,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
       taskExecutionMode: input.task?.executionMode ?? "autopilot",
       dispatchChainId: dispatch.chainId,
       dispatchDepth: dispatch.dispatchDepth,
+      memoryPolicy: context.sender.type === "human" ? "eligible" : "exclude",
     } satisfies typeof schema.messages.$inferInsert;
 
     const mentionJoined = !prepared.taskAssigneeId
@@ -804,6 +833,36 @@ export function createConversationModules(dependencies: ConversationModuleDepend
             mentionName: mention.name,
           }))).run();
         }
+        deliveryJournal?.persistMessageInTransaction(tx, {
+          spaceId: context.spaceId,
+          channel: prepared.channel,
+          message,
+          senderType: context.sender.type,
+          senderId: context.sender.id,
+          candidateAgentIds: prepared.taskAssigneeId
+            ? [prepared.taskAssigneeId]
+            : prepared.members.filter((member) => member.type === "agent").map((member) => member.id),
+          mentions,
+          explicitTaskAgentId: prepared.taskAssigneeId,
+          targetSurface: prepared.taskAssigneeId && message.threadId
+            ? { kind: "thread", id: message.threadId }
+            : undefined,
+        });
+        if (prepared.taskAssigneeId) {
+          const observers = prepared.members.filter((member) => member.type === "agent" && member.id !== prepared.taskAssigneeId).map((member) => member.id);
+          if (observers.length) {
+            deliveryJournal?.persistMessageInTransaction(tx, {
+              spaceId: context.spaceId,
+              channel: prepared.channel,
+              message,
+              senderType: context.sender.type,
+              senderId: context.sender.id,
+              candidateAgentIds: observers,
+              mentions,
+              forceObserveAgentIds: observers,
+            });
+          }
+        }
         tx.update(schema.channels).set({ lastMessageAt: new Date() })
           .where(eq(schema.channels.id, context.channelId)).run();
 
@@ -820,8 +879,18 @@ export function createConversationModules(dependencies: ConversationModuleDepend
             senderName: "system",
             messageType: "system",
             content,
+            memoryPolicy: "exclude",
             searchText: content,
           }).returning().get();
+          deliveryJournal?.persistMessageInTransaction(tx, {
+            spaceId: context.spaceId,
+            channel: prepared.channel,
+            message: createdAudit,
+            senderType: "system",
+            senderId: actor?.id ?? null,
+            candidateAgentIds: prepared.members.filter((member) => member.type === "agent").map((member) => member.id),
+            mentions: [],
+          });
           tx.update(schema.channels).set({ lastMessageAt: new Date() })
             .where(eq(schema.channels.id, context.channelId)).run();
         }
@@ -846,10 +915,24 @@ export function createConversationModules(dependencies: ConversationModuleDepend
             senderName: "system",
             messageType: "system",
             content,
+            memoryPolicy: "exclude",
             searchText: content,
             dispatchChainId: assignmentDispatch.chainId,
             dispatchDepth: assignmentDispatch.dispatchDepth,
           }).returning().get();
+          const assignmentChannel = tx.select().from(schema.channels).where(eq(schema.channels.id, message.threadId)).get();
+          if (assignmentChannel) {
+            deliveryJournal?.persistMessageInTransaction(tx, {
+              spaceId: context.spaceId,
+              channel: assignmentChannel,
+              message: auditMessage,
+              senderType: "system",
+              senderId: actor?.id ?? null,
+              candidateAgentIds: [prepared.taskAssignee.id],
+              mentions: [],
+              explicitTaskAgentId: prepared.taskAssignee.id,
+            });
+          }
           tx.update(schema.channels).set({ lastMessageAt: new Date() })
             .where(eq(schema.channels.id, message.threadId)).run();
           assignmentAudit = { message: auditMessage, dispatch: assignmentDispatch };
@@ -940,6 +1023,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
       context.sender.id,
       context.sender.type,
     ));
+    await runPostCommit("schedule durable v2 deliveries", () => deliveryJournal?.schedulePending?.(context.spaceId) ?? Promise.resolve());
     let woken: string[] = [];
     await runPostCommit("dispatch message wakes", async () => {
       woken = await dispatchMessageWakes({

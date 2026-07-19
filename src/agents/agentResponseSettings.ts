@@ -262,6 +262,17 @@ export async function resolveAgentDispatchSettings(
   });
 }
 
+export function resolveAgentDispatchSettingsInTransaction(
+  tx: SpaceTransaction,
+  spaceId: string,
+  channelId: string,
+  agentIds: readonly string[],
+): ResolvedAgentDispatchSettings[] {
+  if (!agentIds.length) return [];
+  const channel = liveChannel(tx, spaceId, channelId);
+  return channel ? resolveManyInTransaction(tx, spaceId, channel, agentIds) : [];
+}
+
 export async function setAgentDefaultResponseMode(
   spaceId: string,
   agentId: string,

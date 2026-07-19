@@ -227,7 +227,7 @@ P-A8 的前端边界保持独立：`agent-response-mode/` feature 承担 Agent �
 
 一句话：**Chat 是基础工作面；ChatOnly 用左侧纵向入口打开模块，模块打开后由 Dock 统一切换模块和控制 Chat 显隐。**
 
-## 9. P-A10 Agent Harness v2 的拟议 UI 增量（未实现）
+## 9. P-A10 Agent Harness v2 的分阶段 UI 增量
 
 P-A10 不改变 WorkspaceFrame、ChatOnly/Split/ModuleOnly、中心 Chat 卡片或 Module Dock，只扩展现有 Chat/Agents 信息架构：
 
@@ -240,4 +240,4 @@ P-A10 不改变 WorkspaceFrame、ChatOnly/Split/ModuleOnly、中心 Chat 卡片�
 - `silent` Agent 被 Human direct mention 时仍可加入话题但不出现回复 placeholder；在 OS sandbox 前，私有设置使用“产品内私有”准确文案，不承诺同一系统用户下的 runtime 进程无法访问或修改本机路径。
 - MessageContextSnapshot 只保存产品对象引用与 revision，不采集 DOM、截图、剪贴板或未提交表单；它在 turn 的“上下文”中显示为独立来源。
 
-这些 UI 均属于已完成对抗性补全、但尚未实现的 P-A10 目标态，不能写成当前产品行为。完整机制、提案默认值和实施切片见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
+P-A10.2已经复用现有Chat表现层投影scoped activity/trajectory和required turn ephemeral placeholder：text delta只作草稿，`turn.reply`提交的持久消息会替换它，失败会结束占位；该切片没有新增布局或管理入口。上列server-owned顶层mention话题、Context/Steps/Usage/Outcome详情、session诊断与结构化记忆面板仍分别属于P-A10.3、P-A10.5–P-A10.7，不能写成当前行为。完整机制、默认值和实施切片见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。

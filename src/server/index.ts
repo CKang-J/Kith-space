@@ -21,6 +21,7 @@ import { assertInternalCredentialsConfigured, isDesktopTrustedRequest } from "..
 import { browserOriginAllowed, requestPeerIsLoopback } from "./browserSessionHttp.js";
 import { resolveCorePort } from "./localEndpoint.js";
 import { ChannelLifecycleError } from "../channels/channelLifecycle.js";
+import { handleTurnGateway } from "./turn-gateway/routes.js";
 
 assertInternalCredentialsConfigured();
 
@@ -110,6 +111,7 @@ const server = http.createServer(async (req, res) => {
       if (!requestPeerIsLoopback(req) && !isDesktopTrustedRequest(req)) return sendErr(res, 404, "not found");
       return sendJson(res, 200, { ok: true, service: "kith-space", workerConnected: isWorkerConnected(), time: new Date().toISOString() });
     }
+    if (await handleTurnGateway(req, res, url, method)) return;
     if (await handleAgentApi(req, res, url, method)) return;
     if (await handleApi(req, res, url, method)) return;
     const isRead = method === "GET" || method === "HEAD";

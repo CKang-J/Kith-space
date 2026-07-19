@@ -94,6 +94,9 @@ export class RuntimeAdmissionController {
     if (this.shuttingDown) {
       return this.remember(key, fingerprint, this.result(command, "rejected", "Worker is shutting down"));
     }
+    if (command.source === "turn") {
+      return this.remember(key, fingerprint, this.result(command, "rejected", "v2 turns use RuntimeSessionHost admission"));
+    }
 
     if (command.source === "lifecycle") {
       this.cancelQueuedForAgent(command.agentId, command.type === "agent:reset" ? "replaced by reset" : "cancelled by lifecycle command");
@@ -353,6 +356,7 @@ function deliveryCommand(command: Extract<StartCommand, { source: "wake" }>): Wa
 }
 
 function priority(command: RuntimeWorkerCommand): number {
+  if (command.source === "turn") return 250;
   if (command.source === "lifecycle") return 400;
   if (command.source === "manual") return 300;
   const directive = command.type === "agent:start" ? command.delivery.responseDirective : command.responseDirective;

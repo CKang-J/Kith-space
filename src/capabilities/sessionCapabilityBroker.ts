@@ -98,6 +98,25 @@ export class SessionCapabilityBroker {
     return claims;
   }
 
+  renew(handle: string, activationId: string, expiresAt: number): TurnCapabilityClaims {
+    const session = this.session(handle);
+    const claims = session.activation;
+    if (!claims || claims.activationId !== activationId) {
+      throw new HarnessError("capability_inactive", "broker session has no matching active attempt", { activationId });
+    }
+    const now = this.now();
+    if (claims.expiresAt <= now) {
+      session.activation = null;
+      throw new HarnessError("capability_expired", "attempt activation expired before renewal", { activationId });
+    }
+    if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) {
+      throw new HarnessError("capability_expired", "attempt activation renewal must extend into the future", { activationId, expiresAt });
+    }
+    const renewed = TurnCapabilityClaimsSchema.parse({ ...claims, expiresAt });
+    session.activation = renewed;
+    return renewed;
+  }
+
   deactivate(handle: string, activationId: string): boolean {
     const session = this.sessions.get(handle);
     if (!session || session.closed || session.activation?.activationId !== activationId) return false;
