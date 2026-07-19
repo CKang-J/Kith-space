@@ -4,6 +4,8 @@ import { dbForSpace, schema, type SpaceDb } from "../db/index.js";
 import { HarnessError } from "../harness/errors.js";
 import { SessionCapabilityBroker } from "./sessionCapabilityBroker.js";
 import type { TurnCapabilityClaims } from "./contracts.js";
+import { requiredAgentScopes, type GatewayScope } from "./gatewayContracts.js";
+import { agentHasScope } from "../agents/agentScopes.js";
 
 export interface PreparedTurnCapability {
   sessionHandle: string;
@@ -24,6 +26,7 @@ export class TurnCapabilityService {
     const attempt = this.db.select().from(schema.agentTurnAttempts).where(eq(schema.agentTurnAttempts.id, attemptId)).get();
     const turn = attempt ? this.db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, attempt.turnId)).get() : null;
     const session = turn ? this.db.select().from(schema.runtimeSessions).where(eq(schema.runtimeSessions.id, turn.runtimeSessionId)).get() : null;
+    const agent = turn ? this.db.select({ scopes: schema.agents.scopes }).from(schema.agents).where(eq(schema.agents.id, turn.agentId)).get() : null;
     if (!attempt || !turn || !session || attempt.status !== "claimed" || session.retiredAt) {
       throw new HarnessError("attempt_lease_conflict", "cannot prepare capability for an unclaimed attempt", { attemptId });
     }
@@ -32,6 +35,13 @@ export class TurnCapabilityService {
       eq(schema.agentDeliveryItems.disposition, "bound"),
     )).all();
     const activationId = randomUUID();
+    const canReply = agentHasScope(agent?.scopes, "message:send");
+    if (turn.effectiveDirective === "required" && !canReply) {
+      throw new HarnessError("capability_scope_denied", "required turn cannot start without message:send scope", {
+        turnId: turn.id,
+        agentId: turn.agentId,
+      });
+    }
     const claims: TurnCapabilityClaims = {
       schemaVersion: 1,
       activationId,
@@ -48,7 +58,15 @@ export class TurnCapabilityService {
         delivery.sourceChannelId,
         { channelId: delivery.sourceChannelId, throughSeq: delivery.sourceSeq },
       ])).values()],
-      scopes: ["context.check", "turn.reply", "turn.cede"],
+      scopes: [
+        "context.check", "turn.cede", "turn.progress", "session.checklist",
+        "session.schedule_wakeup", "turn.get", "capability.describe",
+        ...(canReply ? ["turn.reply"] as const : []),
+        ...(canReply && agentHasScope(agent?.scopes, "attachment:upload") ? ["attachment.upload"] as const : []),
+        ...(agentHasScope(agent?.scopes, "message:read") ? ["conversation.read", "conversation.search"] as const : []),
+        ...(agentHasScope(agent?.scopes, "task:read") ? ["task.read"] as const : []),
+        ...(agentHasScope(agent?.scopes, "task:write") ? ["task.write"] as const : []),
+      ],
       disclosureGrantIds: [],
       expiresAt: attempt.leaseExpiresAt.getTime(),
     };
@@ -93,7 +111,7 @@ export class TurnCapabilityService {
     sessionHandle: string;
     activationId: string;
     workerGeneration: number;
-    scope: "context.check" | "turn.reply" | "turn.cede";
+    scope: GatewayScope;
   }): TurnCapabilityClaims {
     const claims = this.broker.resolve({
       sessionHandle: input.sessionHandle,
@@ -110,7 +128,45 @@ export class TurnCapabilityService {
     if (activation.expiresAt.getTime() <= this.now() || attempt.leaseExpiresAt.getTime() <= this.now()) {
       throw new HarnessError("capability_expired", "attempt activation expired", { activationId: claims.activationId });
     }
+    const agentScopes = requiredAgentScopes(input.scope);
+    if (agentScopes.length) {
+      const agent = this.db.select({ scopes: schema.agents.scopes }).from(schema.agents).where(eq(schema.agents.id, claims.agentId)).get();
+      const missing = agentScopes.find((required) => !agentHasScope(agent?.scopes, required));
+      if (missing) {
+        throw new HarnessError("capability_scope_denied", `Agent no longer grants ${missing}`);
+      }
+    }
     return claims;
+  }
+
+  refreshSeenWatermark(input: {
+    sessionHandle: string;
+    activationId: string;
+    workerGeneration: number;
+    channelId: string;
+    throughSeq: number;
+  }): TurnCapabilityClaims {
+    const claims = this.resolve({ ...input, scope: "context.check" });
+    if (!claims.allowedOutputSurfaceIds.includes(input.channelId)) {
+      throw new HarnessError("capability_scope_denied", "context refresh is outside the output surface", { channelId: input.channelId });
+    }
+    const previous = claims.seenWatermarks.find((item) => item.channelId === input.channelId)?.throughSeq ?? 0;
+    if (input.throughSeq < previous) throw new HarnessError("stale_context", "context watermark cannot move backwards");
+    const seenWatermarks = [
+      ...claims.seenWatermarks.filter((item) => item.channelId !== input.channelId),
+      { channelId: input.channelId, throughSeq: input.throughSeq },
+    ];
+    const refreshed = this.broker.replace(input.sessionHandle, input.activationId, { ...claims, seenWatermarks });
+    const claimsDigest = createHash("sha256").update(JSON.stringify(refreshed)).digest("hex");
+    const updated = this.db.update(schema.turnCapabilityActivations).set({ claimsDigest }).where(and(
+      eq(schema.turnCapabilityActivations.id, input.activationId),
+      eq(schema.turnCapabilityActivations.status, "active"),
+    )).run();
+    if (!updated.changes) {
+      this.broker.deactivate(input.sessionHandle, input.activationId);
+      throw new HarnessError("capability_inactive", "context activation changed during refresh");
+    }
+    return refreshed;
   }
 
   renewAttempt(attemptId: string, expiresAt: number): TurnCapabilityClaims {

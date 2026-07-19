@@ -89,6 +89,8 @@ export type PostMessageCommand =
     };
 
 export interface CreateTaskCommand {
+  messageId?: string;
+  writePrecondition?: (tx: SpaceTransaction, channelId: string) => void;
   context: MessageContext;
   title: string;
   executionMode: "autopilot" | "plan-first";
@@ -243,7 +245,7 @@ type WriteInput = {
   messageType: "chat" | "action";
   actionMetadata?: unknown;
   introductionProof?: { agentId: string; token: string };
-  task?: { executionMode: "autopilot" | "plan-first"; parentTaskId?: string | null };
+  task?: { messageId?: string; writePrecondition?: (tx: SpaceTransaction, channelId: string) => void; executionMode: "autopilot" | "plan-first"; parentTaskId?: string | null };
 };
 
 interface PersistedTaskAssignmentAudit {
@@ -881,7 +883,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
     const prepared = await preflight(input);
     const { context } = input;
     const db = dbForSpace(context.spaceId);
-    const messageId = randomUUID();
+    const messageId = input.task?.messageId ?? randomUUID();
     const seq = await nextSeq(context.spaceId);
     const taskMessageId = input.task
       ? messageId
@@ -982,6 +984,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
     let durable: DurableWriteResult;
     try {
       durable = db.transaction((tx) => {
+        input.task?.writePrecondition?.(tx, context.channelId);
         if (proof) {
           const claimed = tx.update(schema.agents).set({ introducedAt: new Date() }).where(and(
             eq(schema.agents.id, proof.agentId),
@@ -1386,6 +1389,8 @@ export function createConversationModules(dependencies: ConversationModuleDepend
         attachmentIds: command.attachmentIds,
         messageType: "chat",
         task: {
+          messageId: command.messageId,
+          writePrecondition: command.writePrecondition,
           executionMode: command.executionMode,
           parentTaskId: command.parentTaskId,
         },

@@ -50,6 +50,13 @@
       "when": 1784467852894,
       "tag": "0006_legacy_dispatch_recovery",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1784472700000,
+      "tag": "0007_temporary_attachment_lifecycle",
+      "breakpoints": true
     }
   ]
 }

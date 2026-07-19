@@ -118,6 +118,78 @@ test("two required inputs cannot finalize after only one is covered", async () =
   }
 });
 
+test("reply atomically binds owned temporary attachments and publishes them", async () => {
+  const f = await fixture();
+  try {
+    const attachment = f.db.insert(schema.attachments).values({
+      spaceId: f.spaceId,
+      channelId: f.channelId,
+      uploaderType: "agent",
+      uploaderId: f.agentId,
+      filename: "result.txt",
+      mimeType: "text/plain",
+      sizeBytes: 6,
+      storageKey: "fixture/result.txt",
+      uploadState: "temporary",
+      sourceTurnId: f.turnId,
+      sourceActivationId: "activation",
+      expiresAt: new Date(Date.now() + 60_000),
+    }).returning().get();
+    const message = await f.output.reply({
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      idempotencyKey: "reply:attachment",
+      body: "",
+      attachmentIds: [attachment.id],
+      attachmentActivationId: "activation",
+      handledInputIds: [f.deliveries[0]!],
+    });
+    assert.equal(message.content, "");
+    assert.equal(f.db.select().from(schema.attachments).where(eq(schema.attachments.id, attachment.id)).get()?.messageId, message.id);
+    const published = f.events.find((event): event is { type: string; message: { attachments: Array<{ id: string }> } } =>
+      typeof event === "object" && event !== null && (event as { type?: unknown }).type === "message");
+    assert.deepEqual(published?.message.attachments.map((item) => item.id), [attachment.id]);
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("reply rolls back the message when an attachment is foreign or already bound", async () => {
+  const f = await fixture();
+  try {
+    const foreign = f.db.insert(schema.attachments).values({
+      spaceId: f.spaceId,
+      channelId: f.channelId,
+      uploaderType: "agent",
+      uploaderId: randomUUID(),
+      filename: "foreign.txt",
+      mimeType: "text/plain",
+      sizeBytes: 7,
+      storageKey: "fixture/foreign.txt",
+      uploadState: "temporary",
+      sourceTurnId: f.turnId,
+      sourceActivationId: "activation",
+      expiresAt: new Date(Date.now() + 60_000),
+    }).returning().get();
+    await assert.rejects(() => f.output.reply({
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      idempotencyKey: "reply:foreign-attachment",
+      body: "must roll back",
+      attachmentIds: [foreign.id],
+      attachmentActivationId: "activation",
+      handledInputIds: [f.deliveries[0]!],
+    }), /attachments are unavailable/);
+    assert.equal(f.db.select().from(schema.messages).where(eq(schema.messages.producedByTurnId, f.turnId)).all().length, 0);
+    assert.equal(f.db.select().from(schema.turnOperations).where(eq(schema.turnOperations.idempotencyKey, "reply:foreign-attachment")).get(), undefined);
+    assert.equal(f.db.select().from(schema.attachments).where(eq(schema.attachments.id, foreign.id)).get()?.messageId, null);
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
 test("v2 top-level mention dispatches a legacy peer once without creating a v2 delivery", async () => {
   const f = await fixture();
   try {
@@ -480,7 +552,7 @@ test("explicit cancellation terminates the attempt and requeues only unsettled i
   }
 });
 
-test("reply fails with stale_context when the output surface changed after its frozen watermark", async () => {
+test("reply stays stale until an audited context refresh advances the output-surface watermark", async () => {
   const f = await fixture();
   try {
     f.db.update(schema.agentTurns).set({
@@ -511,6 +583,19 @@ test("reply fails with stale_context when the output surface changed after its f
       handledInputIds: f.deliveries,
     }), (error: any) => error?.code === "stale_context" && error?.details?.laterSeq === laterSeq);
     assert.equal(f.db.select().from(schema.messages).all().filter((message) => message.senderType === "agent").length, 0);
+    f.db.insert(schema.turnContextSources).values({
+      turnId: f.turnId, phase: "later_query", ordinal: 0, sourceKind: "surface_watermark", sourceId: f.channelId,
+      sourceRevision: laterSeq, visibility: "public", disclosureProjection: "ref_only", injectionMode: "reference",
+      reason: "context_refresh_watermark", tokenEstimate: 0, contentHmac: "refresh-hash",
+    }).run();
+    const refreshed = await f.output.reply({
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      idempotencyKey: "reply:refreshed",
+      body: "Revised answer",
+      handledInputIds: f.deliveries,
+    });
+    assert.equal(refreshed.content, "Revised answer");
   } finally {
     closeSpaceDb(f.spaceId);
     unregisterSpace(f.spaceId);

@@ -53,6 +53,9 @@ import { SessionModule } from "../sessions/sessionModule.js";
 import { DeliveryJournal } from "../deliveries/deliveryJournal.js";
 import { normalizeMessageContextSnapshot } from "../context/messageContextSnapshot.js";
 import { harnessTurnScheduler, scheduleV2Turns, turnCapabilityService } from "./harnessComposition.js";
+import { inboxSummary, type InboxSummary } from "../deliveries/inboxSummary.js";
+import { configureTaskGatewayPort } from "../capabilities/taskGatewayPort.js";
+import { getTaskDetails, reportTask, submitTaskDelivery } from "../tasks/taskService.js";
 
 export { TASK_STATUSES } from "../tasks/taskTypes.js";
 
@@ -318,6 +321,8 @@ async function agentConfigFromRow(a: typeof schema.agents.$inferSelect) {
 }
 
 export interface CreateMessageOptions {
+  messageId?: string;
+  taskWritePrecondition?: (tx: import("../counters.js").SpaceTransaction, channelId: string) => void;
   spaceId: string;
   channelId: string;
   senderType: "human" | "agent" | "system";
@@ -496,6 +501,20 @@ function taskLifecycle(): TaskLifecycleModule {
   return composedTaskLifecycle;
 }
 
+configureTaskGatewayPort({
+  create: ({ messageId, spaceId, channelId, actor, title, executionMode, parentTaskId, writePrecondition }) => createMessage({
+    messageId, spaceId, channelId, senderType: "agent", senderId: actor.id, senderName: actor.name,
+    content: title, asTask: true, taskExecutionMode: executionMode, taskParentId: parentTaskId, taskWritePrecondition: writePrecondition,
+  }),
+  claim: (spaceId, taskId, agentId, expectedRevision, writePrecondition) => taskLifecycle().claim(spaceId, taskId, "agent", agentId, expectedRevision, writePrecondition),
+  update: (spaceId, taskId, status, agentId, input, writePrecondition) => taskLifecycle().setStatus(spaceId, taskId, status, { type: "agent", id: agentId }, input, writePrecondition),
+  assign: (spaceId, taskId, targetAgentId, agentId, expectedRevision, writePrecondition) => taskLifecycle().assign(spaceId, taskId, targetAgentId, { type: "agent", id: agentId }, expectedRevision, writePrecondition),
+  unclaim: (spaceId, taskId, agentId, expectedRevision, writePrecondition) => taskLifecycle().unclaim(spaceId, taskId, { type: "agent", id: agentId }, expectedRevision, writePrecondition),
+  details: getTaskDetails,
+  report: reportTask,
+  deliver: submitTaskDelivery,
+});
+
 function messageContext(options: CreateMessageOptions): MessageContext {
   return {
     spaceId: options.spaceId,
@@ -534,6 +553,8 @@ export async function createMessage(options: CreateMessageOptions) {
   const context = messageContext(options);
   if (options.asTask) {
     const command: CreateTaskCommand = {
+      messageId: options.messageId,
+      writePrecondition: options.taskWritePrecondition,
       context,
       title: options.content,
       executionMode: normalizeTaskExecutionMode(options.taskExecutionMode) ?? "autopilot",
@@ -926,16 +947,23 @@ async function agentControlTarget(spaceId: string, agentId: string): Promise<Age
   if (!space) return { ok: false, reason: "space not found" };
   return { ok: true, spaceId, workspaceRoot: space.rootPath };
 }
+export interface AgentStartResult {
+  ok: boolean;
+  reason?: string;
+  inboxSummary?: InboxSummary;
+}
+
 /** Start an agent (requires the installation-local runtime worker to be online). */
-export async function startAgent(spaceId: string, agentId: string, reason: Exclude<AgentStartReason, "wake"> = "manual"): Promise<{ ok: boolean; reason?: string }> {
+export async function startAgent(spaceId: string, agentId: string, reason: Exclude<AgentStartReason, "wake"> = "manual"): Promise<AgentStartResult> {
   const db = dbForSpace(spaceId);
   const harnessMode = new SessionModule(spaceId, db).harnessMode(agentId);
   if (harnessMode === "v2") {
+    const summary = inboxSummary(spaceId, agentId, db);
     await db.update(schema.agents).set({ status: "active", activity: isWorkerConnected() ? "working" : "offline" })
       .where(and(eq(schema.agents.id, agentId), eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt)));
     await publishAgentState(spaceId, agentId);
     await scheduleV2Turns(spaceId);
-    return { ok: true };
+    return { ok: true, inboxSummary: summary };
   }
   if (harnessMode === "migrating") return { ok: false, reason: "Agent harness migration is incomplete" };
   const target = await agentStartTarget(spaceId, agentId);

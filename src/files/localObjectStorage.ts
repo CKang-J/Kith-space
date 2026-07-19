@@ -1,9 +1,10 @@
 // Local-only attachment object storage, rooted inside each registered Space.
 import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { getSpaceRecord } from "../app-data/appDatabase.js";
 import { spaceUploadsDir } from "../paths.js";
 
@@ -31,13 +32,14 @@ export async function saveObject(spaceId: string, filename: string, stream: Read
   const uploads = uploadsForSpace(spaceId);
   await mkdir(uploads, { recursive: true });
   let size = 0;
-  await new Promise<void>((resolve, reject) => {
+  const objectPath = path.join(uploads, key);
+  try {
     stream.on("data", (data: Buffer) => { size += data.length; });
-    const output = createWriteStream(path.join(uploads, key));
-    output.on("close", resolve);
-    output.on("error", reject);
-    stream.pipe(output);
-  });
+    await pipeline(stream, createWriteStream(objectPath));
+  } catch (error) {
+    await rm(objectPath, { force: true }).catch(() => {});
+    throw error;
+  }
   return { key, size };
 }
 
@@ -47,4 +49,24 @@ export async function readObject(spaceId: string, key: string): Promise<Buffer> 
 
 export async function deleteObject(spaceId: string, key: string): Promise<void> {
   await rm(localObjectPath(spaceId, key), { force: true });
+}
+
+export async function listObjects(spaceId: string): Promise<Array<{ key: string; modifiedAt: number }>> {
+  const directory = uploadsForSpace(spaceId);
+  let keys: string[];
+  try { keys = await readdir(directory); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const objects: Array<{ key: string; modifiedAt: number }> = [];
+  for (const key of keys) {
+    try {
+      const info = await stat(localObjectPath(spaceId, key));
+      if (info.isFile()) objects.push({ key, modifiedAt: info.mtimeMs });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  return objects;
 }

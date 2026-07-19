@@ -24,6 +24,27 @@ function turnParams(opts: StartOpts, threadId: string, text: string): Record<str
   return { threadId, input: [{ type: "text", text }], ...(effort ? { effort } : {}) };
 }
 
+export function buildCodexAppServerArgs(mcpBootstrap?: StartOpts["mcpBootstrap"]): string[] {
+  const descriptor = mcpBootstrap?.descriptor ?? {};
+  const mcpCommand = typeof descriptor.command === "string" ? descriptor.command : null;
+  const mcpArgs = Array.isArray(descriptor.args) && descriptor.args.every((arg) => typeof arg === "string")
+    ? descriptor.args as string[]
+    : [];
+  const mcpEnv = descriptor.env && typeof descriptor.env === "object" && !Array.isArray(descriptor.env)
+    ? descriptor.env as Record<string, unknown>
+    : {};
+  const args = ["app-server", "--listen", "stdio://"];
+  if (!mcpCommand) return args;
+  args.push(
+    "-c", `mcp_servers.kith-core.command=${JSON.stringify(mcpCommand)}`,
+    "-c", `mcp_servers.kith-core.args=${JSON.stringify(mcpArgs)}`,
+  );
+  for (const [name, value] of Object.entries(mcpEnv)) {
+    if (typeof value === "string") args.push("-c", `mcp_servers.kith-core.env.${name}=${JSON.stringify(value)}`);
+  }
+  return args;
+}
+
 function normalizedUsage(value: any) {
   if (!value || typeof value !== "object") return null;
   const number = (...keys: string[]) => {
@@ -170,7 +191,8 @@ export const codexRuntime: Runtime = {
   start(opts: StartOpts, cb: RuntimeCallbacks): RuntimeSession {
     // Do not override CODEX_HOME: use the user's default ~/.codex (which contains subscription auth state).
     // Per-agent CODEX_HOME isolation + auth/MCP injection is a future improvement.
-    const proc = spawnRuntimeProcess("codex", ["app-server", "--listen", "stdio://"], { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: opts.env });
+    const appServerArgs = buildCodexAppServerArgs(opts.mcpBootstrap);
+    const proc = spawnRuntimeProcess("codex", appServerArgs, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: opts.env });
     const client = new CodexClient(proc, cb);
     let ready = false;
     let spawnFailed = false;

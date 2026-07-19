@@ -3,7 +3,7 @@ import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { decideAgentMessageResponse } from "../agents/agentResponseDelivery.js";
 import { assertChannelWritable } from "../channels/channelLifecycle.js";
 import type { ThreadModule } from "../channels/threadModule.js";
-import { nextSeq } from "../counters.js";
+import { nextSeq, type SpaceTransaction } from "../counters.js";
 import { dbForSpace, schema } from "../db/index.js";
 import { getHumanIdentity, humanIdentityForId } from "../human/humanIdentity.js";
 import { humanChannelState } from "../human/humanChannelState.js";
@@ -76,9 +76,10 @@ export interface TaskLifecycleModule {
     assigneeType: "human" | "agent",
     assigneeId: string,
     expectedRevision?: number,
+    precondition?: (tx: SpaceTransaction, channelId: string) => void,
   ): Promise<Message | null>;
-  unclaim(spaceId: string, messageId: string, by?: ActorRef, expectedRevision?: number): Promise<Message | null>;
-  assign(spaceId: string, messageId: string, assigneeId: string, by?: ActorRef, expectedRevision?: number): Promise<Message | null>;
+  unclaim(spaceId: string, messageId: string, by?: ActorRef, expectedRevision?: number, precondition?: (tx: SpaceTransaction, channelId: string) => void): Promise<Message | null>;
+  assign(spaceId: string, messageId: string, assigneeId: string, by?: ActorRef, expectedRevision?: number, precondition?: (tx: SpaceTransaction, channelId: string) => void): Promise<Message | null>;
   setExecutionMode(spaceId: string, messageId: string, mode: TaskExecutionMode): Promise<Message | null>;
   setStatus(
     spaceId: string,
@@ -86,6 +87,7 @@ export interface TaskLifecycleModule {
     status: string,
     by?: ActorRef,
     concurrency?: { from?: TaskStatus; expectedRevision?: number },
+    precondition?: (tx: SpaceTransaction, channelId: string) => void,
   ): Promise<Message | null>;
   delete(spaceId: string, messageId: string): Promise<Message | null>;
 }
@@ -263,7 +265,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
       return result.task;
     },
 
-    async claim(spaceId, messageId, assigneeType, assigneeId, expectedRevision) {
+    async claim(spaceId, messageId, assigneeType, assigneeId, expectedRevision, precondition) {
       if (!(await assertMessageWritable(spaceId, messageId))) return null;
       const auditSeed = { id: randomUUID(), seq: await nextSeq(spaceId) };
       const actor = { type: assigneeType, id: assigneeId } as ActorRef;
@@ -281,6 +283,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
           content: `${name} claimed #${task.taskNumber} "${taskTitle(task.content)}"`,
           actor,
         }),
+        precondition: (tx, task) => precondition?.(tx, task.channelId),
       });
       if (!result) return null;
       if (!result.changed) return result.task;
@@ -290,7 +293,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
       return result.task;
     },
 
-    async unclaim(spaceId, messageId, by, expectedRevision) {
+    async unclaim(spaceId, messageId, by, expectedRevision, precondition) {
       if (!(await assertMessageWritable(spaceId, messageId))) return null;
       const auditSeed = { id: randomUUID(), seq: await nextSeq(spaceId) };
       const name = await actorName(spaceId, by);
@@ -306,6 +309,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
           content: `${name} released #${task.taskNumber} "${taskTitle(task.content)}"`,
           actor: by,
         }),
+        precondition: (tx, task) => precondition?.(tx, task.channelId),
       });
       if (!result) return null;
       if (!result.changed) return result.task;
@@ -316,7 +320,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
       return result.task;
     },
 
-    async assign(spaceId, messageId, assigneeId, by, expectedRevision) {
+    async assign(spaceId, messageId, assigneeId, by, expectedRevision, precondition) {
       const db = dbForSpace(spaceId);
       const target = db.select().from(schema.agents).where(and(
         eq(schema.agents.id, assigneeId),
@@ -352,6 +356,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
           taskMessageId: task.id,
           membershipAgentId: target.id,
         }),
+        precondition: (tx, task) => precondition?.(tx, task.channelId),
       });
       if (!result) return null;
       if (!result.changed) return result.task;
@@ -405,7 +410,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
       return task;
     },
 
-    async setStatus(spaceId, messageId, status, by, concurrency = {}) {
+    async setStatus(spaceId, messageId, status, by, concurrency = {}, precondition) {
       if (!isTaskStatus(status)) {
         throw new TaskOperationError("INVALID_TRANSITION", `invalid task status: ${status}`);
       }
@@ -450,6 +455,7 @@ export function createTaskLifecycleModule(dependencies: TaskLifecycleDependencie
         audit: auditWrite.message,
         dispatchChain: auditWrite.dispatchChain,
         agentMembership: auditWrite.agentMembership,
+        precondition: (tx, task) => precondition?.(tx, task.channelId),
       });
       if (!result) return null;
       if (!result.changed) return result.task;

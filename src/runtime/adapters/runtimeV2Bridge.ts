@@ -62,7 +62,21 @@ class BridgedRuntimeSession implements RuntimeSessionV2 {
     };
     turn.deadlineTimer.unref?.();
     this.active = turn;
-    this.emit("turn_started", { runtime: this.runtime.name });
+    this.emit("turn_started", {
+      runtime: this.runtime.name,
+      mcpMode: this.options.mcpBootstrap.mode,
+      capabilityMode: this.options.mcpBootstrap.descriptor.capabilityMode ?? "unavailable",
+    });
+    try {
+      await turn.eventChain;
+    } catch {
+      turn.settled = true;
+      clearTimeout(turn.deadlineTimer);
+      turn.resolve({ outcome: "failed", engineSessionId: this.engineSessionId, errorCode: "runtime_event_ack_failed" });
+      if (this.active === turn) this.active = null;
+      return result;
+    }
+    if (turn.settled || this.active !== turn) return result;
 
     if (this.runtimeSession) {
       this.runtimeSession.deliver(input.context);
@@ -75,6 +89,7 @@ class BridgedRuntimeSession implements RuntimeSessionV2 {
         sessionId: this.engineSessionId,
         systemPrompt: this.options.systemPrompt.text,
         env: this.options.env,
+        mcpBootstrap: this.options.mcpBootstrap,
         initialPrompt: input.context,
       }, this.callbacks());
     }
@@ -192,12 +207,12 @@ class BridgedRuntimeSession implements RuntimeSessionV2 {
   }
 }
 
-export function bridgeRuntimeV2(runtime: Runtime, adapterVersion = "v2-bridge-1", now: () => number = Date.now): RuntimeV2 {
+export function bridgeRuntimeV2(runtime: Runtime, adapterVersion = "v2-bridge-2", now: () => number = Date.now): RuntimeV2 {
   const baseline = RUNTIME_V1_CAPABILITY_BASELINE[runtime.name as keyof typeof RUNTIME_V1_CAPABILITY_BASELINE];
   if (!baseline) throw new Error(`Runtime ${runtime.name} has no frozen v2 capability baseline`);
   return {
     name: runtime.name,
-    capabilities: { ...baseline.capabilities, usage: "final" },
+    capabilities: { ...baseline.capabilities, mcp: "config", usage: "final" },
     async openSession(options) {
       return new BridgedRuntimeSession(runtime, options, now);
     },

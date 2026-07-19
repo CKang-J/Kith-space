@@ -19,6 +19,7 @@ export const WORKSPACE_MIGRATION_HISTORY: readonly WorkspaceMigrationHistoryEntr
   { version: 6, tag: "0004_agent_harness_sessions", createdAt: 1784457381025, hash: "9e9ffe6cd2fa1dd5953170e58f12eeacb84a98c21e4ec2bbaedb6479fab8ae1f" },
   { version: 6, tag: "0005_agent_durable_turns", createdAt: 1784458418697, hash: "25ec3ae6d1c99b89fbeacb6a69228ca9bf910974d78ab2b18512fea3e833a656" },
   { version: 6, tag: "0006_legacy_dispatch_recovery", createdAt: 1784467852894, hash: "e0f08a473e9e545d5d278fd75f02c0ce4bc3dc7b2858de0652a852cefa14f979" },
+  { version: 6, tag: "0007_temporary_attachment_lifecycle", createdAt: 1784472700000, hash: "d8b340abb27d9ce11dd473272ca6ab086d9d10d30f7cbbdb8684ff5f24c9c887" },
 ];
 
 /** Immutable v2 baseline. Later schema entries are layered on explicitly below. */
@@ -121,6 +122,12 @@ const ADDITIONS_BY_MIGRATION = new Map<string, Array<[string, string]>>([
     ["channel_agent_members", "task_scope_json"],
     ["channel_agent_members", "access_expires_at"],
   ]],
+  ["0007_temporary_attachment_lifecycle", [
+    ["attachments", "upload_state"],
+    ["attachments", "source_turn_id"],
+    ["attachments", "source_activation_id"],
+    ["attachments", "expires_at"],
+  ]],
 ]);
 
 function cloneSchema(source: Map<string, string[]>): Map<string, string[]> {
@@ -167,6 +174,7 @@ export function requiredSpaceIndexes(version: number, migrationCount?: number): 
       "agent_turn_attempts_lease_idx", "turn_operations_key_uniq", "session_wakeups_due_idx",
     ] : []),
     ...(tags.has("0006_legacy_dispatch_recovery") ? ["dispatch_wakes_status_created_idx"] : []),
+    ...(tags.has("0007_temporary_attachment_lifecycle") ? ["attachments_upload_state_expiry_idx"] : []),
   ];
 }
 

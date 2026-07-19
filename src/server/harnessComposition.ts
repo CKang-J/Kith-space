@@ -5,10 +5,24 @@ import { HarnessTurnScheduler } from "../turns/turnScheduler.js";
 import { runtimeWorkerPort } from "../runtime/control/runtimeWorkerAdapter.js";
 import { turnDispatchAdapter } from "./turnDispatchAdapter.js";
 import { publish } from "./realtime.js";
+import { CapabilityGateway } from "../capabilities/capabilityGateway.js";
+import { configureTaskWorkflowEvents } from "../tasks/taskService.js";
+import { runTemporaryAttachmentMaintenance } from "../files/temporaryAttachmentCleanup.js";
+import { createLogger } from "../log.js";
+
+const log = createLogger("harness:composition");
+
+configureTaskWorkflowEvents({
+  async publish(spaceId, event) {
+    await publish(spaceId, event);
+    if ((event as { type?: unknown } | null)?.type === "message") await scheduleV2Turns(spaceId);
+  },
+});
 
 export const coreSessionCapabilityBroker = new SessionCapabilityBroker();
 const capabilities = new Map<string, TurnCapabilityService>();
 const outputs = new Map<string, TurnOutputService>();
+const gateways = new Map<string, CapabilityGateway>();
 export const harnessTurnScheduler = new HarnessTurnScheduler({
   runtimeWorker: runtimeWorkerPort,
   capabilities: turnCapabilityService,
@@ -26,6 +40,13 @@ export const harnessTurnScheduler = new HarnessTurnScheduler({
 
 export async function scheduleV2Turns(spaceId: string): Promise<void> {
   const core = await import("./core.js");
+  const maintenance = await runTemporaryAttachmentMaintenance(spaceId);
+  if (!maintenance.ok) {
+    log.warn("temporary attachment maintenance failed open", {
+      spaceId,
+      detail: maintenance.error instanceof Error ? maintenance.error.message : String(maintenance.error),
+    });
+  }
   await core.recoverLegacyTurnOutputMentions(spaceId);
   await harnessTurnScheduler.schedule(spaceId);
 }
@@ -57,4 +78,13 @@ export function turnOutputService(spaceId: string): TurnOutputService {
     outputs.set(spaceId, service);
   }
   return service;
+}
+
+export function capabilityGateway(spaceId: string): CapabilityGateway {
+  let gateway = gateways.get(spaceId);
+  if (!gateway) {
+    gateway = new CapabilityGateway(spaceId);
+    gateways.set(spaceId, gateway);
+  }
+  return gateway;
 }

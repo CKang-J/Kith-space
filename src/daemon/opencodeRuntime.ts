@@ -25,9 +25,18 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 /** Merge Kith's transparent execution agent into OpenCode's child-only inline config. */
-export function buildOpencodeConfigContent(systemPrompt: string, existing?: string): string {
+export function buildOpencodeConfigContent(systemPrompt: string, existing?: string, mcpBootstrap?: StartOpts["mcpBootstrap"]): string {
   const base = existing?.trim() ? record(JSON.parse(existing)) : {};
   const agents = record(base.agent);
+  const mcp = record(base.mcp);
+  const descriptor = mcpBootstrap?.descriptor ?? {};
+  const command = typeof descriptor.command === "string" ? descriptor.command : null;
+  const args = Array.isArray(descriptor.args) && descriptor.args.every((arg) => typeof arg === "string")
+    ? descriptor.args as string[]
+    : [];
+  const environment = descriptor.env && typeof descriptor.env === "object" && !Array.isArray(descriptor.env)
+    ? descriptor.env as Record<string, unknown>
+    : {};
   return JSON.stringify({
     ...base,
     agent: {
@@ -38,6 +47,7 @@ export function buildOpencodeConfigContent(systemPrompt: string, existing?: stri
         prompt: systemPrompt,
       },
     },
+    ...(command ? { mcp: { ...mcp, "kith-core": { type: "local", command: [command, ...args], environment, enabled: true } } } : {}),
   });
 }
 
@@ -135,10 +145,10 @@ class OpencodeRun {
     // uses PWD (not just cwd) to anchor project discovery.
     this.env = { ...opts.env, PWD: opts.cwd };
     delete this.env.NODE_OPTIONS;
-    try { this.env.OPENCODE_CONFIG_CONTENT = buildOpencodeConfigContent(opts.systemPrompt, this.env.OPENCODE_CONFIG_CONTENT); }
+    try { this.env.OPENCODE_CONFIG_CONTENT = buildOpencodeConfigContent(opts.systemPrompt, this.env.OPENCODE_CONFIG_CONTENT, opts.mcpBootstrap); }
     catch (e) {
       cb.log.warn("opencode: invalid existing OPENCODE_CONFIG_CONTENT ignored", { detail: String(e) });
-      this.env.OPENCODE_CONFIG_CONTENT = buildOpencodeConfigContent(opts.systemPrompt);
+      this.env.OPENCODE_CONFIG_CONTENT = buildOpencodeConfigContent(opts.systemPrompt, undefined, opts.mcpBootstrap);
     }
     if (this.sessionId) cb.onSession(this.sessionId);
     this.enqueue(opts.initialPrompt);

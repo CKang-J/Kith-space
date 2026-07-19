@@ -117,6 +117,28 @@ export class SessionCapabilityBroker {
     return renewed;
   }
 
+  replace(handle: string, activationId: string, rawClaims: TurnCapabilityClaims): TurnCapabilityClaims {
+    const session = this.session(handle);
+    const current = session.activation;
+    if (!current || current.activationId !== activationId) {
+      throw new HarnessError("capability_inactive", "broker session has no matching active attempt", { activationId });
+    }
+    const next = TurnCapabilityClaimsSchema.parse(rawClaims);
+    if (next.activationId !== current.activationId
+      || next.turnId !== current.turnId
+      || next.attemptId !== current.attemptId
+      || next.sessionId !== current.sessionId
+      || next.sessionGeneration !== current.sessionGeneration
+      || next.workerGeneration !== current.workerGeneration
+      || next.spaceId !== current.spaceId
+      || next.agentId !== current.agentId
+      || next.expiresAt !== current.expiresAt) {
+      throw new HarnessError("capability_scope_denied", "broker claim refresh cannot change activation identity");
+    }
+    session.activation = next;
+    return next;
+  }
+
   deactivate(handle: string, activationId: string): boolean {
     const session = this.sessions.get(handle);
     if (!session || session.closed || session.activation?.activationId !== activationId) return false;

@@ -172,7 +172,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   const alc = /^\/api\/agents\/([^/]+)\/(start|stop|reset|restart)$/.exec(p);
   if (alc && method === "POST") {
     const [, agId, action] = alc;
-    if (action === "start") { const r = await startAgent(spaceId, agId!); return (r.ok ? sendJson(res, 200, { ok: true }) : sendErr(res, 503, r.reason ?? "cannot start")), true; }
+    if (action === "start") { const r = await startAgent(spaceId, agId!); return (r.ok ? sendJson(res, 200, { ok: true, ...(r.inboxSummary ? { inboxSummary: r.inboxSummary } : {}) }) : sendErr(res, 503, r.reason ?? "cannot start")), true; }
     if (action === "stop") { await stopAgent(spaceId, agId!); return (sendJson(res, 200, { ok: true }), true); }
     if (action === "restart") { await stopAgent(spaceId, agId!); const r = await startAgent(spaceId, agId!); return (r.ok ? sendJson(res, 200, { ok: true }) : sendErr(res, 503, r.reason ?? "cannot start")), true; } // preserves session and workspace; restarts only the process
     const b = await readJson(req).catch(() => ({}));

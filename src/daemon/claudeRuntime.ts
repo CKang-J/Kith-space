@@ -26,6 +26,7 @@ export function buildClaudeArgs(p: {
   model?: string | null;
   reasoningEffort?: string | null;
   sessionId?: string | null;
+  mcpConfigFile?: string | null;
 }): string[] {
   const args = [
     "-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose",
@@ -37,6 +38,7 @@ export function buildClaudeArgs(p: {
   const effort = typeof p.reasoningEffort === "string" && CLAUDE_EFFORTS.has(p.reasoningEffort) ? p.reasoningEffort : null;
   if (effort) args.push("--effort", effort);
   if (p.sessionId) args.push("--resume", p.sessionId);
+  if (p.mcpConfigFile) args.push("--mcp-config", p.mcpConfigFile, "--strict-mcp-config");
   return args;
 }
 
@@ -58,6 +60,9 @@ export const claudeRuntime: Runtime = {
       model: opts.model,
       reasoningEffort: rc && typeof rc.reasoningEffort === "string" ? rc.reasoningEffort : null,
       sessionId: opts.sessionId,
+      mcpConfigFile: typeof opts.mcpBootstrap?.descriptor.configFile === "string"
+        ? opts.mcpBootstrap.descriptor.configFile
+        : null,
     });
 
     const proc = spawnRuntimeProcess("claude", args, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: opts.env });

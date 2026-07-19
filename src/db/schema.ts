@@ -280,10 +280,15 @@ export const attachments = sqliteTable("attachments", {
   mimeType: text("mime_type"),
   sizeBytes: integer("size_bytes"),
   storageKey: text("storage_key").notNull(),
+  uploadState: text("upload_state"), // null/legacy | temporary | deleting | bound
+  sourceTurnId: text("source_turn_id"),
+  sourceActivationId: text("source_activation_id"),
+  expiresAt: timestamp("expires_at"),
   createdAt: timestamp("created_at").default(now).notNull(),
 }, (t) => ({
   byChannel: index("attachments_channel_idx").on(t.channelId),
   idTextPrefix: index("attachments_id_text_prefix_idx").on(t.id),
+  byTemporaryExpiry: index("attachments_upload_state_expiry_idx").on(t.uploadState, t.expiresAt),
 }));
 
 export const reminders = sqliteTable("reminders", {
@@ -514,7 +519,7 @@ export const sessionChecklistItems = sqliteTable("session_checklist_items", {
   id: id("id").primaryKey(),
   runtimeSessionId: text("runtime_session_id").notNull().references(() => runtimeSessions.id, { onDelete: "cascade" }),
   text: text("text").notNull(),
-  status: text("status").$type<"open" | "done">().default("open").notNull(),
+  status: text("status").$type<"open" | "pending" | "in_progress" | "done" | "cancelled">().default("open").notNull(),
   sortOrder: integer("sort_order").notNull(),
   sourceTurnId: text("source_turn_id").references(() => agentTurns.id, { onDelete: "set null" }),
   rowVersion: integer("row_version").default(1).notNull(),

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, gt, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, ne, or } from "drizzle-orm";
 import { nextSeq, type SpaceTransaction } from "../counters.js";
 import { dbForSpace, schema, type SpaceDb } from "../db/index.js";
 import { HarnessError } from "../harness/errors.js";
@@ -62,12 +62,17 @@ export class TurnOutputService {
     attemptId: string;
     idempotencyKey: string;
     body: string;
+    attachmentIds?: string[];
+    attachmentActivationId?: string;
     handledInputIds: string[];
+    writePrecondition?: (tx: SpaceTransaction, channelId: string) => void;
   }): Promise<typeof schema.messages.$inferSelect> {
     const handledInputIds = [...new Set(input.handledInputIds)];
-    if (!input.body.trim()) throw new HarnessError("output_missing", "reply body is required");
+    const attachmentIds = [...new Set(input.attachmentIds ?? [])];
+    const body = input.body.trim();
+    if (!body && !attachmentIds.length) throw new HarnessError("output_missing", "reply body or attachments are required");
     if (!handledInputIds.length) throw new HarnessError("required_input_unresolved", "reply must identify handled inputs");
-    const hash = requestHash({ body: input.body, handledInputIds });
+    const hash = requestHash({ body, attachmentIds, handledInputIds });
     const existing = this.existingReply(input.turnId, input.idempotencyKey, hash);
     if (existing) {
       await this.runPostCommit("recover legacy mentions", () => this.events.recoverLegacyMentions?.(this.spaceId) ?? Promise.resolve());
@@ -85,11 +90,27 @@ export class TurnOutputService {
         throw new HarnessError("idempotency_conflict", "reply operation is incomplete and requires reconciliation");
       }
       const { turn, attempt, session, agent, deliveries } = this.validateOperation(tx, input.turnId, input.attemptId, handledInputIds, true);
+      input.writePrecondition?.(tx, session.surfaceId);
       const surface = tx.select().from(schema.channels).where(and(
         eq(schema.channels.id, session.surfaceId),
         eq(schema.channels.spaceId, this.spaceId),
       )).get();
       if (!surface) throw new HarnessError("reply_target_denied", "reply surface no longer exists", { turnId: turn.id });
+      const attachments = attachmentIds.length ? tx.select().from(schema.attachments)
+        .where(inArray(schema.attachments.id, attachmentIds)).all() : [];
+      if (attachments.length !== attachmentIds.length || attachments.some((attachment) =>
+        attachment.spaceId !== this.spaceId
+        || attachment.uploaderType !== "agent"
+        || attachment.uploaderId !== agent.id
+        || attachment.messageId !== null
+        || attachment.channelId !== session.surfaceId
+        || attachment.uploadState !== "temporary"
+        || attachment.sourceTurnId !== turn.id
+        || attachment.sourceActivationId !== input.attachmentActivationId
+        || !attachment.expiresAt
+        || attachment.expiresAt.getTime() <= this.now())) {
+        throw new HarnessError("capability_scope_denied", "one or more attachments are unavailable for this turn", { attachmentIds });
+      }
       const sourceMessages = tx.select({
         id: schema.messages.id,
         dispatchChainId: schema.messages.dispatchChainId,
@@ -125,7 +146,7 @@ export class TurnOutputService {
             now: now.getTime(),
           }))))
         .map((member) => ({ type: "agent" as const, ...member }));
-      const mentions = input.body.includes("@") ? parseMentions(input.body, mentionPool) : [];
+      const mentions = body.includes("@") ? parseMentions(body, mentionPool) : [];
       if (mentions.length && chainIds.size !== 1) {
         throw new HarnessError("capability_scope_denied", "reply mentions require inputs from one dispatch chain", {
           turnId: turn.id,
@@ -180,14 +201,34 @@ export class TurnOutputService {
         senderId: agent.id,
         senderName: agent.name,
         messageType: "chat",
-        content: input.body,
+        content: body,
         memoryPolicy: "exclude",
         producedByTurnId: turn.id,
-        searchText: input.body,
+        searchText: body,
         threadId: directThread?.id ?? null,
         dispatchChainId,
         dispatchDepth,
       }).returning().get();
+      if (attachmentIds.length) {
+        const bound = tx.update(schema.attachments).set({
+          messageId: created.id,
+          channelId: session.surfaceId,
+          uploadState: "bound",
+          expiresAt: null,
+        }).where(and(
+          inArray(schema.attachments.id, attachmentIds),
+          eq(schema.attachments.spaceId, this.spaceId),
+          eq(schema.attachments.uploaderType, "agent"),
+          eq(schema.attachments.uploaderId, agent.id),
+          eq(schema.attachments.uploadState, "temporary"),
+          eq(schema.attachments.sourceTurnId, turn.id),
+          eq(schema.attachments.sourceActivationId, input.attachmentActivationId ?? ""),
+          isNull(schema.attachments.messageId),
+        )).run();
+        if (bound.changes !== attachmentIds.length) {
+          throw new HarnessError("capability_scope_denied", "attachment binding changed before reply commit", { attachmentIds });
+        }
+      }
       if (mentions.length) {
         tx.insert(schema.messageMentions).values(mentions.map((mention) => ({
           messageId: created.id,
@@ -340,10 +381,11 @@ export class TurnOutputService {
     const channel = this.db.select().from(schema.channels).where(eq(schema.channels.id, message.channelId)).get();
     const persistedMentions = this.db.select().from(schema.messageMentions).where(eq(schema.messageMentions.messageId, message.id)).all()
       .map(persistedMessageMention);
+    const persistedAttachments = this.db.select().from(schema.attachments).where(eq(schema.attachments.messageId, message.id)).all();
     await this.runPostCommit("publish reply", () => this.events.publish(this.spaceId, {
       type: "message",
       channelId: message.channelId,
-      message: { ...serializeMessage(message, persistedMentions, []), channelType: channel?.type ?? null },
+      message: { ...serializeMessage(message, persistedMentions, persistedAttachments), channelType: channel?.type ?? null },
     }));
     if (channel?.type === "thread" && channel.parentMessageId) {
       const parent = this.db.select({ channelId: schema.messages.channelId }).from(schema.messages)
@@ -394,6 +436,7 @@ export class TurnOutputService {
     idempotencyKey: string;
     inputIds: string[];
     reason: string;
+    writePrecondition?: (tx: SpaceTransaction, channelId: string) => void;
   }): { cededInputIds: string[] } {
     const inputIds = [...new Set(input.inputIds)];
     if (!inputIds.length || !input.reason.trim()) throw new HarnessError("delivery_not_actionable", "cede requires input IDs and a reason");
@@ -404,7 +447,8 @@ export class TurnOutputService {
         if (existing.requestHash !== hash) throw new HarnessError("idempotency_conflict", "idempotency key was reused for another cede");
         return { cededInputIds: (existing.resultRef?.inputIds as string[] | undefined) ?? inputIds };
       }
-      const { turn, attempt, agent, deliveries } = this.validateOperation(tx, input.turnId, input.attemptId, inputIds);
+      const { turn, attempt, session, agent, deliveries } = this.validateOperation(tx, input.turnId, input.attemptId, inputIds);
+      input.writePrecondition?.(tx, session.surfaceId);
       if (deliveries.some((delivery) => delivery.directive !== "optional")) {
         throw new HarnessError("delivery_not_actionable", "required or observe inputs cannot be ceded", { inputIds });
       }
@@ -498,8 +542,15 @@ export class TurnOutputService {
     if (requireFreshOutput && turn.contextEnvelope) {
       const parsed = ContextEnvelopeSchema.safeParse(turn.contextEnvelope);
       if (!parsed.success) throw new HarnessError("stale_context", "turn context manifest is invalid", { turnId });
-      const throughSeq = parsed.data.seenWatermarks.find((watermark) => watermark.channelId === session.surfaceId)?.throughSeq;
-      if (throughSeq === undefined) throw new HarnessError("stale_context", "turn context has no output-surface watermark", { turnId, channelId: session.surfaceId });
+      const initialThroughSeq = parsed.data.seenWatermarks.find((watermark) => watermark.channelId === session.surfaceId)?.throughSeq;
+      if (initialThroughSeq === undefined) throw new HarnessError("stale_context", "turn context has no output-surface watermark", { turnId, channelId: session.surfaceId });
+      const refreshedThroughSeq = tx.select({ throughSeq: schema.turnContextSources.sourceRevision }).from(schema.turnContextSources).where(and(
+        eq(schema.turnContextSources.turnId, turnId),
+        eq(schema.turnContextSources.phase, "later_query"),
+        eq(schema.turnContextSources.sourceKind, "surface_watermark"),
+        eq(schema.turnContextSources.sourceId, session.surfaceId),
+      )).orderBy(desc(schema.turnContextSources.sourceRevision)).get()?.throughSeq ?? 0;
+      const throughSeq = Math.max(initialThroughSeq, refreshedThroughSeq);
       const later = tx.select({ id: schema.messages.id, seq: schema.messages.seq }).from(schema.messages).where(and(
         eq(schema.messages.channelId, session.surfaceId),
         gt(schema.messages.seq, throughSeq),

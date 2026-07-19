@@ -96,6 +96,19 @@ test("OpenCode bootstrap keeps each Kith agent prompt process-local", () => {
   assert.notEqual(alpha.agent[KITH_OPENCODE_AGENT].prompt, beta.agent[KITH_OPENCODE_AGENT].prompt);
 });
 
+test("OpenCode bootstrap injects kith-core without overwriting user MCP servers", () => {
+  const config = JSON.parse(buildOpencodeConfigContent("role", JSON.stringify({
+    mcp: { user: { type: "remote", url: "https://example.invalid" } },
+  }), {
+    mode: "config",
+    serverName: "kith-core",
+    descriptor: { command: "/node", args: ["/mcp.mjs"], env: { ELECTRON_RUN_AS_NODE: "1" } },
+  }));
+  assert.equal(config.mcp.user.url, "https://example.invalid");
+  assert.deepEqual(config.mcp["kith-core"].command, ["/node", "/mcp.mjs"]);
+  assert.equal(config.mcp["kith-core"].environment.ELECTRON_RUN_AS_NODE, "1");
+});
+
 test("OpenCode launches with the official auto flag and an explicit model", { skip: process.platform !== "win32" }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "kith-space-opencode-args-"));
   const argsFile = path.join(root, "args.txt");

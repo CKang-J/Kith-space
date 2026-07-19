@@ -69,6 +69,11 @@ if (production) {
       entryPoints: [path.join(root, "src/cli/index.ts")],
       outfile: path.join(runtimeDir, "agent-cli.mjs"),
     }),
+    build({
+      ...runtimeCommon,
+      entryPoints: [path.join(root, "src/server/mcp/stdio.ts")],
+      outfile: path.join(runtimeDir, "kith-core-mcp.mjs"),
+    }),
   );
 }
 

@@ -14,6 +14,7 @@ import { ContextAssembler, inferContinuityMode } from "../context/contextAssembl
 import { TurnLedger } from "./turnLedger.js";
 import { revokeExpiredTaskScopedAccess } from "../channels/taskScopedAccess.js";
 import { assertAgentSurfaceAccessInTransaction } from "../channels/agentSurfaceAccess.js";
+import { SessionWakeupService } from "../sessions/sessionWakeupService.js";
 
 const LEASE_MS = Number(process.env.KITH_SPACE_TURN_LEASE_MS ?? 90_000);
 const HEARTBEAT_MS = Math.max(1_000, Math.min(30_000, Math.floor(LEASE_MS / 3)));
@@ -40,6 +41,7 @@ export class HarnessTurnScheduler {
   private drainPromise: Promise<void> | null = null;
   private readonly heartbeats = new Map<string, ReturnType<typeof setInterval>>();
   private readonly retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly retryDeadlines = new Map<string, number>();
   private readonly now: () => number;
   private shuttingDown = false;
   private readonly log = createLogger("turns:scheduler");
@@ -129,6 +131,7 @@ export class HarnessTurnScheduler {
     for (const timer of this.retryTimers.values()) clearTimeout(timer);
     this.heartbeats.clear();
     this.retryTimers.clear();
+    this.retryDeadlines.clear();
     await this.drainPromise;
   }
 
@@ -156,6 +159,9 @@ export class HarnessTurnScheduler {
     const availability = this.options.runtimeWorker.availability();
     if (!availability.connected || availability.generation === null) return;
     const ledger = new TurnLedger(spaceId, dbForSpace(spaceId), this.now);
+    const wakeups = await new SessionWakeupService(spaceId, dbForSpace(spaceId), this.now).fireDue();
+    if (wakeups.fired || wakeups.cancelled) this.log.info("processed session wakeups", { spaceId, ...wakeups });
+    if (wakeups.nextDueAt !== null) this.armAt(spaceId, wakeups.nextDueAt);
     const recovered = ledger.recoverExpiredAttempts();
     this.options.capabilities(spaceId).expireStaleActivations();
     if (recovered) this.log.info("recovered expired turn attempts", { spaceId, recovered });
@@ -392,13 +398,17 @@ export class HarnessTurnScheduler {
   private armAt(spaceId: string, at: number): void {
     if (this.shuttingDown) return;
     const existing = this.retryTimers.get(spaceId);
+    const existingAt = this.retryDeadlines.get(spaceId);
+    if (existing && existingAt !== undefined && existingAt <= at) return;
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
       this.retryTimers.delete(spaceId);
+      this.retryDeadlines.delete(spaceId);
       void this.schedule(spaceId);
     }, Math.max(1, at - this.now() + 5));
     timer.unref?.();
     this.retryTimers.set(spaceId, timer);
+    this.retryDeadlines.set(spaceId, at);
   }
 }
 

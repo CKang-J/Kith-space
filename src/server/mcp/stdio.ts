@@ -1,0 +1,109 @@
+#!/usr/bin/env node
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { BrokerGatewayClient, GatewayClientError } from "../../capabilities/gatewayClient.js";
+
+const client = BrokerGatewayClient.fromEnv(process.env, "mcp");
+const server = new McpServer({ name: "kith-core", version: "0.1.0" });
+
+function result(value: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
+}
+
+function register(
+  name: string,
+  description: string,
+  inputSchema: Record<string, z.ZodTypeAny>,
+  method: "GET" | "POST",
+  path: string | ((input: Record<string, unknown>) => string),
+  transform?: (input: Record<string, unknown>) => Record<string, unknown>,
+): void {
+  server.registerTool(name, { description, inputSchema: z.object(inputSchema).strict() }, async (input) => {
+    try {
+      const target = typeof path === "function" ? path(input as Record<string, unknown>) : path;
+      const command = transform ? transform(input as Record<string, unknown>) : input;
+      const value = await client.request(method, target, method === "POST" ? command : undefined);
+      return result(value);
+    } catch (error) {
+      const code = error instanceof GatewayClientError ? error.code : "gateway_failed";
+      const message = error instanceof Error ? error.message : String(error);
+      return { isError: true, content: [{ type: "text" as const, text: JSON.stringify({ code, error: message }) }] };
+    }
+  });
+}
+
+register("session.context_check", "Read only the authoritative active-turn inputs; optionally refresh later surface refs.", {
+  refresh: z.boolean().default(false),
+}, "GET", (input) => `/agent-gateway/turn/context?refresh=${input.refresh === true ? "true" : "false"}`);
+register("turn.reply", "Commit a server-targeted Chat reply and settle the listed input obligations.", {
+  schemaVersion: z.literal(1), body: z.string(), attachmentIds: z.array(z.string().min(1)).max(20).default([]),
+  handledInputIds: z.array(z.string().min(1)).min(1).max(50), operationKey: z.string().min(1).max(128),
+}, "POST", "/agent-gateway/turn/reply");
+register("turn.cede", "Cede optional inputs with an explicit reason.", {
+  schemaVersion: z.literal(1), inputIds: z.array(z.string().min(1)).min(1).max(50),
+  reason: z.string().min(1).max(1_000), operationKey: z.string().min(1).max(128),
+}, "POST", "/agent-gateway/turn/cede");
+register("turn.progress", "Record bounded progress for the active turn.", {
+  text: z.string().min(1).max(2_000), idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/turn/progress");
+register("turn.get", "Inspect the active turn, attempts, context, operations, usage, and outcome.", {}, "GET", "/agent-gateway/turn/get");
+register("session.checklist_list", "List the current surface session checklist.", {}, "GET", "/agent-gateway/session/checklist");
+register("session.checklist_upsert", "Create or CAS-update a current surface session checklist item.", {
+  id: z.string().min(1).optional(), text: z.string().min(1).max(1_000),
+  status: z.enum(["pending", "in_progress", "done", "cancelled"]).default("pending"),
+  order: z.number().int().min(0).max(10_000), expectedRevision: z.number().int().positive().optional(),
+  idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/session/checklist/upsert");
+register("session.checklist_complete", "CAS-complete a current surface session checklist item.", {
+  id: z.string().min(1), text: z.string().min(1).max(1_000), order: z.number().int().min(0).max(10_000),
+  expectedRevision: z.number().int().positive(), idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/session/checklist/upsert", (input) => ({ ...input, status: "done" }));
+register("session.checklist_clear", "Clear checklist items in the current surface session.", {
+  includeCompleted: z.boolean().default(true), idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/session/checklist/clear");
+register("session.schedule_wakeup", "Schedule a one-shot wake of this surface session in 60–3600 seconds.", {
+  delaySeconds: z.number().int().min(60).max(3_600), reason: z.string().min(1).max(500), idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/session/wakeup");
+register("conversation.read", "Read an ACL-checked conversation and audit the later query.", {
+  channelId: z.string().min(1), limit: z.number().int().min(1).max(100).default(50), afterSeq: z.number().int().nonnegative().optional(),
+}, "POST", "/agent-gateway/conversation/read");
+register("conversation.search", "Search ACL-checked current Agent conversations and audit returned sources.", {
+  query: z.string().min(1).max(500), limit: z.number().int().min(1).max(50).default(20),
+}, "POST", "/agent-gateway/conversation/search");
+register("task.list", "List tasks in one currently accessible channel.", {
+  channel: z.string().min(1),
+}, "POST", "/agent-gateway/task/list");
+register("task.get", "Read one currently accessible task and its linked reports/deliveries.", {
+  taskId: z.string().min(6),
+}, "POST", "/agent-gateway/task/get");
+register("task.create", "Create one idempotent task in an accessible channel.", {
+  channel: z.string().min(1), title: z.string().min(1).max(20_000),
+  executionMode: z.enum(["autopilot", "plan-first"]).default("autopilot"),
+  parentTaskId: z.string().min(6).optional(), idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/task/create");
+register("task.claim", "Idempotently claim an accessible task for the current Agent.", {
+  taskId: z.string().min(6), expectedRevision: z.number().int().positive().optional(), idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/task/claim");
+register("task.update", "CAS-update an accessible task status.", {
+  taskId: z.string().min(6), status: z.enum(["todo", "in_progress", "in_review", "done", "closed"]),
+  from: z.enum(["todo", "in_progress", "in_review", "done", "closed"]).optional(),
+  expectedRevision: z.number().int().positive().optional(), idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/task/update");
+register("task.assign", "CAS-handoff an accessible task to another Agent.", {
+  taskId: z.string().min(6), to: z.string().min(1), expectedRevision: z.number().int().positive().optional(), idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/task/assign");
+register("task.unclaim", "CAS-release the current Agent's task claim.", {
+  taskId: z.string().min(6), expectedRevision: z.number().int().positive().optional(), idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/task/unclaim");
+register("task.report", "Post one idempotent structured report to the task thread.", {
+  taskId: z.string().min(6), kind: z.enum(["progress", "blocker", "question", "result"]),
+  content: z.string().min(1).max(20_000), idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/task/report");
+register("task.deliver", "Publish an idempotent delivery summary and move the task to in_review.", {
+  taskId: z.string().min(6), expectedRevision: z.number().int().positive(), summary: z.string().min(1).max(20_000),
+  childTaskIds: z.array(z.string().min(6)).max(100).default([]), idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/task/deliver");
+register("capability.describe", "Describe the active kith-core capability mode and scopes.", {}, "GET", "/agent-gateway/capability/describe");
+
+await server.connect(new StdioServerTransport());

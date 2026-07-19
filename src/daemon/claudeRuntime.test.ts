@@ -67,6 +67,12 @@ test("effort='max' boundary value passes through", () => {
   assert.equal(valAfter(args, "--effort"), "max");
 });
 
+test("Harness v2 injects only the generated kith-core MCP config", () => {
+  const args = buildClaudeArgs({ promptFileFlag: ["--append-system-prompt", "SP"], mcpConfigFile: "/runtime/kith-core.json" });
+  assert.equal(valAfter(args, "--mcp-config"), "/runtime/kith-core.json");
+  assert.equal(has(args, "--strict-mcp-config"), true);
+});
+
 test("spawn errors are handled so a missing claude CLI does not crash the daemon", () => {
   const src = fs.readFileSync(new URL("./claudeRuntime.ts", import.meta.url), "utf8");
   assert.match(src, /proc\.on\("error",/, "claude runtime must listen for child_process spawn errors");

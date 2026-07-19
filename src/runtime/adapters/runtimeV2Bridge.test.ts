@@ -25,8 +25,9 @@ test("v2 bridge keeps a persistent process across turns and awaits critical even
   let delivers = 0;
   const runtime: Runtime = {
     name: "claude",
-    start(_options, callbacks) {
+    start(options, callbacks) {
       starts += 1;
+      assert.deepEqual(options.mcpBootstrap, openOptions().mcpBootstrap);
       const complete = () => queueMicrotask(() => {
         callbacks.onSession("engine-session-1");
         callbacks.onActivity("thinking", "test");
@@ -71,6 +72,7 @@ test("v2 bridge keeps a persistent process across turns and awaits critical even
   assert.deepEqual(events.filter((event) => event.turnId === "turn-1").map((event) => event.ordinal), [0, 1, 2, 3, 4]);
   assert.deepEqual(events.filter((event) => event.turnId === "turn-2").map((event) => event.ordinal), [0, 1, 2, 3]);
   assert.equal(events.filter((event) => event.kind === "session_changed").length, 1);
+  assert.deepEqual(events[0]?.payload, { runtime: "claude", mcpMode: "none", capabilityMode: "unavailable" });
   assert.equal(events.at(-1)?.kind, "turn_completed");
 });
 
@@ -91,6 +93,7 @@ test("v2 bridge cancellation terminates the process-backed attempt explicitly", 
     capabilityActivationId: "activation-cancel",
     deadlineAt: Date.now() + 10_000,
   }, { async emit(event) { events.push(event); } });
+  await new Promise<void>((resolve) => setImmediate(resolve));
   await session.cancel("attempt-cancel");
 
   assert.equal((await result).outcome, "cancelled");
@@ -103,4 +106,19 @@ test("v2 bridge cancellation terminates the process-backed attempt explicitly", 
     capabilityActivationId: "activation-after-cancel",
     deadlineAt: Date.now() + 1_000,
   }, { async emit() {} }), /closed/);
+});
+
+test("v2 bridge fails before starting the runtime when turn-start acknowledgement is rejected", async () => {
+  let starts = 0;
+  const runtime: Runtime = {
+    name: "claude",
+    start() { starts += 1; return { deliver() {}, stop() {} }; },
+  };
+  const session = await bridgeRuntimeV2(runtime).openSession(openOptions());
+  const result = await session.runTurn({
+    turnId: "turn-no-ack", attemptId: "attempt-no-ack", context: "never delivered",
+    capabilityActivationId: "activation-no-ack", deadlineAt: Date.now() + 1_000,
+  }, { async emit() { throw new Error("Core unavailable"); } });
+  assert.equal(starts, 0);
+  assert.equal(result.errorCode, "runtime_event_ack_failed");
 });

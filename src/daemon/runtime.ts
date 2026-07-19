@@ -2,6 +2,7 @@
 // Types only — no implementation imports, avoiding circular dependencies with concrete runtime files.
 import type { Logger } from "../log.js";
 import type { NormalizedUsage } from "../runtime/contract/v2/runtimeContract.js";
+import type { McpBootstrapDescriptor } from "../runtime/contract/v2/runtimeContract.js";
 
 export interface TrajectoryEntry {
   kind: "thinking" | "text" | "tool" | "status";
@@ -28,6 +29,7 @@ export interface StartOpts {
   sessionId?: string | null;       // for session resume
   systemPrompt: string;            // injected system prompt (claude=--append-system-prompt; codex=developerInstructions)
   env: NodeJS.ProcessEnv;          // includes PATH injection for kith-space + KITH_SPACE_* env vars
+  mcpBootstrap?: McpBootstrapDescriptor;
   initialPrompt: string;           // lifecycle drive message selected for create, manual start, or delivery wake
 }
 

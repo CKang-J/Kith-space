@@ -124,10 +124,10 @@ pnpm exec tsx scripts/p-a10/baseline.ts
 
 它预填 10 万条消息和 1 万条结构化记忆候选，测量 1/5/20 Agent 同事务 fan-out、英文与中文 2 字 FTS 查询，并报告临时数据库体积。该脚本只冻结本机起点，不等于 P-A10.5 的最终 recall 质量/SLO。Runtime adapter 的 fixture 与 live smoke边界见 [`dev-debugging.md`](./dev-debugging.md#9-p-a10-runtime-contract-基线)。
 
-P-A10.3 durable turn/context定向回归使用项目测试runner的随机profile运行；不要直接绕过runner复用真实`~/.kith-space`：
+P-A10.4 durable turn/context/Gateway回归使用项目测试runner的随机profile运行；不要直接绕过runner复用真实`~/.kith-space`：
 
 ```powershell
 pnpm test --unit
 ```
 
-当前unit门覆盖migration前缀、cutover/backfill/rollback窗口、message+delivery回滚、task observe与分页frontier、dispatch reservation、logical turn/lease+broker续租、cancel/requeue、operation幂等、reply mention+chain/depth、逐输入finalize、admission/event上限、terminal重传、原子direct-mention thread、Context Envelope/HMAC tombstone、父级ACL撤权、stale output与turn inspector。完整integration仍使用`pnpm test --integration`。`kith-space turn context|reply|cede`只在Worker注入的active v2 turn中可用，不是Human手动调试命令；缺少activation时按设计返回`capability_inactive`。
+当前unit门覆盖migration前缀、cutover/backfill/rollback窗口、message+delivery回滚、task observe与分页frontier、dispatch reservation、logical turn/lease+broker续租、cancel/requeue、operation幂等、reply mention+chain/depth/attachment原子绑定、逐输入finalize、admission/event上限、terminal重传、原子direct-mention thread、Context Envelope/HMAC tombstone、父级ACL撤权、stale refresh、真实Gateway MCP/CLI/CLI parser同域fixture、Task全链路、三家MCP bootstrap/握手降级、跨私密ref-only projection、checklist/short wake、上传超限/中断整批清理、临时附件过期/崩溃GC与manual inbox summary。完整integration仍使用`pnpm test --integration`。`kith-space context check`、`turn context|reply|cede|progress|get`、`attachment upload`、`conversation read|search`、`task ...`、`session checklist|wake`与`capability describe`只在Worker注入的active v2 turn中可用，不是Human手动调试命令；缺少activation时按设计返回`capability_inactive`。v2 `attachment upload --file <path>`不接受目标频道，返回的ID只能由同一activation的`turn reply --attach <id>`绑定到server-owned surface；每批最多10个文件、单文件上限25 MiB，超限或连接中断会拒绝并清理整批，临时ID一小时后失效。

@@ -1,6 +1,6 @@
 # Agent Harness v2：会话、上下文、记忆与工具机制设计
 
-> 状态：已接受并实施中；P-A10.0–P-A10.3 已完成，P-A10.4–P-A10.7 尚待逐门实现。
+> 状态：已接受并实施中；P-A10.0–P-A10.4 已完成，P-A10.5–P-A10.7 尚待逐门实现。
 > 日期：2026-07-19。
 > 依据：`docs/kith-space/notes/helio-agent-context-memory-tools-research.md` 的本机实测，以及 Kith-space 已完成的 P-A7、P-A8、P-A9 架构边界。
 > 目的：获得与 Helio 相同的“同一个 Agent 像长期同事一样跨私聊、频道和话题延续关系”的体验，同时修正其不可解释记忆、模型重建 thread target、跨私密边界仅靠自律和 cursor replay 等缺陷。
@@ -1785,6 +1785,8 @@ Agents 设置的开发诊断区显示：
 实施状态（2026-07-19）：已完成。Human/Agent及v2 output direct mention的root/thread/参与者/delivery同事务提交，`@all`与silent例外已落地；现有thread mention只可加入已有父级访问权的Agent。mixed cutover按目标mode把v2送入durable journal，legacy复用同一响应模式/水位线判定并只把actionable reserved wake与output同事务提交，由既有dispatch guard执行/重启扫描恢复；post-commit设置或mode变化导致的确定性no-wake会原子退款chain budget，migrating留给cutover backfill；workspace v6第三个journal前缀增加恢复索引。Context Assembler冻结root、parent as-of/current/recovery/object/UI/file refs、watermark、预算/omission并使用app.db v2安装级HMAC key；未绑定later delivery不会泄漏进context或抬高watermark，8k required溢出在bind时保留连续尾部给下一turn。Gateway/output/context逐调用重验普通thread父级ACL，Human移除/Agent leave和task release/reassign/终态/自然到期分别同步失效普通与task-scoped执行权，提交后关闭broker handle并取消Worker attempt，过期grant不进入runtime admission/context disclosure且运行中heartbeat越界立即取消；`turn.reply`对output surface later message确定性返回`stale_context`。Chat持久Agent回复提供Context/Steps/Usage/Outcome审计抽屉，source tombstone及omitted/ref-only状态不冒充已注入正文。P-A10.4的完整MCP、later-query refresh与其余权威查询未在本切片冒充完成。
 
 ### P-A10.4 Capability Gateway 与 MCP bootstrap
+
+实施状态（2026-07-19）：已完成。`kith-core` stdio MCP与`kith-space` CLI通过同一个broker client、冻结的canonical strict command schema和`CapabilityGateway`调用Core领域实现；JSON POST先完成1 MiB有界解析再授权，每次调用与最终领域写事务分别重验activation、attempt lease、session generation、实时Agent scopes及当前surface/父级ACL。`message:send`决定reply capability，required turn缺少它时在runtime admission前失败。三家v2 adapter注入同一MCP launch，Worker在外部runtime启动前执行stdio/list-tools握手探针，常驻进程每次调用重读0600 activation descriptor；探针失败时仅在受控CLI实际可执行时降级，两者都不可用则以`mcp_bootstrap_failed` fail closed。Gateway提供context refresh、server-owned reply/cede/临时附件、progress/turn inspector、conversation read/search、surface checklist、短时wake、capability describe，以及经窄Task port复用既有Task Module的list/get/create/claim/update/assign/unclaim/report/deliver；Task scope按Agent custom scopes签发，每个领域写事务内原子复核activation/lease/generation/scope/ACL，同key并发由Core单写进程内single-flight，create/report/deliver以operation ID精确reconcile，状态mutation只重放既有幂等Task语义而不猜测归属。临时附件按turn/activation/owner/server-owned surface与一小时expiry绑定；reply事务同时提交message与attachment，25 MiB超限或批内任一失败不保留截断对象；workspace v6的`0007_temporary_attachment_lifecycle`前缀记录temporary/deleting/bound与expiry，启动/调度GC同时恢复DB行和文件先落盘的崩溃orphan。later query进入turn audit并旋转freshness watermark；跨私密domain read只返回`ref_only`，search在P-A10.5 disclosure engine前不形成关键词oracle。实际MCP/CLI调用会更新attempt诊断，CLI fallback不再冒充MCP正常。manual start只返回不含正文的逐surface inbox summary。真实Gateway后端fixture已同时执行MCP、CLI client和CLI parser，并覆盖reply空白规范化、attachment原子绑定与Task写；三家MCP bootstrap能力矩阵仍诚实标`fixture_v2`，真实provider smoke留在P-A10最终Desktop验收。该切片未加入memory工具、跨Space H5、任意写Gateway或P-S1 sandbox能力。
 
 - Runtime v2 注入 `kith-core` MCP；
 - 扩展 broker-backed turn capability、authoritative conversation/turn query、checklist/short wake；

@@ -230,7 +230,14 @@ export class RuntimeTurnController {
     } catch (error) {
       if (this.shuttingDown || this.cancelledAttempts.has(command.turn.attemptId) || command.generation !== this.latestGeneration) return;
       this.log.warn("runtime turn failed before terminal acknowledgement", { attemptId: command.turn.attemptId, detail: errorMessage(error) });
-      result = { outcome: "failed", engineSessionId: command.session.engineSessionId, errorCode: "runtime_execution_failed" };
+      const detail = errorMessage(error);
+      result = {
+        outcome: "failed",
+        engineSessionId: command.session.engineSessionId,
+        errorCode: detail.startsWith("mcp_bootstrap_failed:") || detail.startsWith("capability_gateway_unavailable:")
+          ? "mcp_bootstrap_failed"
+          : "runtime_execution_failed",
+      };
     }
     const terminal = {
       type: "agent:turn:terminal",

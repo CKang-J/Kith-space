@@ -161,6 +161,7 @@ export function claimTaskRecord(input: {
   assigneeId: string;
   expectedRevision?: number;
   audit?: (task: Message) => TaskAuditWrite;
+  precondition?: (tx: SpaceTransaction, task: Message) => void;
 }): TaskMutationResult | null {
   const db = dbForSpace(input.spaceId);
   let result: TaskMutationResult | null = null;
@@ -171,6 +172,7 @@ export function claimTaskRecord(input: {
       isNotNull(schema.messages.taskStatus),
     )).get();
     if (!current) return;
+    input.precondition?.(tx, current);
     const status = requireTaskStatus(current);
     if ((status === "todo" || status === "in_progress")
       && current.taskAssigneeType === input.assigneeType && current.taskAssigneeId === input.assigneeId) {
@@ -209,6 +211,7 @@ export function unclaimTaskRecord(input: {
   by?: { type: "human" | "agent"; id: string };
   expectedRevision?: number;
   audit?: (task: Message) => TaskAuditWrite;
+  precondition?: (tx: SpaceTransaction, task: Message) => void;
 }): TaskMutationResult | null {
   const db = dbForSpace(input.spaceId);
   let result: TaskMutationResult | null = null;
@@ -219,6 +222,7 @@ export function unclaimTaskRecord(input: {
       isNotNull(schema.messages.taskStatus),
     )).get();
     if (!current) return;
+    input.precondition?.(tx, current);
     const status = requireTaskStatus(current);
     if (!current.taskAssigneeId && status === "todo") { result = { task: current, changed: false }; return; }
     checkExpected(current, input.expectedRevision);
@@ -255,6 +259,7 @@ export function assignTaskRecord(input: {
   by?: { type: "human" | "agent"; id: string };
   expectedRevision?: number;
   audit?: (task: Message) => TaskAuditWrite;
+  precondition?: (tx: SpaceTransaction, task: Message) => void;
 }): TaskMutationResult | null {
   const db = dbForSpace(input.spaceId);
   let result: TaskMutationResult | null = null;
@@ -265,6 +270,7 @@ export function assignTaskRecord(input: {
       isNotNull(schema.messages.taskStatus),
     )).get();
     if (!current) return;
+    input.precondition?.(tx, current);
     const status = requireTaskStatus(current);
     if (current.taskAssigneeType === "agent" && current.taskAssigneeId === input.assigneeId) {
       result = { task: current, changed: false };
@@ -314,6 +320,7 @@ export function transitionTaskRecord(input: {
   audit?: MessageInsert;
   dispatchChain?: TaskDispatchChainInsert;
   agentMembership?: TaskAuditWrite["agentMembership"];
+  precondition?: (tx: SpaceTransaction, task: Message) => void;
 }): TaskMutationResult | null {
   const db = dbForSpace(input.spaceId);
   let result: TaskMutationResult | null = null;
@@ -324,6 +331,7 @@ export function transitionTaskRecord(input: {
       isNotNull(schema.messages.taskStatus),
     )).get();
     if (!current) return;
+    input.precondition?.(tx, current);
     const status = requireTaskStatus(current);
     if (status === input.to) { result = { task: current, changed: false }; return; }
     checkExpected(current, input.expectedRevision, input.from);

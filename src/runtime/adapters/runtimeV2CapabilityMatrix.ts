@@ -1,10 +1,11 @@
 import type { RuntimeCapabilities } from "../contract/v2/runtimeContract.js";
 import { claudeRuntimeV2, codexRuntimeV2, opencodeRuntimeV2 } from "./runtimeV2Bridge.js";
 
-export type RuntimeV2Support = "observed_v2" | "unsupported";
+export type RuntimeV2Support = "fixture_v2" | "observed_v2" | "unsupported";
 
 export interface RuntimeV2CapabilityReport {
   adapterVersion: string;
+  capabilityMode: "mcp_with_cli_fallback";
   capabilities: RuntimeCapabilities;
   support: {
     resume: RuntimeV2Support;
@@ -20,7 +21,6 @@ export interface RuntimeV2CapabilityReport {
 }
 
 const commonUnsupported = {
-  mcpBootstrap: "unsupported" as const,
   toolIsolation: "unsupported" as const,
   cwdRelocation: "unsupported" as const,
   compactionTelemetry: "unsupported" as const,
@@ -29,7 +29,8 @@ const commonUnsupported = {
 /** P-A10.1 bridge facts. Unsupported capabilities must remain unavailable, never prompt-emulated. */
 export const RUNTIME_V2_CAPABILITY_MATRIX: Record<"claude" | "codex" | "opencode", RuntimeV2CapabilityReport> = {
   claude: {
-    adapterVersion: "v2-bridge-1",
+    adapterVersion: "v2-bridge-2",
+    capabilityMode: "mcp_with_cli_fallback",
     capabilities: claudeRuntimeV2.capabilities,
     support: {
       resume: "observed_v2",
@@ -37,11 +38,13 @@ export const RUNTIME_V2_CAPABILITY_MATRIX: Record<"claude" | "codex" | "opencode
       usage: "observed_v2",
       completion: "observed_v2",
       cancel: "observed_v2",
+      mcpBootstrap: "fixture_v2",
       ...commonUnsupported,
     },
   },
   codex: {
-    adapterVersion: "v2-bridge-1",
+    adapterVersion: "v2-bridge-2",
+    capabilityMode: "mcp_with_cli_fallback",
     capabilities: codexRuntimeV2.capabilities,
     support: {
       resume: "observed_v2",
@@ -49,11 +52,13 @@ export const RUNTIME_V2_CAPABILITY_MATRIX: Record<"claude" | "codex" | "opencode
       usage: "observed_v2",
       completion: "observed_v2",
       cancel: "observed_v2",
+      mcpBootstrap: "fixture_v2",
       ...commonUnsupported,
     },
   },
   opencode: {
-    adapterVersion: "v2-bridge-1",
+    adapterVersion: "v2-bridge-2",
+    capabilityMode: "mcp_with_cli_fallback",
     capabilities: opencodeRuntimeV2.capabilities,
     support: {
       resume: "observed_v2",
@@ -61,6 +66,7 @@ export const RUNTIME_V2_CAPABILITY_MATRIX: Record<"claude" | "codex" | "opencode
       usage: "observed_v2",
       completion: "observed_v2",
       cancel: "observed_v2",
+      mcpBootstrap: "fixture_v2",
       ...commonUnsupported,
     },
   },

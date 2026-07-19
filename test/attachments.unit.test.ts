@@ -1,7 +1,7 @@
 // Regression contract for multipart uploads backed by Space-scoped local storage.
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -44,6 +44,33 @@ function uploadRequest(contents: string, filename = "t.txt"): Readable & { heade
   return req;
 }
 
+function abortedUploadRequest(): Readable & { headers: Record<string, string> } {
+  const boundary = "----kithAbortBoundary";
+  const partial = Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="partial.bin"\r\nContent-Type: application/octet-stream\r\n\r\npartial-content`,
+  );
+  let sent = false;
+  const req = new Readable({
+    read() {
+      if (sent) return;
+      sent = true;
+      this.push(partial);
+      setImmediate(() => this.destroy(new Error("client aborted")));
+    },
+  }) as Readable & { headers: Record<string, string> };
+  req.headers = { "content-type": `multipart/form-data; boundary=${boundary}` };
+  return req;
+}
+
+function multiUploadRequest(count: number): Readable & { headers: Record<string, string> } {
+  const boundary = "----kithMultiBoundary";
+  const parts = Array.from({ length: count }, (_, index) =>
+    `--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="file-${index}.txt"\r\nContent-Type: text/plain\r\n\r\ncontent-${index}\r\n`).join("");
+  const req = Readable.from([Buffer.from(`${parts}--${boundary}--\r\n`)]) as Readable & { headers: Record<string, string> };
+  req.headers = { "content-type": `multipart/form-data; boundary=${boundary}` };
+  return req;
+}
+
 test("parseUpload stores multipart files inside the authenticated Space", async () => {
   const result = await parseUpload(spaceId, uploadRequest("hello-bytes") as any);
 
@@ -60,6 +87,32 @@ test("parseUpload preserves UTF-8 filenames sent by browsers", async () => {
   const result = await parseUpload(spaceId, uploadRequest("pdf-bytes", filename) as any);
 
   assert.equal(result.files[0]!.filename, filename);
+});
+
+test("parseUpload rejects oversized files without retaining the truncated object", async () => {
+  const uploads = spaceUploadsDir(spaceRoot);
+  const before = new Set(await readdir(uploads));
+  await assert.rejects(
+    parseUpload(spaceId, uploadRequest("x".repeat(26 * 1024 * 1024), "oversized.bin") as any),
+    /25 MiB upload limit/,
+  );
+  assert.deepEqual(new Set(await readdir(uploads)), before);
+});
+
+test("parseUpload preserves multipart order and rejects an eleventh file as one failed batch", async () => {
+  const ordered = await parseUpload(spaceId, multiUploadRequest(3) as any);
+  assert.deepEqual(ordered.files.map((file) => file.filename), ["file-0.txt", "file-1.txt", "file-2.txt"]);
+  const uploads = spaceUploadsDir(spaceRoot);
+  const before = new Set(await readdir(uploads));
+  await assert.rejects(parseUpload(spaceId, multiUploadRequest(11) as any), /10 file limit/);
+  assert.deepEqual(new Set(await readdir(uploads)), before);
+});
+
+test("parseUpload rejects an aborted request and removes its partial object", { timeout: 2_000 }, async () => {
+  const uploads = spaceUploadsDir(spaceRoot);
+  const before = new Set(await readdir(uploads));
+  await assert.rejects(parseUpload(spaceId, abortedUploadRequest() as any), /client aborted/);
+  assert.deepEqual(new Set(await readdir(uploads)), before);
 });
 
 test("parseUpload rejects instead of hanging when Space storage fails before consuming the stream", { timeout: 8000 }, async () => {

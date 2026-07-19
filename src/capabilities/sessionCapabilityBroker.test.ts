@@ -47,6 +47,12 @@ test("stable broker handle only resolves the currently activated attempt", () =>
   assert.throws(() => broker.activate(handle, claims({ activationId: "activation-2" })), /already has an active attempt/);
 
   assert.equal(broker.renew(handle, "activation-1", 3_000).expiresAt, 3_000);
+  const refreshed = broker.replace(handle, "activation-1", {
+    ...broker.resolve({ sessionHandle: handle, activationId: "activation-1", workerGeneration: 7 }),
+    seenWatermarks: [{ channelId: "channel-1", throughSeq: 12 }],
+  });
+  assert.equal(refreshed.seenWatermarks[0]?.throughSeq, 12);
+  assert.throws(() => broker.replace(handle, "activation-1", { ...refreshed, turnId: "turn-other" }), /cannot change activation identity/);
   now = 2_001;
   assert.equal(broker.resolve({ sessionHandle: handle, activationId: "activation-1", workerGeneration: 7 }).expiresAt, 3_000);
 

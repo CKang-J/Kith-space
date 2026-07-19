@@ -149,7 +149,13 @@
 : 自建生产力模块（v1 = 任务；后续 = 邮箱/日历/画布）不进 runtime，而是各自包成一个 MCP server 暴露给外接 agent。agent 像调用普通工具一样调用 `task_create` 等，落到我方服务端逻辑。这是"原生丝滑"的实现路径之一，与 UI 桥配合。
 
 **Capability Gateway / 能力网关**
-: P-A10 中 Agent 操作 Kith-space 的唯一受支持产品 API。P-A10.2已实现loopback受控CLI Adapter的`turn context/reply/cede`最小面；P-A10.3增加逐调用surface/父级ACL、冻结Context Envelope与确定性`stale_context`写入门；P-A10.4再加入完整MCP、later-query refresh与Message/Task/Memory等工具。broker-backed turn capability固定Agent、Space、attempt、允许input/output、seen watermarks、scope、披露权与过期时间。它在OS sandbox前不是阻止runtime直接读本机路径的物理边界。
+: P-A10 中 Agent 操作 Kith-space 的唯一受支持产品 API。P-A10.4起`kith-core` stdio MCP与`kith-space` CLI共享broker client、canonical command schema和领域Module，已覆盖server-owned reply/cede/临时附件、later-query refresh、conversation/turn查询、progress、Task全链路、surface checklist、short wake和capability describe；memory工具从P-A10.5加入。broker-backed turn capability固定Agent、Space、attempt、允许input/output、seen watermarks、scope、披露权与过期时间，每次调用及最终写事务重验lease/generation/Agent scope/父级ACL。临时附件按turn与activation归属、一小时过期并由GC恢复崩溃orphan。跨私密domain在正式disclosure engine前只返回ref-only。它在OS sandbox前不是阻止runtime直接读本机路径的物理边界。
+
+**Session checklist / 会话清单**
+: 绑定单个`RuntimeSessionKey`的短期可恢复工作状态，不是Tasks模块；不同频道、DM和话题不共享。P-A10.4提供MCP/CLI list、CAS upsert/complete与clear，写入复用turn operation ledger。
+
+**Short wake / 短时唤醒**
+: Agent在active turn内为同一surface session安排的60秒至1小时一次性trigger。P-A10.4只持久化session/generation、owner、dueAt、reason和幂等键；到期重验当前ACL与Agent状态后生成新的durable delivery/turn，不复用旧activation或复制旧prompt。
 
 **Turn Capability Broker / 工作轮次能力代理**
 : 为常驻 runtime 提供稳定本机 handle、由 Worker 按 attempt 激活 opaque capability 的控制面。Core在每次MCP/CLI调用时校验实时lease/turn/ACL并在终态撤销，避免把无法轮换的per-turn bearer固定注入子进程环境。

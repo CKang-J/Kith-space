@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { assertChannelWritable } from "../channels/channelLifecycle.js";
-import { nextSeq } from "../counters.js";
+import { nextSeq, type SpaceTransaction } from "../counters.js";
 import { dbForSpace, schema } from "../db/index.js";
 import { getHumanIdentity } from "../human/humanIdentity.js";
 import { humanChannelState, reactivateFollowedHumanThread } from "../human/humanChannelState.js";
@@ -77,6 +77,8 @@ export async function reportTask(input: {
   kind: TaskReportKind;
   content: string;
   artifactRefs?: TaskArtifactRef[];
+  messageId?: string;
+  writePrecondition?: (tx: SpaceTransaction, channelId: string) => void;
 }): Promise<{ task: Message; report: Message }> {
   const content = input.content.trim();
   if (!content) throw new TaskOperationError("INVALID_ARGUMENT", "report content is required");
@@ -96,9 +98,10 @@ export async function reportTask(input: {
       isNotNull(schema.messages.taskStatus),
     )).get()!;
     if (!task) throw new TaskOperationError("NOT_FOUND", "task not found");
+    input.writePrecondition?.(tx, task.channelId);
     if (!task.threadId) throw new TaskOperationError("INVALID_ARGUMENT", "task has no report thread", currentView(task));
     report = tx.insert(schema.messages).values({
-      id: randomUUID(),
+      id: input.messageId ?? randomUUID(),
       seq,
       spaceId: input.spaceId,
       channelId: task.threadId,
@@ -141,6 +144,8 @@ export async function submitTaskDelivery(input: {
   summary: string;
   childTaskIds?: string[];
   artifactRefs?: TaskArtifactRef[];
+  messageId?: string;
+  writePrecondition?: (tx: SpaceTransaction, channelId: string) => void;
 }): Promise<{ task: Message; delivery: Message; children: Message[]; reportMessageIds: string[] }> {
   const summary = input.summary.trim();
   if (!summary) throw new TaskOperationError("INVALID_ARGUMENT", "delivery summary is required");
@@ -163,6 +168,7 @@ export async function submitTaskDelivery(input: {
       isNotNull(schema.messages.taskStatus),
     )).get();
     if (!current) throw new TaskOperationError("NOT_FOUND", "task not found");
+    input.writePrecondition?.(tx, current.channelId);
     if (current.taskRevision !== input.expectedRevision) {
       throw new TaskOperationError("CONFLICT", "task revision is stale", currentView(current));
     }
@@ -186,7 +192,7 @@ export async function submitTaskDelivery(input: {
       )).all().filter((message) => parseTaskActionMetadata(message.actionMetadata)?.kind === "task-report").map((message) => message.id);
     }
     delivery = tx.insert(schema.messages).values({
-      id: randomUUID(),
+      id: input.messageId ?? randomUUID(),
       seq,
       spaceId: input.spaceId,
       channelId: current.channelId,
