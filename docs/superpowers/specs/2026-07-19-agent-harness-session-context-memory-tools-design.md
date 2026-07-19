@@ -1,6 +1,6 @@
 # Agent Harness v2：会话、上下文、记忆与工具机制设计
 
-> 状态：已接受并实施中；P-A10.0–P-A10.5 已完成，P-A10.6–P-A10.7 尚待逐门实现。
+> 状态：已接受并完成；P-A10.0–P-A10.7 已按依赖顺序实现，并通过自动化与全新 Desktop/Web 真实使用验收。
 > 日期：2026-07-19。
 > 依据：`docs/kith-space/notes/helio-agent-context-memory-tools-research.md` 的本机实测，以及 Kith-space 已完成的 P-A7、P-A8、P-A9 架构边界。
 > 目的：获得与 Helio 相同的“同一个 Agent 像长期同事一样跨私聊、频道和话题延续关系”的体验，同时修正其不可解释记忆、模型重建 thread target、跨私密边界仅靠自律和 cursor replay 等缺陷。
@@ -1813,6 +1813,8 @@ Agents 设置的开发诊断区显示：
 
 ### P-A10.6 Advisor 与记忆面板
 
+实施状态（2026-07-20）：已完成。workspace schema v8 的不可变 `0009_memory_advisor` migration加入advisor settings/job/proposal/recall observation及session snapshot/checklist/compaction revision字段。后台队列只处理eligible completed turn，按Agent窗口合批并受安装级全局串行、每日token、source条数/字节、退避/暂停和实时source ACL约束；每个job独立递增attempt并且只有实际进入prompt的job才会结算。provider返回后及最终写事务内再次复核typed subject/evidence、exclude lineage、secret/噪音、suppression、live Agent/job lease与source ACL，canonical/revision/evidence/FTS/tag/proposal/conflict relation/mutation原子提交，clear/delete/撤权或provider候选顺序变化均不能复活、错配或留下孤立proposal。独立`MaintenanceRuntimePort`强制ephemeral cwd、无MCP/CLI/tools、无user-facing session/customization；当前只有Claude通过tool-isolation live contract，Codex/opencode诚实报告unsupported。Agents记忆页已拆为Structured/Files，支持active/proposals/archived、服务端过滤/分页、revision/evidence/relation/disclosure/source revoke、accept/reject、CAS edit/correct、archive/restore、delete、forget+suppress及private/shared suppression管理；撤权/失联/删除来源的active item可由Human以`retain_independent`生成manual revision，旧source继续审计但不恢复ACL。advisor pending/freshness/validation/cost/backoff/pause可见。真实UI已用私有来源proposal验证accept、source revoke、archive/restore、revision、delete与forget+suppress；advisor故障和pending不阻塞聊天。
+
 - `MaintenanceRuntimePort` tool-isolation contract、restricted advisor queue、typed actor validation、dedupe/correction；
 - `memoryPolicy=exclude` lineage、Human/Agent/system不同默认、provider/config pin；
 - Agent窗口合批、并发/每日 token cost上限、暂停与 backoff；
@@ -1823,6 +1825,8 @@ Agents 设置的开发诊断区显示：
 验收门：Agent输出不能单独制造 Human偏好；exclude内容及其摘要/引用不进入 advisor；同事实 fan-out不产生无界 provider调用；advisor未完成时UI明确 pending，聊天仍可查消息。
 
 ### P-A10.7 Checklist、snapshot 与 compaction telemetry
+
+实施状态（2026-07-20）：已完成。session checklist使用session级单调revision，short wake保存原始业务幂等键并由session级唯一约束跨turn去重；runtime session snapshot限制64 KiB，持久化与恢复都拒绝secret/禁止字段、旧generation、错Space/session和checksum损坏，只清损坏payload而不覆盖权威turn/delivery/checklist。engine session ID与terminal snapshot即时ACK，Worker空闲session每60秒兜底上报；真实Desktop重启后保留同一Claude engine session/checklist/snapshot，并让60秒wake在dueAt精确触发一次、完成checklist且不丢不重。Core启动后及每5秒由`DurableTurnRecovery`扫描注册Space并只调用既有scheduler，message+delivery已提交而所有post-commit effect失败时仍幂等恢复且不增加wake budget/turn/attempt。Runtime事件按条目/总量/字节截断并保留critical terminal容量；activity/thinking/text preview默认每250ms、每类只保留最后一条，adapter emit不等待窗口，critical/terminal/return/failure/cancel/close前串行flush并保持转发ordinal连续；emergency stop完成账本取消后还会向对应surface/turn发布终止事件，迟到terminal不会留下悬挂preview或推进cursor。双recall provider同时不可用时Context记录双路omission但继续冻结required batch，受审计conversation Gateway仍可查询消息。Codex adapter可映射`contextCompaction`/legacy compact事件；Core从append-only turn event派生单调compaction revision，terminal可重建append后投影失败窗口，下一Envelope冻结marker后才CAS消费并标记`post_compaction`。Claude与opencode当前明确unsupported，不伪造统一summary，也不阻塞聊天。normalized final usage现由bridge从usage event带入terminal并持久到attempt，真实UI的Context/Steps/Usage/Outcome可看到MCP/CLI transport、usage、obligation、operation与output。
 
 - session checklist MCP/CLI；
 - engine ID/turn/output/cursor即时 Core ack；adapter/checklist状态 5 秒内 + 60 秒兜底 snapshot；

@@ -16,6 +16,7 @@ export interface RuntimeCallbacks {
   onActivity(activity: string, detail?: string): void; // working|thinking|online|offline
   onTrajectory(entries: TrajectoryEntry[]): void;      // streaming trajectory: thinking/text/tool entries
   onUsage?(usage: NormalizedUsage): void;
+  onCompaction?(phase: "started" | "completed", metadata?: Record<string, unknown>): void;
   onTurnResult?(result: { outcome: "completed" | "failed" | "cancelled"; errorCode?: string }): void;
   onExit(code: number | null): void;
   log: Logger;

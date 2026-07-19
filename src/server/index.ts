@@ -22,6 +22,8 @@ import { browserOriginAllowed, requestPeerIsLoopback } from "./browserSessionHtt
 import { resolveCorePort } from "./localEndpoint.js";
 import { ChannelLifecycleError } from "../channels/channelLifecycle.js";
 import { handleTurnGateway } from "./turn-gateway/routes.js";
+import { startMemoryAdvisorScheduler } from "../memory/memoryAdvisorService.js";
+import { startDurableTurnRecovery } from "./harnessComposition.js";
 
 assertInternalCredentialsConfigured();
 
@@ -131,6 +133,8 @@ const server = http.createServer(async (req, res) => {
 attachSocketIO(server); // human-side realtime (socket.io, /socket.io/)
 attachWs(server);       // daemon control plane (raw ws, /daemon/connect)
 startReminderScheduler(); // reminder scheduler: fires at due time, wakes the author
+const stopMemoryAdvisorScheduler = startMemoryAdvisorScheduler();
+let stopDurableTurnRecovery = () => {};
 
 server.on("error", (error: NodeJS.ErrnoException) => {
   const message = error.code === "EADDRINUSE"
@@ -143,18 +147,24 @@ server.on("error", (error: NodeJS.ErrnoException) => {
 
 // Durability guard: before accepting traffic, align in-memory seq/task counters to each Space DB maximum.
 // Prevents seq rollback and silent message drops after a process restart.
+let shutdownStarted = false;
 reconcileCounters()
   .then((r) => log.info("counters reconciled", r))
   .catch((e) => log.error("counter reconcile failed (continuing)", { detail: String(e?.message ?? e) }))
-  .finally(() => server.listen(PORT, HOST, () => {
-    log.info("control plane up", { url: `http://${HOST}:${PORT}`, browserMode: accessPolicy.getSettings().mode, health: `http://${HOST}:${PORT}/health`, logs: "~/.kith-space/logs/" });
-    process.send?.({ type: "kith:core-ready", host: HOST, port: PORT, browserMode: accessPolicy.getSettings().mode });
-  }));
+  .finally(() => {
+    if (shutdownStarted) return;
+    stopDurableTurnRecovery = startDurableTurnRecovery();
+    server.listen(PORT, HOST, () => {
+      log.info("control plane up", { url: `http://${HOST}:${PORT}`, browserMode: accessPolicy.getSettings().mode, health: `http://${HOST}:${PORT}/health`, logs: "~/.kith-space/logs/" });
+      process.send?.({ type: "kith:core-ready", host: HOST, port: PORT, browserMode: accessPolicy.getSettings().mode });
+    });
+  });
 
-let shutdownStarted = false;
 const shutdown = () => {
   if (shutdownStarted) return;
   shutdownStarted = true;
+  stopMemoryAdvisorScheduler();
+  stopDurableTurnRecovery();
   const forcedExit = setTimeout(() => process.exit(0), 3_000);
   forcedExit.unref();
   server.close(() => process.exit(0));

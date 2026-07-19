@@ -32,6 +32,7 @@ test("v2 bridge keeps a persistent process across turns and awaits critical even
         callbacks.onSession("engine-session-1");
         callbacks.onActivity("thinking", "test");
         callbacks.onTrajectory([{ kind: "text", text: "preview" }]);
+        callbacks.onUsage?.({ inputTokens: 10, outputTokens: 2, source: "final" });
         callbacks.onActivity("online");
       });
       complete();
@@ -66,11 +67,12 @@ test("v2 bridge keeps a persistent process across turns and awaits critical even
   }, sink);
 
   assert.equal(first.outcome, "completed");
+  assert.deepEqual(first.usage, { inputTokens: 10, outputTokens: 2, source: "final" });
   assert.equal(second.engineSessionId, "engine-session-1");
   assert.equal(starts, 1);
   assert.equal(delivers, 1);
-  assert.deepEqual(events.filter((event) => event.turnId === "turn-1").map((event) => event.ordinal), [0, 1, 2, 3, 4]);
-  assert.deepEqual(events.filter((event) => event.turnId === "turn-2").map((event) => event.ordinal), [0, 1, 2, 3]);
+  assert.deepEqual(events.filter((event) => event.turnId === "turn-1").map((event) => event.ordinal), [0, 1, 2, 3, 4, 5]);
+  assert.deepEqual(events.filter((event) => event.turnId === "turn-2").map((event) => event.ordinal), [0, 1, 2, 3, 4]);
   assert.equal(events.filter((event) => event.kind === "session_changed").length, 1);
   assert.deepEqual(events[0]?.payload, { runtime: "claude", mcpMode: "none", capabilityMode: "unavailable" });
   assert.equal(events.at(-1)?.kind, "turn_completed");

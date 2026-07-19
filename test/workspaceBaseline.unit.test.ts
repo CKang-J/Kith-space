@@ -289,6 +289,52 @@ test("the P-A10.1 schema v6 journal prefix migrates to the current durable harne
   }
 });
 
+test("schema version 7 episodic memory data migrates in place to the advisor schema", () => {
+  const spaceId = randomUUID();
+  const rootPath = path.join(kithSpaceHome(), "workspace-v7-advisor-test", spaceId);
+  const dbPath = workspaceDbFile(rootPath);
+  mkdirSync(path.dirname(dbPath), { recursive: true });
+  const version7 = new Database(dbPath);
+  for (const migrationFile of [
+    "0000_personal_agent_os.sql",
+    "0001_agent_introduction.sql",
+    "0002_channel_notification_level.sql",
+    "0003_agent_response_modes.sql",
+    "0004_agent_harness_sessions.sql",
+    "0005_agent_durable_turns.sql",
+    "0006_legacy_dispatch_recovery.sql",
+    "0007_temporary_attachment_lifecycle.sql",
+    "0008_episodic_memory_core.sql",
+  ]) version7.exec(readFileSync(new URL(`../drizzle/${migrationFile}`, import.meta.url), "utf8"));
+  version7.exec(`
+    CREATE TABLE __drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric);
+    ${WORKSPACE_MIGRATION_HISTORY.slice(0, 9).map((entry) => `INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('${entry.hash}', ${entry.createdAt});`).join("\n")}
+    INSERT INTO spaces (id, name, slug, created_at) VALUES ('${spaceId}', 'V7 memory', 'v7-memory-${spaceId}', 1700000000000);
+    INSERT INTO agents (id, space_id, name, display_name, created_at) VALUES ('v7-agent', '${spaceId}', 'v7-agent', 'V7 Agent', 1700000000001);
+  `);
+  version7.close();
+  registerSpace({ id: spaceId, name: "V7 memory", slug: `v7-memory-${spaceId}`, rootPath });
+
+  dbForSpace(spaceId);
+  closeSpaceDb(spaceId);
+
+  const sqlite = new Database(dbPath);
+  try {
+    assert.equal(sqlite.pragma("user_version", { simple: true }), SPACE_DATABASE_SCHEMA_VERSION);
+    assert.ok(tables(sqlite).includes("memory_advisor_jobs"));
+    assert.ok(tables(sqlite).includes("memory_advisor_proposals"));
+    const sessionColumns = sqlite.prepare("PRAGMA table_info(runtime_sessions)").all() as Array<{ name: string }>;
+    assert.ok(sessionColumns.some((column) => column.name === "checklist_revision"));
+    assert.ok(sessionColumns.some((column) => column.name === "compaction_revision"));
+    assert.ok(sessionColumns.some((column) => column.name === "context_compaction_revision"));
+    assert.equal(sqlite.prepare("SELECT count(*) FROM __drizzle_migrations").pluck().get(), WORKSPACE_MIGRATION_HISTORY.length);
+    assert.equal(sqlite.prepare("SELECT count(*) FROM agents WHERE id = 'v7-agent'").pluck().get(), 1);
+  } finally {
+    sqlite.close();
+    unregisterSpace(spaceId);
+  }
+});
+
 test("opening a Space database restores the required #all channel lifecycle", () => {
   const spaceId = randomUUID();
   const rootPath = path.join(kithSpaceHome(), "workspace-required-all-test", spaceId);

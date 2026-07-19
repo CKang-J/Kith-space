@@ -24,6 +24,7 @@ import type { DisclosureSourceRef } from "../capabilities/contracts.js";
 import { disclosureActionDigest } from "../memory/disclosureGrantService.js";
 import { EpisodicMemoryService } from "../memory/episodicMemoryService.js";
 import { UserGlobalMemoryService } from "../memory/userGlobalMemoryService.js";
+import { enqueueMemoryAdvisorJobInTransaction } from "../memory/memoryAdvisorService.js";
 
 export interface TurnOutputEventSink {
   publish(spaceId: string, event: unknown): Promise<void>;
@@ -686,5 +687,6 @@ export class TurnOutputService {
     const turn = tx.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, turnId)).get()!;
     tx.update(schema.runtimeSessions).set({ status: "idle", lastActiveAt: now, updatedAt: now })
       .where(eq(schema.runtimeSessions.id, turn.runtimeSessionId)).run();
+    enqueueMemoryAdvisorJobInTransaction(tx, this.spaceId, turnId);
   }
 }

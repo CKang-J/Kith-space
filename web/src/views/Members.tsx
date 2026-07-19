@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageCircle, X, Wrench, ChevronRight, Check, Copy, Eye, EyeOff } from "lucide-react";
+import { MessageCircle, X, Wrench } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkBreaks from "remark-breaks";
-import rehypeSanitize from "rehype-sanitize";
 import { useTranslation } from "react-i18next";
 import { useStore } from "../store.tsx";
 import { fmtDateTime } from "../format";
@@ -12,7 +8,6 @@ import { Avatar, AvatarPicker, resolveAvatar } from "../Avatar.tsx";
 import { Select } from "../Select.tsx";
 import { useConfirm, useEscClose } from "../ConfirmModal.tsx";
 import { useToast } from "../toast.tsx";
-import { CodeBlock, ColorSwatch, GithubAlertBlockquote, colorValueFromTag, markdownSchema, markdownUrlTransform, remarkColorSwatches, remarkGithubAlerts, remarkHtmlAsText } from "../messageRender.tsx";
 import i18n from "../i18n";
 import { mergeWorkspaceSearch, workspaceLocationForModule, workspaceSearchForShellState } from "../shell/workspaceRoute.ts";
 import { LOCAL_RUNTIME_DEFAULT, useRuntimeDiscovery } from "../useRuntimeDiscovery.ts";
@@ -20,6 +15,7 @@ import { agentStatusLabel } from "../agentStatus.ts";
 import { SearchField } from "../components/SearchField.tsx";
 import { AgentDefaultResponseModeCard } from "./agent-response-mode/AgentDefaultResponseModeCard.tsx";
 import { normalizeAgentResponseMode } from "./agent-response-mode/responseModeModel.ts";
+import { AgentMemoryPanel } from "./agent-memory/AgentMemoryPanel.tsx";
 
 // Unified agent status label: fine-grained activity (working/thinking/online) takes priority;
 // offline/absent falls back to lifecycle status (active/sleeping/inactive).
@@ -193,7 +189,7 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
           <button key={k} className={tab === k ? "on" : ""} onClick={() => setSp((prev) => { const n = new URLSearchParams(prev); n.set("agentTab", k); return n; })}>{label}</button>
         ))}
       </div>
-      {tab === "workspace" ? <MemoryTab id={id} />
+      {tab === "workspace" ? <AgentMemoryPanel agentId={id} />
         : tab === "activity" ? <ActivityTab id={id} name={a.name} />
         : tab === "permissions" ? <PermissionsTab id={id} />
         : tab === "integrations" ? <AppsTab id={id} />
@@ -374,59 +370,6 @@ function AgentMemoryRoot({ id }: { id: string }) {
     return () => { active = false; };
   }, [id]);
   return <>{root}</>;
-}
-
-export function MemoryTab({ id }: { id: string }) {
-  const { t } = useTranslation();
-  const { api } = useStore();
-  const [files, setFiles] = useState<any[]>([]);
-  const [err, setErr] = useState("");
-  const [sel, setSel] = useState<{ path: string; content?: string; error?: string } | null>(null);
-  const [mode, setMode] = useState<"preview" | "raw">("preview"); // .md files default to preview
-  const [expanded, setExpanded] = useState<Set<string>>(new Set()); // tracks expanded directories (collapsed by default, toggled via onToggleDir)
-  const [copied, setCopied] = useState(false);
-  const [showHidden, setShowHidden] = useState(false); // dot-prefixed files hidden by default (like ls; toggle for ls -a behavior)
-  const [root, setRoot] = useState("..."); // shown in root bar + copied by copy button; replaced by this Agent's Space-local memory path
-  useEffect(() => { setSel(null); setExpanded(new Set()); setRoot("..."); (async () => { const d = await api("GET", `/api/agents/${id}/workspace-files`); if (d.error) { setErr(d.error); setFiles([]); } else { setErr(""); setFiles(d.files || []); if (d.root) setRoot(d.root); } })(); }, [id]);
-  const open = async (f: any) => { setMode("preview"); const d = await api("GET", `/api/agents/${id}/workspace-files/read?path=${encodeURIComponent(f.path)}`); setSel({ path: f.path, content: d.content, error: d.error }); };
-  const toggleDir = (path: string) => setExpanded((s) => { const n = new Set(s); n.has(path) ? n.delete(path) : n.add(path); return n; });
-  const copyRoot = () => navigator.clipboard?.writeText(root).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
-  // Collapse filter: a node is visible iff all its ancestor directories are expanded (top-level visible by default, subdirs collapsed)
-  const visible = files.filter((f) => { const parts = f.path.split("/"); if (!showHidden && parts.some((seg: string) => seg.startsWith("."))) return false; for (let i = 1; i < parts.length; i++) if (!expanded.has(parts.slice(0, i).join("/"))) return false; return true; });
-  const isMd = !!sel && /\.md$/i.test(sel.path);
-  return (
-    <div className="ws">
-      <div className="ws-tree">
-        <div className="ws-rootbar">
-          <span className="ws-root" title={root}>{root}</span>
-          <button className="ws-copy" title={showHidden ? t("members.hideDotFiles") : t("members.showHiddenFiles")} onClick={() => setShowHidden((v) => !v)}>{showHidden ? <EyeOff size={12} /> : <Eye size={12} />}</button>
-          <button className="ws-copy" title={copied ? t("members.copied") : t("members.copyPath")} onClick={copyRoot}>{copied ? <Check size={12} /> : <Copy size={12} />}</button>
-        </div>
-        {err ? <div className="empty">{err}</div> : files.length === 0 ? <div className="empty">{t("members.memoryEmpty")}</div>
-          : visible.map((f) => (
-            <div key={f.path} className={"ws-row" + (sel?.path === f.path ? " active" : "")} style={{ paddingLeft: 6 + (f.path.split("/").length - 1) * 14 }}
-              onClick={() => (f.isDirectory ? toggleDir(f.path) : open(f))}>
-              <span className={"grow" + (f.name?.toLowerCase() === "memory.md" ? " ws-mem" : "")}>{f.isDirectory && <ChevronRight size={12} className={"ws-caret" + (expanded.has(f.path) ? " open" : "")} style={{ verticalAlign: "-2px" }} />}{f.name}</span>{!f.isDirectory && <span className="ws-size">{f.size}</span>}
-            </div>
-          ))}
-      </div>
-      <div className="ws-view">
-        {!sel ? <div className="hint">{t("members.memoryHint")}</div>
-          : sel.error ? <div className="empty">{sel.error}</div>
-            : <>
-                <div className="ws-path">{sel.path}
-                  {isMd && <span className="ws-toggle">
-                    <button className={mode === "preview" ? "on" : ""} onClick={() => setMode("preview")}>Preview</button>
-                    <button className={mode === "raw" ? "on" : ""} onClick={() => setMode("raw")}>Raw</button>
-                  </span>}
-                </div>
-                {isMd && mode === "preview"
-                  ? <div className="ws-md"><ReactMarkdown urlTransform={markdownUrlTransform} remarkPlugins={[remarkGfm, remarkBreaks, remarkHtmlAsText, remarkGithubAlerts, remarkColorSwatches]} rehypePlugins={[[rehypeSanitize, markdownSchema]]} components={{ a: ({ href, children }) => { const color = colorValueFromTag(href); return color ? <ColorSwatch value={color} /> : <a href={href} target="_blank" rel="noreferrer">{children}</a>; }, blockquote: ({ node: _node, children, ...props }) => <GithubAlertBlockquote {...props}>{children}</GithubAlertBlockquote>, pre: ({ children }) => <CodeBlock>{children}</CodeBlock> }}>{sel.content || ""}</ReactMarkdown></div>
-                  : <pre className="ws-content">{sel.content}</pre>}
-              </>}
-      </div>
-    </div>
-  );
 }
 
 function AgentProfileEditModal({ name, displayName, description, onDisplayNameChange, onDescriptionChange, onClose, onSave }: {

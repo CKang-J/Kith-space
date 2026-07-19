@@ -224,6 +224,11 @@ test("user-global message evidence is authoritative and follows current cross-Sp
         claimType: "manual", memoryPolicy: "human_manual", excerpt: "禁止记忆", occurredAt: Date.now(),
       }],
     }), /memory-excluded source message/);
+
+    unregisterSpace(spaceId);
+    assert.equal(service.hasSourceAccess(created.memory.id, spaceId, agentId), false,
+      "a lost or removed source Space cannot remain readable through user-global memory");
+    assert.equal(service.getHuman(created.memory.id).memory.source_access, "unavailable");
   } finally {
     sqlite.close();
     closeSpaceDb(spaceId);

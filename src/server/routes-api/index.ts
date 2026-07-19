@@ -36,6 +36,7 @@ import { handleTasks } from "./tasks.js";
 import { handleDispatch } from "./dispatch.js";
 import { handleTurns } from "./turns.js";
 import { handleMemories } from "./memories.js";
+import { handleMemoryAdvisor } from "./memoryAdvisor.js";
 import { handleDisclosureGrants } from "./disclosureGrants.js";
 
 export async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, method: string): Promise<boolean> {
@@ -74,6 +75,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   const spaceCtx: SpaceCtx = { ...humanCtx, spaceId };
 
   if (await handleAgents(spaceCtx)) return true;
+  if (await handleMemoryAdvisor(spaceCtx)) return true;
   if (await handleReminders(spaceCtx)) return true;
   if (await handleChannels(spaceCtx)) return true;
   if (await handleMessages(spaceCtx)) return true;

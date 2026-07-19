@@ -442,7 +442,7 @@ P-A9 只有同时满足以下条件才算完成：
 - 当前工作分支为 `codex/feat-ui-updates`，P-A9.0 实施起始 HEAD 为 `ec2ef82`，P-A9.1a–P-A9.7 本轮起始 HEAD 为 `9de04fa`，P-A9 收口提交为 `d5261c1`；
 - Message/Task 深 Module、同库原子事务、Agent Transport 分组、领域依赖收口、持久 wake get-or-reserve、generation-aware admission ack、安装级 RuntimeSession 容量/队列/TTL、Chat data/model 组合层、批量 fan-out 优化与兼容清理均已落地；后续真实数据回归在不引入 Runtime 契约 v2 的前提下，以 AgentManager 既有批处理/activity 终态补齐空闲会话按队列压力让位、未完成批次保护、queued 状态延迟确认和失败 wake 回复终态；
 - 当前权威单测基线为 689/689；typecheck、完整 integration、Web build（2641 modules）、Desktop build、依赖护栏、契约矩阵、Core/Runtime/UI SLO、最新 desktop:pack 与 unpacked Desktop smoke 均通过；真实授权 Browser 已验证既有 URL/行为/性能回归，以及休眠 Agent 的唤醒、实时轨迹、回复完成和占位清理；
-- 约定的一次独立只读终审已完成：无功能、安全或回归阻塞；唯一低严重度入口文档单测基线漂移已由主任务修正，没有发起第二轮审查。Runtime 契约 v2、H5、Rust 试验、公开 Web/H5、Message Context Snapshot 与 UI 重做均未开始。
+- 约定的一次独立只读终审已完成：无功能、安全或回归阻塞；唯一低严重度入口文档单测基线漂移已由主任务修正，没有发起第二轮审查。Runtime 契约 v2 与 Message Context Snapshot 在 P-A9 收口时尚未开始，后续已由 P-A10 完成；H5、Rust 试验、公开 Web/H5 与 UI 重做仍未开始。
 
 ### 下一阶段
 

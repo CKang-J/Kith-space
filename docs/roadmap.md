@@ -1,6 +1,6 @@
 # Kith-space 产品路线图
 
-> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式；2026-07-15 锁定 ChatOnly 侧栏模块导航与模块打开态 Dock；2026-07-18 完成 P-A9 桌面模块化单体架构收敛；2026-07-19 P-A10 Agent Harness v2 开始实施，P-A10.0–P-A10.5 已完成，P-A10.6–P-A10.7 按依赖顺序推进。完整边界见对应 `docs/superpowers/specs/` 规格，当前工程状态见 `docs/progress.md`。
+> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式；2026-07-15 锁定 ChatOnly 侧栏模块导航与模块打开态 Dock；2026-07-18 完成 P-A9 桌面模块化单体架构收敛；2026-07-20 P-A10 Agent Harness v2 的 P-A10.0–P-A10.7 已完成代码、迁移、文档、自动化和Desktop/Web真实验收。完整边界见对应 `docs/superpowers/specs/` 规格，当前工程状态见 `docs/progress.md`。
 
 ## 1. 产品终点与永久边界
 
@@ -106,7 +106,7 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 
 ### P-A7 Home 总控 Space 与 Space root 归位
 
-状态：设计与 H1-H4 代码切片已完成，并通过 2026-07-18 本轮用户验收；H5 和 Runtime 契约 v2 都未开始。
+状态：设计与 H1-H4 代码切片已完成，并通过 2026-07-18 本轮用户验收；H5 尚未开始，Runtime 契约 v2 已由后续 P-A10 完成。
 
 - H1 路径地基（已完成）：分离 `~/.kith-space` app data 与 `~/Kith-space` 默认 Space 容器；建立稳定 homeSpaceId 和 `~/Kith-space/Home`，并以 `KITH_SPACE_SPACES_DIR` 隔离开发/测试 Space 容器。
 - H2 runtime cwd/记忆（已完成）：Claude Code、Codex、opencode 以 Space root 为 cwd；Agent Memory 移到 `<space>/.kith/agents/<agentId>`；adapter 临时状态移到 app data runtime 目录；文件树、skills、profile 与 reset 同步采用带防逃逸校验的三路径契约，同 agent reset/start 串行且 reset 不删除共享 Space 文件。OpenCode prompt 通过 child-only inline config 隔离，不覆盖用户 `AGENTS.md`；Copilot/Kimi/Cursor 仍标 experimental，并暂用 runtime state cwd 避免其 `AGENTS.md` 注入覆盖用户文件。
@@ -149,12 +149,12 @@ H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integrati
 
 ### 4.1 Runtime 契约 v2
 
-该能力已纳入 P-A10 Agent Harness v2 提案：
+该能力已由 P-A10 Agent Harness v2 实现：
 
 - 以 `(spaceId, agentId, surfaceKind, surfaceId)` 建立 per-surface resumable session；
 - 统一 Claude Code、Codex、opencode 的 turn lifecycle、usage、取消、completion、tool/compaction event 和 MCP bootstrap，但保留各 engine 内层语义；
 - 建立消息事务内 durable delivery、logical turn/attempt/operation/output ledger、来源 delivery frontier、server-owned reply target 和逐输入 reply/cede/fail finalize gate；
-- P-A10.0–P-A10.5 已完成；继续实施 P-A10.6 restricted advisor与结构化记忆管理/recall/debug UI，不提前混入P-A10.7或P-A11。
+- P-A10.0–P-A10.7 已完成；P-A11 consolidation、P-A12 skill reconciliation、P-S1 sandbox/approval/Vault与H5继续使用独立迁移、契约和验收，不并回P-A10。
 
 完整提案：`docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
 
@@ -164,7 +164,7 @@ H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integrati
 
 ### 4.3 记忆与上下文
 
-P-A10.3已实现Context Envelope、MessageContextSnapshot、server-owned direct-mention thread、实时父级ACL与turn inspector；P-A10.4已实现同域MCP/CLI Gateway、later-query refresh、权威conversation/turn查询、按activation原子绑定且可过期/崩溃清扫的临时附件、session checklist、short wake和manual inbox summary；P-A10.5已实现canonical+immutable revision结构化episodic memory、Human CAS生命周期、disclosure grant/suppression、source ACL、continuity+中文FTS recall、Agent `memory.recall/get`与Context注入。P-A10.6–P-A10.7继续实现restricted advisor、Human manage/recall/debug面板、snapshot与compaction telemetry。现有 User/Space/Agent 三层 `MEMORY.md + notes/` 继续保留，结构化记忆是带 typed evidence/relation 的附加层，不替代文件记忆。受限 consolidation、skill reconciliation 和 runtime security/approval/Vault 分别后置为 P-A11、P-A12、P-S1，不再捆成一个 P-A10.8。
+P-A10.3已实现Context Envelope、MessageContextSnapshot、server-owned direct-mention thread、实时父级ACL与turn inspector；P-A10.4已实现同域MCP/CLI Gateway、later-query refresh、权威conversation/turn查询、按activation原子绑定且可过期/崩溃清扫的临时附件、session checklist、short wake和manual inbox summary；P-A10.5已实现canonical+immutable revision结构化episodic memory、Human CAS生命周期、disclosure grant/suppression、source ACL、continuity+中文FTS recall、Agent `memory.recall/get`与Context注入；P-A10.6–P-A10.7已完成restricted advisor、Human manage/recall/debug面板、snapshot/checklist revision与可支持的compaction telemetry。现有 User/Space/Agent 三层 `MEMORY.md + notes/` 继续保留，结构化记忆是带 typed evidence/relation 的附加层，不替代文件记忆。受限 consolidation、skill reconciliation 和 runtime security/approval/Vault 分别后置为 P-A11、P-A12、P-S1，不再捆成一个 P-A10.8。
 
 ### 4.4 本机跨 Space 聚合
 

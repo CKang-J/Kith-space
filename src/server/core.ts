@@ -340,6 +340,7 @@ export interface CreateMessageOptions {
   introductionToken?: string;
   actionMetadata?: unknown;
   contextSnapshot?: unknown;
+  memoryPolicy?: "eligible" | "exclude";
 }
 
 const conversationEventSink: ConversationEventSink = { publish };
@@ -525,6 +526,7 @@ function messageContext(options: CreateMessageOptions): MessageContext {
     uiSnapshot: options.senderType === "human"
       ? normalizeMessageContextSnapshot(options.contextSnapshot, options.spaceId)
       : null,
+    memoryPolicy: options.senderType === "human" ? options.memoryPolicy ?? "eligible" : "exclude",
   };
 }
 

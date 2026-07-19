@@ -7,6 +7,7 @@ import fs from "node:fs";
 const css = fs.readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 const messageRenderSrc = fs.readFileSync(new URL("../web/src/messageRender.tsx", import.meta.url), "utf8");
 const membersSrc = fs.readFileSync(new URL("../web/src/views/Members.tsx", import.meta.url), "utf8");
+const filesMemorySrc = fs.readFileSync(new URL("../web/src/views/agent-memory/FilesMemoryView.tsx", import.meta.url), "utf8");
 const indexHtml = fs.readFileSync(new URL("../web/index.html", import.meta.url), "utf8");
 
 function selectorList(prelude: string): string[] {
@@ -154,17 +155,17 @@ test("Workspace Markdown preview keeps parity with chat for rich GFM elements", 
   assert.match(messageRenderSrc, /await copyText\(text\)/);
   assert.match(messageRenderSrc, /pre\(\{ children \}\)\s*\{\s*return <CodeBlock>\{children\}<\/CodeBlock>/);
   assert.match(messageRenderSrc, /export function markdownUrlTransform/);
-  assert.match(membersSrc, /import \{ CodeBlock, ColorSwatch, GithubAlertBlockquote, colorValueFromTag, markdownSchema, markdownUrlTransform, remarkColorSwatches, remarkGithubAlerts, remarkHtmlAsText \} from "\.\.\/messageRender\.tsx"/);
+  assert.match(filesMemorySrc, /from "\.\.\/\.\.\/messageRender\.tsx"/);
   assert.match(messageRenderSrc, /export function remarkHtmlAsText/);
   assert.match(messageRenderSrc, /export function remarkGithubAlerts/);
   assert.match(messageRenderSrc, /export function remarkColorSwatches/);
   assert.match(messageRenderSrc, /tag:color:\$\{encodeURIComponent\(token\)\}/);
-  assert.match(membersSrc, /urlTransform=\{markdownUrlTransform\}/);
-  assert.match(membersSrc, /remarkPlugins=\{\[remarkGfm, remarkBreaks, remarkHtmlAsText, remarkGithubAlerts, remarkColorSwatches\]\}/);
-  assert.match(membersSrc, /rehypePlugins=\{\[\[rehypeSanitize, markdownSchema\]\]\}/);
-  assert.match(membersSrc, /blockquote: \(\{ node: _node, children, \.\.\.props \}\) => <GithubAlertBlockquote \{\.\.\.props\}>\{children\}<\/GithubAlertBlockquote>/);
-  assert.match(membersSrc, /ColorSwatch value=\{color\}/);
-  assert.match(membersSrc, /pre: \(\{ children \}\) => <CodeBlock>\{children\}<\/CodeBlock>/);
+  assert.match(filesMemorySrc, /urlTransform=\{markdownUrlTransform\}/);
+  assert.match(filesMemorySrc, /remarkPlugins=\{\[remarkGfm, remarkBreaks, remarkHtmlAsText, remarkGithubAlerts, remarkColorSwatches\]\}/);
+  assert.match(filesMemorySrc, /rehypePlugins=\{\[\[rehypeSanitize, markdownSchema\]\]\}/);
+  assert.match(filesMemorySrc, /blockquote: \(\{ node: _node, children, \.\.\.props \}\) => <GithubAlertBlockquote \{\.\.\.props\}>\{children\}<\/GithubAlertBlockquote>/);
+  assert.match(filesMemorySrc, /ColorSwatch value=\{color\}/);
+  assert.match(filesMemorySrc, /pre: \(\{ children \}\) => <CodeBlock>\{children\}<\/CodeBlock>/);
   assertDecl(".ws-md a", "color", "var\\(--link-blue\\)");
   assertDecl(".ws-md img", "max-width", "min\\(100%,640px\\)");
   assert.match(css, /\.ws-md\{[^}]*font-size:var\(--md-text-size\)[^}]*line-height:var\(--md-line-height\)/);

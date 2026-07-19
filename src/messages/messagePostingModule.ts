@@ -46,6 +46,7 @@ export interface MessageContext {
   sender: MessageSender;
   threadId?: string | null;
   uiSnapshot?: MessageContextSnapshot | null;
+  memoryPolicy?: "eligible" | "exclude";
 }
 
 export type PreparedAction =
@@ -848,6 +849,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
     const { write, prepared, task, audit } = input;
     const target = prepared.taskAssignee;
     if (!target || !task.threadId) return;
+    if (deliveryJournal?.usesV2(write.context.spaceId, target.id)) return;
     const decision = decideAgentMessageResponse({
       agentId: target.id,
       channelType: "thread",
@@ -914,7 +916,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
       taskExecutionMode: input.task?.executionMode ?? "autopilot",
       dispatchChainId: dispatch.chainId,
       dispatchDepth: dispatch.dispatchDepth,
-      memoryPolicy: context.sender.type === "human" ? "eligible" : "exclude",
+      memoryPolicy: context.sender.type === "human" ? context.memoryPolicy ?? "eligible" : "exclude",
       contextSnapshot: context.uiSnapshot ?? null,
     } satisfies typeof schema.messages.$inferInsert;
 

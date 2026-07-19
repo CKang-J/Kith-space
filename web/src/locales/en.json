@@ -247,6 +247,87 @@
     "copyPath": "Copy path",
     "memoryEmpty": "No Agent Memory yet",
     "memoryHint": "Click a memory file on the left to view its contents",
+    "memoryPanel": {
+      "structured": "Structured",
+      "files": "Files",
+      "preview": "Preview",
+      "raw": "Raw",
+      "tabs": { "active": "Active", "proposals": "Proposals", "archived": "Archived" },
+      "filters": {
+        "search": "Search memories…",
+        "kind": "Memory kind",
+        "scope": "Memory scope",
+        "status": "Archive status",
+        "allKinds": "All kinds",
+        "allScopes": "All scopes",
+        "revoked": "Revoked sources only"
+      },
+      "scope": { "agent_private": "Agent private", "space_shared": "Space shared", "user_global": "User global" },
+      "kind": {
+        "preference": "Preference", "fact": "Fact", "decision": "Decision", "relationship": "Relationship",
+        "habit": "Habit", "open_loop": "Open loop", "procedure": "Procedure"
+      },
+      "status": {
+        "proposed": "Proposed", "active": "Active", "superseded": "Superseded", "archived": "Archived",
+        "rejected": "Rejected", "queued": "Queued", "running": "Running", "succeeded": "Succeeded",
+        "failed": "Failed", "blocked": "Blocked", "cancelled": "Cancelled"
+      },
+      "disclosure": { "internal_use": "Internal use", "shareable_summary": "Shareable summary", "explicit_only": "Explicit only" },
+      "sourceAccess": { "available": "Available", "revoked": "Revoked", "unavailable": "Unavailable", "deleted": "Deleted" },
+      "freshness": { "fresh": "Recall observed", "never": "Never recalled", "revoked": "Source unavailable" },
+      "empty": "No memories match these server-side filters.",
+      "selectHint": "Select a structured memory to inspect its evidence and history.",
+      "evidenceCount": "{{count}} evidence",
+      "continuity": "Continuity",
+      "never": "Never",
+      "neverRecalled": "Never recalled",
+      "unknownSurface": "Unknown surface",
+      "manualMemory": "Human-created memory (no advisor job)",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}} / {{pages}} · {{total}} total",
+      "fields": {
+        "scope": "Scope", "kind": "Kind", "disclosure": "Disclosure", "confidence": "Confidence",
+        "validity": "Validity", "sourceAccess": "Source access", "createdBy": "Created by", "updatedBy": "Updated by",
+        "projections": "Disclosure projections", "internalSummary": "Internal: ", "shareableSummary": "Shareable: ",
+        "evidence": "Evidence", "revisions": "Revision history", "relations": "Relations",
+        "advisorJob": "Advisor job", "recalls": "Recall observations"
+      },
+      "actions": {
+        "accept": "Accept", "reject": "Reject", "archive": "Archive", "restore": "Restore",
+        "edit": "Edit", "correct": "Correct",
+        "retainIndependent": "Retain as independent knowledge",
+        "deleteItem": "Delete this structured memory", "forgetSuppress": "Forget and stop learning from these sources"
+      },
+      "editor": {
+        "canonicalText": "Canonical text",
+        "internalSummary": "Internal summary",
+        "shareableSummary": "Shareable summary",
+        "replacementMemoryId": "Replacement memory ID",
+        "relationType": "Replacement relation",
+        "optionalReplacement": "Optional active memory ID in the same scope",
+        "noRelation": "No replacement relation",
+        "canonical_required": "Canonical text is required.",
+        "relation_pair_required": "Replacement memory ID and relation must be provided together.",
+        "saveRevision": "Save revision"
+      },
+      "confirm": {
+        "retain_independentTitle": "Retain as independent knowledge?",
+        "retain_independentMessage": "This creates a new Human-authored revision that no longer depends on the revoked or deleted source. The original source and revocation remain in the audit history, and no channel access is restored.",
+        "deleteTitle": "Delete structured memory?",
+        "deleteMessage": "This permanently deletes the item, its revisions, and indexes. Its source remains, so a later eligible message may teach it again.",
+        "forget_suppressTitle": "Forget and suppress sources?",
+        "forget_suppressMessage": "This permanently deletes the item and records non-content suppression rules so the advisor will not relearn the same claim from these sources. Source messages are not deleted."
+      },
+      "advisor": {
+        "title": "Memory advisor", "available": "Tool isolation enforced", "unsupported": "Unavailable for this runtime",
+        "enabled": "Enabled", "disabled": "Disabled", "pause": "Pause", "resume": "Resume",
+        "isolationRequired": "This runtime cannot enforce the tool-free maintenance profile.",
+        "pending": "{{count}} pending", "latest": "Latest: {{status}} · {{time}}", "suppressions": "{{count}} active suppressions",
+        "lastFailure": "Last failure", "manageSuppressions": "Manage suppression rules", "allowRelearn": "Allow relearning",
+        "validation": "Validation: {{received}} received · {{stored}} stored · {{rejected}} rejected"
+      }
+    },
     "nameRequired": "Name is required",
     "nameInvalid": "Name must be 1-64 characters, start with a letter, and contain only letters, numbers, hyphens, and underscores",
     "startFailed": "Couldn't start the agent. Check the Local Runtime and try again.",
@@ -334,6 +415,9 @@
   },
   "chat": {
     "close": "Close",
+    "excludeFromMemory": "Don't use as long-term memory",
+    "excludeFromMemoryDescription": "This message and content derived from it won't enter long-term memory.",
+    "restoreMemoryEligibility": "Allow long-term memory again",
     "previewImage": "Preview {{name}}",
     "imageZoomControls": "Image zoom controls",
     "zoomIn": "Zoom in",

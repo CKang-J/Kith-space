@@ -37,3 +37,13 @@ export function buildAgentProcessEnv(input: {
   env.KITH_SPACE_AGENT_TOKEN = input.agentToken;
   return env;
 }
+
+/** Maintenance completions inherit provider credentials, but never Core/Worker or per-Agent capabilities. */
+export function buildMaintenanceProcessEnv(source: Readonly<NodeJS.ProcessEnv> = process.env): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(source)) {
+    if (!isHostOnlyEnv(name)) env[name] = value;
+  }
+  env.FORCE_COLOR = "0";
+  return env;
+}

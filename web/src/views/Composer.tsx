@@ -42,6 +42,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
   const [text, setText] = useState("");
   const [asTask, setAsTask] = useState(false);
+  const [memoryExcluded, setMemoryExcluded] = useState(false);
   const [atQuery, setAtQuery] = useState<string | null>(null); // @ mention autocomplete: null = hidden
   const [atSel, setAtSel] = useState(0); // highlighted candidate index for ↑/↓ keyboard nav
   const [pendingAtts, setPendingAtts] = useState<PendingAttachment[]>([]); // uploaded attachments queued to send with the next message
@@ -128,9 +129,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         asTask: asT,
         attachmentIds: ids,
         contextSnapshot: messageContextSnapshot(spaceId, channelId, className === "thread-composer"),
+        memoryPolicy: memoryExcluded ? "exclude" : "eligible",
       });
       if (result?.error) throw new Error(String(result.error));
-      setText(""); setAtQuery(null); setAsTask(false); setPendingAtts([]);
+      setText(""); setAtQuery(null); setAsTask(false); setMemoryExcluded(false); setPendingAtts([]);
     } catch (error) {
       setTaskMentionError(error instanceof Error ? error.message : String(error));
       inputRef.current?.focus();
@@ -232,10 +234,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <ComposerActions
               allowTask={allowAsTask}
               taskActive={asTask}
+              memoryExcluded={memoryExcluded}
               uploadDisabled={uploading || sending}
               taskDisabled={sending}
+              memoryDisabled={sending}
               onAddFiles={() => fileRef.current?.click()}
               onTaskChange={changeTaskMode}
+              onMemoryExcludedChange={setMemoryExcluded}
             />
           </div>
           <div className="cb-right">

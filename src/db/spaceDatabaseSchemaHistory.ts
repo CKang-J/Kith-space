@@ -1,7 +1,7 @@
 import { getTableColumns, getTableName, type Table } from "drizzle-orm";
 import * as schema from "./schema.js";
 
-export const SPACE_DATABASE_SCHEMA_VERSION = 7;
+export const SPACE_DATABASE_SCHEMA_VERSION = 8;
 export const MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION = 2;
 
 export interface WorkspaceMigrationHistoryEntry {
@@ -21,6 +21,7 @@ export const WORKSPACE_MIGRATION_HISTORY: readonly WorkspaceMigrationHistoryEntr
   { version: 6, tag: "0006_legacy_dispatch_recovery", createdAt: 1784467852894, hash: "e0f08a473e9e545d5d278fd75f02c0ce4bc3dc7b2858de0652a852cefa14f979" },
   { version: 6, tag: "0007_temporary_attachment_lifecycle", createdAt: 1784472700000, hash: "d8b340abb27d9ce11dd473272ca6ab086d9d10d30f7cbbdb8684ff5f24c9c887" },
   { version: 7, tag: "0008_episodic_memory_core", createdAt: 1784474300000, hash: "224fda4ad7f22265faea852d49250993286ab350543af1bb6e81a63ebdeafe77" },
+  { version: 8, tag: "0009_memory_advisor", createdAt: 1784480000000, hash: "992d6faf3cd9679622f8e3da8fb8e1f03c84b312c77e88ab22544d9b50b1af83" },
 ];
 
 /** Immutable v2 baseline. Later schema entries are layered on explicitly below. */
@@ -123,6 +124,12 @@ const TABLES_BY_MIGRATION = new Map<string, Array<[string, string[]]>>([
     ["memory_lexical_terms", ["memory_id", "term"]],
     ["memory_fts", ["memory_id", "lexical_text", "cjk_bigrams", "cjk_trigrams"]],
   ]],
+  ["0009_memory_advisor", [
+    ["memory_advisor_settings", ["agent_id", "enabled", "auto_activate_private", "daily_token_limit", "daily_cost_micros_limit", "paused_at", "updated_at"]],
+    ["memory_advisor_jobs", ["id", "space_id", "agent_id", "source_turn_id", "status", "provider", "model", "config_digest", "source_refs_json", "attempt_count", "next_attempt_at", "lease_owner", "lease_expires_at", "error_code", "error_detail_redacted", "candidate_count", "validation_json", "usage_json", "created_at", "started_at", "completed_at"]],
+    ["memory_advisor_proposals", ["memory_id", "job_id", "validation_json", "provider_config_digest", "decision", "decided_at"]],
+    ["memory_recall_observations", ["memory_id", "agent_id", "target_surface_id", "projection", "reasons_json", "score_breakdown_json", "recalled_at"]],
+  ]],
 ]);
 
 const ADDITIONS_BY_MIGRATION = new Map<string, Array<[string, string]>>([
@@ -139,6 +146,11 @@ const ADDITIONS_BY_MIGRATION = new Map<string, Array<[string, string]>>([
     ["attachments", "source_turn_id"],
     ["attachments", "source_activation_id"],
     ["attachments", "expires_at"],
+  ]],
+  ["0009_memory_advisor", [
+    ["runtime_sessions", "checklist_revision"],
+    ["runtime_sessions", "compaction_revision"],
+    ["runtime_sessions", "context_compaction_revision"],
   ]],
 ]);
 
@@ -192,6 +204,10 @@ export function requiredSpaceIndexes(version: number, migrationCount?: number): 
       "memory_evidence_source_uniq", "memory_relations_uniq", "memory_tags_tag_idx",
       "memory_suppressions_uniq", "memory_mutations_key_uniq", "memory_lexical_terms_term_idx",
     ] : []),
+    ...(tags.has("0009_memory_advisor") ? [
+      "memory_advisor_jobs_agent_turn_uniq", "memory_advisor_jobs_due_idx", "memory_advisor_jobs_agent_status_idx",
+      "memory_advisor_proposals_job_idx", "memory_recall_observations_agent_idx",
+    ] : []),
   ];
 }
 
@@ -239,6 +255,17 @@ export function requiredSpaceForeignKeys(version: number, migrationCount?: numbe
       { table: "memory_relations", from: "to_revision", targetTable: "episodic_memory_revisions", onDelete: "CASCADE" },
       { table: "memory_tags", from: "memory_id", targetTable: "episodic_memories", onDelete: "CASCADE" },
       { table: "memory_lexical_terms", from: "memory_id", targetTable: "episodic_memories", onDelete: "CASCADE" },
+    ] : []),
+    ...(tags.has("0009_memory_advisor") ? [
+      { table: "memory_advisor_settings", from: "agent_id", targetTable: "agents", onDelete: "CASCADE" },
+      { table: "memory_advisor_jobs", from: "space_id", targetTable: "spaces", onDelete: "CASCADE" },
+      { table: "memory_advisor_jobs", from: "agent_id", targetTable: "agents", onDelete: "CASCADE" },
+      { table: "memory_advisor_jobs", from: "source_turn_id", targetTable: "agent_turns", onDelete: "CASCADE" },
+      { table: "memory_advisor_proposals", from: "memory_id", targetTable: "episodic_memories", onDelete: "CASCADE" },
+      { table: "memory_advisor_proposals", from: "job_id", targetTable: "memory_advisor_jobs", onDelete: "SET NULL" },
+      { table: "memory_recall_observations", from: "memory_id", targetTable: "episodic_memories", onDelete: "CASCADE" },
+      { table: "memory_recall_observations", from: "agent_id", targetTable: "agents", onDelete: "CASCADE" },
+      { table: "memory_recall_observations", from: "target_surface_id", targetTable: "channels", onDelete: "SET NULL" },
     ] : []),
   ];
 }

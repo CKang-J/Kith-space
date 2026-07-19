@@ -52,7 +52,7 @@ export const EpisodicMemoryRevisionSchema = z.object({
 
 export const MemoryMutationCommandSchema = z.object({
   schemaVersion: z.literal(1),
-  action: z.enum(["edit", "correct", "archive", "restore", "reject", "delete", "forget_suppress"]),
+  action: z.enum(["edit", "correct", "archive", "restore", "reject", "retain_independent", "delete", "forget_suppress"]),
   memoryId: z.string().min(1),
   expectedRevision: z.number().int().positive(),
   idempotencyKey: z.string().min(1).max(128),

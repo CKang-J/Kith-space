@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, like, lt, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, like, lt, ne, or, sql } from "drizzle-orm";
 import { getContentHmacKey } from "../app-data/appDatabase.js";
 import { assertAgentSurfaceAccessInTransaction, hasAgentSurfaceAccessInTransaction } from "../channels/agentSurfaceAccess.js";
 import { agentHasScope } from "../agents/agentScopes.js";
@@ -336,8 +336,11 @@ export class CapabilityGateway {
 
   checklistList(claims: TurnCapabilityClaims) {
     this.db.transaction((tx) => this.assertLiveCapabilityInTransaction(tx, claims, "session.checklist"));
+    const session = this.db.select({ revision: schema.runtimeSessions.checklistRevision }).from(schema.runtimeSessions)
+      .where(eq(schema.runtimeSessions.id, claims.sessionId)).get();
     return {
       sessionId: claims.sessionId,
+      revision: session?.revision ?? 0,
       items: this.db.select().from(schema.sessionChecklistItems)
         .where(eq(schema.sessionChecklistItems.runtimeSessionId, claims.sessionId))
         .orderBy(asc(schema.sessionChecklistItems.sortOrder), asc(schema.sessionChecklistItems.createdAt)).all()
@@ -373,7 +376,9 @@ export class CapabilityGateway {
             sortOrder: command.order,
             sourceTurnId: claims.turnId,
           }).returning().get();
-      return { item: { ...item, createdAt: item.createdAt.getTime(), updatedAt: item.updatedAt.getTime() } };
+      const collection = tx.update(schema.runtimeSessions).set({ checklistRevision: sql`${schema.runtimeSessions.checklistRevision} + 1` })
+        .where(eq(schema.runtimeSessions.id, claims.sessionId)).returning({ revision: schema.runtimeSessions.checklistRevision }).get();
+      return { revision: collection!.revision, item: { ...item, createdAt: item.createdAt.getTime(), updatedAt: item.updatedAt.getTime() } };
     });
   }
 
@@ -381,14 +386,20 @@ export class CapabilityGateway {
     return this.operation(claims, "session.checklist_clear", command.idempotencyKey, command, "checklist", "session.checklist", (tx) => {
       const rows = tx.select().from(schema.sessionChecklistItems).where(eq(schema.sessionChecklistItems.runtimeSessionId, claims.sessionId)).all();
       const ids = rows.filter((row) => command.includeCompleted || !["done", "cancelled"].includes(row.status)).map((row) => row.id);
-      if (ids.length) tx.delete(schema.sessionChecklistItems).where(inArray(schema.sessionChecklistItems.id, ids)).run();
-      return { cleared: ids.length };
+      let revision = tx.select({ revision: schema.runtimeSessions.checklistRevision }).from(schema.runtimeSessions)
+        .where(eq(schema.runtimeSessions.id, claims.sessionId)).get()!.revision;
+      if (ids.length) {
+        tx.delete(schema.sessionChecklistItems).where(inArray(schema.sessionChecklistItems.id, ids)).run();
+        revision = tx.update(schema.runtimeSessions).set({ checklistRevision: sql`${schema.runtimeSessions.checklistRevision} + 1` })
+          .where(eq(schema.runtimeSessions.id, claims.sessionId)).returning({ revision: schema.runtimeSessions.checklistRevision }).get()!.revision;
+      }
+      return { cleared: ids.length, revision };
     });
   }
 
   scheduleWakeup(claims: TurnCapabilityClaims, command: ScheduleWakeupCommand): OperationResult {
     return this.operation(claims, "session.schedule_wakeup", command.idempotencyKey, command, "wakeup", "session.schedule_wakeup", (tx) => {
-      const operationKey = `${claims.turnId}:${command.idempotencyKey}`;
+      const operationKey = command.idempotencyKey;
       const existing = tx.select().from(schema.sessionWakeups).where(and(
         eq(schema.sessionWakeups.runtimeSessionId, claims.sessionId),
         eq(schema.sessionWakeups.idempotencyKey, operationKey),

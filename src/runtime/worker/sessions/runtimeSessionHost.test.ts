@@ -26,6 +26,9 @@ function record(id: string, agentId = "agent-1", surfaceId = id): RuntimeSession
     lastCompactedAt: null,
     retiredAt: null,
     snapshotVersion: 0,
+    checklistRevision: 0,
+    compactionRevision: 0,
+    contextCompactionRevision: 0,
     snapshot: null,
     snapshotChecksum: null,
     snapshotSavedAt: null,
@@ -60,6 +63,48 @@ function request(session: RuntimeSessionRecord, suffix: string, sink: (event: Ru
     sink: { async emit(event: RuntimeEventEnvelope) { await sink(event); } },
   };
 }
+
+test("session host restores the validated adapter snapshot and returns monotonic immediate/fallback snapshots", async () => {
+  const restored = {
+    schemaVersion: 1 as const,
+    sessionGeneration: 1,
+    engineSessionId: "engine-restored",
+    checklistRevision: 2,
+    adapterSnapshot: { schemaVersion: 1, payload: { runtime: "claude", resumable: true } },
+    savedAt: 900,
+  };
+  let openedWith: unknown;
+  const runtime: RuntimeV2 = {
+    name: "claude",
+    capabilities: {
+      resumableSession: true, persistentProcess: true, mcp: "none",
+      hooks: { beforeTool: false, afterTool: false, beforeCompact: false, afterCompact: false, stopFinalize: false },
+      usage: "none", cancellation: "process",
+      context: { modelWindow: "unknown", tokenEstimator: "approximate" },
+      cwdRelocatableResume: false, toolIsolation: "none",
+    },
+    async openSession(options) {
+      openedWith = options.restoredSnapshot;
+      return {
+        async runTurn() { return { outcome: "completed", engineSessionId: "engine-next" }; },
+        async cancel() {},
+        async snapshot() { return { schemaVersion: 1, payload: { runtime: "claude", resumable: true } }; },
+        async close() {},
+      };
+    },
+  };
+  const session = record("session-snapshot") as RuntimeSessionRecord & { restoredSnapshot?: typeof restored };
+  session.snapshotVersion = 5;
+  session.restoredSnapshot = restored;
+  const host = new RuntimeSessionHost(() => runtime, { now: () => 1_000 });
+  const result = await host.runTurn(request(session, "snapshot"));
+  assert.deepEqual(openedWith, restored);
+  assert.equal(result.sessionSnapshot?.snapshotVersion, 6);
+  assert.equal(result.sessionSnapshot?.spaceId, session.spaceId);
+  const fallback = await host.snapshotAll();
+  assert.equal(fallback[0]?.snapshotVersion, 7);
+  await host.closeAll();
+});
 
 test("session host activates broker per turn, serializes one Agent, and LRU-evicts resident processes", async () => {
   let active = 0;
@@ -303,7 +348,7 @@ test("session host truncates preview count once while preserving reserved critic
       };
     },
   };
-  const host = new RuntimeSessionHost(() => runtime);
+  const host = new RuntimeSessionHost(() => runtime, { previewCoalesceMs: 0 });
   await host.runTurn(request(record("session-truncation"), "truncation", (event) => { forwarded.push(event); }));
   assert.equal(forwarded.filter((event) => event.kind === "events_truncated").length, 1);
   assert.equal(forwarded.at(-2)?.kind, "events_truncated");
@@ -311,4 +356,179 @@ test("session host truncates preview count once while preserving reserved critic
   assert.equal(forwarded.at(-1)?.kind, "turn_completed");
   assert.equal(forwarded.at(-1)?.ordinal, 1_985);
   await host.closeAll();
+});
+
+test("session host coalesces each preview kind without delaying adapter emit and flushes before critical events", async () => {
+  const forwarded: RuntimeEventEnvelope[] = [];
+  const runtime: RuntimeV2 = {
+    name: "claude",
+    capabilities: {
+      resumableSession: true, persistentProcess: false, mcp: "none",
+      hooks: { beforeTool: false, afterTool: false, beforeCompact: false, afterCompact: false, stopFinalize: false },
+      usage: "none", cancellation: "process", context: { modelWindow: "unknown", tokenEstimator: "approximate" },
+      cwdRelocatableResume: false, toolIsolation: "none",
+    },
+    async openSession(options) {
+      return {
+        async runTurn(input, sink) {
+          let ordinal = 0;
+          for (let index = 0; index < 10; index += 1) {
+            for (const kind of ["text_preview", "thinking_summary", "activity"] as const) {
+              await sink.emit({
+                schemaVersion: 2, workerGeneration: options.workerGeneration, sessionId: options.runtimeSessionId,
+                sessionGeneration: options.sessionGeneration, turnId: input.turnId, attemptId: input.attemptId,
+                eventId: `${kind}-${index}`, ordinal: ordinal++, kind, payload: { text: `${kind}-${index}` }, createdAt: Date.now(),
+              });
+            }
+          }
+          assert.equal(forwarded.length, 0, "preview emit must not await the open 250ms window or its downstream sink");
+          await sink.emit({
+            schemaVersion: 2, workerGeneration: options.workerGeneration, sessionId: options.runtimeSessionId,
+            sessionGeneration: options.sessionGeneration, turnId: input.turnId, attemptId: input.attemptId,
+            eventId: "critical-tool", ordinal: ordinal++, kind: "tool_started", payload: { toolName: "check" }, createdAt: Date.now(),
+          });
+          await sink.emit({
+            schemaVersion: 2, workerGeneration: options.workerGeneration, sessionId: options.runtimeSessionId,
+            sessionGeneration: options.sessionGeneration, turnId: input.turnId, attemptId: input.attemptId,
+            eventId: "terminal", ordinal, kind: "turn_completed", payload: {}, createdAt: Date.now(),
+          });
+          return { outcome: "completed", engineSessionId: null };
+        },
+        async cancel() {}, async snapshot() { return { schemaVersion: 1, payload: {} }; }, async close() {},
+      };
+    },
+  };
+  const host = new RuntimeSessionHost(() => runtime, { previewCoalesceMs: 250 });
+  await host.runTurn(request(record("session-coalesced"), "coalesced", (event) => { forwarded.push(event); }));
+  assert.deepEqual(forwarded.map((event) => event.kind), ["text_preview", "thinking_summary", "activity", "tool_started", "turn_completed"]);
+  assert.deepEqual(forwarded.slice(0, 3).map((event) => event.payload.text), ["text_preview-9", "thinking_summary-9", "activity-9"]);
+  assert.deepEqual(forwarded.map((event) => event.ordinal), [0, 1, 2, 3, 4]);
+  assert.equal(forwarded.at(-1)?.eventId, "terminal");
+  await host.closeAll();
+});
+
+test("session host emits at most one preview per kind in each short window and flushes return/failure boundaries", async () => {
+  const forwarded: RuntimeEventEnvelope[] = [];
+  const makeRuntime = (fail: boolean): RuntimeV2 => ({
+    name: "claude",
+    capabilities: {
+      resumableSession: true, persistentProcess: false, mcp: "none",
+      hooks: { beforeTool: false, afterTool: false, beforeCompact: false, afterCompact: false, stopFinalize: false },
+      usage: "none", cancellation: "process", context: { modelWindow: "unknown", tokenEstimator: "approximate" },
+      cwdRelocatableResume: false, toolIsolation: "none",
+    },
+    async openSession(options) {
+      return {
+        async runTurn(input, sink) {
+          const emit = (ordinal: number, text: string) => sink.emit({
+            schemaVersion: 2, workerGeneration: options.workerGeneration, sessionId: options.runtimeSessionId,
+            sessionGeneration: options.sessionGeneration, turnId: input.turnId, attemptId: input.attemptId,
+            eventId: text, ordinal, kind: "text_preview", payload: { text }, createdAt: Date.now(),
+          });
+          await emit(0, "window-one-a");
+          await emit(1, "window-one-b");
+          await new Promise((resolve) => setTimeout(resolve, 35));
+          await emit(2, fail ? "failure-boundary" : "window-two-a");
+          if (fail) throw new Error("adapter failed");
+          return { outcome: "completed", engineSessionId: null };
+        },
+        async cancel() {}, async snapshot() { return { schemaVersion: 1, payload: {} }; }, async close() {},
+      };
+    },
+  });
+  const successHost = new RuntimeSessionHost(() => makeRuntime(false), { previewCoalesceMs: 20 });
+  await successHost.runTurn(request(record("session-windows"), "windows", (event) => { forwarded.push(event); }));
+  assert.deepEqual(forwarded.map((event) => event.payload.text), ["window-one-b", "window-two-a"]);
+  assert.deepEqual(forwarded.map((event) => event.ordinal), [0, 1]);
+  await successHost.closeAll();
+
+  const failureForwarded: RuntimeEventEnvelope[] = [];
+  const failureHost = new RuntimeSessionHost(() => makeRuntime(true), { previewCoalesceMs: 20 });
+  await assert.rejects(() => failureHost.runTurn(request(record("session-failure-flush"), "failure-flush", (event) => { failureForwarded.push(event); })), /adapter failed/);
+  assert.equal(failureForwarded.at(-1)?.payload.text, "failure-boundary");
+  await failureHost.closeAll();
+});
+
+test("session host propagates an asynchronous preview flush failure through the turn", async () => {
+  const runtime: RuntimeV2 = {
+    name: "claude",
+    capabilities: {
+      resumableSession: true, persistentProcess: false, mcp: "none",
+      hooks: { beforeTool: false, afterTool: false, beforeCompact: false, afterCompact: false, stopFinalize: false },
+      usage: "none", cancellation: "process", context: { modelWindow: "unknown", tokenEstimator: "approximate" },
+      cwdRelocatableResume: false, toolIsolation: "none",
+    },
+    async openSession(options) {
+      return {
+        async runTurn(input, sink) {
+          await sink.emit({
+            schemaVersion: 2, workerGeneration: options.workerGeneration, sessionId: options.runtimeSessionId,
+            sessionGeneration: options.sessionGeneration, turnId: input.turnId, attemptId: input.attemptId,
+            eventId: "preview-error", ordinal: 0, kind: "text_preview", payload: { text: "flush me" }, createdAt: Date.now(),
+          });
+          return { outcome: "completed", engineSessionId: null };
+        },
+        async cancel() {}, async snapshot() { return { schemaVersion: 1, payload: {} }; }, async close() {},
+      };
+    },
+  };
+  const host = new RuntimeSessionHost(() => runtime, { previewCoalesceMs: 10 });
+  await assert.rejects(() => host.runTurn(request(record("session-preview-error"), "preview-error", () => { throw new Error("preview sink failed"); })), /preview sink failed/);
+  await host.closeAll();
+});
+
+test("session host flushes buffered previews before adapter cancel and close", async () => {
+  const exercise = async (boundary: "cancel" | "close") => {
+    const forwarded: RuntimeEventEnvelope[] = [];
+    let entered!: () => void;
+    let release!: () => void;
+    const enteredPromise = new Promise<void>((resolve) => { entered = resolve; });
+    const releasePromise = new Promise<void>((resolve) => { release = resolve; });
+    const runtime: RuntimeV2 = {
+      name: "claude",
+      capabilities: {
+        resumableSession: true, persistentProcess: true, mcp: "none",
+        hooks: { beforeTool: false, afterTool: false, beforeCompact: false, afterCompact: false, stopFinalize: false },
+        usage: "none", cancellation: "process", context: { modelWindow: "unknown", tokenEstimator: "approximate" },
+        cwdRelocatableResume: false, toolIsolation: "none",
+      },
+      async openSession(options) {
+        return {
+          async runTurn(input, sink) {
+            await sink.emit({
+              schemaVersion: 2, workerGeneration: options.workerGeneration, sessionId: options.runtimeSessionId,
+              sessionGeneration: options.sessionGeneration, turnId: input.turnId, attemptId: input.attemptId,
+              eventId: `${boundary}-preview`, ordinal: 0, kind: "text_preview", payload: { text: boundary }, createdAt: Date.now(),
+            });
+            entered();
+            await releasePromise;
+            return { outcome: "cancelled", engineSessionId: null };
+          },
+          async cancel() {
+            assert.equal(forwarded.at(-1)?.payload.text, "cancel", "cancel must observe the flushed preview");
+            release();
+          },
+          async snapshot() { return { schemaVersion: 1, payload: {} }; },
+          async close() {
+            if (boundary === "close") assert.equal(forwarded.at(-1)?.payload.text, "close", "close must observe the flushed preview");
+            release();
+          },
+        };
+      },
+    };
+    const host = new RuntimeSessionHost(() => runtime, { previewCoalesceMs: 1_000 });
+    const running = host.runTurn(request(record(`session-${boundary}-flush`), `${boundary}-flush`, (event) => { forwarded.push(event); }));
+    await enteredPromise;
+    if (boundary === "cancel") {
+      assert.equal(await host.cancelAttempt(`attempt-${boundary}-flush`), true);
+      await running;
+      await host.closeAll();
+    } else {
+      await host.closeAll();
+      await running;
+    }
+    assert.deepEqual(forwarded.map((event) => event.ordinal), [0]);
+  };
+  await exercise("cancel");
+  await exercise("close");
 });

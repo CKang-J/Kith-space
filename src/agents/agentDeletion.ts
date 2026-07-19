@@ -26,7 +26,7 @@ export async function deleteAgentAndPrivateConversations(spaceId: string, agentI
       .all()
       .map((row) => row.channelId);
     const dmChannelIds = [...new Set([...humanDmChannelIds, ...agentDmChannelIds])];
-    clearAgentPrivateMemoryInTransaction(tx, agentId);
+    clearAgentPrivateMemoryInTransaction(tx, agentId, "agent_deleted");
     tx.delete(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.agentId, agentId)).run();
     tx.update(schema.agents).set({
       deletedAt: new Date(),

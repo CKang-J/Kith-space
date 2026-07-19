@@ -26,6 +26,9 @@ import {
 } from "../local-runtime/workerHub.js";
 import { SessionModule } from "../sessions/sessionModule.js";
 import { MAX_RUNTIME_TERMINAL_BYTES, RuntimeEventEnvelopeSchema, RuntimeTurnResultSchema, type RuntimeTurnResult } from "../runtime/contract/v2/runtimeContract.js";
+import { WorkerSessionSnapshotReportSchema } from "../runtime/contract/sessionSnapshot.js";
+import { assertTerminalSnapshotIdentity, SessionSnapshotService } from "../sessions/sessionSnapshotService.js";
+import { SessionCompactionMarkerService } from "../sessions/sessionCompactionMarker.js";
 import { TurnLedger } from "../turns/turnLedger.js";
 import { harnessTurnScheduler, scheduleV2Turns, turnCapabilityService, turnOutputService } from "./harnessComposition.js";
 
@@ -84,6 +87,9 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
       else if (msg.type === "agent:turn:terminal") {
         await onTurnTerminal(ws, msg, lease);
       }
+      else if (msg.type === "agent:session:snapshot") {
+        await onSessionSnapshot(ws, msg, lease);
+      }
       else if (msg.type === "agent:status" || msg.type === "agent:activity") await onAgentUpdate(msg, lease);
       else if (msg.type === "agent:session" && msg.agentId) {
         const located = await locateAgent(msg.agentId);
@@ -136,7 +142,7 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
           queuedMs: msg.queuedMs,
         });
       }
-      else if ((msg.type === "workspace:file_tree" || msg.type === "workspace:file_content" || msg.type === "skills:list" || msg.type === "models") && msg.requestId) resolveWorkerRequest(msg.requestId, msg);
+      else if ((msg.type === "workspace:file_tree" || msg.type === "workspace:file_content" || msg.type === "skills:list" || msg.type === "models" || msg.type === "maintenance:result") && msg.requestId) resolveWorkerRequest(msg.requestId, msg);
     } catch (e: any) { log.error("ws handler error", { type: msg?.type, detail: String(e?.message ?? e) }); }
   }, (error) => {
     log.error("ws message queue error", { detail: String((error as any)?.message ?? error) });
@@ -245,6 +251,9 @@ async function onTurnTerminal(ws: WebSocket, msg: any, lease: WorkerLease): Prom
       || msg.agentId !== turn.agentId || msg.spaceId !== turn.spaceId) {
       throw new Error("turn terminal identity does not match its live attempt");
     }
+    // Rebuild the consumable cursor from append-only events before every terminal ack. This closes the
+    // crash window where event append succeeded but its best-effort projection did not run.
+    new SessionCompactionMarkerService(spaceId, located.db).reconcile(turn.runtimeSessionId, turn.sessionGeneration);
     if (["succeeded", "failed", "cancelled", "lost"].includes(attempt.status)) {
       if (!isWorkerLeaseCurrent(lease)) throw new Error("Worker lease changed before duplicate terminal acknowledgement");
       ws.send(JSON.stringify({ type: "agent:turn:terminal:ack", attemptId, ok: true }));
@@ -260,6 +269,19 @@ async function onTurnTerminal(ws: WebSocket, msg: any, lease: WorkerLease): Prom
       completed = finalized.finalized;
       if (!finalized.finalized) ledger.failAttempt(attemptId, "required_input_unresolved");
     }
+    if (result.sessionSnapshot) {
+      try {
+        assertTerminalSnapshotIdentity(result.sessionSnapshot, {
+          spaceId: turn.spaceId,
+          sessionId: turn.runtimeSessionId,
+          sessionGeneration: turn.sessionGeneration,
+        });
+        new SessionSnapshotService(spaceId, located.db).persist(result.sessionSnapshot);
+      }
+      catch (error) {
+        log.warn("runtime session snapshot rejected without blocking terminal ack", { attemptId, detail: errorMessage(error) });
+      }
+    }
     await projectTurnTerminal(spaceId, located.db, turn, attemptId, result, completed).catch((error) => {
       log.warn("v2 turn terminal projection failed after durable commit", { attemptId, detail: errorMessage(error) });
     });
@@ -269,6 +291,21 @@ async function onTurnTerminal(ws: WebSocket, msg: any, lease: WorkerLease): Prom
   } catch (error) {
     if (attemptId && isWorkerLeaseCurrent(lease)) {
       ws.send(JSON.stringify({ type: "agent:turn:terminal:ack", attemptId, ok: false, error: errorMessage(error) }));
+    }
+  }
+}
+
+async function onSessionSnapshot(ws: WebSocket, msg: any, lease: WorkerLease): Promise<void> {
+  const requestId = typeof msg.requestId === "string" ? msg.requestId : "";
+  try {
+    if (!requestId || msg.generation !== lease.generation || !isWorkerLeaseCurrent(lease)) throw new Error("stale Worker snapshot");
+    const report = WorkerSessionSnapshotReportSchema.parse(msg.report);
+    const result = new SessionSnapshotService(report.spaceId).persist(report);
+    if (!isWorkerLeaseCurrent(lease)) throw new Error("Worker lease changed during snapshot commit");
+    ws.send(JSON.stringify({ type: "agent:session:snapshot:ack", requestId, ok: true, snapshotVersion: result.snapshotVersion }));
+  } catch (error) {
+    if (requestId && isWorkerLeaseCurrent(lease)) {
+      ws.send(JSON.stringify({ type: "agent:session:snapshot:ack", requestId, ok: false, error: errorMessage(error) }));
     }
   }
 }
@@ -307,6 +344,9 @@ async function projectTurnEvent(
   const toolName = typeof event.payload.toolName === "string" ? event.payload.toolName : "";
   const toolInput = typeof event.payload.toolInput === "string" ? event.payload.toolInput : "";
   const activity = event.kind === "thinking_summary" ? "thinking" : "working";
+  if (event.kind === "compaction_completed") {
+    new SessionCompactionMarkerService(spaceId, db).recordPersistedEvent(event);
+  }
   if (event.kind === "turn_started" || event.kind === "thinking_summary" || event.kind === "tool_started" || event.kind === "activity") {
     db.update(schema.agents).set({ status: "active", activity }).where(eq(schema.agents.id, agent.id)).run();
     await publish(spaceId, { type: "agent", id: agent.id, name: agent.name, status: "active", activity, detail: text.slice(0, 200), ...scope });

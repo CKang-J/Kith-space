@@ -112,10 +112,10 @@
 : 把某个 runtime CLI 接入统一 `Runtime` 接口的适配层，负责启动进程、驱动一轮对话、解析其输出、回吐 session/活动/轨迹。新增一个 runtime = 实现一个 `Runtime` 对象并注册。注册表已带 8 条，v1 只把三条做稳。
 
 **交流表面 / Surface**
-: Agent 一段局部对话所属的稳定产品对象，当前聊天类表面为公开频道、私有频道、Human-Agent DM 和话题。P-A10 目标态以 surface 隔离 runtime session；任务沿用其 owning thread，不另造聊天表面。automation 只保留未来类型，P-A10 不启用，必须等对应事实源/cursor/ACL另立契约。
+: Agent 一段局部对话所属的稳定产品对象，当前聊天类表面为公开频道、私有频道、Human-Agent DM 和话题。P-A10已以surface隔离runtime session；任务沿用其owning thread，不另造聊天表面。automation只保留未来类型，必须等对应事实源/cursor/ACL另立契约。
 
 **per-surface Runtime Session / 表面会话**
-: P-A10 目标态中由 `(spaceId, agentId, surfaceKind, surfaceId)` 逻辑寻址、按 runtime/model/security config 形成 generation 的可恢复 engine session。同一 Agent 的 DM、两个频道和各话题彼此隔离，同一 generation 后续 turn 可 resume；Chat 消费 cursor 仍归来源 membership，不在 session 复制。当前代码仍只有 `agents.session_id` 对应的单 Agent session。
+: P-A10起由 `(spaceId, agentId, surfaceKind, surfaceId)` 逻辑寻址、按runtime/model/security config形成generation的可恢复engine session。同一Agent的DM、两个频道和各话题彼此隔离，同一generation后续turn可resume；Chat消费cursor仍归来源membership，不在session复制。`agents.session_id`只保留为legacy rollback来源。
 
 **Durable Delivery Item / 持久投递项**
 : 消息事务为发送时有资格的每个 Agent 原子写入的工作事实，记录 source message/surface/seq、cursor owner、目标 session、触发时 response policy、directive、dispatch wake binding 与终态 disposition。它可以被 Core 直接标 observe，也可以被编入 logical turn；Worker 通知不是它的事实源。
@@ -130,10 +130,10 @@
 : turn-scoped 产品写入的持久幂等账本。operation 以 `(turn, tool, idempotency key)` 和 request hash 去重；output 链接实际消息等结果，并映射它结算的 delivery obligations。Chat reply 在同一 SQLite 事务提交 message、output、obligation、turn 与 cursor frontier。
 
 **Turn Ledger / 工作轮次账本**
-: P-A10 目标态由 Core 持久的 delivery、logical turn、attempt、上下文来源、operation/output、工具事件、usage、错误和恢复记录。它承担 Human 的“展开步骤”和 Agent 自我追溯，不等同于原始消息历史或 engine 私有 transcript。
+: P-A10.2起由Core持久的delivery、logical turn、attempt、上下文来源、operation/output、工具事件、usage、错误和恢复记录。它承担Human的“展开步骤”和Agent自我追溯，不等同于原始消息历史或engine私有transcript。Core启动及周期恢复扫描只重新调用同一scheduler，使message+delivery提交后即使全部post-commit effect丢失也能幂等恢复，不另造wake budget或turn事实。
 
 **Finalize Gate / 最终化闸门**
-: P-A10 目标态在 runtime 宣告 turn 结束前逐 delivery obligation 检查交付结果的系统规则：每个 `required` input 必须被已提交 output 明确覆盖，每个 `optional` input 必须回复或显式 cede；stdout/text preview 不算消息，缺少合法终态会有限重试后失败。
+: P-A10.2起在runtime宣告turn结束前逐delivery obligation检查交付结果的系统规则：每个`required` input必须被已提交output明确覆盖，每个`optional` input必须回复或显式cede；stdout/text preview不算消息，缺少合法终态会有限重试后失败。
 
 **Agent 首轮触发场景**
 : Core 启动 agent 时传给 Local Runtime Worker 的显式原因：`create` 表示新建后的单次 Human 私信介绍，`manual` 表示手动启动/重启/恢复且空收件箱静默，`wake` 表示有真实持久化消息或任务需要在原目标处理。只有实际采用 introduction prompt 的 runtime 进程持有一次性 token，且仅 `message send --introduction` 会把它附到请求；服务端同步消费成功后才把介绍私信与 `agents.introduced_at` 原子写入。真实 wake 会撤销 token 并拒绝迟到问候，已完成 token 的重复问候同样拒绝；普通回复不携带 token。普通重启保留完成状态，清 Agent Memory 的完整 reset 会清除它。
@@ -152,10 +152,10 @@
 : P-A10 中 Agent 操作 Kith-space 的唯一受支持产品 API。P-A10.4起`kith-core` stdio MCP与`kith-space` CLI共享broker client、canonical command schema和领域Module，覆盖server-owned reply/cede/临时附件、later-query refresh、conversation/turn查询、progress、Task全链路、surface checklist、short wake和capability describe；P-A10.5加入受`knowledge:read`约束的`memory.recall/get`。broker-backed turn capability固定Agent、Space、attempt、允许input/output、seen watermarks、scope、披露权与过期时间，每次调用及最终写事务重验lease/generation/Agent scope/父级ACL。临时附件按turn与activation归属、一小时过期并由GC恢复崩溃orphan；跨私密domain由disclosure engine选择预存summary/ref，正文升级必须使用Human签发的consume-once grant。它在OS sandbox前不是阻止runtime直接读本机路径的物理边界。
 
 **Session checklist / 会话清单**
-: 绑定单个`RuntimeSessionKey`的短期可恢复工作状态，不是Tasks模块；不同频道、DM和话题不共享。P-A10.4提供MCP/CLI list、CAS upsert/complete与clear，写入复用turn operation ledger。
+: 绑定单个`RuntimeSessionKey`的短期可恢复工作状态，不是Tasks模块；不同频道、DM和话题不共享。P-A10.4提供MCP/CLI list、CAS upsert/complete与clear，P-A10.7加入session级单调revision和snapshot/restart恢复，写入复用turn operation ledger。
 
 **Short wake / 短时唤醒**
-: Agent在active turn内为同一surface session安排的60秒至1小时一次性trigger。P-A10.4只持久化session/generation、owner、dueAt、reason和幂等键；到期重验当前ACL与Agent状态后生成新的durable delivery/turn，不复用旧activation或复制旧prompt。
+: Agent在active turn内为同一surface session安排的60秒至1小时一次性trigger。它持久化session/generation、owner、dueAt、reason和跨turn幂等键；到期重验当前ACL与Agent状态后生成新的durable delivery/turn，不复用旧activation或复制旧prompt，Desktop/Worker restart后仍按dueAt恢复且只触发一次。
 
 **Turn Capability Broker / 工作轮次能力代理**
 : 为常驻 runtime 提供稳定本机 handle、由 Worker 按 attempt 激活 opaque capability 的控制面。Core在每次MCP/CLI调用时校验实时lease/turn/ACL并在终态撤销，避免把无法轮换的per-turn bearer固定注入子进程环境。
@@ -174,28 +174,34 @@
 ## 记忆
 
 **三层记忆**
-: 用户级（app data 中的跨 Space 偏好，Human 策展）、Space 级（`<space>/.kith/memory/` 的共享规则和背景，agent 可写、Human 策展）、Agent 级（`<space>/.kith/agents/<agentId>/` 中由 agent 维护的 `MEMORY.md` + `notes/`）。读取一律用 runtime 原生文件工具，不做读 MCP 工具。
+: 用户级（app data 中的跨 Space 偏好，Human 策展）、Space 级（`<space>/.kith/memory/` 的共享规则和背景，agent 可写、Human 策展）、Agent 级（`<space>/.kith/agents/<agentId>/` 中由 agent 维护的 `MEMORY.md` + `notes/`）。读取使用runtime原生文件工具；这类文件不具有episodic source ACL/suppression语义，删除来源或forget结构化item不会自动擦除file memory，Human需分别编辑或在完整reset中清理。
 
 **Episodic Memory / 情景记忆**
-: P-A10.5起由message/turn/file/manual evidence派生的结构化长期线索。Space内`agent_private/space_shared`位于workspace schema v7，Human手工提升的`user_global`位于app.db v3；canonical item指向append-only revision，并使用当前SourceRef解析、disclosure projection、replacement relation与suppression支持跨surface recall、纠错和Human管理。它不替代消息事实源或三层文件记忆，自动advisor仍属于P-A10.6。
+: P-A10.5起由message/turn/file/manual evidence派生的结构化长期线索。Space内`agent_private/space_shared`位于workspace schema v7+，Human手工提升的`user_global`位于app.db v3；canonical item指向append-only revision，并使用当前SourceRef解析、disclosure projection、replacement relation与suppression支持跨surface recall、纠错和Human管理。它不替代消息事实源或三层文件记忆；P-A10.6已加入restricted advisor和Human管理面板。
 
 **Continuity Bundle / 连续性记忆包**
 : P-A10.5已实现的有界自动注入集合，由当前Agent/Human的少量active preference、relationship、habit组成，不依赖本轮词面查询；与query-shaped FTS recall互补，只包含已经active且逐次通过当前source ACL/disclosure的revision，默认最多12条/2,000 token。
 
 **Memory Revision / 记忆修订版**
-: 某canonical memory的不可变正文版本，保存canonical/internal/shareable projection、HMAC、actor与有效期。canonical row只指向current revision；历史Context Envelope可按revision审计，forget后可删除正文并只留tombstone。
+: 某canonical memory的不可变正文版本，保存canonical/internal/shareable projection、HMAC、actor与有效期。canonical row只指向current revision；历史Context Envelope可按revision审计，forget后可删除正文并只留tombstone。私密来源撤权、失联或删除后，Human可选择`retain_independent`创建新的manual revision：后续recall只依赖该Human确认，旧source/evidence仍留作审计且不会恢复其membership或ACL。
 
 **Memory Suppression / 记忆抑制**
 : P-A10.5起Human选择“忘记并不再从这些来源学习”时持久保存的非原文 source ref + keyed claim fingerprint。正文、历史revision与FTS在`secure_delete`连接的事务中删除并truncate WAL，手工reindex不能复活；解除后再次forget会重新激活同一suppression。它继续阻止后续advisor/consolidation从仍保留的来源重新生成同一事实，不同于archive或单纯删除item。
 
 **Memory Advisor / 记忆顾问**
-: P-A10 目标态中在eligible completed turn后异步提取episodic memory candidate的受限后台能力。它通过可证明tool isolation的独立MaintenanceRuntimePort运行，不复用user-facing session；exclude lineage、typed actor/source、secret/噪音、dedupe/disclosure验证后才能proposed/active，失败不阻塞原turn。
+: P-A10.6起在eligible completed turn后异步提取episodic memory candidate的受限后台能力。它通过可证明tool isolation的独立MaintenanceRuntimePort运行，不复用user-facing session；exclude lineage、typed actor/source、secret/噪音、source ACL、suppression、dedupe/disclosure与job lease验证后才能proposed/active，失败不阻塞原turn。当前Claude受支持，Codex/opencode明确unsupported。
 
 **Memory Consolidation / 离线记忆巩固**
 : 独立 P-A11 目标能力，相当于受限、可审计的 Kith-space Dream：在 Agent 无 active turn 且未处理 turn 达到阈值时，按持久 cursor 复盘 Turn Ledger 与记忆，只生成 episodic/file-memory proposal，不直接发消息、改 User Memory、角色或 active skill，并强制继承exclude lineage与suppression。
 
 **Session Checklist / 会话清单**
-: P-A10 目标态中绑定一个 per-surface runtime session 的短期工作清单，跨该表面多轮与 idle/restart 持久，但不进入 Tasks 模块或跨 Space 聚合；用于当前对话的局部计划，不是团队任务板。
+: P-A10起绑定一个per-surface runtime session的短期工作清单，跨该表面多轮与idle/restart持久，但不进入Tasks模块或跨Space聚合；用于当前对话的局部计划，不是团队任务板。
+
+**Runtime Session Snapshot / 运行时会话快照**
+: Worker为单个session generation上报的非权威可恢复adapter状态。Core按session ID、generation、64KiB、禁止字段、checksum和单调version门禁持久；损坏或旧generation只丢弃payload，再从session/turn/delivery/checklist权威状态重建。它不能覆盖消息、cursor、operation或obligation。
+
+**Compaction Telemetry / 上下文压缩遥测**
+: Runtime adapter能证明时上报的`compaction_started/completed`事件与session revision。P-A10.7只把下一轮Context Envelope标为`post_compaction`并记录可用metadata，不自研统一summary。当前Codex支持映射，Claude/opencode明确unsupported。
 
 **一事一文件 + 索引约定**
 : 借鉴 OpenLoaf 的记忆结构——每个知识点一个文件，`MEMORY.md` 作自足索引指向 `notes/` 里的细节，compaction 前后以 `MEMORY.md` 为恢复点。它是写进 system prompt 强制执行的**约定**，不是工具。写记忆的 MCP 工具（如 `memory_save`）v1 延后，agent 先用原生文件操作写。
@@ -306,7 +312,7 @@
 : Desktop 信任凭据和 Local Runtime Worker 控制凭据的统称。两者彼此独立，也不与浏览器 Access Token 或 agent session token 复用。Desktop 每次启动/重启受管进程组都会重新生成；只有手动分进程开发才临时使用 `KITH_SPACE_DESKTOP_TOKEN` 和 `KITH_SPACE_WORKER_TOKEN` 注入。
 
 **每工作区独立 SQLite 文件**
-: 每个 Space 把自己的元数据、消息、任务、频道、Agent、membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 schema v7在v6 durable harness之后增加8张episodic memory关系表与FTS5虚表；v2–v6合法journal前缀均可原地续迁，postflight按版本、journal、表/列/索引/FK校验。`agents.session_id`只作legacy rollback来源；`user_global`结构化记忆不进入任一workspace，而由app.db v3独立持有。
+: 每个 Space 把自己的元数据、消息、任务、频道、Agent、membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 schema v8在v6 durable harness、v7 episodic memory之后增加advisor control plane、recall observation和session checklist/snapshot/compaction revision；v2–v7合法journal前缀均可原地续迁，postflight按版本、journal、表/列/索引/FK校验。`agents.session_id`只作legacy rollback来源；`user_global`结构化记忆不进入任一workspace，而由app.db v3独立持有。
 
 **`.kith/`**
 : Space root 下承载其可移植状态的目录：`workspace.db`（Space 元数据、agent 阵容、频道、消息和任务）、`memory/`（Space Memory）、`agents/<agentId>/`（Agent Memory）和 `uploads/`（附件对象）。runtime prompt、日志和宿主临时状态不放在这里。

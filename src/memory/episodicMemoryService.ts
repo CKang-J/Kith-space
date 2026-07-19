@@ -100,6 +100,22 @@ function publicEvidence(row: EvidenceRow): Pick<MemoryEvidenceInput, "sourceSurf
   };
 }
 
+export interface AdvisorMemoryWriteContext {
+  jobId: string;
+  leaseOwner?: string;
+  batchJobIds?: string[];
+  proposal?: {
+    validation: Record<string, unknown>;
+    providerConfigDigest: string;
+  };
+  conflict?: {
+    memoryId: string;
+    revision: number;
+  };
+}
+
+type CreateAuthority = { kind: "human" } | ({ kind: "advisor" } & AdvisorMemoryWriteContext);
+
 /** Workspace-owned episodic memory. user_global is intentionally handled by app.db, never a Space DB. */
 export class EpisodicMemoryService {
   constructor(
@@ -109,8 +125,36 @@ export class EpisodicMemoryService {
   ) {}
 
   create(raw: CreateEpisodicMemoryCommand): MemoryRecord {
+    return this.createInternal(raw, { kind: "human" });
+  }
+
+  /** Trusted advisor entry point; it preserves a system actor and cannot create user-global or Agent-self-evidenced claims. */
+  createFromAdvisor(
+    raw: CreateEpisodicMemoryCommand,
+    context: string | AdvisorMemoryWriteContext,
+    leaseOwner?: string,
+    batchJobIds?: string[],
+  ): MemoryRecord {
+    const advisor = typeof context === "string"
+      ? { jobId: context, leaseOwner, batchJobIds }
+      : context;
+    return this.createInternal(raw, { kind: "advisor", ...advisor });
+  }
+
+  private createInternal(
+    raw: CreateEpisodicMemoryCommand,
+    authority: CreateAuthority,
+  ): MemoryRecord {
     const command = CreateEpisodicMemoryCommandSchema.parse(raw);
-    humanOnly(command.actor);
+    if (authority.kind === "human") humanOnly(command.actor);
+    else {
+      if (command.actor.type !== "system" || command.actor.id !== `memory-advisor:${authority.jobId}`) {
+        throw new MemoryError("MEMORY_FORBIDDEN", "advisor writes require the matching typed system actor");
+      }
+      if (command.evidence.some((item) => item.assertedBy.type !== "human" || item.claimType !== "human_assertion" || item.memoryPolicy !== "eligible")) {
+        throw new MemoryError("MEMORY_FORBIDDEN", "advisor memory requires eligible Human evidence");
+      }
+    }
     if (command.scope === "user_global") throw new MemoryError("MEMORY_INVALID", "user_global memory belongs in app.db");
     const workspaceScope: "agent_private" | "space_shared" = command.scope;
     if (command.sensitivity === "secret") throw new MemoryError("MEMORY_INVALID", "secret content cannot be stored as episodic memory");
@@ -127,8 +171,40 @@ export class EpisodicMemoryService {
     if (command.evidence.some((item) => item.memoryPolicy === "exclude")) {
       throw new MemoryError("MEMORY_FORBIDDEN", "memory-excluded evidence cannot produce episodic memory");
     }
-    const requestHash = memoryHmac(command);
+    const requestHash = authority.kind === "human"
+      ? memoryHmac(command)
+      : memoryHmac({
+          command,
+          advisorWrite: { proposal: authority.proposal ?? null, conflict: authority.conflict ?? null },
+        });
     const id = this.db.transaction((tx) => {
+      if (authority.kind === "advisor" && authority.leaseOwner) {
+        const expectedJobIds = [...new Set(authority.batchJobIds?.length ? authority.batchJobIds : [authority.jobId])];
+        const jobs = tx.select().from(schema.memoryAdvisorJobs).where(and(
+          inArray(schema.memoryAdvisorJobs.id, expectedJobIds),
+          eq(schema.memoryAdvisorJobs.status, "running"),
+          eq(schema.memoryAdvisorJobs.leaseOwner, authority.leaseOwner),
+          gt(schema.memoryAdvisorJobs.leaseExpiresAt, new Date(this.now())),
+        )).all();
+        const job = jobs.find((item) => item.id === authority.jobId);
+        const liveAgent = job ? tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
+          eq(schema.agents.id, job.agentId), eq(schema.agents.spaceId, this.spaceId), isNull(schema.agents.deletedAt),
+        )).get() : null;
+        const allowedSources = new Set(jobs.flatMap((item) => item.sourceRefs.map((source) => `${source.sourceKind}:${source.sourceId}`)));
+        const sourceAccessStillValid = job && command.evidence.every((item) => item.sourceKind !== "message"
+          || Boolean(item.sourceSurfaceId && hasAgentSurfaceAccessInTransaction(tx, {
+            spaceId: this.spaceId,
+            channelId: item.sourceSurfaceId,
+            agentId: job.agentId,
+            now: this.now(),
+          })));
+        if (!job || jobs.length !== expectedJobIds.length || !liveAgent
+          || jobs.some((item) => item.agentId !== job.agentId)
+          || !sourceAccessStillValid
+          || command.evidence.some((item) => !allowedSources.has(`${item.sourceKind}:${item.sourceId}`))) {
+          throw new MemoryError("MEMORY_CONFLICT", "advisor job is no longer live or no longer owns the candidate evidence");
+        }
+      }
       const replay = tx.select().from(schema.memoryMutations).where(and(
         eq(schema.memoryMutations.actor, command.actor),
         eq(schema.memoryMutations.idempotencyKey, command.idempotencyKey),
@@ -197,6 +273,35 @@ export class EpisodicMemoryService {
         occurredAt: new Date(evidence.occurredAt),
       }))).run();
       this.replaceProjection(tx, memoryId, command, command.tags);
+      if (authority.kind === "advisor" && authority.proposal) {
+        tx.insert(schema.memoryAdvisorProposals).values({
+          memoryId,
+          jobId: authority.jobId,
+          validation: authority.proposal.validation,
+          providerConfigDigest: authority.proposal.providerConfigDigest,
+        }).run();
+      }
+      if (authority.kind === "advisor" && authority.conflict) {
+        const conflict = tx.select().from(schema.episodicMemories).where(and(
+          eq(schema.episodicMemories.id, authority.conflict.memoryId),
+          eq(schema.episodicMemories.spaceId, this.spaceId),
+          eq(schema.episodicMemories.currentRevision, authority.conflict.revision),
+          eq(schema.episodicMemories.status, "active"),
+        )).get();
+        if (!conflict || conflict.scope !== command.scope || conflict.ownerAgentId !== command.ownerAgentId) {
+          throw new MemoryError("MEMORY_CONFLICT", "advisor conflict target changed before the candidate committed");
+        }
+        tx.insert(schema.memoryRelations).values({
+          id: randomUUID(),
+          fromMemoryId: conflict.id,
+          fromRevision: conflict.currentRevision,
+          toMemoryId: memoryId,
+          toRevision: 1,
+          relationType: "contradicts",
+          createdBy: command.actor,
+          createdAt,
+        }).run();
+      }
       tx.insert(schema.memoryMutations).values({
         id: randomUUID(), memoryId, action: "create", idempotencyKey: command.idempotencyKey,
         requestHash, resultRef: { memoryId, revision: 1 }, actor: command.actor, createdAt,
@@ -234,12 +339,83 @@ export class EpisodicMemoryService {
       if (!revision) throw new MemoryError("MEMORY_CONFLICT", "current memory revision is missing");
       const createdAt = new Date(this.now());
       let resultRef: Record<string, unknown>;
-      if (command.action === "delete" || command.action === "forget_suppress") {
+      if (command.action === "retain_independent") {
+        z.object({}).strict().parse(command.payload);
+        if (memory.status !== "active" || !["revoked", "unavailable", "deleted"].includes(memory.sourceAccess)) {
+          throw new MemoryError("MEMORY_INVALID", "only an active memory with unavailable source access can be retained independently");
+        }
+        const nextRevision = memory.currentRevision + 1;
+        tx.insert(schema.episodicMemoryRevisions).values({
+          memoryId: memory.id,
+          revision: nextRevision,
+          canonicalText: revision.canonicalText,
+          internalSummary: revision.internalSummary,
+          shareableSummary: revision.shareableSummary,
+          contentHmac: memoryHmac({
+            canonicalText: revision.canonicalText,
+            internalSummary: revision.internalSummary,
+            shareableSummary: revision.shareableSummary,
+            sensitivity: revision.sensitivity,
+            disclosure: revision.disclosure,
+            validFrom: revision.validFrom?.getTime() ?? null,
+            validTo: revision.validTo?.getTime() ?? null,
+          }),
+          sensitivity: revision.sensitivity,
+          disclosure: revision.disclosure,
+          validFrom: revision.validFrom,
+          validTo: revision.validTo,
+          createdBy: actor,
+          createdAt,
+        }).run();
+        tx.insert(schema.memoryEvidence).values({
+          id: randomUUID(),
+          memoryId: memory.id,
+          memoryRevision: nextRevision,
+          sourceSpaceId: this.spaceId,
+          sourceKind: "manual",
+          sourceId: `retain-independent:${memory.id}:${nextRevision}`,
+          sourceSurfaceId: null,
+          visibilityAtOccurrence: "local_file",
+          assertedBy: actor,
+          quotedFrom: null,
+          claimType: "manual",
+          memoryPolicy: "human_manual",
+          excerptHmac: memoryHmac({ action: "retain_independent", memoryId: memory.id, revision: nextRevision, canonicalText: revision.canonicalText }),
+          occurredAt: createdAt,
+        }).run();
+        tx.insert(schema.memoryRelations).values({
+          id: randomUUID(),
+          fromMemoryId: memory.id,
+          fromRevision: nextRevision,
+          toMemoryId: memory.id,
+          toRevision: memory.currentRevision,
+          relationType: "derived_from",
+          createdBy: actor,
+          createdAt,
+        }).run();
+        tx.update(schema.episodicMemories).set({
+          currentRevision: nextRevision,
+          sourceAccess: "available",
+          rowVersion: memory.rowVersion + 1,
+          updatedBy: actor,
+          updatedAt: createdAt,
+        }).where(eq(schema.episodicMemories.id, memory.id)).run();
+        const tags = tx.select({ tag: schema.memoryTags.tag }).from(schema.memoryTags)
+          .where(eq(schema.memoryTags.memoryId, memory.id)).all().map((item) => item.tag);
+        this.replaceProjection(tx, memory.id, {
+          canonicalText: revision.canonicalText,
+          internalSummary: revision.internalSummary,
+          shareableSummary: revision.shareableSummary,
+          subjectKey: memory.subjectKey,
+          predicateKey: memory.predicateKey,
+        }, tags);
+        resultRef = { memoryId: memory.id, revision: nextRevision, retainedIndependent: true };
+      } else if (command.action === "delete" || command.action === "forget_suppress") {
         const suppressed = command.action === "forget_suppress";
         if (suppressed) {
           const fingerprint = claimHmac({
             scope: memory.scope, ownerAgentId: memory.ownerAgentId, subjectKey: memory.subjectKey,
-            predicateKey: memory.predicateKey, canonicalText: revision.canonicalText,
+            predicateKey: memory.predicateKey, canonicalText: revision.canonicalText, subjectRef: memory.subjectRef,
           });
           const evidence = tx.select().from(schema.memoryEvidence).where(eq(schema.memoryEvidence.memoryId, memory.id)).all();
           for (const item of evidence) {
@@ -262,6 +438,21 @@ export class EpisodicMemoryService {
               }).run();
             }
           }
+          const sourceIds = new Set(evidence.map((item) => item.sourceId));
+          const affectedJobs = tx.select().from(schema.memoryAdvisorJobs).where(and(
+            inArray(schema.memoryAdvisorJobs.status, ["queued", "running", "failed"]),
+            memory.scope === "agent_private" && memory.ownerAgentId
+              ? eq(schema.memoryAdvisorJobs.agentId, memory.ownerAgentId)
+              : sql`1 = 1`,
+          )).all().filter((job) => job.sourceRefs.some((source) => sourceIds.has(source.sourceId)));
+          if (affectedJobs.length) tx.update(schema.memoryAdvisorJobs).set({
+            status: "cancelled",
+            leaseOwner: null,
+            leaseExpiresAt: null,
+            errorCode: "source_suppressed",
+            errorDetailRedacted: "advisor job cancelled because its source was suppressed",
+            completedAt: createdAt,
+          }).where(inArray(schema.memoryAdvisorJobs.id, affectedJobs.map((job) => job.id))).run();
         }
         tx.run(sql`DELETE FROM memory_fts WHERE memory_id = ${memory.id}`);
         tx.delete(schema.episodicMemories).where(eq(schema.episodicMemories.id, memory.id)).run();
@@ -398,7 +589,10 @@ export class EpisodicMemoryService {
   listSuppressions(input: { scope?: "agent_private" | "space_shared"; ownerAgentId?: string } = {}) {
     const conditions = [];
     if (input.scope) conditions.push(eq(schema.memorySuppressions.scope, input.scope));
-    if (input.ownerAgentId) conditions.push(eq(schema.memorySuppressions.ownerAgentId, input.ownerAgentId));
+    if (input.ownerAgentId) conditions.push(sql`(
+      ${schema.memorySuppressions.ownerAgentId} = ${input.ownerAgentId}
+      OR (${schema.memorySuppressions.scope} = 'space_shared' AND ${schema.memorySuppressions.ownerAgentId} IS NULL)
+    )`);
     return this.db.select().from(schema.memorySuppressions)
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(schema.memorySuppressions.createdAt)).limit(500).all();
@@ -445,7 +639,7 @@ export class EpisodicMemoryService {
     if (record.memory.scope === "agent_private" && record.memory.ownerAgentId !== agentId) {
       throw new MemoryError("MEMORY_FORBIDDEN", "agent-private memory belongs to another Agent");
     }
-    const resolved = this.resolveEvidence(record.evidence, agentId);
+    const resolved = this.resolveEvidence(this.effectiveEvidence(record.evidence, record.memory.currentRevision), agentId);
     this.persistSourceAccess(record.memory, resolved.state);
     if (resolved.state !== "available") throw new MemoryError("MEMORY_FORBIDDEN", "memory source is no longer accessible");
     return this.project(record, resolved.evidence, targetSurfaceId, {
@@ -466,7 +660,10 @@ export class EpisodicMemoryService {
       || (memory.scope === "agent_private" && memory.ownerAgentId !== agentId)) {
       return false;
     }
-    const evidence = tx.select().from(schema.memoryEvidence).where(eq(schema.memoryEvidence.memoryId, memory.id)).all();
+    const evidence = this.effectiveEvidence(
+      tx.select().from(schema.memoryEvidence).where(eq(schema.memoryEvidence.memoryId, memory.id)).all(),
+      memory.currentRevision,
+    );
     const resolved = this.resolveEvidenceInTransaction(tx, evidence, agentId);
     if (memory.sourceAccess !== resolved.state) {
       tx.update(schema.episodicMemories).set({ sourceAccess: resolved.state, updatedAt: new Date(this.now()) })
@@ -555,7 +752,7 @@ export class EpisodicMemoryService {
           || (record.memory.scope === "agent_private" && record.memory.ownerAgentId !== input.agentId)) continue;
         relation = { type: pointer.relationType as "supersedes" | "contradicts", replacementId: record.memory.id };
       }
-      const resolved = this.resolveEvidence(record.evidence, input.agentId);
+      const resolved = this.resolveEvidence(this.effectiveEvidence(record.evidence, record.memory.currentRevision), input.agentId);
       this.persistSourceAccess(record.memory, resolved.state);
       if (resolved.state !== "available") continue;
       const lexical = lexicalIds.get(candidate.memory.id) ?? lexicalIds.get(record.memory.id) ?? 0;
@@ -596,6 +793,27 @@ export class EpisodicMemoryService {
       }
       selected.push(item);
     }
+    const recalledAt = new Date(this.now());
+    for (const item of selected) {
+      this.db.insert(schema.memoryRecallObservations).values({
+        memoryId: item.memoryId,
+        agentId: input.agentId,
+        targetSurfaceId: input.targetSurfaceId,
+        projection: item.projection,
+        reasons: item.reasons,
+        scoreBreakdown: { ...item.scoreBreakdown },
+        recalledAt,
+      }).onConflictDoUpdate({
+        target: [schema.memoryRecallObservations.memoryId, schema.memoryRecallObservations.agentId],
+        set: {
+          targetSurfaceId: input.targetSurfaceId,
+          projection: item.projection,
+          reasons: item.reasons,
+          scoreBreakdown: { ...item.scoreBreakdown },
+          recalledAt,
+        },
+      }).run();
+    }
     return selected;
   }
 
@@ -623,6 +841,14 @@ export class EpisodicMemoryService {
     state: "available" | "revoked" | "unavailable" | "deleted";
   } {
     return this.db.transaction((tx) => this.resolveEvidenceInTransaction(tx, evidence, agentId));
+  }
+
+  /** Uses the newest evidence-bearing revision so later edits retain the last explicit lineage decision. */
+  private effectiveEvidence(evidence: EvidenceRow[], currentRevision: number): EvidenceRow[] {
+    const revision = evidence.reduce((latest, item) => item.memoryRevision <= currentRevision
+      ? Math.max(latest, item.memoryRevision)
+      : latest, 0);
+    return revision ? evidence.filter((item) => item.memoryRevision === revision) : [];
   }
 
   private resolveEvidenceInTransaction(tx: SpaceTransaction, evidence: EvidenceRow[], agentId: string): {

@@ -46,6 +46,10 @@ pnpm run browser-access:dev lan --port 7777 --token "a-custom-token-at-least-16-
 
 浏览器首次访问时输入访问 Token，随后使用持久 HttpOnly Cookie 会话。URL 不携带 Token，也不支持旧的 `?as=` 参数。
 
+完整Desktop/Web验收必须从产品正常流程开始：用`pnpm run desktop:dev`启动fresh profile，在Desktop首次创建Human，再进入“Settings → Desktop & Web”，把模式切到“Local only”，点击生成或轮换Token；模式改变后重启Desktop/Core，再在7777输入这次界面显示的一次性Token。Token只应临时保存在测试进程内存，不得写入源码、fixture、环境示例、快照、日志说明或验收文档。
+
+需要检查Electron渲染DOM时，开发脚本允许把参数转发给Electron：`pnpm run desktop:dev --remote-debugging-port=9222`。只可在本机隔离profile使用并在验收后停止进程；不要给LAN地址开放该端口，也不要从DevTools输出一次性Token。production bundle/pack不会自动启用调试端口。
+
 ## 3. 数据库与调试数据
 
 正式 Desktop 首次初始化不需要 `seed`。以下命令只用于手动分进程、测试 fixture 或 schema 调试：
@@ -160,7 +164,7 @@ P-A10.0 的可执行 adapter fixture运行：
 pnpm exec tsx --test src/runtime/contract/v2/runtimeContract.test.ts src/daemon/runtimeContractBaseline.test.ts
 ```
 
-Claude/Codex fixture证明同一常驻进程可串行处理两轮，opencode fixture证明one-shot子进程会在第二轮携带首轮session ID；三者同时验证显式 completion 与可映射的 final usage。P-A10.1 v2 bridge另验证critical event ack、process cancel、stable broker activation和stale generation拒绝。P-A10.2增加admit/activate分离、event/terminal ACK、lease recovery、dispatch reservation和Core generation/broker变化后的reopen测试。P-A10.3增加Human/Agent/v2-output原子direct-mention thread、mixed-mode reserved wake崩溃恢复、Context Envelope bound frontier与8k拆批/HMAC tombstone、Human/Agent父级撤权、task-scoped release/reassign/终态/expiry、stale output和turn inspector injection-state定向回归；workspace v6会续跑`0006_legacy_dispatch_recovery`索引，app.db会从v1原位升级到v2并生成只保存在`installation_state`的content HMAC key。P-A10.4增加真实Gateway后端的stdio MCP、CLI client与CLI parser fixture、Task operation链、canonical reply/cede与attachment绑定、25 MiB超限/批失败清理、`0007_temporary_attachment_lifecycle`过期及文件/DB crash reconcile、三家config注入、stdio握手失败降级/双路fail-closed、turn-start ACK前不启动runtime、实际transport诊断、跨私密ref-only projection、later-query refresh、checklist/跨turn short wake和manual summary回归。P-A10.5增加workspace v7/app.db v3迁移与index/FK gate、actor域幂等/CAS、message/turn/file及跨Space source ACL、validity/replacement relation、统一score continuity/CJK FTS、Context revision/tombstone、`memory.recall/get`同域MCP/CLI、精确consume-once grant与发送前撤权复核；workspace/app.db hard-delete canary同时扫描主库和WAL，Agent删除生命周期验证private清理且Space shared保留。`desktop:bundle`会同时生成`runtime/kith-core-mcp.mjs`与`agent-cli.mjs`，当前MCP工具数为24。三家MCP bootstrap在最终provider smoke前标`fixture_v2`；tool isolation、cwd relocation与compaction telemetry继续标`unsupported`。
+Claude/Codex fixture证明同一常驻进程可串行处理两轮，opencode fixture证明one-shot子进程会在第二轮携带首轮session ID；三者同时验证显式completion与可映射的final usage，bridge会把最后一次normalized usage带入terminal供Core持久。P-A10.1–P-A10.5覆盖critical ACK、cancel/generation、durable turn、server-owned thread、Context/ACL、MCP/CLI、临时附件和episodic memory。P-A10.6增加workspace v8 advisor migration、restricted MaintenanceRuntimePort、tool isolation、typed validation、source/cost/lease/backoff/suppression、管理API和Structured/Files面板；当前Claude maintenance为supported，Codex/opencode为unsupported。P-A10.7增加snapshot session/generation/checksum/64KiB/secret门、immediate+60秒ACK、checklist/wake revision、restart恢复、event backpressure和Codex compaction mapping；Claude/opencode compaction明确unsupported。`desktop:bundle`同时生成`runtime/kith-core-mcp.mjs`与`agent-cli.mjs`，当前MCP工具数为24。provider能力以contract suite和live smoke分别记录，unsupported不得改写为“未测试”。
 
 v2 runtime子进程只看到stable `KITH_SPACE_BROKER_HANDLE`、loopback endpoint和mode `0600` activation file路径；activation file在每个attempt运行前写入、结束后删除，MCP/CLI常驻进程每次调用都会重新读取。不要把handle、activation ID或文件内容复制到日志、fixture或问题报告；它们不是浏览器Access Token，也不能脱离当前lease使用。Gateway只接受loopback请求并再次核对DB中的attempt/session generation/input scope和实时surface ACL。Core或Worker重启时旧generation事件会被拒绝，scanner在lease过期后恢复；不要人工修改attempt状态来“解卡”。
 

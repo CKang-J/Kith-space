@@ -279,6 +279,20 @@ export class TurnLedger {
       if (attempt.leaseExpiresAt.getTime() <= now.getTime()) {
         throw new HarnessError("attempt_lease_expired", "runtime terminal has no live attempt lease", { attemptId });
       }
+      const turn = tx.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, attempt.turnId)).get();
+      if (!turn) throw new HarnessError("attempt_lease_conflict", "attempt turn no longer exists", { attemptId });
+      if (result.engineSessionId) {
+        const acknowledged = tx.update(schema.runtimeSessions).set({
+          engineSessionId: result.engineSessionId,
+          updatedAt: now,
+          lastActiveAt: now,
+        }).where(and(
+          eq(schema.runtimeSessions.id, turn.runtimeSessionId),
+          eq(schema.runtimeSessions.sessionGeneration, turn.sessionGeneration),
+          isNull(schema.runtimeSessions.retiredAt),
+        )).run();
+        if (!acknowledged.changes) throw new HarnessError("session_generation_stale", "engine session acknowledgement targets a stale generation");
+      }
       if (result.outcome === "completed") {
         tx.update(schema.agentTurnAttempts).set({
           status: "finalizing",

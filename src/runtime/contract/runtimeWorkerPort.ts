@@ -70,6 +70,8 @@ export interface TurnAdmitCommand extends WorkerCommandBase {
     sessionGeneration: number;
     runtime: string;
     engineSessionId: string | null;
+    snapshotVersion?: number;
+    restoredSnapshot?: import("./sessionSnapshot.js").RuntimeSessionSnapshot | null;
   };
   broker: { sessionHandle: string; endpoint: string };
   turn: {
@@ -155,4 +157,15 @@ export function workerCommandId(command: Pick<RuntimeWorkerCommand, "source"> & 
   const id = command.source === "wake" ? command.deliveryId : command.commandId;
   if (!id) throw new Error(`${command.source} Worker command is missing its stable id`);
   return id;
+}
+
+export function hasWorkerAdmissionIdentity(message: unknown): message is WorkerAdmissionCommand {
+  if (!message || typeof message !== "object") return false;
+  const candidate = message as Partial<WorkerAdmissionCommand> & { deliveryId?: unknown; commandId?: unknown };
+  if (!Number.isInteger(candidate.generation)) return false;
+  if (candidate.source === "wake") return typeof candidate.deliveryId === "string" && candidate.deliveryId.length > 0;
+  if (candidate.source === "manual" || candidate.source === "lifecycle" || candidate.source === "turn") {
+    return typeof candidate.commandId === "string" && candidate.commandId.length > 0;
+  }
+  return false;
 }

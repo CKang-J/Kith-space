@@ -83,6 +83,9 @@ export const runtimeSessions = sqliteTable("runtime_sessions", {
   lastTurnId: text("last_turn_id"),
   lastActiveAt: timestamp("last_active_at").default(now).notNull(),
   lastCompactedAt: timestamp("last_compacted_at"),
+  checklistRevision: integer("checklist_revision").default(0).notNull(),
+  compactionRevision: integer("compaction_revision").default(0).notNull(),
+  contextCompactionRevision: integer("context_compaction_revision").default(0).notNull(),
   retiredAt: timestamp("retired_at"),
   snapshotVersion: integer("snapshot_version").default(0).notNull(),
   snapshot: text("snapshot_json", { mode: "json" }).$type<Record<string, unknown>>(),
@@ -108,6 +111,8 @@ export const runtimeSessions = sqliteTable("runtime_sessions", {
   generationCheck: check("runtime_sessions_generation_check", sql`${t.sessionGeneration} > 0`),
   statusCheck: check("runtime_sessions_status_check", sql`${t.status} in ('cold', 'starting', 'idle', 'running', 'evicted', 'resume_failed', 'disabled')`),
   snapshotVersionCheck: check("runtime_sessions_snapshot_version_check", sql`${t.snapshotVersion} >= 0`),
+  checklistRevisionCheck: check("runtime_sessions_checklist_revision_check", sql`${t.checklistRevision} >= 0`),
+  compactionRevisionCheck: check("runtime_sessions_compaction_revision_check", sql`${t.compactionRevision} >= 0 and ${t.contextCompactionRevision} >= 0 and ${t.contextCompactionRevision} <= ${t.compactionRevision}`),
 }));
 
 export const channels = sqliteTable("channels", {
@@ -652,3 +657,63 @@ export const memoryLexicalTerms = sqliteTable("memory_lexical_terms", {
   memoryId: text("memory_id").notNull().references(() => episodicMemories.id, { onDelete: "cascade" }),
   term: text("term").notNull(),
 }, (t) => ({ pk: primaryKey({ columns: [t.memoryId, t.term] }), byTerm: index("memory_lexical_terms_term_idx").on(t.term, t.memoryId) }));
+
+export const memoryAdvisorSettings = sqliteTable("memory_advisor_settings", {
+  agentId: text("agent_id").primaryKey().references(() => agents.id, { onDelete: "cascade" }),
+  enabled: integer("enabled").default(1).notNull(),
+  autoActivatePrivate: integer("auto_activate_private").default(1).notNull(),
+  dailyTokenLimit: integer("daily_token_limit").default(50_000).notNull(),
+  dailyCostMicrosLimit: integer("daily_cost_micros_limit").default(5_000_000).notNull(),
+  pausedAt: timestamp("paused_at"),
+  updatedAt: timestamp("updated_at").default(now).notNull(),
+});
+
+export const memoryAdvisorJobs = sqliteTable("memory_advisor_jobs", {
+  id: id("id").primaryKey(),
+  spaceId: text("space_id").notNull().references(() => spaces.id, { onDelete: "cascade" }),
+  agentId: text("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  sourceTurnId: text("source_turn_id").notNull().references(() => agentTurns.id, { onDelete: "cascade" }),
+  status: text("status").$type<"queued" | "running" | "succeeded" | "failed" | "blocked" | "cancelled">().default("queued").notNull(),
+  provider: text("provider").notNull(),
+  model: text("model"),
+  configDigest: text("config_digest").notNull(),
+  sourceRefs: text("source_refs_json", { mode: "json" }).$type<Array<{ sourceKind: string; sourceId: string }>>().notNull(),
+  attemptCount: integer("attempt_count").default(0).notNull(),
+  nextAttemptAt: timestamp("next_attempt_at").default(now).notNull(),
+  leaseOwner: text("lease_owner"),
+  leaseExpiresAt: timestamp("lease_expires_at"),
+  errorCode: text("error_code"),
+  errorDetailRedacted: text("error_detail_redacted"),
+  candidateCount: integer("candidate_count").default(0).notNull(),
+  validation: text("validation_json", { mode: "json" }).$type<{ received: number; stored: number; rejected: number }>(),
+  usage: text("usage_json", { mode: "json" }).$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+}, (t) => ({
+  agentTurnUniq: uniqueIndex("memory_advisor_jobs_agent_turn_uniq").on(t.agentId, t.sourceTurnId),
+  due: index("memory_advisor_jobs_due_idx").on(t.status, t.nextAttemptAt),
+  agentStatus: index("memory_advisor_jobs_agent_status_idx").on(t.agentId, t.status, t.createdAt),
+}));
+
+export const memoryAdvisorProposals = sqliteTable("memory_advisor_proposals", {
+  memoryId: text("memory_id").primaryKey().references(() => episodicMemories.id, { onDelete: "cascade" }),
+  jobId: text("job_id").references(() => memoryAdvisorJobs.id, { onDelete: "set null" }),
+  validation: text("validation_json", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  providerConfigDigest: text("provider_config_digest").notNull(),
+  decision: text("decision").$type<"pending" | "accepted" | "rejected">().default("pending").notNull(),
+  decidedAt: timestamp("decided_at"),
+}, (t) => ({ byJob: index("memory_advisor_proposals_job_idx").on(t.jobId, t.decision) }));
+
+export const memoryRecallObservations = sqliteTable("memory_recall_observations", {
+  memoryId: text("memory_id").notNull().references(() => episodicMemories.id, { onDelete: "cascade" }),
+  agentId: text("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  targetSurfaceId: text("target_surface_id").references(() => channels.id, { onDelete: "set null" }),
+  projection: text("projection").notNull(),
+  reasons: text("reasons_json", { mode: "json" }).$type<string[]>().notNull(),
+  scoreBreakdown: text("score_breakdown_json", { mode: "json" }).$type<Record<string, number>>().notNull(),
+  recalledAt: timestamp("recalled_at").notNull(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.memoryId, t.agentId] }),
+  byAgent: index("memory_recall_observations_agent_idx").on(t.agentId, t.recalledAt),
+}));

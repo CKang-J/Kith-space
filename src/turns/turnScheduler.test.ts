@@ -99,6 +99,78 @@ test("scheduler binds a durable delivery and activates exactly one leased Worker
   }
 });
 
+test("emergency Agent stop cancels a running v2 attempt without settling obligations or advancing the cursor", async () => {
+  const f = setup();
+  const cancelled: string[] = [];
+  const replyEnds: Array<{
+    spaceId: string;
+    agentId: string;
+    agentName: string;
+    surfaceId: string;
+    turnId: string;
+    reason: string;
+  }> = [];
+  const worker: RuntimeWorkerPort = {
+    async start() { throw new Error("legacy path"); },
+    async deliver() { throw new Error("legacy path"); },
+    async stop() { throw new Error("legacy path"); },
+    async reset() { throw new Error("legacy path"); },
+    async admitTurn(command) { return { status: "admitted", id: command.commandId, generation: 4 }; },
+    activateTurn() { return true; },
+    cancelTurn(command) { cancelled.push(command.attemptId); return true; },
+    async closeTurnSessions(command) { return { status: "admitted", id: command.commandId, generation: 4 }; },
+    availability() { return { connected: true, generation: 4 }; },
+  };
+  const capabilities = new TurnCapabilityService(f.spaceId, new SessionCapabilityBroker(), f.db);
+  const scheduler = new HarnessTurnScheduler({
+    runtimeWorker: worker,
+    capabilities: () => capabilities,
+    agentConfig: async () => config(f),
+    async onRequiredTurnCancelled(input) { replyEnds.push(input); },
+  });
+  try {
+    await scheduler.schedule(f.spaceId);
+    const attempt = f.db.select().from(schema.agentTurnAttempts).get()!;
+    new TurnLedger(f.spaceId, f.db).appendEvent({
+      schemaVersion: 2,
+      workerGeneration: 4,
+      sessionId: f.db.select().from(schema.runtimeSessions).get()!.id,
+      sessionGeneration: 1,
+      turnId: attempt.turnId,
+      attemptId: attempt.id,
+      eventId: "preview-before-stop",
+      ordinal: 0,
+      kind: "text_preview",
+      payload: { text: "partial" },
+      createdAt: Date.now(),
+    });
+
+    await scheduler.cancelAgent(f.spaceId, f.agentId);
+
+    assert.deepEqual(cancelled, [attempt.id]);
+    assert.equal(f.db.select().from(schema.agentTurnAttempts).where(eq(schema.agentTurnAttempts.id, attempt.id)).get()?.status, "cancelled");
+    assert.equal(f.db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, attempt.turnId)).get()?.status, "cancelled");
+    assert.equal(f.db.select().from(schema.agentDeliveryItems).where(eq(schema.agentDeliveryItems.id, f.deliveryId)).get()?.disposition, "pending");
+    assert.equal(f.db.select().from(schema.agentDeliveryItems).where(eq(schema.agentDeliveryItems.id, f.deliveryId)).get()?.turnId, null);
+    assert.equal(f.db.select().from(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.agentId, f.agentId)).get()?.lastReadSeq, 0);
+    assert.equal(f.db.select().from(schema.turnOutputs).all().length, 0);
+    assert.equal(f.db.select().from(schema.messages).all().filter((message) => message.senderType === "agent").length, 0);
+    assert.equal(f.db.select().from(schema.turnCapabilityActivations).get()?.status, "revoked");
+    assert.deepEqual(replyEnds, [{
+      spaceId: f.spaceId,
+      agentId: f.agentId,
+      agentName: "Scheduler Agent",
+      surfaceId: f.channelId,
+      turnId: attempt.turnId,
+      reason: "Agent stopped before completing this reply",
+    }]);
+  } finally {
+    await scheduler.shutdown();
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
 test("expired task-scoped access is revoked before Worker admission or context disclosure", async () => {
   const f = setup();
   const admitted: TurnAdmitCommand[] = [];

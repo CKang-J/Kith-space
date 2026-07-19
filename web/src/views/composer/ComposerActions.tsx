@@ -1,15 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ListChecks, Paperclip, Plus, X } from "lucide-react";
+import { Brain, ListChecks, Paperclip, Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 interface ComposerActionsProps {
   allowTask: boolean;
   taskActive: boolean;
+  memoryExcluded: boolean;
   uploadDisabled: boolean;
   taskDisabled: boolean;
+  memoryDisabled: boolean;
   onAddFiles(): void;
   onTaskChange(active: boolean): void;
+  onMemoryExcludedChange(active: boolean): void;
 }
 
 interface MenuPosition {
@@ -19,7 +22,7 @@ interface MenuPosition {
   ready: boolean;
 }
 
-type ComposerMenuItem = "files" | "task";
+type ComposerMenuItem = "files" | "task" | "memory";
 
 const VIEWPORT_MARGIN = 8;
 const MENU_GAP = 8;
@@ -27,10 +30,13 @@ const MENU_GAP = 8;
 export function ComposerActions({
   allowTask,
   taskActive,
+  memoryExcluded,
   uploadDisabled,
   taskDisabled,
+  memoryDisabled,
   onAddFiles,
   onTaskChange,
+  onMemoryExcludedChange,
 }: ComposerActionsProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -39,8 +45,8 @@ export function ComposerActions({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState<MenuPosition>({ left: VIEWPORT_MARGIN, top: VIEWPORT_MARGIN, width: 0, ready: false });
-  const triggerDisabled = uploadDisabled && (!allowTask || taskDisabled);
-  const firstAvailableItem: ComposerMenuItem = uploadDisabled && allowTask && !taskDisabled ? "task" : "files";
+  const triggerDisabled = uploadDisabled && (!allowTask || taskDisabled) && memoryDisabled;
+  const firstAvailableItem: ComposerMenuItem = !uploadDisabled ? "files" : allowTask && !taskDisabled ? "task" : "memory";
 
   useEffect(() => {
     if (!open) return;
@@ -169,6 +175,23 @@ export function ComposerActions({
           <span>{t("chat.assignTask")}</span>
         </button>
       ) : null}
+      {memoryExcluded ? (
+        <button
+          type="button"
+          className="composer-task-chip composer-memory-chip"
+          aria-pressed="true"
+          aria-label={t("chat.restoreMemoryEligibility")}
+          title={t("chat.restoreMemoryEligibility")}
+          disabled={memoryDisabled}
+          onClick={() => onMemoryExcludedChange(false)}
+        >
+          <span className="composer-task-chip__icon" aria-hidden="true">
+            <Brain className="composer-task-chip__default-icon" size={15} />
+            <X className="composer-task-chip__remove-icon" size={11} />
+          </span>
+          <span>{t("chat.excludeFromMemory")}</span>
+        </button>
+      ) : null}
       {open ? createPortal(
         <div
           ref={menuRef}
@@ -210,6 +233,22 @@ export function ComposerActions({
               </span>
             </button>
           ) : null}
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={memoryExcluded}
+            className={highlightedItem === "memory" ? "is-highlighted" : undefined}
+            disabled={memoryDisabled}
+            onFocus={() => setHighlightedItem("memory")}
+            onPointerEnter={() => setHighlightedItem("memory")}
+            onClick={() => select(() => onMemoryExcludedChange(!memoryExcluded))}
+          >
+            <Brain size={17} aria-hidden="true" />
+            <span className="composer-add-menu__copy">
+              <span className="composer-add-menu__label">{t("chat.excludeFromMemory")}</span>
+              <span className="composer-add-menu__description">{t("chat.excludeFromMemoryDescription")}</span>
+            </span>
+          </button>
         </div>,
         document.body,
       ) : null}

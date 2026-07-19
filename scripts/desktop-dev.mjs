@@ -6,7 +6,7 @@ import electronPath from "electron";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 try { process.loadEnvFile?.(path.join(root, ".env")); } catch { /* optional developer environment */ }
 
-const child = spawn(electronPath, [root], {
+const child = spawn(electronPath, [root, ...process.argv.slice(2)], {
   cwd: root,
   env: {
     ...process.env,

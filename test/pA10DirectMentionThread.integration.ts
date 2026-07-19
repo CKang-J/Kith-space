@@ -84,6 +84,18 @@ try {
   const broadcast = await modules().messagePosting.post({ kind: "chat", context, content: "@all status" });
   assert.equal(broadcast.threadId, null, "@all remains a top-level broadcast");
 
+  const v2TaskWakes: string[] = [];
+  const v2Task = await modules({ async publish() {} }, v2TaskWakes).tasks.create({
+    context,
+    title: "@silent verify the v2 task path",
+    executionMode: "autopilot",
+  });
+  assert.ok(v2Task.threadId);
+  assert.deepEqual(v2TaskWakes, [], "a v2 task assignee is never double-consumed by the legacy wake path");
+  const v2TaskDeliveries = db.select().from(schema.agentDeliveryItems)
+    .where(eq(schema.agentDeliveryItems.messageId, v2Task.id)).all();
+  assert.equal(v2TaskDeliveries.filter((delivery) => delivery.agentId === silent.id && delivery.directive === "required").length, 1);
+
   const legacy = db.insert(schema.agents).values({
     spaceId, name: "legacy-new", displayName: "Legacy New", runtime: "claude", creatorId: human.id,
     status: "active", defaultResponseMode: "mention_only",

@@ -106,6 +106,8 @@ test("two required inputs cannot finalize after only one is covered", async () =
   try {
     await f.output.reply({ turnId: f.turnId, attemptId: f.attemptId, idempotencyKey: "reply:first", body: "Handled the first.", handledInputIds: [f.deliveries[0]!] });
     new TurnLedger(f.spaceId, f.db).markRuntimeTerminal(f.attemptId, { outcome: "completed", engineSessionId: "engine-1" });
+    assert.equal(f.db.select().from(schema.runtimeSessions).where(eq(schema.runtimeSessions.id, f.sessionId)).get()?.engineSessionId, "engine-1",
+      "engine session identity must reach Core authority before terminal acknowledgement");
     assert.deepEqual(f.output.finalizeAttempt(f.attemptId), { finalized: false, unresolvedInputIds: [f.deliveries[1]!] });
     assert.equal(f.db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, f.turnId)).get()?.status, "running");
     await f.output.reply({ turnId: f.turnId, attemptId: f.attemptId, idempotencyKey: "reply:second", body: "Handled the second.", handledInputIds: [f.deliveries[1]!] });
@@ -114,6 +116,46 @@ test("two required inputs cannot finalize after only one is covered", async () =
       eq(schema.channelAgentMembers.channelId, f.channelId),
       eq(schema.channelAgentMembers.agentId, f.agentId),
     )).get()?.lastReadSeq, 4);
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("a required stdout-only terminal retries without creating a Chat message or advancing its cursor", async () => {
+  const f = await fixture();
+  try {
+    const ledger = new TurnLedger(f.spaceId, f.db);
+    ledger.appendEvent({
+      schemaVersion: 2,
+      workerGeneration: 2,
+      sessionId: f.sessionId,
+      sessionGeneration: 1,
+      turnId: f.turnId,
+      attemptId: f.attemptId,
+      eventId: "stdout-only",
+      ordinal: 0,
+      kind: "text_preview",
+      payload: { text: "This is only runtime stdout." },
+      createdAt: Date.now(),
+    });
+    ledger.markRuntimeTerminal(f.attemptId, { outcome: "completed", engineSessionId: "engine-stdout" });
+    assert.deepEqual(f.output.finalizeAttempt(f.attemptId), {
+      finalized: false,
+      unresolvedInputIds: f.deliveries,
+    });
+    ledger.failAttempt(f.attemptId, "required_input_unresolved");
+
+    assert.equal(f.db.select().from(schema.agentTurnAttempts).where(eq(schema.agentTurnAttempts.id, f.attemptId)).get()?.status, "failed");
+    assert.equal(f.db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, f.turnId)).get()?.status, "retry_wait");
+    assert.equal(f.db.select().from(schema.messages).all().filter((message) => message.senderType === "agent").length, 0);
+    assert.equal(f.db.select().from(schema.turnOutputs).where(eq(schema.turnOutputs.turnId, f.turnId)).all().length, 0);
+    assert.equal(f.db.select().from(schema.channelAgentMembers).where(and(
+      eq(schema.channelAgentMembers.channelId, f.channelId),
+      eq(schema.channelAgentMembers.agentId, f.agentId),
+    )).get()?.lastReadSeq, 0);
+    assert.deepEqual(f.db.select().from(schema.agentDeliveryItems).where(eq(schema.agentDeliveryItems.turnId, f.turnId))
+      .all().map((delivery) => delivery.disposition), ["bound", "bound"]);
   } finally {
     closeSpaceDb(f.spaceId);
     unregisterSpace(f.spaceId);
@@ -468,6 +510,8 @@ test("reply operation retry returns one durable message and one sequence", async
     const first = await f.output.reply(input);
     const second = await f.output.reply(input);
     assert.equal(second.id, first.id);
+    await assert.rejects(() => f.output.reply({ ...input, body: "A different body must not reuse the key." }),
+      (error: any) => error?.code === "idempotency_conflict");
     assert.equal(f.db.select().from(schema.messages).all().filter((message) => message.senderType === "agent").length, 1);
     assert.equal(f.db.select().from(schema.turnOperations).where(eq(schema.turnOperations.turnId, f.turnId)).all().length, 1);
   } finally {

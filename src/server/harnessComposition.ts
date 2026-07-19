@@ -9,6 +9,9 @@ import { CapabilityGateway } from "../capabilities/capabilityGateway.js";
 import { configureTaskWorkflowEvents } from "../tasks/taskService.js";
 import { runTemporaryAttachmentMaintenance } from "../files/temporaryAttachmentCleanup.js";
 import { createLogger } from "../log.js";
+import { scheduleMemoryAdvisorProcessing } from "../memory/memoryAdvisorService.js";
+import { listSpaces } from "../db/index.js";
+import { DurableTurnRecovery } from "../turns/durableTurnRecovery.js";
 
 const log = createLogger("harness:composition");
 
@@ -27,6 +30,17 @@ export const harnessTurnScheduler = new HarnessTurnScheduler({
   runtimeWorker: runtimeWorkerPort,
   capabilities: turnCapabilityService,
   dispatch: turnDispatchAdapter,
+  async onRequiredTurnCancelled(input) {
+    await publish(input.spaceId, {
+      type: "agent:reply",
+      agentId: input.agentId,
+      channelId: input.surfaceId,
+      streamId: input.turnId,
+      name: input.agentName,
+      op: "error",
+      text: input.reason,
+    });
+  },
   async agentConfig(spaceId, agentId) {
     const core = await import("./core.js");
     const config = await core.agentConfig(spaceId, agentId);
@@ -49,6 +63,23 @@ export async function scheduleV2Turns(spaceId: string): Promise<void> {
   }
   await core.recoverLegacyTurnOutputMentions(spaceId);
   await harnessTurnScheduler.schedule(spaceId);
+  void scheduleMemoryAdvisorProcessing(spaceId);
+}
+
+export function startDurableTurnRecovery(): () => void {
+  const recovery = new DurableTurnRecovery({
+    listSpaceIds: () => listSpaces().map((space) => space.id),
+    recoverSpace: (spaceId) => harnessTurnScheduler.schedule(spaceId),
+    onSpaceError(spaceId, error) {
+      log.warn("durable turn recovery failed open", {
+        ...(spaceId ? { spaceId } : {}),
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    },
+  });
+  void recovery.start();
+  log.info("durable turn recovery started");
+  return () => recovery.stop();
 }
 
 export function turnCapabilityService(spaceId: string): TurnCapabilityService {

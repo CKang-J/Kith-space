@@ -64,6 +64,19 @@ function normalizedUsage(value: any) {
   return Object.values(usage).some((item) => typeof item === "number") ? usage : null;
 }
 
+export function codexCompactionEvent(method: string, params: any): { phase: "started" | "completed"; metadata: Record<string, unknown> } | null {
+  if (method === "thread/compacted") {
+    return { phase: "completed", metadata: { protocol: "thread/compacted", turnId: params?.turnId ?? null } };
+  }
+  if (method !== "item/started" && method !== "item/completed") return null;
+  const item = params?.item;
+  if (item?.type !== "contextCompaction") return null;
+  return {
+    phase: method === "item/started" ? "started" : "completed",
+    metadata: { protocol: method, itemId: item.id ?? null },
+  };
+}
+
 class CodexClient {
   private nextId = 0;
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
@@ -71,6 +84,8 @@ class CodexClient {
   private proto: "unknown" | "legacy" | "raw" = "unknown";
   threadId = "";
   onTurnDone: ((aborted: boolean) => void) | null = null;
+  private compactionStarted = false;
+  private compactionCompleted = false;
 
   constructor(private proc: ChildProcess, private cb: RuntimeCallbacks) {
     proc.stdout?.on("data", (c: Buffer) => {
@@ -127,7 +142,12 @@ class CodexClient {
 
   private handleRaw(method: string, params: any): void {
     if (this.threadId && params.threadId && params.threadId !== this.threadId) return; // ignore events from other threads
-    if (method === "turn/started") { this.cb.onActivity("working", "turn"); }
+    const compactionEvent = codexCompactionEvent(method, params);
+    if (method === "turn/started") {
+      this.compactionStarted = false;
+      this.compactionCompleted = false;
+      this.cb.onActivity("working", "turn");
+    }
     else if (method === "turn/completed") {
       const status = params?.turn?.status;
       const aborted = ["cancelled", "canceled", "aborted", "interrupted"].includes(status);
@@ -146,6 +166,14 @@ class CodexClient {
       // the timeline. Emit the completed item text below instead.
     } else if (method === "item/commandExecution/outputDelta" || method === "command/exec/outputDelta" || method === "process/outputDelta") {
       // stdout/stderr chunks are often large and noisy; surface the command item itself instead.
+    } else if (compactionEvent) {
+      if (compactionEvent.phase === "started" && !this.compactionStarted) {
+        this.compactionStarted = true;
+        this.cb.onCompaction?.("started", compactionEvent.metadata);
+      } else if (compactionEvent.phase === "completed" && !this.compactionCompleted) {
+        this.compactionCompleted = true;
+        this.cb.onCompaction?.("completed", compactionEvent.metadata);
+      }
     } else if (method === "item/started" || method === "item/completed") {
       const item = params?.item;
       if (!item) return;

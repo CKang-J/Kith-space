@@ -8,6 +8,7 @@ import type {
   RuntimeTurnResult,
   RuntimeV2,
 } from "../../contract/v2/runtimeContract.js";
+import type { WorkerSessionSnapshotReport } from "../../contract/sessionSnapshot.js";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -37,6 +38,8 @@ export interface HostedRuntimeSessionRecord {
   sessionGeneration: number;
   runtime: string;
   engineSessionId: string | null;
+  snapshotVersion?: number;
+  restoredSnapshot?: import("../../contract/sessionSnapshot.js").RuntimeSessionSnapshot | null;
 }
 
 export interface HostedTurnRequest {
@@ -52,6 +55,13 @@ export interface RuntimeSessionHostOptions {
   residentProcessLimit?: number;
   brokerEndpoint?: string;
   now?: () => number;
+  previewCoalesceMs?: number;
+}
+
+interface ActivePreviewFlush {
+  agentId: string;
+  sessionId: string;
+  flush(stop?: boolean): Promise<void>;
 }
 
 /** Worker-owned, rebuildable session host with global slots and per-Agent serialization. */
@@ -60,8 +70,10 @@ export class RuntimeSessionHost {
   private readonly residentProcessLimit: number;
   private readonly brokerEndpoint: string;
   private readonly now: () => number;
+  private readonly previewCoalesceMs: number;
   private readonly hosted = new Map<string, HostedSession>();
   private readonly activeAttempts = new Map<string, RuntimeSessionV2>();
+  private readonly activePreviewFlushes = new Map<string, ActivePreviewFlush>();
   private readonly queuedAttempts = new Map<string, string>();
   private readonly cancelledAttempts = new Set<string>();
   private readonly agentTails = new Map<string, Promise<void>>();
@@ -76,6 +88,7 @@ export class RuntimeSessionHost {
     this.residentProcessLimit = options.residentProcessLimit ?? 4;
     this.brokerEndpoint = options.brokerEndpoint ?? "kith-broker://session";
     this.now = options.now ?? Date.now;
+    this.previewCoalesceMs = Math.max(0, options.previewCoalesceMs ?? 250);
   }
 
   runTurn(request: HostedTurnRequest): Promise<RuntimeTurnResult> {
@@ -111,7 +124,11 @@ export class RuntimeSessionHost {
     const sessions = [...this.hosted.values()];
     this.hosted.clear();
     await Promise.all(sessions.map(async (hosted) => {
+      const controls = [...this.activePreviewFlushes.values()].filter((control) => control.sessionId === hosted.record.id);
+      let flushError: unknown;
+      try { await Promise.all(controls.map((control) => control.flush(true))); } catch (error) { flushError = error; }
       await hosted.session.close("shutdown");
+      if (flushError) throw flushError;
     }));
   }
 
@@ -122,7 +139,10 @@ export class RuntimeSessionHost {
       this.cancelledAttempts.add(attemptId);
       return true;
     }
+    let flushError: unknown;
+    try { await this.activePreviewFlushes.get(attemptId)?.flush(); } catch (error) { flushError = error; }
     await session.cancel(attemptId);
+    if (flushError) throw flushError;
     return true;
   }
 
@@ -131,10 +151,12 @@ export class RuntimeSessionHost {
       if (queuedAgentId === agentId && !this.activeAttempts.has(attemptId)) this.cancelledAttempts.add(attemptId);
     }
     const sessions = [...this.hosted.values()].filter((hosted) => hosted.record.agentId === agentId);
-    for (const hosted of sessions) {
-      this.hosted.delete(hosted.record.id);
-      await hosted.session.close(reason);
-    }
+    const controls = [...this.activePreviewFlushes.values()].filter((control) => control.agentId === agentId);
+    let flushError: unknown;
+    try { await Promise.all(controls.map((control) => control.flush(true))); } catch (error) { flushError = error; }
+    for (const hosted of sessions) this.hosted.delete(hosted.record.id);
+    await Promise.all(sessions.map((hosted) => hosted.session.close(reason)));
+    if (flushError) throw flushError;
     return sessions.length;
   }
 
@@ -146,6 +168,16 @@ export class RuntimeSessionHost {
     };
   }
 
+  async snapshotAll(): Promise<WorkerSessionSnapshotReport[]> {
+    const snapshots: WorkerSessionSnapshotReport[] = [];
+    for (const hosted of this.hosted.values()) {
+      if (hosted.active) continue;
+      const snapshot = await this.captureSnapshot(hosted).catch(() => null);
+      if (snapshot) snapshots.push(snapshot);
+    }
+    return snapshots;
+  }
+
   private async runAdmitted(request: HostedTurnRequest): Promise<RuntimeTurnResult> {
     const hosted = await this.ensureHosted(request);
     hosted.active = true;
@@ -154,56 +186,115 @@ export class RuntimeSessionHost {
     let forwardedOrdinal = 0;
     let forwardedPayloadBytes = 0;
     let previewsTruncated = false;
+    let previewTimer: ReturnType<typeof setTimeout> | null = null;
+    let forwardingFailure: unknown;
+    let forwarding = Promise.resolve();
+    let stopped = false;
+    const pendingPreviews = new Map<RuntimeEventEnvelope["kind"], RuntimeEventEnvelope>();
+    const isPreview = (event: RuntimeEventEnvelope) => event.kind === "activity" || event.kind === "thinking_summary" || event.kind === "text_preview";
+    const clearPreviewTimer = () => {
+      if (!previewTimer) return;
+      clearTimeout(previewTimer);
+      previewTimer = null;
+    };
+    const forwardEvent = async (event: RuntimeEventEnvelope) => {
+      const preview = isPreview(event);
+      if (previewsTruncated && preview) return;
+      const payloadBytes = Buffer.byteLength(JSON.stringify(event.payload), "utf8");
+      const previewCountLimit = MAX_FORWARDED_EVENTS_PER_ATTEMPT - RESERVED_TERMINAL_EVENT_COUNT;
+      const previewByteLimit = MAX_FORWARDED_EVENT_AGGREGATE_BYTES - RESERVED_TERMINAL_EVENT_BYTES;
+      const truncationReason = preview && forwardedOrdinal >= previewCountLimit
+        ? "event_count_limit"
+        : preview && payloadBytes > MAX_FORWARDED_EVENT_PAYLOAD_BYTES
+          ? "payload_byte_limit"
+          : preview && forwardedPayloadBytes + payloadBytes > previewByteLimit
+            ? "aggregate_byte_limit"
+            : null;
+      if (truncationReason) {
+        previewsTruncated = true;
+        const payload = {
+          reason: truncationReason,
+          eventLimit: MAX_FORWARDED_EVENTS_PER_ATTEMPT,
+          aggregateByteLimit: MAX_FORWARDED_EVENT_AGGREGATE_BYTES,
+          originalBytes: payloadBytes,
+          originalKind: event.kind,
+        };
+        const summaryBytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
+        await request.sink.emit({ ...event, ordinal: forwardedOrdinal, kind: "events_truncated", payload });
+        forwardedOrdinal += 1;
+        forwardedPayloadBytes += summaryBytes;
+        return;
+      }
+      if (payloadBytes > MAX_FORWARDED_EVENT_PAYLOAD_BYTES) {
+        throw new HarnessError("context_capacity_exhausted", "critical Runtime event exceeds the payload byte limit", {
+          attemptId: event.attemptId,
+          kind: event.kind,
+          payloadBytes,
+        });
+      }
+      if (forwardedOrdinal >= MAX_FORWARDED_EVENTS_PER_ATTEMPT
+        || forwardedPayloadBytes + payloadBytes > MAX_FORWARDED_EVENT_AGGREGATE_BYTES) {
+        throw new HarnessError("context_capacity_exhausted", "critical Runtime event exceeds the reserved attempt event capacity", {
+          attemptId: event.attemptId,
+          kind: event.kind,
+        });
+      }
+      await request.sink.emit({ ...event, ordinal: forwardedOrdinal });
+      forwardedOrdinal += 1;
+      forwardedPayloadBytes += payloadBytes;
+    };
+    const queueEvents = (events: RuntimeEventEnvelope[]) => {
+      if (!events.length) return;
+      forwarding = forwarding.then(async () => {
+        if (forwardingFailure) return;
+        for (const event of events) await forwardEvent(event);
+      }).catch((error) => { forwardingFailure ??= error; });
+    };
+    const queuePendingPreviews = () => {
+      clearPreviewTimer();
+      const events = [...pendingPreviews.values()].sort((left, right) => left.ordinal - right.ordinal);
+      pendingPreviews.clear();
+      queueEvents(events);
+    };
+    const awaitForwarding = async () => {
+      await forwarding;
+      if (forwardingFailure) throw forwardingFailure;
+    };
+    const flushPreviews = async (stop = false) => {
+      if (stop) stopped = true;
+      queuePendingPreviews();
+      await awaitForwarding();
+    };
+    const armPreviewTimer = () => {
+      if (previewTimer || this.previewCoalesceMs === 0) return;
+      previewTimer = setTimeout(() => {
+        previewTimer = null;
+        queuePendingPreviews();
+      }, this.previewCoalesceMs);
+      previewTimer.unref?.();
+    };
     const guardedSink: RuntimeEventSink = {
       emit: async (event) => {
+        if (stopped) throw new HarnessError("attempt_lease_conflict", "Runtime emitted after its preview stream was closed");
+        if (forwardingFailure) throw forwardingFailure;
         this.assertEvent(request, event, expectedOrdinal);
         expectedOrdinal += 1;
-        const preview = event.kind === "activity" || event.kind === "thinking_summary" || event.kind === "text_preview";
-        if (previewsTruncated && preview) return;
-        const payloadBytes = Buffer.byteLength(JSON.stringify(event.payload), "utf8");
-        const previewCountLimit = MAX_FORWARDED_EVENTS_PER_ATTEMPT - RESERVED_TERMINAL_EVENT_COUNT;
-        const previewByteLimit = MAX_FORWARDED_EVENT_AGGREGATE_BYTES - RESERVED_TERMINAL_EVENT_BYTES;
-        const truncationReason = preview && forwardedOrdinal >= previewCountLimit
-          ? "event_count_limit"
-          : preview && payloadBytes > MAX_FORWARDED_EVENT_PAYLOAD_BYTES
-            ? "payload_byte_limit"
-            : preview && forwardedPayloadBytes + payloadBytes > previewByteLimit
-              ? "aggregate_byte_limit"
-              : null;
-        if (truncationReason) {
-          previewsTruncated = true;
-          const payload = {
-            reason: truncationReason,
-            eventLimit: MAX_FORWARDED_EVENTS_PER_ATTEMPT,
-            aggregateByteLimit: MAX_FORWARDED_EVENT_AGGREGATE_BYTES,
-            originalBytes: payloadBytes,
-            originalKind: event.kind,
-          };
-          const summaryBytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
-          await request.sink.emit({ ...event, ordinal: forwardedOrdinal, kind: "events_truncated", payload });
-          forwardedOrdinal += 1;
-          forwardedPayloadBytes += summaryBytes;
+        if (isPreview(event) && this.previewCoalesceMs > 0) {
+          if (previewsTruncated) return;
+          pendingPreviews.set(event.kind, event);
+          armPreviewTimer();
           return;
         }
-        if (payloadBytes > MAX_FORWARDED_EVENT_PAYLOAD_BYTES) {
-          throw new HarnessError("context_capacity_exhausted", "critical Runtime event exceeds the payload byte limit", {
-            attemptId: event.attemptId,
-            kind: event.kind,
-            payloadBytes,
-          });
-        }
-        if (forwardedOrdinal >= MAX_FORWARDED_EVENTS_PER_ATTEMPT
-          || forwardedPayloadBytes + payloadBytes > MAX_FORWARDED_EVENT_AGGREGATE_BYTES) {
-          throw new HarnessError("context_capacity_exhausted", "critical Runtime event exceeds the reserved attempt event capacity", {
-            attemptId: event.attemptId,
-            kind: event.kind,
-          });
-        }
-        await request.sink.emit({ ...event, ordinal: forwardedOrdinal });
-        forwardedOrdinal += 1;
-        forwardedPayloadBytes += payloadBytes;
+        queuePendingPreviews();
+        queueEvents([event]);
+        await awaitForwarding();
       },
     };
+    this.activePreviewFlushes.set(request.turn.attemptId, {
+      agentId: request.record.agentId,
+      sessionId: request.record.id,
+      flush: flushPreviews,
+    });
     try {
       await mkdir(path.dirname(hosted.activationFile), { recursive: true });
       await writeFile(hosted.activationFile, JSON.stringify({
@@ -218,13 +309,22 @@ export class RuntimeSessionHost {
         return { outcome: "cancelled", engineSessionId: request.record.engineSessionId, errorCode: "attempt_cancelled_before_start" };
       }
       this.activeAttempts.set(request.turn.attemptId, hosted.session);
-      return await hosted.session.runTurn(request.turn, guardedSink);
+      const result = await hosted.session.runTurn(request.turn, guardedSink);
+      await flushPreviews();
+      hosted.record.engineSessionId = result.engineSessionId;
+      const sessionSnapshot = await this.captureSnapshot(hosted).catch(() => null);
+      return { ...result, ...(sessionSnapshot ? { sessionSnapshot } : {}) };
     } finally {
+      let flushError: unknown;
+      try { await flushPreviews(true); } catch (error) { flushError = error; }
+      clearPreviewTimer();
+      this.activePreviewFlushes.delete(request.turn.attemptId);
       this.activeAttempts.delete(request.turn.attemptId);
       this.cancelledAttempts.delete(request.turn.attemptId);
       await rm(hosted.activationFile, { force: true }).catch(() => {});
       hosted.active = false;
       hosted.lastUsedAt = this.now();
+      if (flushError) throw flushError;
     }
   }
 
@@ -237,6 +337,8 @@ export class RuntimeSessionHost {
         });
       }
       if (existing.workerGeneration === request.open.workerGeneration && existing.brokerHandle === request.broker.sessionHandle) {
+        existing.record.snapshotVersion = Math.max(existing.record.snapshotVersion ?? 0, request.record.snapshotVersion ?? 0);
+        existing.record.engineSessionId = request.record.engineSessionId;
         return existing;
       }
       if (existing.active) {
@@ -257,6 +359,7 @@ export class RuntimeSessionHost {
     try {
       const session = await runtime.openSession({
         ...request.open,
+        restoredSnapshot: request.open.restoredSnapshot ?? request.record.restoredSnapshot ?? null,
         env: {
           ...request.open.env,
           KITH_SPACE_BROKER_HANDLE: brokerHandle,
@@ -283,6 +386,21 @@ export class RuntimeSessionHost {
     } catch (error) {
       throw error;
     }
+  }
+
+  private async captureSnapshot(hosted: HostedSession): Promise<WorkerSessionSnapshotReport> {
+    const adapterSnapshot = await hosted.session.snapshot();
+    const snapshotVersion = (hosted.record.snapshotVersion ?? 0) + 1;
+    hosted.record.snapshotVersion = snapshotVersion;
+    return {
+      schemaVersion: 1,
+      spaceId: hosted.record.spaceId,
+      sessionId: hosted.record.id,
+      sessionGeneration: hosted.record.sessionGeneration,
+      snapshotVersion,
+      adapterSnapshot,
+      savedAt: this.now(),
+    };
   }
 
   private async ensureResidentCapacity(): Promise<void> {

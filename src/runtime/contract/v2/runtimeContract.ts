@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AdapterSnapshotSchema, WorkerSessionSnapshotReportSchema, type RuntimeSessionSnapshot } from "../sessionSnapshot.js";
 
 export const RuntimeSessionKeySchema = z.object({
   spaceId: z.string().min(1),
@@ -103,6 +104,7 @@ export interface OpenRuntimeSessionOptions {
   model?: string;
   runtimeConfig?: Record<string, unknown>;
   engineSessionId?: string | null;
+  restoredSnapshot?: RuntimeSessionSnapshot | null;
   systemPrompt: PromptDescriptor;
   mcpBootstrap: McpBootstrapDescriptor;
   env: NodeJS.ProcessEnv;
@@ -123,6 +125,7 @@ export const RuntimeTurnResultSchema = z.object({
   engineSessionId: z.string().max(4_096).nullable(),
   usage: NormalizedUsageSchema.optional(),
   errorCode: z.string().min(1).max(128).optional(),
+  sessionSnapshot: WorkerSessionSnapshotReportSchema.optional(),
 }).strict();
 export type RuntimeTurnResult = z.infer<typeof RuntimeTurnResultSchema>;
 
@@ -130,10 +133,7 @@ export interface RuntimeEventSink {
   emit(event: RuntimeEventEnvelope): Promise<void>;
 }
 
-export interface AdapterSnapshot {
-  schemaVersion: number;
-  payload: Record<string, unknown>;
-}
+export type AdapterSnapshot = z.infer<typeof AdapterSnapshotSchema>;
 
 export interface RuntimeSessionV2 {
   runTurn(input: RuntimeTurnInput, sink: RuntimeEventSink): Promise<RuntimeTurnResult>;

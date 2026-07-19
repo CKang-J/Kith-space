@@ -21,6 +21,7 @@ import {
 import { EpisodicMemoryService, type RecalledMemory } from "../memory/episodicMemoryService.js";
 import { UserGlobalMemoryService, type RecalledUserGlobalMemory } from "../memory/userGlobalMemoryService.js";
 import { selectUnifiedMemoryRecall } from "../memory/memoryRecallSelection.js";
+import { SessionCompactionMarkerService } from "../sessions/sessionCompactionMarker.js";
 
 type ContextSourceRef = z.infer<typeof ContextSourceRefSchema>;
 type MessageRow = typeof schema.messages.$inferSelect;
@@ -35,7 +36,7 @@ function canonicalJson(value: unknown): string {
 
 function continuityFor(session: typeof schema.runtimeSessions.$inferSelect): ContextEnvelope["continuityMode"] {
   if (session.status === "resume_failed") return "resume_failed";
-  if (session.lastCompactedAt && session.lastCompactedAt.getTime() >= session.lastActiveAt.getTime()) return "post_compaction";
+  if (session.compactionRevision > session.contextCompactionRevision) return "post_compaction";
   return session.engineSessionId ? "resumed" : "cold";
 }
 
@@ -96,6 +97,12 @@ export class ContextAssembler {
     const continuityMode = continuityHint ?? continuityFor(session);
     const auditRefs: ContextSourceRef[] = [];
     const snapshotRows: Array<typeof schema.turnContextSnapshots.$inferInsert> = [];
+    const compactionMarker = continuityMode === "post_compaction"
+      ? new SessionCompactionMarkerService(this.spaceId, this.db).latestPending(session)
+      : null;
+    if (continuityMode === "post_compaction" && !compactionMarker) {
+      throw new HarnessError("session_generation_stale", "pending compaction cursor has no durable event marker", { sessionId: session.id });
+    }
     const refForMessage = (message: MessageRow, reason: string, mode: ContextSourceRef["injectionMode"] = "content"): ContextSourceRef => {
       const content = boundedContextContent(message.content);
       const ref: ContextSourceRef = {
@@ -242,6 +249,18 @@ export class ContextAssembler {
         .map((message) => refForMessage(message, `surface_recovery:${continuityMode}`));
 
     const objectSnapshots: ContextSourceRef[] = [];
+    if (compactionMarker) {
+      const markerRef = this.persistSnapshot("runtime_compaction", `${compactionMarker.turnId}:${compactionMarker.attemptId}:${compactionMarker.eventOrdinal}`, {
+        sourceTurnId: compactionMarker.turnId,
+        sourceAttemptId: compactionMarker.attemptId,
+        eventOrdinal: compactionMarker.eventOrdinal,
+        eventCreatedAt: compactionMarker.eventCreatedAt,
+        compactionRevision: compactionMarker.revision,
+      }, "post_compaction_marker", auditRefs, snapshotRows);
+      markerRef.injectionMode = "reference";
+      markerRef.estimatedTokens = 0;
+      objectSnapshots.push(markerRef);
+    }
     for (const message of [...new Map([...messages, ...(root ? [root] : [])].map((item) => [item.id, item])).values()]) {
       if (message.taskStatus) {
         objectSnapshots.push(this.persistSnapshot("task", message.id, {
@@ -358,6 +377,14 @@ export class ContextAssembler {
       }))).run();
       tx.update(schema.agentTurns).set({ contextEnvelope: envelope as unknown as Record<string, unknown> })
         .where(eq(schema.agentTurns.id, turn.id)).run();
+      if (envelope.continuityMode === "post_compaction") {
+        tx.update(schema.runtimeSessions).set({ contextCompactionRevision: compactionMarker!.revision })
+          .where(and(
+            eq(schema.runtimeSessions.id, session.id),
+            eq(schema.runtimeSessions.sessionGeneration, session.sessionGeneration),
+            eq(schema.runtimeSessions.contextCompactionRevision, session.contextCompactionRevision),
+          )).run();
+      }
     });
     const persisted = this.db.select({ contextEnvelope: schema.agentTurns.contextEnvelope }).from(schema.agentTurns)
       .where(eq(schema.agentTurns.id, turn.id)).get()?.contextEnvelope;

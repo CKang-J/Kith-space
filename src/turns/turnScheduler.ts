@@ -15,6 +15,8 @@ import { TurnLedger } from "./turnLedger.js";
 import { revokeExpiredTaskScopedAccess } from "../channels/taskScopedAccess.js";
 import { assertAgentSurfaceAccessInTransaction } from "../channels/agentSurfaceAccess.js";
 import { SessionWakeupService } from "../sessions/sessionWakeupService.js";
+import { SessionSnapshotService } from "../sessions/sessionSnapshotService.js";
+import type { RuntimeSessionSnapshot } from "../runtime/contract/sessionSnapshot.js";
 
 const LEASE_MS = Number(process.env.KITH_SPACE_TURN_LEASE_MS ?? 90_000);
 const HEARTBEAT_MS = Math.max(1_000, Math.min(30_000, Math.floor(LEASE_MS / 3)));
@@ -30,6 +32,14 @@ export interface HarnessTurnSchedulerOptions {
     commitTurn(spaceId: string, turnId: string): Promise<void>;
     releaseTurn(spaceId: string, turnId: string): Promise<void>;
   };
+  onRequiredTurnCancelled?: (input: {
+    spaceId: string;
+    agentId: string;
+    agentName: string;
+    surfaceId: string;
+    turnId: string;
+    reason: string;
+  }) => Promise<void>;
   now?: () => number;
 }
 
@@ -88,7 +98,12 @@ export class HarnessTurnScheduler {
   async cancelAgent(spaceId: string, agentId: string): Promise<void> {
     const availability = this.options.runtimeWorker.availability();
     const db = dbForSpace(spaceId);
-    const attempts = db.select({ id: schema.agentTurnAttempts.id }).from(schema.agentTurnAttempts)
+    const attempts = db.select({
+      id: schema.agentTurnAttempts.id,
+      turnId: schema.agentTurns.id,
+      runtimeSessionId: schema.agentTurns.runtimeSessionId,
+      effectiveDirective: schema.agentTurns.effectiveDirective,
+    }).from(schema.agentTurnAttempts)
       .innerJoin(schema.agentTurns, eq(schema.agentTurns.id, schema.agentTurnAttempts.turnId))
       .where(and(
         eq(schema.agentTurns.agentId, agentId),
@@ -101,6 +116,29 @@ export class HarnessTurnScheduler {
       this.options.capabilities(spaceId).revokeAttempt(attempt.id);
       const ledger = new TurnLedger(spaceId, db, this.now);
       ledger.cancelAttempt(attempt.id, "agent_stopped", true);
+      if (attempt.effectiveDirective === "required" && this.options.onRequiredTurnCancelled) {
+        const session = db.select({ surfaceId: schema.runtimeSessions.surfaceId }).from(schema.runtimeSessions)
+          .where(eq(schema.runtimeSessions.id, attempt.runtimeSessionId)).get();
+        const agent = db.select({ name: schema.agents.name, displayName: schema.agents.displayName }).from(schema.agents)
+          .where(eq(schema.agents.id, agentId)).get();
+        if (session && agent) {
+          await this.options.onRequiredTurnCancelled({
+            spaceId,
+            agentId,
+            agentName: agent.displayName || agent.name,
+            surfaceId: session.surfaceId,
+            turnId: attempt.turnId,
+            reason: "Agent stopped before completing this reply",
+          }).catch((error) => {
+            this.log.warn("failed to close cancelled turn reply preview", {
+              spaceId,
+              agentId,
+              turnId: attempt.turnId,
+              detail: error instanceof Error ? error.message : String(error),
+            });
+          });
+        }
+      }
       const heartbeat = this.heartbeats.get(attempt.id);
       if (heartbeat) clearInterval(heartbeat);
       this.heartbeats.delete(attempt.id);
@@ -272,7 +310,10 @@ export class HarnessTurnScheduler {
       return;
     }
     const owner = `core-worker-${generation}`;
-    const continuityMode = inferContinuityMode(session);
+    const restoredSnapshot = new SessionSnapshotService(spaceId, db).load(session.id);
+    const continuityMode = restoredSnapshot?.adapterSnapshot?.payload.resumable === false
+      ? "resume_failed"
+      : inferContinuityMode(session);
     let claimed: ReturnType<TurnLedger["claimAttempt"]>;
     try {
       claimed = ledger.claimAttempt({ turnId, workerGeneration: generation, leaseOwner: owner, leaseMs: LEASE_MS });
@@ -296,7 +337,7 @@ export class HarnessTurnScheduler {
         spaceId,
         agentId: turn.agentId,
         config,
-        session: sessionDescriptor(session),
+        session: sessionDescriptor(session, restoredSnapshot),
         broker: { sessionHandle: prepared.sessionHandle, endpoint: coreLoopbackUrl() },
         turn: {
           turnId: turn.id,
@@ -416,7 +457,7 @@ function isSupportedRuntime(runtime: string | undefined): runtime is keyof typeo
   return runtime === "claude" || runtime === "codex" || runtime === "opencode";
 }
 
-function sessionDescriptor(session: RuntimeSessionRecord) {
+function sessionDescriptor(session: RuntimeSessionRecord, snapshot: RuntimeSessionSnapshot | null) {
   return {
     id: session.id,
     spaceId: session.spaceId,
@@ -425,7 +466,9 @@ function sessionDescriptor(session: RuntimeSessionRecord) {
     surfaceId: session.surfaceId,
     sessionGeneration: session.sessionGeneration,
     runtime: session.runtime,
-    engineSessionId: session.engineSessionId,
+    engineSessionId: snapshot?.adapterSnapshot?.payload.resumable === false ? null : session.engineSessionId,
+    snapshotVersion: session.snapshotVersion,
+    restoredSnapshot: snapshot,
   };
 }
 

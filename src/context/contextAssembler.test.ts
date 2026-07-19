@@ -9,6 +9,10 @@ import { ContextAssembler } from "./contextAssembler.js";
 import { TurnInspector } from "../turns/turnInspector.js";
 import { TurnLedger } from "../turns/turnLedger.js";
 import { EpisodicMemoryService } from "../memory/episodicMemoryService.js";
+import { UserGlobalMemoryService } from "../memory/userGlobalMemoryService.js";
+import { SessionCompactionMarkerService } from "../sessions/sessionCompactionMarker.js";
+import { CapabilityGateway } from "../capabilities/capabilityGateway.js";
+import type { TurnCapabilityClaims } from "../capabilities/contracts.js";
 
 test("thread Context Envelope freezes root, as-of parent snapshot, current batch and UI context", () => {
   const spaceId = randomUUID();
@@ -57,8 +61,32 @@ test("thread Context Envelope freezes root, as-of parent snapshot, current batch
       runtimeConfigFingerprint: "config",
       adapterVersion: "test",
       workspaceRootFingerprint: "workspace",
-      status: "cold",
+      status: "idle",
+      engineSessionId: "engine-before-compaction",
     }).run();
+    const compactedTurnId = randomUUID();
+    const compactedAttemptId = randomUUID();
+    db.insert(schema.agentTurns).values({
+      id: compactedTurnId, runtimeSessionId: sessionId, sessionGeneration: 1, spaceId, agentId,
+      effectiveDirective: "optional", status: "completed", outcome: "ceded", completedAt: new Date(90),
+    }).run();
+    db.insert(schema.agentTurnAttempts).values({
+      id: compactedAttemptId, turnId: compactedTurnId, attemptNo: 1, status: "succeeded", workerGeneration: 1,
+      leaseOwner: "test", leaseExpiresAt: new Date(1_000), completedAt: new Date(90),
+    }).run();
+    db.insert(schema.agentTurnEvents).values({
+      attemptId: compactedAttemptId, ordinal: 0, kind: "compaction_completed", payload: {}, createdAt: new Date(80),
+    }).run();
+    const compactionEvent = {
+      schemaVersion: 2 as const, workerGeneration: 1, sessionId, sessionGeneration: 1,
+      turnId: compactedTurnId, attemptId: compactedAttemptId, eventId: randomUUID(), ordinal: 0,
+      kind: "compaction_completed" as const, payload: {}, createdAt: 80,
+    };
+    const markers = new SessionCompactionMarkerService(spaceId, db);
+    assert.equal(markers.recordPersistedEvent(compactionEvent).revision, 1);
+    assert.equal(markers.recordPersistedEvent(compactionEvent).revision, 1, "reprojecting the same durable event cannot advance the marker");
+    db.update(schema.runtimeSessions).set({ compactionRevision: 0, lastCompactedAt: null }).where(eq(schema.runtimeSessions.id, sessionId)).run();
+    assert.equal(markers.reconcile(sessionId, 1)?.revision, 1, "terminal reconciliation repairs a lost best-effort event projection");
     const turnId = randomUUID();
     db.insert(schema.agentTurns).values({ id: turnId, runtimeSessionId: sessionId, sessionGeneration: 1, spaceId, agentId, effectiveDirective: "required" }).run();
     const deliveryId = randomUUID();
@@ -81,7 +109,12 @@ test("thread Context Envelope freezes root, as-of parent snapshot, current batch
     }).run();
     db.insert(schema.messages).values({ id: randomUUID(), seq: 12, spaceId, channelId: parentId, senderType: "human", senderId: "human", senderName: "Human", content: "later-parent" }).run();
 
-    const first = new ContextAssembler(spaceId, db, () => 100).assemble(turnId, "activation-1", "cold");
+    const first = new ContextAssembler(spaceId, db, () => 100).assemble(turnId, "activation-1");
+    assert.equal(first.envelope.continuityMode, "post_compaction");
+    assert.equal(db.select().from(schema.runtimeSessions).where(eq(schema.runtimeSessions.id, sessionId)).get()!.contextCompactionRevision, 1);
+    assert.equal(first.envelope.objectSnapshots[0]?.sourceKind, "runtime_compaction");
+    assert.equal(first.envelope.objectSnapshots[0]?.sourceId, `${compactedTurnId}:${compactedAttemptId}:0`);
+    assert.equal(first.envelope.objectSnapshots[0]?.injectionMode, "reference");
     assert.equal(first.envelope.rootMessage?.sourceId, rootId);
     assert.deepEqual(first.envelope.parentSnapshot?.messageRefs.map((ref) => ref.sourceRevision), [3, 4, 5, 6, 7, 8, 9, 10]);
     assert.equal(first.envelope.parentSnapshot?.asOfSeq, 11);
@@ -91,7 +124,7 @@ test("thread Context Envelope freezes root, as-of parent snapshot, current batch
     assert.ok(first.envelope.seenWatermarks.some((watermark) => watermark.channelId === parentId && watermark.throughSeq === 11));
     assert.ok(first.envelope.seenWatermarks.some((watermark) => watermark.channelId === threadId && watermark.throughSeq === 0));
     assert.doesNotMatch(first.renderedContext, /later-parent/);
-    assert.equal(db.select().from(schema.turnContextSources).where(eq(schema.turnContextSources.turnId, turnId)).all().length, 11);
+    assert.equal(db.select().from(schema.turnContextSources).where(eq(schema.turnContextSources.turnId, turnId)).all().length, 12);
     const omittedSource = db.select().from(schema.turnContextSources).where(eq(schema.turnContextSources.turnId, turnId)).all()
       .find((source) => source.sourceId !== rootId)!;
     db.update(schema.turnContextSources).set({ injectionMode: "omitted" }).where(and(
@@ -157,6 +190,87 @@ test("Context Envelope never injects or acknowledges a later unbound delivery", 
     assert.equal(assembled.envelope.recentSurface.some((ref) => ref.sourceId === laterMessageId), false);
     assert.equal(assembled.envelope.seenWatermarks.find((item) => item.channelId === channelId)?.throughSeq, 1);
     assert.doesNotMatch(assembled.renderedContext, /pending-two-must-not-leak/);
+  } finally {
+    closeSpaceDb(spaceId);
+    unregisterSpace(spaceId);
+  }
+});
+
+test("both recall providers may fail without blocking required context or audited conversation access", (t) => {
+  const spaceId = randomUUID();
+  const agentId = randomUUID();
+  const channelId = randomUUID();
+  const sessionId = randomUUID();
+  const turnId = randomUUID();
+  const attemptId = randomUUID();
+  const activationId = randomUUID();
+  registerSpace({
+    id: spaceId,
+    name: "Recall fail-open",
+    slug: `recall-fail-open-${spaceId}`,
+    rootPath: path.join(kithSpaceHome(), "recall-fail-open", spaceId),
+  });
+  const db = dbForSpace(spaceId);
+  try {
+    db.insert(schema.agents).values({ id: agentId, spaceId, name: "recall-agent", displayName: "Recall Agent", runtime: "claude", status: "active" }).run();
+    db.insert(schema.channels).values({ id: channelId, spaceId, name: "surface", type: "channel" }).run();
+    db.insert(schema.channelAgentMembers).values({ channelId, agentId }).run();
+    db.insert(schema.runtimeSessions).values({
+      id: sessionId, spaceId, agentId, surfaceKind: "channel", surfaceId: channelId, sessionGeneration: 1,
+      runtime: "claude", runtimeConfigFingerprint: "config", adapterVersion: "test", workspaceRootFingerprint: "root", status: "running",
+    }).run();
+    db.insert(schema.agentTurns).values({
+      id: turnId, runtimeSessionId: sessionId, sessionGeneration: 1, spaceId, agentId,
+      effectiveDirective: "required", status: "running",
+    }).run();
+    const message = db.insert(schema.messages).values({
+      id: randomUUID(), seq: 1, spaceId, channelId, senderType: "human", senderId: "human", senderName: "Human",
+      content: "required input survives recall outage", searchText: "required input survives recall outage",
+    }).returning().get();
+    const delivery = db.insert(schema.agentDeliveryItems).values({
+      id: randomUUID(), spaceId, agentId, messageId: message.id, sourceChannelId: channelId, sourceSeq: 1,
+      cursorOwnerChannelId: channelId, targetSurfaceKind: "channel", targetSurfaceId: channelId, targetRuntimeSessionId: sessionId,
+      directive: "required", reason: "direct_mention", policySnapshot: {}, disposition: "bound", turnId,
+    }).returning().get();
+    db.insert(schema.agentTurnAttempts).values({
+      id: attemptId, turnId, attemptNo: 1, status: "running", workerGeneration: 4,
+      leaseOwner: "test", leaseExpiresAt: new Date(Date.now() + 60_000),
+    }).run();
+    db.insert(schema.turnCapabilityActivations).values({
+      id: activationId, turnId, attemptId, sessionGeneration: 1, workerGeneration: 4,
+      claimsDigest: "test", status: "active", expiresAt: new Date(Date.now() + 60_000),
+    }).run();
+
+    t.mock.method(EpisodicMemoryService.prototype, "recall", () => { throw new Error("workspace recall offline"); });
+    t.mock.method(UserGlobalMemoryService.prototype, "recall", () => { throw new Error("global recall offline"); });
+    const assembled = new ContextAssembler(spaceId, db).assemble(turnId, activationId, "cold");
+    assert.deepEqual(assembled.envelope.currentBatch.map((ref) => ref.sourceId), [message.id]);
+    assert.deepEqual(assembled.envelope.omissions.map((item) => item.sourceKind).sort(), ["memory", "user_global_memory"]);
+    assert.match(assembled.renderedContext, /required input survives recall outage/);
+
+    const claims: TurnCapabilityClaims = {
+      schemaVersion: 1,
+      activationId,
+      turnId,
+      attemptId,
+      sessionId,
+      sessionGeneration: 1,
+      workerGeneration: 4,
+      spaceId,
+      agentId,
+      allowedOutputSurfaceIds: [channelId],
+      allowedInputIds: [delivery.id],
+      seenWatermarks: [{ channelId, throughSeq: 1 }],
+      scopes: ["conversation.read"],
+      disclosureGrantIds: [],
+      expiresAt: Date.now() + 60_000,
+    };
+    const read = new CapabilityGateway(spaceId, db).conversationRead(claims, { channelId, limit: 10 });
+    assert.deepEqual(read.messages.map((item) => item.id), [message.id]);
+    assert.equal(db.select().from(schema.turnContextSources).where(and(
+      eq(schema.turnContextSources.turnId, turnId),
+      eq(schema.turnContextSources.sourceId, message.id),
+    )).get()?.phase, "initial");
   } finally {
     closeSpaceDb(spaceId);
     unregisterSpace(spaceId);

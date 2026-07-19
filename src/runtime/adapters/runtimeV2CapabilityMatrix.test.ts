@@ -22,4 +22,7 @@ test("three v2 adapters publish the observed bridge contract without claiming fu
   assert.equal(RUNTIME_V2_CAPABILITY_MATRIX.claude.capabilities.persistentProcess, true);
   assert.equal(RUNTIME_V2_CAPABILITY_MATRIX.codex.capabilities.persistentProcess, true);
   assert.equal(RUNTIME_V2_CAPABILITY_MATRIX.opencode.capabilities.persistentProcess, false);
+  assert.equal(RUNTIME_V2_CAPABILITY_MATRIX.claude.support.compactionTelemetry, "unsupported");
+  assert.equal(RUNTIME_V2_CAPABILITY_MATRIX.codex.support.compactionTelemetry, "fixture_v2");
+  assert.equal(RUNTIME_V2_CAPABILITY_MATRIX.opencode.support.compactionTelemetry, "unsupported");
 });

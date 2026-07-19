@@ -21,11 +21,14 @@ export function claimHmac(input: {
   subjectKey: string;
   predicateKey: string;
   canonicalText?: string;
+  subjectRef?: { kind: string; id: string };
 }): string {
   return memoryHmac({
     scope: input.scope,
     ownerAgentId: input.ownerAgentId,
-    subjectKey: projectLexicalText(input.subjectKey).normalizedText,
+    subject: input.subjectRef
+      ? { kind: input.subjectRef.kind, id: input.subjectRef.id }
+      : projectLexicalText(input.subjectKey).normalizedText,
     predicateKey: projectLexicalText(input.predicateKey).normalizedText,
   });
 }

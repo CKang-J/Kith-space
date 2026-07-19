@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Runtime, RuntimeCallbacks, RuntimeSession, TrajectoryEntry } from "../../daemon/runtime.js";
 import type {
   AdapterSnapshot,
+  NormalizedUsage,
   OpenRuntimeSessionOptions,
   RuntimeEventKind,
   RuntimeEventSink,
@@ -23,6 +24,7 @@ interface ActiveTurn {
   eventChain: Promise<void>;
   resolve: (result: RuntimeTurnResult) => void;
   settled: boolean;
+  usage?: NormalizedUsage;
   deadlineTimer: ReturnType<typeof setTimeout>;
 }
 
@@ -38,7 +40,11 @@ class BridgedRuntimeSession implements RuntimeSessionV2 {
     private readonly options: OpenRuntimeSessionOptions,
     private readonly now: () => number,
   ) {
-    this.engineSessionId = options.engineSessionId ?? null;
+    const restored = options.restoredSnapshot?.adapterSnapshot;
+    const resumable = restored?.schemaVersion === 1
+      && restored.payload.runtime === runtime.name
+      && restored.payload.resumable !== false;
+    this.engineSessionId = restored && !resumable ? null : options.engineSessionId ?? null;
   }
 
   async runTurn(input: RuntimeTurnInput, sink: RuntimeEventSink): Promise<RuntimeTurnResult> {
@@ -137,7 +143,14 @@ class BridgedRuntimeSession implements RuntimeSessionV2 {
         else this.emit("activity", { activity, detail: detail ?? "" });
       },
       onTrajectory: (entries) => this.trajectory(entries),
-      onUsage: (usage) => this.emit("usage", usage),
+      onUsage: (usage) => {
+        if (this.active) this.active.usage = usage;
+        this.emit("usage", usage);
+      },
+      onCompaction: (phase, metadata) => this.emit(
+        phase === "started" ? "compaction_started" : "compaction_completed",
+        { engineSessionId: this.engineSessionId, ...(metadata ?? {}) },
+      ),
       onTurnResult: (result) => { void this.finish(result.outcome, result.errorCode); },
       onExit: (code) => {
         this.runtimeSession = null;
@@ -198,7 +211,12 @@ class BridgedRuntimeSession implements RuntimeSessionV2 {
     turn.eventChain = turn.eventChain.then(() => turn.sink.emit(event));
     try {
       await turn.eventChain;
-      turn.resolve({ outcome, engineSessionId: this.engineSessionId, ...(errorCode ? { errorCode } : {}) });
+      turn.resolve({
+        outcome,
+        engineSessionId: this.engineSessionId,
+        ...(turn.usage ? { usage: turn.usage } : {}),
+        ...(errorCode ? { errorCode } : {}),
+      });
     } catch {
       turn.resolve({ outcome: "failed", engineSessionId: this.engineSessionId, errorCode: "runtime_event_ack_failed" });
     } finally {

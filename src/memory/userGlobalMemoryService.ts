@@ -206,6 +206,9 @@ export class UserGlobalMemoryService {
   mutate(raw: MemoryMutationCommand, actor: ActorRef): UserGlobalMemoryRecord | { memoryId: string; deleted: true; suppressed: boolean } {
     const command = MemoryMutationCommandSchema.parse(raw);
     humanOnly(actor);
+    if (command.action === "retain_independent") {
+      throw new MemoryError("MEMORY_INVALID", "retain_independent is only available for Space-owned memory");
+    }
     const requestHash = memoryHmac({ command, actor });
     const operation = this.sqlite.transaction(() => {
       const replay = this.sqlite.prepare(`SELECT request_hash, result_ref_json FROM user_memory_mutations WHERE actor_json = ? AND idempotency_key = ?`)
@@ -225,7 +228,7 @@ export class UserGlobalMemoryService {
       if (command.action === "delete" || command.action === "forget_suppress") {
         const suppressed = command.action === "forget_suppress";
         if (suppressed) {
-          const fingerprint = claimHmac({ scope: "user_global", ownerAgentId: null, subjectKey: memory.subject_key, predicateKey: memory.predicate_key, canonicalText: revision.canonical_text });
+          const fingerprint = claimHmac({ scope: "user_global", ownerAgentId: null, subjectKey: memory.subject_key, predicateKey: memory.predicate_key, canonicalText: revision.canonical_text, subjectRef: JSON.parse(memory.subject_ref_json) });
           const evidence = this.sqlite.prepare("SELECT source_kind, source_id FROM user_memory_evidence WHERE memory_id = ?").all(memory.id) as Array<{ source_kind: string; source_id: string }>;
           const insert = this.sqlite.prepare(`
             INSERT INTO user_memory_suppressions (id, source_kind, source_id, claim_hmac, status, created_by_json, created_at)

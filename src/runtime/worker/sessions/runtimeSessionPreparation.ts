@@ -199,6 +199,7 @@ export async function prepareRuntimeSession(input: {
     model: input.config.model,
     runtimeConfig: input.config.runtimeConfig ?? undefined,
     engineSessionId: input.record.engineSessionId,
+    restoredSnapshot: input.record.restoredSnapshot ?? null,
     systemPrompt: {
       text: systemText,
       version: "harness-v2.1",

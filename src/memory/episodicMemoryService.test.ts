@@ -179,6 +179,44 @@ test("revisioned episodic memory enforces disclosure, CAS, Chinese recall and fo
   }
 });
 
+test("FTS failure degrades to continuity and exact lookup without failing memory recall", () => {
+  const spaceId = randomUUID();
+  const agentId = randomUUID();
+  const dmId = randomUUID();
+  const channelId = randomUUID();
+  registerSpace({ id: spaceId, name: "FTS fallback", slug: `fts-fallback-${spaceId}`, rootPath: path.join(kithSpaceHome(), "memory-fts-fallback", spaceId) });
+  const db = dbForSpace(spaceId);
+  try {
+    db.insert(schema.agents).values({ id: agentId, spaceId, name: "fts-agent", displayName: "FTS Agent", status: "active" }).run();
+    db.insert(schema.channels).values([
+      { id: dmId, spaceId, name: "human-fts-agent", type: "dm" },
+      { id: channelId, spaceId, name: "target", type: "channel" },
+    ]).run();
+    db.insert(schema.channelAgentMembers).values([{ channelId: dmId, agentId }, { channelId, agentId }]).run();
+    const sourceId = randomUUID();
+    db.insert(schema.messages).values({
+      id: sourceId, seq: 1, spaceId, channelId: dmId, senderType: "human", senderId: "human", senderName: "Human",
+      content: "用户喜欢简洁周报格式", memoryPolicy: "eligible",
+    }).run();
+    const service = new EpisodicMemoryService(spaceId, db);
+    const created = service.create({
+      ...command({ agentId, surfaceId: dmId, sourceId, text: "用户喜欢简洁周报格式", summary: "偏好简洁周报" }),
+      predicateKey: "weekly_report_style",
+    });
+    db.run(sql`DROP TABLE memory_fts`);
+
+    const continuity = service.recall({ agentId, targetSurfaceId: channelId, query: "完全不同的问法" });
+    assert.equal(continuity[0]?.memoryId, created.memory.id);
+    assert.deepEqual(continuity[0]?.reasons, ["continuity"]);
+    const exact = service.recall({ agentId, targetSurfaceId: channelId, query: "周报", includeContinuity: false });
+    assert.equal(exact[0]?.memoryId, created.memory.id);
+    assert.ok(exact[0]?.reasons.includes("query"));
+  } finally {
+    closeSpaceDb(spaceId);
+    unregisterSpace(spaceId);
+  }
+});
+
 test("agent reads never expose explicit-only private memory content across surfaces", () => {
   const spaceId = randomUUID();
   const agentId = randomUUID();
@@ -230,6 +268,97 @@ test("agent reads never expose explicit-only private memory content across surfa
       () => service.mutate({ schemaVersion: 1, action: "edit", memoryId: record.memory.id, expectedRevision: 1, idempotencyKey: "agent-edit", payload: { canonicalText: "bad" } }, { type: "agent", id: agentId }),
       (error: unknown) => error instanceof MemoryError && error.code === "MEMORY_FORBIDDEN",
     );
+  } finally {
+    closeSpaceDb(spaceId);
+    unregisterSpace(spaceId);
+  }
+});
+
+test("Human can retain a revoked private memory as independent knowledge without restoring source access", () => {
+  const spaceId = randomUUID();
+  const agentId = randomUUID();
+  const dmId = randomUUID();
+  const publicId = randomUUID();
+  registerSpace({ id: spaceId, name: "Retain", slug: `retain-${spaceId}`, rootPath: path.join(kithSpaceHome(), "memory-retain", spaceId) });
+  const db = dbForSpace(spaceId);
+  try {
+    db.insert(schema.agents).values({ id: agentId, spaceId, name: "retain-agent", displayName: "Retain Agent", status: "active" }).run();
+    db.insert(schema.channels).values([
+      { id: dmId, spaceId, name: "human-retain-agent", type: "dm" },
+      { id: publicId, spaceId, name: "public", type: "channel" },
+    ]).run();
+    db.insert(schema.channelAgentMembers).values([
+      { channelId: dmId, agentId },
+      { channelId: publicId, agentId },
+    ]).run();
+    const sourceId = randomUUID();
+    db.insert(schema.messages).values({
+      id: sourceId,
+      seq: 1,
+      spaceId,
+      channelId: dmId,
+      senderType: "human",
+      senderId: "human",
+      senderName: "Human",
+      content: "我偏好简洁周报",
+      memoryPolicy: "eligible",
+    }).run();
+    const service = new EpisodicMemoryService(spaceId, db);
+    const created = service.create(command({
+      agentId,
+      surfaceId: dmId,
+      sourceId,
+      text: "Human prefers concise weekly reports",
+      summary: "Prefers concise reports",
+      visibility: "dm",
+    }));
+
+    db.delete(schema.channelAgentMembers).where(and(
+      eq(schema.channelAgentMembers.channelId, dmId),
+      eq(schema.channelAgentMembers.agentId, agentId),
+    )).run();
+    assert.equal(service.recall({ agentId, targetSurfaceId: publicId, query: "weekly reports" }).length, 0);
+    assert.equal(service.getHuman(created.memory.id).memory.sourceAccess, "revoked");
+    const idempotencyKey = randomUUID();
+    const retainCommand = {
+      schemaVersion: 1 as const,
+      action: "retain_independent" as const,
+      memoryId: created.memory.id,
+      expectedRevision: 1,
+      idempotencyKey,
+      payload: {},
+    };
+    assert.throws(() => service.mutate(retainCommand, { type: "agent", id: agentId }), /only the Human/);
+    const retained = service.mutate(retainCommand, { type: "human", id: "human" });
+    assert.ok("memory" in retained);
+    assert.equal(retained.memory.currentRevision, 2);
+    assert.equal(retained.memory.sourceAccess, "available");
+    assert.deepEqual(retained.revision.createdBy, { type: "human", id: "human" });
+
+    const detail = service.getHumanDetail(created.memory.id);
+    assert.ok(detail.evidence.some((item) => item.sourceKind === "message" && item.sourceId === sourceId), "revoked source remains auditable");
+    const manual = detail.evidence.find((item) => item.memoryRevision === 2);
+    assert.equal(manual?.sourceKind, "manual");
+    assert.equal(manual?.sourceSurfaceId, null);
+    assert.deepEqual(manual?.assertedBy, { type: "human", id: "human" });
+    assert.ok(detail.relations.some((item) => item.relationType === "derived_from"
+      && item.fromRevision === 2 && item.toRevision === 1));
+
+    const recalled = service.recall({ agentId, targetSurfaceId: publicId, query: "weekly reports" });
+    assert.equal(recalled[0]?.memoryId, created.memory.id);
+    assert.deepEqual(recalled[0]?.evidenceRefs, [{ sourceKind: "manual", sourceId: manual!.sourceId }]);
+    assert.equal(db.select().from(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, dmId)).get(), undefined,
+      "retaining knowledge must not restore source membership");
+
+    const replay = service.mutate(retainCommand, { type: "human", id: "human" });
+    assert.ok("memory" in replay);
+    assert.equal(replay.memory.currentRevision, 2);
+    assert.throws(() => service.mutate({ ...retainCommand, idempotencyKey: randomUUID() }, { type: "human", id: "human" }), /expected revision 1/);
+    assert.throws(() => service.mutate({
+      ...retainCommand,
+      expectedRevision: 2,
+      idempotencyKey: randomUUID(),
+    }, { type: "human", id: "human" }), /only an active memory with unavailable source access/);
   } finally {
     closeSpaceDb(spaceId);
     unregisterSpace(spaceId);

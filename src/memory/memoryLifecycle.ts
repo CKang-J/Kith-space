@@ -3,7 +3,11 @@ import type { SpaceTransaction } from "../counters.js";
 import { dbForSpace, purgeDeletedSpaceContent, schema } from "../db/index.js";
 
 /** Deletes only one Agent's private structured-memory payload and suppressions. */
-export function clearAgentPrivateMemoryInTransaction(tx: SpaceTransaction, agentId: string): number {
+export function clearAgentPrivateMemoryInTransaction(
+  tx: SpaceTransaction,
+  agentId: string,
+  advisorCancellationCode = "memory_cleared",
+): number {
   const memoryIds = tx.select({ id: schema.episodicMemories.id }).from(schema.episodicMemories).where(and(
     eq(schema.episodicMemories.scope, "agent_private"),
     eq(schema.episodicMemories.ownerAgentId, agentId),
@@ -13,6 +17,17 @@ export function clearAgentPrivateMemoryInTransaction(tx: SpaceTransaction, agent
   tx.delete(schema.memorySuppressions).where(and(
     eq(schema.memorySuppressions.scope, "agent_private"),
     eq(schema.memorySuppressions.ownerAgentId, agentId),
+  )).run();
+  tx.update(schema.memoryAdvisorJobs).set({
+    status: "cancelled",
+    leaseOwner: null,
+    leaseExpiresAt: null,
+    errorCode: advisorCancellationCode,
+    errorDetailRedacted: "advisor job cancelled by Agent memory lifecycle",
+    completedAt: new Date(),
+  }).where(and(
+    eq(schema.memoryAdvisorJobs.agentId, agentId),
+    inArray(schema.memoryAdvisorJobs.status, ["queued", "running", "failed"]),
   )).run();
   return memoryIds.length;
 }

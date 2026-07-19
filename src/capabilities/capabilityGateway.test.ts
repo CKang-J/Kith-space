@@ -165,16 +165,31 @@ test("Capability Gateway owns refresh, audited queries, checklist, progress and 
       text: "Verify the answer", status: "in_progress", order: 1, idempotencyKey: "checklist:create",
     });
     assert.deepEqual(retry, first);
+    assert.equal(first.revision, 1);
+    assert.equal(gateway.checklistList(claims).revision, 1);
     const item = first.item as { id: string; rowVersion: number };
     const done = gateway.checklistUpsert(claims, {
       id: item.id, text: "Verify the answer", status: "done", order: 1,
       expectedRevision: item.rowVersion, idempotencyKey: "checklist:done",
     });
     assert.equal((done.item as { status: string }).status, "done");
+    assert.equal(done.revision, 2);
+    assert.equal(db.select().from(schema.runtimeSessions).where(eq(schema.runtimeSessions.id, sessionId)).get()!.checklistRevision, 2);
     assert.throws(() => gateway.checklistUpsert(claims, {
       text: "different", status: "pending", order: 2, idempotencyKey: "checklist:create",
     }), /different request/);
     assert.equal((gateway.progress(claims, { text: "Halfway", idempotencyKey: "progress:1" }).progress as { text: string }).text, "Halfway");
+    const cleared = gateway.checklistClear(claims, { includeCompleted: true, idempotencyKey: "checklist:clear" });
+    assert.equal(cleared.cleared, 1);
+    assert.equal(cleared.revision, 3);
+    assert.equal(gateway.checklistList(claims).revision, 3);
+    const emptyClear = gateway.checklistClear(claims, { includeCompleted: true, idempotencyKey: "checklist:clear-empty" });
+    assert.equal(emptyClear.cleared, 0);
+    assert.equal(emptyClear.revision, 3, "an empty clear cannot move the collection revision backwards or invent a change");
+    const recreated = gateway.checklistUpsert(claims, {
+      text: "Final verification", status: "pending", order: 1, idempotencyKey: "checklist:recreate",
+    });
+    assert.equal(recreated.revision, 4);
 
     const createdTask = await gateway.taskCreate(claims, {
       channel: channelId, title: "Gateway task", executionMode: "autopilot", idempotencyKey: "task:create",
@@ -244,6 +259,7 @@ test("Capability Gateway owns refresh, audited queries, checklist, progress and 
 
     const scheduled = gateway.scheduleWakeup(claims, { delaySeconds: 60, reason: "check result", idempotencyKey: "wake:1" });
     assert.equal((scheduled.wakeup as { dueAt: number }).dueAt, now + 60_000);
+    assert.equal(db.select().from(schema.sessionWakeups).where(eq(schema.sessionWakeups.id, (scheduled.wakeup as { id: string }).id)).get()?.idempotencyKey, "wake:1");
     now += 60_000;
     const fired = await new SessionWakeupService(spaceId, db, () => now).fireDue();
     assert.equal(fired.fired, 1);
@@ -270,8 +286,8 @@ test("Capability Gateway owns refresh, audited queries, checklist, progress and 
     }).run();
     const nextClaims = { ...claims, turnId: nextTurnId, attemptId: nextAttemptId, activationId: "activation-next" };
     const rescheduled = gateway.scheduleWakeup(nextClaims, { delaySeconds: 60, reason: "check again", idempotencyKey: "wake:1" });
-    assert.notEqual((rescheduled.wakeup as { id: string }).id, (scheduled.wakeup as { id: string }).id);
-    assert.equal((rescheduled.wakeup as { status: string }).status, "scheduled");
+    assert.equal((rescheduled.wakeup as { id: string }).id, (scheduled.wakeup as { id: string }).id);
+    assert.equal((rescheduled.wakeup as { status: string }).status, "fired", "same session key is idempotent across logical turns");
     db.update(schema.turnCapabilityActivations).set({ status: "revoked" }).where(eq(schema.turnCapabilityActivations.id, "activation-next")).run();
     assert.throws(() => gateway.checklistUpsert(nextClaims, {
       text: "must not commit", status: "pending", order: 2, idempotencyKey: "checklist:revoked",

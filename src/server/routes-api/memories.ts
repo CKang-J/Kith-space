@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { EpisodicMemoryService, MemoryError } from "../../memory/episodicMemoryService.js";
 import { UserGlobalMemoryService } from "../../memory/userGlobalMemoryService.js";
+import { MemoryManagementService } from "../../memory/memoryManagementService.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import type { SpaceCtx } from "./ctx.js";
 
@@ -29,15 +30,26 @@ export async function handleMemories(ctx: SpaceCtx): Promise<boolean> {
       const scope = ctx.url.searchParams.get("scope");
       const status = ctx.url.searchParams.get("status") || undefined;
       const ownerAgentId = ctx.url.searchParams.get("ownerAgentId") || undefined;
-      const items = scope === "user_global"
-        ? global.listHuman(status).map((record) => ({ scope: "user_global" as const, ...record }))
-        : scope === "agent_private" || scope === "space_shared"
-          ? workspace.listHuman({ scope, ownerAgentId, status }).map((record) => ({ scope: "workspace" as const, ...record }))
-          : [
-              ...workspace.listHuman({ ownerAgentId, status }).map((record) => ({ scope: "workspace" as const, ...record })),
-              ...global.listHuman(status).map((record) => ({ scope: "user_global" as const, ...record })),
-            ];
-      sendJson(ctx.res, 200, { items });
+      if (scope === "user_global") {
+        const items = global.listHuman(status).map((record) => ({ scope: "user_global" as const, ...record }));
+        sendJson(ctx.res, 200, { items, page: 1, pageSize: items.length, total: items.length });
+        return true;
+      }
+      const result = new MemoryManagementService(ctx.spaceId).list({
+        ownerAgentId,
+        query: ctx.url.searchParams.get("q") || undefined,
+        status,
+        kind: ctx.url.searchParams.get("kind") || undefined,
+        scope: scope || undefined,
+        tag: ctx.url.searchParams.get("tag") || undefined,
+        sourceSurfaceId: ctx.url.searchParams.get("sourceSurfaceId") || undefined,
+        sourceAccessRevoked: ctx.url.searchParams.get("sourceAccessRevoked") === "true",
+        updatedAfter: ctx.url.searchParams.has("updatedAfter") ? Number(ctx.url.searchParams.get("updatedAfter")) : undefined,
+        updatedBefore: ctx.url.searchParams.has("updatedBefore") ? Number(ctx.url.searchParams.get("updatedBefore")) : undefined,
+        page: Number(ctx.url.searchParams.get("page") ?? 1),
+        pageSize: Number(ctx.url.searchParams.get("pageSize") ?? 25),
+      });
+      sendJson(ctx.res, 200, result);
       return true;
     }
     if (ctx.p === "/api/memories" && ctx.method === "POST") {
@@ -70,7 +82,7 @@ export async function handleMemories(ctx: SpaceCtx): Promise<boolean> {
     if (match && ctx.method === "GET") {
       const record = ctx.url.searchParams.get("scope") === "user_global"
         ? global.getHumanDetail(match[1]!)
-        : workspace.getHumanDetail(match[1]!);
+        : new MemoryManagementService(ctx.spaceId).detail(match[1]!, ctx.url.searchParams.get("ownerAgentId") || undefined);
       sendJson(ctx.res, 200, record);
       return true;
     }

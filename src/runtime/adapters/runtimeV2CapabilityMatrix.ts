@@ -54,6 +54,7 @@ export const RUNTIME_V2_CAPABILITY_MATRIX: Record<"claude" | "codex" | "opencode
       cancel: "observed_v2",
       mcpBootstrap: "fixture_v2",
       ...commonUnsupported,
+      compactionTelemetry: "fixture_v2",
     },
   },
   opencode: {

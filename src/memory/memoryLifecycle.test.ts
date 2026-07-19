@@ -9,6 +9,7 @@ import { closeSpaceDb, dbForSpace, registerSpace, schema, unregisterSpace } from
 import { kithSpaceHome, workspaceDbFile } from "../paths.js";
 import type { CreateEpisodicMemoryCommand } from "./contracts.js";
 import { EpisodicMemoryService } from "./episodicMemoryService.js";
+import { clearAgentPrivateMemory } from "./memoryLifecycle.js";
 
 test("Agent deletion clears private episodic payload and suppressions but preserves Space-shared memory", async () => {
   const spaceId = randomUUID();
@@ -43,12 +44,19 @@ test("Agent deletion clears private episodic payload and suppressions but preser
     };
     const forgotten = service.create(create("agent_private", "private forgotten payload"));
     service.mutate({ schemaVersion: 1, action: "forget_suppress", memoryId: forgotten.memory.id, expectedRevision: 1, idempotencyKey: randomUUID(), payload: {} }, { type: "human", id: "human" });
-    const privateMemory = service.create(create("agent_private", privateCanary));
+    const resetPrivateMemory = service.create(create("agent_private", privateCanary));
     const sharedMemory = service.create(create("space_shared", "shared payload"));
+
+    assert.equal(clearAgentPrivateMemory(spaceId, agentId), 1, "full reset clears only current Agent-private structured payload");
+    assert.equal(db.select().from(schema.episodicMemories).where(eq(schema.episodicMemories.id, resetPrivateMemory.memory.id)).get(), undefined);
+    assert.ok(db.select().from(schema.episodicMemories).where(eq(schema.episodicMemories.id, sharedMemory.memory.id)).get());
+    assert.equal(db.select().from(schema.memorySuppressions).where(eq(schema.memorySuppressions.ownerAgentId, agentId)).all().length, 0);
+
+    const deletedPrivateMemory = service.create(create("agent_private", "private payload removed with Agent deletion"));
 
     await deleteAgentAndPrivateConversations(spaceId, agentId);
 
-    assert.equal(db.select().from(schema.episodicMemories).where(eq(schema.episodicMemories.id, privateMemory.memory.id)).get(), undefined);
+    assert.equal(db.select().from(schema.episodicMemories).where(eq(schema.episodicMemories.id, deletedPrivateMemory.memory.id)).get(), undefined);
     assert.ok(db.select().from(schema.episodicMemories).where(eq(schema.episodicMemories.id, sharedMemory.memory.id)).get());
     assert.equal(db.select().from(schema.memorySuppressions).where(eq(schema.memorySuppressions.ownerAgentId, agentId)).all().length, 0);
     for (const file of [workspaceDbFile(rootPath), `${workspaceDbFile(rootPath)}-wal`]) {
