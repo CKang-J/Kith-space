@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -166,7 +166,7 @@ test("ensurePersonalApp creates one Human and one initialized Home Space idempot
   assert.ok(firstHome);
   assert.equal(firstHome.slug, "home");
   assert.equal(firstHome.name, "Home");
-  assert.equal(firstHome.rootPath, homeRootPath);
+  assert.equal(firstHome.rootPath, realpathSync.native(homeRootPath));
   assert.equal(getHomeSpaceId(), firstHome.id);
   assert.deepEqual(getHomeSpaceRecord(), firstHome);
   assert.equal(listSpaceRecords().length, 1);

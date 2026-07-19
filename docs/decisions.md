@@ -43,7 +43,7 @@
 | 27 | 频道全体提及 | Human 的规范 token `@all` 快照当前频道 Agent；主动/被动必回，静音不唤醒 |
 | 28 | Chat 壳层导航 | ChatOnly 使用左侧纵向模块入口；模块打开态使用 Dock；案例展示退役 |
 | 29 | 代码架构与性能语言 | 保留 Desktop/Core/Worker 与 TypeScript 主栈；P-A9.0–P-A9.7 的实现、最终门禁与一次独立只读终审已完成，Rust 只由性能证据触发 |
-| 30 | Agent Harness v2（提案） | per-surface session + durable delivery/logical turn/attempt + Context Envelope + revisioned episodic memory + broker-backed MCP/CLI Gateway；已完成对抗性补全，尚未实现 |
+| 30 | Agent Harness v2 | per-surface session + durable delivery/logical turn/attempt + Context Envelope + revisioned episodic memory + broker-backed MCP/CLI Gateway；P-A10.0 已完成，P-A10.1–P-A10.7 实施中 |
 
 ---
 
@@ -435,7 +435,7 @@
 
 ## 决策 30：Agent Harness v2 采用 per-surface session、durable delivery/turn、Context Envelope 与双层记忆（提案）
 
-**状态**：Proposed；已完成两路独立对抗性审查并补全事务、重放、迁移、隐私与记忆生命周期契约；代码、schema 和 UI 均未实现。
+**状态**：Accepted / Implementing。P-A10.0 已完成迁移与契约地基；workspace schema v6/v7、Runtime v2 cutover 和 UI 尚未实施。
 
 **结论**：同一 Agent 的频道、Human-Agent DM 与话题使用独立、可恢复的 runtime session；automation 只保留未来扩展类型，P-A10 不启用。消息事务先逐 Agent 持久化 durable delivery item，scheduler 再按 target session 形成 logical turn；每次执行追加带 Worker generation/lease 的 attempt。Core 持久 Context Envelope、逐输入 obligation、operation/output、usage 与 reply/cede/fail 终态，Worker 只持可重建的 engine process/session handle。Human 顶层 direct mention 默认由服务端原子创建 root/thread/membership/delivery，并锁定 Agent reply target；模型 stdout 不直接成为消息。
 
@@ -458,6 +458,8 @@
 - memory只保存current text或hard delete：无法重建历史revision且会被advisor重新学习，改为revision+suppression。
 
 **提案默认值**：direct mention总是开话题（`@all`例外）；公开频道join后可读；通过严格evidence门槛的agent-private候选可自动active且可关闭；detail默认90天；同一Agent单turn串行；silent可加入thread但不wake；记忆删除拆成archive/delete/forget+suppress；OS sandbox前只声明产品内私有。这些值仍可由用户在编码前推翻，推翻需同步规格/ADR/验收。P-A10.0只冻结契约和修复migration前置，不改变UI行为。
+
+**P-A10.0 实施状态**：`src/db/spaceDatabaseSchemaHistory.ts` 与 `spaceDatabaseCompatibility.ts` 已把 migration 前检查改为 immutable version manifest + journal hash/prefix，future DB 不再与 legacy 共用删除引导；`src/app-data/appDatabaseMigrations.ts` 建立 app.db v1、checksum journal和事务回滚。`src/runtime/contract/v2/` 与 deliveries/turns/context/capabilities/memory contract冻结目标codec，但当前v1 adapter仍按能力矩阵标missing/unsupported。该切片不改变schema v5、`agents.session_id`、CLI写权限或UI。
 
 完整规格：`docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
 

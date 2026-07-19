@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdirSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, realpathSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import Database from "better-sqlite3";
@@ -60,13 +60,14 @@ const root = process.env.KITH_SPACE_ROOT_ROUTE_CASE_ROOT;
 assert.ok(root, "KITH_SPACE_ROOT_ROUTE_CASE_ROOT is required");
 
 try {
+  const canonicalRoot = realpathSync.native(root);
   const { human } = await ensurePersonalApp({ name: "Ada", homeRootPath: path.join(root, "home") });
 
   const defaultCreated = await request("POST", "/api/spaces", human.id, { name: "Default Notes" });
   assert.equal(defaultCreated.status, 201);
   assert.equal(defaultCreated.body.status, "ready");
   assert.equal(defaultCreated.body.rootError, undefined);
-  assert.equal(defaultCreated.body.rootPath, path.join(root, "default-spaces", "default-notes"));
+  assert.equal(defaultCreated.body.rootPath, path.join(canonicalRoot, "default-spaces", "default-notes"));
 
   mkdirSync(path.join(root, "default-spaces", "blocked-default"), { recursive: true });
   const blockedDefault = await request("POST", "/api/spaces", human.id, { name: "Blocked Default" });
@@ -82,7 +83,7 @@ try {
   });
   assert.equal(ordinaryAttached.status, 201);
   assert.equal(ordinaryAttached.body.status, "ready");
-  assert.equal(ordinaryAttached.body.rootPath, ordinaryRoot);
+  assert.equal(ordinaryAttached.body.rootPath, realpathSync.native(ordinaryRoot));
   assert.equal(existsSync(path.join(ordinaryRoot, "README.md")), true);
 
   const attachWithoutPath = await request("POST", "/api/spaces", human.id, {
@@ -219,7 +220,7 @@ try {
   );
   assert.equal(mismatch.status, 409);
   assert.equal(mismatch.body.code, "SPACE_ID_MISMATCH");
-  assert.equal(getSpaceRecord(existingId)?.rootPath, existingRoot);
+  assert.equal(getSpaceRecord(existingId)?.rootPath, realpathSync.native(existingRoot));
 
   const invalidRelocationRoot = path.join(root, "invalid-relocation");
   mkdirSync(path.join(invalidRelocationRoot, ".kith"), { recursive: true });
@@ -235,8 +236,8 @@ try {
     { rootPath: invalidRelocationRoot },
   );
   assert.equal(invalidRelocation.status, 400);
-  assert.equal(invalidRelocation.body.code, "SPACE_RELOCATION_FAILED");
-  assert.equal(getSpaceRecord(existingId)?.rootPath, existingRoot);
+  assert.equal(invalidRelocation.body.code, "SPACE_ROOT_DB_INCOMPATIBLE");
+  assert.equal(getSpaceRecord(existingId)?.rootPath, realpathSync.native(existingRoot));
   assert.ok(dbForSpace(existingId), "failed relocation must leave the original registry usable");
 
   const relocatedRoot = path.join(root, "existing-relocated");
@@ -251,9 +252,9 @@ try {
   );
   assert.equal(relocated.status, 200);
   assert.equal(relocated.body.id, existingId);
-  assert.equal(relocated.body.rootPath, relocatedRoot);
+  assert.equal(relocated.body.rootPath, realpathSync.native(relocatedRoot));
   assert.equal(relocated.body.status, "ready");
-  assert.equal(getSpaceRecord(existingId)?.rootPath, relocatedRoot);
+  assert.equal(getSpaceRecord(existingId)?.rootPath, realpathSync.native(relocatedRoot));
 
   closeSpaceDb(existingId);
   const movedAgainRoot = path.join(root, "moved-without-relocation");
@@ -267,7 +268,7 @@ try {
   assert.equal(list.status, 200);
   const missing = list.body.find((space: any) => space.id === existingId);
   assert.equal(missing.status, "missing");
-  assert.equal(missing.rootPath, relocatedRoot);
+  assert.equal(missing.rootPath, path.join(canonicalRoot, "existing-relocated"));
   assert.equal(missing.code, "SPACE_ROOT_MISSING");
   assert.match(missing.rootError, /relocat/i);
 

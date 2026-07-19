@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述个人 AgentOS 的目标模块边界。A2-A6、Home/Space root 的 H1-H4、P-A8 Agent 频道响应模式、本轮聊天/壳层 UI，以及 P-A9.0-P-A9.7 桌面模块化单体收敛均已完成实现；P-A9 保留 Electron/Core/Worker 拓扑与 TypeScript 主栈，并把 Core、Agent Transport、领域模块、Runtime admission 与 Chat 组合层收口到下述最终边界。2026-07-19 又形成并经两路独立对抗性补全 P-A10 Agent Harness v2 架构提案，但 Runtime 契约 v2、per-surface session、durable delivery/turn、结构化记忆与 H5 均未开始实现。P-A9 完整规格见 `../superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`，P-A10 提案见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`。
+> 本文描述个人 AgentOS 的目标模块边界。A2-A6、Home/Space root 的 H1-H4、P-A8、本轮聊天/壳层 UI 与 P-A9.0-P-A9.7 均已完成。P-A10.0 现已补齐版本感知 workspace migration gate、app.db 正式 runner、v2 contract codec和adapter/中文recall基线；产品仍运行schema v5和legacy Runtime data plane。P-A10.1–P-A10.7、H5继续按规格实施。P-A9 完整规格见 `../superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`，P-A10 规格见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
 
 ## 1. 架构原则
 
@@ -354,4 +354,4 @@ Message / Task durable fact
 
 P-A10把公开频道从“未加入也可读正文”收紧为“可发现、加入后读取/参与”，私有频道继续只对成员可见；跨频道原文不自动注入，Agent通过ACL查询、continuity/query recall和canonical/internal/shareable/ref disclosure projection获得连续性。Human顶层direct mention默认由服务端原子创建root/thread/membership/delivery并把Agent reply target锁定为该thread；silent可加入但不wake。普通thread每次同时校验父频道，撤权同步失效membership/session/capability。
 
-完整类型、11条ADR、失败模式、NFR、P-A10.0-P-A10.7切片、P-A11/P-A12/P-S1后续边界和43个验收场景见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。该提案已按两路独立对抗性审查补全，但仍未获得代码实现授权；现有schema v5、单Agent `RuntimeSession`、Agent CLI与UI仍是权威实现事实。
+完整类型、11条ADR、失败模式、NFR、P-A10.0-P-A10.7切片、P-A11/P-A12/P-S1后续边界和43个验收场景见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。P-A10.0 的实现边界为：`src/app-data/appDatabaseMigrations.ts:159` 在任何 WAL 切换前检查app.db版本并以单事务应用v1；`src/db/spaceDatabaseCompatibility.ts:47` 按user_version选择immutable manifest并校验journal；`src/runtime/contract/v2/runtimeContract.ts:3` 冻结session/usage/event与RuntimeV2外层；`src/memory/lexicalProjection.ts:26` 形成中文2/3-gram与短词exact投影。现有schema v5、单Agent `RuntimeSession`、Agent CLI与UI仍是P-A10.1 cutover前的权威实现事实。

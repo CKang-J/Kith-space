@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { appDbFile } from "../paths.js";
+import { migrateAppDatabase } from "./appDatabaseMigrations.js";
 
 const MAX_HUMAN_NAME = 64;
 const MAX_HUMAN_EMAIL = 254;
@@ -58,65 +59,15 @@ export function appDataConnection(): Database.Database {
   connection = undefined;
   mkdirSync(path.dirname(dbPath), { recursive: true });
   const sqlite = new Database(dbPath);
-  sqlite.pragma("foreign_keys = ON");
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("busy_timeout = 5000");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS human_profile (
-      singleton_key INTEGER PRIMARY KEY NOT NULL CHECK (singleton_key = 1),
-      id TEXT NOT NULL UNIQUE,
-      name TEXT NOT NULL,
-      email TEXT,
-      description TEXT,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS spaces (
-      id TEXT PRIMARY KEY NOT NULL,
-      name TEXT NOT NULL,
-      slug TEXT NOT NULL UNIQUE,
-      root_path TEXT NOT NULL UNIQUE,
-      last_opened_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS installation_state (
-      singleton_key INTEGER PRIMARY KEY NOT NULL CHECK (singleton_key = 1),
-      home_space_id TEXT REFERENCES spaces(id) ON DELETE RESTRICT
-    );
-    CREATE TABLE IF NOT EXISTS browser_access_settings (
-      singleton_key INTEGER PRIMARY KEY NOT NULL CHECK (singleton_key = 1),
-      mode TEXT NOT NULL DEFAULT 'off' CHECK (mode IN ('off', 'local', 'lan')),
-      port INTEGER NOT NULL DEFAULT 7777 CHECK (port BETWEEN 1 AND 65535),
-      access_token_hash TEXT,
-      token_revision INTEGER NOT NULL DEFAULT 0 CHECK (token_revision >= 0)
-    );
-    CREATE TABLE IF NOT EXISTS browser_sessions (
-      token_hash TEXT PRIMARY KEY NOT NULL CHECK (length(token_hash) = 64),
-      token_revision INTEGER NOT NULL CHECK (token_revision > 0),
-      created_at INTEGER NOT NULL,
-      last_seen_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS desktop_settings (
-      singleton_key INTEGER PRIMARY KEY NOT NULL CHECK (singleton_key = 1),
-      close_behavior TEXT NOT NULL DEFAULT 'tray' CHECK (close_behavior IN ('tray', 'quit')),
-      launch_at_login INTEGER NOT NULL DEFAULT 0 CHECK (launch_at_login IN (0, 1))
-    );
-    CREATE INDEX IF NOT EXISTS browser_sessions_revision_idx
-      ON browser_sessions (token_revision);
-    INSERT OR IGNORE INTO browser_access_settings (
-      singleton_key, mode, port, access_token_hash, token_revision
-    ) VALUES (1, 'off', 7777, NULL, 0);
-    INSERT OR IGNORE INTO desktop_settings (
-      singleton_key, close_behavior, launch_at_login
-    ) VALUES (1, 'tray', 0);
-    INSERT OR IGNORE INTO installation_state (
-      singleton_key, home_space_id
-    ) VALUES (1, NULL);
-    UPDATE installation_state
-    SET home_space_id = (SELECT id FROM spaces WHERE slug = 'home')
-    WHERE singleton_key = 1
-      AND home_space_id IS NULL
-      AND EXISTS (SELECT 1 FROM spaces WHERE slug = 'home');
-  `);
+  try {
+    sqlite.pragma("foreign_keys = ON");
+    sqlite.pragma("busy_timeout = 5000");
+    migrateAppDatabase(sqlite, dbPath);
+    sqlite.pragma("journal_mode = WAL");
+  } catch (error) {
+    sqlite.close();
+    throw error;
+  }
   connection = { sqlite, dbPath };
   return sqlite;
 }

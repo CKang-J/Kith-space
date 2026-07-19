@@ -50,10 +50,11 @@ test("workspace-files HTTP handler lists and reads only the selected Agent Memor
     const agentId = "agent-memory-test";
     await dbForSpace(home.id).insert(schema.agents).values({ id: agentId, spaceId: home.id, name: "memory-test", displayName: "Memory Test" });
 
-    const memoryDir = resolveAgentMemoryDir(homeRoot, agentId);
+    const normalizedHomeRoot = fs.realpathSync.native(homeRoot);
+    const memoryDir = resolveAgentMemoryDir(normalizedHomeRoot, agentId);
     fs.mkdirSync(path.join(memoryDir, "notes"), { recursive: true });
     fs.writeFileSync(path.join(memoryDir, "MEMORY.md"), "# Agent Memory\n");
-    fs.writeFileSync(path.join(homeRoot, "README.md"), "# Shared Space file\n");
+    fs.writeFileSync(path.join(normalizedHomeRoot, "README.md"), "# Shared Space file\n");
 
     const { listWorkspace, readWorkspaceFile } = await import("../src/daemon/workspace.ts");
     const { registerWorker, resolveWorkerRequest, unregisterWorker } = await import("../src/local-runtime/workerHub.ts");

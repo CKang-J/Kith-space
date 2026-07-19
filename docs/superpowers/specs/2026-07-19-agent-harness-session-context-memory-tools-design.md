@@ -1,6 +1,6 @@
 # Agent Harness v2：会话、上下文、记忆与工具机制设计
 
-> 状态：架构提案；已根据两路独立对抗性审查补全事务、重放、迁移、隐私与记忆生命周期契约；尚未实现。
+> 状态：已接受并实施中；P-A10.0 契约冻结与迁移地基已完成，P-A10.1–P-A10.7 尚待逐门实现。
 > 日期：2026-07-19。
 > 依据：`docs/kith-space/notes/helio-agent-context-memory-tools-research.md` 的本机实测，以及 Kith-space 已完成的 P-A7、P-A8、P-A9 架构边界。
 > 目的：获得与 Helio 相同的“同一个 Agent 像长期同事一样跨私聊、频道和话题延续关系”的体验，同时修正其不可解释记忆、模型重建 thread target、跨私密边界仅靠自律和 cursor replay 等缺陷。
@@ -1727,6 +1727,8 @@ Agents 设置的开发诊断区显示：
 整体命名为 **P-A10 Agent Harness v2**。每个切片独立迁移、验证、开关和回滚；禁止一次改完全部系统。
 
 ### P-A10.0 契约冻结与基线
+
+实施状态（2026-07-19）：已完成。workspace migration gate 已使用不可变版本 manifest 并校验 Drizzle journal；app.db 已建立事务化 v1 runner/checksum journal；Runtime/Harness codec、稳定错误码、Codex persistent 与 opencode one-shot fixture、10 万 message/1 万 memory/中文 2/3-gram 基线已落地。三家 v1 adapter 的 usage/completion/cancel/Kith MCP/tool isolation/relocation 仍按真实能力标 `missing`/`unsupported`，不冒充 v2 suite 通过。该切片未改变 workspace schema v5、legacy data plane 或 UI。
 
 - 冻结现有 Runtime/Worker/CLI/trajectory/session 行为特征测试；
 - 增加三 runtime 的 resume/session-changed/usage/completion/cancel/MCP/tool-isolation fixtures与 live smoke矩阵；

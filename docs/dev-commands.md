@@ -113,3 +113,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/p-a9/runtime-cli-smo
 ```
 
 Core 与 fake Runtime 默认执行 1/5/10/20 Agent、5 个 round；Core 每轮先预热 100 次，再测 100 次，最终用于观察 RuntimeWorkerPort admission ack 后的 p95 与容量表现。fake Runtime 只核对确定性的 session 启停事实，不承担最终 SLO 证据；P-A9.6 的 20-Agent SQL 已从 260 降到 151，绝对 SLO 通过。`pnpm run typecheck` 同时覆盖 P-A9 TypeScript 基线脚本。浏览器 Chat fixture 与探针属于低频调试，见 [`dev-debugging.md`](./dev-debugging.md#8-p-a9-chat-浏览器基线与回归)。冻结结果、SLO 与 socket-send/admission 口径见 [`performance/p-a9-baseline.md`](./performance/p-a9-baseline.md)。
+
+## 7. P-A10 契约与本机容量基线
+
+P-A10.0 的本机 SQLite 基线使用临时数据库，不读取真实 Space 或 app.db：
+
+```powershell
+pnpm exec tsx scripts/p-a10/baseline.ts
+```
+
+它预填 10 万条消息和 1 万条结构化记忆候选，测量 1/5/20 Agent 同事务 fan-out、英文与中文 2 字 FTS 查询，并报告临时数据库体积。该脚本只冻结本机起点，不等于 P-A10.5 的最终 recall 质量/SLO。Runtime adapter 的 fixture 与 live smoke边界见 [`dev-debugging.md`](./dev-debugging.md#9-p-a10-runtime-contract-基线)。

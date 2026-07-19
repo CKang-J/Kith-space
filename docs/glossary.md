@@ -154,6 +154,9 @@
 **Turn Capability Broker / 工作轮次能力代理**
 : 为常驻 runtime 提供稳定本机 handle、由 Worker 按 attempt 激活 opaque capability 的控制面。Core在每次MCP/CLI调用时校验实时lease/turn/ACL并在终态撤销，避免把无法轮换的per-turn bearer固定注入子进程环境。
 
+**Migration Journal / 迁移日志**
+: 与 SQLite `user_version` 配对的不可变迁移前缀记录。workspace.db 校验 Drizzle migration 的时间与 hash，app.db 保存 version/name/checksum；两者不一致时在任何业务写入或降版本前拒绝，避免 journal ahead 跳迁移或 journal behind 重复 DDL。
+
 **cede / 让出回复**
 : optional turn 中 Agent 明确表示“已读取并判断无需回复”的成功终态。它与没收到、仍在运行或执行失败不同，不生成 Chat 消息，但进入 Turn Ledger；当前响应模式允许 optional 静默，P-A10 将把它升级为显式持久协议。
 

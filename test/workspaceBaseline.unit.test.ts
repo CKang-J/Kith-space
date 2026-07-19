@@ -13,6 +13,11 @@ import {
   unregisterSpace,
 } from "../src/db/index.ts";
 import { kithSpaceHome, workspaceDbFile } from "../src/paths.ts";
+import { WORKSPACE_MIGRATION_HISTORY } from "../src/db/spaceDatabaseSchemaHistory.ts";
+
+function migration(version: number) {
+  return WORKSPACE_MIGRATION_HISTORY.find((entry) => entry.version === version)!;
+}
 
 function tables(sqlite: Database.Database): string[] {
   return (sqlite.prepare(`
@@ -89,7 +94,7 @@ test("schema version 2 Space database migrates to version 5 without being reject
   version2.exec(readFileSync(new URL("../drizzle/0000_personal_agent_os.sql", import.meta.url), "utf8"));
   version2.exec(`
     CREATE TABLE __drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric);
-    INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('version-2-baseline', 1783764218492);
+    INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('${migration(2).hash}', ${migration(2).createdAt});
     INSERT INTO spaces (id, name, slug, created_at) VALUES ('${spaceId}', 'Migrated', 'migrated-${spaceId}', 1700000000000);
     INSERT INTO agents (id, space_id, name, display_name, created_at) VALUES ('legacy-agent', '${spaceId}', 'legacy', 'Legacy', 1700000000123);
   `);
@@ -115,6 +120,37 @@ test("schema version 2 Space database migrates to version 5 without being reject
   }
 });
 
+test("schema version 3 Space database migrates through the version-aware compatibility gate", () => {
+  const spaceId = randomUUID();
+  const rootPath = path.join(kithSpaceHome(), "workspace-v3-migration-test", spaceId);
+  const dbPath = workspaceDbFile(rootPath);
+  mkdirSync(path.dirname(dbPath), { recursive: true });
+  const version3 = new Database(dbPath);
+  version3.exec(readFileSync(new URL("../drizzle/0000_personal_agent_os.sql", import.meta.url), "utf8"));
+  version3.exec(readFileSync(new URL("../drizzle/0001_agent_introduction.sql", import.meta.url), "utf8"));
+  version3.exec(`
+    CREATE TABLE __drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric);
+    INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('${migration(2).hash}', ${migration(2).createdAt});
+    INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('${migration(3).hash}', ${migration(3).createdAt});
+    INSERT INTO spaces (id, name, slug, created_at) VALUES ('${spaceId}', 'Migrated v3', 'migrated-v3-${spaceId}', 1700000000000);
+  `);
+  version3.close();
+  registerSpace({ id: spaceId, name: "Migrated v3", slug: `migrated-v3-${spaceId}`, rootPath });
+
+  dbForSpace(spaceId);
+  closeSpaceDb(spaceId);
+
+  const sqlite = new Database(dbPath);
+  try {
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 5);
+    assert.ok(columns(sqlite, "human_channel_states").includes("notification_level"));
+    assert.ok(columns(sqlite, "agents").includes("default_response_mode"));
+  } finally {
+    sqlite.close();
+    unregisterSpace(spaceId);
+  }
+});
+
 test("schema version 4 migrates response settings in place without adding product tables", () => {
   const spaceId = randomUUID();
   const rootPath = path.join(kithSpaceHome(), "workspace-v4-migration-test", spaceId);
@@ -126,7 +162,9 @@ test("schema version 4 migrates response settings in place without adding produc
   version4.exec(readFileSync(new URL("../drizzle/0002_channel_notification_level.sql", import.meta.url), "utf8"));
   version4.exec(`
     CREATE TABLE __drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric);
-    INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('version-4-baseline', 1783997806829);
+    INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('${migration(2).hash}', ${migration(2).createdAt});
+    INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('${migration(3).hash}', ${migration(3).createdAt});
+    INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('${migration(4).hash}', ${migration(4).createdAt});
     INSERT INTO spaces (id, name, slug, created_at) VALUES ('${spaceId}', 'Migrated v4', 'migrated-v4-${spaceId}', 1700000000000);
     INSERT INTO agents (id, space_id, name, display_name, created_at) VALUES ('v4-agent', '${spaceId}', 'v4-agent', 'V4 Agent', 1700000000123);
     INSERT INTO channels (id, space_id, name, type, created_at) VALUES ('v4-channel', '${spaceId}', 'v4-channel', 'channel', 1700000000456);
@@ -206,5 +244,55 @@ test("legacy workspace schema is rejected before Drizzle mutates it", () => {
   } finally {
     sqlite.close();
     unregisterSpace(spaceId);
+  }
+});
+
+test("an empty future-version workspace is rejected before Drizzle can downgrade it", () => {
+  const spaceId = randomUUID();
+  const rootPath = path.join(kithSpaceHome(), "workspace-empty-future-test", spaceId);
+  const dbPath = workspaceDbFile(rootPath);
+  mkdirSync(path.dirname(dbPath), { recursive: true });
+  const future = new Database(dbPath);
+  future.pragma("user_version = 999");
+  future.close();
+  registerSpace({ id: spaceId, name: "Future", slug: `future-${spaceId}`, rootPath });
+
+  assert.throws(() => dbForSpace(spaceId), /newer unsupported schema version 999/);
+
+  const sqlite = new Database(dbPath, { readonly: true });
+  try {
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 999);
+    assert.deepEqual(tables(sqlite), []);
+  } finally {
+    sqlite.close();
+    unregisterSpace(spaceId);
+  }
+});
+
+test("workspace migration journal rejects both missing and unexpected entries", () => {
+  for (const variant of ["missing", "unexpected"] as const) {
+    const spaceId = randomUUID();
+    const rootPath = path.join(kithSpaceHome(), `workspace-journal-${variant}-test`, spaceId);
+    const dbPath = workspaceDbFile(rootPath);
+    registerSpace({ id: spaceId, name: `Journal ${variant}`, slug: `journal-${variant}-${spaceId}`, rootPath });
+
+    dbForSpace(spaceId);
+    closeSpaceDb(spaceId);
+
+    const sqlite = new Database(dbPath);
+    if (variant === "missing") {
+      sqlite.prepare("DELETE FROM __drizzle_migrations WHERE created_at = ?").run(migration(5).createdAt);
+    } else {
+      sqlite.prepare("INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('unexpected', ?)")
+        .run(migration(5).createdAt + 1);
+    }
+    sqlite.close();
+
+    try {
+      assert.throws(() => dbForSpace(spaceId), /migration journal that does not match schema version 5/);
+    } finally {
+      closeSpaceDb(spaceId);
+      unregisterSpace(spaceId);
+    }
   }
 });

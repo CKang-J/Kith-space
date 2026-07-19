@@ -151,3 +151,15 @@ pnpm exec tsx scripts/p-a9/append-chat-baseline.ts `
 ```
 
 追加完成后调用 `readRealtime()`。滚动样本先调用 `loadHistory(100|500|1000)`，确认 article 全量挂载，再执行 5 次 `scrollRound(100)`。结束时调用 `cleanup()`、停止 Core/Vite 并删除本轮临时 profile。Core SQL 与 Worker admission 证据分别由 `core-baseline.ts` 和 `runtime-baseline.ts` 采集；统计口径、真实样本和绝对 SLO 见 [`performance/p-a9-baseline.md`](./performance/p-a9-baseline.md)。
+
+## 9. P-A10 Runtime Contract 基线
+
+P-A10.0 的可执行 adapter fixture运行：
+
+```powershell
+pnpm exec tsx --test src/runtime/contract/v2/runtimeContract.test.ts src/daemon/runtimeContractBaseline.test.ts
+```
+
+Codex fixture证明同一app-server进程可串行处理两轮，opencode fixture证明one-shot子进程会在第二轮携带首轮session ID。它们只冻结v1进程/session形态，不证明normalized usage、per-attempt completion/cancel、Kith MCP、tool isolation或cwd relocation；这些能力在P-A10.1真实contract suite通过前必须保持`missing`/`unsupported`。
+
+真实 smoke 只能在隔离Space/runtime state中执行，必须使用已登录的Claude Code/Codex和显式opencode provider/model。usage只能来自raw engine event；tool isolation必须用实际shell/file探针验证；relocation必须在两个root放不同marker；不能用模型自述或prompt“不要调用工具”代替证据。

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { realpathSync } from "node:fs";
 import { Readable } from "node:stream";
 
 const root = process.env.KITH_SPACE_HOME;
@@ -123,7 +124,7 @@ try {
   assert.equal(spaces.status, 200);
   const home = spaces.body.find((space: any) => space.id === initialized.body.home.id);
   assert.ok(home);
-  assert.equal(home.rootPath, defaultSpaceRoot("Home"));
+  assert.equal(home.rootPath, realpathSync.native(defaultSpaceRoot("Home")));
 
   const repeated = await api({
     method: "POST",

@@ -17,7 +17,7 @@ Kith-space 是一个**桌面优先、单人使用的个人 AgentOS**：一个 Hu
 - `docs/superpowers/specs/2026-07-15-chat-message-ui-density-design.md` — **聊天消息流密度与交互重构规格**：消息气泡、字体与间距、工具交互、表现层组件边界、实施切片和量化验收；代码、自动化验证与用户手动视觉验收均已完成。
 - `docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md` — **Chat 壳层与侧栏模块导航规格**：ChatOnly 纵向模块入口、模块打开态 Dock、三组会话抽屉、中心 Chat 卡片保护、画布式会话导航与案例展示退役；代码、自动化验证与用户手动视觉验收均已完成。
 - `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md` — **P-A9 桌面模块化单体架构收敛规格**：保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，按深 Module、窄 Interface、可替换 Seam 和性能基线渐进拆分；P-A9.0–P-A9.7 已完成并提交，真实存量数据暴露的 Runtime admission 队列饥饿与错误状态传播也已完成根因修复。
-- `docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md` — **P-A10 Agent Harness v2 架构提案**：per-surface session generation、durable delivery/logical turn/attempt、Context Envelope、server-owned thread reply、broker-backed MCP/CLI Gateway、revisioned episodic memory、disclosure/suppression、continuity recall 与分阶段验收；已完成两路对抗性补全，尚未实现。
+- `docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md` — **P-A10 Agent Harness v2 规格**：per-surface session generation、durable delivery/logical turn/attempt、Context Envelope、server-owned thread reply、broker-backed MCP/CLI Gateway、revisioned episodic memory、disclosure/suppression、continuity recall 与分阶段验收；P-A10.0 契约/迁移地基已实现，P-A10.1–P-A10.7 继续实施中。
 - `docs/vision.md` — 北极星：完整理念 + **超越 MVP 的长远愿景**。理解"为什么"从这里开始。
 - `docs/decisions.md` — 全部决策（30 条，含 1 条已审查但未实现提案）+ 推理 + 权衡 + **被推翻/修正的决策**演化脉络。理解"凭什么这样定"看这里。
 - `docs/roadmap.md` — 产品能力分期：当前 A1-A6 与其后的本机能力路线，并区分延后能力和永久非目标。
@@ -97,7 +97,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 ## 当前进展
 
-**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-19：A2-A6、P-A7 H1-H4、P4/P-A8、本轮聊天与壳层 UI，以及 P-A9.0–P-A9.7 的实现和最终门禁均已完成；P-A9 已提交，真实存量数据暴露的 Runtime admission 队列饥饿、queued 假工作态与失败 wake 残留回复占位也已修复。基于 Helio 实测形成的 P-A10 Agent Harness v2 已完成两路对抗性补全但仍只是未实现提案；Runtime 契约 v2、durable delivery/turn、结构化记忆与 H5 均未开始实现。做到哪、下一步与关键发行边界全部见 `docs/progress.md`。
+**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-19：A2-A6、P-A7 H1-H4、P4/P-A8、本轮聊天与壳层 UI，以及 P-A9.0–P-A9.7 的实现和最终门禁均已完成；P-A10.0 的版本感知 compatibility/app.db migration、契约 codec、adapter fixture 与中文 recall 基线已完成，产品行为仍保持 schema v5/legacy data plane。P-A10.1–P-A10.7、H5 与结构化记忆尚在后续切片。做到哪、下一步与关键发行边界全部见 `docs/progress.md`。
 
 <!-- CODEGRAPH_START -->
 
