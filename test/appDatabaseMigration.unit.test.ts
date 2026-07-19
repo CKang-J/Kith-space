@@ -41,6 +41,7 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
     `).all(), [
       { version: 1, name: "installation-baseline", checksumLength: 64 },
       { version: 2, name: "content-hmac-key", checksumLength: 64 },
+      { version: 3, name: "user-global-memory", checksumLength: 64 },
     ]);
     assert.match(String(sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get()), /^[0-9a-f]{64}$/);
     for (const table of [
@@ -51,7 +52,16 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       "browser_sessions",
       "desktop_settings",
       "app_migration_journal",
+      "user_episodic_memories",
+      "user_episodic_memory_revisions",
+      "user_memory_suppressions",
+      "user_memory_fts",
     ]) assert.ok(tableNames(sqlite).includes(table), `missing ${table}`);
+    assert.deepEqual((sqlite.prepare("PRAGMA index_info(user_memory_mutations_key_uniq)").all() as Array<{ name: string }>).map((row) => row.name), [
+      "actor_json", "idempotency_key",
+    ]);
+    const currentRevisionFks = sqlite.prepare("PRAGMA foreign_key_list(user_episodic_memories)").all() as Array<{ table: string; from: string }>;
+    assert.ok(currentRevisionFks.some((row) => row.table === "user_episodic_memory_revisions" && row.from === "current_revision"));
   });
 });
 
@@ -83,7 +93,16 @@ test("version 1 app.db upgrades in place with a stable installation content HMAC
     migrateAppDatabase(sqlite, dbPath);
     sqlite.exec(`
       PRAGMA user_version = 1;
-      DELETE FROM app_migration_journal WHERE version = 2;
+      DELETE FROM app_migration_journal WHERE version >= 2;
+      DROP TABLE user_memory_fts;
+      DROP TABLE user_memory_lexical_terms;
+      DROP TABLE user_memory_mutations;
+      DROP TABLE user_memory_suppressions;
+      DROP TABLE user_memory_tags;
+      DROP TABLE user_memory_relations;
+      DROP TABLE user_memory_evidence;
+      DROP TABLE user_episodic_memory_revisions;
+      DROP TABLE user_episodic_memories;
       ALTER TABLE installation_state DROP COLUMN content_hmac_key;
     `);
     migrateAppDatabase(sqlite, dbPath);
@@ -92,7 +111,34 @@ test("version 1 app.db upgrades in place with a stable installation content HMAC
     const second = String(sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get());
     assert.match(first, /^[0-9a-f]{64}$/);
     assert.equal(second, first);
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 2);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), APP_DATABASE_SCHEMA_VERSION);
+  });
+});
+
+test("version 2 app.db adds isolated user-global memory tables without changing the HMAC key", () => {
+  withAppDatabase((sqlite, dbPath) => {
+    migrateAppDatabase(sqlite, dbPath);
+    const key = sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get();
+    sqlite.exec(`
+      PRAGMA user_version = 2;
+      DELETE FROM app_migration_journal WHERE version = 3;
+      DROP TABLE user_memory_fts;
+      DROP TABLE user_memory_lexical_terms;
+      DROP TABLE user_memory_mutations;
+      DROP TABLE user_memory_suppressions;
+      DROP TABLE user_memory_tags;
+      DROP TABLE user_memory_relations;
+      DROP TABLE user_memory_evidence;
+      DROP TABLE user_episodic_memory_revisions;
+      DROP TABLE user_episodic_memories;
+    `);
+
+    migrateAppDatabase(sqlite, dbPath);
+
+    assert.equal(sqlite.pragma("user_version", { simple: true }), APP_DATABASE_SCHEMA_VERSION);
+    assert.equal(sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get(), key);
+    assert.ok(tableNames(sqlite).includes("user_episodic_memories"));
+    assert.ok(tableNames(sqlite).includes("user_memory_fts"));
   });
 });
 
@@ -142,5 +188,31 @@ test("current app.db rejects a missing or tampered migration journal", () => {
         && error.message.includes("inconsistent migration journal"),
     );
     assert.equal(sqlite.pragma("user_version", { simple: true }), APP_DATABASE_SCHEMA_VERSION);
+  });
+});
+
+test("current app.db rejects a missing user-global FTS projection", () => {
+  withAppDatabase((sqlite, dbPath) => {
+    migrateAppDatabase(sqlite, dbPath);
+    sqlite.exec("DROP TABLE user_memory_fts");
+    assert.throws(
+      () => migrateAppDatabase(sqlite, dbPath),
+      (error: unknown) => error instanceof AppDatabaseMigrationError
+        && error.reason === "schema"
+        && error.message.includes("user_memory_fts"),
+    );
+  });
+});
+
+test("current app.db rejects a missing required user-memory index", () => {
+  withAppDatabase((sqlite, dbPath) => {
+    migrateAppDatabase(sqlite, dbPath);
+    sqlite.exec("DROP INDEX user_memory_suppressions_uniq");
+    assert.throws(
+      () => migrateAppDatabase(sqlite, dbPath),
+      (error: unknown) => error instanceof AppDatabaseMigrationError
+        && error.reason === "schema"
+        && error.message.includes("user_memory_suppressions_uniq"),
+    );
   });
 });

@@ -15,6 +15,8 @@ import type {
   ChecklistUpsertCommand,
   ConversationReadCommand,
   ConversationSearchCommand,
+  MemoryGetCommand,
+  MemoryRecallCommand,
   ScheduleWakeupCommand,
   TaskAssignCommand,
   TaskClaimCommand,
@@ -29,6 +31,9 @@ import type {
   GatewayScope,
 } from "./gatewayContracts.js";
 import { requiredAgentScopes } from "./gatewayContracts.js";
+import { EpisodicMemoryService, MemoryError, type RecalledMemory } from "../memory/episodicMemoryService.js";
+import { UserGlobalMemoryService, type RecalledUserGlobalMemory } from "../memory/userGlobalMemoryService.js";
+import { selectUnifiedMemoryRecall } from "../memory/memoryRecallSelection.js";
 
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
@@ -131,6 +136,51 @@ export class CapabilityGateway {
     )).orderBy(desc(schema.messages.seq)).limit(command.limit).all();
     this.auditMessages(claims, rows, "conversation_search");
     return { query: command.query, results: rows.map((message) => this.projectMessage(claims, message)) };
+  }
+
+  memoryRecall(claims: TurnCapabilityClaims, command: MemoryRecallCommand) {
+    this.db.transaction((tx) => this.assertLiveCapabilityInTransaction(tx, claims, "memory.read"));
+    const targetSurfaceId = this.targetSurfaceId(claims);
+    try {
+      const workspace = new EpisodicMemoryService(this.spaceId, this.db, this.now).recall({
+        agentId: claims.agentId,
+        targetSurfaceId,
+        query: command.query,
+        includeContinuity: command.includeContinuity,
+      }).map((item) => ({ ...item, scope: "workspace" as const }));
+      const global = new UserGlobalMemoryService(undefined, this.now).recall({
+        currentSpaceId: this.spaceId,
+        agentId: claims.agentId,
+        targetSurfaceId,
+        query: command.query,
+        includeContinuity: command.includeContinuity,
+      }).map((item) => ({ ...item, scope: "user_global" as const }));
+      const results = selectUnifiedMemoryRecall([...workspace, ...global]);
+      this.auditMemories(claims, results, "memory_recall");
+      return { query: command.query, results };
+    } catch (error) {
+      throw this.memoryHarnessError(error);
+    }
+  }
+
+  memoryGet(claims: TurnCapabilityClaims, command: MemoryGetCommand) {
+    this.db.transaction((tx) => this.assertLiveCapabilityInTransaction(tx, claims, "memory.read"));
+    const targetSurfaceId = this.targetSurfaceId(claims);
+    try {
+      let result: (RecalledMemory & { scope: "workspace" }) | (RecalledUserGlobalMemory & { scope: "user_global" });
+      try {
+        result = { ...new EpisodicMemoryService(this.spaceId, this.db, this.now)
+          .getForAgent(command.memoryId, claims.agentId, targetSurfaceId), scope: "workspace" };
+      } catch (error) {
+        if (!(error instanceof MemoryError) || error.code !== "MEMORY_NOT_FOUND") throw error;
+        result = { ...new UserGlobalMemoryService(undefined, this.now)
+          .getForAgent(command.memoryId, this.spaceId, claims.agentId, targetSurfaceId), scope: "user_global" };
+      }
+      this.auditMemories(claims, [result], "memory_get");
+      return { memory: result };
+    } catch (error) {
+      throw this.memoryHarnessError(error);
+    }
   }
 
   turnGet(claims: TurnCapabilityClaims) {
@@ -712,6 +762,51 @@ export class CapabilityGateway {
         }).run();
       }
     });
+  }
+
+  private auditMemories(
+    claims: TurnCapabilityClaims,
+    memories: Array<(RecalledMemory | RecalledUserGlobalMemory) & { scope: "workspace" | "user_global" }>,
+    reason: string,
+  ): void {
+    if (!memories.length) return;
+    this.db.transaction((tx) => {
+      const prior = tx.select().from(schema.turnContextSources).where(and(
+        eq(schema.turnContextSources.turnId, claims.turnId),
+        eq(schema.turnContextSources.phase, "later_query"),
+      )).all();
+      const existing = new Set(prior.filter((row) => row.sourceKind === "memory" || row.sourceKind === "user_global_memory")
+        .map((row) => `${row.sourceKind}:${row.sourceId}:${row.sourceRevision}`));
+      let ordinal = prior.reduce((max, row) => Math.max(max, row.ordinal), -1) + 1;
+      for (const memory of memories) {
+        const sourceKind = memory.scope === "workspace" ? "memory" : "user_global_memory";
+        const key = `${sourceKind}:${memory.memoryId}:${memory.memoryRevision}`;
+        if (existing.has(key)) continue;
+        tx.insert(schema.turnContextSources).values({
+          id: randomUUID(), turnId: claims.turnId, phase: "later_query", ordinal: ordinal++, sourceKind,
+          sourceId: memory.memoryId, sourceRevision: memory.memoryRevision, visibility: "private",
+          disclosureProjection: memory.projection, injectionMode: memory.content == null ? "reference" : "content",
+          reason, tokenEstimate: memory.content == null ? 0 : Math.max(1, Math.ceil(memory.content.length / 4)),
+          contentHmac: memory.contentHash,
+        }).run();
+      }
+    });
+  }
+
+  private targetSurfaceId(claims: TurnCapabilityClaims): string {
+    const session = this.db.select({ surfaceId: schema.runtimeSessions.surfaceId }).from(schema.runtimeSessions)
+      .where(eq(schema.runtimeSessions.id, claims.sessionId)).get();
+    if (!session) throw new HarnessError("capability_inactive", "turn session is unavailable");
+    return session.surfaceId;
+  }
+
+  private memoryHarnessError(error: unknown): Error {
+    if (!(error instanceof MemoryError)) return error instanceof Error ? error : new Error(String(error));
+    return new HarnessError(
+      error.code === "MEMORY_NOT_FOUND" ? "capability_scope_denied" : "disclosure_denied",
+      error.message,
+      { memoryCode: error.code },
+    );
   }
 
   private assertClaims(claims: TurnCapabilityClaims): void {

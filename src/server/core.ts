@@ -56,6 +56,7 @@ import { harnessTurnScheduler, scheduleV2Turns, turnCapabilityService } from "./
 import { inboxSummary, type InboxSummary } from "../deliveries/inboxSummary.js";
 import { configureTaskGatewayPort } from "../capabilities/taskGatewayPort.js";
 import { getTaskDetails, reportTask, submitTaskDelivery } from "../tasks/taskService.js";
+import { clearAgentPrivateMemory } from "../memory/memoryLifecycle.js";
 
 export { TASK_STATUSES } from "../tasks/taskTypes.js";
 
@@ -1053,6 +1054,9 @@ export async function resetAgent(spaceId: string, agentId: string, clearAgentMem
     } catch (error) { log.warn("agent reset target unavailable", { agentId, reason: String(error) }); }
   } else if (target.reason !== "agent not found") {
     log.warn("agent reset target unavailable", { agentId, reason: target.reason });
+  }
+  if (clearAgentMemory) {
+    clearAgentPrivateMemory(spaceId, agentId);
   }
   await db.update(schema.agents).set({
     status: "inactive",

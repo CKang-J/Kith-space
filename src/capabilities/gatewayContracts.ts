@@ -14,6 +14,7 @@ export const GatewayScopeSchema = z.enum([
   "session.schedule_wakeup",
   "conversation.read",
   "conversation.search",
+  "memory.read",
   "turn.get",
   "task.read",
   "task.write",
@@ -25,6 +26,7 @@ export function requiredAgentScopes(scope: GatewayScope): readonly string[] {
   if (scope === "turn.reply") return ["message:send"];
   if (scope === "attachment.upload") return ["message:send", "attachment:upload"];
   if (scope === "conversation.read" || scope === "conversation.search") return ["message:read"];
+  if (scope === "memory.read") return ["knowledge:read"];
   if (scope === "task.read") return ["task:read"];
   if (scope === "task.write") return ["task:write"];
   return [];
@@ -65,6 +67,11 @@ export const ConversationSearchCommandSchema = z.object({
   query: z.string().trim().min(1).max(500),
   limit: z.number().int().min(1).max(50).default(20),
 }).strict();
+export const MemoryRecallCommandSchema = z.object({
+  query: z.string().trim().min(1).max(500),
+  includeContinuity: z.boolean().default(true),
+}).strict();
+export const MemoryGetCommandSchema = z.object({ memoryId: z.string().trim().min(1).max(128) }).strict();
 export const TaskListCommandSchema = z.object({ channel: z.string().trim().min(1) }).strict();
 export const TaskGetCommandSchema = z.object({ taskId: z.string().trim().min(6) }).strict();
 export const TaskCreateCommandSchema = z.object({
@@ -109,6 +116,8 @@ export type ChecklistClearCommand = z.infer<typeof ChecklistClearCommandSchema>;
 export type ScheduleWakeupCommand = z.infer<typeof ScheduleWakeupCommandSchema>;
 export type ConversationReadCommand = z.infer<typeof ConversationReadCommandSchema>;
 export type ConversationSearchCommand = z.infer<typeof ConversationSearchCommandSchema>;
+export type MemoryRecallCommand = z.infer<typeof MemoryRecallCommandSchema>;
+export type MemoryGetCommand = z.infer<typeof MemoryGetCommandSchema>;
 export type TaskListCommand = z.infer<typeof TaskListCommandSchema>;
 export type TaskGetCommand = z.infer<typeof TaskGetCommandSchema>;
 export type TaskCreateCommand = z.infer<typeof TaskCreateCommandSchema>;

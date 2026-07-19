@@ -18,6 +18,9 @@ import {
   estimateContextTokens,
   FALLBACK_DYNAMIC_CONTEXT_BUDGET,
 } from "./contextBudget.js";
+import { EpisodicMemoryService, type RecalledMemory } from "../memory/episodicMemoryService.js";
+import { UserGlobalMemoryService, type RecalledUserGlobalMemory } from "../memory/userGlobalMemoryService.js";
+import { selectUnifiedMemoryRecall } from "../memory/memoryRecallSelection.js";
 
 type ContextSourceRef = z.infer<typeof ContextSourceRefSchema>;
 type MessageRow = typeof schema.messages.$inferSelect;
@@ -111,6 +114,70 @@ export class ContextAssembler {
       return ref;
     };
     const currentBatch = deliveries.map((delivery) => refForMessage(messageById.get(delivery.messageId)!, `delivery:${delivery.id}`));
+    const recallQuery = messages.map((message) => boundedContextContent(message.content)).join("\n");
+    const workspaceMemory = new EpisodicMemoryService(this.spaceId, this.db, this.now);
+    const recallOmissions: Array<{ sourceKind: string; reason: string; count: number }> = [];
+    let workspaceRecall: RecalledMemory[] = [];
+    try {
+      workspaceRecall = workspaceMemory.recall({
+        agentId: turn.agentId,
+        targetSurfaceId: session.surfaceId,
+        query: recallQuery,
+        includeContinuity: true,
+      });
+    } catch {
+      recallOmissions.push({ sourceKind: "memory", reason: "recall_unavailable; source may be queried later", count: 1 });
+    }
+    const userGlobalMemory = new UserGlobalMemoryService(undefined, this.now);
+    let globalRecall: RecalledUserGlobalMemory[] = [];
+    try {
+      globalRecall = userGlobalMemory.recall({
+        currentSpaceId: this.spaceId,
+        agentId: turn.agentId,
+        targetSurfaceId: session.surfaceId,
+        query: recallQuery,
+      });
+    } catch {
+      recallOmissions.push({ sourceKind: "user_global_memory", reason: "recall_unavailable; source may be queried later", count: 1 });
+    }
+    const recalledMemoryRefs: ContextEnvelope["recalledMemories"] = [];
+    const memorySourceRefs: ContextSourceRef[] = [];
+    const appendMemoryRef = (
+      item: RecalledMemory | RecalledUserGlobalMemory,
+      sourceKind: "memory" | "user_global_memory",
+    ) => {
+      recalledMemoryRefs.push({
+        memoryId: item.memoryId,
+        memoryRevision: item.memoryRevision,
+        contentHash: item.contentHash,
+        score: item.score,
+        scoreBreakdown: item.scoreBreakdown,
+        reasons: item.reasons,
+        evidenceRefs: item.evidenceRefs,
+        disclosure: item.disclosure,
+        ...(item.relation ? { relation: item.relation } : {}),
+        projection: item.projection,
+      });
+      const ref: ContextSourceRef = {
+        sourceKind,
+        sourceId: item.memoryId,
+        sourceRevision: item.memoryRevision,
+        snapshotId: null,
+        contentHmac: item.contentHash,
+        visibility: "private",
+        disclosureProjection: item.projection,
+        injectionMode: item.content == null ? "reference" : "content",
+        estimatedTokens: item.content == null ? 0 : estimateContextTokens(item.content),
+        reason: `recall:${item.reasons.join(",")}`,
+      };
+      auditRefs.push(ref);
+      memorySourceRefs.push(ref);
+    };
+    const unifiedRecall = selectUnifiedMemoryRecall([
+      ...workspaceRecall.map((item) => ({ item, sourceKind: "memory" as const, ...item })),
+      ...globalRecall.map((item) => ({ item, sourceKind: "user_global_memory" as const, ...item })),
+    ]);
+    unifiedRecall.forEach(({ item, sourceKind }) => appendMemoryRef(item, sourceKind));
 
     let rootMessage: ContextSourceRef | undefined;
     let root: MessageRow | undefined;
@@ -222,7 +289,7 @@ export class ContextAssembler {
       throw new HarnessError("context_capacity_exhausted", "required delivery batch and thread root exceed the conservative context budget", { turnId });
     }
     const uniqueInjected = new Map<string, ContextSourceRef>();
-    for (const ref of [...currentBatch, ...(rootMessage ? [rootMessage] : []), ...(parentSnapshot?.messageRefs ?? []), ...recentSurface, ...objectSnapshots, ...(uiSnapshotRef ? [uiSnapshotRef] : [])]) {
+    for (const ref of [...currentBatch, ...(rootMessage ? [rootMessage] : []), ...(parentSnapshot?.messageRefs ?? []), ...recentSurface, ...memorySourceRefs, ...objectSnapshots, ...(uiSnapshotRef ? [uiSnapshotRef] : [])]) {
       if (ref.injectionMode !== "omitted") uniqueInjected.set(`${ref.sourceKind}:${ref.sourceId}:${ref.snapshotId ?? ""}`, ref);
     }
     let used = [...uniqueInjected.values()].reduce((sum, ref) => sum + ref.estimatedTokens, 0)
@@ -241,15 +308,22 @@ export class ContextAssembler {
       used -= estimateContextTokens(removed.path);
       omittedByKind.set("file_memory", (omittedByKind.get("file_memory") ?? 0) + 1);
     }
-    for (const ref of [...objectSnapshots, ...(uiSnapshotRef ? [uiSnapshotRef] : []), ...recentSurface, ...(parentSnapshot?.messageRefs ?? [])]) {
+    const optionalByEvictionPriority = [
+      ...[...memorySourceRefs].reverse(),
+      ...objectSnapshots,
+      ...(uiSnapshotRef ? [uiSnapshotRef] : []),
+      ...recentSurface,
+      ...(parentSnapshot?.messageRefs ?? []),
+    ];
+    for (const ref of optionalByEvictionPriority) {
       if (used <= FALLBACK_DYNAMIC_CONTEXT_BUDGET) break;
       omit(ref, "fallback_budget");
     }
-    const omissions = [...omittedByKind.entries()].map(([sourceKind, count]) => ({
+    const omissions = [...recallOmissions, ...[...omittedByKind.entries()].map(([sourceKind, count]) => ({
       sourceKind,
       reason: "fallback_budget_exceeded; source may be queried later",
       count,
-    }));
+    }))];
     const envelope = ContextEnvelopeSchema.parse({
       schemaVersion: 1,
       turnId: turn.id,
@@ -263,7 +337,7 @@ export class ContextAssembler {
       currentBatch,
       recentSurface,
       objectSnapshots,
-      recalledMemories: [],
+      recalledMemories: recalledMemoryRefs,
       fileMemoryRefs,
       ...(uiSnapshot ? { uiSnapshot } : {}),
       capabilityActivationId,
@@ -405,6 +479,34 @@ export class ContextAssembler {
         lines.push(snapshot
           ? `[${ref.sourceKind} ${ref.sourceId} reason=${ref.reason}]\n${canonicalJson(snapshot.payload)}`
           : `[${ref.sourceKind} ${ref.sourceId} snapshot deleted; lineage HMAC=${ref.contentHmac}]`);
+      } else if (ref.sourceKind === "memory" || ref.sourceKind === "user_global_memory") {
+        const projection = ref.disclosureProjection as "canonical" | "internal_summary" | "shareable_summary" | "ref_only";
+        let sourceAccessible = false;
+        let content: string | null = null;
+        let revisionExists = false;
+        try {
+          if (ref.sourceKind === "memory") {
+            const service = new EpisodicMemoryService(this.spaceId, this.db, this.now);
+            revisionExists = ref.sourceRevision != null && service.revisionContent(ref.sourceId, ref.sourceRevision, projection) != null;
+            sourceAccessible = service.hasSourceAccess(ref.sourceId, envelope.session.agentId);
+            content = sourceAccessible && ref.sourceRevision != null
+              ? service.revisionContent(ref.sourceId, ref.sourceRevision, projection)
+              : null;
+          } else {
+            const service = new UserGlobalMemoryService(undefined, this.now);
+            revisionExists = ref.sourceRevision != null && service.revisionContent(ref.sourceId, ref.sourceRevision, projection) != null;
+            sourceAccessible = service.hasSourceAccess(ref.sourceId, this.spaceId, envelope.session.agentId);
+            content = sourceAccessible && ref.sourceRevision != null
+              ? service.revisionContent(ref.sourceId, ref.sourceRevision, projection)
+              : null;
+          }
+        } catch {
+          sourceAccessible = false;
+          content = null;
+        }
+        lines.push(content
+          ? `[${ref.sourceKind} ${ref.sourceId} revision=${ref.sourceRevision} projection=${projection} reason=${ref.reason}]\n${boundedContextContent(content)}`
+          : `[${ref.sourceKind} ${ref.sourceId} ${revisionExists ? "source revoked or unavailable" : "forgotten or unavailable"}; lineage HMAC=${ref.contentHmac}]`);
       }
     }
     lines.push("", "File memory indexes (read selectively when relevant):");

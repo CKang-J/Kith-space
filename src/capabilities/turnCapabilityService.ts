@@ -64,6 +64,7 @@ export class TurnCapabilityService {
         ...(canReply ? ["turn.reply"] as const : []),
         ...(canReply && agentHasScope(agent?.scopes, "attachment:upload") ? ["attachment.upload"] as const : []),
         ...(agentHasScope(agent?.scopes, "message:read") ? ["conversation.read", "conversation.search"] as const : []),
+        ...(agentHasScope(agent?.scopes, "knowledge:read") ? ["memory.read"] as const : []),
         ...(agentHasScope(agent?.scopes, "task:read") ? ["task.read"] as const : []),
         ...(agentHasScope(agent?.scopes, "task:write") ? ["task.write"] as const : []),
       ],
@@ -166,6 +167,43 @@ export class TurnCapabilityService {
       this.broker.deactivate(input.sessionHandle, input.activationId);
       throw new HarnessError("capability_inactive", "context activation changed during refresh");
     }
+    return refreshed;
+  }
+
+  authorizeDisclosureGrant(turnId: string, grantId: string): TurnCapabilityClaims {
+    const grant = this.db.select().from(schema.disclosureGrants).where(and(
+      eq(schema.disclosureGrants.id, grantId),
+      eq(schema.disclosureGrants.turnId, turnId),
+      eq(schema.disclosureGrants.status, "active"),
+    )).get();
+    if (!grant || grant.expiresAt.getTime() <= this.now()) {
+      throw new HarnessError("disclosure_denied", "disclosure grant is inactive or expired");
+    }
+    const activation = this.db.select().from(schema.turnCapabilityActivations).where(and(
+      eq(schema.turnCapabilityActivations.turnId, turnId),
+      eq(schema.turnCapabilityActivations.status, "active"),
+    )).get();
+    const turn = this.db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, turnId)).get();
+    const attempt = activation
+      ? this.db.select().from(schema.agentTurnAttempts).where(eq(schema.agentTurnAttempts.id, activation.attemptId)).get()
+      : null;
+    if (!activation || !turn || !attempt || attempt.leaseExpiresAt.getTime() <= this.now()) {
+      throw new HarnessError("capability_inactive", "turn has no live capability for the disclosure grant");
+    }
+    const handle = this.handles.get(turn.runtimeSessionId);
+    if (!handle) throw new HarnessError("capability_inactive", "runtime session broker handle is unavailable");
+    const claims = this.broker.resolve({
+      sessionHandle: handle,
+      activationId: activation.id,
+      workerGeneration: attempt.workerGeneration,
+    });
+    const refreshed = this.broker.replace(handle, activation.id, {
+      ...claims,
+      disclosureGrantIds: [...new Set([...claims.disclosureGrantIds, grantId])],
+    });
+    const claimsDigest = createHash("sha256").update(JSON.stringify(refreshed)).digest("hex");
+    this.db.update(schema.turnCapabilityActivations).set({ claimsDigest })
+      .where(eq(schema.turnCapabilityActivations.id, activation.id)).run();
     return refreshed;
   }
 

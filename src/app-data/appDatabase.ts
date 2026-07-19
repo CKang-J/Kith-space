@@ -61,6 +61,7 @@ export function appDataConnection(): Database.Database {
   const sqlite = new Database(dbPath);
   try {
     sqlite.pragma("foreign_keys = ON");
+    sqlite.pragma("secure_delete = ON");
     sqlite.pragma("busy_timeout = 5000");
     migrateAppDatabase(sqlite, dbPath);
     sqlite.pragma("journal_mode = WAL");

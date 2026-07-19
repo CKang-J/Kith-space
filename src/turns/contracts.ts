@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { NormalizedUsageSchema } from "../runtime/contract/v2/runtimeContract.js";
+import { DisclosureSourceRefSchema } from "../capabilities/contracts.js";
 
 export const TurnStatusSchema = z.enum(["pending", "running", "retry_wait", "completed", "failed", "cancelled"]);
 export const TurnOutcomeSchema = z.enum(["replied", "ceded", "mixed", "failed", "cancelled"]);
@@ -40,6 +41,8 @@ export const TurnReplyCommandSchema = z.object({
   schemaVersion: z.literal(1),
   body: z.string(),
   attachmentIds: z.array(z.string().min(1)).max(20).default([]),
+  sourceRefs: z.array(DisclosureSourceRefSchema).max(20).default([]),
+  disclosureGrantId: z.string().min(1).optional(),
   handledInputIds: z.array(z.string().min(1)).min(1).max(50),
   operationKey: z.string().min(1).max(128),
 }).strict().refine((value) => value.body.trim().length > 0 || value.attachmentIds.length > 0, {

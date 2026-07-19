@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 
-export const APP_DATABASE_SCHEMA_VERSION = 2;
+export const APP_DATABASE_SCHEMA_VERSION = 3;
 
 export type AppDatabaseCompatibilityReason = "integrity" | "future" | "schema";
 
@@ -98,6 +98,146 @@ const APP_V2_CONTENT_HMAC_SQL = `
 const APP_SCHEMA_V2 = new Map(APP_SCHEMA_V1);
 APP_SCHEMA_V2.set("installation_state", ["singleton_key", "home_space_id", "content_hmac_key"]);
 
+const APP_V3_USER_GLOBAL_MEMORY_SQL = `
+  CREATE TABLE user_episodic_memories (
+    id TEXT PRIMARY KEY NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'user_global' CHECK (scope = 'user_global'),
+    kind TEXT NOT NULL,
+    subject_ref_json TEXT NOT NULL,
+    subject_key TEXT NOT NULL,
+    predicate_key TEXT NOT NULL,
+    current_revision INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL,
+    confidence_millis INTEGER NOT NULL,
+    importance_millis INTEGER NOT NULL,
+    sensitivity TEXT NOT NULL,
+    disclosure TEXT NOT NULL,
+    valid_from INTEGER,
+    valid_to INTEGER,
+    source_access TEXT NOT NULL DEFAULT 'available',
+    deletion_state TEXT NOT NULL DEFAULT 'none',
+    row_version INTEGER NOT NULL DEFAULT 1,
+    created_by_json TEXT NOT NULL,
+    updated_by_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (id, current_revision) REFERENCES user_episodic_memory_revisions(memory_id, revision) DEFERRABLE INITIALLY DEFERRED
+  );
+  CREATE INDEX user_episodic_memories_claim_idx
+    ON user_episodic_memories (subject_key, predicate_key);
+  CREATE INDEX user_episodic_memories_recall_idx
+    ON user_episodic_memories (status, source_access, updated_at);
+  CREATE TABLE user_episodic_memory_revisions (
+    memory_id TEXT NOT NULL REFERENCES user_episodic_memories(id) ON DELETE CASCADE,
+    revision INTEGER NOT NULL,
+    canonical_text TEXT NOT NULL,
+    internal_summary TEXT,
+    shareable_summary TEXT,
+    content_hmac TEXT NOT NULL,
+    sensitivity TEXT NOT NULL,
+    disclosure TEXT NOT NULL,
+    valid_from INTEGER,
+    valid_to INTEGER,
+    created_by_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (memory_id, revision)
+  );
+  CREATE TABLE user_memory_evidence (
+    id TEXT PRIMARY KEY NOT NULL,
+    memory_id TEXT NOT NULL REFERENCES user_episodic_memories(id) ON DELETE CASCADE,
+    memory_revision INTEGER NOT NULL,
+    source_space_id TEXT,
+    source_kind TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    source_surface_id TEXT,
+    visibility_at_occurrence TEXT NOT NULL,
+    asserted_by_json TEXT NOT NULL,
+    quoted_from_json TEXT,
+    claim_type TEXT NOT NULL,
+    memory_policy TEXT NOT NULL,
+    excerpt_hmac TEXT NOT NULL,
+    occurred_at INTEGER NOT NULL,
+    FOREIGN KEY (memory_id, memory_revision) REFERENCES user_episodic_memory_revisions(memory_id, revision) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+  );
+  CREATE INDEX user_memory_evidence_memory_idx
+    ON user_memory_evidence (memory_id, memory_revision);
+  CREATE UNIQUE INDEX user_memory_evidence_source_uniq
+    ON user_memory_evidence (memory_id, memory_revision, source_kind, source_id);
+  CREATE TABLE user_memory_relations (
+    id TEXT PRIMARY KEY NOT NULL,
+    from_memory_id TEXT NOT NULL REFERENCES user_episodic_memories(id) ON DELETE CASCADE,
+    from_revision INTEGER,
+    to_memory_id TEXT NOT NULL REFERENCES user_episodic_memories(id) ON DELETE CASCADE,
+    to_revision INTEGER,
+    relation_type TEXT NOT NULL,
+    created_by_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (from_memory_id, from_revision) REFERENCES user_episodic_memory_revisions(memory_id, revision) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY (to_memory_id, to_revision) REFERENCES user_episodic_memory_revisions(memory_id, revision) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+  );
+  CREATE UNIQUE INDEX user_memory_relations_uniq
+    ON user_memory_relations (from_memory_id, from_revision, to_memory_id, to_revision, relation_type);
+  CREATE TABLE user_memory_tags (
+    memory_id TEXT NOT NULL REFERENCES user_episodic_memories(id) ON DELETE CASCADE,
+    tag TEXT NOT NULL,
+    PRIMARY KEY (memory_id, tag)
+  );
+  CREATE INDEX user_memory_tags_tag_idx ON user_memory_tags (tag, memory_id);
+  CREATE TABLE user_memory_suppressions (
+    id TEXT PRIMARY KEY NOT NULL,
+    source_kind TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    claim_hmac TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_by_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    revoked_at INTEGER
+  );
+  CREATE UNIQUE INDEX user_memory_suppressions_uniq
+    ON user_memory_suppressions (source_kind, source_id, claim_hmac);
+  CREATE TABLE user_memory_mutations (
+    id TEXT PRIMARY KEY NOT NULL,
+    memory_id TEXT,
+    action TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    request_hash TEXT NOT NULL,
+    result_ref_json TEXT,
+    actor_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX user_memory_mutations_key_uniq
+    ON user_memory_mutations (actor_json, idempotency_key);
+  CREATE TABLE user_memory_lexical_terms (
+    memory_id TEXT NOT NULL REFERENCES user_episodic_memories(id) ON DELETE CASCADE,
+    term TEXT NOT NULL,
+    PRIMARY KEY (memory_id, term)
+  );
+  CREATE INDEX user_memory_lexical_terms_term_idx
+    ON user_memory_lexical_terms (term, memory_id);
+  CREATE VIRTUAL TABLE user_memory_fts USING fts5(
+    memory_id UNINDEXED,
+    lexical_text,
+    cjk_bigrams,
+    cjk_trigrams,
+    tokenize='unicode61 remove_diacritics 2'
+  );
+`;
+
+const APP_SCHEMA_V3 = new Map(APP_SCHEMA_V2);
+APP_SCHEMA_V3.set("user_episodic_memories", [
+  "id", "scope", "kind", "subject_ref_json", "subject_key", "predicate_key", "current_revision", "status",
+  "confidence_millis", "importance_millis", "sensitivity", "disclosure", "valid_from", "valid_to",
+  "source_access", "deletion_state", "row_version", "created_by_json", "updated_by_json", "created_at", "updated_at",
+]);
+APP_SCHEMA_V3.set("user_episodic_memory_revisions", ["memory_id", "revision", "canonical_text", "internal_summary", "shareable_summary", "content_hmac", "sensitivity", "disclosure", "valid_from", "valid_to", "created_by_json", "created_at"]);
+APP_SCHEMA_V3.set("user_memory_evidence", ["id", "memory_id", "memory_revision", "source_space_id", "source_kind", "source_id", "source_surface_id", "visibility_at_occurrence", "asserted_by_json", "quoted_from_json", "claim_type", "memory_policy", "excerpt_hmac", "occurred_at"]);
+APP_SCHEMA_V3.set("user_memory_relations", ["id", "from_memory_id", "from_revision", "to_memory_id", "to_revision", "relation_type", "created_by_json", "created_at"]);
+APP_SCHEMA_V3.set("user_memory_tags", ["memory_id", "tag"]);
+APP_SCHEMA_V3.set("user_memory_suppressions", ["id", "source_kind", "source_id", "claim_hmac", "status", "created_by_json", "created_at", "revoked_at"]);
+APP_SCHEMA_V3.set("user_memory_mutations", ["id", "memory_id", "action", "idempotency_key", "request_hash", "result_ref_json", "actor_json", "created_at"]);
+APP_SCHEMA_V3.set("user_memory_lexical_terms", ["memory_id", "term"]);
+APP_SCHEMA_V3.set("user_memory_fts", ["memory_id", "lexical_text", "cjk_bigrams", "cjk_trigrams"]);
+
 function baselineChecksum(): string {
   return createHash("sha256").update(APP_BASELINE_SQL).digest("hex");
 }
@@ -131,7 +271,7 @@ function assertIntegrity(sqlite: Database.Database, dbPath: string): void {
 
 function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_DATABASE_SCHEMA_VERSION): void {
   const missing: string[] = [];
-  const expectedSchema = version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
+  const expectedSchema = version >= 3 ? APP_SCHEMA_V3 : version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
   for (const [table, requiredColumns] of expectedSchema) {
     const actual = tableColumns(sqlite, table);
     if (actual.size === 0) {
@@ -141,6 +281,34 @@ function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_D
     for (const column of requiredColumns) {
       if (!actual.has(column)) missing.push(`${table}.${column}`);
     }
+  }
+  if (version >= 3) {
+    const indexes = new Set((sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all() as Array<{ name: string }>).map((row) => row.name));
+    for (const index of [
+      "user_episodic_memories_claim_idx", "user_episodic_memories_recall_idx",
+      "user_memory_evidence_memory_idx", "user_memory_evidence_source_uniq",
+      "user_memory_relations_uniq", "user_memory_tags_tag_idx", "user_memory_suppressions_uniq",
+      "user_memory_mutations_key_uniq", "user_memory_lexical_terms_term_idx",
+    ]) {
+      if (!indexes.has(index)) missing.push(`${index} (index)`);
+    }
+    for (const expected of [
+      { table: "user_episodic_memories", from: "id", target: "user_episodic_memory_revisions" },
+      { table: "user_episodic_memories", from: "current_revision", target: "user_episodic_memory_revisions" },
+      { table: "user_episodic_memory_revisions", from: "memory_id", target: "user_episodic_memories" },
+      { table: "user_memory_evidence", from: "memory_id", target: "user_episodic_memory_revisions" },
+      { table: "user_memory_evidence", from: "memory_revision", target: "user_episodic_memory_revisions" },
+      { table: "user_memory_relations", from: "from_revision", target: "user_episodic_memory_revisions" },
+      { table: "user_memory_relations", from: "to_revision", target: "user_episodic_memory_revisions" },
+    ]) {
+      const foreignKeys = sqlite.prepare(`PRAGMA foreign_key_list(${quoteIdentifier(expected.table)})`).all() as Array<{ table: string; from: string }>;
+      if (!foreignKeys.some((row) => row.table === expected.target && row.from === expected.from)) {
+        missing.push(`${expected.table}.${expected.from} (foreign key)`);
+      }
+    }
+    const canonicalSql = String(sqlite.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'user_episodic_memories'").pluck().get() ?? "")
+      .replaceAll(/\s+/g, " ").toLowerCase();
+    if (!canonicalSql.includes("check (scope = 'user_global')")) missing.push("user_episodic_memories.scope (check)");
   }
   if (missing.length > 0) {
     throw new AppDatabaseMigrationError(
@@ -158,6 +326,7 @@ function expectedJournal(version: number) {
   return [
     { version: 1, name: "installation-baseline", checksum: baselineChecksum() },
     ...(version >= 2 ? [{ version: 2, name: "content-hmac-key", checksum: migrationChecksum(APP_V2_CONTENT_HMAC_SQL) }] : []),
+    ...(version >= 3 ? [{ version: 3, name: "user-global-memory", checksum: migrationChecksum(APP_V3_USER_GLOBAL_MEMORY_SQL) }] : []),
   ];
 }
 
@@ -241,6 +410,21 @@ export function migrateAppDatabase(sqlite: Database.Database, dbPath: string): v
       `).run(2, "content-hmac-key", migrationChecksum(APP_V2_CONTENT_HMAC_SQL), Date.now());
     });
     applyContentHmacKey.immediate();
+    version = 2;
+  }
+  if (version === 2) {
+    assertSchema(sqlite, dbPath, 2);
+    assertJournal(sqlite, dbPath, 2);
+    const applyUserGlobalMemory = sqlite.transaction(() => {
+      sqlite.exec(APP_V3_USER_GLOBAL_MEMORY_SQL);
+      assertSchema(sqlite, dbPath, 3);
+      sqlite.pragma("user_version = 3");
+      sqlite.prepare(`
+        INSERT INTO app_migration_journal (version, name, checksum, applied_at)
+        VALUES (?, ?, ?, ?)
+      `).run(3, "user-global-memory", migrationChecksum(APP_V3_USER_GLOBAL_MEMORY_SQL), Date.now());
+    });
+    applyUserGlobalMemory.immediate();
   }
   assertCompatibleAppDatabase(sqlite, dbPath, { requireCurrentVersion: true });
 }

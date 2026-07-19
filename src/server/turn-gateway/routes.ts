@@ -16,6 +16,8 @@ import {
   ContextCheckCommandSchema,
   ConversationReadCommandSchema,
   ConversationSearchCommandSchema,
+  MemoryGetCommandSchema,
+  MemoryRecallCommandSchema,
   ScheduleWakeupCommandSchema,
   TaskAssignCommandSchema,
   TaskClaimCommandSchema,
@@ -90,7 +92,7 @@ async function readGatewayJson(req: IncomingMessage, maxBytes = 1_048_576): Prom
 
 function statusFor(error: HarnessError): number {
   if (error.code === "capability_inactive" || error.code === "capability_expired" || error.code === "capability_revoked") return 401;
-  if (error.code === "capability_scope_denied" || error.code === "reply_target_denied") return 403;
+  if (error.code === "capability_scope_denied" || error.code === "reply_target_denied" || error.code === "disclosure_denied") return 403;
   return 409;
 }
 
@@ -173,6 +175,9 @@ export async function handleTurnGateway(
         idempotencyKey: body.operationKey,
         body: body.body,
         attachmentIds: body.attachmentIds,
+        sourceRefs: body.sourceRefs,
+        disclosureGrantId: body.disclosureGrantId,
+        allowedDisclosureGrantIds: claims.disclosureGrantIds,
         attachmentActivationId: claims.activationId,
         handledInputIds,
         writePrecondition: capabilityGateway(claims.spaceId).writePrecondition(claims, "turn.reply"),
@@ -226,6 +231,18 @@ export async function handleTurnGateway(
       const body = ConversationSearchCommandSchema.parse(await readGatewayJson(req));
       const { claims } = authorize(req, "conversation.search");
       sendJson(res, 200, capabilityGateway(claims.spaceId).conversationSearch(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/memory/recall" && method === "POST") {
+      const body = MemoryRecallCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "memory.read");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).memoryRecall(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/memory/get" && method === "POST") {
+      const body = MemoryGetCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "memory.read");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).memoryGet(claims, body));
       return true;
     }
     if (url.pathname === "/agent-gateway/capability/describe" && method === "GET") {

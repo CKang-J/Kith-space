@@ -1,7 +1,7 @@
 import { getTableColumns, getTableName, type Table } from "drizzle-orm";
 import * as schema from "./schema.js";
 
-export const SPACE_DATABASE_SCHEMA_VERSION = 6;
+export const SPACE_DATABASE_SCHEMA_VERSION = 7;
 export const MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION = 2;
 
 export interface WorkspaceMigrationHistoryEntry {
@@ -20,6 +20,7 @@ export const WORKSPACE_MIGRATION_HISTORY: readonly WorkspaceMigrationHistoryEntr
   { version: 6, tag: "0005_agent_durable_turns", createdAt: 1784458418697, hash: "25ec3ae6d1c99b89fbeacb6a69228ca9bf910974d78ab2b18512fea3e833a656" },
   { version: 6, tag: "0006_legacy_dispatch_recovery", createdAt: 1784467852894, hash: "e0f08a473e9e545d5d278fd75f02c0ce4bc3dc7b2858de0652a852cefa14f979" },
   { version: 6, tag: "0007_temporary_attachment_lifecycle", createdAt: 1784472700000, hash: "d8b340abb27d9ce11dd473272ca6ab086d9d10d30f7cbbdb8684ff5f24c9c887" },
+  { version: 7, tag: "0008_episodic_memory_core", createdAt: 1784474300000, hash: "224fda4ad7f22265faea852d49250993286ab350543af1bb6e81a63ebdeafe77" },
 ];
 
 /** Immutable v2 baseline. Later schema entries are layered on explicitly below. */
@@ -111,6 +112,17 @@ const TABLES_BY_MIGRATION = new Map<string, Array<[string, string[]]>>([
       "idempotency_key", "source_turn_id", "lease_owner", "lease_expires_at", "created_at", "fired_at",
     ]],
   ]],
+  ["0008_episodic_memory_core", [
+    ["episodic_memories", ["id", "space_id", "owner_agent_id", "scope", "kind", "subject_ref_json", "subject_key", "predicate_key", "current_revision", "status", "confidence_millis", "importance_millis", "sensitivity", "disclosure", "valid_from", "valid_to", "source_access", "deletion_state", "row_version", "created_by_json", "updated_by_json", "created_at", "updated_at"]],
+    ["episodic_memory_revisions", ["memory_id", "revision", "canonical_text", "internal_summary", "shareable_summary", "content_hmac", "sensitivity", "disclosure", "valid_from", "valid_to", "created_by_json", "created_at"]],
+    ["memory_evidence", ["id", "memory_id", "memory_revision", "source_space_id", "source_kind", "source_id", "source_surface_id", "visibility_at_occurrence", "asserted_by_json", "quoted_from_json", "claim_type", "memory_policy", "excerpt_hmac", "occurred_at"]],
+    ["memory_relations", ["id", "from_memory_id", "from_revision", "to_memory_id", "to_revision", "relation_type", "created_by_json", "created_at"]],
+    ["memory_tags", ["memory_id", "tag"]],
+    ["memory_suppressions", ["id", "scope", "owner_agent_id", "source_kind", "source_id", "claim_hmac", "status", "created_by_json", "created_at", "revoked_at"]],
+    ["memory_mutations", ["id", "memory_id", "action", "idempotency_key", "request_hash", "result_ref_json", "actor_json", "created_at"]],
+    ["memory_lexical_terms", ["memory_id", "term"]],
+    ["memory_fts", ["memory_id", "lexical_text", "cjk_bigrams", "cjk_trigrams"]],
+  ]],
 ]);
 
 const ADDITIONS_BY_MIGRATION = new Map<string, Array<[string, string]>>([
@@ -175,6 +187,11 @@ export function requiredSpaceIndexes(version: number, migrationCount?: number): 
     ] : []),
     ...(tags.has("0006_legacy_dispatch_recovery") ? ["dispatch_wakes_status_created_idx"] : []),
     ...(tags.has("0007_temporary_attachment_lifecycle") ? ["attachments_upload_state_expiry_idx"] : []),
+    ...(tags.has("0008_episodic_memory_core") ? [
+      "episodic_memories_claim_idx", "episodic_memories_recall_idx", "memory_evidence_memory_idx",
+      "memory_evidence_source_uniq", "memory_relations_uniq", "memory_tags_tag_idx",
+      "memory_suppressions_uniq", "memory_mutations_key_uniq", "memory_lexical_terms_term_idx",
+    ] : []),
   ];
 }
 
@@ -208,6 +225,21 @@ export function requiredSpaceForeignKeys(version: number, migrationCount?: numbe
       { table: "session_checklist_items", from: "runtime_session_id", targetTable: "runtime_sessions", onDelete: "CASCADE" },
       { table: "session_wakeups", from: "runtime_session_id", targetTable: "runtime_sessions", onDelete: "CASCADE" },
     ] : []),
+    ...(tags.has("0008_episodic_memory_core") ? [
+      { table: "episodic_memories", from: "space_id", targetTable: "spaces", onDelete: "CASCADE" },
+      { table: "episodic_memories", from: "owner_agent_id", targetTable: "agents", onDelete: "CASCADE" },
+      { table: "episodic_memories", from: "id", targetTable: "episodic_memory_revisions", onDelete: "NO ACTION" },
+      { table: "episodic_memories", from: "current_revision", targetTable: "episodic_memory_revisions", onDelete: "NO ACTION" },
+      { table: "episodic_memory_revisions", from: "memory_id", targetTable: "episodic_memories", onDelete: "CASCADE" },
+      { table: "memory_evidence", from: "memory_id", targetTable: "episodic_memories", onDelete: "CASCADE" },
+      { table: "memory_evidence", from: "memory_revision", targetTable: "episodic_memory_revisions", onDelete: "CASCADE" },
+      { table: "memory_relations", from: "from_memory_id", targetTable: "episodic_memories", onDelete: "CASCADE" },
+      { table: "memory_relations", from: "to_memory_id", targetTable: "episodic_memories", onDelete: "CASCADE" },
+      { table: "memory_relations", from: "from_revision", targetTable: "episodic_memory_revisions", onDelete: "CASCADE" },
+      { table: "memory_relations", from: "to_revision", targetTable: "episodic_memory_revisions", onDelete: "CASCADE" },
+      { table: "memory_tags", from: "memory_id", targetTable: "episodic_memories", onDelete: "CASCADE" },
+      { table: "memory_lexical_terms", from: "memory_id", targetTable: "episodic_memories", onDelete: "CASCADE" },
+    ] : []),
   ];
 }
 
@@ -217,6 +249,7 @@ const CURRENT_SCHEMA = new Map<string, string[]>(
     Object.values(getTableColumns(table)).map((column) => column.name),
   ]),
 );
+const VIRTUAL_TABLES = new Set(["memory_fts"]);
 const CURRENT_MANIFEST = requiredSpaceSchema(SPACE_DATABASE_SCHEMA_VERSION);
 for (const [table, columns] of CURRENT_SCHEMA) {
   const registered = CURRENT_MANIFEST.get(table);
@@ -225,5 +258,7 @@ for (const [table, columns] of CURRENT_SCHEMA) {
   }
 }
 for (const table of CURRENT_MANIFEST.keys()) {
-  if (!CURRENT_SCHEMA.has(table)) throw new Error(`workspace schema history contains removed table ${table}`);
+  if (!CURRENT_SCHEMA.has(table) && !VIRTUAL_TABLES.has(table)) {
+    throw new Error(`workspace schema history contains removed table ${table}`);
+  }
 }

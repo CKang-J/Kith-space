@@ -38,6 +38,11 @@ register("session.context_check", "Read only the authoritative active-turn input
 }, "GET", (input) => `/agent-gateway/turn/context?refresh=${input.refresh === true ? "true" : "false"}`);
 register("turn.reply", "Commit a server-targeted Chat reply and settle the listed input obligations.", {
   schemaVersion: z.literal(1), body: z.string(), attachmentIds: z.array(z.string().min(1)).max(20).default([]),
+  sourceRefs: z.array(z.object({
+    sourceKind: z.string().min(1), sourceId: z.string().min(1), sourceRevision: z.number().int().nonnegative().nullable(),
+    projection: z.enum(["canonical", "internal_summary", "shareable_summary", "ref_only"]),
+  }).strict()).max(20).default([]),
+  disclosureGrantId: z.string().min(1).optional(),
   handledInputIds: z.array(z.string().min(1)).min(1).max(50), operationKey: z.string().min(1).max(128),
 }, "POST", "/agent-gateway/turn/reply");
 register("turn.cede", "Cede optional inputs with an explicit reason.", {
@@ -71,6 +76,12 @@ register("conversation.read", "Read an ACL-checked conversation and audit the la
 register("conversation.search", "Search ACL-checked current Agent conversations and audit returned sources.", {
   query: z.string().min(1).max(500), limit: z.number().int().min(1).max(50).default(20),
 }, "POST", "/agent-gateway/conversation/search");
+register("memory.recall", "Recall disclosure-projected episodic memory for the active output surface.", {
+  query: z.string().min(1).max(500), includeContinuity: z.boolean().default(true),
+}, "POST", "/agent-gateway/memory/recall");
+register("memory.get", "Get one accessible episodic-memory revision by opaque id.", {
+  memoryId: z.string().min(1).max(128),
+}, "POST", "/agent-gateway/memory/get");
 register("task.list", "List tasks in one currently accessible channel.", {
   channel: z.string().min(1),
 }, "POST", "/agent-gateway/task/list");

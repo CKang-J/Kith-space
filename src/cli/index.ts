@@ -92,15 +92,20 @@ turn.command("context").description("show the authoritative inputs and server-ow
 turn.command("reply").description("commit one server-targeted reply; body is read from UTF-8 stdin")
   .requiredOption("--input <ids>", "handled delivery input ids, comma-separated")
   .option("--attach <ids>", "temporary attachment ids, comma-separated")
+  .option("--source-ref <json...>", "audited source refs as JSON objects")
+  .option("--disclosure-grant <id>", "Human-issued one-shot disclosure grant")
   .option("--idempotency-key <key>", "stable retry key", "reply:primary")
   .action(async (opts) => {
     const body = (await readUtf8Stdin()).trim();
     const handledInputIds = String(opts.input).split(",").map((value) => value.trim()).filter(Boolean);
     const attachmentIds = opts.attach ? String(opts.attach).split(",").map((value) => value.trim()).filter(Boolean) : [];
+    const sourceRefs = (opts.sourceRef ?? []).map((value: string) => JSON.parse(value));
     const data = await brokerApi("POST", "/agent-gateway/turn/reply", {
       schemaVersion: 1,
       body,
       attachmentIds,
+      sourceRefs,
+      ...(opts.disclosureGrant ? { disclosureGrantId: opts.disclosureGrant } : {}),
       handledInputIds,
       operationKey: opts.idempotencyKey,
     });
@@ -184,6 +189,23 @@ conversation.command("read").requiredOption("--channel-id <id>").option("--limit
     });
     for (const message of data.messages ?? []) console.log(`[${message.seq}] @${message.senderName}: ${message.content} (${String(message.id).slice(0, 8)})`);
   });
+
+const memory = program.command("memory").description("disclosure-safe episodic memory queries");
+memory.command("recall").requiredOption("--query <query>").option("--no-continuity")
+  .action(async (opts) => {
+    const data = await brokerApi("POST", "/agent-gateway/memory/recall", {
+      query: opts.query,
+      includeContinuity: opts.continuity !== false,
+    });
+    for (const item of data.results ?? []) {
+      console.log(`[${item.scope}:${item.projection}] ${item.content ?? `(reference ${item.memoryId})`} (id=${item.memoryId} rev=${item.memoryRevision})`);
+    }
+  });
+memory.command("get").requiredOption("--id <memoryId>").action(async (opts) => {
+  const data = await brokerApi("POST", "/agent-gateway/memory/get", { memoryId: opts.id });
+  const item = data.memory;
+  console.log(`[${item.scope}:${item.projection}] ${item.content ?? `(reference ${item.memoryId})`} (id=${item.memoryId} rev=${item.memoryRevision})`);
+});
 conversation.command("search").requiredOption("--query <query>").option("--limit <n>", "number of results", "20")
   .action(async (opts) => {
     const data = await brokerApi("POST", "/agent-gateway/conversation/search", { query: opts.query, limit: Number(opts.limit) });

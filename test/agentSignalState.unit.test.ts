@@ -66,6 +66,11 @@ test("agent lifecycle control targets the one local runtime worker", () => {
   );
   assert.match(
     coreSrc,
+    /if \(clearAgentMemory\) \{\s*clearAgentPrivateMemory\(spaceId, agentId\);\s*\}/,
+    "full reset should clear Agent-private structured memory through the Memory lifecycle module",
+  );
+  assert.match(
+    coreSrc,
     /sendAgentControl\(target, \{ type: "agent:profile", agentId, spaceId: target\.spaceId, workspaceRoot: target\.workspaceRoot, displayName, description: description \?\? null \}\)/,
     "profile sync should send resolved Space paths to the local worker",
   );

@@ -8,6 +8,8 @@ import { closeSpaceDb, dbForSpace, registerSpace, schema, unregisterSpace } from
 import { kithSpaceHome } from "../paths.js";
 import { MAX_TURN_EVENT_AGGREGATE_BYTES, TurnLedger } from "./turnLedger.js";
 import { TurnOutputService } from "./turnOutputService.js";
+import { DisclosureGrantService } from "../memory/disclosureGrantService.js";
+import { EpisodicMemoryService } from "../memory/episodicMemoryService.js";
 
 async function fixture() {
   const spaceId = randomUUID();
@@ -184,6 +186,106 @@ test("reply rolls back the message when an attachment is foreign or already boun
     assert.equal(f.db.select().from(schema.messages).where(eq(schema.messages.producedByTurnId, f.turnId)).all().length, 0);
     assert.equal(f.db.select().from(schema.turnOperations).where(eq(schema.turnOperations.idempotencyKey, "reply:foreign-attachment")).get(), undefined);
     assert.equal(f.db.select().from(schema.attachments).where(eq(schema.attachments.id, foreign.id)).get()?.messageId, null);
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("private audited sources require an exact consume-once Human disclosure grant", async () => {
+  const f = await fixture();
+  try {
+    const sourceChannelId = randomUUID();
+    f.db.insert(schema.channels).values({ id: sourceChannelId, spaceId: f.spaceId, name: "private-source", type: "private" }).run();
+    f.db.insert(schema.channelAgentMembers).values({ channelId: sourceChannelId, agentId: f.agentId }).run();
+    const sourceMessageId = randomUUID();
+    f.db.insert(schema.messages).values({
+      id: sourceMessageId, seq: await nextSeq(f.spaceId), spaceId: f.spaceId, channelId: sourceChannelId,
+      senderType: "human", senderId: "human", senderName: "Human", content: "私密事实", memoryPolicy: "eligible",
+    }).run();
+    const memory = new EpisodicMemoryService(f.spaceId, f.db).create({
+      schemaVersion: 1, scope: "agent_private", ownerAgentId: f.agentId, kind: "fact",
+      subjectRef: { kind: "human", id: "human" }, subjectKey: "human", predicateKey: "private_fact",
+      canonicalText: "私密事实", internalSummary: "私密摘要", shareableSummary: null, status: "active",
+      confidence: 1, importance: 1, sensitivity: "private", disclosure: "explicit_only",
+      validFrom: null, validTo: null, tags: [], actor: { type: "human", id: "human" }, idempotencyKey: randomUUID(),
+      evidence: [{ sourceSpaceId: f.spaceId, sourceKind: "message", sourceId: sourceMessageId,
+        sourceSurfaceId: sourceChannelId, visibilityAtOccurrence: "private", assertedBy: { type: "human", id: "human" },
+        quotedFrom: null, claimType: "human_assertion", memoryPolicy: "human_manual", excerpt: "私密事实", occurredAt: Date.now() }],
+    });
+    const sourceRefs = [{ sourceKind: "memory", sourceId: memory.memory.id, sourceRevision: 1, projection: "canonical" as const }];
+    f.db.insert(schema.turnContextSources).values({
+      turnId: f.turnId, phase: "later_query", ordinal: 0, sourceKind: "memory", sourceId: sourceRefs[0]!.sourceId,
+      sourceRevision: 1, visibility: "dm", disclosureProjection: "ref_only", injectionMode: "reference",
+      reason: "memory_get", tokenEstimate: 0, contentHmac: "lineage",
+    }).run();
+    await assert.rejects(() => f.output.reply({
+      turnId: f.turnId, attemptId: f.attemptId, idempotencyKey: "reply:no-grant", body: "引用私密事实",
+      sourceRefs, handledInputIds: [f.deliveries[0]!],
+    }), /requires an active Human disclosure grant/);
+    assert.equal(f.db.select().from(schema.messages).where(eq(schema.messages.producedByTurnId, f.turnId)).all().length, 0);
+
+    const grant = new DisclosureGrantService(f.spaceId, f.db).issue(f.turnId, {
+      body: "引用私密事实", sourceRefs, allowedProjection: "canonical", ttlSeconds: 120,
+    }, "human");
+    const message = await f.output.reply({
+      turnId: f.turnId, attemptId: f.attemptId, idempotencyKey: "reply:with-grant", body: "引用私密事实",
+      sourceRefs, disclosureGrantId: grant.id, allowedDisclosureGrantIds: [grant.id], handledInputIds: [f.deliveries[0]!],
+    });
+    assert.equal(message.content, "引用私密事实");
+    assert.equal(f.db.select().from(schema.disclosureGrants).where(eq(schema.disclosureGrants.id, grant.id)).get()?.status, "consumed");
+    assert.equal(f.db.select().from(schema.disclosureGrants).where(eq(schema.disclosureGrants.id, grant.id)).get()?.consumedAt instanceof Date, true);
+    assert.deepEqual(f.db.select().from(schema.turnOperations).where(eq(schema.turnOperations.idempotencyKey, "reply:with-grant")).get()?.resultRef, {
+      outputId: f.db.select().from(schema.turnOutputs).where(eq(schema.turnOutputs.messageId, message.id)).get()?.id,
+      messageId: message.id,
+      sourceRefs,
+      disclosureGrantId: grant.id,
+    });
+  } finally {
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("reply rechecks memory source ACL after a Human grant and before consuming it", async () => {
+  const f = await fixture();
+  try {
+    const sourceChannelId = randomUUID();
+    f.db.insert(schema.channels).values({ id: sourceChannelId, spaceId: f.spaceId, name: "revoked-source", type: "private" }).run();
+    f.db.insert(schema.channelAgentMembers).values({ channelId: sourceChannelId, agentId: f.agentId }).run();
+    const sourceMessageId = randomUUID();
+    f.db.insert(schema.messages).values({
+      id: sourceMessageId, seq: await nextSeq(f.spaceId), spaceId: f.spaceId, channelId: sourceChannelId,
+      senderType: "human", senderId: "human", senderName: "Human", content: "稍后撤权", memoryPolicy: "eligible",
+    }).run();
+    const memory = new EpisodicMemoryService(f.spaceId, f.db).create({
+      schemaVersion: 1, scope: "agent_private", ownerAgentId: f.agentId, kind: "fact",
+      subjectRef: { kind: "human", id: "human" }, subjectKey: "human", predicateKey: "revoked_fact",
+      canonicalText: "稍后撤权", internalSummary: "撤权摘要", shareableSummary: null, status: "active",
+      confidence: 1, importance: 1, sensitivity: "private", disclosure: "explicit_only",
+      validFrom: null, validTo: null, tags: [], actor: { type: "human", id: "human" }, idempotencyKey: randomUUID(),
+      evidence: [{ sourceSpaceId: f.spaceId, sourceKind: "message", sourceId: sourceMessageId,
+        sourceSurfaceId: sourceChannelId, visibilityAtOccurrence: "private", assertedBy: { type: "human", id: "human" },
+        quotedFrom: null, claimType: "human_assertion", memoryPolicy: "human_manual", excerpt: "稍后撤权", occurredAt: Date.now() }],
+    });
+    const sourceRefs = [{ sourceKind: "memory", sourceId: memory.memory.id, sourceRevision: 1, projection: "canonical" as const }];
+    f.db.insert(schema.turnContextSources).values({
+      turnId: f.turnId, phase: "later_query", ordinal: 0, sourceKind: "memory", sourceId: memory.memory.id,
+      sourceRevision: 1, visibility: "private", disclosureProjection: "ref_only", injectionMode: "reference",
+      reason: "memory_get", tokenEstimate: 0, contentHmac: memory.revision.contentHmac,
+    }).run();
+    const grant = new DisclosureGrantService(f.spaceId, f.db).issue(f.turnId, {
+      body: "不得发送", sourceRefs, allowedProjection: "canonical", ttlSeconds: 120,
+    }, "human");
+    f.db.delete(schema.channelAgentMembers).where(and(
+      eq(schema.channelAgentMembers.channelId, sourceChannelId), eq(schema.channelAgentMembers.agentId, f.agentId),
+    )).run();
+    await assert.rejects(() => f.output.reply({
+      turnId: f.turnId, attemptId: f.attemptId, idempotencyKey: "reply:revoked-source", body: "不得发送",
+      sourceRefs, disclosureGrantId: grant.id, allowedDisclosureGrantIds: [grant.id], handledInputIds: [f.deliveries[0]!],
+    }), /revoked, deleted, or became unavailable/);
+    assert.equal(f.db.select().from(schema.disclosureGrants).where(eq(schema.disclosureGrants.id, grant.id)).get()?.status, "active");
+    assert.equal(f.db.select().from(schema.messages).where(eq(schema.messages.producedByTurnId, f.turnId)).all().length, 0);
   } finally {
     closeSpaceDb(f.spaceId);
     unregisterSpace(f.spaceId);

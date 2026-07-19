@@ -35,6 +35,8 @@ import { handleMessages } from "./messages.js";
 import { handleTasks } from "./tasks.js";
 import { handleDispatch } from "./dispatch.js";
 import { handleTurns } from "./turns.js";
+import { handleMemories } from "./memories.js";
+import { handleDisclosureGrants } from "./disclosureGrants.js";
 
 export async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, method: string): Promise<boolean> {
   const p = url.pathname;
@@ -76,6 +78,8 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (await handleChannels(spaceCtx)) return true;
   if (await handleMessages(spaceCtx)) return true;
   if (await handleTurns(spaceCtx)) return true;
+  if (await handleDisclosureGrants(spaceCtx)) return true;
+  if (await handleMemories(spaceCtx)) return true;
   if (await handleAttachments(spaceCtx)) return true;
   if (await handleSpacePreferences(spaceCtx)) return true;
   if (await handleDispatch(spaceCtx)) return true;

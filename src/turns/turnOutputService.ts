@@ -20,6 +20,10 @@ import {
 } from "../agents/agentResponseSettings.js";
 import { createLogger } from "../log.js";
 import { reserveDispatchWakeInTransaction } from "../dispatch/dispatchReservation.js";
+import type { DisclosureSourceRef } from "../capabilities/contracts.js";
+import { disclosureActionDigest } from "../memory/disclosureGrantService.js";
+import { EpisodicMemoryService } from "../memory/episodicMemoryService.js";
+import { UserGlobalMemoryService } from "../memory/userGlobalMemoryService.js";
 
 export interface TurnOutputEventSink {
   publish(spaceId: string, event: unknown): Promise<void>;
@@ -64,15 +68,19 @@ export class TurnOutputService {
     body: string;
     attachmentIds?: string[];
     attachmentActivationId?: string;
+    sourceRefs?: DisclosureSourceRef[];
+    disclosureGrantId?: string;
+    allowedDisclosureGrantIds?: string[];
     handledInputIds: string[];
     writePrecondition?: (tx: SpaceTransaction, channelId: string) => void;
   }): Promise<typeof schema.messages.$inferSelect> {
     const handledInputIds = [...new Set(input.handledInputIds)];
     const attachmentIds = [...new Set(input.attachmentIds ?? [])];
+    const sourceRefs = input.sourceRefs ?? [];
     const body = input.body.trim();
     if (!body && !attachmentIds.length) throw new HarnessError("output_missing", "reply body or attachments are required");
     if (!handledInputIds.length) throw new HarnessError("required_input_unresolved", "reply must identify handled inputs");
-    const hash = requestHash({ body, attachmentIds, handledInputIds });
+    const hash = requestHash({ body, attachmentIds, handledInputIds, sourceRefs, disclosureGrantId: input.disclosureGrantId ?? null });
     const existing = this.existingReply(input.turnId, input.idempotencyKey, hash);
     if (existing) {
       await this.runPostCommit("recover legacy mentions", () => this.events.recoverLegacyMentions?.(this.spaceId) ?? Promise.resolve());
@@ -96,6 +104,15 @@ export class TurnOutputService {
         eq(schema.channels.spaceId, this.spaceId),
       )).get();
       if (!surface) throw new HarnessError("reply_target_denied", "reply surface no longer exists", { turnId: turn.id });
+      this.authorizeDisclosureInTransaction(tx, {
+        turnId: turn.id,
+        agentId: agent.id,
+        targetSurfaceId: session.surfaceId,
+        body,
+        sourceRefs,
+        disclosureGrantId: input.disclosureGrantId,
+        allowedDisclosureGrantIds: input.allowedDisclosureGrantIds ?? [],
+      });
       const attachments = attachmentIds.length ? tx.select().from(schema.attachments)
         .where(inArray(schema.attachments.id, attachmentIds)).all() : [];
       if (attachments.length !== attachmentIds.length || attachments.some((attachment) =>
@@ -363,7 +380,12 @@ export class TurnOutputService {
         .where(inArray(schema.agentDeliveryItems.id, deliveries.map((delivery) => delivery.id))).run();
       tx.update(schema.turnOperations).set({
         status: "committed",
-        resultRef: { outputId: output.id, messageId: created.id },
+        resultRef: {
+          outputId: output.id,
+          messageId: created.id,
+          sourceRefs,
+          disclosureGrantId: input.disclosureGrantId ?? null,
+        },
         updatedAt: now,
       }).where(eq(schema.turnOperations.id, operation.id)).run();
       tx.update(schema.channels).set({ lastMessageAt: now }).where(eq(schema.channels.id, session.surfaceId)).run();
@@ -416,6 +438,70 @@ export class TurnOutputService {
     }
     await this.runPostCommit("schedule durable mentions", () => this.events.schedulePending?.(this.spaceId) ?? Promise.resolve());
     return message;
+  }
+
+  private authorizeDisclosureInTransaction(
+    tx: SpaceTransaction,
+    input: {
+      turnId: string;
+      agentId: string;
+      targetSurfaceId: string;
+      body: string;
+      sourceRefs: DisclosureSourceRef[];
+      disclosureGrantId?: string;
+      allowedDisclosureGrantIds: string[];
+    },
+  ): void {
+    if (!input.sourceRefs.length) return;
+    const audited = input.sourceRefs.map((ref) => {
+      const row = tx.select().from(schema.turnContextSources).where(and(
+        eq(schema.turnContextSources.turnId, input.turnId),
+        eq(schema.turnContextSources.sourceKind, ref.sourceKind),
+        eq(schema.turnContextSources.sourceId, ref.sourceId),
+      )).all().find((item) => item.sourceRevision === ref.sourceRevision);
+      if (!row) throw new HarnessError("disclosure_denied", "reply source is not in the turn audit", { sourceId: ref.sourceId });
+      return { ref, row };
+    });
+    const workspaceMemory = new EpisodicMemoryService(this.spaceId, this.db, this.now);
+    const userGlobalMemory = new UserGlobalMemoryService(undefined, this.now);
+    for (const { ref } of audited) {
+      const accessible = ref.sourceKind === "memory"
+        ? workspaceMemory.hasSourceAccessInTransaction(tx, ref.sourceId, input.agentId)
+        : ref.sourceKind === "user_global_memory"
+          ? userGlobalMemory.hasSourceAccess(ref.sourceId, this.spaceId, input.agentId, tx)
+          : true;
+      if (!accessible) {
+        throw new HarnessError("disclosure_denied", "reply source was revoked, deleted, or became unavailable", {
+          sourceKind: ref.sourceKind,
+          sourceId: ref.sourceId,
+        });
+      }
+    }
+    const needsGrant = audited.filter(({ ref, row }) => ref.projection !== "ref_only" && (
+      ref.projection === "internal_summary"
+      || (ref.projection !== row.disclosureProjection
+        && !(row.visibility === "public" && ref.projection === "canonical"))
+    ));
+    if (!needsGrant.length) return;
+    if (!input.disclosureGrantId || !input.allowedDisclosureGrantIds.includes(input.disclosureGrantId)) {
+      throw new HarnessError("disclosure_denied", "reply requires an active Human disclosure grant");
+    }
+    const grant = tx.select().from(schema.disclosureGrants).where(eq(schema.disclosureGrants.id, input.disclosureGrantId)).get();
+    if (!grant || grant.turnId !== input.turnId || grant.targetSurfaceId !== input.targetSurfaceId
+      || grant.status !== "active" || grant.expiresAt.getTime() <= this.now()) {
+      throw new HarnessError("disclosure_denied", "disclosure grant is inactive, expired, or targets another surface");
+    }
+    if (needsGrant.some(({ ref }) => ref.projection !== grant.allowedProjection)) {
+      throw new HarnessError("disclosure_denied", "disclosure grant does not allow the requested projection");
+    }
+    if (canonicalJson(grant.sourceRefs) !== canonicalJson(input.sourceRefs)
+      || grant.actionDigest !== disclosureActionDigest(input.body, input.sourceRefs)) {
+      throw new HarnessError("disclosure_denied", "disclosure grant does not match this reply action");
+    }
+    const consumed = tx.update(schema.disclosureGrants).set({ status: "consumed", consumedAt: new Date(this.now()) }).where(and(
+      eq(schema.disclosureGrants.id, grant.id), eq(schema.disclosureGrants.status, "active"),
+    )).run();
+    if (!consumed.changes) throw new HarnessError("disclosure_denied", "disclosure grant was already consumed");
   }
 
   private async runPostCommit(label: string, operation: () => Promise<void>): Promise<void> {

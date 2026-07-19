@@ -10,6 +10,8 @@ import type { TurnCapabilityClaims } from "./contracts.js";
 import { CapabilityGateway } from "./capabilityGateway.js";
 import { configureTaskGatewayPort, taskGatewayPort } from "./taskGatewayPort.js";
 import "../server/core.js";
+import { EpisodicMemoryService } from "../memory/episodicMemoryService.js";
+import { UserGlobalMemoryService } from "../memory/userGlobalMemoryService.js";
 
 test("Capability Gateway owns refresh, audited queries, checklist, progress and short wake semantics", async () => {
   const spaceId = randomUUID();
@@ -69,7 +71,7 @@ test("Capability Gateway owns refresh, audited queries, checklist, progress and 
       schemaVersion: 1, activationId: "activation", turnId, attemptId, sessionId, sessionGeneration: 1,
       workerGeneration: 4, spaceId, agentId, allowedOutputSurfaceIds: [channelId], allowedInputIds: [delivery.id],
       seenWatermarks: [{ channelId, throughSeq: 1 }],
-      scopes: ["context.check", "turn.progress", "session.checklist", "session.schedule_wakeup", "conversation.read", "conversation.search", "turn.get", "task.read", "task.write", "capability.describe"],
+      scopes: ["context.check", "turn.progress", "session.checklist", "session.schedule_wakeup", "conversation.read", "conversation.search", "memory.read", "turn.get", "task.read", "task.write", "capability.describe"],
       disclosureGrantIds: [], expiresAt: now + 600_000,
     };
     const gateway = new CapabilityGateway(spaceId, db, () => now);
@@ -96,6 +98,65 @@ test("Capability Gateway owns refresh, audited queries, checklist, progress and 
       eq(schema.turnContextSources.turnId, turnId),
       eq(schema.turnContextSources.sourceId, privateMessage.id),
     )).get()?.disclosureProjection, "ref_only");
+
+    const episodic = new EpisodicMemoryService(spaceId, db, () => now).create({
+      schemaVersion: 1,
+      scope: "agent_private",
+      ownerAgentId: agentId,
+      kind: "preference",
+      subjectRef: { kind: "human", id: "human" },
+      subjectKey: "human",
+      predicateKey: "preferred_output",
+      canonicalText: "Use concise Chinese answers in private conversations",
+      internalSummary: "Human prefers concise answers.",
+      shareableSummary: "Human 偏好简洁回答。",
+      status: "active",
+      confidence: 1,
+      importance: 1,
+      sensitivity: "private",
+      disclosure: "shareable_summary",
+      validFrom: null,
+      validTo: null,
+      tags: ["concise"],
+      evidence: [{
+        sourceSpaceId: null,
+        sourceKind: "message",
+        sourceId: privateMessage.id,
+        sourceSurfaceId: privateId,
+        visibilityAtOccurrence: "private",
+        assertedBy: { type: "human", id: "human" },
+        quotedFrom: null,
+        claimType: "manual",
+        memoryPolicy: "human_manual",
+        excerpt: privateMessage.content,
+        occurredAt: now,
+      }],
+      actor: { type: "human", id: "human" },
+      idempotencyKey: "gateway-memory-create",
+    });
+    const memoryRecall = gateway.memoryRecall(claims, { query: "concise answers", includeContinuity: true });
+    assert.equal(memoryRecall.results[0]?.memoryId, episodic.memory.id);
+    assert.equal(memoryRecall.results[0]?.projection, "shareable_summary");
+    const globalMemory = new UserGlobalMemoryService(undefined, () => now).create({
+      schemaVersion: 1, scope: "user_global", ownerAgentId: null, kind: "preference",
+      subjectRef: { kind: "human", id: "human" }, subjectKey: "human", predicateKey: "global_style",
+      canonicalText: "Always include a compact conclusion.", internalSummary: null,
+      shareableSummary: "Human 偏好简短结论。", status: "active", confidence: 1, importance: 1,
+      sensitivity: "normal", disclosure: "shareable_summary", validFrom: now, validTo: now + 1_000, tags: [],
+      evidence: [{ sourceSpaceId: null, sourceKind: "manual", sourceId: randomUUID(), sourceSurfaceId: null,
+        visibilityAtOccurrence: "local_file", assertedBy: { type: "human", id: "human" }, quotedFrom: null,
+        claimType: "manual", memoryPolicy: "human_manual", excerpt: "compact conclusion", occurredAt: now }],
+      actor: { type: "human", id: "human" }, idempotencyKey: randomUUID(),
+    });
+    assert.equal(gateway.memoryRecall(claims, { query: "unrelated lexical input", includeContinuity: false }).results
+      .some((item) => item.memoryId === globalMemory.memory.id), false);
+    assert.equal(gateway.memoryRecall(claims, { query: "unrelated lexical input", includeContinuity: true }).results
+      .some((item) => item.memoryId === globalMemory.memory.id), true);
+    assert.equal(gateway.memoryGet(claims, { memoryId: episodic.memory.id }).memory.content, "Human 偏好简洁回答。");
+    assert.equal(db.select().from(schema.turnContextSources).where(and(
+      eq(schema.turnContextSources.turnId, turnId),
+      eq(schema.turnContextSources.sourceId, episodic.memory.id),
+    )).get()?.sourceKind, "memory");
 
     const first = gateway.checklistUpsert(claims, {
       text: "Verify the answer", status: "in_progress", order: 1, idempotencyKey: "checklist:create",

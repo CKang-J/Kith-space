@@ -57,6 +57,13 @@
       "when": 1784472700000,
       "tag": "0007_temporary_attachment_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1784474300000,
+      "tag": "0008_episodic_memory_core",
+      "breakpoints": true
     }
   ]
 }

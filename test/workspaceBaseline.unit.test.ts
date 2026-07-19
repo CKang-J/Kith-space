@@ -13,7 +13,10 @@ import {
   unregisterSpace,
 } from "../src/db/index.ts";
 import { kithSpaceHome, workspaceDbFile } from "../src/paths.ts";
-import { WORKSPACE_MIGRATION_HISTORY } from "../src/db/spaceDatabaseSchemaHistory.ts";
+import {
+  SPACE_DATABASE_SCHEMA_VERSION,
+  WORKSPACE_MIGRATION_HISTORY,
+} from "../src/db/spaceDatabaseSchemaHistory.ts";
 
 function migration(version: number) {
   return WORKSPACE_MIGRATION_HISTORY.find((entry) => entry.version === version)!;
@@ -83,14 +86,21 @@ test("fresh Space database uses the Personal AgentOS baseline and seeds its Spac
       type: "channel",
       space_id: spaceId,
     }]);
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 6);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), SPACE_DATABASE_SCHEMA_VERSION);
+    assert.deepEqual((sqlite.prepare("PRAGMA index_info(memory_mutations_key_uniq)").all() as Array<{ name: string }>).map((row) => row.name), [
+      "actor_json", "idempotency_key",
+    ]);
+    const currentRevisionFks = sqlite.prepare("PRAGMA foreign_key_list(episodic_memories)").all() as Array<{ table: string; from: string }>;
+    assert.ok(currentRevisionFks.some((row) => row.table === "episodic_memory_revisions" && row.from === "current_revision"));
+    const evidenceFks = sqlite.prepare("PRAGMA foreign_key_list(memory_evidence)").all() as Array<{ table: string; from: string }>;
+    assert.ok(evidenceFks.some((row) => row.table === "episodic_memory_revisions" && row.from === "memory_revision"));
   } finally {
     sqlite.close();
     unregisterSpace(spaceId);
   }
 });
 
-test("schema version 2 Space database migrates to version 6 without being rejected as legacy", () => {
+test("schema version 2 Space database migrates to the current version without being rejected as legacy", () => {
   const spaceId = randomUUID();
   const rootPath = path.join(kithSpaceHome(), "workspace-v2-migration-test", spaceId);
   const dbPath = workspaceDbFile(rootPath);
@@ -111,7 +121,7 @@ test("schema version 2 Space database migrates to version 6 without being reject
 
   const sqlite = new Database(dbPath);
   try {
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 6);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), SPACE_DATABASE_SCHEMA_VERSION);
     assert.ok(columns(sqlite, "agents").includes("introduced_at"));
     assert.ok(columns(sqlite, "agents").includes("default_response_mode"));
     assert.ok(columns(sqlite, "human_channel_states").includes("notification_level"));
@@ -147,7 +157,7 @@ test("schema version 3 Space database migrates through the version-aware compati
 
   const sqlite = new Database(dbPath);
   try {
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 6);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), SPACE_DATABASE_SCHEMA_VERSION);
     assert.ok(columns(sqlite, "human_channel_states").includes("notification_level"));
     assert.ok(columns(sqlite, "agents").includes("default_response_mode"));
   } finally {
@@ -183,8 +193,8 @@ test("schema version 4 migrates response settings and the harness tables in plac
 
   const sqlite = new Database(dbPath);
   try {
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 6);
-    assert.equal(tables(sqlite).filter((table) => table !== "__drizzle_migrations").length, 34);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), SPACE_DATABASE_SCHEMA_VERSION);
+    assert.ok(tables(sqlite).includes("episodic_memories"));
     assert.equal(sqlite.prepare("SELECT default_response_mode FROM agents WHERE id = 'v4-agent'").pluck().get(), "active");
     assert.deepEqual(sqlite.prepare(`
       SELECT response_mode_override, ambient_wake_after_seq, mention_wake_after_seq, last_read_seq
@@ -230,7 +240,7 @@ test("schema version 5 preserves legacy Agent sessions while backfilling explici
 
   const sqlite = new Database(dbPath);
   try {
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 6);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), SPACE_DATABASE_SCHEMA_VERSION);
     assert.equal(sqlite.prepare("SELECT session_id FROM agents WHERE id = 'v5-agent'").pluck().get(), "legacy-global-session");
     assert.deepEqual(sqlite.prepare("SELECT mode, cutover_at FROM agent_harness_state WHERE agent_id = 'v5-agent'").get(), {
       mode: "legacy",
@@ -243,7 +253,7 @@ test("schema version 5 preserves legacy Agent sessions while backfilling explici
   }
 });
 
-test("the P-A10.1 schema v6 journal prefix migrates to the complete v6 durable harness", () => {
+test("the P-A10.1 schema v6 journal prefix migrates to the current durable harness", () => {
   const spaceId = randomUUID();
   const rootPath = path.join(kithSpaceHome(), "workspace-v6-prefix-test", spaceId);
   const dbPath = workspaceDbFile(rootPath);
@@ -269,7 +279,7 @@ test("the P-A10.1 schema v6 journal prefix migrates to the complete v6 durable h
 
   const sqlite = new Database(dbPath);
   try {
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 6);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), SPACE_DATABASE_SCHEMA_VERSION);
     assert.ok(tables(sqlite).includes("agent_delivery_items"));
     assert.ok(tables(sqlite).includes("turn_capability_activations"));
     assert.equal(sqlite.prepare("SELECT count(*) FROM __drizzle_migrations").pluck().get(), WORKSPACE_MIGRATION_HISTORY.length);
@@ -370,10 +380,31 @@ test("workspace migration journal rejects both missing and unexpected entries", 
     sqlite.close();
 
     try {
-      assert.throws(() => dbForSpace(spaceId), /migration journal that does not match schema version 6/);
+      assert.throws(
+        () => dbForSpace(spaceId),
+        new RegExp(`migration journal that does not match schema version ${SPACE_DATABASE_SCHEMA_VERSION}`),
+      );
     } finally {
       closeSpaceDb(spaceId);
       unregisterSpace(spaceId);
     }
+  }
+});
+
+test("current workspace rejects a missing episodic-memory FTS projection", () => {
+  const spaceId = randomUUID();
+  const rootPath = path.join(kithSpaceHome(), "workspace-missing-memory-fts", spaceId);
+  const dbPath = workspaceDbFile(rootPath);
+  registerSpace({ id: spaceId, name: "Missing memory FTS", slug: `missing-memory-fts-${spaceId}`, rootPath });
+  dbForSpace(spaceId);
+  closeSpaceDb(spaceId);
+  const sqlite = new Database(dbPath);
+  sqlite.exec("DROP TABLE memory_fts");
+  sqlite.close();
+  try {
+    assert.throws(() => dbForSpace(spaceId), /memory_fts/);
+  } finally {
+    closeSpaceDb(spaceId);
+    unregisterSpace(spaceId);
   }
 });

@@ -43,7 +43,7 @@
 | 27 | 频道全体提及 | Human 的规范 token `@all` 快照当前频道 Agent；主动/被动必回，静音不唤醒 |
 | 28 | Chat 壳层导航 | ChatOnly 使用左侧纵向模块入口；模块打开态使用 Dock；案例展示退役 |
 | 29 | 代码架构与性能语言 | 保留 Desktop/Core/Worker 与 TypeScript 主栈；P-A9.0–P-A9.7 的实现、最终门禁与一次独立只读终审已完成，Rust 只由性能证据触发 |
-| 30 | Agent Harness v2 | per-surface session + durable delivery/logical turn/attempt + Context Envelope + revisioned episodic memory + broker-backed MCP/CLI Gateway；P-A10.0–P-A10.4 已完成，P-A10.5–P-A10.7 实施中 |
+| 30 | Agent Harness v2 | per-surface session + durable delivery/logical turn/attempt + Context Envelope + revisioned episodic memory + broker-backed MCP/CLI Gateway；P-A10.0–P-A10.5 已完成，P-A10.6–P-A10.7 实施中 |
 
 ---
 
@@ -433,9 +433,9 @@
 
 ---
 
-## 决策 30：Agent Harness v2 采用 per-surface session、durable delivery/turn、Context Envelope 与双层记忆（提案）
+## 决策 30：Agent Harness v2 采用 per-surface session、durable delivery/turn、Context Envelope 与双层记忆
 
-**状态**：Accepted / Implementing。P-A10.0–P-A10.4 已完成迁移、schema v6、Runtime v2 bridge、per-surface registry、durable turn、server-owned direct-mention thread、Context Envelope、实时父级ACL、turn inspector与完整`kith-core` MCP/CLI Gateway；schema v7 memory和记忆管理UI尚未实施。
+**状态**：Accepted / Implementing。P-A10.0–P-A10.5 已完成迁移、workspace schema v7/app.db v3、Runtime v2 bridge、per-surface registry、durable turn、server-owned direct-mention thread、Context Envelope、实时父级ACL、turn inspector、完整`kith-core` MCP/CLI Gateway与revisioned episodic memory；advisor、记忆管理UI、snapshot/compaction telemetry尚未实施。
 
 **结论**：同一 Agent 的频道、Human-Agent DM 与话题使用独立、可恢复的 runtime session；automation 只保留未来扩展类型，P-A10 不启用。消息事务先逐 Agent 持久化 durable delivery item，scheduler 再按 target session 形成 logical turn；每次执行追加带 Worker generation/lease 的 attempt。Core 持久 Context Envelope、逐输入 obligation、operation/output、usage 与 reply/cede/fail 终态，Worker 只持可重建的 engine process/session handle。Human 顶层 direct mention 默认由服务端原子创建 root/thread/membership/delivery，并锁定 Agent reply target；模型 stdout 不直接成为消息。
 
@@ -468,6 +468,8 @@
 **P-A10.3 实施状态**：Human/Agent direct mention在消息事务内建立唯一thread与合法参与者，v2 `turn.reply`同样不能绕过该语义；root来源cursor保持父频道而session/output固定到thread，现有thread内只能加入已有父级访问权的Agent。mixed cutover中v2 mention只写durable delivery，legacy mention复用同一响应模式/水位线判定并只把actionable dispatch reservation与output同事务提交，由Conversation Module执行/重启扫描恢复；post-commit设置变化产生的确定性no-wake会原子退款预算，migrating消息由cutover backfill接管，不双消费；workspace v6第三个不可变journal前缀增加reserved wake恢复索引。`@all`不建thread，silent只获得terminal observe。Context Envelope保存current batch、root、root前as-of父频道快照、continuity profile、task/attachment/UI不可变snapshot、文件记忆索引ref、预算/omission和多source watermark；冻结frontier不吸收未绑定later delivery，required超8k按连续前缀拆到后续turn。app.db v2保存不出库的安装级HMAC key，删除source只剩不可逆tombstone。Gateway、Context assembly与output提交都重验当前membership；Human移除和Agent自助leave同事务失效普通child session/attempt/capability/wakeup，非父级task assignee使用带task ref与到期时间的`task_scoped`grant并在release/reassign/任务终态、admission前自然到期或运行中heartbeat越界时撤销。Agent持久回复通过`producedByTurnId`进入Context/Steps/Usage/Outcome抽屉，omitted/ref-only不返回正文；output surface在冻结watermark之后出现Human/其他Agent消息时返回`stale_context`。完整MCP与refresh留给P-A10.4。
 
 **P-A10.4 实施状态**：`CapabilityGateway`成为MCP与CLI Transport Adapter之后的共同领域入口，覆盖context refresh、server-owned reply/cede、progress/turn inspector、ACL约束的conversation read/search、surface checklist、short wake、capability describe，以及通过窄port复用既有Task Module的list/get/create/claim/update/assign/unclaim/report/deliver；两个Adapter复用冻结的canonical strict reply/cede schema、CAS/idempotency、崩溃reconciliation和operation ledger。Agent custom scopes决定reply、attachment、task与conversation能力；required turn缺少`message:send`时在runtime admission前失败。JSON POST先有界解析再授权，每个领域写事务内原子重验activation/lease/generation/实时scope/父级ACL，Core单写进程对同operation single-flight，create/report/deliver以operation ID精确reconcile。v2临时附件按turn/activation/owner/server-owned surface与一小时expiry持久化，reply与message原子绑定；25 MiB超限或批内任一失败清理本批对象，temporary/deleting/bound状态及启动/调度GC恢复文件/SQLite崩溃窗口。跨private/DM disclosure domain在P-A10.5策略引擎前read只给`ref_only`、search不形成关键词oracle。stable broker handle仍只在当前attempt activation内有权，常驻进程逐调用读取短时descriptor。later-query source/watermark追加审计并旋转freshness claim，原Envelope不改写。Runtime准备按文件存在性选择mode后执行真实stdio/list-tools探针，探针失败只在CLI可执行时降级，否则在外部模型启动前返回`mcp_bootstrap_failed`；实际MCP/CLI调用更新有界transport诊断。wake幂等键按turn命名空间，后续turn可正常再次调度。manual start只返回body-free逐surface inbox summary。真实Gateway fixture同时跑MCP、CLI client与CLI parser，并覆盖reply normalization/attachment/Task写；三家provider bootstrap在最终Desktop smoke前仍暂标`fixture_v2`，tool isolation、cwd relocation和compaction telemetry明确unsupported。P-A10.4未开放任意写Gateway，也未提前实现memory/H5/P-S1。
+
+**P-A10.5 实施状态**：workspace schema v7与app.db v3分别保存Space内和Human-only user-global episodic memory；canonical只指向append-only revision，复合revision FK、typed evidence/relation、tag、suppression、actor域幂等mutation ledger和normalized FTS均已落地。Human控制面支持CAS lifecycle、历史revision/relation审计、replacement pointer与suppression解除；secret和权威exclude source拒绝入库。两库continuity/query候选按统一score breakdown合并，读取与最终reply都重验message/turn/file生命周期、跨Space ACL和validity；mixed evidence使用最严格projection。forget以secure-delete+WAL truncate清除正文，Agent full reset/delete只清private结构化记忆。Context Envelope冻结revision/HMAC/projection/score/evidence，Agent通过`knowledge:read`约束的`memory.recall/get`读取；一次性grant固定turn/source revision/target/action digest/TTL并由reply事务consume-once。P-A10.5没有自动advisor或Human记忆面板；它们仍由P-A10.6实施。
 
 完整规格：`docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
 

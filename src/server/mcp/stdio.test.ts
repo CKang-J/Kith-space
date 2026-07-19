@@ -47,6 +47,8 @@ test("kith-core MCP and CLI client return the same Core domain result", async ()
     assert.ok(tools.tools.some((tool) => tool.name === "session.context_check"));
     assert.ok(tools.tools.some((tool) => tool.name === "turn.reply"));
     assert.ok(tools.tools.some((tool) => tool.name === "session.checklist_complete"));
+    assert.ok(tools.tools.some((tool) => tool.name === "memory.recall"));
+    assert.ok(tools.tools.some((tool) => tool.name === "memory.get"));
     const called = await client.callTool({ name: "session.context_check", arguments: { refresh: false } });
     const text = (called.content as Array<{ type: string; text?: string }>).find((item) => item.type === "text")?.text;
     assert.deepEqual(JSON.parse(text ?? "null"), direct);

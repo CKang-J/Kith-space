@@ -545,3 +545,110 @@ export const sessionWakeups = sqliteTable("session_wakeups", {
   sessionKeyUniq: uniqueIndex("session_wakeups_session_key_uniq").on(t.runtimeSessionId, t.idempotencyKey),
   byDue: index("session_wakeups_due_idx").on(t.status, t.dueAt),
 }));
+
+export const episodicMemories = sqliteTable("episodic_memories", {
+  id: id("id").primaryKey(),
+  spaceId: text("space_id").notNull().references(() => spaces.id, { onDelete: "cascade" }),
+  ownerAgentId: text("owner_agent_id").references(() => agents.id, { onDelete: "cascade" }),
+  scope: text("scope").$type<"agent_private" | "space_shared">().notNull(),
+  kind: text("kind").notNull(),
+  subjectRef: text("subject_ref_json", { mode: "json" }).$type<{ kind: string; id: string }>().notNull(),
+  subjectKey: text("subject_key").notNull(),
+  predicateKey: text("predicate_key").notNull(),
+  currentRevision: integer("current_revision").default(1).notNull(),
+  status: text("status").notNull(),
+  confidence: integer("confidence_millis").notNull(),
+  importance: integer("importance_millis").notNull(),
+  sensitivity: text("sensitivity").notNull(),
+  disclosure: text("disclosure").notNull(),
+  validFrom: timestamp("valid_from"),
+  validTo: timestamp("valid_to"),
+  sourceAccess: text("source_access").default("available").notNull(),
+  deletionState: text("deletion_state").default("none").notNull(),
+  rowVersion: integer("row_version").default(1).notNull(),
+  createdBy: text("created_by_json", { mode: "json" }).$type<{ type: string; id: string }>().notNull(),
+  updatedBy: text("updated_by_json", { mode: "json" }).$type<{ type: string; id: string }>().notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+  updatedAt: timestamp("updated_at").default(now).notNull(),
+}, (t) => ({
+  ownership: check("episodic_memories_ownership_check", sql`(${t.scope} = 'agent_private' AND ${t.ownerAgentId} IS NOT NULL) OR (${t.scope} = 'space_shared' AND ${t.ownerAgentId} IS NULL)`),
+  claimKey: index("episodic_memories_claim_idx").on(t.scope, t.ownerAgentId, t.subjectKey, t.predicateKey),
+  recall: index("episodic_memories_recall_idx").on(t.status, t.ownerAgentId, t.sourceAccess, t.updatedAt),
+}));
+
+export const episodicMemoryRevisions = sqliteTable("episodic_memory_revisions", {
+  memoryId: text("memory_id").notNull().references(() => episodicMemories.id, { onDelete: "cascade" }),
+  revision: integer("revision").notNull(),
+  canonicalText: text("canonical_text").notNull(),
+  internalSummary: text("internal_summary"),
+  shareableSummary: text("shareable_summary"),
+  contentHmac: text("content_hmac").notNull(),
+  sensitivity: text("sensitivity").notNull(),
+  disclosure: text("disclosure").notNull(),
+  validFrom: timestamp("valid_from"),
+  validTo: timestamp("valid_to"),
+  createdBy: text("created_by_json", { mode: "json" }).$type<{ type: string; id: string }>().notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+}, (t) => ({ pk: primaryKey({ columns: [t.memoryId, t.revision] }) }));
+
+export const memoryEvidence = sqliteTable("memory_evidence", {
+  id: id("id").primaryKey(),
+  memoryId: text("memory_id").notNull().references(() => episodicMemories.id, { onDelete: "cascade" }),
+  memoryRevision: integer("memory_revision").notNull(),
+  sourceSpaceId: text("source_space_id"),
+  sourceKind: text("source_kind").notNull(),
+  sourceId: text("source_id").notNull(),
+  sourceSurfaceId: text("source_surface_id"),
+  visibilityAtOccurrence: text("visibility_at_occurrence").notNull(),
+  assertedBy: text("asserted_by_json", { mode: "json" }).$type<{ type: string; id: string }>().notNull(),
+  quotedFrom: text("quoted_from_json", { mode: "json" }).$type<{ type: string; id: string }>(),
+  claimType: text("claim_type").notNull(),
+  memoryPolicy: text("memory_policy").notNull(),
+  excerptHmac: text("excerpt_hmac").notNull(),
+  occurredAt: timestamp("occurred_at").notNull(),
+}, (t) => ({ byMemory: index("memory_evidence_memory_idx").on(t.memoryId, t.memoryRevision), sourceUniq: uniqueIndex("memory_evidence_source_uniq").on(t.memoryId, t.memoryRevision, t.sourceKind, t.sourceId) }));
+
+export const memoryRelations = sqliteTable("memory_relations", {
+  id: id("id").primaryKey(),
+  fromMemoryId: text("from_memory_id").notNull().references(() => episodicMemories.id, { onDelete: "cascade" }),
+  fromRevision: integer("from_revision"),
+  toMemoryId: text("to_memory_id").notNull().references(() => episodicMemories.id, { onDelete: "cascade" }),
+  toRevision: integer("to_revision"),
+  relationType: text("relation_type").notNull(),
+  createdBy: text("created_by_json", { mode: "json" }).$type<{ type: string; id: string }>().notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+}, (t) => ({ uniq: uniqueIndex("memory_relations_uniq").on(t.fromMemoryId, t.fromRevision, t.toMemoryId, t.toRevision, t.relationType) }));
+
+export const memoryTags = sqliteTable("memory_tags", {
+  memoryId: text("memory_id").notNull().references(() => episodicMemories.id, { onDelete: "cascade" }),
+  tag: text("tag").notNull(),
+}, (t) => ({ pk: primaryKey({ columns: [t.memoryId, t.tag] }), byTag: index("memory_tags_tag_idx").on(t.tag, t.memoryId) }));
+
+export const memorySuppressions = sqliteTable("memory_suppressions", {
+  id: id("id").primaryKey(),
+  scope: text("scope").notNull(),
+  ownerAgentId: text("owner_agent_id"),
+  sourceKind: text("source_kind").notNull(),
+  sourceId: text("source_id").notNull(),
+  claimHmac: text("claim_hmac").notNull(),
+  status: text("status").default("active").notNull(),
+  createdBy: text("created_by_json", { mode: "json" }).$type<{ type: string; id: string }>().notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+  revokedAt: timestamp("revoked_at"),
+}, (t) => ({ uniq: uniqueIndex("memory_suppressions_uniq").on(t.scope, sql`coalesce(${t.ownerAgentId}, '')`, t.sourceKind, t.sourceId, t.claimHmac) }));
+
+export const memoryMutations = sqliteTable("memory_mutations", {
+  id: id("id").primaryKey(),
+  memoryId: text("memory_id"),
+  action: text("action").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  requestHash: text("request_hash").notNull(),
+  resultRef: text("result_ref_json", { mode: "json" }).$type<Record<string, unknown>>(),
+  actor: text("actor_json", { mode: "json" }).$type<{ type: string; id: string }>().notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+}, (t) => ({ keyUniq: uniqueIndex("memory_mutations_key_uniq").on(t.actor, t.idempotencyKey) }));
+
+export const memoryLexicalTerms = sqliteTable("memory_lexical_terms", {
+  memoryId: text("memory_id").notNull().references(() => episodicMemories.id, { onDelete: "cascade" }),
+  term: text("term").notNull(),
+}, (t) => ({ pk: primaryKey({ columns: [t.memoryId, t.term] }), byTerm: index("memory_lexical_terms_term_idx").on(t.term, t.memoryId) }));

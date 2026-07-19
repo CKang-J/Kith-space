@@ -21,7 +21,7 @@ test("context refresh rotates only the active activation watermark and an expire
   try {
     db.insert(schema.agents).values({
       id: agentId, spaceId, name: "cap", displayName: "Cap", status: "active",
-      scopes: { granted: ["task:read"], mode: "custom", revision: 1, updatedAt: new Date(0).toISOString() },
+      scopes: { granted: ["task:read", "knowledge:read"], mode: "custom", revision: 1, updatedAt: new Date(0).toISOString() },
     }).run();
     db.insert(schema.channels).values({ id: channelId, spaceId, name: "cap", type: "channel" }).run();
     db.insert(schema.channelAgentMembers).values({ channelId, agentId }).run();
@@ -40,11 +40,18 @@ test("context refresh rotates only the active activation watermark and an expire
     const service = new TurnCapabilityService(spaceId, broker, db, () => now);
     const prepared = service.prepare(attemptId);
     assert.equal(prepared.claims.scopes.includes("task.read"), true);
+    assert.equal(prepared.claims.scopes.includes("memory.read"), true);
     assert.equal(prepared.claims.scopes.includes("task.write"), false);
     assert.equal(prepared.claims.scopes.includes("conversation.read"), false);
     assert.equal(prepared.claims.scopes.includes("turn.reply"), false);
     db.update(schema.agentTurnAttempts).set({ status: "admitted" }).where(eq(schema.agentTurnAttempts.id, attemptId)).run();
     service.activate(prepared);
+    const grantId = randomUUID();
+    db.insert(schema.disclosureGrants).values({
+      id: grantId, turnId, sourceRefs: [{ sourceId: "source", revision: 1 }], targetSurfaceId: channelId,
+      actionDigest: "digest", allowedProjection: "canonical", status: "active", expiresAt: new Date(1_900), createdBy: "human",
+    }).run();
+    assert.deepEqual(service.authorizeDisclosureGrant(turnId, grantId).disclosureGrantIds, [grantId]);
     assert.throws(() => service.resolve({
       sessionHandle: prepared.sessionHandle,
       activationId: prepared.claims.activationId,

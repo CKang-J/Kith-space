@@ -1,6 +1,6 @@
 # Agent Harness v2：会话、上下文、记忆与工具机制设计
 
-> 状态：已接受并实施中；P-A10.0–P-A10.4 已完成，P-A10.5–P-A10.7 尚待逐门实现。
+> 状态：已接受并实施中；P-A10.0–P-A10.5 已完成，P-A10.6–P-A10.7 尚待逐门实现。
 > 日期：2026-07-19。
 > 依据：`docs/kith-space/notes/helio-agent-context-memory-tools-research.md` 的本机实测，以及 Kith-space 已完成的 P-A7、P-A8、P-A9 架构边界。
 > 目的：获得与 Helio 相同的“同一个 Agent 像长期同事一样跨私聊、频道和话题延续关系”的体验，同时修正其不可解释记忆、模型重建 thread target、跨私密边界仅靠自律和 cursor replay 等缺陷。
@@ -1798,6 +1798,8 @@ Agents 设置的开发诊断区显示：
 验收门：MCP/CLI contract fixtures返回相同领域结果；常驻进程不能复用过期 activation；manual start只能看 inbox summary；H5只可在此门后接 Gateway。
 
 ### P-A10.5 Episodic Memory core
+
+实施状态（2026-07-19）：已完成。workspace schema v7以不可变`0008_episodic_memory_core` migration加入canonical/revision/evidence/relation/tag/suppression/mutation/lexical表和FTS5；app.db v3保存只能由Human手工提升的`user_global` memory。current revision/evidence/relation由复合FK约束，mutation唯一键为actor+idempotency key，shared suppression以NULL-safe表达式去重。Memory Module拒绝secret和权威exclude lineage；Human控制面提供CAS lifecycle、历史revision/relation、replacement pointer与suppression解除。recall分别从两库取候选后用统一lexical/continuity/importance/recency breakdown重排，支持无词面continuity、英文/CJK 2/3-gram/2字exact及FTS故障降级；每次读取和最终reply都解析message/turn/file当前生命周期、跨Space membership/父级ACL与validity。最小disclosure engine对混合evidence取最严格投影；Human grant固定turn/source revision/target/action digest/TTL并consume-once。Context Envelope冻结revision/HMAC/projection/score/evidence，recall故障不阻塞普通聊天，forget后只渲染tombstone。hard delete在`secure_delete`连接上清除正文/FTS并truncate WAL；Agent full reset/delete清除其private payload/suppression而保留Space shared。Agent的`memory.recall/get`通过`knowledge:read`签发到同一Gateway/MCP/CLI；Human REST已可供下一切片面板使用。自动advisor、Structured/Files面板和自动capture仍属于P-A10.6，未冒充完成。
 
 - v7 canonical/revision/evidence/relation/tag/suppression/mutation/FTS；
 - Human手工创建、CAS编辑/纠正、archive/restore、delete、forget+suppress；

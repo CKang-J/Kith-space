@@ -19,11 +19,19 @@ export const TurnCapabilityClaimsSchema = z.object({
 }).strict();
 export type TurnCapabilityClaims = z.infer<typeof TurnCapabilityClaimsSchema>;
 
+export const DisclosureSourceRefSchema = z.object({
+  sourceKind: z.string().min(1),
+  sourceId: z.string().min(1),
+  sourceRevision: z.number().int().nonnegative().nullable(),
+  projection: z.enum(["canonical", "internal_summary", "shareable_summary", "ref_only"]),
+}).strict();
+export type DisclosureSourceRef = z.infer<typeof DisclosureSourceRefSchema>;
+
 export const DisclosureGrantSchema = z.object({
   schemaVersion: z.literal(1),
   id: z.string().min(1),
   turnId: z.string().min(1),
-  sourceRefs: z.array(z.object({ sourceId: z.string().min(1), revision: z.number().int().nonnegative().nullable() }).strict()).min(1),
+  sourceRefs: z.array(DisclosureSourceRefSchema).min(1),
   targetSurfaceId: z.string().min(1),
   actionDigest: z.string().min(1),
   allowedProjection: z.enum(["canonical", "internal_summary", "shareable_summary", "ref_only"]),
