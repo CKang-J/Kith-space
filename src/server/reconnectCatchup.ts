@@ -15,6 +15,7 @@ import {
 import { WorkerAdmissionUncertainError } from "../local-runtime/workerHub.js";
 import { runtimeWorkerPortForLease } from "../runtime/control/runtimeWorkerAdapter.js";
 import { setAgentIntroductionTurn } from "./agentIntroduction.js";
+import { SessionModule } from "../sessions/sessionModule.js";
 import { agentConfig, reportDispatchRejection } from "./core.js";
 import { SqliteDispatchState, type DispatchMessageContext } from "./dispatchGuard.js";
 
@@ -170,6 +171,7 @@ export async function catchUpAgentsOnWorker(runningIds: string[], lease: WorkerL
     scanned += list.length;
     for (const agent of list) {
       if (!isWorkerLeaseCurrent(lease)) return;
+      if (new SessionModule(spaceId, db).harnessMode(agent.id) !== "legacy") continue;
       let backlog: AgentResponseBacklog | null = null;
       try {
         backlog = await computeBacklog(spaceId, agent.id, agent.scopes);

@@ -93,7 +93,21 @@ export const claudeRuntime: Runtime = {
         sessionId = e.session_id; cb.onSession(e.session_id); cb.onActivity("working", "starting");
       } else if (e.type === "result") {
         if (e.session_id) { sessionId = e.session_id; cb.onSession(e.session_id); }
-        cb.onActivity("online", "");
+        const usage = e.usage && typeof e.usage === "object" ? e.usage : {};
+        if (Object.keys(usage).length || typeof e.duration_ms === "number" || typeof e.total_cost_usd === "number") {
+          cb.onUsage?.({
+            ...(Number.isFinite(usage.input_tokens) ? { inputTokens: usage.input_tokens } : {}),
+            ...(Number.isFinite(usage.output_tokens) ? { outputTokens: usage.output_tokens } : {}),
+            ...(Number.isFinite(usage.cache_read_input_tokens) ? { cacheReadTokens: usage.cache_read_input_tokens } : {}),
+            ...(Number.isFinite(usage.cache_creation_input_tokens) ? { cacheWriteTokens: usage.cache_creation_input_tokens } : {}),
+            ...(Number.isFinite(e.total_cost_usd) ? { costUsd: e.total_cost_usd } : {}),
+            ...(Number.isFinite(e.duration_ms) ? { durationMs: e.duration_ms } : {}),
+            source: "final",
+          });
+        }
+        const failed = e.is_error === true || (typeof e.subtype === "string" && e.subtype !== "success");
+        cb.onActivity(failed ? "error" : "online", failed ? clip(e.result || e.subtype || "claude turn failed") : "");
+        cb.onTurnResult?.({ outcome: failed ? "failed" : "completed", ...(failed ? { errorCode: `claude_${e.subtype || "error"}` } : {}) });
       } else if (e.type === "assistant") {
         const content = e.message?.content; const traj: TrajectoryEntry[] = []; let activity = "thinking", detail = "";
         if (Array.isArray(content)) {

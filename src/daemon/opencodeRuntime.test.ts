@@ -68,6 +68,22 @@ test("reasoning maps to thinking; empty text is skipped; lifecycle events are si
   assert.equal(fin.sessionId, "ses_y"); // session id is still captured from any event
 });
 
+test("step_finish maps OpenCode token and cost fields into normalized usage", () => {
+  const emit = handleOpencodeEvent({
+    type: "step_finish",
+    part: { tokens: { input: 10, output: 3, reasoning: 2, cache: { read: 4, write: 1 } }, cost: 0.02 },
+  });
+  assert.deepEqual(emit.usage, {
+    inputTokens: 10,
+    outputTokens: 3,
+    reasoningTokens: 2,
+    cacheReadTokens: 4,
+    cacheWriteTokens: 1,
+    costUsd: 0.02,
+    source: "incremental",
+  });
+});
+
 test("OpenCode bootstrap keeps each Kith agent prompt process-local", () => {
   const existing = JSON.stringify({ theme: "user-theme", agent: { user_agent: { prompt: "user prompt" } } });
   const alpha = JSON.parse(buildOpencodeConfigContent("alpha role", existing));

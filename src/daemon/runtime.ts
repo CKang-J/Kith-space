@@ -1,6 +1,7 @@
 // Runtime abstraction: each runtime (claude/codex/…) owns its process and protocol lifecycle.
 // Types only — no implementation imports, avoiding circular dependencies with concrete runtime files.
 import type { Logger } from "../log.js";
+import type { NormalizedUsage } from "../runtime/contract/v2/runtimeContract.js";
 
 export interface TrajectoryEntry {
   kind: "thinking" | "text" | "tool" | "status";
@@ -13,6 +14,8 @@ export interface RuntimeCallbacks {
   onSession(sessionId: string | null): void;          // receive/update/clear session id (claude session_id / codex threadId)
   onActivity(activity: string, detail?: string): void; // working|thinking|online|offline
   onTrajectory(entries: TrajectoryEntry[]): void;      // streaming trajectory: thinking/text/tool entries
+  onUsage?(usage: NormalizedUsage): void;
+  onTurnResult?(result: { outcome: "completed" | "failed" | "cancelled"; errorCode?: string }): void;
   onExit(code: number | null): void;
   log: Logger;
 }

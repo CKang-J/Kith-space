@@ -14,6 +14,7 @@ import type { ChildProcess } from "node:child_process";
 import type { Runtime, StartOpts, RuntimeCallbacks, RuntimeSession, TrajectoryEntry } from "./runtime.js";
 import { spawnRuntimeProcess } from "./runtimeProcess.js";
 import { validateRuntimeModel } from "../local-runtime/runtimeCatalog.js";
+import type { NormalizedUsage } from "../runtime/contract/v2/runtimeContract.js";
 
 const MAX = 2000;
 const clip = (s: unknown) => String(s ?? "").slice(0, MAX);
@@ -58,6 +59,7 @@ export interface OpencodeEmit {
   activity?: { activity: string; detail: string };
   sessionId?: string;
   error?: string;
+  usage?: NormalizedUsage;
 }
 
 // handleOpencodeEvent maps one parsed `opencode run --format json` event to kith-space callbacks.
@@ -86,6 +88,20 @@ export function handleOpencodeEvent(evt: any): OpencodeEmit {
       // opencode exits 0 on model errors; the failure is a top-level JSON event (not a non-zero exit)
       out.error = String(evt.error?.data?.message ?? evt.error?.name ?? "opencode error");
       break;
+    case "step_finish": {
+      const tokens = part.tokens ?? {};
+      const cache = tokens.cache ?? {};
+      out.usage = {
+        ...(Number.isFinite(tokens.input) ? { inputTokens: Number(tokens.input) } : {}),
+        ...(Number.isFinite(tokens.output) ? { outputTokens: Number(tokens.output) } : {}),
+        ...(Number.isFinite(tokens.reasoning) ? { reasoningTokens: Number(tokens.reasoning) } : {}),
+        ...(Number.isFinite(cache.read) ? { cacheReadTokens: Number(cache.read) } : {}),
+        ...(Number.isFinite(cache.write) ? { cacheWriteTokens: Number(cache.write) } : {}),
+        ...(Number.isFinite(part.cost) ? { costUsd: Number(part.cost) } : {}),
+        source: "incremental",
+      };
+      break;
+    }
     // step_finish / other lifecycle events: process exit is the authoritative turn-done signal.
   }
   return out;
@@ -146,6 +162,7 @@ class OpencodeRun {
     const errTail: string[] = [];
     let errLen = 0;
     let emittedError = false;
+    const usage: Omit<NormalizedUsage, "source"> = {};
     const processLine = (ln: string) => {
       const t = ln.trim(); if (!t) return;
       let evt: any; try { evt = JSON.parse(t); } catch { return; }
@@ -158,6 +175,12 @@ class OpencodeRun {
         emittedError = true;
         this.cb.onTrajectory([{ kind: "text", text: `[opencode error] (${this.opts.model}) ${emit.error.slice(0, 500)}` }]);
         this.cb.onActivity("error", emit.error.slice(0, 200));
+      }
+      if (emit.usage) {
+        for (const key of ["inputTokens", "outputTokens", "reasoningTokens", "cacheReadTokens", "cacheWriteTokens", "costUsd"] as const) {
+          const value = emit.usage[key];
+          if (typeof value === "number") usage[key] = (usage[key] ?? 0) + value;
+        }
       }
       if (emit.activity) this.cb.onActivity(emit.activity.activity, emit.activity.detail);
       if (emit.trajectory.length) this.cb.onTrajectory(emit.trajectory);
@@ -175,18 +198,27 @@ class OpencodeRun {
       this.proc = null; this.turnBusy = false; if (this.stopped) return;
       this.cb.log.error("opencode spawn failed", { detail: String((e as any)?.message ?? e) });
       this.cb.onActivity("offline", "opencode not found");
+      this.cb.onTurnResult?.({ outcome: "failed", errorCode: "opencode_spawn_failed" });
       if (!this.everSucceeded) this.cb.onExit(1); else this.pump();
     });
     proc.on("exit", (code) => {
       if (buf.trim()) processLine(buf); buf = "";
       this.proc = null; this.turnBusy = false; if (this.stopped) return;
-      if (code === 0 && !emittedError) { this.everSucceeded = true; this.cb.onActivity("online", ""); this.pump(); return; }
+      if (code === 0 && !emittedError) {
+        this.everSucceeded = true;
+        if (Object.keys(usage).length) this.cb.onUsage?.({ ...usage, source: "final" });
+        this.cb.onActivity("online", "");
+        this.cb.onTurnResult?.({ outcome: "completed" });
+        this.pump();
+        return;
+      }
       const tail = errTail.join("").trim();
       const detail = tail || `opencode exited ${code ?? "signal"}`;
       if (!emittedError) {
         this.cb.onTrajectory([{ kind: "text", text: `[opencode error] (${this.opts.model}) ${clip(detail).slice(0, 500)}` }]);
         this.cb.onActivity("error", detail.split("\n").filter(Boolean).pop()!.slice(0, 200));
       }
+      this.cb.onTurnResult?.({ outcome: "failed", errorCode: emittedError ? "opencode_provider_error" : "opencode_process_failed" });
       if (!this.everSucceeded) { this.cb.onExit(emittedError ? 1 : (code ?? 1)); return; } // first-turn hard failure → crashed
       this.pump(); // later-turn failure → keep the session alive so the next message can retry
     });

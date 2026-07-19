@@ -43,6 +43,7 @@ test("fresh Space database uses the Personal AgentOS baseline and seeds its Spac
   try {
     const names = tables(sqlite);
     for (const expected of [
+      "agent_harness_state",
       "spaces",
       "agents",
       "channels",
@@ -51,6 +52,7 @@ test("fresh Space database uses the Personal AgentOS baseline and seeds its Spac
       "messages",
       "human_saved_messages",
       "human_space_preferences",
+      "runtime_sessions",
     ]) assert.ok(names.includes(expected), `missing ${expected}`);
     for (const removed of ["users", "servers", "server_members", "machines", "join_links", "channel_members", "saved_messages", "server_sidebar_prefs"])
       assert.ok(!names.includes(removed), `legacy table remains: ${removed}`);
@@ -78,14 +80,14 @@ test("fresh Space database uses the Personal AgentOS baseline and seeds its Spac
       type: "channel",
       space_id: spaceId,
     }]);
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 5);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 6);
   } finally {
     sqlite.close();
     unregisterSpace(spaceId);
   }
 });
 
-test("schema version 2 Space database migrates to version 5 without being rejected as legacy", () => {
+test("schema version 2 Space database migrates to version 6 without being rejected as legacy", () => {
   const spaceId = randomUUID();
   const rootPath = path.join(kithSpaceHome(), "workspace-v2-migration-test", spaceId);
   const dbPath = workspaceDbFile(rootPath);
@@ -106,7 +108,7 @@ test("schema version 2 Space database migrates to version 5 without being reject
 
   const sqlite = new Database(dbPath);
   try {
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 5);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 6);
     assert.ok(columns(sqlite, "agents").includes("introduced_at"));
     assert.ok(columns(sqlite, "agents").includes("default_response_mode"));
     assert.ok(columns(sqlite, "human_channel_states").includes("notification_level"));
@@ -142,7 +144,7 @@ test("schema version 3 Space database migrates through the version-aware compati
 
   const sqlite = new Database(dbPath);
   try {
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 5);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 6);
     assert.ok(columns(sqlite, "human_channel_states").includes("notification_level"));
     assert.ok(columns(sqlite, "agents").includes("default_response_mode"));
   } finally {
@@ -178,8 +180,8 @@ test("schema version 4 migrates response settings in place without adding produc
 
   const sqlite = new Database(dbPath);
   try {
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 5);
-    assert.equal(tables(sqlite).filter((table) => table !== "__drizzle_migrations").length, 19);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 6);
+    assert.equal(tables(sqlite).filter((table) => table !== "__drizzle_migrations").length, 21);
     assert.equal(sqlite.prepare("SELECT default_response_mode FROM agents WHERE id = 'v4-agent'").pluck().get(), "active");
     assert.deepEqual(sqlite.prepare(`
       SELECT response_mode_override, ambient_wake_after_seq, mention_wake_after_seq, last_read_seq
@@ -192,6 +194,46 @@ test("schema version 4 migrates response settings in place without adding produc
     });
     assert.throws(() => sqlite.prepare("UPDATE agents SET default_response_mode = 'invalid' WHERE id = 'v4-agent'").run());
     assert.throws(() => sqlite.prepare("UPDATE channel_agent_members SET response_mode_override = 'invalid'").run());
+  } finally {
+    sqlite.close();
+    unregisterSpace(spaceId);
+  }
+});
+
+test("schema version 5 preserves legacy Agent sessions while backfilling explicit harness state", () => {
+  const spaceId = randomUUID();
+  const rootPath = path.join(kithSpaceHome(), "workspace-v5-migration-test", spaceId);
+  const dbPath = workspaceDbFile(rootPath);
+  mkdirSync(path.dirname(dbPath), { recursive: true });
+  const version5 = new Database(dbPath);
+  for (const migrationFile of [
+    "0000_personal_agent_os.sql",
+    "0001_agent_introduction.sql",
+    "0002_channel_notification_level.sql",
+    "0003_agent_response_modes.sql",
+  ]) version5.exec(readFileSync(new URL(`../drizzle/${migrationFile}`, import.meta.url), "utf8"));
+  version5.exec(`
+    CREATE TABLE __drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric);
+    ${[2, 3, 4, 5].map((version) => `INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('${migration(version).hash}', ${migration(version).createdAt});`).join("\n")}
+    INSERT INTO spaces (id, name, slug, created_at) VALUES ('${spaceId}', 'Migrated v5', 'migrated-v5-${spaceId}', 1700000000000);
+    INSERT INTO agents (id, space_id, name, display_name, session_id, created_at)
+    VALUES ('v5-agent', '${spaceId}', 'v5-agent', 'V5 Agent', 'legacy-global-session', 1700000000123);
+  `);
+  version5.close();
+  registerSpace({ id: spaceId, name: "Migrated v5", slug: `migrated-v5-${spaceId}`, rootPath });
+
+  dbForSpace(spaceId);
+  closeSpaceDb(spaceId);
+
+  const sqlite = new Database(dbPath);
+  try {
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 6);
+    assert.equal(sqlite.prepare("SELECT session_id FROM agents WHERE id = 'v5-agent'").pluck().get(), "legacy-global-session");
+    assert.deepEqual(sqlite.prepare("SELECT mode, cutover_at FROM agent_harness_state WHERE agent_id = 'v5-agent'").get(), {
+      mode: "legacy",
+      cutover_at: null,
+    });
+    assert.equal(sqlite.prepare("SELECT count(*) FROM runtime_sessions").pluck().get(), 0);
   } finally {
     sqlite.close();
     unregisterSpace(spaceId);
@@ -281,15 +323,15 @@ test("workspace migration journal rejects both missing and unexpected entries", 
 
     const sqlite = new Database(dbPath);
     if (variant === "missing") {
-      sqlite.prepare("DELETE FROM __drizzle_migrations WHERE created_at = ?").run(migration(5).createdAt);
+      sqlite.prepare("DELETE FROM __drizzle_migrations WHERE created_at = ?").run(migration(6).createdAt);
     } else {
       sqlite.prepare("INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('unexpected', ?)")
-        .run(migration(5).createdAt + 1);
+        .run(migration(6).createdAt + 1);
     }
     sqlite.close();
 
     try {
-      assert.throws(() => dbForSpace(spaceId), /migration journal that does not match schema version 5/);
+      assert.throws(() => dbForSpace(spaceId), /migration journal that does not match schema version 6/);
     } finally {
       closeSpaceDb(spaceId);
       unregisterSpace(spaceId);

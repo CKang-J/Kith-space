@@ -1,6 +1,6 @@
 # Kith-space 产品路线图
 
-> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式；2026-07-15 锁定 ChatOnly 侧栏模块导航与模块打开态 Dock；2026-07-18 完成 P-A9 桌面模块化单体架构收敛；2026-07-19 P-A10 Agent Harness v2 开始实施，P-A10.0 已完成，P-A10.1–P-A10.7 按依赖顺序推进。完整边界见对应 `docs/superpowers/specs/` 规格，当前工程状态见 `docs/progress.md`。
+> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式；2026-07-15 锁定 ChatOnly 侧栏模块导航与模块打开态 Dock；2026-07-18 完成 P-A9 桌面模块化单体架构收敛；2026-07-19 P-A10 Agent Harness v2 开始实施，P-A10.0–P-A10.1 已完成，P-A10.2–P-A10.7 按依赖顺序推进。完整边界见对应 `docs/superpowers/specs/` 规格，当前工程状态见 `docs/progress.md`。
 
 ## 1. 产品终点与永久边界
 
@@ -154,7 +154,7 @@ H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integrati
 - 以 `(spaceId, agentId, surfaceKind, surfaceId)` 建立 per-surface resumable session；
 - 统一 Claude Code、Codex、opencode 的 turn lifecycle、usage、取消、completion、tool/compaction event 和 MCP bootstrap，但保留各 engine 内层语义；
 - 建立消息事务内 durable delivery、logical turn/attempt/operation/output ledger、来源 delivery frontier、server-owned reply target 和逐输入 reply/cede/fail finalize gate；
-- P-A10.0 已完成；继续依次实施 P-A10.1–P-A10.4，不直接跳到自动记忆或 UI。
+- P-A10.0–P-A10.1 已完成；继续依次实施 P-A10.2–P-A10.4，不直接跳到自动记忆或 UI。
 
 完整提案：`docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
 

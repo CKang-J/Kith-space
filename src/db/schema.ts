@@ -3,7 +3,7 @@
 // columns preserve the canonical product vocabulary and guard cross-Space writes.
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import type { AgentResponseMode } from "../agents/agentResponsePolicy.js";
 
 const id = (name: string) => text(name).$defaultFn(() => randomUUID());
@@ -49,6 +49,65 @@ export const agents = sqliteTable("agents", {
 }, (t) => ({
   bySpace: index("agents_space_idx").on(t.spaceId),
   nameUniq: uniqueIndex("agents_name_uniq").on(t.spaceId, t.name).where(sql`${t.deletedAt} is null`),
+}));
+
+export type AgentHarnessMode = "legacy" | "migrating" | "v2";
+
+export const agentHarnessState = sqliteTable("agent_harness_state", {
+  agentId: text("agent_id").primaryKey().references(() => agents.id, { onDelete: "cascade" }),
+  mode: text("mode").$type<AgentHarnessMode>().default("legacy").notNull(),
+  cutoverAt: timestamp("cutover_at"),
+  rollbackUntil: timestamp("rollback_until"),
+  migrationAudit: text("migration_audit_json", { mode: "json" }).$type<Record<string, unknown>>().default({}).notNull(),
+}, (t) => ({
+  modeCheck: check("agent_harness_state_mode_check", sql`${t.mode} in ('legacy', 'migrating', 'v2')`),
+}));
+
+export type RuntimeSessionStatus = "cold" | "starting" | "idle" | "running" | "evicted" | "resume_failed" | "disabled";
+
+export const runtimeSessions = sqliteTable("runtime_sessions", {
+  id: id("id").primaryKey(),
+  spaceId: text("space_id").notNull().references(() => spaces.id, { onDelete: "cascade" }),
+  agentId: text("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  surfaceKind: text("surface_kind").$type<"channel" | "private" | "dm" | "thread">().notNull(),
+  surfaceId: text("surface_id").notNull(),
+  sessionGeneration: integer("session_generation").notNull(),
+  runtime: text("runtime").notNull(),
+  model: text("model"),
+  runtimeConfigFingerprint: text("runtime_config_fingerprint").notNull(),
+  adapterVersion: text("adapter_version").notNull(),
+  engineSessionId: text("engine_session_id"),
+  engineHostFingerprint: text("engine_host_fingerprint"),
+  workspaceRootFingerprint: text("workspace_root_fingerprint").notNull(),
+  status: text("status").$type<RuntimeSessionStatus>().default("cold").notNull(),
+  lastTurnId: text("last_turn_id"),
+  lastActiveAt: timestamp("last_active_at").default(now).notNull(),
+  lastCompactedAt: timestamp("last_compacted_at"),
+  retiredAt: timestamp("retired_at"),
+  snapshotVersion: integer("snapshot_version").default(0).notNull(),
+  snapshot: text("snapshot_json", { mode: "json" }).$type<Record<string, unknown>>(),
+  snapshotChecksum: text("snapshot_checksum"),
+  snapshotSavedAt: timestamp("snapshot_saved_at"),
+  createdAt: timestamp("created_at").default(now).notNull(),
+  updatedAt: timestamp("updated_at").default(now).notNull(),
+}, (t) => ({
+  generationUniq: uniqueIndex("runtime_sessions_generation_uniq").on(
+    t.spaceId,
+    t.agentId,
+    t.surfaceKind,
+    t.surfaceId,
+    t.sessionGeneration,
+  ),
+  currentUniq: uniqueIndex("runtime_sessions_current_uniq").on(
+    t.spaceId,
+    t.agentId,
+    t.surfaceKind,
+    t.surfaceId,
+  ).where(sql`${t.retiredAt} is null`),
+  byAgentStatus: index("runtime_sessions_agent_status_idx").on(t.agentId, t.status, t.lastActiveAt),
+  generationCheck: check("runtime_sessions_generation_check", sql`${t.sessionGeneration} > 0`),
+  statusCheck: check("runtime_sessions_status_check", sql`${t.status} in ('cold', 'starting', 'idle', 'running', 'evicted', 'resume_failed', 'disabled')`),
+  snapshotVersionCheck: check("runtime_sessions_snapshot_version_check", sql`${t.snapshotVersion} >= 0`),
 }));
 
 export const channels = sqliteTable("channels", {

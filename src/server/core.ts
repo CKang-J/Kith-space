@@ -49,6 +49,7 @@ import {
   createTaskLifecycleModule,
   type TaskLifecycleModule,
 } from "../tasks/taskLifecycleModule.js";
+import { SessionModule } from "../sessions/sessionModule.js";
 
 export { TASK_STATUSES } from "../tasks/taskTypes.js";
 
@@ -817,6 +818,9 @@ async function agentStartTarget(spaceId: string, agentId: string): Promise<Agent
   const agent = db.select().from(schema.agents)
     .where(and(eq(schema.agents.id, agentId), eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt))).get();
   if (!agent) return { ok: false, reason: "agent not found" };
+  if (new SessionModule(spaceId, db).harnessMode(agentId) !== "legacy") {
+    return { ok: false, reason: "Agent is assigned to the v2 harness" };
+  }
   if (!isWorkerConnected()) return { ok: false, reason: "local runtime worker offline" };
   const runtime = agent.runtime ?? "claude";
   if (!workerRuntimes().includes(runtime)) return { ok: false, reason: `runtime unavailable: ${runtime}` };
@@ -837,6 +841,7 @@ async function agentStartTargets(
     eq(schema.agents.spaceId, spaceId),
     isNull(schema.agents.deletedAt),
   )).all();
+  const sessions = new SessionModule(spaceId);
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
   for (const agentId of uniqueIds) {
     if (!agentById.has(agentId)) result.set(agentId, { ok: false, reason: "agent not found" });
@@ -849,6 +854,10 @@ async function agentStartTargets(
   }
   const runtimes = new Set(workerRuntimes());
   const availableAgents = agents.filter((agent) => {
+    if (sessions.harnessMode(agent.id) !== "legacy") {
+      result.set(agent.id, { ok: false, reason: "Agent is assigned to the v2 harness" });
+      return false;
+    }
     const runtime = agent.runtime ?? "claude";
     if (runtimes.has(runtime)) return true;
     result.set(agent.id, { ok: false, reason: `runtime unavailable: ${runtime}` });

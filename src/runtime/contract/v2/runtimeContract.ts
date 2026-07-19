@@ -93,6 +93,9 @@ export interface SessionBrokerDescriptor {
 }
 
 export interface OpenRuntimeSessionOptions {
+  runtimeSessionId: string;
+  sessionGeneration: number;
+  workerGeneration: number;
   address: RuntimeSessionKey;
   cwd: string;
   runtimeStateDir: string;

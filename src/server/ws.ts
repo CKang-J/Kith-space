@@ -24,6 +24,7 @@ import {
   updateWorkerSnapshot,
   type WorkerLease,
 } from "../local-runtime/workerHub.js";
+import { SessionModule } from "../sessions/sessionModule.js";
 
 const log = createLogger("server:ws");
 
@@ -74,6 +75,7 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
       else if (msg.type === "agent:session" && msg.agentId) {
         const located = await locateAgent(msg.agentId);
         if (!located || !isWorkerLeaseCurrent(lease)) return;
+        if (new SessionModule(located.spaceId, located.db).harnessMode(msg.agentId) !== "legacy") return;
         await located.db.update(schema.agents).set({ sessionId: msg.sessionId }).where(eq(schema.agents.id, msg.agentId));
         if (!isWorkerLeaseCurrent(lease)) return;
         await publish(located.spaceId, { type: "agent:session", agentId: msg.agentId, sessionId: msg.sessionId });
@@ -81,6 +83,7 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
       else if (msg.type === "agent:trajectory" && msg.agentId) {
         const located = await locateAgent(msg.agentId);
         if (!located || !isWorkerLeaseCurrent(lease)) return;
+        if (new SessionModule(located.spaceId, located.db).harnessMode(msg.agentId) !== "legacy") return;
         const trajectoryScope = await resolveTrajectoryScope(located.db, msg);
         if (!isWorkerLeaseCurrent(lease)) return;
         await publish(located.spaceId, { type: "trajectory", agentId: msg.agentId, name: located.agent.name, entries: msg.entries ?? [], ...trajectoryScope });
@@ -94,6 +97,7 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
       else if (msg.type === "agent:reply" && msg.agentId && msg.channelId && msg.streamId) {
         const located = await locateAgent(msg.agentId);
         if (!located || !isWorkerLeaseCurrent(lease)) return;
+        if (new SessionModule(located.spaceId, located.db).harnessMode(msg.agentId) !== "legacy") return;
         await publish(located.spaceId, { type: "agent:reply", agentId: msg.agentId, channelId: msg.channelId, streamId: msg.streamId, name: msg.name ?? located.agent.displayName ?? located.agent.name, op: msg.op, text: msg.text ?? "" });
       }
       else if (msg.type === "worker:admission") {
@@ -189,6 +193,7 @@ async function onAgentUpdate(msg: any, lease: WorkerLease): Promise<void> {
   if (!msg.agentId) return;
   const located = await locateAgent(msg.agentId);
   if (!located || !isWorkerLeaseCurrent(lease)) return;
+  if (new SessionModule(located.spaceId, located.db).harnessMode(msg.agentId) !== "legacy") return;
   const patch: Record<string, unknown> = {};
   if (msg.type === "agent:status") patch.status = msg.status;
   if (msg.type === "agent:activity") patch.activity = msg.activity;

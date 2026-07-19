@@ -29,6 +29,13 @@
       "when": 1784024369419,
       "tag": "0003_agent_response_modes",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1784457381025,
+      "tag": "0004_agent_harness_sessions",
+      "breakpoints": true
     }
   ]
 }

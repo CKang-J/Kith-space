@@ -24,6 +24,25 @@ function turnParams(opts: StartOpts, threadId: string, text: string): Record<str
   return { threadId, input: [{ type: "text", text }], ...(effort ? { effort } : {}) };
 }
 
+function normalizedUsage(value: any) {
+  if (!value || typeof value !== "object") return null;
+  const number = (...keys: string[]) => {
+    for (const key of keys) if (Number.isFinite(value[key])) return Number(value[key]);
+    return undefined;
+  };
+  const usage = {
+    inputTokens: number("inputTokens", "input_tokens", "input"),
+    outputTokens: number("outputTokens", "output_tokens", "output"),
+    reasoningTokens: number("reasoningTokens", "reasoning_tokens", "reasoning"),
+    cacheReadTokens: number("cacheReadTokens", "cache_read_tokens", "cached_input_tokens"),
+    cacheWriteTokens: number("cacheWriteTokens", "cache_write_tokens"),
+    costUsd: number("costUsd", "cost_usd", "cost"),
+    durationMs: number("durationMs", "duration_ms"),
+    source: "final" as const,
+  };
+  return Object.values(usage).some((item) => typeof item === "number") ? usage : null;
+}
+
 class CodexClient {
   private nextId = 0;
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
@@ -92,7 +111,15 @@ class CodexClient {
       const status = params?.turn?.status;
       const aborted = ["cancelled", "canceled", "aborted", "interrupted"].includes(status);
       if (status === "failed") this.cb.onTrajectory([{ kind: "text", text: "[codex turn failed] " + (params?.turn?.error?.message || "") }]);
-      this.cb.onActivity("online", ""); this.onTurnDone?.(aborted);
+      const usage = normalizedUsage(params?.turn?.usage ?? params?.usage);
+      if (usage) this.cb.onUsage?.(usage);
+      const failed = status === "failed";
+      this.cb.onActivity(failed ? "error" : "online", failed ? (params?.turn?.error?.message || "codex turn failed") : "");
+      this.cb.onTurnResult?.({
+        outcome: aborted ? "cancelled" : failed ? "failed" : "completed",
+        ...(failed ? { errorCode: "codex_turn_failed" } : {}),
+      });
+      this.onTurnDone?.(aborted);
     } else if (method === "item/agentMessage/delta" || method === "item/reasoning/summaryTextDelta" || method === "item/reasoning/textDelta") {
       // The current UI stores each trajectory entry as a separate row, so token deltas would spam
       // the timeline. Emit the completed item text below instead.
@@ -110,7 +137,11 @@ class CodexClient {
         this.cb.onTrajectory([{ kind: "tool", toolName: item.type, toolInput: clip(toolInput).slice(0, 160) }]);
       }
     } else if (method === "error") {
-      if (!params.willRetry) { this.cb.onTrajectory([{ kind: "text", text: "[codex error] " + (params?.error?.message || params?.message || "") }]); this.onTurnDone?.(false); }
+      if (!params.willRetry) {
+        this.cb.onTrajectory([{ kind: "text", text: "[codex error] " + (params?.error?.message || params?.message || "") }]);
+        this.cb.onTurnResult?.({ outcome: "failed", errorCode: "codex_runtime_error" });
+        this.onTurnDone?.(false);
+      }
     }
   }
 
@@ -120,8 +151,15 @@ class CodexClient {
       case "agent_message": if (msg.message) this.cb.onTrajectory([{ kind: "text", text: clip(msg.message) }]); break;
       case "exec_command_begin": this.cb.onActivity("working", "Running command…"); this.cb.onTrajectory([{ kind: "tool", toolName: "exec_command", toolInput: clip(msg.command).slice(0, 120) }]); break;
       case "patch_apply_begin": this.cb.onTrajectory([{ kind: "tool", toolName: "patch_apply" }]); break;
-      case "task_complete": this.cb.onActivity("online", ""); this.onTurnDone?.(false); break;
-      case "turn_aborted": this.onTurnDone?.(true); break;
+      case "task_complete": {
+        const usage = normalizedUsage(msg.usage);
+        if (usage) this.cb.onUsage?.(usage);
+        this.cb.onActivity("online", "");
+        this.cb.onTurnResult?.({ outcome: "completed" });
+        this.onTurnDone?.(false);
+        break;
+      }
+      case "turn_aborted": this.cb.onTurnResult?.({ outcome: "cancelled" }); this.onTurnDone?.(true); break;
     }
   }
 }

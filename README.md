@@ -15,7 +15,7 @@
 
 本轮 UI 实现、自动化验证与用户手动验收已结束。P-A9 桌面模块化单体架构收敛已完成 P-A9.0–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审，并已提交；继续保留 Electron/Core/Worker 拓扑与 TypeScript 主栈。真实存量数据随后暴露的 Runtime admission 队列饥饿、queued 假工作态与失败 wake 残留回复占位也已完成根因修复。
 
-基于 Helio Desktop 的本机实测，P-A10 Agent Harness v2 已进入实施。P-A10.0 已完成版本感知 workspace compatibility manifest、Drizzle journal 一致性检查、事务化 app.db v1 migration runner、Runtime/Harness v2 codec 与稳定错误码、常驻/one-shot adapter fixture，以及 10 万消息/1 万 memory/中文 2-gram 基线；现有产品仍保持 workspace schema v5 和 legacy Runtime/CLI/UI，尚未启用 per-surface session、durable delivery 或结构化记忆。后续严格从 P-A10.1 开始按规格切片推进。
+基于 Helio Desktop 的本机实测，P-A10 Agent Harness v2 已进入实施。P-A10.0 已完成版本感知 migration/app.db runner、Runtime/Harness codec 与容量/中文检索基线；P-A10.1 已把 workspace 升至 schema v6，加入按 Agent 互斥的 harness state、per-surface session generation、stable broker activation、三家 Runtime v2 bridge 与 Worker session host。legacy 消息消费继续保持权威，直到 P-A10.2 durable delivery/turn 纵切用同一 Agent cutover 接管；durable delivery、Context/Gateway、结构化记忆和 UI 仍未启用。
 
 你在频道里群聊、也能和每个 agent 私聊；agent 由你本机的 Claude Code / Codex / opencode 承载，隔着 MCP 操控你的模块（任务、记忆，后续邮箱 / 日历 / 画布）。你 @leader 提一个需求，它能自己拆解、分派给其他 agent、最后汇总交付给你。
 
@@ -48,7 +48,7 @@ pnpm install
 pnpm run desktop:dev        # 构建 Electron main/preload，并启动 Core + Worker + Vite + Electron
 ```
 
-Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。日常启动见 [`docs/dev-commands.md`](./docs/dev-commands.md)，Web 模式、访问 Token 与低频联调见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。测试：`pnpm test --unit` / `pnpm test --integration`；P-A10.0 当前单测为 695 通过、11 个平台条件 skip、0 失败。
+Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。日常启动见 [`docs/dev-commands.md`](./docs/dev-commands.md)，Web 模式、访问 Token 与低频联调见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。测试：`pnpm test --unit` / `pnpm test --integration`；P-A10.1 当前单测为 704 通过、11 个平台条件 skip、0 失败。
 
 Windows 构建分为四层：
 

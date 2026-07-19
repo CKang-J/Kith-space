@@ -1,6 +1,6 @@
 # Agent Harness v2：会话、上下文、记忆与工具机制设计
 
-> 状态：已接受并实施中；P-A10.0 契约冻结与迁移地基已完成，P-A10.1–P-A10.7 尚待逐门实现。
+> 状态：已接受并实施中；P-A10.0–P-A10.1 已完成，P-A10.2–P-A10.7 尚待逐门实现。
 > 日期：2026-07-19。
 > 依据：`docs/kith-space/notes/helio-agent-context-memory-tools-research.md` 的本机实测，以及 Kith-space 已完成的 P-A7、P-A8、P-A9 架构边界。
 > 目的：获得与 Helio 相同的“同一个 Agent 像长期同事一样跨私聊、频道和话题延续关系”的体验，同时修正其不可解释记忆、模型重建 thread target、跨私密边界仅靠自律和 cursor replay 等缺陷。
@@ -1741,6 +1741,8 @@ Agents 设置的开发诊断区显示：
 验收门：v5真实副本可迁移预检、app.db migration可回滚；两条独立 adapter fixture至少证明一个 persistent 和一个 one-shot runtime；未通过的能力只能标 unsupported，不能用 prompt伪装。
 
 ### P-A10.1 Runtime Contract v2、per-surface registry 与 capability broker
+
+实施状态（2026-07-19）：已完成。workspace schema v6 新增 `agent_harness_state/runtime_sessions`，v5迁移保留旧全局session但不回填；Core SessionModule实现互斥cutover与generation，stable broker只在attempt activation中有权；三家v2 bridge归一化session/completion/usage/cancel，Worker host实现同Agent串行、active/resident分离与LRU。MCP/tool isolation/cwd relocation/compaction telemetry仍明确unsupported。产品Agent尚未切到v2，实际cutover与turn执行随P-A10.2 durable纵切完成。
 
 - 新建 `runtime_sessions/agent_harness_state`、session generation、adapter v2 bridge 和 Core session Module；
 - 建立 stable session broker + per-attempt activate/deactivate协议，但尚不开放产品写工具；

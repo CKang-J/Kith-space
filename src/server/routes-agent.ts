@@ -11,6 +11,7 @@ import { handleProfileSpaceModule } from "./agent-http/profileSpaceModule.js";
 import { handleRemindersModule } from "./agent-http/remindersModule.js";
 import { handleTasksModule } from "./agent-http/tasksModule.js";
 import { resolveAgent } from "./auth.js";
+import { SessionModule } from "../sessions/sessionModule.js";
 import { agentIdHeader, bearer, sendErr } from "./util.js";
 
 export { addressableTarget, formatAgentMessage as fmt } from "./agent-http/context.js";
@@ -68,6 +69,14 @@ export async function handleAgentApi(
   const agent = await resolveAgent(bearer(req), agentIdHeader(req));
   if (!agent) {
     sendErr(res, 401, "unauthorized (need Bearer sk_agent_* token + x-agent-id header)");
+    return true;
+  }
+  const harnessMode = new SessionModule(agent.spaceId).harnessMode(agent.id);
+  if (harnessMode !== "legacy") {
+    sendErr(res, 409, "legacy Agent API is disabled for this Agent", {
+      code: "HARNESS_MODE_CONFLICT",
+      harnessMode,
+    });
     return true;
   }
   const scope = requiredScope(path);

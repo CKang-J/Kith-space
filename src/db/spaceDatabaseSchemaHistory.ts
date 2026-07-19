@@ -1,7 +1,7 @@
 import { getTableColumns, getTableName, type Table } from "drizzle-orm";
 import * as schema from "./schema.js";
 
-export const SPACE_DATABASE_SCHEMA_VERSION = 5;
+export const SPACE_DATABASE_SCHEMA_VERSION = 6;
 export const MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION = 2;
 
 export interface WorkspaceMigrationHistoryEntry {
@@ -16,6 +16,7 @@ export const WORKSPACE_MIGRATION_HISTORY: readonly WorkspaceMigrationHistoryEntr
   { version: 3, tag: "0001_agent_introduction", createdAt: 1783850095957, hash: "9d8c9e0685cc3dd27a88c98c465280ce9006759a05432483ac41f4640326f7ec" },
   { version: 4, tag: "0002_channel_notification_level", createdAt: 1783997806829, hash: "1772f58417d30a1d6ccbc697355a689332aa5b5d6ef744d49192393b8b874b92" },
   { version: 5, tag: "0003_agent_response_modes", createdAt: 1784024369419, hash: "e68d1bc76c3f3ab071fb460c130ddaba7f0adab64396e96deb4d9cccc192432e" },
+  { version: 6, tag: "0004_agent_harness_sessions", createdAt: 1784457381025, hash: "9e9ffe6cd2fa1dd5953170e58f12eeacb84a98c21e4ec2bbaedb6479fab8ae1f" },
 ];
 
 /** Immutable v2 baseline. Later schema entries are layered on explicitly below. */
@@ -52,6 +53,19 @@ const ADDITIONS_BY_VERSION = new Map<number, Array<[string, string]>>([
   ]],
 ]);
 
+const TABLES_BY_VERSION = new Map<number, Array<[string, string[]]>>([
+  [6, [
+    ["agent_harness_state", ["agent_id", "mode", "cutover_at", "rollback_until", "migration_audit_json"]],
+    ["runtime_sessions", [
+      "id", "space_id", "agent_id", "surface_kind", "surface_id", "session_generation",
+      "runtime", "model", "runtime_config_fingerprint", "adapter_version", "engine_session_id",
+      "engine_host_fingerprint", "workspace_root_fingerprint", "status", "last_turn_id",
+      "last_active_at", "last_compacted_at", "retired_at", "snapshot_version", "snapshot_json",
+      "snapshot_checksum", "snapshot_saved_at", "created_at", "updated_at",
+    ]],
+  ]],
+]);
+
 function cloneSchema(source: Map<string, string[]>): Map<string, string[]> {
   return new Map([...source].map(([table, columns]) => [table, [...columns]]));
 }
@@ -59,6 +73,10 @@ function cloneSchema(source: Map<string, string[]>): Map<string, string[]> {
 export function requiredSpaceSchema(version: number): Map<string, string[]> {
   const required = cloneSchema(WORKSPACE_V2_SCHEMA);
   for (let next = 3; next <= version; next++) {
+    for (const [table, columns] of TABLES_BY_VERSION.get(next) ?? []) {
+      if (required.has(table)) throw new Error(`workspace schema history redefines table ${table}`);
+      required.set(table, [...columns]);
+    }
     for (const [table, column] of ADDITIONS_BY_VERSION.get(next) ?? []) {
       const columns = required.get(table);
       if (!columns) throw new Error(`workspace schema history references unknown table ${table}`);
@@ -66,6 +84,27 @@ export function requiredSpaceSchema(version: number): Map<string, string[]> {
     }
   }
   return required;
+}
+
+export function requiredSpaceIndexes(version: number): string[] {
+  return version >= 6 ? [
+    "runtime_sessions_generation_uniq",
+    "runtime_sessions_current_uniq",
+    "runtime_sessions_agent_status_idx",
+  ] : [];
+}
+
+export function requiredSpaceForeignKeys(version: number): Array<{
+  table: string;
+  from: string;
+  targetTable: string;
+  onDelete: string;
+}> {
+  return version >= 6 ? [
+    { table: "agent_harness_state", from: "agent_id", targetTable: "agents", onDelete: "CASCADE" },
+    { table: "runtime_sessions", from: "space_id", targetTable: "spaces", onDelete: "CASCADE" },
+    { table: "runtime_sessions", from: "agent_id", targetTable: "agents", onDelete: "CASCADE" },
+  ] : [];
 }
 
 const CURRENT_SCHEMA = new Map<string, string[]>(

@@ -1,6 +1,8 @@
 import type Database from "better-sqlite3";
 import {
   MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION,
+  requiredSpaceForeignKeys,
+  requiredSpaceIndexes,
   requiredSpaceSchema,
   SPACE_DATABASE_SCHEMA_VERSION,
   WORKSPACE_MIGRATION_HISTORY,
@@ -104,6 +106,22 @@ export function assertCompatibleSpaceDatabase(
   const migrationColumns = tableColumns(sqlite, "__drizzle_migrations");
   for (const column of ["id", "hash", "created_at"]) {
     if (!migrationColumns.has(column)) missing.push(`__drizzle_migrations.${column}`);
+  }
+  const actualIndexes = new Set((sqlite.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'index'
+  `).all() as Array<{ name: string }>).map((row) => row.name));
+  for (const index of requiredSpaceIndexes(version)) {
+    if (!actualIndexes.has(index)) missing.push(`${index} (index)`);
+  }
+  for (const expected of requiredSpaceForeignKeys(version)) {
+    const actual = sqlite.prepare(`PRAGMA foreign_key_list(${quoteIdentifier(expected.table)})`).all() as Array<{
+      table: string;
+      from: string;
+      on_delete: string;
+    }>;
+    if (!actual.some((row) => row.table === expected.targetTable && row.from === expected.from && row.on_delete === expected.onDelete)) {
+      missing.push(`${expected.table}.${expected.from} (foreign key ${expected.onDelete})`);
+    }
   }
   if (missing.length > 0) {
     throw new SpaceDatabaseCompatibilityError(

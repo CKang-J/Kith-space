@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述个人 AgentOS 的目标模块边界。A2-A6、Home/Space root 的 H1-H4、P-A8、本轮聊天/壳层 UI 与 P-A9.0-P-A9.7 均已完成。P-A10.0 现已补齐版本感知 workspace migration gate、app.db 正式 runner、v2 contract codec和adapter/中文recall基线；产品仍运行schema v5和legacy Runtime data plane。P-A10.1–P-A10.7、H5继续按规格实施。P-A9 完整规格见 `../superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`，P-A10 规格见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
+> 本文描述个人 AgentOS 的目标模块边界。A2-A6、Home/Space root 的 H1-H4、P-A8、本轮聊天/壳层 UI、P-A9.0-P-A9.7 与 P-A10.0–P-A10.1 均已完成。当前 workspace schema v6、per-surface SessionModule、broker、三家 v2 bridge 与 Worker session host 已落地；产品消息仍由 legacy data plane 消费，待 P-A10.2 durable turn 纵切后才按 Agent 互斥 cutover。P-A10.2–P-A10.7、H5继续按规格实施。P-A9 完整规格见 `../superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`，P-A10 规格见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
 
 ## 1. 架构原则
 
@@ -164,7 +164,7 @@ P-A7 H3-H4 已把 Space root 生命周期收口到 `src/spaces/spaceRootService.
 
 ### 5.2 workspace.db
 
-A2.2b 已把 workspace.db 重建为单一 19 张产品表 baseline。连同 Drizzle 内部的 `__drizzle_migrations`，fresh 数据库共有 20 张物理表；当前 `PRAGMA user_version=5`。v2 数据库会依次增加 `agents.introduced_at`、`human_channel_states.notification_level` 与 P-A8 响应模式字段；兼容性检查按待迁移版本排除尚未存在的列，迁移后要求完整 v5 schema（`src/db/spaceDatabaseCompatibility.ts:5`-`:6`、`:47`-`:59`，`drizzle/0001_agent_introduction.sql:1`，`drizzle/0002_channel_notification_level.sql:1`-`:3`，`drizzle/0003_agent_response_modes.sql:1`-`:5`）。它包含 `spaces`、agent、频道、消息/任务、dispatch、附件/提醒/知识/活动，以及分离后的 Human 状态表；所有 Space 外键统一为 `space_id`。`users/server_members/machines/join_links`、`agents.machine_id` 和旧 `servers/server_id` 已删除。
+A2.2b 建立的 19 张产品表 baseline 经 P-A8 升至 v5；P-A10.1 的当前 `PRAGMA user_version=6` 再新增 `agent_harness_state` 与 `runtime_sessions`，fresh 数据库共有 21 张产品表，加 Drizzle `__drizzle_migrations` 为 22 张物理表。v2/v3/v4/v5 数据库按 immutable manifest 逐级迁移；v6 postflight同时核对 journal、current/generation/agent-status index 和新表 cascade FK（`src/db/spaceDatabaseSchemaHistory.ts`、`src/db/spaceDatabaseCompatibility.ts`、`drizzle/0004_agent_harness_sessions.sql`）。v5 `agents.session_id` 原样保留给 legacy rollback，绝不 backfill 到 per-surface session。既有表继续包含 `spaces`、agent、频道、消息/任务、dispatch、附件/提醒/知识/活动和 Human 状态；所有 Space 外键统一为 `space_id`。
 
 P-A8 的 schema v5 仍保持 19 张产品表：`agents.default_response_mode` 默认 `active`（`src/db/schema.ts:31`）；`channel_agent_members` 增加可空 `response_mode_override`，以及彼此独立的 `ambient_wake_after_seq`、`mention_wake_after_seq`（`src/db/schema.ts:71`-`:77`）。覆盖只允许写在顶层频道 membership；话题 membership 继承父频道有效值，并用自己的 mention watermark 维护参与后的非追溯边界。两类 watermark 只阻止模式重新开放后补唤醒旧事件，不能复用或推进 `last_read_seq`。
 
@@ -190,7 +190,7 @@ P-A8 的 schema v5 仍保持 19 张产品表：`agents.default_response_mode` �
 5. A2.2b 已完成：破坏性重建 workspace.db baseline，把保留表的 `servers/server_id` 改为 `spaces/space_id`，拆出单 Human 状态/收藏/偏好，并删除旧物理表与兼容边界。
 6. A2 已完成：附件目录纳入 Space 根路径，旧 app 级上传配置、命名 facade 与不兼容维护脚本已删除，并完成整阶段验收。
 7. H1-H4 已完成：稳定 homeSpaceId，分离 app data/默认 Space 容器，把主要 runtime cwd、Agent Memory 与 runtime state 归入三路径契约，完成默认创建、文件夹接入、失联重连，并交付 Home-only Spaces 模块、默认 Home 启动和同窗切换；2026-07-18 本轮用户验收已完成。
-8. P-A8 已完成：schema v5、统一响应策略/设置、任务 assignee 语义、Human 频道 `@all` 接收者快照、实时/reconnect/message check/prompt 指令与前端默认值/频道覆盖 UI 已同步落地，未启动 H5 或 Runtime 契约 v2。
+8. P-A8 已完成：schema v5、统一响应策略/设置、任务 assignee 语义、Human 频道 `@all` 接收者快照、实时/reconnect/message check/prompt 指令与前端默认值/频道覆盖 UI 已同步落地；这是当时尚未启动 H5 或 Runtime 契约 v2 的历史边界，当前 P-A10.1 已补 v2 session 地基但仍未切产品消息消费。
 
 不执行无边界的整仓替换；每个切片都需 schema、service、route 和 UI 契约测试。
 
@@ -354,4 +354,4 @@ Message / Task durable fact
 
 P-A10把公开频道从“未加入也可读正文”收紧为“可发现、加入后读取/参与”，私有频道继续只对成员可见；跨频道原文不自动注入，Agent通过ACL查询、continuity/query recall和canonical/internal/shareable/ref disclosure projection获得连续性。Human顶层direct mention默认由服务端原子创建root/thread/membership/delivery并把Agent reply target锁定为该thread；silent可加入但不wake。普通thread每次同时校验父频道，撤权同步失效membership/session/capability。
 
-完整类型、11条ADR、失败模式、NFR、P-A10.0-P-A10.7切片、P-A11/P-A12/P-S1后续边界和43个验收场景见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。P-A10.0 的实现边界为：`src/app-data/appDatabaseMigrations.ts:159` 在任何 WAL 切换前检查app.db版本并以单事务应用v1；`src/db/spaceDatabaseCompatibility.ts:47` 按user_version选择immutable manifest并校验journal；`src/runtime/contract/v2/runtimeContract.ts:3` 冻结session/usage/event与RuntimeV2外层；`src/memory/lexicalProjection.ts:26` 形成中文2/3-gram与短词exact投影。现有schema v5、单Agent `RuntimeSession`、Agent CLI与UI仍是P-A10.1 cutover前的权威实现事实。
+完整类型、11条ADR、失败模式、NFR、P-A10.0-P-A10.7切片、P-A11/P-A12/P-S1后续边界和43个验收场景见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。P-A10.0 的 migration/contract/基线由 `src/app-data/appDatabaseMigrations.ts`、`src/db/spaceDatabaseCompatibility.ts`、`src/runtime/contract/v2/` 与 `src/memory/lexicalProjection.ts` 承担。P-A10.1 由 `src/sessions/sessionModule.ts` 独占 harness cutover和session generation，`src/capabilities/sessionCapabilityBroker.ts` 管理无权stable handle与短时activation，`src/runtime/adapters/runtimeV2Bridge.ts` 归一化三家adapter，`src/runtime/worker/sessions/runtimeSessionHost.ts` 管理per-Agent串行、active/resident slot与LRU。legacy Agent API、Worker event、reconnect和start在非legacy mode下拒绝；P-A10.2完成前不启用产品v2消息消费。
