@@ -108,7 +108,7 @@ P0-P3 已完成 SQLite、派发护栏、记忆/角色和任务领域；P4 已完
 - packaged Desktop 用 Electron 可执行文件的 Node 模式监督内置 Core/Worker，并从 `resources` 读取 Web 与 Drizzle migration；构建固定 `npmRebuild=false`，package wrapper 用 `@electron/rebuild` 显式强制生成 Electron x64 `better-sqlite3`，再在 `finally` 中恢复 Node ABI。最终核对为 Node ABI 137、Electron ABI 148。
 - 新增仅手动触发的 Windows workflow，只上传未签名 installer artifact，不自动签名、创建 Release 或发布。
 
-验证：旧路线 `rg` 审计、typecheck、449/449 unit、完整 integration、2564-module Web build、`desktop:bundle`/`pack`/`dist`、`pnpm audit --prod --audit-level=high` 均通过。最终 unpacked Desktop fresh smoke Exit 0，Core/Worker ready、内置 assets/setup/CLI、`app.db` 创建均通过，退出后残留进程 0、端口监听 0；packaged Core 真实初始化 Human/Home，当时 workspace.db 为 19 张产品表 + migration 表共 20 张物理表、`user_version=2`（当前会自动升级到 v3），并优雅退出。最终安装器大小 113625983 bytes，SHA-256 `D314DAE15A8E9AB598901D2E3DF8B90DE1C7B46E79824CC8575BD4C742B89646`，Authenticode `NotSigned`。
+验证：旧路线 `rg` 审计、typecheck、449/449 unit、完整 integration、2564-module Web build、`desktop:bundle`/`pack`/`dist`、`pnpm audit --prod --audit-level=high` 均通过。最终 unpacked Desktop fresh smoke Exit 0，Core/Worker ready、内置 assets/setup/CLI、`app.db` 创建均通过，退出后残留进程 0、端口监听 0；packaged Core 真实初始化 Human/Home，当时 workspace.db 为 19 张产品表 + migration 表共 20 张物理表、`user_version=2`（当前workspace会升级到v8，app.db升级到v4），并优雅退出。最终安装器大小 113625983 bytes，SHA-256 `D314DAE15A8E9AB598901D2E3DF8B90DE1C7B46E79824CC8575BD4C742B89646`，Authenticode `NotSigned`。
 
 发行边界：上述结果证明本地/CI 未签名安装器可复现，不代表已签名或已发布。公开分发前必须配置 Windows 代码签名证书；本阶段未实际执行 NSIS 安装/卸载，正式发布前仍需补做。
 

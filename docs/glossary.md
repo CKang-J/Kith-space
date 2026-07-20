@@ -177,7 +177,7 @@
 : 用户级（app data 中的跨 Space 偏好，Human 策展）、Space 级（`<space>/.kith/memory/` 的共享规则和背景，agent 可写、Human 策展）、Agent 级（`<space>/.kith/agents/<agentId>/` 中由 agent 维护的 `MEMORY.md` + `notes/`）。读取使用runtime原生文件工具；这类文件不具有episodic source ACL/suppression语义，删除来源或forget结构化item不会自动擦除file memory，Human需分别编辑或在完整reset中清理。
 
 **Episodic Memory / 情景记忆**
-: P-A10.5起由message/turn/file/manual evidence派生的结构化长期线索。Space内`agent_private/space_shared`位于workspace schema v7+，Human手工提升的`user_global`位于app.db v3；canonical item指向append-only revision，并使用当前SourceRef解析、disclosure projection、replacement relation与suppression支持跨surface recall、纠错和Human管理。它不替代消息事实源或三层文件记忆；P-A10.6已加入restricted advisor和Human管理面板。
+: P-A10.5起由message/turn/file/manual evidence派生的结构化长期线索。Space内`agent_private/space_shared`位于workspace schema v7+，Human手工提升的`user_global`由app.db v3引入并在当前v4补齐复合revision外键；canonical item指向append-only revision，并使用当前SourceRef解析、disclosure projection、replacement relation与suppression支持跨surface recall、纠错和Human管理。它不替代消息事实源或三层文件记忆；P-A10.6已加入restricted advisor和Human管理面板。
 
 **Continuity Bundle / 连续性记忆包**
 : P-A10.5已实现的有界自动注入集合，由当前Agent/Human的少量active preference、relationship、habit组成，不依赖本轮词面查询；与query-shaped FTS recall互补，只包含已经active且逐次通过当前source ACL/disclosure的revision，默认最多12条/2,000 token。
@@ -312,7 +312,7 @@
 : Desktop 信任凭据和 Local Runtime Worker 控制凭据的统称。两者彼此独立，也不与浏览器 Access Token 或 agent session token 复用。Desktop 每次启动/重启受管进程组都会重新生成；只有手动分进程开发才临时使用 `KITH_SPACE_DESKTOP_TOKEN` 和 `KITH_SPACE_WORKER_TOKEN` 注入。
 
 **每工作区独立 SQLite 文件**
-: 每个 Space 把自己的元数据、消息、任务、频道、Agent、membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 schema v8在v6 durable harness、v7 episodic memory之后增加advisor control plane、recall observation和session checklist/snapshot/compaction revision；v2–v7合法journal前缀均可原地续迁，postflight按版本、journal、表/列/索引/FK校验。`agents.session_id`只作legacy rollback来源；`user_global`结构化记忆不进入任一workspace，而由app.db v3独立持有。
+: 每个 Space 把自己的元数据、消息、任务、频道、Agent、membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 schema v8在v6 durable harness、v7 episodic memory之后增加advisor control plane、recall observation和session checklist/snapshot/compaction revision；v2–v7合法journal前缀均可原地续迁，postflight按版本、journal、表/列/索引/FK校验。`agents.session_id`只作legacy rollback来源；`user_global`结构化记忆不进入任一workspace，由当前app.db v4独立持有。
 
 **`.kith/`**
 : Space root 下承载其可移植状态的目录：`workspace.db`（Space 元数据、agent 阵容、频道、消息和任务）、`memory/`（Space Memory）、`agents/<agentId>/`（Agent Memory）和 `uploads/`（附件对象）。runtime prompt、日志和宿主临时状态不放在这里。

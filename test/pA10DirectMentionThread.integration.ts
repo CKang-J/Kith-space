@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
-import { closeAllDatabases } from "../src/db/index.ts";
+import { rmSync } from "node:fs";
+import { closeAllDatabases, unregisterSpace } from "../src/db/index.ts";
 import { DeliveryJournal } from "../src/deliveries/deliveryJournal.ts";
 import { reserveDispatchWakeInTransaction } from "../src/dispatch/dispatchReservation.ts";
 import {
@@ -11,7 +12,7 @@ import {
 } from "../src/messages/messagePostingModule.ts";
 import { integrationDatabase } from "./helpers/workspace.ts";
 
-const { db, schema, spaceId, human } = integrationDatabase("p-a10-direct-mention-thread");
+const { db, schema, spaceId, rootPath, human } = integrationDatabase("p-a10-direct-mention-thread");
 const sqlite = db.$client;
 
 function modules(eventSink: ConversationEventSink = { async publish() {} }, wakeIds: string[] = []) {
@@ -230,4 +231,6 @@ try {
 } finally {
   try { sqlite.exec("DROP TRIGGER IF EXISTS p_a10_fail_direct_delivery;"); } catch { /* already closed */ }
   closeAllDatabases();
+  unregisterSpace(spaceId);
+  rmSync(rootPath, { recursive: true, force: true });
 }

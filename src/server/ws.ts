@@ -2,7 +2,7 @@
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import type { Server } from "node:http";
 import { and, desc, eq, isNull, notInArray } from "drizzle-orm";
-import { allSpaceDbs, dbForSpace, schema } from "../db/index.js";
+import { availableSpaceDbs, dbForSpace, schema } from "../db/index.js";
 import { safeEqual } from "./auth.js";
 import { publish } from "./realtime.js";
 import { createLogger } from "../log.js";
@@ -30,6 +30,7 @@ import { WorkerSessionSnapshotReportSchema } from "../runtime/contract/sessionSn
 import { assertTerminalSnapshotIdentity, SessionSnapshotService } from "../sessions/sessionSnapshotService.js";
 import { SessionCompactionMarkerService } from "../sessions/sessionCompactionMarker.js";
 import { TurnLedger } from "../turns/turnLedger.js";
+import { locateTurnTarget } from "../turns/turnTargetLocator.js";
 import { harnessTurnScheduler, scheduleV2Turns, turnCapabilityService, turnOutputService } from "./harnessComposition.js";
 
 const log = createLogger("server:ws");
@@ -75,7 +76,7 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
         try { ws.send(JSON.stringify({ type: "ready:ack", generation: lease.generation })); } catch { /* */ }
         void catchUpAgentsOnWorker(runningAgents, lease)
           .catch((e: any) => log.error("worker reconnect catch-up failed", { detail: String(e?.message ?? e) }));
-        for (const { space } of allSpaceDbs()) {
+        for (const { space } of workerAvailableSpaceDbs()) {
           if (!isWorkerLeaseCurrent(lease)) return;
           void scheduleV2Turns(space.id).catch((e: any) => log.error("v2 turn recovery failed", { spaceId: space.id, detail: String(e?.message ?? e) }));
         }
@@ -164,7 +165,7 @@ function stringList(value: unknown): string[] {
 export async function reconcileWorkerReady(runningIds: string[], lease: WorkerLease): Promise<boolean> {
   if (!isWorkerLeaseCurrent(lease)) return false;
   const running = new Set(runningIds);
-  for (const { space, db } of allSpaceDbs()) {
+  for (const { space, db } of workerAvailableSpaceDbs()) {
     if (!isWorkerLeaseCurrent(lease)) return false;
     const agents = await db.select().from(schema.agents).where(isNull(schema.agents.deletedAt));
     if (!isWorkerLeaseCurrent(lease)) return false;
@@ -193,7 +194,7 @@ export async function reconcileWorkerReady(runningIds: string[], lease: WorkerLe
 
 export async function markAllAgentsOffline(lease: WorkerLease): Promise<boolean> {
   if (!isWorkerLeaseLatest(lease)) return false;
-  for (const { space, db } of allSpaceDbs()) {
+  for (const { space, db } of workerAvailableSpaceDbs()) {
     if (!isWorkerLeaseLatest(lease)) return false;
     const agents = await db.select().from(schema.agents)
       .where(and(isNull(schema.agents.deletedAt), eq(schema.agents.status, "active")));
@@ -216,7 +217,13 @@ async function onTurnEvent(ws: WebSocket, msg: any, lease: WorkerLease): Promise
     if (!isWorkerLeaseCurrent(lease)) throw new Error("stale Worker lease");
     const event = RuntimeEventEnvelopeSchema.parse(msg.event);
     if (event.workerGeneration !== lease.generation) throw new Error("stale Worker generation");
-    const db = dbForSpaceForTurn(event.turnId, event.attemptId, event.sessionId);
+    if (typeof msg.spaceId !== "string") throw new Error("turn event Space identity is missing");
+    const db = locateTurnTarget({
+      spaceId: msg.spaceId,
+      turnId: event.turnId,
+      attemptId: event.attemptId,
+      sessionId: event.sessionId,
+    });
     if (!db) throw new Error("turn event target not found");
     const inserted = new TurnLedger(db.spaceId, db.db).appendEvent(event);
     if (inserted) {
@@ -239,10 +246,10 @@ async function onTurnTerminal(ws: WebSocket, msg: any, lease: WorkerLease): Prom
   try {
     if (Buffer.byteLength(JSON.stringify(msg), "utf8") > MAX_RUNTIME_TERMINAL_BYTES) throw new Error("runtime terminal envelope exceeds the byte limit");
     if (!attemptId || msg.generation !== lease.generation || !isWorkerLeaseCurrent(lease)) throw new Error("stale Worker terminal state");
-    if (typeof msg.turnId !== "string" || typeof msg.sessionId !== "string" || !Number.isInteger(msg.sessionGeneration)) {
+    if (typeof msg.spaceId !== "string" || typeof msg.turnId !== "string" || typeof msg.sessionId !== "string" || !Number.isInteger(msg.sessionGeneration)) {
       throw new Error("invalid Worker terminal identity");
     }
-    const located = dbForSpaceForTurn(msg.turnId, attemptId, msg.sessionId);
+    const located = locateTurnTarget({ spaceId: msg.spaceId, turnId: msg.turnId, attemptId, sessionId: msg.sessionId });
     if (!located) throw new Error("turn terminal target not found");
     spaceId = located.spaceId;
     const attempt = located.db.select().from(schema.agentTurnAttempts).where(eq(schema.agentTurnAttempts.id, attemptId)).get();
@@ -310,20 +317,13 @@ async function onSessionSnapshot(ws: WebSocket, msg: any, lease: WorkerLease): P
   }
 }
 
-function dbForSpaceForTurn(turnId: string, attemptId: string, sessionId: string): { spaceId: string; db: ReturnType<typeof dbForSpace> } | null {
-  for (const { space, db } of allSpaceDbs()) {
-    const turn = db.select().from(schema.agentTurns).where(and(
-      eq(schema.agentTurns.id, turnId),
-      eq(schema.agentTurns.runtimeSessionId, sessionId),
-    )).get();
-    if (!turn) continue;
-    const attempt = db.select().from(schema.agentTurnAttempts).where(and(
-      eq(schema.agentTurnAttempts.id, attemptId),
-      eq(schema.agentTurnAttempts.turnId, turnId),
-    )).get();
-    if (attempt) return { spaceId: space.id, db };
-  }
-  return null;
+function workerAvailableSpaceDbs() {
+  return availableSpaceDbs((space, error) => {
+    log.warn("skipping unavailable Space during Worker registry scan", {
+      spaceId: space.id,
+      detail: errorMessage(error),
+    });
+  });
 }
 
 function runtimeTurnResult(value: unknown): RuntimeTurnResult {

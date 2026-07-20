@@ -30,6 +30,62 @@ function withAppDatabase(run: (sqlite: Database.Database, dbPath: string) => voi
   }
 }
 
+const LEGACY_V3_CHECKSUM = "3188d1283621a7b042594c340ace87b42195cef97b689ffb5c0f78535b9b7eba";
+
+function downgradeToLegacyV3(sqlite: Database.Database): void {
+  sqlite.pragma("foreign_keys = OFF");
+  sqlite.exec(`
+    CREATE TABLE user_episodic_memories_legacy (
+      id TEXT PRIMARY KEY NOT NULL,
+      scope TEXT NOT NULL DEFAULT 'user_global' CHECK (scope = 'user_global'),
+      kind TEXT NOT NULL,
+      subject_ref_json TEXT NOT NULL,
+      subject_key TEXT NOT NULL,
+      predicate_key TEXT NOT NULL,
+      current_revision INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL,
+      confidence_millis INTEGER NOT NULL,
+      importance_millis INTEGER NOT NULL,
+      sensitivity TEXT NOT NULL,
+      disclosure TEXT NOT NULL,
+      valid_from INTEGER,
+      valid_to INTEGER,
+      source_access TEXT NOT NULL DEFAULT 'available',
+      deletion_state TEXT NOT NULL DEFAULT 'none',
+      row_version INTEGER NOT NULL DEFAULT 1,
+      created_by_json TEXT NOT NULL,
+      updated_by_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE user_episodic_memory_revisions_legacy AS SELECT * FROM user_episodic_memory_revisions;
+    CREATE TABLE user_memory_evidence_legacy AS SELECT * FROM user_memory_evidence;
+    CREATE TABLE user_memory_relations_legacy AS SELECT * FROM user_memory_relations;
+    INSERT INTO user_episodic_memories_legacy SELECT * FROM user_episodic_memories;
+
+    DROP TABLE user_memory_relations;
+    DROP TABLE user_memory_evidence;
+    DROP TABLE user_episodic_memory_revisions;
+    DROP TABLE user_episodic_memories;
+    ALTER TABLE user_episodic_memories_legacy RENAME TO user_episodic_memories;
+    ALTER TABLE user_episodic_memory_revisions_legacy RENAME TO user_episodic_memory_revisions;
+    ALTER TABLE user_memory_evidence_legacy RENAME TO user_memory_evidence;
+    ALTER TABLE user_memory_relations_legacy RENAME TO user_memory_relations;
+
+    CREATE INDEX user_episodic_memories_claim_idx ON user_episodic_memories (subject_key, predicate_key);
+    CREATE INDEX user_episodic_memories_recall_idx ON user_episodic_memories (status, source_access, updated_at);
+    CREATE INDEX user_memory_evidence_memory_idx ON user_memory_evidence (memory_id, memory_revision);
+    CREATE UNIQUE INDEX user_memory_evidence_source_uniq
+      ON user_memory_evidence (memory_id, memory_revision, source_kind, source_id);
+    CREATE UNIQUE INDEX user_memory_relations_uniq
+      ON user_memory_relations (from_memory_id, from_revision, to_memory_id, to_revision, relation_type);
+
+    DELETE FROM app_migration_journal WHERE version = 4;
+    UPDATE app_migration_journal SET checksum = '${LEGACY_V3_CHECKSUM}' WHERE version = 3;
+    PRAGMA user_version = 3;
+  `);
+}
+
 test("fresh app.db migrates transactionally to the versioned installation baseline", () => {
   withAppDatabase((sqlite, dbPath) => {
     migrateAppDatabase(sqlite, dbPath);
@@ -42,6 +98,7 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       { version: 1, name: "installation-baseline", checksumLength: 64 },
       { version: 2, name: "content-hmac-key", checksumLength: 64 },
       { version: 3, name: "user-global-memory", checksumLength: 64 },
+      { version: 4, name: "user-global-memory-foreign-keys", checksumLength: 64 },
     ]);
     assert.match(String(sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get()), /^[0-9a-f]{64}$/);
     for (const table of [
@@ -121,7 +178,7 @@ test("version 2 app.db adds isolated user-global memory tables without changing 
     const key = sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get();
     sqlite.exec(`
       PRAGMA user_version = 2;
-      DELETE FROM app_migration_journal WHERE version = 3;
+      DELETE FROM app_migration_journal WHERE version >= 3;
       DROP TABLE user_memory_fts;
       DROP TABLE user_memory_lexical_terms;
       DROP TABLE user_memory_mutations;
@@ -139,6 +196,92 @@ test("version 2 app.db adds isolated user-global memory tables without changing 
     assert.equal(sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get(), key);
     assert.ok(tableNames(sqlite).includes("user_episodic_memories"));
     assert.ok(tableNames(sqlite).includes("user_memory_fts"));
+  });
+});
+
+test("legacy version 3 app.db repairs composite revision foreign keys without losing data", () => {
+  withAppDatabase((sqlite, dbPath) => {
+    migrateAppDatabase(sqlite, dbPath);
+    sqlite.transaction(() => sqlite.exec(`
+      INSERT INTO user_episodic_memories (
+        id, scope, kind, subject_ref_json, subject_key, predicate_key, current_revision, status,
+        confidence_millis, importance_millis, sensitivity, disclosure, source_access, deletion_state,
+        row_version, created_by_json, updated_by_json, created_at, updated_at
+      ) VALUES (
+        'memory-1', 'user_global', 'preference', '{"kind":"human","id":"human"}', 'human', 'style', 1, 'active',
+        1000, 1000, 'normal', 'shareable_summary', 'available', 'none', 1, '{"type":"human","id":"human"}',
+        '{"type":"human","id":"human"}', 10, 10
+      );
+      INSERT INTO user_episodic_memory_revisions (
+        memory_id, revision, canonical_text, content_hmac, sensitivity, disclosure, created_by_json, created_at
+      ) VALUES ('memory-1', 1, 'Use concise Chinese', 'hmac-1', 'normal', 'shareable_summary', '{"type":"human","id":"human"}', 10);
+      INSERT INTO user_memory_evidence (
+        id, memory_id, memory_revision, source_kind, source_id, visibility_at_occurrence, asserted_by_json,
+        claim_type, memory_policy, excerpt_hmac, occurred_at
+      ) VALUES (
+        'evidence-1', 'memory-1', 1, 'manual', 'source-1', 'local_file', '{"type":"human","id":"human"}',
+        'manual', 'human_manual', 'excerpt-hmac', 10
+      );
+      INSERT INTO user_memory_relations (
+        id, from_memory_id, from_revision, to_memory_id, to_revision, relation_type, created_by_json, created_at
+      ) VALUES (
+        'relation-1', 'memory-1', 1, 'memory-1', 1, 'confirms', '{"type":"human","id":"human"}', 10
+      );
+      INSERT INTO user_memory_tags (memory_id, tag) VALUES ('memory-1', 'concise');
+      INSERT INTO user_memory_lexical_terms (memory_id, term) VALUES ('memory-1', 'concise');
+      INSERT INTO user_memory_fts (memory_id, lexical_text, cjk_bigrams, cjk_trigrams)
+      VALUES ('memory-1', 'concise chinese', '简洁 中文', '简洁中');
+    `)).immediate();
+    downgradeToLegacyV3(sqlite);
+    assert.equal((sqlite.prepare("PRAGMA foreign_key_list(user_episodic_memories)").all() as unknown[]).length, 0);
+    sqlite.pragma("foreign_keys = ON");
+
+    migrateAppDatabase(sqlite, dbPath);
+    migrateAppDatabase(sqlite, dbPath);
+
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 4);
+    assert.equal(sqlite.pragma("foreign_keys", { simple: true }), 1);
+    assert.equal(sqlite.prepare("SELECT canonical_text FROM user_episodic_memory_revisions WHERE memory_id = 'memory-1'").pluck().get(), "Use concise Chinese");
+    assert.equal(sqlite.prepare("SELECT count(*) FROM user_memory_evidence WHERE memory_id = 'memory-1'").pluck().get(), 1);
+    assert.equal(sqlite.prepare("SELECT count(*) FROM user_memory_relations WHERE from_memory_id = 'memory-1'").pluck().get(), 1);
+    assert.equal(sqlite.prepare("SELECT count(*) FROM user_memory_tags WHERE memory_id = 'memory-1'").pluck().get(), 1);
+    assert.equal(sqlite.prepare("SELECT count(*) FROM user_memory_lexical_terms WHERE memory_id = 'memory-1'").pluck().get(), 1);
+    assert.equal(sqlite.prepare("SELECT count(*) FROM user_memory_fts WHERE memory_id = 'memory-1'").pluck().get(), 1);
+    assert.deepEqual(sqlite.prepare("PRAGMA foreign_key_check").all(), []);
+    assert.equal(sqlite.prepare("SELECT name FROM app_migration_journal WHERE version = 4").pluck().get(), "user-global-memory-foreign-keys");
+    const canonicalFks = sqlite.prepare("PRAGMA foreign_key_list(user_episodic_memories)").all() as Array<{ table: string; from: string; to: string }>;
+    assert.ok(canonicalFks.some((row) => row.table === "user_episodic_memory_revisions" && row.from === "id" && row.to === "memory_id"));
+    assert.ok(canonicalFks.some((row) => row.table === "user_episodic_memory_revisions" && row.from === "current_revision" && row.to === "revision"));
+  });
+});
+
+test("legacy version 3 app.db with an orphaned current revision rolls back v4 repair", () => {
+  withAppDatabase((sqlite, dbPath) => {
+    migrateAppDatabase(sqlite, dbPath);
+    downgradeToLegacyV3(sqlite);
+    sqlite.exec(`
+      INSERT INTO user_episodic_memories (
+        id, scope, kind, subject_ref_json, subject_key, predicate_key, current_revision, status,
+        confidence_millis, importance_millis, sensitivity, disclosure, source_access, deletion_state,
+        row_version, created_by_json, updated_by_json, created_at, updated_at
+      ) VALUES (
+        'orphan', 'user_global', 'fact', '{}', 'human', 'orphan', 9, 'active', 1000, 1000,
+        'normal', 'shareable_summary', 'available', 'none', 1, '{}', '{}', 10, 10
+      );
+    `);
+    sqlite.pragma("foreign_keys = ON");
+
+    assert.throws(
+      () => migrateAppDatabase(sqlite, dbPath),
+      (error: unknown) => error instanceof AppDatabaseMigrationError
+        && error.reason === "schema"
+        && error.message.includes("orphaned current_revision"),
+    );
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 3);
+    assert.equal(sqlite.pragma("foreign_keys", { simple: true }), 1);
+    assert.equal(sqlite.prepare("SELECT count(*) FROM user_episodic_memories WHERE id = 'orphan'").pluck().get(), 1);
+    assert.equal(sqlite.prepare("SELECT count(*) FROM app_migration_journal WHERE version = 4").pluck().get(), 0);
+    assert.equal(tableNames(sqlite).some((name) => name.endsWith("_v4")), false);
   });
 });
 

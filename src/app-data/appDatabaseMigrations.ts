@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 
-export const APP_DATABASE_SCHEMA_VERSION = 3;
+export const APP_DATABASE_SCHEMA_VERSION = 4;
 
 export type AppDatabaseCompatibilityReason = "integrity" | "future" | "schema";
 
@@ -238,6 +238,111 @@ APP_SCHEMA_V3.set("user_memory_mutations", ["id", "memory_id", "action", "idempo
 APP_SCHEMA_V3.set("user_memory_lexical_terms", ["memory_id", "term"]);
 APP_SCHEMA_V3.set("user_memory_fts", ["memory_id", "lexical_text", "cjk_bigrams", "cjk_trigrams"]);
 
+// A pre-release v3 build created the same columns and indexes before the composite revision foreign
+// keys were added. Keep that journal fact immutable and repair it with v4 instead of rewriting v3.
+const APP_V3_LEGACY_CHECKSUMS = new Set([
+  "3188d1283621a7b042594c340ace87b42195cef97b689ffb5c0f78535b9b7eba",
+]);
+
+const APP_V4_USER_GLOBAL_MEMORY_FOREIGN_KEYS_SQL = `
+  CREATE TABLE user_episodic_memories_v4 (
+    id TEXT PRIMARY KEY NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'user_global' CHECK (scope = 'user_global'),
+    kind TEXT NOT NULL,
+    subject_ref_json TEXT NOT NULL,
+    subject_key TEXT NOT NULL,
+    predicate_key TEXT NOT NULL,
+    current_revision INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL,
+    confidence_millis INTEGER NOT NULL,
+    importance_millis INTEGER NOT NULL,
+    sensitivity TEXT NOT NULL,
+    disclosure TEXT NOT NULL,
+    valid_from INTEGER,
+    valid_to INTEGER,
+    source_access TEXT NOT NULL DEFAULT 'available',
+    deletion_state TEXT NOT NULL DEFAULT 'none',
+    row_version INTEGER NOT NULL DEFAULT 1,
+    created_by_json TEXT NOT NULL,
+    updated_by_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (id, current_revision) REFERENCES user_episodic_memory_revisions_v4(memory_id, revision) DEFERRABLE INITIALLY DEFERRED
+  );
+  CREATE TABLE user_episodic_memory_revisions_v4 (
+    memory_id TEXT NOT NULL REFERENCES user_episodic_memories_v4(id) ON DELETE CASCADE,
+    revision INTEGER NOT NULL,
+    canonical_text TEXT NOT NULL,
+    internal_summary TEXT,
+    shareable_summary TEXT,
+    content_hmac TEXT NOT NULL,
+    sensitivity TEXT NOT NULL,
+    disclosure TEXT NOT NULL,
+    valid_from INTEGER,
+    valid_to INTEGER,
+    created_by_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (memory_id, revision)
+  );
+  CREATE TABLE user_memory_evidence_v4 (
+    id TEXT PRIMARY KEY NOT NULL,
+    memory_id TEXT NOT NULL REFERENCES user_episodic_memories_v4(id) ON DELETE CASCADE,
+    memory_revision INTEGER NOT NULL,
+    source_space_id TEXT,
+    source_kind TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    source_surface_id TEXT,
+    visibility_at_occurrence TEXT NOT NULL,
+    asserted_by_json TEXT NOT NULL,
+    quoted_from_json TEXT,
+    claim_type TEXT NOT NULL,
+    memory_policy TEXT NOT NULL,
+    excerpt_hmac TEXT NOT NULL,
+    occurred_at INTEGER NOT NULL,
+    FOREIGN KEY (memory_id, memory_revision) REFERENCES user_episodic_memory_revisions_v4(memory_id, revision) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+  );
+  CREATE TABLE user_memory_relations_v4 (
+    id TEXT PRIMARY KEY NOT NULL,
+    from_memory_id TEXT NOT NULL REFERENCES user_episodic_memories_v4(id) ON DELETE CASCADE,
+    from_revision INTEGER,
+    to_memory_id TEXT NOT NULL REFERENCES user_episodic_memories_v4(id) ON DELETE CASCADE,
+    to_revision INTEGER,
+    relation_type TEXT NOT NULL,
+    created_by_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (from_memory_id, from_revision) REFERENCES user_episodic_memory_revisions_v4(memory_id, revision) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY (to_memory_id, to_revision) REFERENCES user_episodic_memory_revisions_v4(memory_id, revision) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+  );
+
+  INSERT INTO user_episodic_memories_v4 SELECT * FROM user_episodic_memories;
+  INSERT INTO user_episodic_memory_revisions_v4 SELECT * FROM user_episodic_memory_revisions;
+  INSERT INTO user_memory_evidence_v4 SELECT * FROM user_memory_evidence;
+  INSERT INTO user_memory_relations_v4 SELECT * FROM user_memory_relations;
+
+  DROP TABLE user_memory_relations;
+  DROP TABLE user_memory_evidence;
+  DROP TABLE user_episodic_memory_revisions;
+  DROP TABLE user_episodic_memories;
+
+  ALTER TABLE user_episodic_memories_v4 RENAME TO user_episodic_memories;
+  ALTER TABLE user_episodic_memory_revisions_v4 RENAME TO user_episodic_memory_revisions;
+  ALTER TABLE user_memory_evidence_v4 RENAME TO user_memory_evidence;
+  ALTER TABLE user_memory_relations_v4 RENAME TO user_memory_relations;
+
+  CREATE INDEX user_episodic_memories_claim_idx
+    ON user_episodic_memories (subject_key, predicate_key);
+  CREATE INDEX user_episodic_memories_recall_idx
+    ON user_episodic_memories (status, source_access, updated_at);
+  CREATE INDEX user_memory_evidence_memory_idx
+    ON user_memory_evidence (memory_id, memory_revision);
+  CREATE UNIQUE INDEX user_memory_evidence_source_uniq
+    ON user_memory_evidence (memory_id, memory_revision, source_kind, source_id);
+  CREATE UNIQUE INDEX user_memory_relations_uniq
+    ON user_memory_relations (from_memory_id, from_revision, to_memory_id, to_revision, relation_type);
+`;
+
+const APP_SCHEMA_V4 = new Map(APP_SCHEMA_V3);
+
 function baselineChecksum(): string {
   return createHash("sha256").update(APP_BASELINE_SQL).digest("hex");
 }
@@ -249,6 +354,34 @@ function quoteIdentifier(value: string): string {
 function tableColumns(sqlite: Database.Database, table: string): Set<string> {
   const rows = sqlite.prepare(`PRAGMA table_info(${quoteIdentifier(table)})`).all() as Array<{ name: string }>;
   return new Set(rows.map((row) => row.name));
+}
+
+type ForeignKeyRow = {
+  id: number;
+  seq: number;
+  table: string;
+  from: string;
+  to: string;
+  on_delete: string;
+};
+
+function hasForeignKey(
+  sqlite: Database.Database,
+  table: string,
+  target: string,
+  columns: ReadonlyArray<{ from: string; to: string }>,
+  onDelete?: string,
+): boolean {
+  const rows = sqlite.prepare(`PRAGMA foreign_key_list(${quoteIdentifier(table)})`).all() as ForeignKeyRow[];
+  const groups = new Map<number, ForeignKeyRow[]>();
+  for (const row of rows) groups.set(row.id, [...(groups.get(row.id) ?? []), row]);
+  return [...groups.values()].some((group) => {
+    const ordered = group.sort((left, right) => left.seq - right.seq);
+    return ordered[0]?.table === target
+      && (onDelete === undefined || ordered[0]?.on_delete.toUpperCase() === onDelete.toUpperCase())
+      && ordered.length === columns.length
+      && ordered.every((row, index) => row.from === columns[index]?.from && row.to === columns[index]?.to);
+  });
 }
 
 function assertIntegrity(sqlite: Database.Database, dbPath: string): void {
@@ -271,7 +404,7 @@ function assertIntegrity(sqlite: Database.Database, dbPath: string): void {
 
 function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_DATABASE_SCHEMA_VERSION): void {
   const missing: string[] = [];
-  const expectedSchema = version >= 3 ? APP_SCHEMA_V3 : version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
+  const expectedSchema = version >= 4 ? APP_SCHEMA_V4 : version >= 3 ? APP_SCHEMA_V3 : version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
   for (const [table, requiredColumns] of expectedSchema) {
     const actual = tableColumns(sqlite, table);
     if (actual.size === 0) {
@@ -292,23 +425,64 @@ function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_D
     ]) {
       if (!indexes.has(index)) missing.push(`${index} (index)`);
     }
-    for (const expected of [
-      { table: "user_episodic_memories", from: "id", target: "user_episodic_memory_revisions" },
-      { table: "user_episodic_memories", from: "current_revision", target: "user_episodic_memory_revisions" },
-      { table: "user_episodic_memory_revisions", from: "memory_id", target: "user_episodic_memories" },
-      { table: "user_memory_evidence", from: "memory_id", target: "user_episodic_memory_revisions" },
-      { table: "user_memory_evidence", from: "memory_revision", target: "user_episodic_memory_revisions" },
-      { table: "user_memory_relations", from: "from_revision", target: "user_episodic_memory_revisions" },
-      { table: "user_memory_relations", from: "to_revision", target: "user_episodic_memory_revisions" },
-    ]) {
-      const foreignKeys = sqlite.prepare(`PRAGMA foreign_key_list(${quoteIdentifier(expected.table)})`).all() as Array<{ table: string; from: string }>;
-      if (!foreignKeys.some((row) => row.table === expected.target && row.from === expected.from)) {
-        missing.push(`${expected.table}.${expected.from} (foreign key)`);
-      }
-    }
     const canonicalSql = String(sqlite.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'user_episodic_memories'").pluck().get() ?? "")
       .replaceAll(/\s+/g, " ").toLowerCase();
     if (!canonicalSql.includes("check (scope = 'user_global')")) missing.push("user_episodic_memories.scope (check)");
+  }
+  if (version >= 4) {
+    for (const expected of [
+      {
+        table: "user_episodic_memories",
+        target: "user_episodic_memory_revisions",
+        columns: [{ from: "id", to: "memory_id" }, { from: "current_revision", to: "revision" }],
+      },
+      {
+        table: "user_episodic_memory_revisions",
+        target: "user_episodic_memories",
+        columns: [{ from: "memory_id", to: "id" }],
+        onDelete: "CASCADE",
+      },
+      {
+        table: "user_memory_evidence",
+        target: "user_episodic_memories",
+        columns: [{ from: "memory_id", to: "id" }],
+        onDelete: "CASCADE",
+      },
+      {
+        table: "user_memory_evidence",
+        target: "user_episodic_memory_revisions",
+        columns: [{ from: "memory_id", to: "memory_id" }, { from: "memory_revision", to: "revision" }],
+        onDelete: "CASCADE",
+      },
+      {
+        table: "user_memory_relations",
+        target: "user_episodic_memories",
+        columns: [{ from: "from_memory_id", to: "id" }],
+        onDelete: "CASCADE",
+      },
+      {
+        table: "user_memory_relations",
+        target: "user_episodic_memories",
+        columns: [{ from: "to_memory_id", to: "id" }],
+        onDelete: "CASCADE",
+      },
+      {
+        table: "user_memory_relations",
+        target: "user_episodic_memory_revisions",
+        columns: [{ from: "from_memory_id", to: "memory_id" }, { from: "from_revision", to: "revision" }],
+        onDelete: "CASCADE",
+      },
+      {
+        table: "user_memory_relations",
+        target: "user_episodic_memory_revisions",
+        columns: [{ from: "to_memory_id", to: "memory_id" }, { from: "to_revision", to: "revision" }],
+        onDelete: "CASCADE",
+      },
+    ]) {
+      if (!hasForeignKey(sqlite, expected.table, expected.target, expected.columns, expected.onDelete)) {
+        missing.push(`${expected.table}.${expected.columns.map((column) => column.from).join("+")} (foreign key)`);
+      }
+    }
   }
   if (missing.length > 0) {
     throw new AppDatabaseMigrationError(
@@ -327,6 +501,7 @@ function expectedJournal(version: number) {
     { version: 1, name: "installation-baseline", checksum: baselineChecksum() },
     ...(version >= 2 ? [{ version: 2, name: "content-hmac-key", checksum: migrationChecksum(APP_V2_CONTENT_HMAC_SQL) }] : []),
     ...(version >= 3 ? [{ version: 3, name: "user-global-memory", checksum: migrationChecksum(APP_V3_USER_GLOBAL_MEMORY_SQL) }] : []),
+    ...(version >= 4 ? [{ version: 4, name: "user-global-memory-foreign-keys", checksum: migrationChecksum(APP_V4_USER_GLOBAL_MEMORY_FOREIGN_KEYS_SQL) }] : []),
   ];
 }
 
@@ -335,10 +510,54 @@ function assertJournal(sqlite: Database.Database, dbPath: string, version = APP_
     SELECT version, name, checksum FROM app_migration_journal ORDER BY version
   `).all() as Array<{ version: number; name: string; checksum: string }>;
   const expected = expectedJournal(version);
-  if (JSON.stringify(rows) !== JSON.stringify(expected)) {
+  const consistent = rows.length === expected.length && rows.every((row, index) => {
+    const item = expected[index];
+    if (!item || row.version !== item.version || row.name !== item.name) return false;
+    return row.checksum === item.checksum || (row.version === 3 && APP_V3_LEGACY_CHECKSUMS.has(row.checksum));
+  });
+  if (!consistent) {
     throw new AppDatabaseMigrationError(
       "schema",
       `app.db at ${dbPath} has an inconsistent migration journal`,
+    );
+  }
+}
+
+function assertRevisionReferencesCanMigrate(sqlite: Database.Database, dbPath: string): void {
+  const existingForeignKeyViolation = sqlite.prepare("PRAGMA foreign_key_check").get();
+  if (existingForeignKeyViolation) {
+    throw new AppDatabaseMigrationError("schema", `app.db at ${dbPath} has foreign-key violations before v4 migration`);
+  }
+  const orphan = sqlite.prepare(`
+    SELECT 'current_revision' AS kind, memory.id AS memory_id
+    FROM user_episodic_memories memory
+    LEFT JOIN user_episodic_memory_revisions revision
+      ON revision.memory_id = memory.id AND revision.revision = memory.current_revision
+    WHERE revision.memory_id IS NULL
+    UNION ALL
+    SELECT 'evidence_revision', evidence.memory_id
+    FROM user_memory_evidence evidence
+    LEFT JOIN user_episodic_memory_revisions revision
+      ON revision.memory_id = evidence.memory_id AND revision.revision = evidence.memory_revision
+    WHERE revision.memory_id IS NULL
+    UNION ALL
+    SELECT 'relation_from_revision', relation.from_memory_id
+    FROM user_memory_relations relation
+    LEFT JOIN user_episodic_memory_revisions revision
+      ON revision.memory_id = relation.from_memory_id AND revision.revision = relation.from_revision
+    WHERE relation.from_revision IS NOT NULL AND revision.memory_id IS NULL
+    UNION ALL
+    SELECT 'relation_to_revision', relation.to_memory_id
+    FROM user_memory_relations relation
+    LEFT JOIN user_episodic_memory_revisions revision
+      ON revision.memory_id = relation.to_memory_id AND revision.revision = relation.to_revision
+    WHERE relation.to_revision IS NOT NULL AND revision.memory_id IS NULL
+    LIMIT 1
+  `).get() as { kind: string; memory_id: string } | undefined;
+  if (orphan) {
+    throw new AppDatabaseMigrationError(
+      "schema",
+      `app.db at ${dbPath} cannot migrate orphaned ${orphan.kind} for memory ${orphan.memory_id}`,
     );
   }
 }
@@ -425,6 +644,32 @@ export function migrateAppDatabase(sqlite: Database.Database, dbPath: string): v
       `).run(3, "user-global-memory", migrationChecksum(APP_V3_USER_GLOBAL_MEMORY_SQL), Date.now());
     });
     applyUserGlobalMemory.immediate();
+    version = 3;
+  }
+  if (version === 3) {
+    assertSchema(sqlite, dbPath, 3);
+    assertJournal(sqlite, dbPath, 3);
+    assertRevisionReferencesCanMigrate(sqlite, dbPath);
+    const foreignKeysEnabled = Number(sqlite.pragma("foreign_keys", { simple: true })) === 1;
+    sqlite.pragma("foreign_keys = OFF");
+    try {
+      const repairUserGlobalMemoryForeignKeys = sqlite.transaction(() => {
+        sqlite.exec(APP_V4_USER_GLOBAL_MEMORY_FOREIGN_KEYS_SQL);
+        assertSchema(sqlite, dbPath, 4);
+        const foreignKeyViolation = sqlite.prepare("PRAGMA foreign_key_check").get();
+        if (foreignKeyViolation) {
+          throw new AppDatabaseMigrationError("schema", `app.db at ${dbPath} failed v4 foreign-key validation`);
+        }
+        sqlite.pragma("user_version = 4");
+        sqlite.prepare(`
+          INSERT INTO app_migration_journal (version, name, checksum, applied_at)
+          VALUES (?, ?, ?, ?)
+        `).run(4, "user-global-memory-foreign-keys", migrationChecksum(APP_V4_USER_GLOBAL_MEMORY_FOREIGN_KEYS_SQL), Date.now());
+      });
+      repairUserGlobalMemoryForeignKeys.immediate();
+    } finally {
+      if (foreignKeysEnabled) sqlite.pragma("foreign_keys = ON");
+    }
   }
   assertCompatibleAppDatabase(sqlite, dbPath, { requireCurrentVersion: true });
 }

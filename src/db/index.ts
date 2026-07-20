@@ -214,6 +214,21 @@ export function allSpaceDbs(): { space: SpaceRecord; db: SpaceDb }[] {
   return listSpaces().map((space) => ({ space, db: dbForSpace(space.id) }));
 }
 
+/** Cross-Space background scans must not let one missing or incompatible Space poison every healthy Space. */
+export function availableSpaceDbs(
+  onUnavailable?: (space: SpaceRecord, error: unknown) => void,
+): { space: SpaceRecord; db: SpaceDb }[] {
+  const available: { space: SpaceRecord; db: SpaceDb }[] = [];
+  for (const space of listSpaces()) {
+    try {
+      available.push({ space, db: dbForSpace(space.id) });
+    } catch (error) {
+      onUnavailable?.(space, error);
+    }
+  }
+  return available;
+}
+
 export function closeSpaceDb(spaceId: string): void {
   const conn = spaceConnections.get(spaceId);
   if (!conn) return;

@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { eq } from "drizzle-orm";
+import Database from "better-sqlite3";
 import type { WebSocket } from "ws";
-import { closeAllDatabases, dbForSpace, schema } from "../src/db/index.ts";
+import { closeAllDatabases, dbForSpace, registerSpace, schema, unregisterSpace } from "../src/db/index.ts";
 import { ensurePersonalApp } from "../src/db/personalApp.ts";
 import { registerWorker, unregisterWorker } from "../src/local-runtime/workerHub.ts";
+import { workspaceDbFile } from "../src/paths.ts";
 import { markAllAgentsOffline, reconcileWorkerReady } from "../src/server/ws.ts";
 
 function fakeWorker(): WebSocket {
@@ -18,9 +21,17 @@ function fakeWorker(): WebSocket {
 
 const root = process.env.KITH_SPACE_HOME;
 assert.ok(root, "KITH_SPACE_HOME is required");
+const invalidSpaceId = randomUUID();
+const invalidRoot = path.join(root, "worker-lease-invalid", invalidSpaceId);
 
 try {
   const { home } = await ensurePersonalApp({ name: "Ada", homeRootPath: path.join(root, "home") });
+  const invalidDbPath = workspaceDbFile(invalidRoot);
+  mkdirSync(path.dirname(invalidDbPath), { recursive: true });
+  const invalid = new Database(invalidDbPath);
+  invalid.exec("CREATE TABLE poison (id TEXT); PRAGMA user_version = 6;");
+  invalid.close();
+  registerSpace({ id: invalidSpaceId, name: "Invalid", slug: `invalid-${invalidSpaceId}`, rootPath: invalidRoot });
   const db = dbForSpace(home.id);
   const agentId = randomUUID();
   await db.insert(schema.agents).values({
@@ -65,5 +76,7 @@ try {
   assert.equal(agent.status, "sleeping");
   assert.equal(agent.activity, "sleeping");
 } finally {
+  unregisterSpace(invalidSpaceId);
   closeAllDatabases();
+  rmSync(invalidRoot, { recursive: true, force: true });
 }

@@ -225,7 +225,7 @@ export class RuntimeTurnController {
         open,
         broker: command.broker,
         turn: command.turn,
-        sink: { emit: (event) => this.emitEvent(event) },
+        sink: { emit: (event) => this.emitEvent(command.spaceId, event) },
       }));
     } catch (error) {
       if (this.shuttingDown || this.cancelledAttempts.has(command.turn.attemptId) || command.generation !== this.latestGeneration) return;
@@ -272,8 +272,8 @@ export class RuntimeTurnController {
     }
   }
 
-  private emitEvent(event: RuntimeEventEnvelope): Promise<void> {
-    return this.sendAndWait(this.eventAcks, event.eventId, { type: "agent:turn:event", event });
+  private emitEvent(spaceId: string, event: RuntimeEventEnvelope): Promise<void> {
+    return this.sendAndWait(this.eventAcks, event.eventId, { type: "agent:turn:event", spaceId, event });
   }
 
   private sendAndWait(map: Map<string, PendingAck>, id: string, message: unknown): Promise<void> {

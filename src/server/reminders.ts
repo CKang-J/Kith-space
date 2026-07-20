@@ -1,7 +1,7 @@
 // Reminder scheduler (reminders are author-owned, persistent, observable, re-schedulable wake signals).
 // A tick scans due reminders → posts a system reminder in the anchor channel (@author → @mention wakes the author agent) → marks one-shot done / reschedules recurring.
 import { and, eq, lte } from "drizzle-orm";
-import { allSpaceDbs, dbForSpace, schema } from "../db/index.js";
+import { availableSpaceDbs, dbForSpace, schema } from "../db/index.js";
 import { createMessage } from "./core.js";
 import { createLogger } from "../log.js";
 import { humanIdentityForId } from "../human/humanIdentity.js";
@@ -20,7 +20,7 @@ export function startReminderScheduler(): void {
 }
 
 async function tick(): Promise<void> {
-  for (const { db } of allSpaceDbs()) {
+  for (const { db } of availableSpaceDbs()) {
     const due = await db.select().from(schema.reminders).where(and(eq(schema.reminders.status, "scheduled"), lte(schema.reminders.remindAt, new Date())));
     for (const r of due) await fireReminder(r).catch((e) => log.warn("fire failed", { id: r.id, detail: String(e?.message ?? e) }));
   }

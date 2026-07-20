@@ -87,6 +87,7 @@ test("turn controller separates admission from activation and waits for Core eve
   assert.equal(controller.activate({ type: "agent:turn:activate", generation: 7, attemptId: "attempt-1", activationId: "activation-1" }), true);
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.deepEqual(sent.map((message) => message.type), ["agent:turn:event", "agent:turn:terminal"]);
+  assert.equal(sent[0]?.spaceId, "space-1");
   await controller.shutdown();
   assert.equal(closeCount, 1);
 });
