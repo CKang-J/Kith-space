@@ -18,6 +18,7 @@ Kith-space 是一个**桌面优先、单人使用的个人 AgentOS**：一个 Hu
 - `docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md` — **Chat 壳层与侧栏模块导航规格**：ChatOnly 纵向模块入口、模块打开态 Dock、三组会话抽屉、中心 Chat 卡片保护、画布式会话导航与案例展示退役；代码、自动化验证与用户手动视觉验收均已完成。
 - `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md` — **P-A9 桌面模块化单体架构收敛规格**：保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，按深 Module、窄 Interface、可替换 Seam 和性能基线渐进拆分；P-A9.0–P-A9.7 已完成并提交，真实存量数据暴露的 Runtime admission 队列饥饿与错误状态传播也已完成根因修复。
 - `docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md` — **P-A10 Agent Harness v2 规格**：per-surface session generation、durable delivery/logical turn/attempt、Context Envelope、server-owned thread reply、broker-backed MCP/CLI Gateway、revisioned episodic memory、restricted advisor、disclosure/suppression、continuity recall、checklist/snapshot/compaction telemetry与分阶段验收；P-A10.0–P-A10.7已完成。
+- `docs/kith-space/agent-harness-v2-mechanisms.md` — **P-A10 机制全景导读**：以架构图、时序图和状态机系统解释会话、投递/turn、Context Envelope、话题路由、结构化记忆、MCP/CLI Gateway、消息落 UI、恢复与安全边界；理解“这些机制如何共同工作”优先读这里。
 - `docs/vision.md` — 北极星：完整理念 + **超越 MVP 的长远愿景**。理解"为什么"从这里开始。
 - `docs/decisions.md` — 全部决策（30 条，含 1 条已审查但未实现提案）+ 推理 + 权衡 + **被推翻/修正的决策**演化脉络。理解"凭什么这样定"看这里。
 - `docs/roadmap.md` — 产品能力分期：当前 A1-A6 与其后的本机能力路线，并区分延后能力和永久非目标。
@@ -100,38 +101,12 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 **进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-20：A2-A6、P-A7 H1-H4、P4/P-A8、本轮聊天与壳层 UI、P-A9.0–P-A9.7及P-A10.0–P-A10.7均已完成；支持runtime的新Agent已通过durable delivery/turn、server-owned thread、Context Envelope、完整Gateway、revisioned episodic recall、advisor和snapshot实际使用v2，既有Agent可显式互斥cutover。H5、P-A11、P-A12与P-S1继续独立实施。做到哪、下一步与关键发行边界全部见 `docs/progress.md`。
 
 <!-- CODEGRAPH_START -->
-
 ## CodeGraph
 
-This project has a CodeGraph MCP server (`codegraph_*` tools) configured. CodeGraph is a tree-sitter-parsed knowledge graph of every symbol, edge, and file. Reads are sub-millisecond and return structural information grep cannot.
+In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
 
-### When to prefer codegraph over native search
+- **MCP tool** (when available): `codegraph_explore` answers most code questions in one call — the relevant symbols' verbatim source plus the call paths between them, including dynamic-dispatch hops grep can't follow. Name a file or symbol in the query to read its current line-numbered source. If it's listed but deferred, load it by name via tool search.
+- **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
 
-Use codegraph for **structural** questions — what calls what, what would break, where is X defined, what is X's signature. Use native grep/read only for **literal text** queries (string contents, comments, log messages) or after you already have a specific file open.
-
-| Question                                                  | Tool                                                         |
-| --------------------------------------------------------- | ------------------------------------------------------------ |
-| "Where is X defined?" / "Find symbol named X"             | `codegraph_search`                                           |
-| "What calls function Y?"                                  | `codegraph_callers`                                          |
-| "What does Y call?"                                       | `codegraph_callees`                                          |
-| "How does X reach/become Y? / trace the flow from X to Y" | `codegraph_trace` (one call = the whole path, incl. callback/React/JSX dynamic hops) |
-| "What would break if I changed Z?"                        | `codegraph_impact`                                           |
-| "Show me Y's signature / source / docstring"              | `codegraph_node`                                             |
-| "Give me focused context for a task/area"                 | `codegraph_context`                                          |
-| "See several related symbols' source at once"             | `codegraph_explore`                                          |
-| "What files exist under path/"                            | `codegraph_files`                                            |
-| "Is the index healthy?"                                   | `codegraph_status`                                           |
-
-### Rules of thumb
-
-- **Answer directly — don't delegate exploration.** For "how does X work" / architecture questions, answer with 2-3 codegraph calls: `codegraph_context` first, then ONE `codegraph_explore` for the source of the symbols it surfaces. For a specific **flow** ("how does X reach Y") start with `codegraph_trace` from→to — one call returns the whole path with dynamic hops bridged — then ONE `codegraph_explore` for the bodies; don't rebuild the path with `codegraph_search` + `codegraph_callers`. Codegraph IS the pre-built index, so spawning a separate file-reading sub-task/agent — or running a grep + read loop — repeats work codegraph already did and costs more for the same answer.
-- **Trust codegraph results.** They come from a full AST parse. Do NOT re-verify them with grep — that's slower, less accurate, and wastes context.
-- **Don't grep first** when looking up a symbol by name. `codegraph_search` is faster and returns kind + location + signature in one call.
-- **Don't chain `codegraph_search` + `codegraph_node`** when you just want context — `codegraph_context` is one call.
-- **Don't loop `codegraph_node` over many symbols** — one `codegraph_explore` call returns several symbols' source grouped in a single capped call, while each separate node/Read call re-reads the whole context and costs far more.
-- **Index lag — check the staleness banner, don't guess a wait.** When a codegraph response starts with "⚠️ Some files referenced below were edited since the last index sync…", the listed files are pending re-index — Read those specific files for accurate content. Files NOT in that banner are fresh and codegraph is authoritative for them. `codegraph_status` also lists pending files under "Pending sync".
-
-### If `.codegraph/` doesn't exist
-
-The MCP server returns "not initialized." Ask the user: *"I notice this project doesn't have CodeGraph initialized. Want me to run `codegraph init -i` to build the index?"*
+If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
 <!-- CODEGRAPH_END -->
