@@ -191,6 +191,18 @@
 **Memory Advisor / 记忆顾问**
 : P-A10.6起在eligible completed turn后异步提取episodic memory candidate的受限后台能力。它通过可证明tool isolation的独立MaintenanceRuntimePort运行，不复用user-facing session；exclude lineage、typed actor/source、secret/噪音、source ACL、suppression、dedupe/disclosure与job lease验证后才能proposed/active，失败不阻塞原turn。当前Claude受支持，Codex/opencode明确unsupported。
 
+**Advisor Provider / 记忆顾问执行器**
+: 2026-07-23修订提案中负责一次受限结构化completion的安装级可替换执行适配器。它不是普通Agent，不拥有频道身份、消息、工具、MCP、持久session、ACL或记忆写入规则；Core仍负责evidence、validation、suppression、revision和事务。目标态新安装默认使用Desktop内置、精确锁版的`@earendil-works/pi-ai`，Claude Code作为可切换Provider；当前尚未实现，代码事实仍是Claude `MaintenanceRuntimePort`受支持、Codex/opencode maintenance unsupported。
+
+**Advisor Model Profile / 记忆顾问模型配置**
+: 安装级、不可变版本化的结构化记忆模型配置，描述模型供应商、模型、API类型、endpoint、thinking level、凭据来源、数据政策与来源摘要。它与Advisor Provider正交，也不复用聊天Agent模型；Human可手工建立或从显式导入的Pi CLI全局模型目录生成，任何边界变化都创建新revision并重新预检/授权。
+
+**Pi CLI Config Import / Pi CLI配置导入**
+: 对本机Pi CLI全局`settings.json`、`models.json`及经Human明确选择的`auth.json`凭据来源进行显式、只读、快照化导入。它由Kith纯数据解析器完成，不读取Space项目`.pi`资源，不加载extension/skill/session，也不调用命令/env resolver、OAuth刷新、provider hook或写回；`!command`、复合环境插值和动态网络刷新均不执行，导入快照变化不会静默改动当前Advisor Model Profile。
+
+**Advisor Data Destination / 记忆顾问数据目的地**
+: Advisor文本实际到达的本地模型、云供应商或自定义endpoint边界，和本机execution adapter分开标识。使用Pi SDK并不自动等于本地推理；目标提案要求job、设置和consent分别固定adapter、Model Profile、canonical endpoint、credential identity、proxy/allowed egress与data-policy，边界变化不得静默重路由。
+
 **Memory Consolidation / 离线记忆巩固**
 : 独立 P-A11 目标能力，相当于受限、可审计的 Kith-space Dream：在 Agent 无 active turn 且未处理 turn 达到阈值时，按持久 cursor 复盘 Turn Ledger 与记忆，只生成 episodic/file-memory proposal，不直接发消息、改 User Memory、角色或 active skill，并强制继承exclude lineage与suppression。
 

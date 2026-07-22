@@ -17,6 +17,8 @@
 
 基于 Helio Desktop 的本机实测，P-A10 Agent Harness v2 的P-A10.0–P-A10.7已完成代码、迁移、文档、自动化与全新Desktop/Web真实验收。当前具备Runtime v2、per-surface session、durable delivery/turn、server-owned direct-mention thread、可审计Context Envelope、实时父级ACL/撤权、broker-backed `kith-core` MCP/CLI Gateway、revisioned episodic memory、restricted advisor/记忆面板、checklist/short wake、snapshot与可支持的compaction telemetry。workspace schema v8与app.db v4提供Human CAS管理、forget+suppress、source ACL、continuity+中英文FTS recall、跨surface disclosure projection与consume-once grant；app.db v4事务性修复早期v3缺失的复合revision外键。Claude maintenance已live验证，Codex/opencode maintenance和Claude/opencode compaction诚实为unsupported，Codex compaction由contract fixture验证。
 
+自动记忆提炼的下一步已形成独立提案：把Advisor从聊天runtime解耦，新安装默认使用产品内置、精确锁版的Pi SDK Provider，Claude Code作为可切换Provider；执行Provider与结构化记忆的模型供应商/模型/凭据来源/数据目的地分别版本化，并支持Human显式、安全地导入本机Pi CLI全局模型配置。默认选择不等于默认外发，模型设置、能力探测与per-Agent consent未完成时保持setup。该提案尚未实现，当前自动advisor仍只支持Claude；完整边界见[`系统级可替换Memory Advisor Provider方案`](./docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md)。
+
 你在频道里群聊、也能和每个 agent 私聊；agent 由你本机的 Claude Code / Codex / opencode 承载，隔着 MCP 操控你的模块（任务、记忆，后续邮箱 / 日历 / 画布）。你 @leader 提一个需求，它能自己拆解、分派给其他 agent、最后汇总交付给你。
 
 Kith 意为"你熟识信任的一圈自己人"——正是这些懂你（有记忆）、各有职责的 agent；`-space` 是你和它们共处的协作空间。
@@ -70,6 +72,7 @@ pnpm run desktop:dist        # x64、per-user、assisted NSIS 安装器
 - Desktop/Core/Worker 模块边界、实施切片与 Rust 决策门：[`2026-07-18-desktop-modular-monolith-architecture-design.md`](./docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md)
 - 会话、上下文、记忆、工具与消息链路机制全景：[`agent-harness-v2-mechanisms.md`](./docs/kith-space/agent-harness-v2-mechanisms.md)
 - P-A10完整契约、ADR、失败模式与43场景：[`2026-07-19-agent-harness-session-context-memory-tools-design.md`](./docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md)
+- 内置Pi默认Advisor、Claude切换、独立模型设置与Pi CLI安全导入：[`2026-07-22-system-memory-advisor-provider-design.md`](./docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md)
 - 日常开发命令（启动/测试/打包）：[`docs/dev-commands.md`](./docs/dev-commands.md)
 - 高级开发与调试（Token/Web/数据库/E2E）：[`docs/dev-debugging.md`](./docs/dev-debugging.md)
 - 理念与长远愿景：[`docs/vision.md`](./docs/vision.md)

@@ -2,7 +2,7 @@
 
 ## 前言
 
-这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）；随后授权浏览器的目录选择收敛为受限主机目录浏览器（决策 24）。2026-07-14 又锁定会话聚合面板（决策 25）与 Agent 频道响应模式（决策 26）；2026-07-15 在该响应机制上补充 Human 专属的频道全体提及（决策 27），并把 ChatOnly 的模块导航迁入左侧栏、模块打开态继续使用 Dock，同时退役案例展示（决策 28）。2026-07-18 本轮 UI 验收结束后，项目锁定“保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，以模块化单体渐进收敛、性能证据驱动 Rust 决策”的工程路线（决策 29）。当前结论以每条决策中的最新修正和决策 21-29 为准。
+这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）；随后授权浏览器的目录选择收敛为受限主机目录浏览器（决策 24）。2026-07-14 又锁定会话聚合面板（决策 25）与 Agent 频道响应模式（决策 26）；2026-07-15 在该响应机制上补充 Human 专属的频道全体提及（决策 27），并把 ChatOnly 的模块导航迁入左侧栏、模块打开态继续使用 Dock，同时退役案例展示（决策 28）。2026-07-18 本轮 UI 验收结束后，项目锁定“保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，以模块化单体渐进收敛、性能证据驱动 Rust 决策”的工程路线（决策 29）；P-A10的Agent Harness v2形成决策30，2026-07-22至23又形成并修订系统Memory Advisor Provider提案（决策31）。当前结论以每条决策中的最新修正和决策21-31为准。
 
 盘问的方式是一次给一个决策、每次给一个明确建议，让用户在 either/or 之间做取舍。会话过程中有几条决策被推翻或修正过（底座、runtime、Redis 的真实用途、聊天历史随文件夹走的成本），这些演化本身是理解项目为什么长成现在这样的关键，因此单列一节保留。
 
@@ -474,6 +474,24 @@
 **P-A10.6–P-A10.7 实施状态**：workspace schema v8增加restricted advisor control plane、proposal/recall observation与session revision；Claude maintenance运行在无工具/MCP/CLI、ephemeral cwd的独立Port，provider结果经typed actor/evidence、exclude/secret、source ACL、suppression、dedupe、成本/批次/lease验证后才能active/proposed，Codex/opencode当前明确unsupported。Advisor在provider返回和最终写事务内再次CAS校验job lease、Agent/source生命周期，混合retry/source cap按job结算，canonical/revision/evidence/proposal/conflict relation/mutation原子提交；安装级队列限制跨Space maintenance并发。Human面板提供Structured/Files、manage/recall/debug、proposal/revision/relation/evidence/disclosure/source revoke/suppression与advisor freshness，并允许Human把撤权来源的item以新manual revision确认为独立知识而不恢复旧ACL。Core启动和每5秒执行幂等durable-turn恢复扫描，封闭message+delivery提交后所有post-commit effect都失败且再无新事件的窗口。snapshot按session/generation/checksum/64KiB门禁持久和恢复，checklist/short wake跨restart使用session单调revision；compaction以持久turn event revision作为下一Envelope一次性`post_compaction`标记，terminal可重建append后投影失败窗口；高频preview以250ms窗口按类合并并在critical/terminal/cancel/close前flush，event/terminal/usage即时ACK并有60秒snapshot兜底。Codex提供可映射compaction telemetry，Claude/opencode不伪造统一summary。真实Desktop/Web验收发现并根治了Worker turn identity漏接`source=turn`、v2明确任务被legacy task wake双消费并误停Agent、terminal usage未承接final usage event三条跨边界问题。
 
 完整规格：`docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
+
+---
+
+## 决策 31：结构化记忆提炼采用安装级可替换 Advisor Provider，与聊天 runtime 解耦
+
+**状态**：Proposed / Reviewed，2026-07-23按“内置Pi为新安装默认、Claude可切换、模型设置独立”修订，尚未实现。当前代码仍由`agent.runtime`选择maintenance：Claude受支持，Codex/opencode明确unsupported；结构化recall、Human管理与文件记忆不受此限制。
+
+**结论**：Memory Advisor的业务管线继续由Core `MemoryAdvisorService`拥有，但执行一次结构化completion的能力收敛为安装级`AdvisorProvider`。它不是普通Agent，不具备身份、频道membership、DM、消息发送、工具、MCP、持久session、业务ACL或数据库写入权。同一个Provider可在Human显式授权后处理Claude Code、Codex、opencode聊天Agent产生的eligible turn，聊天runtime的session、工具、模型和配置不被复用。
+
+设置、job/run和审计必须区分三层：本机execution adapter、不可变`Advisor Model Profile`（实际model provider/model/API/endpoint/credential source/data policy）和完整出站计划（canonical endpoint、region、credential identity、tenant/project、proxy/allowed egress）。新安装默认选择Desktop内置、精确锁版的Pi SDK Provider，Claude Code作为可切换Provider；既有安装不静默切换处理方。Adapter必须在读取evidence与外发正文前完成无正文preflight，任何unknown或漂移fail-closed；调用后校验只作二次审计。每个job/run同时固定Provider revision、Model Profile revision、installation identity、Provider/revocation epoch、配置/能力digest、egress、source-scope与per-Agent consent epoch；凭据通过绑定run/epoch/Worker generation的短时单次activation handle注入，不持久化。Core用`ProviderEpochGate`封闭最终app epoch复核与workspace事务提交之间的设置切换窗口。旧`enabled=1`不构成云端外发授权，Agent ACL可见但不在consent scope的DM/私有正文不得外发；跨机器、撤回后重授或边界变化也不能静默重路由或批量重放历史。Provider返回只是不可信candidate，仍需经过既有typed schema、memory-poisoning policy、source ACL、secret/noise、suppression、dedupe、disclosure、lease、Agent/Space lifecycle和最终原子事务。
+
+**推理与权衡**：为每种聊天runtime分别实现maintenance会重复无工具、MCP/session/cwd/environment隔离、schema、取消、usage和版本兼容，并使记忆能力随聊天引擎漂移。普通内置Agent又拥有过多身份、会话和工具能力。安装级无状态Provider用更窄接口获得更低维护成本和一致记忆体验，但引入app.db Provider revision/epoch、workspace per-Agent consent epoch、provider run、配置漂移恢复与独立设置UI。迁移先冻结现有Claude结果，再补最小env、临时HOME、可执行物完整性与进程树终止能力；外发授权控制面上线时，旧enabled状态不自动继承为consent，Codex/opencode也只在明确授权后开放。
+
+**Pi边界**：Kith-space内置并精确锁版`@earendil-works/pi-ai`，用Kith-owned helper通过锁定版本公开的`createModels`/provider factory/`models.completeSimple()`执行一次completion，不启动完整Pi coding agent、AgentSession、agent loop、文件/shell工具、项目配置或资源发现。系统Pi CLI不是执行依赖，只能由Human显式触发；Kith自有纯数据解析器只读其全局模型目录和所选凭据来源，不调用命令/env resolver、OAuth刷新、provider hook或写回。项目`.pi`、`!command`、复合环境插值与动态网络刷新都不执行。导入生成脱敏不可变快照，配置变化需刷新、重新预检并按边界重新授权。Pi不是sandbox，选择Pi也不代表数据留在本机，仍需显示并授权实际backend/model/destination。
+
+**备选方案**：否决“每聊天runtime各做一套Advisor”，因为安全与维护逻辑重复；否决“普通内置Agent”与“内置完整Pi coding agent”，因为权限面和资源发现面过大；否决“只调用系统Pi CLI”，因为版本、PATH、全局配置和供应链不可复现；暂缓“捆绑本地模型权重”，因为分发、硬件、质量与许可证成本。保留确定性规则作为模型前后的admission/validation而非唯一语义提炼器；Pi SDK统一多模型调用仍必须走相同授权和审计。
+
+**实施边界**：本决策不命名为P-A10.8，也不吞并P-A11 consolidation、P-A12 skill reconciliation或P-S1 sandbox/approval/Vault。完整提案见`docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md`。
 
 ---
 

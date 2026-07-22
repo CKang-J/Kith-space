@@ -18,9 +18,10 @@ Kith-space 是一个**桌面优先、单人使用的个人 AgentOS**：一个 Hu
 - `docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md` — **Chat 壳层与侧栏模块导航规格**：ChatOnly 纵向模块入口、模块打开态 Dock、三组会话抽屉、中心 Chat 卡片保护、画布式会话导航与案例展示退役；代码、自动化验证与用户手动视觉验收均已完成。
 - `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md` — **P-A9 桌面模块化单体架构收敛规格**：保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，按深 Module、窄 Interface、可替换 Seam 和性能基线渐进拆分；P-A9.0–P-A9.7 已完成并提交，真实存量数据暴露的 Runtime admission 队列饥饿与错误状态传播也已完成根因修复。
 - `docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md` — **P-A10 Agent Harness v2 规格**：per-surface session generation、durable delivery/logical turn/attempt、Context Envelope、server-owned thread reply、broker-backed MCP/CLI Gateway、revisioned episodic memory、restricted advisor、disclosure/suppression、continuity recall、checklist/snapshot/compaction telemetry与分阶段验收；P-A10.0–P-A10.7已完成。
+- `docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md` — **系统级可替换 Memory Advisor Provider 提案**：把结构化记忆提炼从聊天 runtime 解耦；新安装默认使用内置、精确锁版的 Pi SDK Provider，Claude Code 可切换，并把执行 Provider、Advisor Model Profile、Pi CLI 全局配置安全导入、能力门禁和 revisioned consent 分层；已审查，尚未实现。
 - `docs/kith-space/agent-harness-v2-mechanisms.md` — **P-A10 机制全景导读**：以架构图、时序图和状态机系统解释会话、投递/turn、Context Envelope、话题路由、结构化记忆、MCP/CLI Gateway、消息落 UI、恢复与安全边界；理解“这些机制如何共同工作”优先读这里。
 - `docs/vision.md` — 北极星：完整理念 + **超越 MVP 的长远愿景**。理解"为什么"从这里开始。
-- `docs/decisions.md` — 全部决策（30 条，含 1 条已审查但未实现提案）+ 推理 + 权衡 + **被推翻/修正的决策**演化脉络。理解"凭什么这样定"看这里。
+- `docs/decisions.md` — 全部决策（31 条，含 1 条已审查但未实现提案）+ 推理 + 权衡 + **被推翻/修正的决策**演化脉络。理解"凭什么这样定"看这里。
 - `docs/roadmap.md` — 产品能力分期：当前 A1-A6 与其后的本机能力路线，并区分延后能力和永久非目标。
 - `docs/glossary.md` — 术语正典，防口径漂移。术语拿不准查这里。
 - `docs/kith-space/` — 5 份专项设计文档：
@@ -98,7 +99,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 ## 当前进展
 
-**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-20：A2-A6、P-A7 H1-H4、P4/P-A8、本轮聊天与壳层 UI、P-A9.0–P-A9.7及P-A10.0–P-A10.7均已完成；支持runtime的新Agent已通过durable delivery/turn、server-owned thread、Context Envelope、完整Gateway、revisioned episodic recall、advisor和snapshot实际使用v2，既有Agent可显式互斥cutover。H5、P-A11、P-A12与P-S1继续独立实施。做到哪、下一步与关键发行边界全部见 `docs/progress.md`。
+**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-23：A2-A6、P-A7 H1-H4、P4/P-A8、本轮聊天与壳层 UI、P-A9.0–P-A9.7及P-A10.0–P-A10.7均已完成；支持runtime的新Agent已通过durable delivery/turn、server-owned thread、Context Envelope、完整Gateway、revisioned episodic recall、advisor和snapshot实际使用v2，既有Agent可显式互斥cutover。系统级可替换Memory Advisor Provider提案已修订为“新安装默认内置Pi SDK、Claude Code可切换、模型Profile独立、Pi CLI配置显式安全导入”，但尚未实现；当前自动advisor仍仅支持Claude。H5、P-A11、P-A12与P-S1继续独立实施。做到哪、下一步与关键发行边界全部见 `docs/progress.md`。
 
 <!-- CODEGRAPH_START -->
 ## CodeGraph
