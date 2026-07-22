@@ -25,7 +25,12 @@ export type DesktopProcessCommandOptions = PackagedProcessCommandOptions | Devel
 export function buildDesktopProcessCommands(options: DesktopProcessCommandOptions): DesktopProcessCommands {
   if (options.mode === "development") {
     return {
-      core: { command: options.executable, args: [options.tsxCli, "src/server/index.ts"], cwd: options.appRoot },
+      core: {
+        command: options.executable,
+        args: [options.tsxCli, "src/server/index.ts"],
+        cwd: options.appRoot,
+        env: { KITH_SPACE_WEB_DIST: path.join(options.appRoot, "web", "dist") },
+      },
       worker: { command: options.executable, args: [options.tsxCli, "src/daemon/index.ts"], cwd: options.appRoot },
       vite: {
         command: options.executable,

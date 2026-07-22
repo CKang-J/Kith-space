@@ -28,6 +28,8 @@ pnpm run desktop:dev
 
 它会构建 Electron main/preload，并统一启动 Core Service、Local Runtime Worker、Vite 和 Electron。全新数据目录无需 `seed`；首次窗口会收集 Human 名称、邮箱和描述，并自动创建 `Home` Space。
 
+启动前会先构建一次 Web 静态产物到 `web/dist`，供已开启的浏览器入口（例如 `http://127.0.0.1:7777`）提供同源页面；Electron 窗口仍从 Vite `5273` 加载并保持热更新。若在 Desktop 的“Desktop & Web”设置中启用了本机 Web，7777 首次访问应显示访问 Token 登录页，而不是 `{"error":"not found"}`。
+
 开发脚本会把额外参数原样传给Electron；例如本机UI自动化可用`pnpm run desktop:dev --remote-debugging-port=9222`。这只应用于开发宿主，不进入production bundle；调试端口不得在LAN/公网暴露，完整约束见`dev-debugging.md`。
 
 默认数据目录是 `~/.kith-space`。需要隔离验收数据时，可在当前 PowerShell 会话中先设置：
