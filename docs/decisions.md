@@ -497,6 +497,24 @@
 
 ---
 
+## 决策 32：模型配置由 Kith 统一管理，CLI 配置只读导入并在启动时注入
+
+**状态**：Accepted / Pending implementation（2026-07-23）。
+
+**结论**：Kith-space 的安装级 `app.db` 成为模型供应商连接、可复用模型配置、运行器默认值和 Memory Advisor 模型绑定的产品事实源。供应商连接与 Claude Code、Codex、OpenCode、Pi 等 runtime 解耦，由 runtime 专属 compiler 按 API 协议、认证方式和本机版本判断兼容；Agent 只保存“跟随运行器默认”或“固定某个模型配置 revision”的绑定意图，不复制 endpoint 或密钥。运行器默认值显式区分 Kith 模型配置、受限的 `unmanaged_cli_native` 与未设置三态，不能用 nullable 字段混淆；CLI-native 不可用于 Advisor。
+
+**配置边界**：Kith 可以由 Human 显式触发、只读并脱敏地导入受支持的 Pi/Claude/Codex/OpenCode 全局配置，但默认不写回任何 CLI 用户配置。Core 固定 provider/model/runtime revision 和执行 fingerprint，Local Runtime Worker 在每次启动时用参数、child-only 环境和 Kith-owned 临时配置注入；配置变化先提升安装级 runtime epoch、阻断旧 admission，再进入新的 session generation，不热改或错误 resume 旧 session。未来“同步到 CLI”若实现，只能是显式、展示 diff、备份、原子写入和可回滚的高级动作，不能成为正常运行依赖。
+
+**Pi Runtime**：Pi 从现有 experimental print-mode one-shot adapter 提升为正式 P-A10 v2 runtime，优先适配本机外部 Pi CLI 的 RPC 模式，接入 per-surface session、durable turn、Context Envelope、Kith CLI Gateway、usage、cancel、snapshot 和 compaction telemetry。Pi Agent runtime 与内置 `pi-ai` Memory Advisor 是两条独立路径，不共享 session、工具权限或执行配置；Pi 没有内置 MCP 时必须诚实标记 unsupported，不能把 CLI fallback 伪报成 MCP。正式 ready 必须通过版本化 RPC 基线与默认禁用项目/用户 extension、skill、prompt、theme、context 的安全启动探针，并以 `agent_settled` 作为唯一 turn terminal。
+
+**UI 结论**：Settings 增加“模型与供应商”和“运行器”；Memory Advisor 页只负责启用状态、执行器、模型配置、真实数据目的地与授权影响，revision/epoch/digest 和 Provider Run 进入高级诊断。Agent 记忆页把 Advisor 收敛为摘要条与管理抽屉，主体空间优先给结构化记忆列表/详情；类型和范围筛选收敛为单一菜单。现有 `Advisor Model Profile` 继续作为内部不可变执行快照，不再作为普通用户直接编辑的产品概念。
+
+**推理与权衡**：自动修改全局 CLI 配置会影响 Kith 之外的终端、引入并发覆盖、schema/版本/企业 managed policy 冲突，并扩大密钥复制面；只靠各 CLI 自有配置又无法提供 Agent/Advisor 可复用、可审计和可迁移的统一体验。Kith-owned 配置加 per-launch compiler 把副作用限制在 Kith 子进程，代价是需要维护四家窄 adapter、在 Codex 等 machine-local 配置受限的 runtime 上使用临时配置根，并在 Space 移机缺少安装级配置时明确进入 `setup_required`。
+
+**安全边界**：新增长期密钥、读取本机 CLI 文件和显示一次性 secret 只接受 Desktop 私有信任；普通授权浏览器可查看脱敏配置和选择已有绑定，但 LAN HTTP 不承载新密钥。聊天 runtime 新增独立 `RuntimeCredentialActivationPort`：Core 只发送强绑定、无密钥 descriptor，Worker 通过 Worker-only 本机控制通道单次兑换，明文只进入当前 Worker 内存与 child env，并在失败、取消、关闭、超时或 lease 变化时撤销；不得复用 Advisor activation，也不得进入 workspace.db、普通控制消息、日志或 UI。完整规格见 `docs/superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`。
+
+---
+
 ## 被推翻/修正的决策
 
 这一节专门记录会话中演化过的决策。保留它们，是因为"为什么没走另一条路"往往比结论本身更能帮未来的读者理解项目的形状。

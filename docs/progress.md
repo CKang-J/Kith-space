@@ -12,7 +12,7 @@
 
 - 主干：`main`。临时工作分支不作为阶段进度记录。
 - 已完成：P0-P3 后端；P4 单窗口 ChatOnly / Split / ModuleOnly 生产壳；任务模块“全部任务/频道任务”范围侧栏。
-- 当前阶段：**P-A10.0–P-A10.7 与系统级可替换 Memory Advisor Provider 均已完成代码、迁移、文档、自动化门禁、独立对抗审查和 Desktop/Web 真实验收**。P-A11 consolidation、P-A12 skill reconciliation、P-S1 sandbox/approval/Vault与H5跨Space编排继续是独立后续。P-A9 事实见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`，P-A10 实施契约见 `docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`，Provider实现契约见`docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md`。
+- 当前阶段：**P-A10.0–P-A10.7 与系统级可替换 Memory Advisor Provider 均已完成代码、迁移、文档、自动化门禁、独立对抗审查和 Desktop/Web 真实验收**。2026-07-23 另已接受但尚未实现“统一模型与供应商/运行器控制面、Pi第四家正式v2 runtime、Memory Advisor与Agent记忆页重构”方案；它不得被误写成当前代码事实。P-A11 consolidation、P-A12 skill reconciliation、P-S1 sandbox/approval/Vault与H5跨Space编排继续是独立后续。P-A9 事实见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`，P-A10 实施契约见 `docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`，Provider实现契约见`docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md`，待实现控制面见`docs/superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`。
 - **P-A9 最终模块事实**：`src/messages/messagePostingModule.ts` 与 `src/tasks/taskLifecycleModule.ts` 封装消息/任务写入和生命周期，同库事务原子提交 seq、消息、dispatch、follow、附件、membership、mentions、任务与 system audit；实时发布和 wake 作为明确 post-commit effect。`src/server/routes-agent.ts` 只分派 `src/server/agent-http/` 的七组 Transport Adapter；频道、Agent、文件与 task 领域不再依赖 server/desktop，依赖护栏没有 allowlist。`src/runtime/` 提供 generation-aware admission ack、持久 get-or-reserve 重放和容量 4/队列 128/TTL 120 秒的 Worker admission；AgentManager 按实际消息合并批次与既有 `online/error` activity 终态提供本地 idle hint，排队出现时由真正空闲且没有未完成批次的会话立即让出容量，不新增 Runtime v2 的跨边界 turn-complete 协议。queued 手动启动只有在实际 admitted 后才进入工作态，失败/cancelled/expired wake 会携带会话终态并关闭可见回复占位。旧 raw 生命周期命令被拒绝。`web/src/features/conversation/` 拥有 Chat 请求、消息/话题模型与视口语义，`Chat.tsx` 保持组合层和局部交互状态。P-A9.7 已删除旧 facade、旧 Implementation、兼容 ack 和临时 allowlist。
 - **P-A9 性能事实**：最终 1/5/10/20 Agent Core 总 p95 为 3.489/9.632/14.661/50.481 ms，SQL 为 18/46/81/151，20 Agent 低于 120 ms SLO；Runtime admission 三轮中位数为 0.213/0.496/0.574/0.342 ms，均低于 25 ms SLO。P-A9.1b 统一事务让 20 Agent durable-prefix 相对 P-A9.0 增加但绝对值仍低于 10 ms，作为原子一致性权衡单独记录。Chat 首次可见 100/500/1000 档 median p95 为 62.8/65.2/62.4 ms，全量滚动为 70.6/311.5/621.9 ms，实时追加为 231 ms，均通过绝对 SLO 且对应 median p95 未相对冻结值退化超过 10%；没有虚拟化或视觉调整。完整统计、波动与口径见 `docs/performance/p-a9-baseline.md`，契约与删除证据见 `docs/architecture/p-a9-contract-matrices.md`。
 - 聊天消息流已从全宽描边卡片迁入统一 `ChatMessageItem` 表现层，主会话、话题、action card 与加载 Skeleton 共用 32px 头像、紧凑发送者行和 Human/Agent 语义气泡；1040px 居中流宽、14.5px/1.55 正文、52px 标题、14px 顶部留白、88px Composer 预留和气泡内话题摘要已落地。普通链尾间距为 20px；同一天相邻且同发送者的 Human/Agent 普通消息隐藏重复头像/昵称并以 6px 组内间距连续展示，hover/focus 在头像槽显示时分，系统消息、action card、日期和发送者变化会打断分组。Human 消息昵称使用真实的 `14.5px / 700 / 20px`，Agent 昵称始终保持 500 字重、hover/focus 只转为深色；时间为 `11px / 400 / 16px`，二者按基线对齐且消息头无额外字距；侧栏 Agent 名称继续使用 600。发送者行状态文字移除并只保留头像状态点；Agent 私聊标题改为头像加昵称并移除 `@` 前缀，状态文字复用 Agents 页面中文映射。父消息话题摘要新增参与者头像、总数、最新时间、最近三条 Human/Agent 单行回复和“在话题中回复”，system 任务事件不进入预览行且正文与摘要之间无分隔线；主消息流中的 system 任务事件与内部 Markdown 已纳入 1040px 中心轨道并居中。摘要复用批量 thread metadata 接口并实时刷新变更父消息，不产生逐话题请求。主消息工具外显“加表情、话题、复制、更多”，收藏保留在更多菜单，工具栏只由气泡 hover/focus 触发并按右侧空间自动切换到气泡右侧或上方；隐藏状态初始置于气泡上方，消息流只允许纵向滚动，不再出现底部横向滚动条。归档频道隐藏写入口并保留复制和打开已有话题；Showcase 已由后续壳层切片完整退役。真实页面的 Split、ChatOnly、滚动场景和用户手动视觉验收均已完成。
@@ -143,7 +143,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 ## 五、下一步顺序
 
 1. P-A9 与本次 Runtime admission 真实数据回归修复完成后停止本阶段；不自动推送、不合并、不发布，也不做仓库外数据清理。
-2. P-A10.0–P-A10.7 已收口；下一步只能按独立规格进入P-A11 consolidation、P-A12 skill reconciliation、P-S1安全升级或H5，不把任一后续范围回写成P-A10补丁。Rust试验和生产力模块继续按各自前置关系推进。
+2. P-A10.0–P-A10.7 已收口；统一模型/运行器控制面、Pi正式v2 runtime与记忆设置UI必须按`2026-07-23-model-provider-runtime-memory-settings-design.md`作为独立增量实施，不回写成P-A10补丁。P-A11 consolidation、P-A12 skill reconciliation、P-S1安全升级或H5仍按各自独立规格推进；Rust试验和生产力模块继续按各自前置关系推进。
 
 ## 六、验证与工作约定
 
@@ -167,6 +167,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`：Agent 默认/频道覆盖、唤醒矩阵、任务指派、Runtime 指令与响应模式 UI 规格。
 - `docs/superpowers/specs/2026-07-15-chat-message-ui-density-design.md`：聊天消息流密度、气泡层级、消息工具、表现层组件边界、实施切片与量化验收规格；代码、自动化验证与用户手动视觉验收均已完成。
 - `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`：P-A9 进程拓扑、深 Module、窄 Interface、实施切片、性能/Rust 决策门与验收规格。
+- `docs/superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`：已接受、待实现的模型供应商/模型配置/运行器控制面、Pi正式v2 runtime、Memory Advisor与Agent记忆页重构规格。
 - `docs/vision.md`：长期北极星与永久边界。
 - `docs/decisions.md`：锁定决策、推理和被推翻路线。
 - `docs/roadmap.md`：阶段与后续能力顺序。

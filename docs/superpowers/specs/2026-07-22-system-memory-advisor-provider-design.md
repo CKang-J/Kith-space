@@ -1,5 +1,7 @@
 # Kith-space 系统级可替换 Memory Advisor Provider 方案设计
 
+> 2026-07-23 后续覆盖：`2026-07-23-model-provider-runtime-memory-settings-design.md` 已锁定统一的“模型供应商 / 模型配置 / 运行器”控制面、Pi 正式 Agent runtime，以及 Memory Advisor 与 Agent 记忆页重构。本文的 Provider 隔离、Pi SDK 执行、job snapshot、egress、consent、validation、revision 和审计安全契约继续有效；本文中把模型编辑器、Pi 导入和完整诊断直接放在 Memory Advisor 页的 UI/配置归属由后续规格替代。
+
 > 状态：Accepted / Implemented。2026-07-23按产品决策修订并完成切片0–4的代码、迁移、设置UI、自动化门禁与实现级验证；真实Desktop/Web验收记录在`docs/progress.md`。
 > 日期：2026-07-22，2026-07-23修订。
 > 适用范围：P-A10.6 已实现的结构化记忆 Advisor 执行层；不改变结构化记忆、文件记忆或聊天 Runtime Contract v2 的既有语义。

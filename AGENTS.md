@@ -19,9 +19,10 @@ Kith-space 是一个**桌面优先、单人使用的个人 AgentOS**：一个 Hu
 - `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md` — **P-A9 桌面模块化单体架构收敛规格**：保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，按深 Module、窄 Interface、可替换 Seam 和性能基线渐进拆分；P-A9.0–P-A9.7 已完成并提交，真实存量数据暴露的 Runtime admission 队列饥饿与错误状态传播也已完成根因修复。
 - `docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md` — **P-A10 Agent Harness v2 规格**：per-surface session generation、durable delivery/logical turn/attempt、Context Envelope、server-owned thread reply、broker-backed MCP/CLI Gateway、revisioned episodic memory、restricted advisor、disclosure/suppression、continuity recall、checklist/snapshot/compaction telemetry与分阶段验收；P-A10.0–P-A10.7已完成。
 - `docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md` — **系统级可替换 Memory Advisor Provider 规格**：把结构化记忆提炼从聊天 runtime 解耦；新安装默认使用内置、精确锁版的 Pi SDK Provider，Claude Code 可切换，并把执行 Provider、Advisor Model Profile、Pi CLI 全局配置安全导入、能力门禁和 revisioned consent 分层；切片0–4已实现。
+- `docs/superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md` — **模型供应商、运行器与记忆设置重构规格**：已接受、待实现；以Kith配置为事实源，CLI配置只读导入、启动时注入，统一模型供应商/模型配置/运行器边界，把Pi提升为第四个正式v2 runtime，并重构Memory Advisor与Agent记忆页。
 - `docs/kith-space/agent-harness-v2-mechanisms.md` — **P-A10 机制全景导读**：以架构图、时序图和状态机系统解释会话、投递/turn、Context Envelope、话题路由、结构化记忆、MCP/CLI Gateway、消息落 UI、恢复与安全边界；理解“这些机制如何共同工作”优先读这里。
 - `docs/vision.md` — 北极星：完整理念 + **超越 MVP 的长远愿景**。理解"为什么"从这里开始。
-- `docs/decisions.md` — 全部决策（31 条，均已实现）+ 推理 + 权衡 + **被推翻/修正的决策**演化脉络。理解"凭什么这样定"看这里。
+- `docs/decisions.md` — 决策 1–31 已实现，决策 32（统一模型/运行器控制面、Pi 正式 runtime 与记忆设置重构）已接受、待实现；同时记录推理、权衡和**被推翻/修正的决策**演化脉络。理解"凭什么这样定"看这里。
 - `docs/roadmap.md` — 产品能力分期：当前 A1-A6 与其后的本机能力路线，并区分延后能力和永久非目标。
 - `docs/glossary.md` — 术语正典，防口径漂移。术语拿不准查这里。
 - `docs/kith-space/` — 5 份专项设计文档：
