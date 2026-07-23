@@ -507,13 +507,25 @@
 
 **Pi Runtime**：Pi 从现有 experimental print-mode one-shot adapter 提升为正式 P-A10 v2 runtime，优先适配本机外部 Pi CLI 的 RPC 模式，接入 per-surface session、durable turn、Context Envelope、Kith CLI Gateway、usage、cancel、snapshot 和 compaction telemetry。Pi Agent runtime 与内置 `pi-ai` Memory Advisor 是两条独立路径，不共享 session、工具权限或执行配置；Pi 没有内置 MCP 时必须诚实标记 unsupported，不能把 CLI fallback 伪报成 MCP。正式 ready 必须通过版本化 RPC 基线与默认禁用项目/用户 extension、skill、prompt、theme、context 的安全启动探针，并以 `agent_settled` 作为唯一 turn terminal。
 
-**UI 结论**：Settings 增加“模型与供应商”和“运行器”；Memory Advisor 页只负责启用状态、执行器、模型配置、真实数据目的地与授权影响，revision/epoch/digest 和 Provider Run 进入高级诊断。Agent 记忆页把 Advisor 收敛为摘要条与管理抽屉，主体空间优先给结构化记忆列表/详情；类型和范围筛选收敛为单一菜单。现有 `Advisor Model Profile` 继续作为内部不可变执行快照，不再作为普通用户直接编辑的产品概念。
+**UI 结论**：Settings 增加“模型与供应商”和“运行器”。模型页采用单列来源总览，添加与编辑复用同一弹窗并在其中维护该供应商的模型；一次保存由服务端聚合命令在runtime configuration写锁内读取当前状态，并在单一app.db事务内提交供应商revision、模型增删改和runtime epoch，不能由前端逐接口形成部分保存，也不能让排队并发请求复用旧快照。删除采用二次确认，仍被运行器、Advisor或任一可用Space active pinned Agent引用时fail-closed；软删除Agent不再占用，任一已登记Space不可访问时拒绝删除。disabled配置不再进入选择器或执行解析。Memory Advisor 页只负责启用状态、执行器、模型配置、真实数据目的地与授权影响，revision/epoch/digest 和 Provider Run 进入高级诊断。Agent 记忆页把 Advisor 收敛为摘要条与管理抽屉，主体空间优先给结构化记忆列表/详情；类型和范围筛选收敛为单一菜单。现有 `Advisor Model Profile` 继续作为内部不可变执行快照，不再作为普通用户直接编辑的产品概念。
 
 **推理与权衡**：自动修改全局 CLI 配置会影响 Kith 之外的终端、引入并发覆盖、schema/版本/企业 managed policy 冲突，并扩大密钥复制面；只靠各 CLI 自有配置又无法提供 Agent/Advisor 可复用、可审计和可迁移的统一体验。Kith-owned 配置加 per-launch compiler 把副作用限制在 Kith 子进程，代价是需要维护四家窄 adapter、在 Codex 等 machine-local 配置受限的 runtime 上使用临时配置根，并在 Space 移机缺少安装级配置时明确进入 `setup_required`。
 
-**安全边界**：新增长期密钥、读取本机 CLI 文件和显示一次性 secret 只接受 Desktop 私有信任；普通授权浏览器可查看脱敏配置和选择已有绑定，但 LAN HTTP 不承载新密钥。聊天 runtime 新增独立 `RuntimeCredentialActivationPort`：Core 只发送强绑定、无密钥 descriptor，Worker 通过 Worker-only 本机控制通道单次兑换，明文只进入当前 Worker 内存与 child env，并在失败、取消、关闭、超时或 lease 变化时撤销；不得复用 Advisor activation，也不得进入 workspace.db、普通控制消息、日志或 UI。完整规格见 `docs/superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`。
+**安全边界**：普通授权浏览器可管理供应商/模型和选择已有绑定；新增或更换长期密钥额外要求Desktop私有信任，或请求peer、Host与Origin三者全部为loopback且Origin/Host同源（含端口）。本机`localhost:7777`因此可获得与Desktop一致的供应商体验，但跨端口localhost页面与LAN HTTP不承载新密钥。任何已保存密钥的供应商只要backend、API协议、endpoint、network class或allowed egress发生变化，都必须重新输入密钥，禁止旧credential ref静默跟随新的执行身份或目的地。读取本机CLI文件、显示一次性secret与导出诊断仍仅Desktop。聊天 runtime 新增独立 `RuntimeCredentialActivationPort`：Core 只发送强绑定、无密钥 descriptor，Worker 通过Worker-only本机控制通道单次兑换，明文只进入当前Worker内存与child env，并在失败、取消、关闭、超时或lease变化时撤销；不得复用Advisor activation，也不得进入workspace.db、普通控制消息、日志或UI。完整规格见 `docs/superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`。
 
 **实施事实**：app.db v6与workspace.db v10迁移、稳定对象/不可变revision、三态runtime default、Agent绑定快照、runtime epoch、四家compiler registry、独立聊天activation、Pi RPC v2、脱敏presenter和Settings三页已落地。Pi使用本机0.81.1外部CLI，fixture覆盖strict LF/UTF-8半帧、correlated response、usage、abort、compaction与`agent_settled`；MCP保持unsupported并通过CLI Gateway。CLI导入只读固定用户级文件、拒绝symlink/超限/动态资源，默认从不写回。
+
+---
+
+## 决策 33：快捷安装只管理 Kith-owned runtime 副本
+
+**状态**：Implemented（2026-07-23）。
+
+**结论**：运行器页可以在Desktop trust下快捷安装Claude Code、Codex、OpenCode和Pi，但只允许Kith内置清单中的固定包名与支持版本，并安装到`<appData>/managed-runtimes/<runtimeId>`。Worker下次启动时把Kith-owned bin放到自身PATH前部；Kith不修改系统PATH、不覆盖或卸载系统CLI、不写账号文件和模型全局配置。安装/删除逐runtime串行并使用同父目录staging/隔离目录补偿回滚；删除动作也只能删除Kith-owned目录，且不会清空用户已有的自定义可执行路径。系统PATH另有同名CLI时，下次Worker启动自动回退。
+
+**推理与权衡**：只给安装命令会让普通用户仍需理解npm、PATH和版本兼容；直接全局安装或接管各CLI配置则会影响Kith之外的终端、扩大删除权限并引入供应链与配置冲突。Kith-owned锁版副本把快捷安装的便利限定在可撤销目录内，代价是支持版本升级必须更新清单并验收，且安装/删除后需要重启Worker，不能假装热生效。
+
+**安全边界**：安装与删除只接受Desktop trusted请求，API不接受包名、命令、registry或任意目标路径；普通Web只读取脱敏的安装、版本和账号状态。账号探测只返回`ready / signed_out / unknown`与人类可读摘要，不回传CLI原始输出或凭据。模型配置仍遵循决策32：Kith是事实源，CLI配置只读导入且不写回。
 
 ---
 

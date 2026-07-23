@@ -414,7 +414,9 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
   } = useRuntimeDiscovery(api, false);
   useEffect(() => {
     void api("GET", "/api/settings/model-configurations")
-      .then((result: any) => setModelConfigurations(result.items ?? []))
+      .then((result: any) => setModelConfigurations(
+        (result.items ?? []).filter((item: any) => item.status === "active"),
+      ))
       .catch(() => setModelConfigurations([]));
   }, [api]);
   useEffect(() => {

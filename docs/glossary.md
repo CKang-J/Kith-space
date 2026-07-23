@@ -120,6 +120,9 @@
 **运行器配置 / Runtime Profile**
 : 每个本机 runtime 的安装级配置，保存可执行物偏好、三态默认绑定（Kith 模型配置 / 受限的 CLI 自有配置 / 未设置）和少量 runtime 专属选项；短寿命版本/能力 probe 另存缓存。Kith 在 Agent 启动时通过专属 compiler 把它编译为参数、child-only 环境和临时配置，不默认修改用户 CLI 全局文件。app.db v6已实现。
 
+**Kith 管理版本 / Kith-owned Runtime**
+: 由Kith桌面端按内置支持清单安装到`<appData>/managed-runtimes/<runtimeId>`的锁版CLI副本。Worker启动时优先使用它，但Kith不修改用户PATH、系统安装、账号文件或CLI全局配置；移除动作也只删除该Kith-owned目录。
+
 **CLI 自有配置 / Unmanaged CLI Native**
 : Human 显式委托某个本机 CLI 自己决定账户、供应商或默认模型的受限运行器状态。Kith 只记录可探测身份与变化摘要，不能保证完整数据目的地，也不能把它用于 Memory Advisor；它与“尚未配置”是两个不同状态。Runtime Profile三态绑定已实现该边界。
 

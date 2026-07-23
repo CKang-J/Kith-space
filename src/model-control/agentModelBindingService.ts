@@ -49,12 +49,18 @@ export class AgentModelBindingService {
       };
     }
     const model = this.configurations.get(binding.modelConfigurationId);
+    if (model.configuration.status !== "active") {
+      throw new ModelControlError("model_configuration_not_found");
+    }
     const revision = binding.modelConfigurationRevision === model.configuration.currentRevision
       ? model.revision
       : this.historicalRevision(binding.modelConfigurationId, binding.modelConfigurationRevision);
     const compatibility = revision.runtimeCompatibilitySnapshot[runtimeId];
     if (!compatibility?.supported) throw new ModelControlError("model_configuration_incompatible", compatibility?.reason);
     const provider = this.providers.getRevision(revision.providerConnectionId, revision.providerRevision);
+    if (provider.connection.status !== "active") {
+      throw new ModelControlError("model_provider_not_found");
+    }
     const fingerprint = createHash("sha256").update(JSON.stringify({
       runtimeId, configurationId: binding.modelConfigurationId, configurationRevision: binding.modelConfigurationRevision,
       providerId: revision.providerConnectionId, providerRevision: revision.providerRevision,

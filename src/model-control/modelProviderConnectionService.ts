@@ -5,6 +5,7 @@ import type { AdvisorCredentialSourceKind } from "../advisor-provider/contracts.
 import { canonicalAdvisorOrigin } from "../advisor-provider/advisorModelCompiler.js";
 import { ModelControlError, type ModelProviderConnectionRevision } from "./contracts.js";
 import { withRuntimeConfigurationChange } from "./runtimeConfigurationChange.js";
+import { modelConfigurationUsage } from "./runtimeConfigurationImpact.js";
 
 export interface SaveModelProviderConnectionInput {
   displayName: string;
@@ -47,6 +48,20 @@ function normalizeOrigin(
   } catch {
     throw new ModelControlError("model_provider_not_found", "invalid provider origin or network class");
   }
+}
+
+function executionIdentityChanged(
+  current: ReturnType<ModelProviderConnectionService["get"]>,
+  input: SaveModelProviderConnectionInput,
+): boolean {
+  const canonicalOrigin = normalizeOrigin(input.canonicalOrigin, input.networkClass);
+  const allowedEgress = [...new Set(input.allowedEgress
+    .map((origin) => normalizeOrigin(origin, input.networkClass)))].sort();
+  return current.revision.backendId !== input.backendId.trim()
+    || current.revision.apiKind !== input.apiKind
+    || current.revision.canonicalOrigin !== canonicalOrigin
+    || current.revision.networkClass !== input.networkClass
+    || JSON.stringify([...current.revision.allowedEgress].sort()) !== JSON.stringify(allowedEgress);
 }
 
 function map(row: ConnectionRow, revision: RevisionRow) {
@@ -93,29 +108,69 @@ export class ModelProviderConnectionService {
   }
 
   async create(input: SaveModelProviderConnectionInput) {
-    return withRuntimeConfigurationChange(() => this.save(randomUUID(), input, true));
+    return withRuntimeConfigurationChange(() => this.createWithinConfigurationChange(input));
   }
 
   async update(id: string, input: SaveModelProviderConnectionInput) {
-    this.get(id);
-    return withRuntimeConfigurationChange(() => this.save(id, input, false));
+    return withRuntimeConfigurationChange(() => this.updateWithinConfigurationChange(id, input));
   }
 
-  setStatus(id: string, status: "active" | "disabled") {
+  createWithinConfigurationChange(input: SaveModelProviderConnectionInput, id = randomUUID()) {
+    return this.save(id, input, true);
+  }
+
+  updateWithinConfigurationChange(id: string, input: SaveModelProviderConnectionInput) {
+    const current = this.get(id);
+    if (current.revision.credentialSourceKind !== "keyless_local"
+      && !input.credentialValue
+      && executionIdentityChanged(current, input)) {
+      throw new ModelControlError("credential_reentry_required");
+    }
+    return this.save(id, input, false);
+  }
+
+  async setStatus(id: string, status: "active" | "disabled") {
     const sqlite = appDataConnection();
     const current = this.get(id);
     if (status === "disabled") {
-      const inUse = Number(sqlite.prepare(`
-        SELECT count(*) FROM model_configurations c
+      const configurationIds = (sqlite.prepare(`
+        SELECT c.id FROM model_configurations c
         JOIN model_configuration_revisions r
           ON r.configuration_id = c.id AND r.revision = c.current_revision
         WHERE c.status = 'active' AND r.provider_connection_id = ?
-      `).pluck().get(id));
-      if (inUse > 0) throw new ModelControlError("model_configuration_in_use");
+      `).all(id) as Array<{ id: string }>).map((row) => row.id);
+      const usage = modelConfigurationUsage(configurationIds);
+      if (usage.length > 0) {
+        throw new ModelControlError("model_configuration_in_use", "model_configuration_in_use", { usage });
+      }
+      return withRuntimeConfigurationChange(() => sqlite.transaction(() => {
+        sqlite.prepare(`
+          UPDATE model_configurations SET status = 'disabled', updated_at = ?
+          WHERE id IN (
+            SELECT c.id FROM model_configurations c
+            JOIN model_configuration_revisions r
+              ON r.configuration_id = c.id AND r.revision = c.current_revision
+            WHERE r.provider_connection_id = ?
+          )
+        `).run(Date.now(), id);
+        sqlite.prepare("UPDATE model_provider_connections SET status = 'disabled', updated_at = ? WHERE id = ?")
+          .run(Date.now(), id);
+        sqlite.prepare(`
+          UPDATE installation_state SET runtime_configuration_epoch = runtime_configuration_epoch + 1
+          WHERE singleton_key = 1
+        `).run();
+        return { ...current, connection: { ...current.connection, status, updatedAt: Date.now() } };
+      }).immediate());
     }
-    sqlite.prepare("UPDATE model_provider_connections SET status = ?, updated_at = ? WHERE id = ?")
-      .run(status, Date.now(), id);
-    return { ...current, connection: { ...current.connection, status, updatedAt: Date.now() } };
+    return withRuntimeConfigurationChange(() => {
+      sqlite.prepare("UPDATE model_provider_connections SET status = ?, updated_at = ? WHERE id = ?")
+        .run(status, Date.now(), id);
+      sqlite.prepare(`
+        UPDATE installation_state SET runtime_configuration_epoch = runtime_configuration_epoch + 1
+        WHERE singleton_key = 1
+      `).run();
+      return { ...current, connection: { ...current.connection, status, updatedAt: Date.now() } };
+    });
   }
 
   private save(id: string, input: SaveModelProviderConnectionInput, create: boolean) {
@@ -143,7 +198,7 @@ export class ModelProviderConnectionService {
       throw new ModelControlError("desktop_trust_required", "credential reference is required");
     }
     const sqlite = appDataConnection();
-    const result = sqlite.transaction(() => {
+    const write = () => {
       const now = Date.now();
       const previous = create ? undefined : sqlite.prepare(
         "SELECT current_revision FROM model_provider_connections WHERE id = ?",
@@ -172,7 +227,7 @@ export class ModelProviderConnectionService {
         WHERE singleton_key = 1
       `).run();
       return this.get(id);
-    }).immediate();
-    return result;
+    };
+    return sqlite.inTransaction ? write() : sqlite.transaction(write).immediate();
   }
 }

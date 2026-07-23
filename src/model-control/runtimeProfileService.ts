@@ -54,6 +54,9 @@ export class RuntimeProfileService {
         binding.modelConfigurationId!,
         binding.modelConfigurationRevision!,
       );
+      if (configuration.configuration.status !== "active") {
+        throw new ModelControlError("model_configuration_not_found");
+      }
       const compatibility = configuration.revision.runtimeCompatibilitySnapshot[runtimeId];
       if (!compatibility?.supported) {
         throw new ModelControlError("model_configuration_incompatible", compatibility?.reason);

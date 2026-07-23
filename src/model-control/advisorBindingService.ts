@@ -3,6 +3,7 @@ import { AdvisorProviderSettingsService } from "../advisor-provider/advisorProvi
 import { piSdkCatalogDigest } from "../advisor-provider/piSdkCatalog.js";
 import { ModelConfigurationService } from "./modelConfigurationService.js";
 import { ModelProviderConnectionService } from "./modelProviderConnectionService.js";
+import { ModelControlError } from "./contracts.js";
 
 export class AdvisorBindingService {
   constructor(
@@ -13,6 +14,7 @@ export class AdvisorBindingService {
 
   summary() {
     const internal = this.advisor.summary();
+    const latestRun = this.advisor.listRuns(1)[0] ?? null;
     const row = appDataConnection().prepare(`
       SELECT model_configuration_id, model_configuration_revision
       FROM advisor_provider_settings WHERE singleton_id = 1
@@ -38,6 +40,14 @@ export class AdvisorBindingService {
         destinationHost: new URL(provider.revision.canonicalOrigin).host,
       } : null,
       requiresAuthorization: internal.settings.state === "probing" || internal.settings.state === "setup_required",
+      latestRun: latestRun ? {
+        status: latestRun.status,
+        createdAt: latestRun.createdAt.toISOString(),
+        completedAt: latestRun.completedAt?.toISOString() ?? null,
+        latencyMs: latestRun.latencyMs,
+        errorCode: latestRun.errorCode,
+        spaceName: latestRun.spaceName,
+      } : null,
     };
   }
 
@@ -46,9 +56,15 @@ export class AdvisorBindingService {
       await this.advisor.selectProvider("pi_sdk");
     }
     const model = this.configurations.get(configurationId);
+    if (model.configuration.status !== "active") {
+      throw new ModelControlError("model_configuration_not_found");
+    }
     const selectedRevision = revision ?? model.configuration.currentRevision;
     if (selectedRevision !== model.configuration.currentRevision) throw new Error("historical Advisor binding is not selectable");
     const provider = this.providers.getRevision(model.revision.providerConnectionId, model.revision.providerRevision);
+    if (provider.connection.status !== "active") {
+      throw new ModelControlError("model_provider_not_found");
+    }
     const vendorVerified = provider.revision.dataPolicyProvenance === "vendor_verified";
     await this.advisor.createModelProfile({
       sourceKind: vendorVerified ? "bundled_catalog" : "manual",

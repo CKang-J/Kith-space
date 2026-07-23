@@ -18,8 +18,12 @@ import { getRuntimeV2 } from "../runtime/adapters/runtimeV2Bridge.js";
 import { completeClaudeMaintenanceJson } from "../runtime/worker/maintenance/claudeMaintenanceRuntime.js";
 import { AdvisorRunController } from "../runtime/worker/maintenance/advisorRunController.js";
 import type { ActivatedAdvisorCredential } from "../runtime/contract/advisorProviderRuntimePort.js";
+import { withManagedRuntimePath } from "../local-runtime/runtimeSetupCatalog.js";
 
 const log = createLogger("daemon");
+// Kith-managed runtime bins take precedence without changing the user's shell or CLI config.
+// Installation/removal is intentionally activated on the next Worker start.
+process.env.PATH = withManagedRuntimePath();
 // The installation-level Worker and Core Service always share one physical computer.
 // PORT remains configurable for parallel worktrees, but the host is never remotely configurable.
 const serverUrl = `http://127.0.0.1:${process.env.PORT ?? 7777}`;

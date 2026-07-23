@@ -13,6 +13,7 @@ const {
   BrowserTokenAttemptLimiter,
   browserMutationAllowed,
   browserOriginAllowed,
+  browserRequestIsLocal,
   browserSessionToken,
   clearBrowserSessionCookies,
   readBrowserAuthBody,
@@ -49,19 +50,48 @@ test("session cookie is HttpOnly while the CSRF double-submit cookie remains rea
 });
 
 test("origin policy distinguishes disabled, local, and LAN browser modes", () => {
-  assert.equal(browserOriginAllowed(request({ origin: "http://localhost:5273" }), "off"), false);
-  assert.equal(browserOriginAllowed(request({ origin: "http://localhost:5273" }), "local"), true);
-  assert.equal(browserOriginAllowed(request({ origin: "http://localhost:5273", remoteAddress: "192.168.1.25" }), "local"), false);
+  assert.equal(browserOriginAllowed(request({ origin: "http://localhost:5273", host: "localhost:5273" }), "off"), false);
+  assert.equal(browserOriginAllowed(request({ origin: "http://localhost:5273", host: "localhost:5273" }), "local"), true);
+  assert.equal(browserOriginAllowed(request({ origin: "http://localhost:9999", host: "localhost:5273" }), "local"), false);
+  assert.equal(browserOriginAllowed(request({
+    origin: "http://localhost:5273", host: "localhost:5273", remoteAddress: "192.168.1.25",
+  }), "local"), false);
   assert.equal(browserOriginAllowed(request({ origin: "http://192.168.1.20:7777", host: "192.168.1.20:7777" }), "lan"), true);
   assert.equal(browserOriginAllowed(request({ origin: "http://evil.test", host: "192.168.1.20:7777" }), "lan"), false);
 });
 
 test("browser mutations require both an allowed Origin and matching CSRF header/cookie", () => {
   const cookie = `${BROWSER_CSRF_COOKIE}=csrf-value`;
-  assert.equal(browserMutationAllowed(request({ method: "POST", origin: "http://localhost:5273", cookie, csrf: "csrf-value" }), "local"), true);
-  assert.equal(browserMutationAllowed(request({ method: "POST", origin: "http://localhost:5273", cookie, csrf: "wrong" }), "local"), false);
+  assert.equal(browserMutationAllowed(request({
+    method: "POST", origin: "http://localhost:5273", host: "localhost:5273", cookie, csrf: "csrf-value",
+  }), "local"), true);
+  assert.equal(browserMutationAllowed(request({
+    method: "POST", origin: "http://localhost:5273", host: "localhost:5273", cookie, csrf: "wrong",
+  }), "local"), false);
+  assert.equal(browserMutationAllowed(request({
+    method: "POST", origin: "http://localhost:9999", host: "localhost:5273", cookie, csrf: "csrf-value",
+  }), "local"), false);
   assert.equal(browserMutationAllowed(request({ method: "POST", cookie, csrf: "csrf-value" }), "local"), false);
   assert.equal(browserMutationAllowed(request(), "local"), true);
+});
+
+test("secret-bearing browser writes require a loopback peer, Host, and Origin", () => {
+  assert.equal(browserRequestIsLocal(request({
+    method: "POST", origin: "http://localhost:7777", host: "localhost:7777",
+  })), true);
+  assert.equal(browserRequestIsLocal(request({
+    method: "POST", origin: "http://127.0.0.1:7777", host: "127.0.0.1:7777",
+  })), true);
+  assert.equal(browserRequestIsLocal(request({
+    method: "POST", origin: "http://localhost:9999", host: "localhost:7777",
+  })), false);
+  assert.equal(browserRequestIsLocal(request({
+    method: "POST", origin: "http://192.168.1.20:7777", host: "192.168.1.20:7777",
+  })), false);
+  assert.equal(browserRequestIsLocal(request({
+    method: "POST", origin: "http://localhost:7777", host: "localhost:7777", remoteAddress: "192.168.1.25",
+  })), false);
+  assert.equal(browserRequestIsLocal(request({ method: "POST", host: "localhost:7777" })), false);
 });
 
 test("failed token attempts are bounded per key and reset on success/window expiry", () => {

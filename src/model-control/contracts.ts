@@ -14,10 +14,16 @@ export type ModelControlErrorCode =
   | "runtime_profile_not_found"
   | "runtime_configuration_stale"
   | "desktop_trust_required"
+  | "credential_reentry_required"
+  | "space_unavailable"
   | "import_conflict";
 
 export class ModelControlError extends Error {
-  constructor(public readonly code: ModelControlErrorCode, message: string = code) {
+  constructor(
+    public readonly code: ModelControlErrorCode,
+    message: string = code,
+    public readonly details?: Readonly<Record<string, unknown>>,
+  ) {
     super(message);
     this.name = "ModelControlError";
   }

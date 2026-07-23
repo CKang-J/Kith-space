@@ -41,7 +41,9 @@ export function AgentModelBindingEditor({ agent, api, onSaved }: AgentModelBindi
   }, [agent.modelBindingMode, agent.modelConfigurationId]);
   useEffect(() => {
     void api("GET", "/api/settings/model-configurations")
-      .then((result: any) => setConfigurations(result.items ?? []))
+      .then((result: any) => setConfigurations(
+        (result.items ?? []).filter((item: any) => item.status === "active"),
+      ))
       .catch(() => setConfigurations([]));
   }, [api]);
 

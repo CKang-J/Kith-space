@@ -28,6 +28,7 @@
 10. **配置 revision 与运行 session generation 对齐。**配置变化不热改正在运行或可恢复的 session；相关 Agent 标记“需要重启”，新 generation 才使用新配置。
 11. **Space 可移植性优先。**Space 只保存对安装级配置的稳定绑定意图和非敏感快照信息；目标机器缺少对应配置时进入 `setup_required`，绝不静默换成其他供应商或模型。
 12. **运行器默认值是三态，不用 `null` 猜语义。**`kith_model_configuration` 表示 Kith 固定配置，`unmanaged_cli_native` 表示明确委托本机 CLI 决定，`unset` 表示尚未配置；`unmanaged_cli_native` 不得用于 Advisor，且 UI 必须说明 Kith 无法保证其实际供应商与目的地。
+13. **运行器安装采用 Kith-owned 副本，不接管系统 CLI。**桌面端可以把锁定并验证过的 CLI 版本安装到 `<appData>/managed-runtimes/<runtimeId>`；Worker 下次启动时优先把这些 bin 加入自己的 PATH。删除只允许删除 Kith-owned 目录，系统安装、用户 PATH、账号文件和全局 CLI 配置均不修改。
 
 一句话心智模型：
 
@@ -114,7 +115,7 @@
 - 不在本阶段实现全局 CLI 配置写回。
 - 不支持任意命令型 credential helper、OAuth 自动刷新脚本或动态 provider hook。
 - 不保证一个模型配置能在所有 runtime 中使用。
-- 不把运行器安装器、包管理器或自动升级器一起纳入本阶段。
+- 不实现后台自动升级、任意包名安装或接管系统包管理器；只支持四个受控 runtime 的锁版 Kith-owned 安装/移除。
 - 不改变结构化记忆的 candidate/validation/revision/evidence/suppression 业务规则。
 - 不让每个 Agent 单独复制 Provider、endpoint 或 API Key。
 
@@ -160,29 +161,30 @@ Settings 导航调整为：
 
 ### 5.1 模型与供应商
 
-该页面包含两个局部视图：
-
-- **供应商连接**：管理 endpoint、协议、凭据来源、数据目的地与连接测试。
-- **模型配置**：从某个供应商选择/输入模型，设置推理级别、上下文能力和显示名称。
+该页面以“模型来源”作为用户心智：每个来源是一条供应商连接，并直接汇总该连接下的模型。普通页面只展示已经添加的来源，不再同时展开供应商列表、连接详情和模型详情。
 
 页面不按 Claude/Codex/OpenCode/Pi 分四套 Provider；兼容 runtime 以标签或矩阵显示。
 
-宽屏使用列表—详情布局，窄屏使用列表进入详情页：
+宽屏和窄屏都使用单列总览；“添加模型供应商”和每条来源的“编辑”复用同一个模态表单。表单同时维护名称、接口类型、API 地址、凭据和模型列表：
 
 ```text
-┌ 模型与供应商 ────────────────────────────────────────┐
-│ [供应商连接] [模型配置]           [导入配置] [新建] │
-├──────────────────┬──────────────────────────────────┤
-│ Anthropic   正常 │ Anthropic                         │
-│ DeepSeek    正常 │ API 协议  OpenAI Completions      │
-│ Local       离线 │ 地址      https://…               │
-│                  │ 凭据      已安全保存               │
-│                  │ 可用于    Pi SDK / Pi Agent / OpenCode │
-│                  │ [测试连接] [编辑] [停用]           │
-└──────────────────┴──────────────────────────────────┘
+┌ 模型 ────────────────────────────────────────────────┐
+│ Agent 可用的模型来源                    [添加供应商] │
+│ 来源 · 2 个来源                                      │
+├──────────────────────────────────────────────────────┤
+│ DeepSeek  OpenAI 兼容接口   deepseek-v4-pro · flash │
+│ api.deepseek.com             2 个模型 [编辑] [删除] │
+└──────────────────────────────────────────────────────┘
+
+编辑弹窗：
+名称 / 供应商 / 接口类型 / API 地址 / API Key
+模型：
+  [显示名称] [模型 ID] [移除]
+  [+ 添加模型]
+                                      [取消] [保存]
 ```
 
-模型目录必须使用可搜索、分组且可虚拟化的选择器；不得把数百个模型渲染成连续按钮。自定义模型 ID 是同一选择器中的“手动输入”分支，不单独堆一组高级表单。
+当前手工模型维护使用有界表单行；后续接入远端模型目录时，目录必须使用可搜索、分组且可虚拟化的选择器，不得把数百个模型渲染成连续按钮。自定义模型 ID 是同一选择器中的“手动输入”分支，不单独堆一组高级表单。
 
 模型目录必须区分 `加载中 / 无目录能力 / 加载失败 / 缓存过期 / 手工模型 ID / 重名模型`，并显示目录来源与刷新时间。手工模型 ID 保存前仍需经过 runtime/Advisor 兼容性验证。
 
@@ -209,6 +211,18 @@ Settings 导航调整为：
   - 诊断抽屉。
 
 普通用户不编辑一整块环境变量文本。高级设置使用有类型字段，只有无法结构化的少数 runtime 选项才允许键值对，并执行 allowlist。
+
+2026-07-23 视觉与安装增量进一步锁定：
+
+- 页面采用与 `reference/codeg` 相同的“左侧运行器列表 + 右侧当前运行器任务面板”，但不复制其全局配置写回；
+- 列表只显示 `检查中 / 可使用 / 需要登录 / 未安装`，右侧再分别解释安装来源、版本、CLI账号和Agent默认模型；
+- 桌面端“由 Kith 安装”只安装受支持清单中的精确版本到Kith app data，完成后明确要求重启桌面端；Web只能查看；
+- “移除 Kith 管理版本”只删除对应Kith-owned目录；如果系统PATH另有同名CLI，下次Worker启动自动回退到系统版本；
+- 初次读取使用30秒短缓存，避免React重复挂载时连续执行CLI探针；“检查全部/重新检查”才强制刷新；
+- 模型供应商使用单列来源总览；新增和编辑复用同一弹窗，模型随供应商一并维护。一次弹窗保存由服务端聚合命令在同一app.db事务内完成供应商revision、模型增删改和runtime epoch更新，任一预检/写入失败都不产生部分保存；
+- 通过Access Token认证且通过同源Origin/CSRF校验的Web可以执行供应商和模型CRUD；API Key仅允许Desktop或peer、Host、Origin均为loopback且Origin与Host端口一致的本机浏览器提交，LAN HTTP继续拒绝。已保存密钥的供应商一旦改变backend、API协议、目的地、network class或allowed egress，即使在Desktop也必须重新输入密钥，禁止旧密钥静默跟随新目的地；
+- 删除供应商采用明确二次确认并软停用该供应商及其未被引用的模型；若运行器、Memory Advisor或任一可用Space中的active pinned Agent正在使用其中任一模型，服务端拒绝删除并返回结构化占用来源，界面必须明确显示具体运行器、Memory Advisor，或Space与Agent名称，不能只给出“正在使用”的泛化错误；任一已登记Space不可访问时同样fail-closed，不能跳过该Space后继续删除；
+- 用户文案统一使用“自动整理记忆、运行记录与故障排查、检查连接”等可行动表达，不在普通界面暴露Provider Run、revision或epoch。
 
 用户可见名称固定为：
 
@@ -870,12 +884,12 @@ GET                  /api/settings/memory-advisor/diagnostics
 
 ### 11.1 Desktop 与浏览器权限
 
-- 普通授权浏览器可以查看脱敏设置、选择已有模型配置、切换 Agent/Advisor 绑定和查看运行状态。
-- **新增/更换 API Key、读取本机 CLI 配置、选择本机配置路径、显示一次性 secret 和导出诊断包必须要求 Desktop 私有信任。**
+- 普通授权浏览器可以查看脱敏设置、管理不含新密钥的供应商与模型、选择已有模型配置、切换 Agent/Advisor 绑定和查看运行状态。
+- **新增/更换 API Key只允许Desktop私有信任或peer/Host/Origin均为loopback、且Origin与Host同源（含端口）的本机浏览器；LAN HTTP严格拒绝。带已存密钥的供应商改变执行身份或数据目的地时必须重新输入密钥，不能只保留旧credential ref。读取本机 CLI 配置、选择本机配置路径、显示一次性 secret 和导出诊断包仍必须要求 Desktop 私有信任。**
 - LAN HTTP 模式不传输新的长期密钥。浏览器遇到这些动作显示“请在桌面端完成”。
 - 服务端 gate 是权威；隐藏按钮不是安全措施。
 
-Web 只读态仍展示现有脱敏配置；敏感按钮保持可见但禁用，解释原因并给出精确路径“桌面端 → 设置 → 模型与供应商”。页面提供“重新检查”并订阅设置变化；Human 在 Desktop 完成配置后，Web 无需整页刷新即可继续原流程。fresh Web 若尚无配置，必须给出可复制待办和返回创建草稿的路径，不能形成无出口空状态。
+Web中的运行器安装、CLI读取等本机动作保持只读；模型来源总览则允许添加、编辑和删除。LAN浏览器的API Key字段保持可见但禁用，解释可在桌面端或本机浏览器完成；本机loopback浏览器提供与Desktop一致的供应商表单。页面提供“重新检查”并订阅设置变化；Human 在 Desktop 完成受限配置后，Web 无需整页刷新即可继续原流程。fresh Web 若尚无配置，必须提供添加首个来源的直接入口，不能形成无出口空状态。
 
 ## 12. UI 组件与模块划分
 
@@ -981,7 +995,7 @@ web/src/views/agent-memory/
 - 弹窗和抽屉进入后移动焦点，关闭后恢复触发按钮。
 - destructive/restart/consent 动作不能只依赖 hover。
 - 长 endpoint、model id 和错误文本必须 `overflow-wrap:anywhere`，但列表默认显示友好名称。
-- 列表—详情断点基于 `.content-col` / 模块工作面的 **container query**，不基于浏览器 viewport；内容容器不足 760px 时改为单栏钻取，Agent 记忆详情用抽屉。
+- 运行器列表—详情断点基于 `.content-col` / 模块工作面的 **container query**，不基于浏览器 viewport；内容容器不足 760px 时改为单栏钻取。模型来源总览始终保持单列，编辑使用可滚动弹窗；Agent 记忆详情用抽屉。
 - 底部 Dock 不能覆盖列表分页、空状态或最后一条记忆。
 - 模型目录使用虚拟化或有界分页，搜索时不冻结主线程。
 - reduced-motion 下关闭滑块和抽屉位移动画。
@@ -1012,7 +1026,9 @@ web/src/views/agent-memory/
 | 多 runtime 共享密钥泄漏 | 权限扩大 | CredentialPort + per-run activation + child env 最小化 |
 | 配置热切换污染旧 session | 模型/目的地与审计不一致 | revision pin + generation restart |
 | Space 移机后静默使用本机默认 | 数据发送到错误供应商 | `setup_required`，禁止 fallback |
-| LAN HTTP 输入 API Key | 明文网络暴露 | secret 写操作 Desktop-only |
+| LAN HTTP 输入 API Key | 明文网络暴露 | 仅Desktop或peer/Host/Origin全loopback且浏览器Origin与Host同源可写secret |
+| 已存密钥跟随供应商目的地变更 | 密钥被发送到错误或恶意endpoint | 执行身份/egress变化必须重新输入密钥；LAN不可完成该动作 |
+| 弹窗逐接口保存供应商和模型 | 中途失败形成revision与模型部分提交 | 服务端聚合命令、同一app.db事务、统一epoch与失败全回滚 |
 | UI 展示 raw 诊断 | 泄漏路径/标识 | presenter 脱敏 + 技术详情显式复制 |
 | 临时配置未清理 | 凭据或 endpoint 残留 | try/finally cleanup + 启动 GC |
 | CLI managed policy 覆盖 | 实际模型与显示不一致 | 启动后 effective config probe，失败即不进入 ready |
@@ -1025,7 +1041,7 @@ web/src/views/agent-memory/
 - compile 是纯输入决定的幂等操作；相同 revisions 必须得到相同 fingerprint。
 - runtime 启动失败不得把 Agent 标成使用了新配置。
 - Worker 重连后必须清理旧 generation 的临时配置和 activation。
-- 删除/停用配置前计算受影响绑定；不得留下无提示悬挂引用。
+- 删除/停用配置前在runtime configuration写锁与同一事务内重新计算runtime default、Advisor和所有Space active pinned Agent绑定；软删除Agent不再形成永久占用，任一已登记Space不可访问则拒绝破坏性操作，不得留下无提示悬挂引用。disabled模型/供应商不得再次进入选择器或binding resolve。
 
 ### 16.2 性能预算
 
@@ -1135,7 +1151,7 @@ web/src/views/agent-memory/
 ### 切片 4：模型与运行器设置 UI
 
 - 新增 Settings 导航。
-- 实现供应商/模型配置列表—详情。
+- 实现模型来源总览，以及供应商与模型共用的新增/编辑弹窗。
 - 实现运行器主从页面、状态与高级区。
 - 模型目录改成可搜索/虚拟化选择器。
 - secret/import 动作加 Desktop gate。
@@ -1213,7 +1229,7 @@ web/src/views/agent-memory/
 
 ### 19.3 安全与失败路径
 
-- [ ] 浏览器不能提交 API Key 或触发本机 CLI 配置读取。
+- [ ] LAN浏览器不能提交API Key；本机loopback浏览器可以，且任何浏览器都不能触发本机CLI配置读取。
 - [ ] Web 敏感动作有明确 Desktop 路径，Desktop 完成后 Web 自动恢复。
 - [ ] 全局 CLI 配置在完整测试前后 hash 不变。
 - [ ] command-backed credential/helper 被拒绝。
@@ -1309,6 +1325,14 @@ web/src/views/agent-memory/
 **决策**：Core 生成无密钥执行计划和强绑定 activation descriptor；Worker 通过 Worker-only 本机控制通道单次兑换，明文只进入当前进程内存和 child env。
 
 **后果**：需要新增 `RuntimeCredentialActivationPort`、撤销与过期状态机；不得复用 Advisor job activation，也不得让普通 runtime 控制消息携带 secret。
+
+### ADR-MRM-009：只管理 Kith-owned runtime 副本
+
+**状态**：Accepted / Implemented。
+
+**决策**：快捷安装只接受四个内置 runtime ID，并使用受支持清单中的精确包名和版本安装到 `<appData>/managed-runtimes`。安装/移除必须是Desktop trusted请求；Worker启动时把Kith-owned bin置于自身PATH前部，应用不修改用户PATH、系统CLI、账号文件或全局模型配置。
+
+**后果**：安装边界可撤销且不会破坏用户终端环境；版本升级需要更新Kith支持清单并重新验收。安装后需要重启Worker/桌面端，不能在旧Worker快照中伪报已经可运行。
 
 ## 22. 官方配置依据
 

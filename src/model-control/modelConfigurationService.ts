@@ -4,7 +4,10 @@ import type { RuntimeId } from "../local-runtime/runtimeCatalog.js";
 import { ModelControlError, type ModelConfigurationRevision, type RuntimeCompatibility } from "./contracts.js";
 import { ModelProviderConnectionService } from "./modelProviderConnectionService.js";
 import { withRuntimeConfigurationChange } from "./runtimeConfigurationChange.js";
-import { markAgentsForRuntimeConfigurationChange } from "./runtimeConfigurationImpact.js";
+import {
+  markAgentsForRuntimeConfigurationChange,
+  modelConfigurationUsage,
+} from "./runtimeConfigurationImpact.js";
 
 export interface SaveModelConfigurationInput {
   displayName: string;
@@ -78,32 +81,70 @@ export class ModelConfigurationService {
   }
 
   async create(input: SaveModelConfigurationInput) {
-    return withRuntimeConfigurationChange(() => this.save(randomUUID(), input, true));
+    return withRuntimeConfigurationChange(() => this.createWithinConfigurationChange(input));
   }
   async update(id: string, input: SaveModelConfigurationInput) {
-    this.get(id);
-    return withRuntimeConfigurationChange(() => this.save(id, input, false));
+    const result = await withRuntimeConfigurationChange(() => this.updateWithinConfigurationChange(id, input));
+    markAgentsForRuntimeConfigurationChange({ configurationIds: [id] });
+    return result;
   }
 
-  setStatus(id: string, status: "active" | "disabled") {
-    const sqlite = appDataConnection();
+  createWithinConfigurationChange(input: SaveModelConfigurationInput, id = randomUUID()) {
+    return this.save(id, input, true);
+  }
+
+  updateWithinConfigurationChange(id: string, input: SaveModelConfigurationInput) {
     this.get(id);
-    if (status === "disabled") {
-      const runtimeUses = Number(sqlite.prepare(`
-        SELECT count(*) FROM runtime_profiles
-        WHERE default_binding_mode = 'kith_model_configuration' AND default_model_configuration_id = ?
-      `).pluck().get(id));
-      const advisorUses = Number(sqlite.prepare(`
-        SELECT count(*) FROM advisor_provider_settings WHERE singleton_id = 1 AND model_configuration_id = ?
-      `).pluck().get(id));
-      if (runtimeUses + advisorUses > 0) throw new ModelControlError("model_configuration_in_use");
+    return this.save(id, input, false);
+  }
+
+  assertCanDisable(ids: readonly string[]): void {
+    const usage = modelConfigurationUsage(ids);
+    if (usage.length > 0) {
+      throw new ModelControlError("model_configuration_in_use", "model_configuration_in_use", { usage });
     }
-    sqlite.prepare("UPDATE model_configurations SET status = ?, updated_at = ? WHERE id = ?").run(status, Date.now(), id);
-    return this.get(id);
+  }
+
+  disableWithinConfigurationChange(ids: readonly string[]): void {
+    const unique = [...new Set(ids)];
+    if (unique.length === 0) return;
+    const sqlite = appDataConnection();
+    const placeholders = unique.map(() => "?").join(", ");
+    sqlite.prepare(`
+      UPDATE model_configurations SET status = 'disabled', updated_at = ?
+      WHERE id IN (${placeholders})
+    `).run(Date.now(), ...unique);
+    sqlite.prepare(`
+      UPDATE installation_state SET runtime_configuration_epoch = runtime_configuration_epoch + 1
+      WHERE singleton_key = 1
+    `).run();
+  }
+
+  async setStatus(id: string, status: "active" | "disabled") {
+    this.get(id);
+    if (status === "disabled") this.assertCanDisable([id]);
+    const result = await withRuntimeConfigurationChange(() => {
+      const sqlite = appDataConnection();
+      if (status === "disabled") this.disableWithinConfigurationChange([id]);
+      else {
+        sqlite.prepare("UPDATE model_configurations SET status = ?, updated_at = ? WHERE id = ?")
+          .run(status, Date.now(), id);
+        sqlite.prepare(`
+          UPDATE installation_state SET runtime_configuration_epoch = runtime_configuration_epoch + 1
+          WHERE singleton_key = 1
+        `).run();
+      }
+      return this.get(id);
+    });
+    markAgentsForRuntimeConfigurationChange({ configurationIds: [id] });
+    return result;
   }
 
   private save(id: string, input: SaveModelConfigurationInput, create: boolean) {
     const currentProvider = this.providers.get(input.providerConnectionId);
+    if (currentProvider.connection.status !== "active") {
+      throw new ModelControlError("model_provider_not_found");
+    }
     const providerRevision = input.providerRevision ?? currentProvider.connection.currentRevision;
     const provider = this.providers.getRevision(input.providerConnectionId, providerRevision);
     const displayName = input.displayName.trim();
@@ -111,7 +152,7 @@ export class ModelConfigurationService {
     if (!displayName || !modelId) throw new ModelControlError("model_configuration_not_found", "model fields are required");
     const compatibility = computeRuntimeCompatibility(provider.revision.apiKind);
     const sqlite = appDataConnection();
-    const result = sqlite.transaction(() => {
+    const write = () => {
       const now = Date.now();
       const previous = create ? undefined : sqlite.prepare(
         "SELECT current_revision FROM model_configurations WHERE id = ?",
@@ -138,8 +179,7 @@ export class ModelConfigurationService {
         WHERE singleton_key = 1
       `).run();
       return this.get(id);
-    }).immediate();
-    if (!create) markAgentsForRuntimeConfigurationChange({ configurationIds: [id] });
-    return result;
+    };
+    return sqlite.inTransaction ? write() : sqlite.transaction(write).immediate();
   }
 }

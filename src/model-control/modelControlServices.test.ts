@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,6 +14,7 @@ const { ModelConfigurationService } = await import("./modelConfigurationService.
 const { RuntimeProfileService } = await import("./runtimeProfileService.js");
 const { runtimeConfigurationEpochGate } = await import("../runtime/config/runtimeConfigurationEpochGate.js");
 const { runtimeCredentialActivationPort } = await import("../runtime/config/runtimeCredentialActivationPort.js");
+const { closeSpaceDb, dbForSpace, registerSpace, schema, unregisterSpace } = await import("../db/index.js");
 
 test.after(() => {
   closeAppDatabase();
@@ -71,7 +73,7 @@ test("provider, model, and runtime edits append immutable revisions and bump run
     displayName: "Local GPT", providerConnectionId: provider.connection.id, modelId: "gpt-local-v2",
   })).configuration.currentRevision, 2);
   assert.equal(models.get(model.configuration.id).revision.modelId, "gpt-local-v2");
-  assert.throws(() => models.setStatus(model.configuration.id, "disabled"), /model_configuration_in_use/);
+  await assert.rejects(() => models.setStatus(model.configuration.id, "disabled"), /model_configuration_in_use/);
 });
 
 test("runtime compatibility rejects unsupported wire APIs without weakening the three-state binding", async () => {
@@ -97,4 +99,134 @@ test("runtime compatibility rejects unsupported wire APIs without weakening the 
     enabled: true,
     defaultBinding: { mode: "unmanaged_cli_native", modelConfigurationId: null, modelConfigurationRevision: null },
   })).defaultBinding.mode, "unmanaged_cli_native");
+});
+
+test("disabling a provider cascades to unused models and refuses models still bound to a runtime", async () => {
+  const providers = new ModelProviderConnectionService();
+  const models = new ModelConfigurationService(providers);
+  const runtimes = new RuntimeProfileService(models);
+  const unusedProvider = await providers.create({
+    displayName: "Unused Source", backendId: "unused", apiKind: "openai-responses",
+    canonicalOrigin: "http://127.0.0.1:9912", networkClass: "loopback",
+    credentialSourceKind: "keyless_local", dataPolicyRevision: "human-v1",
+    dataPolicyProvenance: "human_asserted", allowedEgress: ["http://127.0.0.1:9912"],
+  });
+  const unusedModel = await models.create({
+    displayName: "Unused Model", providerConnectionId: unusedProvider.connection.id, modelId: "unused-model",
+  });
+
+  await providers.setStatus(unusedProvider.connection.id, "disabled");
+  assert.equal(providers.get(unusedProvider.connection.id).connection.status, "disabled");
+  assert.equal(models.get(unusedModel.configuration.id).configuration.status, "disabled");
+
+  const usedProvider = await providers.create({
+    displayName: "Used Source", backendId: "used", apiKind: "openai-responses",
+    canonicalOrigin: "http://127.0.0.1:9913", networkClass: "loopback",
+    credentialSourceKind: "keyless_local", dataPolicyRevision: "human-v1",
+    dataPolicyProvenance: "human_asserted", allowedEgress: ["http://127.0.0.1:9913"],
+  });
+  const usedModel = await models.create({
+    displayName: "Used Model", providerConnectionId: usedProvider.connection.id, modelId: "used-model",
+  });
+  await runtimes.update("pi", {
+    enabled: true,
+    defaultBinding: {
+      mode: "kith_model_configuration",
+      modelConfigurationId: usedModel.configuration.id,
+      modelConfigurationRevision: usedModel.configuration.currentRevision,
+    },
+  });
+
+  await assert.rejects(
+    () => providers.setStatus(usedProvider.connection.id, "disabled"),
+    /model_configuration_in_use/,
+  );
+  assert.equal(providers.get(usedProvider.connection.id).connection.status, "active");
+  assert.equal(models.get(usedModel.configuration.id).configuration.status, "active");
+});
+
+test("a model pinned by an Agent cannot be disabled", async () => {
+  const providers = new ModelProviderConnectionService();
+  const models = new ModelConfigurationService(providers);
+  const provider = await providers.create({
+    displayName: "Pinned Source", backendId: "pinned", apiKind: "openai-responses",
+    canonicalOrigin: "http://127.0.0.1:9914", networkClass: "loopback",
+    credentialSourceKind: "keyless_local", dataPolicyRevision: "human-v1",
+    dataPolicyProvenance: "human_asserted", allowedEgress: ["http://127.0.0.1:9914"],
+  });
+  const model = await models.create({
+    displayName: "Pinned Model", providerConnectionId: provider.connection.id, modelId: "pinned-model",
+  });
+  const spaceId = randomUUID();
+  registerSpace({
+    id: spaceId,
+    name: "Pinned model test",
+    slug: `pinned-${spaceId}`,
+    rootPath: path.join(root, "spaces", spaceId),
+  });
+  try {
+    dbForSpace(spaceId).insert(schema.agents).values({
+      id: randomUUID(),
+      spaceId,
+      name: "pinned-agent",
+      displayName: "Pinned Agent",
+      runtime: "codex",
+      modelBindingMode: "pinned",
+      modelConfigurationId: model.configuration.id,
+      modelConfigurationRevision: model.configuration.currentRevision,
+      modelBindingState: "ready",
+    }).run();
+    await assert.rejects(
+      () => models.setStatus(model.configuration.id, "disabled"),
+      /model_configuration_in_use/,
+    );
+    await assert.rejects(
+      () => providers.setStatus(provider.connection.id, "disabled"),
+      /model_configuration_in_use/,
+    );
+  } finally {
+    closeSpaceDb(spaceId);
+    unregisterSpace(spaceId);
+  }
+});
+
+test("a stored provider credential cannot follow an edited execution identity without re-entry", async () => {
+  const providers = new ModelProviderConnectionService();
+  const provider = await providers.create({
+    displayName: "Keyed Source", backendId: "openai", apiKind: "openai-responses",
+    canonicalOrigin: "https://api.openai.com", networkClass: "public_cloud",
+    credentialSourceKind: "kith_secret", credentialValue: "test-key-one",
+    dataPolicyRevision: "human-v1", dataPolicyProvenance: "human_asserted",
+    allowedEgress: ["https://api.openai.com"],
+  });
+  const unchangedIdentity = await providers.update(provider.connection.id, {
+    displayName: "Renamed Source", backendId: "openai", apiKind: "openai-responses",
+    canonicalOrigin: "https://api.openai.com", networkClass: "public_cloud",
+    credentialSourceKind: "kith_secret",
+    credentialRef: provider.revision.credentialRef,
+    credentialIdentityDigest: provider.revision.credentialIdentityDigest,
+    dataPolicyRevision: "human-v1", dataPolicyProvenance: "human_asserted",
+    allowedEgress: ["https://api.openai.com"],
+  });
+  assert.equal(unchangedIdentity.connection.displayName, "Renamed Source");
+
+  await assert.rejects(() => providers.update(provider.connection.id, {
+    displayName: "Redirected Source", backendId: "openai", apiKind: "openai-responses",
+    canonicalOrigin: "https://example.com", networkClass: "public_cloud",
+    credentialSourceKind: "kith_secret",
+    credentialRef: unchangedIdentity.revision.credentialRef,
+    credentialIdentityDigest: unchangedIdentity.revision.credentialIdentityDigest,
+    dataPolicyRevision: "human-v1", dataPolicyProvenance: "human_asserted",
+    allowedEgress: ["https://example.com"],
+  }), /credential_reentry_required/);
+  assert.equal(providers.get(provider.connection.id).revision.canonicalOrigin, "https://api.openai.com");
+
+  const redirected = await providers.update(provider.connection.id, {
+    displayName: "Redirected Source", backendId: "openai", apiKind: "openai-responses",
+    canonicalOrigin: "https://example.com", networkClass: "public_cloud",
+    credentialSourceKind: "kith_secret", credentialValue: "test-key-two",
+    dataPolicyRevision: "human-v1", dataPolicyProvenance: "human_asserted",
+    allowedEgress: ["https://example.com"],
+  });
+  assert.equal(redirected.revision.canonicalOrigin, "https://example.com");
 });

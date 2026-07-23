@@ -143,6 +143,7 @@ Home 的 Spaces 模块只读取 app.db registry 和真实摘要。未来 Home ag
 ~/.kith-space/
   app.db
   memory/
+  managed-runtimes/<runtimeId>/node_modules/.bin/
   runtime/<spaceId>/<agentId>/
   bin/
   logs/
@@ -395,3 +396,7 @@ Agent启动 admission 同样 fail closed：除合法legacy绑定外，解析结�
 `src/runtime/adapters/piRpcRuntimeV2.ts`已把本机外部Pi CLI提升为第四家正式P-A10 v2 runtime：每个surface generation使用Kith-owned目录，strict LF + streaming UTF-8解析、correlated response、`get_state`、abort、usage、compaction和`agent_settled`终态均有独立fixture。启动固定禁用project/user extension、skill、prompt template、theme、context、更新检查和telemetry；snapshot只保存不透明session id与fingerprint。Pi通过既有`kith-space` CLI Gateway使用工具并诚实报告MCP unsupported，与内置Pi SDK Advisor的helper/session/activation完全分离。
 
 app.db v6新增稳定连接、模型配置、runtime profile及其不可变revision、短寿命probe和脱敏CLI导入快照；workspace.db v10增加Agent模型绑定、跨安装确认快照与session runtime epoch，同时保留旧runtime/model/runtime_config作迁移输入。`model-control/`拥有领域服务与脱敏presenter，`runtime/config/`拥有四家窄compiler、单次凭据activation和fail-closed epoch gate。配置revision变化提升安装级epoch，旧session admission立即失效并由新generation生效；默认不写任何CLI全局配置。
+
+模型来源控制面把供应商和其模型作为一个面向Human的编辑单元，但领域层仍保持`ModelProviderConnection`与`ModelConfiguration`两个独立revision对象。`ModelProviderBundleService`把一次弹窗保存收敛为一个runtime configuration change和一个app.db事务：进入写锁后才读取当前供应商/模型集合并统一预检删除占用，再原子追加供应商revision、增删改模型和提升epoch，排队的并发请求不会拿旧快照继续写，失败时不暴露部分状态；模型更新复制普通表单未暴露的reasoning、context、capability与options字段。编辑供应商时，只有backend/API/endpoint/network class/allowed egress均不变才允许留空并保留原CredentialPort引用；执行身份或目的地改变必须重新输入密钥，防止旧密钥被带到新endpoint。删除来源同样是软停用事务：若其任一active模型仍被runtime profile、Advisor或任一可用Space的active pinned Agent绑定则整体拒绝；软删除Agent不再占用模型，任一已登记Space不可访问则整个破坏性操作fail-closed；否则同事务停用供应商及其当前模型并提升epoch。disabled对象不再进入运行器、Agent或Advisor选择器，binding resolve也会fail-closed。供应商/模型CRUD接受已认证且通过同源Origin/CSRF门禁的浏览器；API Key额外要求Desktop trust，或peer、Host与Origin均为loopback且Origin与Host端口一致，本机浏览器可完整操作而LAN HTTP无法承载新密钥。
+
+运行器安装由`local-runtime/runtimeSetupCatalog.ts`和`runtimeSetupService.ts`形成独立OS边界：Catalog只允许Claude Code、Codex、OpenCode、Pi四个固定包名/支持版本；Service分别探测可执行文件、版本和账号就绪状态，并只在Desktop trust下安装/删除`<appData>/managed-runtimes/<runtimeId>`。Worker启动时通过`withManagedRuntimePath`把这些bin置于自身PATH前部，因此Kith-owned副本可以优先于系统CLI但不会修改用户PATH。安装/删除按runtime串行，在同父目录完成staging验证后再替换，失败会回滚到原目录；删除先隔离目录并只在当前profile确实指向Kith副本时清空偏好，自定义可执行路径不会被覆盖。安装/删除后提升runtime profile revision/epoch并要求重启Worker；删除不触碰系统安装、CLI账号文件或全局配置。CLI探测与安装通过异步子进程执行，版本和账号探测可并发且不阻塞Core事件循环；同一安装根/PATH下的探测Promise短缓存30秒，强制探测仍受10秒single-flight冷却限制。超时进程先TERM、宽限后KILL并确定性结束请求。HTTP route只编排该Service，不执行任意命令或接受任意包名。

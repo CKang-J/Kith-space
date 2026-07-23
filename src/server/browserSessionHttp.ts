@@ -95,6 +95,24 @@ export function requestPeerIsLoopback(req: IncomingMessage): boolean {
   return isLoopbackAddress(req.socket.remoteAddress);
 }
 
+/** Secret-bearing browser writes are allowed only when both the peer and visible browser origin are loopback. */
+export function browserRequestIsLocal(req: IncomingMessage): boolean {
+  if (!requestPeerIsLoopback(req)) return false;
+  const rawOrigin = req.headers.origin;
+  const rawHost = req.headers.host;
+  if (typeof rawOrigin !== "string" || typeof rawHost !== "string") return false;
+  try {
+    const origin = new URL(rawOrigin);
+    const host = new URL(`http://${rawHost}`);
+    return (origin.protocol === "http:" || origin.protocol === "https:")
+      && isLoopback(origin.hostname)
+      && isLoopback(host.hostname)
+      && origin.host.toLowerCase() === host.host.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
 /** Browser origins are mode-scoped. Missing Origin is accepted only for read requests. */
 export function browserOriginAllowed(req: IncomingMessage, mode: BrowserAccessMode, requireOrigin = false): boolean {
   if (mode === "off") return false;
@@ -104,8 +122,10 @@ export function browserOriginAllowed(req: IncomingMessage, mode: BrowserAccessMo
   let origin: URL;
   try { origin = new URL(raw); } catch { return false; }
   if (origin.protocol !== "http:" && origin.protocol !== "https:") return false;
-  if (mode === "local") return isLoopback(origin.hostname);
   const requestHost = (req.headers.host ?? "").trim().toLowerCase();
+  if (mode === "local") {
+    return isLoopback(origin.hostname) && !!requestHost && origin.host.toLowerCase() === requestHost;
+  }
   return !!requestHost && origin.host.toLowerCase() === requestHost;
 }
 
