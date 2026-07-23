@@ -1,4 +1,4 @@
-export const CHAT_PANE_ABSOLUTE_MIN = 360;
+export const CHAT_PANE_ABSOLUTE_MIN = 568;
 export const CHAT_PANE_MIN_RATIO = 0.25;
 export const WORKSPACE_PANE_GAP = 10;
 export const AGGREGATE_PANE_WIDTH = 300;

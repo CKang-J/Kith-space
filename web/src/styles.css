@@ -263,9 +263,9 @@ main.content-col > .scroll::-webkit-scrollbar-track{background:var(--surface)}
 main.content-col > .scroll::-webkit-scrollbar-thumb{background:transparent;border-radius:9999px;border:2px solid var(--surface)}
 main.content-col > .scroll.is-scrolling::-webkit-scrollbar-thumb{background:rgba(87,96,106,.32)}
 /* date divider between messages sent on different calendar days: a hairline through the middle, cut by a centered pill label */
-.date-divider{position:relative;display:flex;align-items:center;justify-content:center;width:100%;max-width:var(--chat-stream-max);margin:10px auto}
-.date-divider::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:1px solid var(--hair-strong)}
-.date-divider-label{position:relative;background:var(--surface);padding:0 10px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted-soft)}
+.date-divider{position:relative;display:flex;align-items:center;justify-content:center;width:100%;max-width:var(--chat-stream-max);margin:18px auto 24px}
+.date-divider::before{content:none}
+.date-divider-label{position:relative;border-radius:7px;background:#f3f3f3;padding:3px 9px;font-size:10.5px;font-weight:500;letter-spacing:0;text-transform:none;color:#999}
 .thread-panel .date-divider-label{background:var(--surface)}
 .mav{width:32px;height:32px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--ink)}
 .mav.agent{background:radial-gradient(circle at 30% 28%,var(--g-mint),var(--g-lav) 70%,var(--g-sky))}
@@ -787,15 +787,15 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .head-status .dot{width:5px;height:5px}
 /* Thread panel (right-side overlay) */
 .thread-panel{background:var(--surface);display:flex;flex-direction:column;overflow:hidden}
-.thread-head{display:flex;align-items:center;gap:2px;padding:14px 18px;border-bottom:1px solid var(--hair);font-family:var(--serif);font-size:20px;color:var(--ink)}
+.thread-head{display:flex;min-height:44px;flex:0 0 44px;align-items:center;gap:2px;padding:0 12px;border-bottom:1px solid var(--hair);font-family:var(--sans);font-size:16px;font-weight:600;color:var(--ink)}
 .thread-head .grow{flex:1}
 .thread-panel--solo .thread-head{padding:10px 12px}
 .thread-panel--solo .thread-head .chat-head-actions{gap:0;margin-left:0}
 .thread-panel--solo .thread-head .chat-head-icon-btn{width:28px;height:28px}
 /* thread head icon buttons (mark done / unfollow / source message / close): unified transparent tertiary, surface appears on hover, flex-centered icons */
-.tp-link,.tp-close{background:none;border:0;color:var(--muted);cursor:pointer;padding:5px 7px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center}
+.tp-link,.tp-close{display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;padding:0;border:0;border-radius:8px;background:none;color:var(--muted);cursor:pointer}
 .tp-link:hover,.tp-close:hover{background:var(--surface-strong);color:var(--ink)}
-.thread-parent{background:var(--surface-strong);border-radius:12px;padding:6px 12px;margin-bottom:6px}
+.thread-parent{margin-bottom:6px}
 .thread-sep{font-size:12px;color:var(--muted);text-align:center;margin:6px 0 12px;position:relative}
 .thread-composer{--composer-menu-edge:18px;padding:14px 18px 18px}
 /* Reminder status badge */
@@ -968,12 +968,12 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
 
 /* ── Message right-click context menu ──────────────────────────── */
 .ctx-backdrop{position:fixed;inset:0;z-index:70}
-.ctx-menu{position:fixed;min-width:212px;background:var(--surface);border:1px solid var(--hair-strong);border-radius:12px;box-shadow:0 10px 34px var(--shadow-4);padding:6px;animation:ahc-in var(--dur-fast) var(--ease-quint) both}
-.ctx-rx{display:flex;gap:2px;padding:3px 2px 7px;margin-bottom:4px;border-bottom:1px solid var(--hair)}
+.ctx-menu{position:fixed;min-width:212px;background:#fff;border:1px solid #f0f0f0;border-radius:12px;box-shadow:0 8px 24px rgba(15,23,42,.12);padding:6px;animation:ahc-in var(--dur-fast) var(--ease-quint) both}
+.ctx-rx{display:flex;gap:2px;padding:3px 2px 7px;margin-bottom:4px;border-bottom:1px solid #f0f0f0}
 .ctx-rx button{flex:1;border:0;background:transparent;font-size:17px;line-height:1;padding:5px 0;border-radius:8px;cursor:pointer;transition:background .1s}
-.ctx-rx button:hover{background:var(--surface-strong);transform:scale(1.15)}
+.ctx-rx button:hover{background:#f5f5f5;transform:scale(1.15)}
 .ctx-item{display:flex;align-items:center;gap:9px;width:100%;border:0;background:transparent;color:var(--ink-2);font-size:14px;text-align:left;padding:8px 10px;border-radius:8px;cursor:pointer}
-.ctx-item:hover{background:var(--surface-strong)}
+.ctx-item:hover{background:#f5f5f5}
 
 /* ── Clickable inline references inside messages (@mention / #channel) ──────────── */
 .mbody .ref-at{color:#0969da;font-weight:500;background:transparent;border-radius:0;padding:0;text-decoration:none;cursor:pointer}
@@ -1077,19 +1077,22 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
 .skel-box::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.5) 50%,transparent 100%);animation:skel-shimmer 1.5s var(--ease-decel) infinite}
 @keyframes skel-shimmer{100%{transform:translateX(100%)}}
 @media (prefers-reduced-motion:reduce){.skel-box::after{display:none}}
-.skel-sidebar-context{display:flex;min-width:0;min-height:30px;align-items:center;gap:8px;margin-bottom:1px}
-.skel-sidebar-context-brand{width:30px;height:30px;flex:none;border-radius:9px;background:var(--hair-strong)}
-.skel-sidebar-context-space{width:72px;height:13px;flex:none;border-radius:5px}
-.skel-sidebar-context-current{width:52px;height:11px;border-radius:5px}
+.skel-navigation-rail{gap:22px}
+.skel-navigation-rail__brand{width:40px;height:40px;flex:none;border-radius:14px;background:var(--hair-strong)}
+.skel-navigation-rail__items{display:flex;flex-direction:column;gap:10px}
+.skel-navigation-rail__item{width:40px;height:40px;flex:none;border-radius:13px}
 .skel-chat-full{width:100%}
-.skel-conversations,.skel-trace{display:flex;min-width:0;flex-direction:column;gap:13px;padding:20px 18px;background:var(--shell-panel,#fff)}
+.skel-conversations,.skel-trace{display:flex;min-width:0;flex-direction:column;background:var(--shell-panel,#fff)}
+.skel-conversations__header{width:100%}
+.skel-conversations__header .skel-panel-title{width:72px;margin:0}
+.skel-conversations__list{display:flex;flex-direction:column;gap:18px;padding:18px 22px}
+.skel-trace{gap:13px;padding:20px 18px}
 .skel-panel-title{width:56%;height:16px;margin-bottom:8px;border-radius:6px}
-.skel-panel-line{height:11px;border-radius:6px}
+.skel-panel-line{height:14px;border-radius:6px}
 .skel-chat-main{min-width:0;background:var(--shell-panel,#fff)}
 .skel-chat-head{display:flex;height:52px;flex:0 0 52px;align-items:center;padding:0 24px;border-bottom:1px solid var(--hair)}
 .skel-chat-title{width:180px;height:16px;border-radius:6px}
 .skel-chat-scroll{min-width:0;min-height:0;flex:1;overflow:hidden;padding:24px 28px}
-.skel-workspace[data-layout-mode="module-only"] .skel-conversations{width:clamp(210px,19vw,260px);flex:0 0 clamp(210px,19vw,260px);margin-right:var(--shell-gap,10px);border:0;border-radius:0;background:transparent;box-shadow:none}
 .skel-module-panel{min-width:0;flex:1;background:var(--shell-panel,#fff)}
 .skel-module-content{display:flex;min-width:0;min-height:0;flex:1;overflow:hidden}
 .skel-module-sidebar{display:flex;width:clamp(220px,24%,280px);flex:none;flex-direction:column;gap:14px;padding:22px 18px;border-right:1px solid var(--hair);background:var(--canvas-soft)}
@@ -1106,5 +1109,5 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
 .skel-msg .chat-message__bubble{width:78%;min-height:32px;background:var(--surface-strong)}
 .skel-msg .chat-message__bubble .skel-line{max-width:100%}
 @media (max-width:820px){
-  .skel-chat-full{grid-template-columns:190px minmax(280px,1fr) 210px}
+  .skel-chat-full{--shell-conversations-width:190px}
 }

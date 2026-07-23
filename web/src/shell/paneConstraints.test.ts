@@ -6,18 +6,19 @@ import {
   chatPaneMin,
 } from "./paneConstraints.ts";
 
-test("Chat minimum follows 25 percent with a 360px floor", () => {
-  assert.equal(chatPaneMin(1024), 360);
-  assert.equal(chatPaneMin(1493), 373);
-  assert.equal(chatPaneMin(2048), 512);
+test("Chat minimum preserves the message pane and the main conversation", () => {
+  assert.equal(chatPaneMin(1024), 568);
+  assert.equal(chatPaneMin(1493), 568);
+  assert.equal(chatPaneMin(2048), 568);
+  assert.equal(chatPaneMin(2400), 600);
 });
 
 test("aggregate panel preserves the Chat minimum and one canvas gap", () => {
-  assert.deepEqual(aggregatePaneConstraints(670), {
+  assert.deepEqual(aggregatePaneConstraints(878), {
     width: AGGREGATE_PANE_WIDTH,
     canShow: true,
   });
-  assert.deepEqual(aggregatePaneConstraints(669), {
+  assert.deepEqual(aggregatePaneConstraints(877), {
     width: AGGREGATE_PANE_WIDTH,
     canShow: false,
   });

@@ -80,12 +80,21 @@ export function ConversationListContent({
     <div
       key={channel.id}
       className={`item chan-row${channel.id === channelId ? " active" : ""}`}
-      aria-current={channel.id === channelId ? "page" : undefined}
-      onClick={() => navigate(withPreservedSearch(`/s/${slug}/channel/${channel.id}`))}
     >
-      <Hash size={14} className="channel-row-icon" aria-hidden="true" />
-      <span className="grow">{channel.name}</span>
       <button
+        type="button"
+        className="conversation-row__target"
+        aria-current={channel.id === channelId ? "page" : undefined}
+        onClick={() => navigate(withPreservedSearch(`/s/${slug}/channel/${channel.id}`))}
+      >
+        <span className="conversation-row__avatar conversation-row__avatar--channel">
+          <Hash size={16} className="channel-row-icon" aria-hidden="true" />
+        </span>
+        <span className="grow">{channel.name}</span>
+        {!!unread[channel.id] && <span className="badge">{unread[channel.id]}</span>}
+      </button>
+      <button
+        type="button"
         className={`pinbtn${pinned.includes(channel.id) ? " on" : ""}`}
         title={pinned.includes(channel.id) ? t("sidebar.unpinChannel") : t("sidebar.pinChannel")}
         onClick={(event) => {
@@ -95,16 +104,21 @@ export function ConversationListContent({
       >
         <Pin size={12} />
       </button>
-      {!!unread[channel.id] && <span className="badge">{unread[channel.id]}</span>}
     </div>
   );
 
   return (
     <>
-      <div className={`item nav-row${onSaved ? " active" : ""}`} aria-current={onSaved ? "page" : undefined} onClick={() => navigate(withPreservedSearch(`/s/${slug}/saved`))}>
-        <span className="grow"><Bookmark size={14} style={{ verticalAlign: "-2px" }} /> {t("common.saved")}</span>
+      <button
+        type="button"
+        className={`item nav-row conversation-saved-row${onSaved ? " active" : ""}`}
+        aria-current={onSaved ? "page" : undefined}
+        onClick={() => navigate(withPreservedSearch(`/s/${slug}/saved`))}
+      >
+        <span className="conversation-row__avatar conversation-row__avatar--saved"><Bookmark size={16} /></span>
+        <span className="grow">{t("common.saved")}</span>
         {savedIds.size > 0 && <span className="badge">{savedIds.size}</span>}
-      </div>
+      </button>
       <div className="sec">
         {t("common.channels")}
         <button className="addbtn" title={t("sidebar.createChannelTitle")} onClick={() => { setCreateOpen(true); setDmPickerOpen(false); }}>+</button>
@@ -124,7 +138,7 @@ export function ConversationListContent({
         <div className="dm-pick">
           {visibleAgents.length ? visibleAgents.map((agent) => (
             <button key={agent.id} className="item" onClick={() => void openDirectMessage(agent.id)}>
-              <Avatar seed={agent.name} url={avFor(agent.avatarUrl)} size={20} />
+              <Avatar seed={agent.name} url={avFor(agent.avatarUrl)} size={28} />
               <span className="grow">{agent.displayName || agent.name}</span>
             </button>
           )) : <div className="empty">{t("sidebar.dmPickEmpty")}</div>}
@@ -139,7 +153,7 @@ export function ConversationListContent({
             aria-current={conversation.id === channelId ? "page" : undefined}
             onClick={() => navigate(withPreservedSearch(`/s/${slug}/channel/${conversation.id}`))}
           >
-            <Avatar seed={conversation.peerDisplayName || conversation.peerName || conversation.peerId || conversation.id} url={avFor(conversation.peerAvatarUrl)} size={20} />
+            <Avatar seed={conversation.peerDisplayName || conversation.peerName || conversation.peerId || conversation.id} url={avFor(conversation.peerAvatarUrl)} size={32} />
             <span className="grow">{conversation.peerDisplayName || conversation.peerName || t("sidebar.unknownAgent")}</span>
             {agent ? (
               <span

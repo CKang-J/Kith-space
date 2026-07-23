@@ -1,4 +1,78 @@
-# 设置页重构视觉 QA
+# Design QA — 图标导航栏、消息中栏与消息气泡
+
+- 日期：2026-07-24
+- 结果：PASSED
+- 验证页面：`http://localhost:7777/s/home/channel`
+- 验证视口：1092 × 863（Codex In-app Browser）
+- 参考图：
+  - `/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-0dae6f42-13a7-4250-90ee-7497e5ed4c22.png`
+  - `/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-ea1b4d5d-0e67-443b-ba58-41c1c2e8ef3b.png`
+  - `/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-d3928890-1ef1-4d22-93b6-0716d9bf8cb1.png`
+  - `/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-487a16ff-c80f-4f14-97ba-81297da12582.png`
+- 最终截图目录：`/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/kith-message-refinement-20260724/`
+- 最终同画面对照：`/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/kith-message-refinement-20260724/reference-vs-channel-hover-focused.png`
+
+## 视觉检查
+
+- [x] 最左侧为 `#f5f5f5` 窄幅纯图标导航栏，没有右边线；中栏与主区分隔线约为 `#f0f0f0`。
+- [x] 导航栏包含 Messages、Search、Spaces、Inbox、Tasks、Agents、Settings。
+- [x] 图标选中态、间距、尺寸和低对比表面与参考图方向一致。
+- [x] Messages 右侧为独立消息中栏，包含“消息 / 已保存 / 频道 / 私信”层级。
+- [x] 消息中栏没有搜索框；频道与私信均保留新建入口。
+- [x] 频道选中行使用浅蓝表面，频道图标和私信头像尺寸统一。
+- [x] Human 消息右对齐、使用 `#e7f0fe`、头像在右，并隐藏重复的自己标题行。
+- [x] Agent 消息左对齐、使用 `#f5f5f5`；Human/Agent 头像均为 36px，气泡圆角均为 16px。
+- [x] 频道 Agent 气泡顶部位于头像圆心高度；私聊隐藏重复昵称，气泡与头像顶部平齐。
+- [x] Agent 时间只显示气泡下方 `HH:mm`，静止时隐藏，消息 hover/focus 时显示。
+- [x] hover 工具栏和“更多”菜单共用白色表面、`#f0f0f0` 边线、12px 圆角与相同轻量投影。
+- [x] Human 工具栏在左侧空间充足时显示在气泡左边；窄宽度路径按矩形计算回退到上方，Agent 保持右侧/上方规则。
+- [x] Agent 昵称为 `400` 常规字重。
+- [x] 话题回复预览为气泡外独立白色描边卡片，hover 终态为 `#f7f7f7`，并保留“最新 N 分钟前”。
+- [x] 话题分栏从 52px 主标题栏下方开始；父消息容器透明且无 padding，没有重复遮罩。
+- [x] 展开话题前后主标题栏横跨同一完整宽度，右侧按钮位置不变，底部分割线连续。
+- [x] 话题标题为16px，工具栏高度为44px，操作按钮为28px。
+- [x] 话题分栏实测 Agent 头像左边距、Agent 气泡右边距、Human 头像右边距均为 10px。
+- [x] 日期分隔为居中灰色胶囊，没有贯穿消息区的横线。
+- [x] Composer 的结构、尺寸、文案和操作区保持原样。
+- [x] 参考图与实现截图已在同一对照图中检查；未发现裁切、溢出、错误边距、异常圆角或错误字体权重。
+
+## 交互与可访问性检查
+
+- [x] Messages 图标拥有可访问名称和 hover/focus tooltip。
+- [x] 其余图标均拥有可访问名称和 hover/focus tooltip。
+- [x] 点击 Tasks 后图标栏保持常驻，消息中栏退出，任务模块正常显示。
+- [x] 点击 Messages 后恢复消息中栏和当前 Chat。
+- [x] 当前入口使用 `aria-current="page"` 表达选中状态。
+- [x] 浏览器控制台无 warning/error。
+
+## 历史初轮对抗审查修正
+
+- [x] 话题分栏拖拽命中区固定为 10px，不受壳层栏间距变量影响。
+- [x] Chat 加载骨架包含图标栏和消息中栏；业务模块加载骨架只保留图标栏。
+- [x] 聚合面板门槛按消息中栏与主 Chat 合计 568px 下限计算，窄窗不再裁切 Chat。
+- [x] 频道和已保存入口使用原生按钮；Inbox 未读数进入可访问名称。
+- [x] README、术语表与架构文档已同步最新三栏、颜色和间距事实。
+- [x] 本轮初始差异（旧气泡色、32px 头像、私聊重复昵称、顶部完整时间、工具栏/菜单和图标栏边线）均已关闭；复验未发现 P0/P1/P2 视觉问题。
+
+## 验证
+
+- [x] `pnpm run typecheck`
+- [x] 36 项本轮相关壳层、消息表现和布局单测
+- [x] `pnpm test --unit`：923 passed、11 skipped、0 failed
+- [x] `pnpm run web:build`
+- [x] 真实浏览器频道默认态、消息 hover、更多菜单、私聊态和话题分栏态检查
+
+## 有意保留的产品差异
+
+- 使用 Kith-space 的真实 Space、频道、Agent、聚合面板和标题操作，不复制参考产品的品牌或示例数据。
+- 按用户要求省略消息中栏搜索框。
+- 按用户要求不修改 Composer。
+
+final result: passed
+
+---
+
+# 设置页重构视觉 QA（历史记录）
 
 日期：2026-07-23
 

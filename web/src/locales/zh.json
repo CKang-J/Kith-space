@@ -7,6 +7,8 @@
     "tasks": "任务",
     "agents": "Agents",
     "settings": "设置",
+    "messages": "消息",
+    "inboxUnread": "收件箱，{{count}} 条未读",
     "workspaceModules": "工作区模块"
   },
   "responseMode": {

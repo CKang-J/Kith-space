@@ -71,7 +71,7 @@ test("channel copy describes Human authority separately from agent membership", 
 test("the frontend exposes only the local product shell", () => {
   const app = source("./App.tsx");
   const frame = source("./shell/WorkspaceFrame.tsx");
-  const workspaceContext = source("./shell/WorkspaceContextRow.tsx");
+  const navigationRail = source("./shell/WorkspaceNavigationRail.tsx");
   const index = source("../index.html");
   const webPackage = JSON.parse(source("../package.json")) as { scripts: { build: string } };
   const removedPaths = [
@@ -90,9 +90,10 @@ test("the frontend exposes only the local product shell", () => {
   assert.match(app, /return <WorkspaceFrame \/>/);
   assert.doesNotMatch(app, /Layout|legacy|useLocation|useState/);
   assert.doesNotMatch(frame, /legacyHref/);
-  assert.doesNotMatch(workspaceContext, /legacyHref|MoreHorizontal|<a\b/);
-  assert.doesNotMatch(workspaceContext, /onOpenSearch|QuickSwitcher|shell-topbar__tools/);
-  assert.match(frame, /<WorkspaceContextRow[\s\S]*?<SidebarModuleNavigation/);
+  assert.doesNotMatch(navigationRail, /legacyHref|MoreHorizontal|<a\b/);
+  assert.doesNotMatch(navigationRail, /QuickSwitcher|shell-topbar__tools/);
+  assert.match(navigationRail, /<SpaceSwitcher[\s\S]*?<SidebarModuleNavigation/);
+  assert.match(frame, /<WorkspaceNavigationRail/);
   assert.doesNotMatch(frame, /<WorkspaceTopBar|shell-topbar/);
   assert.match(frame, /<QuickSwitcher onClose=/);
   assert.equal(webPackage.scripts.build, "vite build");

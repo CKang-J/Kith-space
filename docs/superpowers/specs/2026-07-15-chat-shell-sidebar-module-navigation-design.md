@@ -1,11 +1,11 @@
 # Kith-space Chat 壳层与侧栏模块导航重构设计
 
 - 日期：2026-07-15
-- 状态：原切片已于 2026-07-18 验收；壳层导航于 2026-07-23 再次修正并实现
+- 状态：原切片已于 2026-07-18 验收；2026-07-23 的“图标 + 文字”壳层已被后续图标栏设计取代
 - 范围：常驻左侧栏、主卡片同槽位切换、Settings 模态层、Dock 与案例展示退役
 - 关联规格：`2026-07-10-kith-space-single-window-workspace-design.md`、`2026-07-14-chat-aggregate-panel-design.md`、`2026-07-15-chat-message-ui-density-design.md`
 
-> **2026-07-23 修正优先于本文后续历史切片描述：** 左侧模块导航在 Chat 与模块页中始终可见；Spaces、Inbox、Tasks、Agents 在右侧复用 Chat 的同一主卡片槽位，不再进入 Split，也不再显示 Dock；Settings 以模态层打开。规范 URL、模块 resource query、会话聚合面板和消息/Composer 数据契约继续有效。后文关于“模块打开后隐藏侧栏、使用 Split/ModuleOnly 和横向 Dock”的内容只保留为已被本修正取代的历史设计依据。
+> **2026-07-23 最新覆盖：** `2026-07-23-chat-icon-rail-message-pane-design.md` 把“图标 + 文字的单一左侧栏”改为“窄图标导航栏 + 消息中栏”。模块同槽位切换、Dock 退役、Settings 模态层、规范 URL、模块 resource query、会话聚合面板和 Composer 数据契约继续有效。本文后续视觉结构只保留为历史设计依据。
 
 ## 1. 决策摘要
 

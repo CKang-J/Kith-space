@@ -23,21 +23,23 @@ test("workspace skeleton follows the current single-window shell and panel langu
   assert.match(skeletonTsx, /className="shell-workspace-frame skel-workspace"/, "skeleton must reuse the workspace frame");
   assert.match(skeletonTsx, /className="shell-workspace-canvas skel-workspace-canvas"/, "skeleton must reuse the gray workspace canvas");
   assert.doesNotMatch(skeletonTsx, /shell-topbar|skel-topbar/, "the retired global top bar must not remain in the skeleton");
-  assert.match(skeletonTsx, /<SidebarContextSkeleton \/>/, "the workspace context must load inside the conversation list");
-  assert.match(skeletonTsx, /skel-sidebar-context/, "the sidebar context must have a dedicated placeholder");
+  assert.match(skeletonTsx, /<NavigationRailSkeleton itemCount=\{navigationItemCount\} \/>/, "the persistent icon rail must load in every workspace state");
+  assert.match(skeletonTsx, /skel-navigation-rail/, "the icon rail must have dedicated placeholders");
   assert.match(skeletonTsx, /shell-primary-workspace-card shell-chat-main-card/, "Chat must use the shared primary card");
   assert.match(skeletonTsx, /shell-primary-workspace-card shell-module-workspace/, "module loading must use the shared primary card");
   assert.match(skeletonTsx, /WORKSPACE_MODULES\.has\(requestedModule\)/, "only legal module query values may change the skeleton mode");
+  assert.match(skeletonTsx, /"spaces"/, "Home Spaces must be recognized as a legal content module");
+  assert.match(skeletonTsx, /"search"/, "Search deep links must keep the module loading skeleton");
+  assert.match(skeletonTsx, /pathname\.startsWith\("\/s\/home\/"\) \? 7 : 6/, "the icon rail skeleton must match Home and regular Space item counts");
   assert.match(skeletonTsx, /activeModule !== "settings"/, "Settings must keep the Chat skeleton behind its modal");
-  assert.match(skeletonTsx, /contentModule \? <ConversationListSkeleton \/>/, "module loading must retain the left navigation skeleton");
+  assert.match(skeletonTsx, /contentModule \? <ModulePanelSkeleton \/> : <ChatPanelSkeleton \/>/, "module loading must replace Chat and its message pane");
   assert.doesNotMatch(skeletonTsx, /DockSkeleton|workspace-dock|shell-dock-zone/, "the retired Dock must not return");
 
   assert.doesNotMatch(skeletonTsx, /(?:^|[\s"'])\.app(?:[\s"'.]|$)/m, "the retired .app shell must not return");
-  assert.doesNotMatch(skeletonTsx, /\brail\b/i, "the retired side rail must not return");
   assert.doesNotMatch(skeletonTsx, /has-traj/, "the retired trace-column modifier must not return");
   assert.doesNotMatch(skeletonTsx, /Layout/, "the skeleton must not refer to the retired layout component");
 
-  assert.doesNotMatch(css, /\.skel-(?:app|rail|sb|traj)\b/, "old skeleton-only shell selectors must be removed");
+  assert.doesNotMatch(css, /\.skel-(?:app|sb|traj)\b/, "old skeleton-only shell selectors must be removed");
   assert.match(css, /\.skel-workspace\{background:var\(--shell-bg/, "workspace skeleton must use the shell canvas token");
   assert.match(css, /\.skel-(?:conversations|trace)[^}]*background:var\(--shell-panel/, "work panels must use the shell panel token");
 });

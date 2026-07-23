@@ -3,7 +3,7 @@ import { useLocation, useParams, useNavigate, useSearchParams } from "react-rout
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useStore, type Msg, type Att } from "../store.tsx";
-import { fmtMessageTime, fmtMessageTimestamp, isSameLocalDay, fmtDateDivider } from "../format";
+import { fmtMessageTime, isSameLocalDay, fmtDateDivider } from "../format";
 import { AGENT_REPLY_PREVIEW_TYPE, renderKeyForMessage, type AgentReplyPreviewMsg } from "../lib/agentReplyPreview";
 import { MessageContent } from "../messageRender.tsx";
 import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Link2, Clipboard, Bookmark, CheckSquare, Circle, Play, Eye, Ban, ArrowDown, Bell, BellOff, Archive, MessagesSquare, ListTodo, PanelsTopLeft, Hash } from "lucide-react";
@@ -172,15 +172,15 @@ function ActionCardMsg({
         surface="action"
         className="action-card-msg"
         avatar={agent && m.senderId
-          ? <button type="button" className="msg-av clickable" aria-label={t("chat.openAgentCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => onOpenAgentCard(m.senderId!, event.currentTarget)}><Avatar seed={m.senderName} url={resolveAvatar(agent.avatarUrl, attachmentUrl)} size={32} />{live !== "offline" ? <span className={`av-status ${live}`} /> : null}</button>
-          : <span className="msg-av"><Avatar seed={m.senderName} url={resolveAvatar(agent?.avatarUrl, attachmentUrl)} size={32} /></span>}
+          ? <button type="button" className="msg-av clickable" aria-label={t("chat.openAgentCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => onOpenAgentCard(m.senderId!, event.currentTarget)}><Avatar seed={m.senderName} url={resolveAvatar(agent.avatarUrl, attachmentUrl)} size={36} />{live !== "offline" ? <span className={`av-status ${live}`} /> : null}</button>
+          : <span className="msg-av"><Avatar seed={m.senderName} url={resolveAvatar(agent?.avatarUrl, attachmentUrl)} size={36} /></span>}
         header={<MessageHeader
           sender={agent
             ? <AgentMentionName displayName={m.senderName} mentionName={agent.name} disabled={readOnly} onMention={onMentionAgent} />
             : <span className="who">{m.senderName}</span>}
           badge={<span className="member-badge">{t("chat.proposed")}</span>}
-          timestamp={fmtMessageTimestamp(m.createdAt)}
         />}
+        footerTimestamp={fmtMessageTime(m.createdAt)}
       >
         <div className="action-card">
           <div className="ac-title">{title}</div>
@@ -473,7 +473,17 @@ export function Chat({
   return (
     <>
       {!embedded && <ChatSidebar />}
-      {!thread || !threadOnly ? <main ref={chatMainRef} className={"content-col" + (isArchived ? " archived-readonly" : "")}>
+      {!thread || !threadOnly ? <main
+        ref={chatMainRef}
+        className={[
+          "content-col",
+          thread && !threadOnly ? "content-col--with-thread" : "",
+          isArchived ? "archived-readonly" : "",
+        ].filter(Boolean).join(" ")}
+        style={thread && !threadOnly
+          ? { "--chat-thread-occupied-width": `${threadConstraints.width + 10}px` } as CSSProperties
+          : undefined}
+      >
         <div className="head chat-head">
           <div className="chat-head__rail">
             {renderConversationListControl()}
@@ -543,12 +553,12 @@ export function Chat({
                 const isNewMsg = staggerIdx !== undefined;
                 const shouldEnter = isNewMsg || !!agentReplyPreview;
                 const avatar = deletedAgent
-                  ? <span className="msg-av"><Avatar seed={m.senderName} size={32} /></span>
+                  ? <span className="msg-av"><Avatar seed={m.senderName} size={36} /></span>
                   : ag
-                  ? <button type="button" className="msg-av clickable" aria-label={t("chat.openAgentCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => openMessageAgentCard(m.senderId!, event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />{agLive !== "offline" && <span className={"av-status " + agLive} />}</button>
+                  ? <button type="button" className="msg-av clickable" aria-label={t("chat.openAgentCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => openMessageAgentCard(m.senderId!, event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} />{agLive !== "offline" && <span className={"av-status " + agLive} />}</button>
                   : m.senderId
-                    ? <button type="button" className="msg-av clickable" aria-label={t("chat.openHumanCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => openMessageHumanCard(m.senderName, senderAvatar(m), event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></button>
-                    : <span className="msg-av"><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></span>;
+                    ? <button type="button" className="msg-av clickable" aria-label={t("chat.openHumanCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => openMessageHumanCard(m.senderName, senderAvatar(m), event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></button>
+                    : <span className="msg-av"><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></span>;
                 const sender = deletedAgent
                   ? <DeletedAgentName displayName={m.senderName} />
                   : ag
@@ -564,17 +574,23 @@ export function Chat({
                     surface={messageTone}
                     className={[
                       shouldEnter ? "msg-enter" : "",
+                      isDm ? "chat-message--direct" : "",
                       continuation ? "chat-message--continuation" : "",
                       hasContinuation ? "chat-message--has-continuation" : "",
                     ].filter(Boolean).join(" ")}
                     style={isNewMsg ? { "--msg-delay": `${staggerIdx * 60}ms` } as CSSProperties : undefined}
                     onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ m, x: e.clientX, y: e.clientY }); }}
                     avatar={continuation ? null : avatar}
-                    continuationTimestamp={continuation ? fmtMessageTime(m.createdAt) : null}
-                    header={continuation ? null : <MessageHeader
-                      sender={sender}
-                      timestamp={fmtMessageTimestamp(m.createdAt)}
-                    />}
+                    continuationTimestamp={m.senderType === "agent" ? null : continuation ? fmtMessageTime(m.createdAt) : null}
+                    header={continuation || isDm ? null : <MessageHeader sender={sender} />}
+                    footerTimestamp={m.senderType === "agent" ? fmtMessageTime(m.createdAt) : null}
+                    afterBubble={tm?.replyCount ? <MessageTopicPreview
+                      meta={tm}
+                      onOpen={() => startThread(m)}
+                      avatarUrlFor={(reply) => reply.senderType === "agent"
+                        ? avFor(agents.find((agent) => agent.id === reply.senderId)?.avatarUrl)
+                        : undefined}
+                    /> : null}
                     toolbar={<MessageToolbar>
                       {m.producedByTurnId ? <TurnDetailsButton turnId={m.producedByTurnId} /> : null}
                       {!conversationReadOnly ? <ReactionToolbarButton onReact={(emoji) => react(m.id, emoji, false)} /> : null}
@@ -609,13 +625,6 @@ export function Chat({
                         })()}
                         {m.reactions?.length ? <Reactions m={m} mine={me?.id ?? ""} readOnly={conversationReadOnly} onReact={(emoji, remove) => react(m.id, emoji, remove)} /> : null}
                       </div> : null}
-                    {tm?.replyCount ? <MessageTopicPreview
-                      meta={tm}
-                      onOpen={() => startThread(m)}
-                      avatarUrlFor={(reply) => reply.senderType === "agent"
-                        ? avFor(agents.find((agent) => agent.id === reply.senderId)?.avatarUrl)
-                        : undefined}
-                    /> : null}
                   </ChatMessageItem>
                 </Fragment>
                 );
@@ -769,13 +778,13 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
         ].filter(Boolean).join(" ")}
         onContextMenu={(event) => { event.preventDefault(); setCtxMenu({ m, x: event.clientX, y: event.clientY }); }}
         avatar={continuation ? null : deletedAgent
-          ? <span className="msg-av"><Avatar seed={m.senderName} size={32} /></span>
+          ? <span className="msg-av"><Avatar seed={m.senderName} size={36} /></span>
           : ag
-          ? <button type="button" className="msg-av clickable" aria-label={t("chat.openAgentCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => onOpenAgentCard(m.senderId!, event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />{live !== "offline" && <span className={"av-status " + live} />}</button>
+          ? <button type="button" className="msg-av clickable" aria-label={t("chat.openAgentCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => onOpenAgentCard(m.senderId!, event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} />{live !== "offline" && <span className={"av-status " + live} />}</button>
           : m.senderId
-            ? <button type="button" className="msg-av clickable" aria-label={t("chat.openHumanCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => onOpenHumanCard(m.senderName, senderAvatar(m), event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></button>
-            : <span className="msg-av"><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></span>}
-        continuationTimestamp={continuation ? fmtMessageTime(m.createdAt) : null}
+            ? <button type="button" className="msg-av clickable" aria-label={t("chat.openHumanCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => onOpenHumanCard(m.senderName, senderAvatar(m), event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></button>
+            : <span className="msg-av"><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></span>}
+        continuationTimestamp={m.senderType === "agent" ? null : continuation ? fmtMessageTime(m.createdAt) : null}
         header={continuation ? null : <MessageHeader
           sender={deletedAgent
             ? <DeletedAgentName displayName={m.senderName} />
@@ -784,8 +793,8 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
             : m.senderId
               ? <span className="who">{m.senderName}</span>
               : <span className="who">{m.senderName}</span>}
-          timestamp={fmtMessageTimestamp(m.createdAt)}
         />}
+        footerTimestamp={m.senderType === "agent" ? fmtMessageTime(m.createdAt) : null}
         toolbar={<MessageToolbar>
           {m.producedByTurnId ? <TurnDetailsButton turnId={m.producedByTurnId} /> : null}
           {!readOnly ? <ReactionToolbarButton onReact={(emoji) => react(m.id, emoji, false)} /> : null}

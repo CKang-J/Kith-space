@@ -6,13 +6,14 @@ import { QuickSwitcher } from "../QuickSwitcher.tsx";
 import { useStore } from "../store.tsx";
 import { ChannelSettingsPanel } from "../views/channel-settings/index.ts";
 import { ConversationAggregatePanel } from "../views/conversation-aggregate/ConversationAggregatePanel.tsx";
-import { ChatSidebar } from "../views/ChatSidebar.tsx";
 import { LiveTrace } from "../views/LiveTrace.tsx";
 import { ChatWorkspace } from "./ChatWorkspace.tsx";
 import { ModuleWorkspace } from "./ModuleWorkspace.tsx";
 import { SettingsDialog } from "./SettingsDialog.tsx";
-import { SidebarModuleNavigation } from "./SidebarModuleNavigation.tsx";
-import { WorkspaceContextRow } from "./WorkspaceContextRow.tsx";
+import {
+  WORKSPACE_NAVIGATION_RAIL_WIDTH,
+  WorkspaceNavigationRail,
+} from "./WorkspaceNavigationRail.tsx";
 import {
   shellActions,
   storedChatLocation,
@@ -153,12 +154,13 @@ export function WorkspaceFrame() {
   const layoutSearch = workspaceSearchForShellState(location.search, layoutState);
   const aggregateEligible = route.isChannelRoute && currentChannelId !== null;
   const mode = deriveWorkspaceMode(layoutState);
-  const aggregateConstraints = aggregatePaneConstraints(workspaceWidth);
+  const contentWorkspaceWidth = Math.max(0, workspaceWidth - WORKSPACE_NAVIGATION_RAIL_WIDTH);
+  const aggregateConstraints = aggregatePaneConstraints(contentWorkspaceWidth);
   const aggregateAvailable = aggregateEligible && chatVisible && aggregateConstraints.canShow;
   const aggregateVisible = aggregateAvailable && aggregateOpen;
   const aggregateWidth = aggregateVisible ? aggregateConstraints.width : 0;
   const aggregateGap = aggregateVisible ? 10 : 0;
-  const chatWidth = Math.max(0, workspaceWidth - aggregateWidth - aggregateGap);
+  const chatWidth = Math.max(0, contentWorkspaceWidth - aggregateWidth - aggregateGap);
   const paneStyle = (width: number): CSSProperties => ({
     width,
     flexBasis: width,
@@ -189,6 +191,11 @@ export function WorkspaceFrame() {
     if (!(await requestSettingsExit(next.activeModule !== null && next.activeModule !== "settings"))) return;
     if (next.activeModule !== null && next.activeModule !== "settings") setAggregateOpen(false);
     navigateLayout(next);
+  };
+
+  const selectChat = async () => {
+    if (!(await requestSettingsExit(false))) return;
+    navigateLayout(INITIAL_WORKSPACE_LAYOUT);
   };
 
   const openConversationTasks = async (conversationId: string) => {
@@ -238,23 +245,6 @@ export function WorkspaceFrame() {
     (settingsTriggerRef.current ?? aggregateToggleRef.current)?.focus();
   }, [aggregateVisible]);
 
-  const sidebarModuleNavigation = (
-    <>
-      <WorkspaceContextRow
-        activeModule={activeModule}
-        channelId={currentChannelId}
-        layoutSearch={layoutSearch}
-      />
-      <SidebarModuleNavigation
-        activeModule={activeModule}
-        isHome={isHome}
-        unreadCount={unreadCount}
-        onSearch={() => setQuickSwitcherOpen(true)}
-        onModuleSelect={(moduleId: SidebarModuleId) => void selectModule(moduleId)}
-      />
-    </>
-  );
-
   const settingsInDrawer = !!settingsChannel && !aggregateAvailable;
   const channelSettings = settingsChannel ? (
     <ChannelSettingsPanel
@@ -281,15 +271,15 @@ export function WorkspaceFrame() {
       data-visual-mode={mode}
     >
       <div ref={workspaceRef} className="shell-workspace-canvas">
-        {contentModuleId ? (
-          <div className="shell-work-panel shell-module-navigation" aria-label="工作区导航">
-            <ChatSidebar
-              channelIdOverride={currentChannelId ?? undefined}
-              moduleNavigation={sidebarModuleNavigation}
-              onNavigate={(target) => void requestConversationNavigation(target)}
-            />
-          </div>
-        ) : null}
+        <WorkspaceNavigationRail
+          activeModule={activeModule}
+          isHome={isHome}
+          layoutSearch={layoutSearch}
+          unreadCount={unreadCount}
+          onChatSelect={() => void selectChat()}
+          onSearch={() => setQuickSwitcherOpen(true)}
+          onModuleSelect={(moduleId: SidebarModuleId) => void selectModule(moduleId)}
+        />
         {chatVisible ? (
           <ChatWorkspace
             channelId={currentChannelId}
@@ -302,7 +292,6 @@ export function WorkspaceFrame() {
             onNavigateConversation={(target) => void requestConversationNavigation(target)}
             settingsDrawer={settingsInDrawer ? channelSettings : undefined}
             settingsDrawerOpen={settingsInDrawer && aggregateOpen}
-            moduleNavigation={sidebarModuleNavigation}
             style={paneStyle(chatWidth)}
           />
         ) : null}

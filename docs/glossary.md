@@ -269,34 +269,37 @@
 : 当前唯一顶层工作壳。应用直接进入当前 Space，Chat 与一个 Module Pane 在同一窗口中按三态协作；此前“双壳 / 空间总览态 / 空间内部态”术语已废止。
 
 **ChatOnly**
-: 只有 Chat 可见、没有打开模块的状态。Chat 是唯一工作面时不能被隐藏；全宽 Chat 可同时展示 Chat 导航侧栏、当前会话和当前会话聚合面板。模块以左侧纵向图标文字入口打开，不显示重复的 Chat 项或底部 Dock。
+: Messages 激活、没有打开业务模块的状态。最左侧纯图标导航栏、消息中栏和当前 Chat 同时可见；宽度允许时可附带当前会话聚合面板。Chat 通过 Messages 图标显式返回，不挂载底部 Dock。
 
 **Split**
-: Chat 与一个模块同时可见的分屏状态。固定 Chat 导航侧栏隐藏，Chat 与 Module 间隙可拖拽；Chat 使用紧凑形态，会话列表改为只含已保存、频道、私信的抽屉，宽度允许时聚合面板固定显示在 Chat 与 Module 之间。
+: 已退出活跃产品壳的历史状态，曾表示 Chat 与业务模块同时可见。当前业务模块在唯一主工作区原位替换 Chat。
 
 **ModuleOnly**
-: 模块可见、Chat 暂时隐藏的专注状态。点击 Dock 的 Chat 可恢复 Split。
+: 已退出活跃产品壳的历史名称。当前对应状态直接称“业务模块”，最左侧图标栏常驻，点击 Messages 返回 Chat。
 
 **Module Pane**
-: Inbox、Tasks、Agents、Settings 等功能模块的第二工作面。一次只打开一个模块，可与 Chat 分屏或独占窗口；当前阶段全部服从当前 Space。
+: Spaces、Inbox、Tasks、Agents 等业务模块占用的唯一主工作区。一次只显示一个模块，不再与 Chat 并排；Settings 使用独立模态层。
 
 **Dock**
-: 只在模块已打开时位于 Module Pane 底部的横向工作姿态控制器。Home 为 Chat、Spaces、Inbox、Tasks、Agents、Settings，普通 Space 为 Chat、Inbox、Tasks、Agents、Settings；当前模块横向展开，Chat 始终只显示图标。它同时负责模块切换与 Split / ModuleOnly 间的 Chat 显隐；ChatOnly 改用左侧纵向模块入口，不挂载 Dock。
+: 已退役的底部横向导航。当前工作区只使用常驻纯图标导航栏，不为 Dock 保留空间或状态。
 
-**Chat 导航侧栏**
-: ChatOnly 左侧常驻导航面。顶部以“图标 + 文字”纵向列出当前 Space 可用模块，但不显示 Chat；下方依次承载已保存、频道、私信和底部 agent 运行状态。模块打开后该侧栏隐藏，Split 通过只含会话分组的临时抽屉切换会话。
+**工作区图标导航栏 / Workspace Navigation Rail**
+: 最左侧 `68px` 常驻导航层。顶部是 SpaceSwitcher，下方依次显示 Messages、Search、Spaces（Home only）、Inbox、Tasks、Agents、Settings 纯图标；每个入口通过 hover/focus tooltip 和可访问名称说明功能。
+
+**消息中栏**
+: Messages 激活时位于图标栏右侧的会话导航层，顶部显示“消息”，下方按已保存、频道、私信分组并保留底部 agent 运行状态；不放搜索框。业务模块打开时随 Chat 退出。
 
 **Spaces 模块 / 空间模块**
-: 只在 Home 模块集合出现的真实 Space registry 页面，用卡片提供搜索、刷新、创建、接入、失联重连和同窗打开普通 Space；规范 module id 为 `spaces`。ChatOnly 从 Chat 导航侧栏进入，模块打开态在 Dock 中切换。它不聚合尚未实现的 Inbox/Tasks，也不是旧空间总览壳。
+: 只在 Home 图标导航出现的真实 Space registry 页面，用卡片提供搜索、刷新、创建、接入、失联重连和同窗打开普通 Space；规范 module id 为 `spaces`。它不聚合尚未实现的 Inbox/Tasks，也不是旧空间总览壳。
 
 **规范工作区 URL**
-: 用当前 Space 的会话 pathname 表达频道或 Human-Agent DM，用 `module`/`chat` 表达工作区三态，并由 `taskScope`、`agent`/`agentTab`、`settings` 分别表达模块资源的唯一 URL 形式。切换会话时保留 active module 及其资源，替换旧 `msg`/`thread` 临时焦点；旧模块实体路径不属于规范 URL。
+: 用当前 Space 的会话 pathname 表达频道或 Human-Agent DM，用 `module` 表达业务模块或 Settings，并由 `taskScope`、`agent`/`agentTab`、`settings` 分别表达模块资源的唯一 URL 形式。切换会话时保留 active module 及其资源，替换旧 `msg`/`thread` 临时焦点；旧模块实体路径不属于规范 URL。
 
 **agent 实时轨迹**
 : 近实时展示 agent 执行动作的透明度窗口，位于当前会话聚合面板的“轨迹”Tab；只显示明确归属当前 base conversation 的有界前端缓冲，不是业务模块 Dock 项。
 
 **会话聚合面板 / Conversation Aggregate Panel**
-: 依附当前可见 Chat 的会话级辅助工作面，固定承载“轨迹 / 话题 / 文件”三个内容 Tab；它在 Split 中位于 Chat 与 Module 之间，宽度不足或 ModuleOnly 时临时隐藏，不是可任意停靠的通用面板或第二个 Module。频道设置可以临时占用该位置，但不是第四个内容 Tab。
+: 依附当前可见 Chat 的会话级辅助工作面，固定承载“轨迹 / 话题 / 文件”三个内容 Tab；位于 Chat 右侧，宽度不足或业务模块打开时临时隐藏，不是可任意停靠的通用面板或第二个 Module。频道设置可以临时占用该位置，但不是第四个内容 Tab。
 
 **频道设置场景**
 : 从频道标题进入、临时占用会话聚合面板的低频管理场景，包含常规、成员和通知三个钻取页以及归档、恢复和永久删除。宽度不足时复用同一组件进入 Chat 右侧抽屉；退出后恢复原聚合内容状态。

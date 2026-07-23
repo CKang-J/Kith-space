@@ -197,6 +197,8 @@ Kith-space 是 Human 与一队 Agent 的协作工作面，不采用消费聊天�
 
 Token 放在消息样式模块或根主题中，避免继续散落魔法值：
 
+> 下列数值记录本规格 2026-07-15 的验收基线；2026-07-24 的头像、圆角、Human/Agent 气泡色与时间显隐已由 `2026-07-23-chat-icon-rail-message-pane-design.md` 最新覆盖。
+
 ```css
 --chat-stream-max: 1040px;
 --chat-message-avatar: 32px;

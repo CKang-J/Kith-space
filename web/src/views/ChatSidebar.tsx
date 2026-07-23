@@ -1,24 +1,26 @@
-import type { ReactNode } from "react";
 import { LiveAgentBar } from "./LiveAgentBar.tsx";
 import { ConversationListContent } from "./ConversationListContent.tsx";
+import { useTranslation } from "react-i18next";
 
 interface ChatSidebarProps {
   channelIdOverride?: string;
   preserveSearch?: string;
   onNavigate?(target: string): void;
-  moduleNavigation?: ReactNode;
 }
 
 export function ChatSidebar({
   channelIdOverride,
   preserveSearch = "",
   onNavigate,
-  moduleNavigation,
 }: ChatSidebarProps = {}) {
+  const { t } = useTranslation();
+
   return (
     <aside className="sidebar chat-navigation-sidebar">
-      <div className="sb-scroll">
-        {moduleNavigation}
+      <div className="chat-navigation-sidebar__header">
+        <h2>{t("nav.messages")}</h2>
+      </div>
+      <div className="sb-scroll chat-navigation-sidebar__scroll">
         <ConversationListContent
           channelIdOverride={channelIdOverride}
           preserveSearch={preserveSearch}

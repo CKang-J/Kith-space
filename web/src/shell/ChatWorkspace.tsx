@@ -15,7 +15,6 @@ interface ChatWorkspaceProps {
   onNavigateConversation(target: string): void;
   settingsDrawer?: ReactNode;
   settingsDrawerOpen?: boolean;
-  moduleNavigation?: ReactNode;
   style?: CSSProperties;
 }
 
@@ -71,7 +70,6 @@ export function ChatWorkspace({
   onNavigateConversation,
   settingsDrawer,
   settingsDrawerOpen = false,
-  moduleNavigation,
   style,
 }: ChatWorkspaceProps) {
   const { pathname } = useLocation();
@@ -91,7 +89,7 @@ export function ChatWorkspace({
       aria-label="Chat 工作区"
     >
       <div className="shell-work-panel shell-chat-conversations" aria-label="会话列表">
-        <ChatSidebar channelIdOverride={channelId ?? undefined} moduleNavigation={moduleNavigation} onNavigate={onNavigateConversation} />
+        <ChatSidebar channelIdOverride={channelId ?? undefined} onNavigate={onNavigateConversation} />
       </div>
       <section className="shell-work-panel shell-primary-workspace-card shell-chat-main-card" aria-label="当前会话">
         <div className="shell-chat-surface">

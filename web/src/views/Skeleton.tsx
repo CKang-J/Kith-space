@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { ChatMessageItem, MessageHeader } from "./chat-message/ChatMessageItem.tsx";
 
-const WORKSPACE_MODULES = new Set(["inbox", "tasks", "agents", "settings", "search"]);
+const WORKSPACE_MODULES = new Set(["spaces", "inbox", "tasks", "agents", "settings", "search"]);
 
 // One placeholder message row: avatar block plus name and body lines of varied width.
 function SkelMsg({ w }: { w: string }) {
@@ -31,24 +31,30 @@ export function ChatSkeleton() {
   );
 }
 
-function SidebarContextSkeleton() {
+function NavigationRailSkeleton({ itemCount }: { itemCount: number }) {
   return (
-    <div className="skel-sidebar-context">
-      <div className="skel-box skel-sidebar-context-brand" />
-      <div className="skel-box skel-sidebar-context-space" />
-      <div className="skel-box skel-sidebar-context-current" />
-    </div>
+    <aside className="workspace-navigation-rail skel-navigation-rail" aria-hidden="true">
+      <div className="skel-box skel-navigation-rail__brand" />
+      <div className="skel-navigation-rail__items">
+        {Array.from({ length: itemCount }).map((_, index) => (
+          <div key={index} className="skel-box skel-navigation-rail__item" />
+        ))}
+      </div>
+    </aside>
   );
 }
 
 function ConversationListSkeleton() {
   return (
     <aside className="shell-work-panel shell-chat-conversations skel-conversations" aria-hidden="true">
-      <SidebarContextSkeleton />
-      <div className="skel-box skel-panel-title" />
-      {Array.from({ length: 7 }).map((_, i) => (
-        <div key={i} className="skel-box skel-panel-line" style={{ width: `${72 - (i % 3) * 12}%` }} />
-      ))}
+      <div className="chat-navigation-sidebar__header skel-conversations__header">
+        <div className="skel-box skel-panel-title" />
+      </div>
+      <div className="skel-conversations__list">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="skel-box skel-panel-line" style={{ width: `${88 - (i % 3) * 10}%` }} />
+        ))}
+      </div>
     </aside>
   );
 }
@@ -100,7 +106,7 @@ function ModulePanelSkeleton() {
 // A root/channel bootstrap mirrors the persistent sidebar plus either Chat or one selected module.
 export function WorkspaceSkeleton({ chat = false }: { chat?: boolean }) {
   const { t } = useTranslation();
-  const { search } = useLocation();
+  const { pathname, search } = useLocation();
   const params = new URLSearchParams(search);
   const requestedModule = params.get("module");
   const activeModule = !chat && requestedModule && WORKSPACE_MODULES.has(requestedModule)
@@ -108,6 +114,7 @@ export function WorkspaceSkeleton({ chat = false }: { chat?: boolean }) {
     : null;
   const contentModule = activeModule && activeModule !== "settings" ? activeModule : null;
   const mode = contentModule ? "module-only" : "chat-only";
+  const navigationItemCount = pathname.startsWith("/s/home/") ? 7 : 6;
 
   return (
     <main
@@ -119,7 +126,7 @@ export function WorkspaceSkeleton({ chat = false }: { chat?: boolean }) {
       aria-label={t("common.loadingWorkspace")}
     >
       <div className="shell-workspace-canvas skel-workspace-canvas">
-        {contentModule ? <ConversationListSkeleton /> : null}
+        <NavigationRailSkeleton itemCount={navigationItemCount} />
         {contentModule ? <ModulePanelSkeleton /> : <ChatPanelSkeleton />}
       </div>
     </main>

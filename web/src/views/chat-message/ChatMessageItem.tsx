@@ -9,6 +9,8 @@ interface ChatMessageItemProps {
   header?: ReactNode;
   toolbar?: ReactNode;
   continuationTimestamp?: ReactNode;
+  footerTimestamp?: ReactNode;
+  afterBubble?: ReactNode;
   children: ReactNode;
   className?: string;
   style?: CSSProperties;
@@ -23,6 +25,8 @@ export function ChatMessageItem({
   header,
   toolbar,
   continuationTimestamp,
+  footerTimestamp,
+  afterBubble,
   children,
   className = "",
   style,
@@ -30,7 +34,8 @@ export function ChatMessageItem({
 }: ChatMessageItemProps) {
   const bubbleWrapRef = useRef<HTMLDivElement>(null);
   const toolbarSlotRef = useRef<HTMLDivElement>(null);
-  const [toolbarPlacement, setToolbarPlacement] = useState<"side" | "above">("above");
+  const isHuman = (tone ?? surface) === "human";
+  const [toolbarPlacement, setToolbarPlacement] = useState<"side" | "above">("side");
   const classes = [
     "chat-message",
     `chat-message--${surface}`,
@@ -44,9 +49,14 @@ export function ChatMessageItem({
     const toolbarSlot = toolbarSlotRef.current;
     if (!bubbleWrap || !toolbarSlot) return;
     const bubbleRect = bubbleWrap.getBoundingClientRect();
-    const scrollBoundary = bubbleWrap.closest<HTMLElement>(".scroll")?.getBoundingClientRect().right ?? window.innerWidth;
-    const rightBoundary = Math.min(window.innerWidth, scrollBoundary);
-    const next = rightBoundary - bubbleRect.right >= toolbarSlot.getBoundingClientRect().width + 8 ? "side" : "above";
+    const scrollRect = bubbleWrap.closest<HTMLElement>(".scroll")?.getBoundingClientRect();
+    const leftBoundary = Math.max(0, scrollRect?.left ?? 0);
+    const rightBoundary = Math.min(window.innerWidth, scrollRect?.right ?? window.innerWidth);
+    const toolbarWidth = toolbarSlot.getBoundingClientRect().width;
+    const sideSpace = isHuman
+      ? bubbleRect.left - leftBoundary
+      : rightBoundary - bubbleRect.right;
+    const next = sideSpace >= toolbarWidth + 8 ? "side" : "above";
     setToolbarPlacement((current) => current === next ? current : next);
   };
 
@@ -65,6 +75,8 @@ export function ChatMessageItem({
           <div className="chat-message__bubble">{children}</div>
           {toolbar ? <div ref={toolbarSlotRef} className={`chat-message__toolbar-slot chat-message__toolbar-slot--${toolbarPlacement}`}>{toolbar}</div> : null}
         </div>
+        {afterBubble ? <div className="chat-message__after-bubble">{afterBubble}</div> : null}
+        {footerTimestamp ? <div className="chat-message__footer-timestamp ts">{footerTimestamp}</div> : null}
       </div>
     </article>
   );
@@ -73,17 +85,14 @@ export function ChatMessageItem({
 export function MessageHeader({
   sender,
   badge,
-  timestamp,
 }: {
   sender: ReactNode;
   badge?: ReactNode;
-  timestamp?: ReactNode;
 }) {
   return (
     <>
       {sender}
       {badge}
-      {timestamp ? <span className="chat-message__timestamp ts">{timestamp}</span> : null}
     </>
   );
 }
