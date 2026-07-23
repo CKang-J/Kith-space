@@ -23,6 +23,7 @@ import {
   inspectRegisteredSpaceRoot,
   SpaceRootError,
 } from "./spaceRootService.js";
+import { AdvisorProviderSettingsService } from "../advisor-provider/advisorProviderSettingsService.js";
 
 export type SpaceServiceErrorCode =
   | "HUMAN_NOT_INITIALIZED"
@@ -87,11 +88,12 @@ export function openLocalSpace(spaceId: string): SpaceRecord {
 }
 
 /** Remove a non-Home Space from the local registry without deleting its folder. */
-export function removeLocalSpace(spaceId: string): SpaceRecord {
+export async function removeLocalSpace(spaceId: string): Promise<SpaceRecord> {
   const space = getLocalSpace(spaceId);
   if (space.id === getHomeSpaceId()) {
     throw new SpaceServiceError("HOME_SPACE_CANNOT_REMOVE", "Home Space cannot be removed");
   }
+  await new AdvisorProviderSettingsService().revokeSpace(space.id);
   unregisterSpace(space.id);
   return space;
 }

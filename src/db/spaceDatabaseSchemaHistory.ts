@@ -1,7 +1,7 @@
 import { getTableColumns, getTableName, type Table } from "drizzle-orm";
 import * as schema from "./schema.js";
 
-export const SPACE_DATABASE_SCHEMA_VERSION = 8;
+export const SPACE_DATABASE_SCHEMA_VERSION = 9;
 export const MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION = 2;
 
 export interface WorkspaceMigrationHistoryEntry {
@@ -22,6 +22,7 @@ export const WORKSPACE_MIGRATION_HISTORY: readonly WorkspaceMigrationHistoryEntr
   { version: 6, tag: "0007_temporary_attachment_lifecycle", createdAt: 1784472700000, hash: "d8b340abb27d9ce11dd473272ca6ab086d9d10d30f7cbbdb8684ff5f24c9c887" },
   { version: 7, tag: "0008_episodic_memory_core", createdAt: 1784474300000, hash: "224fda4ad7f22265faea852d49250993286ab350543af1bb6e81a63ebdeafe77" },
   { version: 8, tag: "0009_memory_advisor", createdAt: 1784480000000, hash: "992d6faf3cd9679622f8e3da8fb8e1f03c84b312c77e88ab22544d9b50b1af83" },
+  { version: 9, tag: "0010_system_advisor_provider", createdAt: 1784800000000, hash: "e4635933ceafa8a77ed1d2a6855978c0f3b26cb6abff156809d31d3e7e161ca9" },
 ];
 
 /** Immutable v2 baseline. Later schema entries are layered on explicitly below. */
@@ -130,6 +131,14 @@ const TABLES_BY_MIGRATION = new Map<string, Array<[string, string[]]>>([
     ["memory_advisor_proposals", ["memory_id", "job_id", "validation_json", "provider_config_digest", "decision", "decided_at"]],
     ["memory_recall_observations", ["memory_id", "agent_id", "target_surface_id", "projection", "reasons_json", "score_breakdown_json", "recalled_at"]],
   ]],
+  ["0010_system_advisor_provider", [
+    ["advisor_provider_runs", [
+      "id", "space_id", "agent_id", "status", "provider_revision", "model_profile_revision", "provider_epoch",
+      "consent_epoch", "installation_identity_digest", "execution_snapshot_digest", "egress_plan_json", "egress_digest",
+      "policy_version", "worker_generation", "batch_job_ids_json", "usage_json", "latency_ms", "error_code",
+      "created_at", "started_at", "completed_at",
+    ]],
+  ]],
 ]);
 
 const ADDITIONS_BY_MIGRATION = new Map<string, Array<[string, string]>>([
@@ -151,6 +160,31 @@ const ADDITIONS_BY_MIGRATION = new Map<string, Array<[string, string]>>([
     ["runtime_sessions", "checklist_revision"],
     ["runtime_sessions", "compaction_revision"],
     ["runtime_sessions", "context_compaction_revision"],
+  ]],
+  ["0010_system_advisor_provider", [
+    ["memory_advisor_settings", "approved_provider_revision"],
+    ["memory_advisor_settings", "approved_model_profile_revision"],
+    ["memory_advisor_settings", "approved_provider_epoch"],
+    ["memory_advisor_settings", "approved_egress_digest"],
+    ["memory_advisor_settings", "consent_epoch"],
+    ["memory_advisor_settings", "consent_purpose"],
+    ["memory_advisor_settings", "consent_source_scope_json"],
+    ["memory_advisor_settings", "consent_at"],
+    ["memory_advisor_settings", "consent_actor_id"],
+    ["memory_advisor_settings", "installation_identity_digest"],
+    ["memory_advisor_settings", "provider_epoch_mirror"],
+    ["memory_advisor_jobs", "provider_revision"],
+    ["memory_advisor_jobs", "model_profile_revision"],
+    ["memory_advisor_jobs", "provider_epoch"],
+    ["memory_advisor_jobs", "installation_identity_digest"],
+    ["memory_advisor_jobs", "execution_snapshot_json"],
+    ["memory_advisor_jobs", "execution_snapshot_digest"],
+    ["memory_advisor_jobs", "capability_digest"],
+    ["memory_advisor_jobs", "policy_version"],
+    ["memory_advisor_jobs", "agent_consent_epoch"],
+    ["memory_advisor_jobs", "source_scope_digest"],
+    ["memory_advisor_jobs", "provider_run_id"],
+    ["memory_advisor_jobs", "worker_generation"],
   ]],
 ]);
 
@@ -207,6 +241,9 @@ export function requiredSpaceIndexes(version: number, migrationCount?: number): 
     ...(tags.has("0009_memory_advisor") ? [
       "memory_advisor_jobs_agent_turn_uniq", "memory_advisor_jobs_due_idx", "memory_advisor_jobs_agent_status_idx",
       "memory_advisor_proposals_job_idx", "memory_recall_observations_agent_idx",
+    ] : []),
+    ...(tags.has("0010_system_advisor_provider") ? [
+      "advisor_provider_runs_status_idx", "advisor_provider_runs_agent_idx",
     ] : []),
   ];
 }
@@ -266,6 +303,10 @@ export function requiredSpaceForeignKeys(version: number, migrationCount?: numbe
       { table: "memory_recall_observations", from: "memory_id", targetTable: "episodic_memories", onDelete: "CASCADE" },
       { table: "memory_recall_observations", from: "agent_id", targetTable: "agents", onDelete: "CASCADE" },
       { table: "memory_recall_observations", from: "target_surface_id", targetTable: "channels", onDelete: "SET NULL" },
+    ] : []),
+    ...(tags.has("0010_system_advisor_provider") ? [
+      { table: "advisor_provider_runs", from: "space_id", targetTable: "spaces", onDelete: "CASCADE" },
+      { table: "advisor_provider_runs", from: "agent_id", targetTable: "agents", onDelete: "CASCADE" },
     ] : []),
   ];
 }

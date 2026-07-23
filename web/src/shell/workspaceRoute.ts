@@ -136,7 +136,7 @@ const setOptionalParam = (params: URLSearchParams, key: string, value: string | 
 
 const normalizeSettingsResource = (value: string | null | undefined) => {
   if (value === null || value === undefined) return value;
-  return value === "human" || value === "space" || value === "desktop" ? value : "human";
+  return value === "human" || value === "space" || value === "advisor" || value === "desktop" ? value : "human";
 };
 
 export function workspaceLocationForModule(

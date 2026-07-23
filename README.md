@@ -15,9 +15,9 @@
 
 本轮 UI 实现、自动化验证与用户手动验收已结束。P-A9 桌面模块化单体架构收敛已完成 P-A9.0–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审，并已提交；继续保留 Electron/Core/Worker 拓扑与 TypeScript 主栈。真实存量数据随后暴露的 Runtime admission 队列饥饿、queued 假工作态与失败 wake 残留回复占位也已完成根因修复。
 
-基于 Helio Desktop 的本机实测，P-A10 Agent Harness v2 的P-A10.0–P-A10.7已完成代码、迁移、文档、自动化与全新Desktop/Web真实验收。当前具备Runtime v2、per-surface session、durable delivery/turn、server-owned direct-mention thread、可审计Context Envelope、实时父级ACL/撤权、broker-backed `kith-core` MCP/CLI Gateway、revisioned episodic memory、restricted advisor/记忆面板、checklist/short wake、snapshot与可支持的compaction telemetry。workspace schema v8与app.db v4提供Human CAS管理、forget+suppress、source ACL、continuity+中英文FTS recall、跨surface disclosure projection与consume-once grant；app.db v4事务性修复早期v3缺失的复合revision外键。Claude maintenance已live验证，Codex/opencode maintenance和Claude/opencode compaction诚实为unsupported，Codex compaction由contract fixture验证。
+基于 Helio Desktop 的本机实测，P-A10 Agent Harness v2 的P-A10.0–P-A10.7已完成代码、迁移、文档、自动化与全新Desktop/Web真实验收。当前具备Runtime v2、per-surface session、durable delivery/turn、server-owned direct-mention thread、可审计Context Envelope、实时父级ACL/撤权、broker-backed `kith-core` MCP/CLI Gateway、revisioned episodic memory、restricted advisor/记忆面板、checklist/short wake、snapshot与可支持的compaction telemetry。workspace schema v9与app.db v5在既有Human CAS管理、forget+suppress、source ACL、continuity/FTS recall与disclosure基础上，新增安装级Advisor Provider/Model Profile revision、逐Agent consent与独立Provider Run审计。
 
-自动记忆提炼的下一步已形成独立提案：把Advisor从聊天runtime解耦，新安装默认使用产品内置、精确锁版的Pi SDK Provider，Claude Code作为可切换Provider；执行Provider与结构化记忆的模型供应商/模型/凭据来源/数据目的地分别版本化，并支持Human显式、安全地导入本机Pi CLI全局模型配置。默认选择不等于默认外发，模型设置、能力探测与per-Agent consent未完成时保持setup。该提案尚未实现，当前自动advisor仍只支持Claude；完整边界见[`系统级可替换Memory Advisor Provider方案`](./docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md)。
+自动记忆提炼现已与聊天runtime解耦：新安装默认使用产品内置、精确锁版的Pi SDK Provider，Claude Code可显式切换；Provider与结构化记忆模型供应商/模型/凭据来源/数据目的地分别版本化，并支持Human显式、安全地导入本机Pi CLI全局模型配置。默认选择不等于默认外发，模型设置、能力探测与per-Agent consent未完成时保持setup；Claude Code、Codex、opencode聊天Agent在授权后可共用同一系统Provider。完整边界见[`系统级可替换Memory Advisor Provider方案`](./docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md)。
 
 你在频道里群聊、也能和每个 agent 私聊；agent 由你本机的 Claude Code / Codex / opencode 承载，隔着 MCP 操控你的模块（任务、记忆，后续邮箱 / 日历 / 画布）。你 @leader 提一个需求，它能自己拆解、分派给其他 agent、最后汇总交付给你。
 
@@ -50,7 +50,7 @@ pnpm install
 pnpm run desktop:dev        # 构建 Electron main/preload，并启动 Core + Worker + Vite + Electron
 ```
 
-Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。日常启动见 [`docs/dev-commands.md`](./docs/dev-commands.md)，Web 模式、访问 Token 与低频联调见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。测试：`pnpm test --unit` / `pnpm test --integration`；当前完整单测为 846 通过、11 个平台条件 skip、0 失败。
+Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。日常启动见 [`docs/dev-commands.md`](./docs/dev-commands.md)，Web 模式、访问 Token 与低频联调见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。测试：`pnpm test --unit` / `pnpm test --integration`；当前完整单测为 894 通过、11 个平台条件 skip、0 失败。
 
 Windows 构建分为四层：
 

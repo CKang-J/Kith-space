@@ -113,7 +113,7 @@ export async function handleSpacesHumanScope(ctx: HumanCtx): Promise<boolean> {
   if (!match || (method !== "GET" && method !== "PATCH" && method !== "DELETE")) return false;
   try {
     if (method === "DELETE") {
-      removeLocalSpace(match[1]!);
+      await removeLocalSpace(match[1]!);
       return (sendJson(res, 200, { ok: true }), true);
     }
     const space = method === "PATCH" ? await updateLocalSpace(match[1]!, await readJson(req)) : getLocalSpace(match[1]!);

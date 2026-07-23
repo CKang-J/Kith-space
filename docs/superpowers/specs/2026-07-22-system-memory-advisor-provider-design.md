@@ -1,9 +1,9 @@
 # Kith-space 系统级可替换 Memory Advisor Provider 方案设计
 
-> 状态：已审查提案，2026-07-23按产品决策修订；尚未实现。
+> 状态：Accepted / Implemented。2026-07-23按产品决策修订并完成切片0–4的代码、迁移、设置UI、自动化门禁与实现级验证；真实Desktop/Web验收记录在`docs/progress.md`。
 > 日期：2026-07-22，2026-07-23修订。
 > 适用范围：P-A10.6 已实现的结构化记忆 Advisor 执行层；不改变结构化记忆、文件记忆或聊天 Runtime Contract v2 的既有语义。
-> 前置事实：当前只有 Claude Code Agent 能自动运行 restricted advisor；Codex、opencode Agent 的 advisor 明确返回 `unsupported`。普通对话、结构化记忆 recall 与 Human 管理不受这一限制。
+> 前置事实：P-A10原有Claude restricted maintenance保留为`legacy_runtime`回滚路径；`provider_v1`已使Claude Code、Codex、opencode聊天Agent在逐Agent授权后共用安装级Provider。普通对话、结构化记忆recall与Human管理不受Provider状态影响。
 > 目标：把“由哪个受限执行器、模型供应商和模型提炼结构化记忆”从聊天Agent runtime中解耦；产品内置并默认选择Pi SDK Provider，Claude Code作为可切换Provider，同时提供独立的结构化记忆模型设置和安全的本地Pi CLI模型配置导入。
 
 ## 1. 决策摘要
@@ -954,44 +954,44 @@ raw stdout、stderr、HTTP request/response、SDK exception object和Provider原
 
 ### ADR-MAP-001：安装级 Provider 独立于聊天 runtime
 
-- **状态**：提议接受，未实现。
+- **状态**：Accepted / Implemented。
 - **上下文**：当前 Advisor admission 与 `agent.runtime` 耦合，导致 Codex/opencode unsupported。
 - **决定**：一个安装级 Provider 可为多个聊天 runtime 的 Agent 服务。
 - **后果**：减少适配重复；必须新增安装级设置、Provider revision 和 per-Agent consent。
 
 ### ADR-MAP-002：Provider 是无状态受限 completion executor
 
-- **状态**：提议接受，未实现。
+- **状态**：Accepted / Implemented。
 - **决定**：Provider 不建产品 Agent、不持久 session、不拥有工具、MCP、消息或数据库权限。
 - **后果**：最小权限且容易替换；复杂业务仍由 Core 负责。
 
 ### ADR-MAP-003：以能力门禁而非品牌名准入
 
-- **状态**：提议接受，未实现。
+- **状态**：Accepted / Implemented。
 - **决定**：每个 adapter 必须通过统一 capability probe 与真实 isolation fixture；未知能力即 unsupported。
 - **后果**：新增 Provider 成本集中在窄 adapter 和测试，不污染业务层。
 
 ### ADR-MAP-004：job/run 固定执行快照、egress 与 consent epoch
 
-- **状态**：提议接受，未实现。
+- **状态**：Accepted / Implemented。
 - **决定**：外发前解析完整egress plan；Provider边界变化不静默重路由，必须重新授权并从当前ACL重建job。run固定installation/provider/consent epoch与Worker generation。
 - **后果**：迁移更保守，但数据流向可解释且可审计。
 
 ### ADR-MAP-005：内置pi-ai并作为新安装默认Provider
 
-- **状态**：提议接受，未实现。
+- **状态**：Accepted / Implemented。
 - **决定**：Desktop精确锁定并打包`@earendil-works/pi-ai`，由Kith helper执行one-shot completion；新安装Provider默认选中`pi_sdk`，Claude Code为可切换Provider。完整Pi Coding Agent不进入执行路径。
 - **后果**：无需系统安装Pi即可获得轻量多模型能力，并减少工具/session攻击面；项目承担SDK升级、供应链、跨平台bundle和provider兼容测试成本。
 
 ### ADR-MAP-006：Provider与Advisor Model Profile独立版本化
 
-- **状态**：提议接受，未实现。
+- **状态**：Accepted / Implemented。
 - **决定**：Provider revision描述本机执行器，Model Profile revision描述模型供应商、模型、API、thinking、凭据来源、endpoint和数据政策；job/run同时固定两者。
 - **后果**：Human可以切模型而不换执行器，也可切Pi/Claude而不默默换模型；需要compatibility gate与额外设置UI。
 
 ### ADR-MAP-007：Pi CLI配置只做显式、只读、无命令执行导入
 
-- **状态**：提议接受，未实现。
+- **状态**：Accepted / Implemented。
 - **决定**：只导入全局settings/models和Human显式选择的auth来源；不读项目`.pi`资源，不执行`!command`或插值，不自动采用文件变化。每次刷新生成脱敏不可变快照。
 - **后果**：复用用户已有模型目录和登录，避免任意命令/项目资源进入Advisor；某些Pi CLI高级credential命令配置会显示unsupported，需要用户改用安全来源。
 
@@ -1015,6 +1015,20 @@ raw stdout、stderr、HTTP request/response、SDK exception object和Provider原
 8. Pi helper通过无AgentSession/工具/资源发现/session继承、依赖完整性和跨平台bundle门禁；Pi CLI导入对`!command`保持0执行；
 9. 完整 unit、integration、typecheck、production bundle 与 Desktop/Web 真实场景通过；
 10. P-A10既有记忆lifecycle、recall、文件记忆和聊天p95无回归，memory-poisoning夹具证明Advisor输出不会成为后续高优先级指令；Pi/Claude切换和模型切换不跨revision执行旧job。
+
+---
+
+## 19. 实施记录（2026-07-23）
+
+- app.db v5保存安装身份、`legacy_runtime | migrating | provider_v1`、不可变Provider/Model Profile revision、provider/revocation epoch和Pi CLI脱敏导入快照；workspace schema v9保存逐Agent精确consent、job执行快照和独立`advisor_provider_runs`审计。
+- 内置Provider精确锁定`@earendil-works/pi-ai@0.81.1`和lockfile integrity，仅使用公开`createModels → 显式provider factory → models.getModel → models.completeSimple`；构建门禁拒绝`pi-agent-core`、`pi-coding-agent`和`pi-ai/compat`。
+- `pi-advisor-helper.mjs`为每run独立进程，开发态使用当前Node，packaged态使用Electron `process.execPath + ELECTRON_RUN_AS_NODE=1`；临时HOME/cwd、最小env、无AgentSession/工具/MCP/ResourceLoader/项目发现/session继承。
+- `VerifiedConfigFileReader`、纯数据Pi CLI importer、AES-GCM本机CredentialPort、ProviderEpochGate、模型Compiler、认证能力矩阵和DNS-pinned/redirect-reject egress guard均已接入真实执行路径；literal secret、危险env、命令表达式、隐式OAuth刷新、ambient profile/ADC/IMDS与动态provider保持拒绝。
+- Settings新增Memory Advisor控制面，展示Provider/模型revision、SDK版本、endpoint、凭据来源、data policy、allowed egress、能力探测、诊断和最近Provider Run；Agent Memory面板逐Agent授权/撤权，Files Memory与既有recall/Human lifecycle不变。
+- fresh app.db默认`provider_v1 + pi_sdk + setup_required`，既有app.db保持`legacy_runtime`；显式切换经过`migrating`，边界变化取消旧job、提升epoch并使consent失效，启动按持久目标恢复，Human可显式回滚legacy。
+- 生产helper的ESM bundle注入`createRequire`兼容Undici的Node builtin加载，并在每次`desktop:build`/`desktop:bundle`执行无网络启动烟测；Pi system instruction携带完整`memory_advisor_v1` JSON schema，非法JSON或schema输出稳定归类为`provider_invalid_output`。
+- egress预检继续拒绝literal/private/loopback/link-local/metadata目的地；HTTPS主机名经本机透明代理解析到RFC 2544 `198.18/15`时允许保留为TLS仍验证原主机名的固定transport地址，literal RFC 2544 endpoint仍拒绝。Pi CLI明确请求不存在或过期的auth provider时在导入阶段拒绝，不创建虚假CredentialRef。
+- Desktop/Web真实验收已覆盖既有安装`legacy_runtime`显式cutover、全新Space/两个Claude Agent、公开/私密频道/DM/话题、active/proposed/evidence/revision、跨surface recall、Files Memory、模型revision切换、consent失效/重授权/撤权、Run审计和重启恢复；本机无显式Anthropic凭据时Claude Provider切换按兼容矩阵在0 evidence阶段拒绝。终审补充关闭了通用WS明文凭据、Core重连遗留helper、probe未纳管、Agent/Space/来源频道撤权迟停、Pi auth虚假可用、helper输入预算冲突、Worker并发prepare与artifact泄漏、pre-release v5约束指纹不足。完整自动化为894通过、11 skip、0失败的unit、完整integration、typecheck、production bundle与desktop build。
 
 ---
 

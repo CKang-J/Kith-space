@@ -8,6 +8,26 @@ import { kithSpaceHome } from "../paths.js";
 import { assertAgentSurfaceAccessInTransaction } from "./agentSurfaceAccess.js";
 import { revokeAgentChannelAccess } from "./channelAgentAccessRevocation.js";
 import { transitionTaskRecord } from "../tasks/taskRepository.js";
+import { registerActiveAdvisorRun } from "../advisor-provider/activeAdvisorRuns.js";
+import { revokeChannelAgentAccess } from "../server/channelAccessRevocation.js";
+
+test("channel revocation waits for matching Advisor cancellation before removing membership", async () => {
+  const spaceId = randomUUID(); const agentId = randomUUID(); const channelId = randomUUID();
+  registerSpace({ id: spaceId, name: "Advisor ACL", slug: `advisor-acl-${spaceId}`, rootPath: path.join(kithSpaceHome(), "advisor-acl", spaceId) });
+  const db = dbForSpace(spaceId);
+  try {
+    db.insert(schema.agents).values({ id: agentId, spaceId, name: "advisor-agent", displayName: "Advisor Agent", runtime: "claude", status: "active" }).run();
+    db.insert(schema.channels).values({ id: channelId, spaceId, name: "private", type: "private" }).run();
+    db.insert(schema.channelAgentMembers).values({ channelId, agentId }).run();
+    let cancelledWhileAuthorized = false;
+    const unregister = registerActiveAdvisorRun({ runId: randomUUID(), spaceId, agentId, channelIds: [channelId], cancel: async () => {
+      cancelledWhileAuthorized = Boolean(db.select().from(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, channelId)).get());
+    } });
+    try { await revokeChannelAgentAccess(spaceId, channelId, agentId); } finally { unregister(); }
+    assert.equal(cancelledWhileAuthorized, true);
+    assert.equal(db.select().from(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, channelId)).get(), undefined);
+  } finally { closeSpaceDb(spaceId); unregisterSpace(spaceId); }
+});
 
 test("parent membership revocation atomically disables ordinary thread execution but preserves task-scoped access", () => {
   const spaceId = randomUUID();

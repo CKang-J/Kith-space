@@ -328,7 +328,7 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
     if (b.humanId !== undefined) return (sendErr(res, 400, "Human channel membership is not configurable"), true);
     const agentId = String(b.agentId ?? "").trim();
     if (!agentId) return (sendErr(res, 400, "agentId required"), true);
-    revokeChannelAgentAccess(spaceId, cmem[1]!, agentId);
+    await revokeChannelAgentAccess(spaceId, cmem[1]!, agentId);
     await publish(spaceId, { type: "channel:members-updated", channelId: cmem[1]! });
     return (sendJson(res, 200, { ok: true }), true);
   }

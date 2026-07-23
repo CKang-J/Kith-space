@@ -13,6 +13,8 @@ import type {
 import { enqueueMemoryAdvisorJobInTransaction, MemoryAdvisorService } from "./memoryAdvisorService.js";
 import { EpisodicMemoryService } from "./episodicMemoryService.js";
 import { clearAgentPrivateMemory } from "./memoryLifecycle.js";
+import { appDataConnection } from "../app-data/appDatabase.js";
+import { providerEpochGate } from "../advisor-provider/providerEpochGate.js";
 
 class FakeMaintenancePort implements MaintenanceRuntimePort {
   calls: MaintenanceJsonInput[] = [];
@@ -47,6 +49,9 @@ class DeferredMaintenancePort extends FakeMaintenancePort {
 }
 
 function fixture(runtime = "claude") {
+  appDataConnection().prepare(`UPDATE advisor_provider_settings
+    SET execution_mode = 'legacy_runtime', current_provider_revision = NULL, current_model_profile_revision = NULL,
+        provider_state = 'setup_required', updated_at = ? WHERE singleton_id = 1`).run(Date.now());
   const spaceId = randomUUID();
   const agentId = randomUUID();
   const channelId = randomUUID();
@@ -62,11 +67,11 @@ function fixture(runtime = "claude") {
     runtime, runtimeConfigFingerprint: "config", adapterVersion: "test", workspaceRootFingerprint: "root", status: "idle",
   }).run();
   let seq = 0;
-  function turn(content: string, memoryPolicy: "eligible" | "exclude" | null = "eligible", senderType = "human") {
+  function turn(content: string, memoryPolicy: "eligible" | "exclude" | null = "eligible", senderType = "human", targetChannelId = channelId) {
     const messageId = randomUUID();
     const turnId = randomUUID();
     db.insert(schema.messages).values({
-      id: messageId, seq: ++seq, spaceId, channelId, senderType,
+      id: messageId, seq: ++seq, spaceId, channelId: targetChannelId, senderType,
       senderId: senderType === "human" ? "human" : agentId,
       senderName: senderType === "human" ? "Human" : "Advisor",
       content, memoryPolicy,
@@ -76,8 +81,8 @@ function fixture(runtime = "claude") {
       status: "completed", outcome: "ceded", effectiveDirective: "optional", completedAt: new Date(),
     }).run();
     db.insert(schema.agentDeliveryItems).values({
-      id: randomUUID(), spaceId, agentId, messageId, sourceChannelId: channelId, sourceSeq: seq,
-      cursorOwnerChannelId: channelId, targetSurfaceKind: "dm", targetSurfaceId: channelId,
+      id: randomUUID(), spaceId, agentId, messageId, sourceChannelId: targetChannelId, sourceSeq: seq,
+      cursorOwnerChannelId: targetChannelId, targetSurfaceKind: targetChannelId === channelId ? "dm" : "thread", targetSurfaceId: targetChannelId,
       targetRuntimeSessionId: sessionId, directive: "optional", reason: "test", policySnapshot: {},
       disposition: "ceded", turnId, settledAt: new Date(),
     }).run();
@@ -93,7 +98,7 @@ function candidate(sourceIds: string[], canonicalText = "Human prefers a concise
   return {
     scope: "agent_private" as const,
     kind: "preference" as const,
-    subjectRef: { kind: "human" as const, id: "human" },
+    subjectRef: { kind: "human" as const, id: "human-1" },
     subjectKey: "human",
     predicateKey: "weekly_report_style",
     canonicalText,
@@ -104,7 +109,7 @@ function candidate(sourceIds: string[], canonicalText = "Human prefers a concise
     confidence: 0.95,
     importance: 0.8,
     tags: ["reporting"],
-    evidenceSourceIds: sourceIds,
+    evidenceSourceIds: sourceIds.map((_, index) => `source-${index + 1}`),
   };
 }
 
@@ -129,6 +134,24 @@ test("advisor admits only eligible Human sources and creates an auto-active priv
     assert.deepEqual(evidence.assertedBy, { type: "human", id: "human" });
     assert.equal(evidence.claimType, "human_assertion");
     assert.equal(port.calls[0]!.prompt.includes("Human prefers concise reports"), false, "Agent echo must not reach the provider");
+  } finally { f.cleanup(); }
+});
+
+test("a DM thread keeps its parent visibility in persisted Advisor evidence", async () => {
+  const f = fixture();
+  const port = new FakeMaintenancePort();
+  try {
+    const root = f.turn("这是一条用于建立私聊话题的上下文");
+    const threadId = randomUUID();
+    f.db.insert(schema.channels).values({ id: threadId, spaceId: f.spaceId, name: "private-thread", type: "thread", parentMessageId: root.messageId }).run();
+    f.db.insert(schema.channelAgentMembers).values({ channelId: threadId, agentId: f.agentId }).run();
+    const source = f.turn("我偏好在私聊里使用简洁周报", "eligible", "human", threadId);
+    assert.equal(f.db.transaction((tx) => enqueueMemoryAdvisorJobInTransaction(tx, f.spaceId, source.turnId)), true);
+    port.outputs.push({ output: { schemaVersion: 1, candidates: [candidate([source.messageId])] } });
+    assert.deepEqual(await new MemoryAdvisorService(f.spaceId, f.db, port).processDue(), { processed: 1, created: 1 });
+    const evidence = f.db.select().from(schema.memoryEvidence).get()!;
+    assert.equal(evidence.visibilityAtOccurrence, "dm");
+    assert.equal(evidence.sourceSurfaceId, threadId);
   } finally { f.cleanup(); }
 });
 
@@ -215,6 +238,30 @@ test("advisor cancellation during provider execution cannot resurrect cleared pr
   } finally { f.cleanup(); }
 });
 
+test("a legacy completion cannot commit after an unavailable Space is skipped during provider cutover", async () => {
+  const f = fixture();
+  const port = new DeferredMaintenancePort();
+  try {
+    const item = f.turn("我偏好切换前的周报格式");
+    f.db.transaction((tx) => enqueueMemoryAdvisorJobInTransaction(tx, f.spaceId, item.turnId));
+    port.outputs.push({ output: { schemaVersion: 1, candidates: [candidate([item.messageId])] } });
+    const processing = new MemoryAdvisorService(f.spaceId, f.db, port).processDue();
+    await port.entered;
+    appDataConnection().prepare("DELETE FROM spaces WHERE id = ?").run(f.spaceId);
+    await providerEpochGate.withWrite(() => {
+      const row = appDataConnection().prepare("SELECT provider_epoch AS epoch FROM advisor_provider_settings WHERE singleton_id = 1").get() as { epoch: number };
+      const nextEpoch = row.epoch + 1;
+      appDataConnection().prepare(`UPDATE advisor_provider_settings SET execution_mode = 'provider_v1', current_provider_revision = 1,
+        provider_epoch = ?, updated_at = ? WHERE singleton_id = 1`).run(nextEpoch, Date.now());
+      providerEpochGate.open(nextEpoch);
+    });
+    port.release();
+    assert.deepEqual(await processing, { processed: 1, created: 0 });
+    assert.equal(f.db.select().from(schema.episodicMemories).all().length, 0);
+    assert.equal(f.db.select().from(schema.memoryAdvisorJobs).get()!.status, "blocked");
+  } finally { f.cleanup(); }
+});
+
 test("advisor proposal and conflict relation roll back with the canonical memory on failure", () => {
   const f = fixture();
   try {
@@ -284,7 +331,7 @@ test("advisor rechecks source access after provider execution before writing", a
     port.release();
     assert.deepEqual(await processing, { processed: 1, created: 0 });
     assert.equal(f.db.select().from(schema.episodicMemories).all().length, 0);
-    assert.equal(f.db.select().from(schema.memoryAdvisorJobs).get()!.status, "failed");
+    assert.equal(f.db.select().from(schema.memoryAdvisorJobs).get()!.status, "blocked");
   } finally { f.cleanup(); }
 });
 
@@ -344,7 +391,7 @@ test("advisor retry is stable when the provider reverses candidate order", async
       enqueueMemoryAdvisorJobInTransaction(tx, f.spaceId, second.turnId);
     });
     const concise = { ...candidate([first.messageId], "Human prefers concise weekly reports"), predicateKey: "weekly_report_style" };
-    const chinese = { ...candidate([second.messageId], "Human prefers Chinese headings"), predicateKey: "heading_language" };
+    const chinese = { ...candidate([second.messageId], "Human prefers Chinese headings"), predicateKey: "heading_language", evidenceSourceIds: ["source-2"] };
     port.outputs.push({ output: { schemaVersion: 1, candidates: [concise, chinese] } });
     const service = new MemoryAdvisorService(f.spaceId, f.db, port);
     assert.deepEqual(await service.processDue(), { processed: 2, created: 2 });

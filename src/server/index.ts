@@ -24,6 +24,7 @@ import { ChannelLifecycleError } from "../channels/channelLifecycle.js";
 import { handleTurnGateway } from "./turn-gateway/routes.js";
 import { startMemoryAdvisorScheduler } from "../memory/memoryAdvisorService.js";
 import { startDurableTurnRecovery } from "./harnessComposition.js";
+import { AdvisorProviderSettingsService } from "../advisor-provider/advisorProviderSettingsService.js";
 
 assertInternalCredentialsConfigured();
 
@@ -133,6 +134,7 @@ const server = http.createServer(async (req, res) => {
 attachSocketIO(server); // human-side realtime (socket.io, /socket.io/)
 attachWs(server);       // daemon control plane (raw ws, /daemon/connect)
 startReminderScheduler(); // reminder scheduler: fires at due time, wakes the author
+new AdvisorProviderSettingsService().recover();
 const stopMemoryAdvisorScheduler = startMemoryAdvisorScheduler();
 let stopDurableTurnRecovery = () => {};
 

@@ -12,3 +12,7 @@ and positioning.
 
 Kith-space is a derivative work based on open-tag. The original
 open-tag copyright and attribution notices above are retained.
+
+Kith-space bundles @earendil-works/pi-ai 0.81.1 and undici 7.28.0,
+each distributed under the MIT License. Their complete notices are included
+in THIRD_PARTY_LICENSES.md and in packaged Desktop resources.

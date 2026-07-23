@@ -15,6 +15,7 @@ export interface WorkerSnapshot {
 type PendingRequest = {
   resolve: (value: any) => void;
   timer: ReturnType<typeof setTimeout>;
+  generation: number;
 };
 
 type PendingAdmission = {
@@ -114,6 +115,10 @@ export function currentWorkerGeneration(): number | null {
   return currentLease?.generation ?? null;
 }
 
+export function currentWorkerLease(): WorkerLease | null {
+  return currentLease;
+}
+
 export function sendToWorker(message: unknown): boolean {
   const lease = currentLease;
   if (!lease) return false;
@@ -193,15 +198,22 @@ export function resolveWorkerAdmission(lease: WorkerLease, message: Record<strin
 }
 
 export function requestWorker(message: Record<string, unknown>, timeoutMs = 6000): Promise<any> {
-  if (!isWorkerConnected()) return Promise.resolve({ error: "no local worker online" });
+  const lease = currentLease;
+  if (!lease) return Promise.resolve({ error: "no local worker online" });
+  return requestWorkerForLease(lease, message, timeoutMs);
+}
+
+/** Correlated request that can never be retargeted to a replacement Worker generation. */
+export function requestWorkerForLease(lease: WorkerLease, message: Record<string, unknown>, timeoutMs = 6000): Promise<any> {
+  if (!isWorkerLeaseCurrent(lease) || lease.socket.readyState !== 1) return Promise.resolve({ error: "local worker lease changed" });
   const requestId = randomUUID();
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       pendingRequests.delete(requestId);
       resolve({ error: "local worker timeout" });
     }, timeoutMs);
-    pendingRequests.set(requestId, { resolve, timer });
-    if (!sendToWorker({ ...message, requestId })) {
+    pendingRequests.set(requestId, { resolve, timer, generation: lease.generation });
+    if (!sendToWorkerForLease(lease, { ...message, requestId, expectedGeneration: lease.generation })) {
       clearTimeout(timer);
       pendingRequests.delete(requestId);
       resolve({ error: "local worker send failed" });
@@ -209,9 +221,9 @@ export function requestWorker(message: Record<string, unknown>, timeoutMs = 6000
   });
 }
 
-export function resolveWorkerRequest(requestId: string, data: unknown): void {
+export function resolveWorkerRequest(requestId: string, data: unknown, lease: WorkerLease | null = currentLease): void {
   const pending = pendingRequests.get(requestId);
-  if (!pending) return;
+  if (!pending || !lease || pending.generation !== lease.generation || !isWorkerLeaseCurrent(lease)) return;
   clearTimeout(pending.timer);
   pendingRequests.delete(requestId);
   pending.resolve(data);

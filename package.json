@@ -5,6 +5,9 @@
   "main": "desktop/dist/main.cjs",
   "type": "module",
   "packageManager": "pnpm@11.13.1",
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "description": "Desktop-first personal AgentOS where one human collaborates with persistent local AI agents across spaces, channels, tasks, and memory.",
   "license": "Apache-2.0",
   "author": "CKang-J",
@@ -86,7 +89,8 @@
         ]
       },
       "LICENSE",
-      "NOTICE"
+      "NOTICE",
+      "THIRD_PARTY_LICENSES.md"
     ],
     "asar": true,
     "npmRebuild": false,
@@ -108,6 +112,7 @@
     }
   },
   "dependencies": {
+    "@earendil-works/pi-ai": "0.81.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.11.1",
     "busboy": "^1.6.0",
@@ -116,6 +121,7 @@
     "drizzle-orm": "^0.45.2",
     "helmet": "^8.3.0",
     "socket.io": "^4.8.3",
+    "undici": "7.28.0",
     "ws": "^8.21.0",
     "zod": "^3.25.0"
   },

@@ -94,6 +94,17 @@ test("fresh Space database uses the Personal AgentOS baseline and seeds its Spac
     assert.ok(currentRevisionFks.some((row) => row.table === "episodic_memory_revisions" && row.from === "current_revision"));
     const evidenceFks = sqlite.prepare("PRAGMA foreign_key_list(memory_evidence)").all() as Array<{ table: string; from: string }>;
     assert.ok(evidenceFks.some((row) => row.table === "episodic_memory_revisions" && row.from === "memory_revision"));
+    for (const field of [
+      "approved_provider_revision", "approved_model_profile_revision", "approved_provider_epoch",
+      "approved_egress_digest", "consent_epoch", "consent_purpose", "consent_source_scope_json",
+      "consent_at", "consent_actor_id", "installation_identity_digest", "provider_epoch_mirror",
+    ]) assert.ok(columns(sqlite, "memory_advisor_settings").includes(field), `memory_advisor_settings must persist ${field}`);
+    for (const field of [
+      "provider_revision", "model_profile_revision", "provider_epoch", "installation_identity_digest",
+      "execution_snapshot_json", "execution_snapshot_digest", "capability_digest", "policy_version",
+      "agent_consent_epoch", "source_scope_digest", "provider_run_id", "worker_generation",
+    ]) assert.ok(columns(sqlite, "memory_advisor_jobs").includes(field), `memory_advisor_jobs must pin ${field}`);
+    assert.ok(names.includes("advisor_provider_runs"));
   } finally {
     sqlite.close();
     unregisterSpace(spaceId);

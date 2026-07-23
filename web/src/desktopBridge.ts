@@ -70,6 +70,7 @@ export function getDesktopBridge(host?: DesktopBridgeHost): KithDesktopBridge | 
 
 export function resolveSettingsSection(requested: string | undefined, desktopAvailable: boolean) {
   if (requested === "space") return "space";
+  if (requested === "advisor") return "advisor";
   if (requested === "desktop" && desktopAvailable) return "desktop";
   return "human";
 }

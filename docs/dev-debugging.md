@@ -169,3 +169,10 @@ Claude/Codex fixture证明同一常驻进程可串行处理两轮，opencode fix
 v2 runtime子进程只看到stable `KITH_SPACE_BROKER_HANDLE`、loopback endpoint和mode `0600` activation file路径；activation file在每个attempt运行前写入、结束后删除，MCP/CLI常驻进程每次调用都会重新读取。不要把handle、activation ID或文件内容复制到日志、fixture或问题报告；它们不是浏览器Access Token，也不能脱离当前lease使用。Gateway只接受loopback请求并再次核对DB中的attempt/session generation/input scope和实时surface ACL。Core或Worker重启时旧generation事件会被拒绝，scanner在lease过期后恢复；不要人工修改attempt状态来“解卡”。
 
 真实 smoke 只能在隔离Space/runtime state中执行，必须使用已登录的Claude Code/Codex和显式opencode provider/model。usage只能来自raw engine event；tool isolation必须用实际shell/file探针验证；relocation必须在两个root放不同marker；不能用模型自述或prompt“不要调用工具”代替证据。
+
+## 10. 系统 Memory Advisor Provider 调试
+
+- 开发态helper默认位于`desktop/dist/runtime/pi-advisor-helper.mjs`；packaged Desktop从resources runtime解析，并用`process.execPath`配合`ELECTRON_RUN_AS_NODE=1`启动。`KITH_SPACE_PI_ADVISOR_HELPER`只用于测试/开发显式覆盖，不应写入用户配置。
+- 每run创建独立临时HOME/cwd并只传allowlist env和一个显式凭据值；不得为了排障恢复完整`process.env`、系统profile、ADC、IMDS、代理变量或用户HOME。Claude Provider同样使用绝对可执行路径、artifact digest、临时HOME与显式凭据。
+- Pi CLI导入只在Human点击后读取所选全局目录。Importer不会执行`!command`、复合env、OAuth refresh/login、provider hook、网络刷新或写回；命令/危险env/literal secret/过期OAuth只形成脱敏warning。不要把`auth.json`、凭据、Access Token、activation handle或helper stdin/stdout复制进日志和fixture。
+- Settings诊断页只显示可执行物是否存在、digest是否匹配、隔离策略和脱敏Provider Run；`provider_preflight_destination_mismatch`通常表示DNS分类、allowed origin、proxy或metadata边界不一致，`provider_postflight_destination_mismatch`表示redirect或DNS/egress漂移，均应根因修复而非关闭门禁。

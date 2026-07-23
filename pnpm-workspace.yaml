@@ -3,12 +3,17 @@ packages:
   - "web"
 
 allowBuilds:
+  '@google/genai': false
   better-sqlite3: true
   electron-winstaller: true
   esbuild: true
   fsevents: false
+  protobufjs: false
 
 strictDepBuilds: true
 
 overrides:
   "@esbuild-kit/core-utils>esbuild": "^0.25.0"
+
+minimumReleaseAgeExclude:
+  - '@earendil-works/pi-ai@0.81.1'

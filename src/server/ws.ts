@@ -32,6 +32,8 @@ import { SessionCompactionMarkerService } from "../sessions/sessionCompactionMar
 import { TurnLedger } from "../turns/turnLedger.js";
 import { locateTurnTarget } from "../turns/turnTargetLocator.js";
 import { harnessTurnScheduler, scheduleV2Turns, turnCapabilityService, turnOutputService } from "./harnessComposition.js";
+import { providerCredentialPort } from "../advisor-provider/credentialPort.js";
+import { AdvisorProviderError } from "../advisor-provider/contracts.js";
 
 const log = createLogger("server:ws");
 
@@ -123,6 +125,26 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
       else if (msg.type === "worker:admission") {
         resolveWorkerAdmission(lease, msg);
       }
+      else if (msg.type === "advisor:credential:redeem") {
+        if (typeof msg.requestId !== "string" || typeof msg.credentialHandle !== "string" || typeof msg.runId !== "string"
+          || !Number.isSafeInteger(msg.providerEpoch) || msg.workerGeneration !== lease.generation
+          || typeof msg.executionSnapshotDigest !== "string") return;
+        try {
+          const redeemed = providerCredentialPort.redeem(msg.credentialHandle, {
+            runId: msg.runId,
+            providerEpoch: msg.providerEpoch,
+            workerGeneration: lease.generation,
+            executionSnapshotDigest: msg.executionSnapshotDigest,
+          });
+          if (!isWorkerLeaseCurrent(lease)) return;
+          const { identityDigest: _identityDigest, ...credential } = redeemed;
+          ws.send(JSON.stringify({ type: "advisor:credential:result", requestId: msg.requestId, ok: true, credential }));
+        } catch (error) {
+          if (!isWorkerLeaseCurrent(lease)) return;
+          ws.send(JSON.stringify({ type: "advisor:credential:result", requestId: msg.requestId, ok: false,
+            errorCode: error instanceof AdvisorProviderError ? error.code : "provider_auth_required" }));
+        }
+      }
       else if (msg.type === "worker:queue:outcome") {
         const outcome = msg as WorkerQueueOutcome;
         if (msg.source === "wake" && typeof msg.id === "string" && typeof msg.spaceId === "string"
@@ -143,7 +165,7 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
           queuedMs: msg.queuedMs,
         });
       }
-      else if ((msg.type === "workspace:file_tree" || msg.type === "workspace:file_content" || msg.type === "skills:list" || msg.type === "models" || msg.type === "maintenance:result") && msg.requestId) resolveWorkerRequest(msg.requestId, msg);
+      else if ((msg.type === "workspace:file_tree" || msg.type === "workspace:file_content" || msg.type === "skills:list" || msg.type === "models" || msg.type === "maintenance:result" || msg.type === "advisor:result") && msg.requestId) resolveWorkerRequest(msg.requestId, msg, lease);
     } catch (e: any) { log.error("ws handler error", { type: msg?.type, detail: String(e?.message ?? e) }); }
   }, (error) => {
     log.error("ws message queue error", { detail: String((error as any)?.message ?? error) });

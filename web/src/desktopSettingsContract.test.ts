@@ -25,6 +25,7 @@ test("Desktop settings navigation and copy are present only behind bridge detect
 
   assert.match(settings, /const desktopBridge = getDesktopBridge\(\)/);
   assert.match(settings, /desktopBridge\s*\?\s*\[\.\.\.SETTINGS, \["desktop", "misc\.settingsNavDesktop"\]\]/);
+  assert.match(settings, /\["advisor", "misc\.settingsNavAdvisor"\]/);
   assert.match(settings, /resolveSettingsSection\(section, desktopBridge !== null\)/);
   assert.match(settings, /requestedSection === cur/);
   assert.match(moduleWorkspace, /workspaceModuleResourceFromSearch\(location\.search, moduleId\)/);

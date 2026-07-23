@@ -107,7 +107,7 @@ export async function handleChannelsThreadsModule(context: AgentHttpContext): Pr
     const body = await readJson(req);
     const target = await resolveTarget(spaceId, body.target ?? body.channel ?? "", agent.id);
     if (!target) return (sendErr(res, 404, "channel not found"), true);
-    revokeChannelAgentAccess(spaceId, target.channelId, agent.id);
+    await revokeChannelAgentAccess(spaceId, target.channelId, agent.id);
     sendJson(res, 200, { ok: true, left: body.target ?? body.channel });
     return true;
   }
@@ -116,7 +116,7 @@ export async function handleChannelsThreadsModule(context: AgentHttpContext): Pr
     const body = await readJson(req);
     const target = await resolveTarget(spaceId, body.target ?? body.channel ?? "", agent.id);
     if (!target) return (sendErr(res, 404, "thread not found"), true);
-    revokeChannelAgentAccess(spaceId, target.channelId, agent.id);
+    await revokeChannelAgentAccess(spaceId, target.channelId, agent.id);
     sendJson(res, 200, { ok: true, unfollowed: body.target ?? body.channel });
     return true;
   }

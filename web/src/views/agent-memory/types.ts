@@ -108,9 +108,31 @@ export interface AdvisorState {
     dailyTokenLimit?: number;
     dailyCostMicrosLimit?: number;
     updatedAt?: string | number;
+    approvedProviderRevision?: number | null;
+    approvedModelProfileRevision?: number | null;
+    approvedProviderEpoch?: number | null;
+    consentPurpose?: string | null;
+    consentSourceScope?: { public: boolean; private: boolean; dm: boolean } | null;
+    consentEpoch?: number;
+    installationIdentityDigest?: string | null;
+    providerEpochMirror?: number | null;
+    approvedEgressDigest?: string | null;
   };
   runtime: string;
   support: { toolIsolation: "enforced" | "unsupported"; reason?: string };
+  systemProvider?: {
+    settings: { executionMode: string; state: string; providerEpoch: number; installationIdentityDigest: string };
+    provider?: { revision: number; adapterId: string; adapterVersion: string } | null;
+    modelProfile?: { revision: number; profile: {
+      backendId: string;
+      modelId: string;
+      dataPolicyRevision: string;
+      dataPolicyProvenance: string;
+      canonicalOrigin: string;
+      credentialIdentityDigest: string;
+      allowedEgress: string[];
+    } } | null;
+  };
   latestJob?: AdvisorJob | null;
 }
 

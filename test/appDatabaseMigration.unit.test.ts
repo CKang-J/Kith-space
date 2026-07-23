@@ -31,10 +31,15 @@ function withAppDatabase(run: (sqlite: Database.Database, dbPath: string) => voi
 }
 
 const LEGACY_V3_CHECKSUM = "3188d1283621a7b042594c340ace87b42195cef97b689ffb5c0f78535b9b7eba";
+const LEGACY_V5_CHECKSUM = "935bab99c7fa6ecb6b79e0eabba2ee4e074f12f62551998c9d58daf05c6a2d0b";
 
 function downgradeToLegacyV3(sqlite: Database.Database): void {
   sqlite.pragma("foreign_keys = OFF");
   sqlite.exec(`
+    DROP TABLE pi_cli_config_imports;
+    DROP TABLE advisor_provider_settings;
+    DROP TABLE advisor_model_profile_revisions;
+    DROP TABLE advisor_provider_revisions;
     CREATE TABLE user_episodic_memories_legacy (
       id TEXT PRIMARY KEY NOT NULL,
       scope TEXT NOT NULL DEFAULT 'user_global' CHECK (scope = 'user_global'),
@@ -80,7 +85,7 @@ function downgradeToLegacyV3(sqlite: Database.Database): void {
     CREATE UNIQUE INDEX user_memory_relations_uniq
       ON user_memory_relations (from_memory_id, from_revision, to_memory_id, to_revision, relation_type);
 
-    DELETE FROM app_migration_journal WHERE version = 4;
+    DELETE FROM app_migration_journal WHERE version >= 4;
     UPDATE app_migration_journal SET checksum = '${LEGACY_V3_CHECKSUM}' WHERE version = 3;
     PRAGMA user_version = 3;
   `);
@@ -99,6 +104,7 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       { version: 2, name: "content-hmac-key", checksumLength: 64 },
       { version: 3, name: "user-global-memory", checksumLength: 64 },
       { version: 4, name: "user-global-memory-foreign-keys", checksumLength: 64 },
+      { version: 5, name: "advisor-provider-control-plane", checksumLength: 64 },
     ]);
     assert.match(String(sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get()), /^[0-9a-f]{64}$/);
     for (const table of [
@@ -119,10 +125,19 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
     ]);
     const currentRevisionFks = sqlite.prepare("PRAGMA foreign_key_list(user_episodic_memories)").all() as Array<{ table: string; from: string }>;
     assert.ok(currentRevisionFks.some((row) => row.table === "user_episodic_memory_revisions" && row.from === "current_revision"));
+    assert.deepEqual(sqlite.prepare(`
+      SELECT execution_mode, provider_state, current_provider_revision, current_model_profile_revision
+      FROM advisor_provider_settings WHERE singleton_id = 1
+    `).get(), {
+      execution_mode: "provider_v1",
+      provider_state: "setup_required",
+      current_provider_revision: 1,
+      current_model_profile_revision: null,
+    });
   });
 });
 
-test("unversioned legacy app.db preserves Space rows and backfills stable Home identity", () => {
+test("unversioned legacy app.db preserves Space rows and remains on legacy runtime", () => {
   withAppDatabase((sqlite, dbPath) => {
     sqlite.exec(`
       CREATE TABLE spaces (
@@ -142,6 +157,7 @@ test("unversioned legacy app.db preserves Space rows and backfills stable Home i
       SELECT home_space_id FROM installation_state WHERE singleton_key = 1
     `).pluck().get(), "legacy-home");
     assert.equal(sqlite.prepare("SELECT count(*) FROM spaces").pluck().get(), 1);
+    assert.equal(sqlite.prepare("SELECT execution_mode FROM advisor_provider_settings WHERE singleton_id = 1").pluck().get(), "legacy_runtime");
   });
 });
 
@@ -151,6 +167,10 @@ test("version 1 app.db upgrades in place with a stable installation content HMAC
     sqlite.exec(`
       PRAGMA user_version = 1;
       DELETE FROM app_migration_journal WHERE version >= 2;
+      DROP TABLE pi_cli_config_imports;
+      DROP TABLE advisor_provider_settings;
+      DROP TABLE advisor_model_profile_revisions;
+      DROP TABLE advisor_provider_revisions;
       DROP TABLE user_memory_fts;
       DROP TABLE user_memory_lexical_terms;
       DROP TABLE user_memory_mutations;
@@ -179,6 +199,10 @@ test("version 2 app.db adds isolated user-global memory tables without changing 
     sqlite.exec(`
       PRAGMA user_version = 2;
       DELETE FROM app_migration_journal WHERE version >= 3;
+      DROP TABLE pi_cli_config_imports;
+      DROP TABLE advisor_provider_settings;
+      DROP TABLE advisor_model_profile_revisions;
+      DROP TABLE advisor_provider_revisions;
       DROP TABLE user_memory_fts;
       DROP TABLE user_memory_lexical_terms;
       DROP TABLE user_memory_mutations;
@@ -239,7 +263,7 @@ test("legacy version 3 app.db repairs composite revision foreign keys without lo
     migrateAppDatabase(sqlite, dbPath);
     migrateAppDatabase(sqlite, dbPath);
 
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 4);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), APP_DATABASE_SCHEMA_VERSION);
     assert.equal(sqlite.pragma("foreign_keys", { simple: true }), 1);
     assert.equal(sqlite.prepare("SELECT canonical_text FROM user_episodic_memory_revisions WHERE memory_id = 'memory-1'").pluck().get(), "Use concise Chinese");
     assert.equal(sqlite.prepare("SELECT count(*) FROM user_memory_evidence WHERE memory_id = 'memory-1'").pluck().get(), 1);
@@ -252,6 +276,25 @@ test("legacy version 3 app.db repairs composite revision foreign keys without lo
     const canonicalFks = sqlite.prepare("PRAGMA foreign_key_list(user_episodic_memories)").all() as Array<{ table: string; from: string; to: string }>;
     assert.ok(canonicalFks.some((row) => row.table === "user_episodic_memory_revisions" && row.from === "id" && row.to === "memory_id"));
     assert.ok(canonicalFks.some((row) => row.table === "user_episodic_memory_revisions" && row.from === "current_revision" && row.to === "revision"));
+  });
+});
+
+test("pre-existing v4 app.db upgrades to an explicit legacy_runtime state", () => {
+  withAppDatabase((sqlite, dbPath) => {
+    migrateAppDatabase(sqlite, dbPath);
+    sqlite.pragma("foreign_keys = OFF");
+    sqlite.exec(`
+      DROP TABLE pi_cli_config_imports;
+      DROP TABLE advisor_model_profile_revisions;
+      DROP TABLE advisor_provider_revisions;
+      DROP TABLE advisor_provider_settings;
+      DELETE FROM app_migration_journal WHERE version = 5;
+      PRAGMA user_version = 4;
+    `);
+    sqlite.pragma("foreign_keys = ON");
+    migrateAppDatabase(sqlite, dbPath);
+    assert.equal(sqlite.prepare("SELECT execution_mode FROM advisor_provider_settings WHERE singleton_id = 1").pluck().get(), "legacy_runtime");
+    assert.equal(sqlite.prepare("SELECT current_provider_revision FROM advisor_provider_settings WHERE singleton_id = 1").pluck().get(), null);
   });
 });
 
@@ -331,6 +374,33 @@ test("current app.db rejects a missing or tampered migration journal", () => {
         && error.message.includes("inconsistent migration journal"),
     );
     assert.equal(sqlite.pragma("user_version", { simple: true }), APP_DATABASE_SCHEMA_VERSION);
+  });
+});
+
+test("pre-release v5 journal remains readable only when the final control-plane schema is intact", () => {
+  withAppDatabase((sqlite, dbPath) => {
+    migrateAppDatabase(sqlite, dbPath);
+    sqlite.prepare("UPDATE app_migration_journal SET checksum = ? WHERE version = 5").run(LEGACY_V5_CHECKSUM);
+
+    migrateAppDatabase(sqlite, dbPath);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), APP_DATABASE_SCHEMA_VERSION);
+
+    sqlite.exec("DROP INDEX advisor_provider_revisions_adapter_idx");
+    assert.throws(
+      () => migrateAppDatabase(sqlite, dbPath),
+      (error: unknown) => error instanceof AppDatabaseMigrationError
+        && error.reason === "schema"
+        && error.message.includes("advisor_provider_revisions_adapter_idx"),
+    );
+    sqlite.exec("CREATE INDEX advisor_provider_revisions_adapter_idx ON advisor_provider_revisions(adapter_id, revision)");
+
+    sqlite.exec("DROP TABLE pi_cli_config_imports");
+    assert.throws(
+      () => migrateAppDatabase(sqlite, dbPath),
+      (error: unknown) => error instanceof AppDatabaseMigrationError
+        && error.reason === "schema"
+        && error.message.includes("pi_cli_config_imports"),
+    );
   });
 });
 

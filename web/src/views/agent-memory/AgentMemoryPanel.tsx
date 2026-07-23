@@ -99,6 +99,30 @@ export function AgentMemoryPanel({ agentId }: { agentId: string }) {
       setAdvisorBusy(false);
     }
   };
+  const consentAdvisor = async (sourceScope: { public: boolean; private: boolean; dm: boolean }) => {
+    setAdvisorBusy(true);
+    try {
+      const result = await apiRef.current("POST", `/api/agents/${agentId}/memory-advisor/consent`, { sourceScope });
+      if (result?.error) throw new Error(result.error);
+      await loadControlPlane();
+    } catch (reason: any) {
+      setError(String(reason?.message || reason));
+    } finally {
+      setAdvisorBusy(false);
+    }
+  };
+  const revokeAdvisorConsent = async () => {
+    setAdvisorBusy(true);
+    try {
+      const result = await apiRef.current("POST", `/api/agents/${agentId}/memory-advisor/revoke`, {});
+      if (result?.error) throw new Error(result.error);
+      await loadControlPlane();
+    } catch (reason: any) {
+      setError(String(reason?.message || reason));
+    } finally {
+      setAdvisorBusy(false);
+    }
+  };
 
   return (
     <div className="agent-memory-panel">
@@ -107,7 +131,7 @@ export function AgentMemoryPanel({ agentId }: { agentId: string }) {
         <button role="tab" aria-selected={view === "files"} className={view === "files" ? "on" : ""} onClick={() => setView("files")}>{t("members.memoryPanel.files")}</button>
       </div>
       {view === "structured" ? <>
-        <AdvisorStatusCard state={advisor} jobs={jobs} suppressions={suppressions} busy={advisorBusy} onPatch={patchAdvisor} onRevokeSuppression={revokeSuppression} />
+        <AdvisorStatusCard state={advisor} jobs={jobs} suppressions={suppressions} busy={advisorBusy} onPatch={patchAdvisor} onRevokeSuppression={revokeSuppression} onConsent={consentAdvisor} onRevokeConsent={revokeAdvisorConsent} />
         {error ? <div className="memory-panel-error">{error}</div> : null}
         <StructuredMemoryView agentId={agentId} refreshToken={structuredRefresh} onDataChanged={() => void loadControlPlane()} />
       </> : <Suspense fallback={<div className="empty">{t("members.loading")}</div>}><FilesMemoryView agentId={agentId} /></Suspense>}

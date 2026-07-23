@@ -35,6 +35,7 @@ import {
   endLegacyDataPlaneDrain,
   waitForLegacyDataPlaneDrain,
 } from "../../agents/legacyDataPlaneDrain.js";
+import { AdvisorProviderSettingsService } from "../../advisor-provider/advisorProviderSettingsService.js";
 
 export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   const { req, res, url, method, p, humanId, spaceId } = ctx;
@@ -162,6 +163,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     return (sendJson(res, 200, { ok: true, defaultResponseMode: updated?.defaultResponseMode }), true);
   }
   if (am && method === "DELETE") {
+    await new AdvisorProviderSettingsService().revokeAgent(spaceId, am[1]!);
     await stopAgent(spaceId, am[1]!).catch(() => {}); // stop the local process before deleting
     await deleteAgentAndPrivateConversations(spaceId, am[1]!);
     clearAgentIntroductionTurns(spaceId, am[1]!);

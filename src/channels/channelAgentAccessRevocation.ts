@@ -42,6 +42,24 @@ export function revokeAgentChannelAccess(
         )).all().map((row) => row.channelId)
       : [];
     const surfaceIds = [channelId, ...ordinaryThreadIds];
+    const sourceMessageIds = tx.select({ id: schema.messages.id }).from(schema.messages)
+      .where(inArray(schema.messages.channelId, surfaceIds)).all().map((row) => row.id);
+    const sourceMessageSet = new Set(sourceMessageIds);
+    const advisorJobs = tx.select().from(schema.memoryAdvisorJobs).where(and(
+      eq(schema.memoryAdvisorJobs.agentId, agentId),
+      inArray(schema.memoryAdvisorJobs.status, ["queued", "running", "failed"]),
+    )).all();
+    const revokedAdvisorJobs = advisorJobs.filter((job) => Array.isArray(job.sourceRefs)
+      && job.sourceRefs.some((source) => source?.sourceKind === "message" && sourceMessageSet.has(source.sourceId)));
+    if (revokedAdvisorJobs.length) {
+      const jobIds = revokedAdvisorJobs.map((job) => job.id);
+      const runIds = revokedAdvisorJobs.flatMap((job) => job.providerRunId ? [job.providerRunId] : []);
+      tx.update(schema.memoryAdvisorJobs).set({ status: "cancelled", leaseOwner: null, leaseExpiresAt: null,
+        errorCode: "source_access_revoked", errorDetailRedacted: "advisor source channel access was revoked", completedAt: new Date(nowMs) })
+        .where(inArray(schema.memoryAdvisorJobs.id, jobIds)).run();
+      if (runIds.length) tx.update(schema.advisorProviderRuns).set({ status: "cancelled", errorCode: "provider_cancelled", completedAt: new Date(nowMs) })
+        .where(and(inArray(schema.advisorProviderRuns.id, runIds), inArray(schema.advisorProviderRuns.status, ["leased", "running", "failed"]))).run();
+    }
     const sessions = tx.select({ id: schema.runtimeSessions.id }).from(schema.runtimeSessions).where(and(
       eq(schema.runtimeSessions.spaceId, spaceId),
       eq(schema.runtimeSessions.agentId, agentId),

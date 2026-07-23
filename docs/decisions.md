@@ -479,7 +479,7 @@
 
 ## 决策 31：结构化记忆提炼采用安装级可替换 Advisor Provider，与聊天 runtime 解耦
 
-**状态**：Proposed / Reviewed，2026-07-23按“内置Pi为新安装默认、Claude可切换、模型设置独立”修订，尚未实现。当前代码仍由`agent.runtime`选择maintenance：Claude受支持，Codex/opencode明确unsupported；结构化recall、Human管理与文件记忆不受此限制。
+**状态**：Accepted / Implemented。2026-07-23按“内置Pi为新安装默认、Claude可切换、模型设置独立”修订并完成切片0–4。fresh install进入`provider_v1 + pi_sdk + setup_required`，既有安装保持`legacy_runtime`；Claude/Codex/opencode聊天Agent在逐Agent授权后可共用系统Provider，结构化recall、Human管理与文件记忆不受Provider状态限制。
 
 **结论**：Memory Advisor的业务管线继续由Core `MemoryAdvisorService`拥有，但执行一次结构化completion的能力收敛为安装级`AdvisorProvider`。它不是普通Agent，不具备身份、频道membership、DM、消息发送、工具、MCP、持久session、业务ACL或数据库写入权。同一个Provider可在Human显式授权后处理Claude Code、Codex、opencode聊天Agent产生的eligible turn，聊天runtime的session、工具、模型和配置不被复用。
 
@@ -492,6 +492,8 @@
 **备选方案**：否决“每聊天runtime各做一套Advisor”，因为安全与维护逻辑重复；否决“普通内置Agent”与“内置完整Pi coding agent”，因为权限面和资源发现面过大；否决“只调用系统Pi CLI”，因为版本、PATH、全局配置和供应链不可复现；暂缓“捆绑本地模型权重”，因为分发、硬件、质量与许可证成本。保留确定性规则作为模型前后的admission/validation而非唯一语义提炼器；Pi SDK统一多模型调用仍必须走相同授权和审计。
 
 **实施边界**：本决策不命名为P-A10.8，也不吞并P-A11 consolidation、P-A12 skill reconciliation或P-S1 sandbox/approval/Vault。完整提案见`docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md`。
+
+**实施事实**：app.db v5持久Provider/Model Profile revision、installation identity、provider/revocation epoch、迁移状态与Pi CLI脱敏快照；workspace schema v9持久逐Agent consent、job执行快照和独立Provider Run。内置`@earendil-works/pi-ai@0.81.1`经one-shot helper只调用公开`createModels → provider factory → getModel → completeSimple`，构建依赖图拒绝`pi-agent-core`、`pi-coding-agent`和compat。CredentialPort、模型Compiler/认证矩阵、artifact digest、最小env/临时HOME、DNS pinning、redirect拒绝、pre/postflight、ProviderEpochGate和最终ACL/epoch复核均已进入实际执行链路。通用Core→Worker completion命令只携带单次activation handle，凭据由Worker经独立本机兑换消息按run/epoch/generation/snapshot取回；Agent/Space/来源频道撤权、设置切换与probe使用同一active-run取消屏障，Core断线时Worker先清理旧helper与准备态再重连。设置UI与Agent Memory面板分别承担安装级配置/诊断/Run审计和逐Agent授权/撤权。
 
 ---
 

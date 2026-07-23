@@ -71,8 +71,8 @@ flowchart TB
   end
 
   subgraph Data["Local-first 数据"]
-    WorkspaceDB["每 Space workspace.db v8"]
-    AppDB["安装级 app.db v4"]
+    WorkspaceDB["每 Space workspace.db v9"]
+    AppDB["安装级 app.db v5"]
     Files["User / Space / Agent 文件记忆"]
   end
 
@@ -516,7 +516,7 @@ flowchart LR
   Turn["Completed eligible turn"]
   Job["Durable advisor job"]
   Filter["Exclude / secret / ACL / source-cap filter"]
-  Maintenance["Restricted MaintenanceRuntimePort"]
+  Maintenance["Installation Advisor Provider"]
   Validate["Typed deterministic validation"]
   Dedupe["Dedupe + relation resolution"]
   Commit["Atomic canonical / proposal / relation commit"]
@@ -533,16 +533,19 @@ flowchart LR
   Commit --> UI
 ```
 
-Advisor 与 user-facing Agent session 是两个物理端口：
+Advisor 与 user-facing Agent session 是两个物理端口。fresh install默认内置`pi_sdk@0.81.1`，Claude CLI可显式切换；既有安装先保持`legacy_runtime`：
 
 - 不 resume 用户对话 session；
 - 无 shell、文件、MCP、CLI、Vault 或消息发送能力；
-- 使用 ephemeral cwd；
-- provider/model/config 在 job 创建时固定；
+- 使用每run独立进程、ephemeral HOME/cwd和allowlist env；
+- Provider revision、Model Profile revision、installation/provider/consent epoch、artifact/config/capability/egress digest在job创建时固定；
+- Core只把绑定run/epoch/Worker generation/执行快照的单次activation handle放入通用`advisor:complete`命令；Worker再经独立、安装级鉴权的本机兑换消息取得当次凭据，job/run、通用命令和日志都不保存secret；
+- Agent删除、Space移除、来源频道撤权、Provider/model/enable切换与capability probe共用active-run取消屏障并等待Worker ACK；Worker失去Core连接时先终止旧helper与准备态，再允许新generation重连；
+- 调用前DNS分类并pin地址、拒绝metadata/proxy/redirect，调用后复核egress；
 - provider 返回后，在最终事务里再次验证 Agent/source 生命周期和 CAS；
 - 失败、429 或预算不足会 backoff，不阻塞原 turn。
 
-当前 Claude restricted maintenance 已实际支持；Codex/opencode maintenance 明确为 unsupported。
+Claude、Codex、opencode聊天Agent在逐Agentconsent后共用同一系统Provider；聊天runtime只决定对话执行，不再决定Advisor支持性。没有Model Profile、凭据、probe、data policy和精确consent时不读取evidence、不外发正文。旧Claude restricted maintenance只作显式回滚路径。
 
 ### 12.4 Recall pipeline
 
@@ -745,7 +748,7 @@ Runtime Contract 只归一化 `compaction_started/completed` 事件，不自研�
 
 ## 16. 数据存储与版本
 
-### 16.1 每 Space `workspace.db` v8
+### 16.1 每 Space `workspace.db` v9
 
 主要表族：
 
@@ -757,15 +760,15 @@ Runtime Contract 只归一化 `compaction_started/completed` 事件，不自研�
 | Capability | `turn_capability_activations`、`disclosure_grants` |
 | Session state | `session_checklist_items`、`session_wakeups` |
 | Episodic memory | `episodic_memories/revisions`、`memory_evidence/relations/tags/suppressions/mutations` |
-| Recall/Advisor | `memory_lexical_terms`、FTS、`memory_advisor_*`、`memory_recall_observations` |
+| Recall/Advisor | `memory_lexical_terms`、FTS、`memory_advisor_*`、`memory_recall_observations`、`advisor_provider_runs` |
 
-Workspace migration 由 `drizzle/0004`–`0009` 分阶段引入 session、durable turn、legacy recovery、附件生命周期、episodic memory 和 advisor。
+Workspace migration 由 `drizzle/0004`–`0010` 分阶段引入session、durable turn、legacy recovery、附件生命周期、episodic memory、advisor和系统Provider consent/run审计。
 
-### 16.2 安装级 `app.db` v4
+### 16.2 安装级 `app.db` v5
 
-`app.db` 保存 Human、Space registry、Desktop/Web 设置和 user-global structured memory。User-global memory 与 workspace memory 使用同一 command/schema 语义，但跨数据库 source 只保存 opaque ref，不建立跨 SQLite FK。
+`app.db` 保存Human、Space registry、Desktop/Web设置、user-global structured memory以及安装级Advisor Provider/Model Profile revision、epoch和Pi CLI脱敏导入快照。User-global memory与workspace memory使用同一command/schema语义，但跨数据库source只保存opaque ref，不建立跨SQLite FK。
 
-app.db v4 使用事务 migration runner 和 journal/checksum，并修复早期 v3 user-global memory 缺失的复合 revision 外键。
+app.db v4修复早期v3 user-global memory缺失的复合revision外键；v5保持事务runner和journal/checksum，fresh bootstrap选择`provider_v1 + pi_sdk + setup_required`，pre-existing数据库保持`legacy_runtime`。
 
 ### 16.3 Legacy cutover
 
@@ -851,14 +854,14 @@ P-A10 基线中，最小 `message + delivery rows` 单事务 20-Agent fan-out me
 | usage / completion / cancel | observed v2 | observed v2 | observed v2 |
 | MCP bootstrap contract | fixture v2；真实 Gateway 路径已验收 | fixture v2 | fixture v2 |
 | CLI fallback | 已实现 | 已实现 | 已实现 |
-| restricted memory maintenance | supported，已真实验收 | unsupported | unsupported |
+| system memory advisor | 逐Agent consent后共用安装级Provider | 逐Agent consent后共用安装级Provider | 逐Agent consent后共用安装级Provider |
 | compaction telemetry | unsupported | fixture v2 | unsupported |
 | tool isolation capability | unsupported | unsupported | unsupported |
 | cwd relocation resume | unsupported | unsupported | unsupported |
 
 `fixture v2` 表示 adapter contract fixture 已通过，但不能当作对应 provider/live 行为已全部实证；`unsupported` 不会用 prompt 伪装成支持。
 
-表中的 `tool isolation capability` 指 user-facing runtime adapter 的通用能力；Claude memory advisor 使用的是另一个无工具、ephemeral cwd 的 restricted MaintenanceRuntimePort，因此“Claude maintenance supported”与“通用 adapter tool isolation unsupported”并不矛盾。
+表中的`tool isolation capability`指user-facing runtime adapter的通用能力；系统Memory Advisor使用另一个无工具、无MCP/session、ephemeral HOME/cwd的Provider Port，因此聊天adapter的通用tool isolation仍可诚实为unsupported。
 
 ## 21. 用户可见的三个典型场景
 
@@ -903,11 +906,11 @@ P-A10 基线中，最小 `message + delivery rows` 单事务 20-Agent fan-out me
 
 ## 23. 已验证事实
 
-截至 2026-07-20：
+截至 2026-07-23：
 
-- workspace schema v8、app.db v4真实迁移通过；
+- workspace schema v9、app.db v5真实迁移通过；
 - `quick_check=ok`，外键违规为 0；
-- 完整 unit：846通过、11个平台条件skip、0失败；
+- 完整 unit：894通过、11个平台条件skip、0失败；
 - 完整 integration、typecheck、production desktop bundle通过；
 - 三 runtime contract targeted suite 22/22；
 - 三轮 Desktop/Web真实验收覆盖全新Space、Claude Agents、公开/私有频道、DM、话题、三响应模式、@all、任务、MCP/CLI、turn详情、记忆生命周期、wake和restart；

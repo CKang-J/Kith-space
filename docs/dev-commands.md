@@ -135,3 +135,17 @@ pnpm test --unit
 ```
 
 当前unit门覆盖migration前缀、cutover/backfill/rollback窗口、message+delivery回滚、task observe与分页frontier、dispatch reservation、logical turn/lease+broker续租、cancel/requeue、operation幂等、reply mention+chain/depth/attachment原子绑定、逐输入finalize、admission/event上限、terminal重传、原子direct-mention thread、Context Envelope/HMAC tombstone、父级ACL撤权、stale refresh、真实Gateway MCP/CLI/CLI parser同域fixture、Task全链路、v2 task/legacy wake互斥、三家MCP bootstrap/握手降级、跨私密projection/grant、checklist/short wake、上传超限/中断整批清理、临时附件过期/崩溃GC、manual inbox summary、workspace v8 advisor migration、advisor queue/lease/cost/validation/source ACL/suppression、结构化记忆管理面板、snapshot checksum/generation/secret门、checklist revision、Codex compaction映射和final usage terminal持久化。完整integration仍使用`pnpm test --integration`。`kith-space context check`、`turn context|reply|cede|progress|get`、`attachment upload`、`conversation read|search`、`memory recall|get`、`task ...`、`session checklist|wake`与`capability describe`只在Worker注入的active v2 turn中可用，不是Human手动调试命令；缺少activation时按设计返回`capability_inactive`。`memory recall --query <text>`默认合并continuity，`memory get --id <id>`只返回当前output surface允许的projection。v2 `attachment upload --file <path>`不接受目标频道，返回的ID只能由同一activation的`turn reply --attach <id>`绑定到server-owned surface；每批最多10个文件、单文件上限25 MiB，超限或连接中断会拒绝并清理整批，临时ID一小时后失效。需要显式引用被ref-only隐藏的私密source时，必须先由Human控制面签发短期grant，再用`turn reply --source-ref '<json>' --disclosure-grant <id>`提交完全匹配的正文；grant只消费一次。
+
+## 8. 系统 Memory Advisor Provider 门禁
+
+日常验证仍使用统一命令，不向真实profile写测试凭据：
+
+```powershell
+pnpm test --unit
+pnpm test --integration
+pnpm run typecheck
+pnpm run desktop:build
+pnpm run desktop:bundle
+```
+
+`desktop:build`和`desktop:bundle`都会生成`desktop/dist/runtime/pi-advisor-helper.mjs`与`pi-advisor-build-manifest.json`。manifest固定`@earendil-works/pi-ai@0.81.1`、lockfile integrity、helper SHA-256、Node下限和依赖输入；构建在发现`pi-agent-core`、`pi-coding-agent`或`pi-ai/compat`时失败，并以无网络的非法空请求启动helper，确认ESM/Node builtin加载成功且返回有界`provider_request_invalid`。不要直接执行helper处理真实正文；真实能力探测从Settings“记忆 Advisor”发起，它先完成无正文egress preflight，再使用短时单次凭据activation。

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 
-export const APP_DATABASE_SCHEMA_VERSION = 4;
+export const APP_DATABASE_SCHEMA_VERSION = 5;
 
 export type AppDatabaseCompatibilityReason = "integrity" | "future" | "schema";
 
@@ -244,6 +244,14 @@ const APP_V3_LEGACY_CHECKSUMS = new Set([
   "3188d1283621a7b042594c340ace87b42195cef97b689ffb5c0f78535b9b7eba",
 ]);
 
+// A pre-release v5 build used the same control-plane tables before the bundled Pi artifact
+// metadata was finalized. Keep that exact journal fact readable; current schema validation
+// still runs, and the settings service creates a new Provider revision when an active bundled
+// artifact digest differs. Never rewrite the recorded checksum in place.
+const APP_V5_LEGACY_CHECKSUMS = new Set([
+  "935bab99c7fa6ecb6b79e0eabba2ee4e074f12f62551998c9d58daf05c6a2d0b",
+]);
+
 const APP_V4_USER_GLOBAL_MEMORY_FOREIGN_KEYS_SQL = `
   CREATE TABLE user_episodic_memories_v4 (
     id TEXT PRIMARY KEY NOT NULL,
@@ -343,6 +351,105 @@ const APP_V4_USER_GLOBAL_MEMORY_FOREIGN_KEYS_SQL = `
 
 const APP_SCHEMA_V4 = new Map(APP_SCHEMA_V3);
 
+const APP_V5_ADVISOR_PROVIDER_CONTROL_PLANE_SQL = `
+  CREATE TABLE advisor_provider_settings (
+    singleton_id INTEGER PRIMARY KEY NOT NULL CHECK (singleton_id = 1),
+    installation_identity_digest TEXT NOT NULL CHECK (length(installation_identity_digest) = 64),
+    execution_mode TEXT NOT NULL DEFAULT 'legacy_runtime' CHECK (execution_mode IN ('legacy_runtime', 'migrating', 'provider_v1')),
+    provider_state TEXT NOT NULL DEFAULT 'setup_required' CHECK (provider_state IN ('setup_required', 'probing', 'ready', 'paused', 'unsupported')),
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    current_provider_revision INTEGER REFERENCES advisor_provider_revisions(revision),
+    current_model_profile_revision INTEGER REFERENCES advisor_model_profile_revisions(revision),
+    provider_epoch INTEGER NOT NULL DEFAULT 1 CHECK (provider_epoch >= 1),
+    revocation_epoch INTEGER NOT NULL DEFAULT 1 CHECK (revocation_epoch >= 1),
+    updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE advisor_provider_revisions (
+    revision INTEGER PRIMARY KEY NOT NULL,
+    adapter_id TEXT NOT NULL CHECK (adapter_id IN ('pi_sdk', 'claude_cli')),
+    adapter_version TEXT NOT NULL,
+    executable_or_package_realpath TEXT,
+    executable_or_package_digest TEXT NOT NULL,
+    sdk_lock_digest TEXT,
+    sanitized_config_json TEXT NOT NULL,
+    config_digest TEXT NOT NULL,
+    capability_digest TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE advisor_model_profile_revisions (
+    revision INTEGER PRIMARY KEY NOT NULL,
+    source_kind TEXT NOT NULL CHECK (source_kind IN ('bundled_catalog', 'pi_cli_import', 'manual')),
+    source_snapshot_digest TEXT NOT NULL,
+    descriptor_trust TEXT NOT NULL CHECK (descriptor_trust IN ('bundled_verified', 'pi_cli_imported', 'manual')),
+    backend_id TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    api_kind TEXT NOT NULL,
+    thinking_level TEXT NOT NULL,
+    canonical_origin TEXT NOT NULL,
+    region TEXT,
+    tenant_or_project_digest TEXT,
+    credential_source_kind TEXT NOT NULL CHECK (credential_source_kind IN ('pi_cli_auth', 'kith_secret', 'env_ref', 'keyless_local')),
+    credential_identity_digest TEXT NOT NULL,
+    credential_ref TEXT,
+    provider_schema_version INTEGER NOT NULL,
+    data_policy_revision TEXT NOT NULL,
+    data_policy_provenance TEXT NOT NULL CHECK (data_policy_provenance IN ('vendor_verified', 'human_asserted', 'unknown')),
+    network_class TEXT NOT NULL CHECK (network_class IN ('loopback', 'lan', 'public_cloud', 'custom')),
+    allowed_egress_json TEXT NOT NULL,
+    model_metadata_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE pi_cli_config_imports (
+    id TEXT PRIMARY KEY NOT NULL,
+    config_root_digest TEXT NOT NULL,
+    catalog_digest TEXT NOT NULL,
+    secret_source_identity TEXT NOT NULL,
+    imported_catalog_json TEXT NOT NULL,
+    warnings_json TEXT NOT NULL,
+    file_identities_json TEXT NOT NULL,
+    imported_at INTEGER NOT NULL
+  );
+  CREATE INDEX advisor_provider_revisions_adapter_idx ON advisor_provider_revisions(adapter_id, revision);
+  CREATE INDEX advisor_model_profiles_backend_idx ON advisor_model_profile_revisions(backend_id, model_id, revision);
+  CREATE INDEX pi_cli_config_imports_catalog_idx ON pi_cli_config_imports(catalog_digest, imported_at);
+  INSERT INTO advisor_provider_revisions (
+    revision, adapter_id, adapter_version, executable_or_package_realpath, executable_or_package_digest,
+    sdk_lock_digest, sanitized_config_json, config_digest, capability_digest, created_at
+  ) VALUES (
+    1, 'pi_sdk', '0.81.1', NULL,
+    '8dc42b635ea20ca4f440fd3541b6ea1ddea7478f1622905666066fbe4936e453',
+    '8dc42b635ea20ca4f440fd3541b6ea1ddea7478f1622905666066fbe4936e453',
+    '{"helper":"pi-advisor-helper.mjs","environment":"allowlist","projectCustomization":"disabled"}',
+    '1286a552d6f0cfae3800e177cfcf533ca65b522edcea062ec136474aad9ed3f3',
+    '3c456a7fe7cff69b833dd45ecc29b0032f0b7ac3f646fae8ec4ee2cd55936162',
+    unixepoch() * 1000
+  );
+  INSERT INTO advisor_provider_settings (
+    singleton_id, installation_identity_digest, execution_mode, provider_state, enabled,
+    current_provider_revision, current_model_profile_revision, provider_epoch, revocation_epoch, updated_at
+  ) VALUES (1, lower(hex(randomblob(32))), 'legacy_runtime', 'setup_required', 1, NULL, NULL, 1, 1, unixepoch() * 1000);
+`;
+
+const APP_SCHEMA_V5 = new Map(APP_SCHEMA_V4);
+APP_SCHEMA_V5.set("advisor_provider_settings", [
+  "singleton_id", "installation_identity_digest", "execution_mode", "provider_state", "enabled",
+  "current_provider_revision", "current_model_profile_revision", "provider_epoch", "revocation_epoch", "updated_at",
+]);
+APP_SCHEMA_V5.set("advisor_provider_revisions", [
+  "revision", "adapter_id", "adapter_version", "executable_or_package_realpath", "executable_or_package_digest",
+  "sdk_lock_digest", "sanitized_config_json", "config_digest", "capability_digest", "created_at",
+]);
+APP_SCHEMA_V5.set("advisor_model_profile_revisions", [
+  "revision", "source_kind", "source_snapshot_digest", "descriptor_trust", "backend_id", "model_id", "api_kind",
+  "thinking_level", "canonical_origin", "region", "tenant_or_project_digest", "credential_source_kind",
+  "credential_identity_digest", "credential_ref", "provider_schema_version", "data_policy_revision",
+  "data_policy_provenance", "network_class", "allowed_egress_json", "model_metadata_json", "created_at",
+]);
+APP_SCHEMA_V5.set("pi_cli_config_imports", [
+  "id", "config_root_digest", "catalog_digest", "secret_source_identity", "imported_catalog_json", "warnings_json",
+  "file_identities_json", "imported_at",
+]);
+
 function baselineChecksum(): string {
   return createHash("sha256").update(APP_BASELINE_SQL).digest("hex");
 }
@@ -404,7 +511,7 @@ function assertIntegrity(sqlite: Database.Database, dbPath: string): void {
 
 function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_DATABASE_SCHEMA_VERSION): void {
   const missing: string[] = [];
-  const expectedSchema = version >= 4 ? APP_SCHEMA_V4 : version >= 3 ? APP_SCHEMA_V3 : version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
+  const expectedSchema = version >= 5 ? APP_SCHEMA_V5 : version >= 4 ? APP_SCHEMA_V4 : version >= 3 ? APP_SCHEMA_V3 : version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
   for (const [table, requiredColumns] of expectedSchema) {
     const actual = tableColumns(sqlite, table);
     if (actual.size === 0) {
@@ -484,6 +591,35 @@ function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_D
       }
     }
   }
+  if (version >= 5) {
+    const indexes = new Set((sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all() as Array<{ name: string }>).map((row) => row.name));
+    for (const index of ["advisor_provider_revisions_adapter_idx", "advisor_model_profiles_backend_idx", "pi_cli_config_imports_catalog_idx"]) {
+      if (!indexes.has(index)) missing.push(`${index} (index)`);
+    }
+    const requiredChecks: Record<string, string[]> = {
+      advisor_provider_settings: ["check (singleton_id = 1)", "execution_mode in ('legacy_runtime', 'migrating', 'provider_v1')", "provider_state in ('setup_required', 'probing', 'ready', 'paused', 'unsupported')", "enabled in (0, 1)"],
+      advisor_provider_revisions: ["adapter_id in ('pi_sdk', 'claude_cli')"],
+      advisor_model_profile_revisions: ["source_kind in ('bundled_catalog', 'pi_cli_import', 'manual')", "credential_source_kind in ('pi_cli_auth', 'kith_secret', 'env_ref', 'keyless_local')", "network_class in ('loopback', 'lan', 'public_cloud', 'custom')"],
+    };
+    for (const [table, fragments] of Object.entries(requiredChecks)) {
+      const sql = String(sqlite.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").pluck().get(table) ?? "")
+        .replaceAll(/\s+/g, " ").toLowerCase();
+      for (const fragment of fragments) if (!sql.includes(fragment)) missing.push(`${table} (${fragment})`);
+    }
+    for (const expected of [
+      { target: "advisor_provider_revisions", columns: [{ from: "current_provider_revision", to: "revision" }] },
+      { target: "advisor_model_profile_revisions", columns: [{ from: "current_model_profile_revision", to: "revision" }] },
+    ]) if (!hasForeignKey(sqlite, "advisor_provider_settings", expected.target, expected.columns)) {
+      missing.push(`advisor_provider_settings.${expected.columns[0]!.from} (foreign key)`);
+    }
+    const invalidSingleton = sqlite.prepare(`SELECT 1 FROM advisor_provider_settings
+      WHERE singleton_id <> 1 OR length(installation_identity_digest) <> 64
+        OR (current_provider_revision IS NOT NULL AND NOT EXISTS (SELECT 1 FROM advisor_provider_revisions WHERE revision = current_provider_revision))
+        OR (current_model_profile_revision IS NOT NULL AND NOT EXISTS (SELECT 1 FROM advisor_model_profile_revisions WHERE revision = current_model_profile_revision))
+      LIMIT 1`).get();
+    const singletonCount = Number(sqlite.prepare("SELECT count(*) FROM advisor_provider_settings").pluck().get());
+    if (singletonCount !== 1 || invalidSingleton) missing.push("advisor_provider_settings (singleton/reference integrity)");
+  }
   if (missing.length > 0) {
     throw new AppDatabaseMigrationError(
       "schema",
@@ -502,6 +638,7 @@ function expectedJournal(version: number) {
     ...(version >= 2 ? [{ version: 2, name: "content-hmac-key", checksum: migrationChecksum(APP_V2_CONTENT_HMAC_SQL) }] : []),
     ...(version >= 3 ? [{ version: 3, name: "user-global-memory", checksum: migrationChecksum(APP_V3_USER_GLOBAL_MEMORY_SQL) }] : []),
     ...(version >= 4 ? [{ version: 4, name: "user-global-memory-foreign-keys", checksum: migrationChecksum(APP_V4_USER_GLOBAL_MEMORY_FOREIGN_KEYS_SQL) }] : []),
+    ...(version >= 5 ? [{ version: 5, name: "advisor-provider-control-plane", checksum: migrationChecksum(APP_V5_ADVISOR_PROVIDER_CONTROL_PLANE_SQL) }] : []),
   ];
 }
 
@@ -513,7 +650,9 @@ function assertJournal(sqlite: Database.Database, dbPath: string, version = APP_
   const consistent = rows.length === expected.length && rows.every((row, index) => {
     const item = expected[index];
     if (!item || row.version !== item.version || row.name !== item.name) return false;
-    return row.checksum === item.checksum || (row.version === 3 && APP_V3_LEGACY_CHECKSUMS.has(row.checksum));
+    return row.checksum === item.checksum
+      || (row.version === 3 && APP_V3_LEGACY_CHECKSUMS.has(row.checksum))
+      || (row.version === 5 && APP_V5_LEGACY_CHECKSUMS.has(row.checksum));
   });
   if (!consistent) {
     throw new AppDatabaseMigrationError(
@@ -589,8 +728,12 @@ export function assertCompatibleAppDatabase(
 }
 
 /** Migrate app.db transactionally. A failed migration leaves its prior version and rows untouched. */
-export function migrateAppDatabase(sqlite: Database.Database, dbPath: string): void {
+export function migrateAppDatabase(sqlite: Database.Database, dbPath: string, options: { freshInstall?: boolean } = {}): void {
   let { version } = assertCompatibleAppDatabase(sqlite, dbPath);
+  const inferredFresh = version === 0 && !(sqlite.prepare(`
+    SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1
+  `).get());
+  const freshBootstrap = options.freshInstall ?? inferredFresh;
   if (version === APP_DATABASE_SCHEMA_VERSION) {
     assertSchema(sqlite, dbPath);
     assertJournal(sqlite, dbPath);
@@ -667,9 +810,29 @@ export function migrateAppDatabase(sqlite: Database.Database, dbPath: string): v
         `).run(4, "user-global-memory-foreign-keys", migrationChecksum(APP_V4_USER_GLOBAL_MEMORY_FOREIGN_KEYS_SQL), Date.now());
       });
       repairUserGlobalMemoryForeignKeys.immediate();
+      version = 4;
     } finally {
       if (foreignKeysEnabled) sqlite.pragma("foreign_keys = ON");
     }
+  }
+  if (version === 4) {
+    assertSchema(sqlite, dbPath, 4);
+    assertJournal(sqlite, dbPath, 4);
+    const applyAdvisorProviderControlPlane = sqlite.transaction(() => {
+      sqlite.exec(APP_V5_ADVISOR_PROVIDER_CONTROL_PLANE_SQL);
+      if (freshBootstrap) sqlite.prepare(`
+        UPDATE advisor_provider_settings
+        SET execution_mode = 'provider_v1', current_provider_revision = 1, provider_state = 'setup_required', updated_at = ?
+        WHERE singleton_id = 1
+      `).run(Date.now());
+      assertSchema(sqlite, dbPath, 5);
+      sqlite.pragma("user_version = 5");
+      sqlite.prepare(`
+        INSERT INTO app_migration_journal (version, name, checksum, applied_at)
+        VALUES (?, ?, ?, ?)
+      `).run(5, "advisor-provider-control-plane", migrationChecksum(APP_V5_ADVISOR_PROVIDER_CONTROL_PLANE_SQL), Date.now());
+    });
+    applyAdvisorProviderControlPlane.immediate();
   }
   assertCompatibleAppDatabase(sqlite, dbPath, { requireCurrentVersion: true });
 }

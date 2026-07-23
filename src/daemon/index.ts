@@ -16,6 +16,8 @@ import { RuntimeSessionHost } from "../runtime/worker/sessions/runtimeSessionHos
 import { RuntimeTurnController } from "../runtime/worker/sessions/runtimeTurnController.js";
 import { getRuntimeV2 } from "../runtime/adapters/runtimeV2Bridge.js";
 import { completeClaudeMaintenanceJson } from "../runtime/worker/maintenance/claudeMaintenanceRuntime.js";
+import { AdvisorRunController } from "../runtime/worker/maintenance/advisorRunController.js";
+import type { ActivatedAdvisorCredential } from "../runtime/contract/advisorProviderRuntimePort.js";
 
 const log = createLogger("daemon");
 // The installation-level Worker and Core Service always share one physical computer.
@@ -34,6 +36,45 @@ const turns = new RuntimeTurnController(sessionHost, {
   send(message) { return conn?.send(message) ?? false; },
 });
 let latestCoreGeneration = 0;
+const advisorRuns = new AdvisorRunController();
+const pendingAdvisorCredentials = new Map<string, { resolve: (value: ActivatedAdvisorCredential) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+const PROVIDER_WORKER_ERROR_CODES = new Set([
+  "provider_unavailable", "provider_busy", "provider_auth_required", "provider_model_incompatible",
+  "provider_revision_changed", "provider_timeout", "provider_cancelled", "provider_invalid_output",
+  "provider_preflight_destination_mismatch", "provider_postflight_destination_mismatch",
+]);
+function providerWorkerErrorCode(error: unknown): string {
+  const code = error instanceof Error ? error.message : "";
+  return PROVIDER_WORKER_ERROR_CODES.has(code) ? code : "provider_unavailable";
+}
+function requestAdvisorCredential(message: any): Promise<ActivatedAdvisorCredential> {
+  const requestId = randomUUID();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingAdvisorCredentials.delete(requestId);
+      reject(new Error("provider_auth_required"));
+    }, 10_000);
+    timer.unref?.();
+    pendingAdvisorCredentials.set(requestId, { resolve, reject, timer });
+    if (!conn.send({
+      type: "advisor:credential:redeem", requestId, credentialHandle: message.credentialHandle,
+      runId: message.runId, providerEpoch: message.providerEpoch, workerGeneration: latestCoreGeneration,
+      executionSnapshotDigest: message.snapshotDigest,
+    })) {
+      clearTimeout(timer);
+      pendingAdvisorCredentials.delete(requestId);
+      reject(new Error("provider_auth_required"));
+    }
+  });
+}
+
+function rejectPendingAdvisorCredentials(): void {
+  for (const pending of pendingAdvisorCredentials.values()) {
+    clearTimeout(pending.timer);
+    pending.reject(new Error("provider_cancelled"));
+  }
+  pendingAdvisorCredentials.clear();
+}
 const mgr = new AgentManager((m) => conn.send(m), {
   onSessionEnded(agentId) { admissions?.sessionEnded(agentId); },
   onSessionIdle(agentId) { admissions?.sessionIdle(agentId); },
@@ -104,6 +145,15 @@ async function closeTurnSessionsAndAck(message: any): Promise<void> {
 conn = new Connection(serverUrl, workerToken, (msg) => {
   if (msg.type !== "ping") log.debug("recv", { type: msg.type, agentId: msg.agentId });
   switch (msg.type) {
+    case "advisor:credential:result": {
+      const pending = pendingAdvisorCredentials.get(String(msg.requestId ?? ""));
+      if (!pending) break;
+      clearTimeout(pending.timer);
+      pendingAdvisorCredentials.delete(String(msg.requestId));
+      if (msg.ok === true && msg.credential && ["api_key", "oauth", "none"].includes(msg.credential.type)) pending.resolve(msg.credential);
+      else pending.reject(new Error(typeof msg.errorCode === "string" ? msg.errorCode : "provider_auth_required"));
+      break;
+    }
     case "ready:ack": {
       latestCoreGeneration = Number(msg.generation) || 0;
       void turns.advanceGeneration(latestCoreGeneration).catch((error) => log.warn("turn generation advance failed", { detail: String(error) }));
@@ -136,6 +186,44 @@ conn = new Connection(serverUrl, workerToken, (msg) => {
         .catch(() => conn.send({ type: "maintenance:result", requestId: msg.requestId, ok: false, errorCode: "maintenance_provider_failed" }));
       break;
     }
+    case "advisor:prepare": {
+      if (typeof msg.requestId !== "string" || typeof msg.runId !== "string" || !msg.snapshot || !msg.config) {
+        conn.send({ type: "advisor:result", requestId: msg.requestId ?? "invalid", ok: false, errorCode: "provider_request_invalid" });
+        break;
+      }
+      if (msg.expectedGeneration !== latestCoreGeneration) {
+        conn.send({ type: "advisor:result", requestId: msg.requestId, ok: false, errorCode: "provider_revision_changed" });
+        break;
+      }
+      void advisorRuns.prepare({ runId: msg.runId, snapshot: msg.snapshot, config: msg.config })
+        .then((prepared) => conn.send({ type: "advisor:result", requestId: msg.requestId, ok: true, workerGeneration: latestCoreGeneration, ...prepared }))
+        .catch((error) => conn.send({ type: "advisor:result", requestId: msg.requestId, ok: false, errorCode: providerWorkerErrorCode(error) }));
+      break;
+    }
+    case "advisor:complete": {
+      if (typeof msg.requestId !== "string" || typeof msg.runId !== "string" || typeof msg.localHandle !== "string"
+        || typeof msg.snapshotDigest !== "string" || typeof msg.prompt !== "string" || typeof msg.credentialHandle !== "string"
+        || !Number.isSafeInteger(msg.providerEpoch)) {
+        conn.send({ type: "advisor:result", requestId: msg.requestId ?? "invalid", ok: false, errorCode: "provider_request_invalid" });
+        break;
+      }
+      if (msg.expectedGeneration !== latestCoreGeneration) {
+        conn.send({ type: "advisor:result", requestId: msg.requestId, ok: false, errorCode: "provider_revision_changed" });
+        break;
+      }
+      void requestAdvisorCredential(msg).then((credential) => advisorRuns.complete({ ...msg, credential }))
+        .then((result) => conn.send({ type: "advisor:result", requestId: msg.requestId, ok: true, ...result }))
+        .catch((error) => conn.send({ type: "advisor:result", requestId: msg.requestId, ok: false, errorCode: providerWorkerErrorCode(error) }));
+      break;
+    }
+    case "advisor:cancel": {
+      if (msg.expectedGeneration !== latestCoreGeneration) {
+        conn.send({ type: "advisor:result", requestId: msg.requestId, ok: false, errorCode: "provider_revision_changed" });
+        break;
+      }
+      void advisorRuns.cancel(String(msg.runId ?? "")).then(() => conn.send({ type: "advisor:result", requestId: msg.requestId, ok: true }));
+      break;
+    }
     case "ping": conn.send({ type: "pong" }); break;
   }
 }, () => {
@@ -145,6 +233,10 @@ conn = new Connection(serverUrl, workerToken, (msg) => {
     type: "ready", capabilities: ["agent:start", "agent:stop", "agent:sleep", "agent:reset", "agent:profile", "agent:deliver", "agent:workspace", "agent:turn:v2", "maintenance:claude:no-tools"],
     runtimes, runningAgents: mgr.running(), daemonVersion: process.env.DAEMON_VERSION ?? "dev",
   });
+}, undefined, async () => {
+  latestCoreGeneration = 0;
+  rejectPendingAdvisorCredentials();
+  await advisorRuns.shutdown();
 });
 
 log.info("Kith-space daemon starting", { serverUrl });
@@ -166,6 +258,7 @@ const shutdown = () => {
   if (shutdownPromise) return shutdownPromise;
   clearInterval(snapshotFallback);
   log.info("shutting down");
+  advisorRuns.shutdown();
   shutdownPromise = Promise.all([admissions.shutdown(), turns.shutdown()]).then(() => {
     conn.close();
     process.exit(0);

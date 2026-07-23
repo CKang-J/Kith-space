@@ -3,6 +3,8 @@ import { MemoryAdvisorService, scheduleMemoryAdvisorProcessing } from "../../mem
 import { MemoryError } from "../../memory/episodicMemoryService.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import type { SpaceCtx } from "./ctx.js";
+import { AdvisorProviderSettingsService } from "../../advisor-provider/advisorProviderSettingsService.js";
+import { AdvisorProviderError } from "../../advisor-provider/contracts.js";
 
 const SettingsPatchSchema = z.object({
   enabled: z.boolean().optional(),
@@ -22,8 +24,9 @@ function sendMemoryError(ctx: SpaceCtx, error: unknown): boolean {
 /** Human-only advisor settings, debug queue, and proposal decisions. */
 export async function handleMemoryAdvisor(ctx: SpaceCtx): Promise<boolean> {
   const settings = /^\/api\/agents\/([^/]+)\/memory-advisor$/.exec(ctx.p);
+  const consent = /^\/api\/agents\/([^/]+)\/memory-advisor\/(consent|revoke)$/.exec(ctx.p);
   const proposal = /^\/api\/memories\/([^/]+)\/(accept|reject)$/.exec(ctx.p);
-  if (!settings && !proposal && ctx.p !== "/api/memory-advisor/jobs" && ctx.p !== "/api/memory-advisor/process") return false;
+  if (!settings && !consent && !proposal && ctx.p !== "/api/memory-advisor/jobs" && ctx.p !== "/api/memory-advisor/process") return false;
   const service = new MemoryAdvisorService(ctx.spaceId);
   try {
     if (settings && ctx.method === "GET") {
@@ -35,6 +38,17 @@ export async function handleMemoryAdvisor(ctx: SpaceCtx): Promise<boolean> {
       const result = service.updateSettings(settings[1]!, body);
       if (body.enabled !== false && body.paused !== true) void scheduleMemoryAdvisorProcessing(ctx.spaceId);
       sendJson(ctx.res, 200, result);
+      return true;
+    }
+    if (consent && ctx.method === "POST") {
+      const providers = new AdvisorProviderSettingsService();
+      if (consent[2] === "revoke") {
+        await providers.revokeAgent(ctx.spaceId, consent[1]!);
+        sendJson(ctx.res, 200, service.settings(consent[1]!));
+      } else {
+        const body = z.object({ sourceScope: z.object({ public: z.boolean(), private: z.boolean(), dm: z.boolean() }).strict() }).strict().parse(await readJson(ctx.req));
+        sendJson(ctx.res, 200, providers.consentAgent(ctx.spaceId, consent[1]!, ctx.humanId, body.sourceScope));
+      }
       return true;
     }
     if (ctx.p === "/api/memory-advisor/jobs" && ctx.method === "GET") {
@@ -62,6 +76,7 @@ export async function handleMemoryAdvisor(ctx: SpaceCtx): Promise<boolean> {
     }
     return false;
   } catch (error) {
+    if (error instanceof AdvisorProviderError) return (sendErr(ctx.res, 409, error.message, { code: error.code }), true);
     return sendMemoryError(ctx, error);
   }
 }

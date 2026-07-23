@@ -189,6 +189,11 @@ test("settings locations normalize retired and unknown resources to Human", () =
   }
 });
 
+test("settings locations preserve the installation-level Memory Advisor resource", () => {
+  const target = workspaceLocationForModule("/s/home/channel/all", "", { moduleId: "settings", settings: "advisor" });
+  assert.equal(new URL(target, "http://kith-space.local").searchParams.get("settings"), "advisor");
+});
+
 test("module resources are decoded only for their owning module", () => {
   const search = "?taskScope=channel-1&agent=agent-1&settings=desktop";
 

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { appDbFile } from "../paths.js";
@@ -58,12 +58,13 @@ export function appDataConnection(): Database.Database {
   connection?.sqlite.close();
   connection = undefined;
   mkdirSync(path.dirname(dbPath), { recursive: true });
+  const freshInstall = !existsSync(dbPath);
   const sqlite = new Database(dbPath);
   try {
     sqlite.pragma("foreign_keys = ON");
     sqlite.pragma("secure_delete = ON");
     sqlite.pragma("busy_timeout = 5000");
-    migrateAppDatabase(sqlite, dbPath);
+    migrateAppDatabase(sqlite, dbPath, { freshInstall });
     sqlite.pragma("journal_mode = WAL");
   } catch (error) {
     sqlite.close();
