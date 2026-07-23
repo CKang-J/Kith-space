@@ -384,6 +384,8 @@
     "searchPlaceholder": "搜消息全文…",
     "searchNoResults": "没有匹配「{{q}}」的消息。",
     "settingsNavHuman": "Human 资料",
+    "settingsNavModels": "模型与供应商",
+    "settingsNavRuntimes": "运行器",
     "settingsNavSpace": "空间资料",
     "settingsNavAdvisor": "记忆 Advisor",
     "settingsNavDesktop": "桌面端与 Web",

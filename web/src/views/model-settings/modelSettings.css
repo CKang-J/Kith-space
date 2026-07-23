@@ -1,0 +1,34 @@
+.model-settings { display: grid; gap: 20px; max-width: 1120px; margin: 0 auto; padding-bottom: 96px; container-type: inline-size; }
+.settings-section { min-width: 0; border: 1px solid var(--hair); border-radius: 14px; padding: 20px; background: var(--panel, #fff); }
+.settings-section h2, .settings-section h3, .settings-section p { margin-top: 0; }
+.settings-section__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.settings-section__heading p, .runtime-list p { color: var(--muted); line-height: 1.55; }
+.settings-callout, .settings-error { padding: 12px 14px; border-radius: 10px; margin: 14px 0; overflow-wrap: anywhere; }
+.settings-callout { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.settings-error { color: #9b1c1c; background: #fef2f2; }
+.settings-master-detail { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(300px, 1.2fr); gap: 18px; min-width: 0; }
+.settings-list { display: grid; align-content: start; gap: 8px; min-width: 0; }
+.settings-list button { display: grid; gap: 3px; text-align: left; border: 1px solid var(--hair); border-radius: 10px; padding: 12px; background: transparent; min-width: 0; }
+.settings-list button.is-selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.settings-list button span, .settings-list button small { overflow-wrap: anywhere; color: var(--muted); }
+.settings-detail { min-width: 0; display: grid; gap: 10px; }
+.settings-detail label { display: grid; gap: 5px; min-width: 0; }
+.settings-detail input, .settings-detail select, .runtime-list select { width: 100%; min-width: 0; box-sizing: border-box; }
+.settings-detail hr { width: 100%; border: 0; border-top: 1px solid var(--hair); margin: 10px 0; }
+.settings-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 10px; }
+.settings-card-grid article { display: grid; gap: 5px; min-width: 0; padding: 14px; border: 1px solid var(--hair); border-radius: 10px; }
+.settings-card-grid small { color: var(--muted); overflow-wrap: anywhere; }
+.runtime-list { display: grid; gap: 10px; }
+.runtime-list article { display: grid; grid-template-columns: minmax(150px, .6fr) minmax(260px, 1fr); gap: 14px; align-items: center; padding: 14px; border: 1px solid var(--hair); border-radius: 10px; min-width: 0; }
+.runtime-list article > div, .runtime-list label { display: grid; gap: 5px; min-width: 0; }
+.runtime-list article > p { grid-column: 1 / -1; margin-bottom: 0; overflow-wrap: anywhere; }
+.wrap-anywhere { overflow-wrap: anywhere; word-break: break-word; }
+.settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-onboarding { display: grid; gap: 7px; padding-left: 22px; color: var(--muted); }
+@container (max-width: 700px) {
+  .settings-master-detail, .runtime-list article { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .settings-master-detail, .runtime-list article { grid-template-columns: 1fr; }
+  .settings-section__heading { align-items: stretch; flex-direction: column; }
+}

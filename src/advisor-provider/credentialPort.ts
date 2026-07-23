@@ -10,6 +10,7 @@ import { advisorCredentialEnvAllowed } from "./credentialEnvPolicy.js";
 type StoredSecret = { kind?: "kith_secret" | "pi_cli_source"; backendId: string; iv: string; tag: string; ciphertext: string };
 type SecretFile = { schemaVersion: 1; entries: Record<string, StoredSecret> };
 type Activation = {
+  audience: "advisor" | "chat_runtime";
   source: AdvisorCredentialSourceKind;
   ref: string | null;
   runId: string;
@@ -81,10 +82,18 @@ export class ProviderCredentialPort {
     throw new AdvisorProviderError("provider_auth_required");
   }
 
-  issue(input: Omit<Activation, "ref" | "source"> & { credentialRef: string | null; credentialSourceKind: AdvisorCredentialSourceKind }): string {
-    if (input.expiresAt <= Date.now() || input.expiresAt > Date.now() + 120_000) throw new AdvisorProviderError("provider_auth_required");
+  issue(input: Omit<Activation, "ref" | "source"> & {
+    credentialRef: string | null;
+    credentialSourceKind: AdvisorCredentialSourceKind;
+  }): string {
+    const now = Date.now();
+    if (input.expiresAt <= now || input.expiresAt > now + 120_000) throw new AdvisorProviderError("provider_auth_required");
+    for (const [handle, activation] of this.activations) {
+      if (activation.expiresAt <= now) this.activations.delete(handle);
+    }
     const handle = randomUUID();
     this.activations.set(handle, {
+      audience: input.audience,
       source: input.credentialSourceKind,
       ref: input.credentialRef,
       runId: input.runId,
@@ -147,6 +156,16 @@ export class ProviderCredentialPort {
   }
 
   revokeAll(): void { this.activations.clear(); }
+  revoke(handle: string): boolean { return this.activations.delete(handle); }
+  revokeRuntimeBeforeEpoch(epoch: number): number {
+    let revoked = 0;
+    for (const [handle, activation] of this.activations) {
+      if (activation.audience !== "chat_runtime" || activation.providerEpoch >= epoch) continue;
+      this.activations.delete(handle);
+      revoked += 1;
+    }
+    return revoked;
+  }
 
   private readFile(): SecretFile {
     let fd: number | undefined;

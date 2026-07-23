@@ -171,6 +171,8 @@ export class AdvisorProviderSettingsService {
     credentialIdentityDigest?: string;
     credentialValue?: string;
     credentialRef?: string | null;
+    sourceModelConfigurationId?: string;
+    sourceModelConfigurationRevision?: number;
   }): Promise<{ revision: number; profile: AdvisorModelProfile }> {
     if (Buffer.byteLength(canonicalJson(input.modelMetadata)) > 64 * 1024) throw new AdvisorProviderError("provider_model_incompatible");
     if (input.sourceKind === "manual" && (input.descriptorTrust !== "manual" || input.dataPolicyProvenance === "vendor_verified")) {
@@ -201,10 +203,17 @@ export class AdvisorProviderSettingsService {
     let credentialRef = input.credentialRef ?? null;
     let credentialIdentityDigest = input.credentialIdentityDigest ?? "";
     if (input.credentialSourceKind === "kith_secret") {
-      if (!input.credentialValue) throw new AdvisorProviderError("provider_auth_required");
-      const stored = providerCredentialPort.storeKithSecret(input.backendId, input.credentialValue);
-      credentialRef = stored.credentialRef;
-      credentialIdentityDigest = stored.credentialIdentityDigest;
+      if (input.credentialValue) {
+        const stored = providerCredentialPort.storeKithSecret(input.backendId, input.credentialValue);
+        credentialRef = stored.credentialRef;
+        credentialIdentityDigest = stored.credentialIdentityDigest;
+      } else if (credentialRef) {
+        const verified = providerCredentialPort.identityForStoredRef(credentialRef, input.backendId, "kith_secret");
+        if (input.credentialIdentityDigest && verified !== input.credentialIdentityDigest) {
+          throw new AdvisorProviderError("provider_auth_required");
+        }
+        credentialIdentityDigest = verified;
+      } else throw new AdvisorProviderError("provider_auth_required");
     } else if (input.credentialSourceKind === "env_ref") {
       if (!credentialRef || !advisorCredentialEnvAllowed(input.backendId, input.apiKind, credentialRef)) throw new AdvisorProviderError("provider_auth_required");
       credentialIdentityDigest = providerCredentialPort.envIdentity(credentialRef);
@@ -252,13 +261,17 @@ export class AdvisorProviderSettingsService {
           revision, source_kind, source_snapshot_digest, descriptor_trust, backend_id, model_id, api_kind,
           thinking_level, canonical_origin, region, tenant_or_project_digest, credential_source_kind,
           credential_identity_digest, credential_ref, provider_schema_version, data_policy_revision,
-          data_policy_provenance, network_class, allowed_egress_json, model_metadata_json, created_at
+          data_policy_provenance, network_class, allowed_egress_json, model_metadata_json,
+          source_model_configuration_id, source_model_configuration_revision, created_at
         ) VALUES (@revision, @sourceKind, @sourceSnapshotDigest, @descriptorTrust, @backendId, @modelId, @apiKind,
           @thinkingLevel, @canonicalOrigin, @region, @tenantOrProjectDigest, @credentialSourceKind,
           @credentialIdentityDigest, @credentialRef, @providerSchemaVersion, @dataPolicyRevision,
-          @dataPolicyProvenance, @networkClass, @allowedEgress, @modelMetadata, @createdAt)
+          @dataPolicyProvenance, @networkClass, @allowedEgress, @modelMetadata,
+          @sourceModelConfigurationId, @sourceModelConfigurationRevision, @createdAt)
         `).run({ ...profile, revision, region: profile.region ?? null, tenantOrProjectDigest: profile.tenantOrProjectDigest ?? null,
-          credentialRef, allowedEgress: canonicalJson(profile.allowedEgress), modelMetadata: canonicalJson(profile.modelMetadata), createdAt: Date.now() });
+          credentialRef, allowedEgress: canonicalJson(profile.allowedEgress), modelMetadata: canonicalJson(profile.modelMetadata),
+          sourceModelConfigurationId: input.sourceModelConfigurationId ?? null,
+          sourceModelConfigurationRevision: input.sourceModelConfigurationRevision ?? null, createdAt: Date.now() });
         sqlite.prepare(`UPDATE advisor_provider_settings SET current_model_profile_revision = ?, provider_state = 'probing',
           provider_epoch = provider_epoch + 1, revocation_epoch = revocation_epoch + 1, updated_at = ? WHERE singleton_id = 1`).run(revision, Date.now());
       });

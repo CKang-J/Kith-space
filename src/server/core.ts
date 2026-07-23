@@ -961,6 +961,18 @@ export async function startAgent(spaceId: string, agentId: string, reason: Exclu
   const db = dbForSpace(spaceId);
   const harnessMode = new SessionModule(spaceId, db).harnessMode(agentId);
   if (harnessMode === "v2") {
+    const binding = db.select({
+      state: schema.agents.modelBindingState,
+      restartRequired: schema.agents.runtimeRestartRequired,
+    }).from(schema.agents).where(and(
+      eq(schema.agents.id, agentId),
+      eq(schema.agents.spaceId, spaceId),
+      isNull(schema.agents.deletedAt),
+    )).get();
+    if (!binding) return { ok: false, reason: "agent not found" };
+    if (binding.state !== "legacy" && (binding.state !== "ready" || binding.restartRequired)) {
+      return { ok: false, reason: `model binding is ${binding.state}; confirm the Agent model binding before starting` };
+    }
     const summary = inboxSummary(spaceId, agentId, db);
     await db.update(schema.agents).set({ status: "active", activity: isWorkerConnected() ? "working" : "offline" })
       .where(and(eq(schema.agents.id, agentId), eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt)));

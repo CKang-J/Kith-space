@@ -92,6 +92,7 @@ test("OpenCode bootstrap keeps each Kith agent prompt process-local", () => {
   assert.equal(alpha.theme, "user-theme");
   assert.equal(alpha.agent.user_agent.prompt, "user prompt");
   assert.equal(alpha.agent[KITH_OPENCODE_AGENT].prompt, "alpha role");
+  assert.deepEqual(alpha.agent[KITH_OPENCODE_AGENT].permission, { "*": "allow" });
   assert.equal(beta.agent[KITH_OPENCODE_AGENT].prompt, "beta role");
   assert.notEqual(alpha.agent[KITH_OPENCODE_AGENT].prompt, beta.agent[KITH_OPENCODE_AGENT].prompt);
 });
@@ -109,7 +110,7 @@ test("OpenCode bootstrap injects kith-core without overwriting user MCP servers"
   assert.equal(config.mcp["kith-core"].environment.ELECTRON_RUN_AS_NODE, "1");
 });
 
-test("OpenCode launches with the official auto flag and an explicit model", { skip: process.platform !== "win32" }, async () => {
+test("OpenCode launches with child-only permission policy and an explicit model", { skip: process.platform !== "win32" }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "kith-space-opencode-args-"));
   const argsFile = path.join(root, "args.txt");
   const agentsFile = path.join(root, "AGENTS.md");
@@ -138,7 +139,7 @@ test("OpenCode launches with the official auto flag and an explicit model", { sk
     session.stop();
 
     const args = readFileSync(argsFile, "utf8");
-    assert.match(args, /--auto/);
+    assert.doesNotMatch(args, /--auto/);
     assert.match(args, /--model/);
     assert.match(args, /deepseek\/deepseek-chat/);
     assert.match(args, new RegExp(`"--agent"\\s+"${KITH_OPENCODE_AGENT}"`));

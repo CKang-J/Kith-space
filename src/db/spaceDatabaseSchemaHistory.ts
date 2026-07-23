@@ -1,7 +1,7 @@
 import { getTableColumns, getTableName, type Table } from "drizzle-orm";
 import * as schema from "./schema.js";
 
-export const SPACE_DATABASE_SCHEMA_VERSION = 9;
+export const SPACE_DATABASE_SCHEMA_VERSION = 10;
 export const MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION = 2;
 
 export interface WorkspaceMigrationHistoryEntry {
@@ -23,6 +23,7 @@ export const WORKSPACE_MIGRATION_HISTORY: readonly WorkspaceMigrationHistoryEntr
   { version: 7, tag: "0008_episodic_memory_core", createdAt: 1784474300000, hash: "224fda4ad7f22265faea852d49250993286ab350543af1bb6e81a63ebdeafe77" },
   { version: 8, tag: "0009_memory_advisor", createdAt: 1784480000000, hash: "992d6faf3cd9679622f8e3da8fb8e1f03c84b312c77e88ab22544d9b50b1af83" },
   { version: 9, tag: "0010_system_advisor_provider", createdAt: 1784800000000, hash: "e4635933ceafa8a77ed1d2a6855978c0f3b26cb6abff156809d31d3e7e161ca9" },
+  { version: 10, tag: "0011_model_runtime_bindings", createdAt: 1784880000000, hash: "f769bdff845cb983bcad5e29bf7ae1c11613494bf3899a425eada499d14d169f" },
 ];
 
 /** Immutable v2 baseline. Later schema entries are layered on explicitly below. */
@@ -186,6 +187,18 @@ const ADDITIONS_BY_MIGRATION = new Map<string, Array<[string, string]>>([
     ["memory_advisor_jobs", "provider_run_id"],
     ["memory_advisor_jobs", "worker_generation"],
   ]],
+  ["0011_model_runtime_bindings", [
+    ["agents", "model_binding_mode"],
+    ["agents", "model_configuration_id"],
+    ["agents", "model_configuration_revision"],
+    ["agents", "model_binding_label_snapshot"],
+    ["agents", "model_binding_fingerprint"],
+    ["agents", "confirmed_effective_provider_snapshot"],
+    ["agents", "confirmed_installation_identity_digest"],
+    ["agents", "model_binding_state"],
+    ["agents", "runtime_restart_required"],
+    ["runtime_sessions", "runtime_configuration_epoch"],
+  ]],
 ]);
 
 function cloneSchema(source: Map<string, string[]>): Map<string, string[]> {
@@ -245,6 +258,7 @@ export function requiredSpaceIndexes(version: number, migrationCount?: number): 
     ...(tags.has("0010_system_advisor_provider") ? [
       "advisor_provider_runs_status_idx", "advisor_provider_runs_agent_idx",
     ] : []),
+    ...(tags.has("0011_model_runtime_bindings") ? ["agents_model_binding_idx"] : []),
   ];
 }
 

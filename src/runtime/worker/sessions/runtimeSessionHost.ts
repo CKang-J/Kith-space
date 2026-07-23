@@ -11,6 +11,7 @@ import type {
 import type { WorkerSessionSnapshotReport } from "../../contract/sessionSnapshot.js";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { PreparedRuntimeSession, RuntimeSessionOpenOptions } from "./runtimeSessionPreparation.js";
 
 interface HostedSession {
   record: HostedRuntimeSessionRecord;
@@ -19,6 +20,7 @@ interface HostedSession {
   brokerHandle: string;
   workerGeneration: number;
   activationFile: string;
+  cleanup?: () => Promise<void>;
   lastUsedAt: number;
   active: boolean;
 }
@@ -44,7 +46,9 @@ export interface HostedRuntimeSessionRecord {
 
 export interface HostedTurnRequest {
   record: HostedRuntimeSessionRecord;
-  open: Omit<OpenRuntimeSessionOptions, "runtimeSessionId" | "sessionGeneration" | "broker">;
+  open?: RuntimeSessionOpenOptions;
+  cleanup?: PreparedRuntimeSession["cleanup"];
+  workerGeneration?: number;
   broker: OpenRuntimeSessionOptions["broker"];
   turn: RuntimeTurnInput;
   sink: RuntimeEventSink;
@@ -127,7 +131,11 @@ export class RuntimeSessionHost {
       const controls = [...this.activePreviewFlushes.values()].filter((control) => control.sessionId === hosted.record.id);
       let flushError: unknown;
       try { await Promise.all(controls.map((control) => control.flush(true))); } catch (error) { flushError = error; }
-      await hosted.session.close("shutdown");
+      try {
+        await hosted.session.close("shutdown");
+      } finally {
+        await hosted.cleanup?.();
+      }
       if (flushError) throw flushError;
     }));
   }
@@ -146,6 +154,14 @@ export class RuntimeSessionHost {
     return true;
   }
 
+  canReuseSession(record: HostedRuntimeSessionRecord, workerGeneration: number, brokerHandle: string): boolean {
+    const existing = this.hosted.get(record.id);
+    return !!existing
+      && existing.record.sessionGeneration === record.sessionGeneration
+      && existing.workerGeneration === workerGeneration
+      && existing.brokerHandle === brokerHandle;
+  }
+
   async closeAgent(agentId: string, reason: "stop" | "reset"): Promise<number> {
     for (const [attemptId, queuedAgentId] of this.queuedAttempts) {
       if (queuedAgentId === agentId && !this.activeAttempts.has(attemptId)) this.cancelledAttempts.add(attemptId);
@@ -155,7 +171,13 @@ export class RuntimeSessionHost {
     let flushError: unknown;
     try { await Promise.all(controls.map((control) => control.flush(true))); } catch (error) { flushError = error; }
     for (const hosted of sessions) this.hosted.delete(hosted.record.id);
-    await Promise.all(sessions.map((hosted) => hosted.session.close(reason)));
+    await Promise.all(sessions.map(async (hosted) => {
+      try {
+        await hosted.session.close(reason);
+      } finally {
+        await hosted.cleanup?.();
+      }
+    }));
     if (flushError) throw flushError;
     return sessions.length;
   }
@@ -301,7 +323,7 @@ export class RuntimeSessionHost {
         activationId: request.turn.capabilityActivationId,
         turnId: request.turn.turnId,
         attemptId: request.turn.attemptId,
-        workerGeneration: request.open.workerGeneration,
+        workerGeneration: this.requestWorkerGeneration(request),
       }), { encoding: "utf8", mode: 0o600 });
       if (this.cancelledAttempts.delete(request.turn.attemptId)) {
         if (this.hosted.get(hosted.record.id) === hosted) this.hosted.delete(hosted.record.id);
@@ -329,6 +351,7 @@ export class RuntimeSessionHost {
   }
 
   private async ensureHosted(request: HostedTurnRequest): Promise<HostedSession> {
+    const workerGeneration = this.requestWorkerGeneration(request);
     const existing = this.hosted.get(request.record.id);
     if (existing) {
       if (existing.record.sessionGeneration !== request.record.sessionGeneration) {
@@ -336,36 +359,43 @@ export class RuntimeSessionHost {
           sessionId: request.record.id,
         });
       }
-      if (existing.workerGeneration === request.open.workerGeneration && existing.brokerHandle === request.broker.sessionHandle) {
+      if (existing.workerGeneration === workerGeneration && existing.brokerHandle === request.broker.sessionHandle) {
         existing.record.snapshotVersion = Math.max(existing.record.snapshotVersion ?? 0, request.record.snapshotVersion ?? 0);
         existing.record.engineSessionId = request.record.engineSessionId;
+        await request.cleanup?.();
         return existing;
       }
       if (existing.active) {
         throw new HarnessError("worker_generation_stale", "active hosted session belongs to another Core generation", {
           sessionId: request.record.id,
           previousWorkerGeneration: existing.workerGeneration,
-          workerGeneration: request.open.workerGeneration,
+          workerGeneration,
         });
       }
       this.hosted.delete(request.record.id);
-      await existing.session.close("idle");
+      try {
+        await existing.session.close("idle");
+      } finally {
+        await existing.cleanup?.();
+      }
     }
+    if (!request.open) throw new Error("Runtime session preparation is unavailable");
+    const open = request.open;
     const runtime = this.runtimeResolver(request.record.runtime);
     if (!runtime) throw new Error(`No Runtime v2 adapter for ${request.record.runtime}`);
     if (runtime.capabilities.persistentProcess) await this.ensureResidentCapacity();
     const brokerHandle = request.broker.sessionHandle;
-    const activationFile = path.join(request.open.runtimeStateDir, `turn-activation-${request.record.id}.json`);
+    const activationFile = path.join(open.runtimeStateDir, `turn-activation-${request.record.id}.json`);
     try {
       const session = await runtime.openSession({
-        ...request.open,
-        restoredSnapshot: request.open.restoredSnapshot ?? request.record.restoredSnapshot ?? null,
+        ...open,
+        restoredSnapshot: open.restoredSnapshot ?? request.record.restoredSnapshot ?? null,
         env: {
-          ...request.open.env,
+          ...open.env,
           KITH_SPACE_BROKER_HANDLE: brokerHandle,
           KITH_SPACE_BROKER_ENDPOINT: request.broker.endpoint || this.brokerEndpoint,
           KITH_SPACE_ACTIVATION_FILE: activationFile,
-          KITH_SPACE_WORKER_GENERATION: String(request.open.workerGeneration),
+          KITH_SPACE_WORKER_GENERATION: String(workerGeneration),
         },
         runtimeSessionId: request.record.id,
         sessionGeneration: request.record.sessionGeneration,
@@ -376,14 +406,16 @@ export class RuntimeSessionHost {
         runtime,
         session,
         brokerHandle,
-        workerGeneration: request.open.workerGeneration,
+        workerGeneration,
         activationFile,
+        cleanup: request.cleanup,
         lastUsedAt: this.now(),
         active: false,
       };
       this.hosted.set(request.record.id, hosted);
       return hosted;
     } catch (error) {
+      await request.cleanup?.().catch(() => {});
       throw error;
     }
   }
@@ -409,13 +441,18 @@ export class RuntimeSessionHost {
     const evictable = residents.filter((hosted) => !hosted.active).sort((left, right) => left.lastUsedAt - right.lastUsedAt)[0];
     if (!evictable) throw new Error("resident runtime process capacity exhausted");
     this.hosted.delete(evictable.record.id);
-    await evictable.session.close("idle");
+    try {
+      await evictable.session.close("idle");
+    } finally {
+      await evictable.cleanup?.();
+    }
   }
 
   private assertEvent(request: HostedTurnRequest, event: RuntimeEventEnvelope, expectedOrdinal: number): void {
-    if (event.workerGeneration !== request.open.workerGeneration) {
+    const workerGeneration = this.requestWorkerGeneration(request);
+    if (event.workerGeneration !== workerGeneration) {
       throw new HarnessError("worker_generation_stale", "Runtime event came from a stale Worker generation", {
-        expected: request.open.workerGeneration,
+        expected: workerGeneration,
         actual: event.workerGeneration,
       });
     }
@@ -431,6 +468,12 @@ export class RuntimeSessionHost {
         actualOrdinal: event.ordinal,
       });
     }
+  }
+
+  private requestWorkerGeneration(request: HostedTurnRequest): number {
+    const generation = request.workerGeneration ?? request.open?.workerGeneration;
+    if (!Number.isInteger(generation) || generation! < 1) throw new Error("Worker generation is unavailable");
+    return generation!;
   }
 
   private acquireActiveSlot(): Promise<void> {

@@ -33,8 +33,28 @@ function withAppDatabase(run: (sqlite: Database.Database, dbPath: string) => voi
 const LEGACY_V3_CHECKSUM = "3188d1283621a7b042594c340ace87b42195cef97b689ffb5c0f78535b9b7eba";
 const LEGACY_V5_CHECKSUM = "935bab99c7fa6ecb6b79e0eabba2ee4e074f12f62551998c9d58daf05c6a2d0b";
 
-function downgradeToLegacyV3(sqlite: Database.Database): void {
+function removeV6ControlPlane(sqlite: Database.Database): void {
   sqlite.pragma("foreign_keys = OFF");
+  sqlite.exec(`
+    DROP TABLE cli_config_import_snapshots;
+    DROP TABLE runtime_probe_cache;
+    DROP TABLE runtime_profile_revisions;
+    DROP TABLE runtime_profiles;
+    DROP TABLE model_configuration_revisions;
+    DROP TABLE model_configurations;
+    DROP TABLE model_provider_connection_revisions;
+    DROP TABLE model_provider_connections;
+    ALTER TABLE advisor_model_profile_revisions DROP COLUMN source_model_configuration_revision;
+    ALTER TABLE advisor_model_profile_revisions DROP COLUMN source_model_configuration_id;
+    ALTER TABLE advisor_provider_settings DROP COLUMN model_configuration_revision;
+    ALTER TABLE advisor_provider_settings DROP COLUMN model_configuration_id;
+    ALTER TABLE installation_state DROP COLUMN runtime_configuration_epoch;
+    DELETE FROM app_migration_journal WHERE version >= 6;
+  `);
+}
+
+function downgradeToLegacyV3(sqlite: Database.Database): void {
+  removeV6ControlPlane(sqlite);
   sqlite.exec(`
     DROP TABLE pi_cli_config_imports;
     DROP TABLE advisor_provider_settings;
@@ -105,6 +125,7 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       { version: 3, name: "user-global-memory", checksumLength: 64 },
       { version: 4, name: "user-global-memory-foreign-keys", checksumLength: 64 },
       { version: 5, name: "advisor-provider-control-plane", checksumLength: 64 },
+      { version: 6, name: "model-runtime-control-plane", checksumLength: 64 },
     ]);
     assert.match(String(sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get()), /^[0-9a-f]{64}$/);
     for (const table of [
@@ -119,6 +140,14 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       "user_episodic_memory_revisions",
       "user_memory_suppressions",
       "user_memory_fts",
+      "model_provider_connections",
+      "model_provider_connection_revisions",
+      "model_configurations",
+      "model_configuration_revisions",
+      "runtime_profiles",
+      "runtime_profile_revisions",
+      "runtime_probe_cache",
+      "cli_config_import_snapshots",
     ]) assert.ok(tableNames(sqlite).includes(table), `missing ${table}`);
     assert.deepEqual((sqlite.prepare("PRAGMA index_info(user_memory_mutations_key_uniq)").all() as Array<{ name: string }>).map((row) => row.name), [
       "actor_json", "idempotency_key",
@@ -134,6 +163,33 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       current_provider_revision: 1,
       current_model_profile_revision: null,
     });
+    assert.equal(sqlite.prepare(`
+      SELECT runtime_configuration_epoch
+      FROM installation_state WHERE singleton_key = 1
+    `).pluck().get(), 1);
+    assert.deepEqual(sqlite.prepare(`
+      SELECT runtime_id, default_binding_mode, default_model_configuration_id, default_model_configuration_revision
+      FROM runtime_profiles ORDER BY runtime_id
+    `).all(), [
+      { runtime_id: "claude", default_binding_mode: "unset", default_model_configuration_id: null, default_model_configuration_revision: null },
+      { runtime_id: "codex", default_binding_mode: "unset", default_model_configuration_id: null, default_model_configuration_revision: null },
+      { runtime_id: "opencode", default_binding_mode: "unset", default_model_configuration_id: null, default_model_configuration_revision: null },
+      { runtime_id: "pi", default_binding_mode: "unset", default_model_configuration_id: null, default_model_configuration_revision: null },
+    ]);
+    assert.throws(() => sqlite.prepare(`
+      UPDATE runtime_profiles
+      SET default_binding_mode = 'kith_model_configuration',
+          default_model_configuration_id = NULL,
+          default_model_configuration_revision = NULL
+      WHERE runtime_id = 'claude'
+    `).run(), /CHECK constraint/i);
+    assert.throws(() => sqlite.prepare(`
+      UPDATE runtime_profiles
+      SET default_binding_mode = 'unmanaged_cli_native',
+          default_model_configuration_id = 'unexpected',
+          default_model_configuration_revision = 1
+      WHERE runtime_id = 'claude'
+    `).run(), /CHECK constraint/i);
   });
 });
 
@@ -164,6 +220,7 @@ test("unversioned legacy app.db preserves Space rows and remains on legacy runti
 test("version 1 app.db upgrades in place with a stable installation content HMAC key", () => {
   withAppDatabase((sqlite, dbPath) => {
     migrateAppDatabase(sqlite, dbPath);
+    removeV6ControlPlane(sqlite);
     sqlite.exec(`
       PRAGMA user_version = 1;
       DELETE FROM app_migration_journal WHERE version >= 2;
@@ -196,6 +253,7 @@ test("version 2 app.db adds isolated user-global memory tables without changing 
   withAppDatabase((sqlite, dbPath) => {
     migrateAppDatabase(sqlite, dbPath);
     const key = sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get();
+    removeV6ControlPlane(sqlite);
     sqlite.exec(`
       PRAGMA user_version = 2;
       DELETE FROM app_migration_journal WHERE version >= 3;
@@ -282,7 +340,7 @@ test("legacy version 3 app.db repairs composite revision foreign keys without lo
 test("pre-existing v4 app.db upgrades to an explicit legacy_runtime state", () => {
   withAppDatabase((sqlite, dbPath) => {
     migrateAppDatabase(sqlite, dbPath);
-    sqlite.pragma("foreign_keys = OFF");
+    removeV6ControlPlane(sqlite);
     sqlite.exec(`
       DROP TABLE pi_cli_config_imports;
       DROP TABLE advisor_model_profile_revisions;

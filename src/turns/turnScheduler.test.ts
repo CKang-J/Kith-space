@@ -11,15 +11,31 @@ import { kithSpaceHome } from "../paths.js";
 import type { RuntimeWorkerPort, TurnAdmitCommand } from "../runtime/contract/runtimeWorkerPort.js";
 import { HarnessTurnScheduler } from "./turnScheduler.js";
 import { TurnLedger } from "./turnLedger.js";
+import { RuntimeProfileService } from "../model-control/runtimeProfileService.js";
+import { runtimeConfigurationEpochGate } from "../runtime/config/runtimeConfigurationEpochGate.js";
+import { appDataConnection } from "../app-data/appDatabase.js";
+import { AgentModelBindingService } from "../model-control/agentModelBindingService.js";
 
 function setup() {
+  appDataConnection().prepare(`
+    UPDATE runtime_profiles
+    SET default_binding_mode = 'unmanaged_cli_native',
+        default_model_configuration_id = NULL,
+        default_model_configuration_revision = NULL
+    WHERE runtime_id = 'claude'
+  `).run();
+  const binding = new AgentModelBindingService().resolve("claude", { mode: "runtime_default" });
+  runtimeConfigurationEpochGate.open(new RuntimeProfileService().runtimeConfigurationEpoch());
   const spaceId = randomUUID();
   const agentId = randomUUID();
   const channelId = randomUUID();
   const rootPath = path.join(kithSpaceHome(), "turn-scheduler", spaceId);
   registerSpace({ id: spaceId, name: "Scheduler", slug: `scheduler-${spaceId}`, rootPath });
   const db = dbForSpace(spaceId);
-  db.insert(schema.agents).values({ id: agentId, spaceId, name: "scheduler-agent", displayName: "Scheduler Agent", runtime: "claude", status: "active" }).run();
+  db.insert(schema.agents).values({
+    id: agentId, spaceId, name: "scheduler-agent", displayName: "Scheduler Agent", runtime: "claude",
+    status: "active", ...binding,
+  }).run();
   db.insert(schema.channels).values({ id: channelId, spaceId, name: "scheduler", type: "channel" }).run();
   db.insert(schema.channelAgentMembers).values({ channelId, agentId, lastReadSeq: 0 }).run();
   db.insert(schema.agentHarnessState).values({ agentId, mode: "v2" }).run();

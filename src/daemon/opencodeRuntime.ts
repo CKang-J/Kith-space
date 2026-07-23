@@ -6,8 +6,9 @@
 //  1. stdin MUST be "ignore" — with a piped/non-TTY stdout, `opencode run` BLOCKS reading stdin
 //     forever (it never emits a single event). The daemon uses pipe stdio, so this would hang every
 //     agent. We pass the message as argv and close stdin.
-//  2. --auto is required for headless runs (otherwise it waits on approval),
-//     and NODE_OPTIONS is stripped from the child env (a proxy flag like `--use-env-proxy` makes some
+//  2. Headless permission policy belongs to the child-only internal agent config. OpenCode 1.15.10
+//     removed the older `run --auto` flag, so passing it is not version-compatible. NODE_OPTIONS is
+//     stripped from the child env (a proxy flag like `--use-env-proxy` makes some
 //     bundled CLIs refuse to start). The system prompt is injected into a child-only internal agent
 //     through OPENCODE_CONFIG_CONTENT; user/project AGENTS.md files are never modified.
 import type { ChildProcess } from "node:child_process";
@@ -45,6 +46,7 @@ export function buildOpencodeConfigContent(systemPrompt: string, existing?: stri
         description: "Internal Kith-space runtime execution agent",
         mode: "primary",
         prompt: systemPrompt,
+        permission: { "*": "allow" },
       },
     },
     ...(command ? { mcp: { ...mcp, "kith-core": { type: "local", command: [command, ...args], environment, enabled: true } } } : {}),
@@ -118,7 +120,7 @@ export function handleOpencodeEvent(evt: any): OpencodeEmit {
 }
 
 function buildArgs(message: string, opts: StartOpts, sessionId: string | null): string[] {
-  const args = ["run", "--format", "json", "--auto", "--agent", KITH_OPENCODE_AGENT, "--dir", opts.cwd];
+  const args = ["run", "--format", "json", "--agent", KITH_OPENCODE_AGENT, "--dir", opts.cwd];
   const model = opts.model && opts.model !== "default" ? opts.model : "";
   if (model) args.push("--model", model);
   const v = variant(opts.runtimeConfig);
@@ -169,8 +171,7 @@ class OpencodeRun {
     const proc = spawnRuntimeProcess("opencode", args, { cwd: this.opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: this.env });
     this.proc = proc;
     let buf = "";
-    const errTail: string[] = [];
-    let errLen = 0;
+    let stderrBytes = 0;
     let emittedError = false;
     const usage: Omit<NormalizedUsage, "source"> = {};
     const processLine = (ln: string) => {
@@ -201,8 +202,7 @@ class OpencodeRun {
       for (const ln of lines) processLine(ln);
     });
     proc.stderr?.on("data", (c: Buffer) => {
-      const t = c.toString(); errTail.push(t); errLen += t.length;
-      while (errLen > 4096 && errTail.length > 1) errLen -= errTail.shift()!.length;
+      stderrBytes += c.length;
     });
     proc.on("error", (e) => {
       this.proc = null; this.turnBusy = false; if (this.stopped) return;
@@ -222,12 +222,12 @@ class OpencodeRun {
         this.pump();
         return;
       }
-      const tail = errTail.join("").trim();
-      const detail = tail || `opencode exited ${code ?? "signal"}`;
+      const detail = `opencode exited ${code ?? "signal"}`;
       if (!emittedError) {
-        this.cb.onTrajectory([{ kind: "text", text: `[opencode error] (${this.opts.model}) ${clip(detail).slice(0, 500)}` }]);
-        this.cb.onActivity("error", detail.split("\n").filter(Boolean).pop()!.slice(0, 200));
+        this.cb.onTrajectory([{ kind: "text", text: `[opencode error] (${this.opts.model}) runtime process failed` }]);
+        this.cb.onActivity("error", detail);
       }
+      if (stderrBytes) this.cb.log.debug("opencode stderr received", { bytes: stderrBytes });
       this.cb.onTurnResult?.({ outcome: "failed", errorCode: emittedError ? "opencode_provider_error" : "opencode_process_failed" });
       if (!this.everSucceeded) { this.cb.onExit(emittedError ? 1 : (code ?? 1)); return; } // first-turn hard failure → crashed
       this.pump(); // later-turn failure → keep the session alive so the next message can retry

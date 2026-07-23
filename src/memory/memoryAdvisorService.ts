@@ -142,7 +142,13 @@ function sourceAllowedByConsent(
       .where(eq(schema.messages.id, channel.parentMessageId)).get();
     if (parent) channel = tx.select().from(schema.channels).where(eq(schema.channels.id, parent.channelId)).get();
   }
-  return channel?.type === "dm" ? scope.dm : channel?.type === "private" ? scope.private : channel?.type === "public" ? scope.public : false;
+  return channel?.type === "dm"
+    ? scope.dm
+    : channel?.type === "private"
+      ? scope.private
+      : channel?.type === "channel"
+        ? scope.public
+        : false;
 }
 
 function sourceVisibility(tx: SpaceTransaction, channelId: string): Source["visibility"] | null {
@@ -156,7 +162,13 @@ function sourceVisibility(tx: SpaceTransaction, channelId: string): Source["visi
     if (!parent) return null;
     channel = tx.select().from(schema.channels).where(eq(schema.channels.id, parent.channelId)).get();
   }
-  return channel?.type === "dm" ? "dm" : channel?.type === "private" ? "private" : channel?.type === "public" ? "public" : null;
+  return channel?.type === "dm"
+    ? "dm"
+    : channel?.type === "private"
+      ? "private"
+      : channel?.type === "channel"
+        ? "public"
+        : null;
 }
 
 /** Transactional edge from a completed logical turn to a visible, pinned advisor job. */
@@ -350,6 +362,7 @@ export class MemoryAdvisorService {
             .where(and(inArray(schema.memoryAdvisorJobs.id, batch.map((job) => job.id)), eq(schema.memoryAdvisorJobs.leaseOwner, this.leaseOwner))).run();
         });
         const handle = providerCredentialPort.issue({
+          audience: "advisor",
           credentialRef: systemResolved.credentialRef,
           credentialSourceKind: systemResolved.profile.credentialSourceKind,
           backendId: systemResolved.profile.backendId,

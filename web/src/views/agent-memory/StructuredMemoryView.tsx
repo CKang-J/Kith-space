@@ -172,16 +172,28 @@ export function StructuredMemoryView({ agentId, onDataChanged, refreshToken = 0 
           {(["active", "proposals", "archived"] as const).map((value) => <button role="tab" aria-selected={tab === value} className={tab === value ? "on" : ""} key={value} onClick={() => changeTab(value)}>{t(`members.memoryPanel.tabs.${value}`)}</button>)}
         </div>
         <label className="memory-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("members.memoryPanel.filters.search")} /></label>
-        <Select value={kind} options={kindOptions} onChange={(value) => setFilter(setKind, value)} ariaLabel={t("members.memoryPanel.filters.kind")} />
-        <Select value={scope} options={scopeOptions} onChange={(value) => setFilter(setScope, value)} ariaLabel={t("members.memoryPanel.filters.scope")} />
-        {tab === "archived" ? <Select value={archiveStatus} options={(["archived", "superseded", "rejected"] as const).map((value) => ({ value, label: t(`members.memoryPanel.status.${value}`) }))} onChange={(value) => { setArchiveStatus(value as MemoryStatus); setPage(1); }} ariaLabel={t("members.memoryPanel.filters.status")} /> : null}
-        <label className="memory-revoked-filter"><input type="checkbox" checked={revokedOnly} onChange={(event) => { setRevokedOnly(event.target.checked); setPage(1); }} />{t("members.memoryPanel.filters.revoked")}</label>
+        <details className="memory-filter-menu">
+          <summary>筛选{kind || scope || revokedOnly ? " · 已启用" : ""}</summary>
+          <div>
+            <Select value={kind} options={kindOptions} onChange={(value) => setFilter(setKind, value)} ariaLabel={t("members.memoryPanel.filters.kind")} />
+            <Select value={scope} options={scopeOptions} onChange={(value) => setFilter(setScope, value)} ariaLabel={t("members.memoryPanel.filters.scope")} />
+            {tab === "archived" ? <Select value={archiveStatus} options={(["archived", "superseded", "rejected"] as const).map((value) => ({ value, label: t(`members.memoryPanel.status.${value}`) }))} onChange={(value) => { setArchiveStatus(value as MemoryStatus); setPage(1); }} ariaLabel={t("members.memoryPanel.filters.status")} /> : null}
+            <label className="memory-revoked-filter"><input type="checkbox" checked={revokedOnly} onChange={(event) => { setRevokedOnly(event.target.checked); setPage(1); }} />{t("members.memoryPanel.filters.revoked")}</label>
+            <button type="button" className="cancel" onClick={() => {
+              setKind(""); setScope(""); setRevokedOnly(false); setQuery(""); setPage(1);
+            }}>清除筛选</button>
+          </div>
+        </details>
       </div>
       {error ? <div className="memory-panel-error">{error}</div> : null}
       <div className="memory-browser">
         <div className="memory-list-pane">
           {loading ? <div className="empty">{t("members.loading")}</div>
-            : data.items.length === 0 ? <div className="empty">{t("members.memoryPanel.empty")}</div>
+            : data.items.length === 0 ? <div className="empty">{t("members.memoryPanel.empty")}
+              {(kind || scope || revokedOnly || query) ? <button type="button" className="cancel" onClick={() => {
+                setKind(""); setScope(""); setRevokedOnly(false); setQuery(""); setPage(1);
+              }}>清除筛选</button> : null}
+            </div>
               : data.items.map((item) => {
                 const freshness = memoryFreshness(item);
                 return <button className={`memory-list-item${selectedId === item.memory.id ? " active" : ""}`} key={item.memory.id} onClick={() => setSelectedId(item.memory.id)}>

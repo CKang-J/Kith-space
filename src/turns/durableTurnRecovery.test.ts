@@ -11,6 +11,10 @@ import type { RuntimeWorkerPort, TurnAdmitCommand } from "../runtime/contract/ru
 import { turnDispatchAdapter } from "../server/turnDispatchAdapter.js";
 import { DurableTurnRecovery, type DurableTurnRecoveryTimer } from "./durableTurnRecovery.js";
 import { HarnessTurnScheduler } from "./turnScheduler.js";
+import { RuntimeProfileService } from "../model-control/runtimeProfileService.js";
+import { runtimeConfigurationEpochGate } from "../runtime/config/runtimeConfigurationEpochGate.js";
+import { appDataConnection } from "../app-data/appDatabase.js";
+import { AgentModelBindingService } from "../model-control/agentModelBindingService.js";
 
 function controlledTimer() {
   let callback: (() => void) | null = null;
@@ -82,6 +86,15 @@ test("recovery skips a reentrant tick until the active scan settles", async () =
 });
 
 test("periodic recovery closes the post-commit kill window without duplicating wake budget or logical work", async () => {
+  appDataConnection().prepare(`
+    UPDATE runtime_profiles
+    SET default_binding_mode = 'unmanaged_cli_native',
+        default_model_configuration_id = NULL,
+        default_model_configuration_revision = NULL
+    WHERE runtime_id = 'claude'
+  `).run();
+  const binding = new AgentModelBindingService().resolve("claude", { mode: "runtime_default" });
+  runtimeConfigurationEpochGate.open(new RuntimeProfileService().runtimeConfigurationEpoch());
   const spaceId = randomUUID();
   const agentId = randomUUID();
   const channelId = randomUUID();
@@ -92,6 +105,7 @@ test("periodic recovery closes the post-commit kill window without duplicating w
   const db = dbForSpace(spaceId);
   db.insert(schema.agents).values({
     id: agentId, spaceId, name: "recovery-agent", displayName: "Recovery Agent", runtime: "claude", status: "active",
+    ...binding,
   }).run();
   db.insert(schema.channels).values({ id: channelId, spaceId, name: "recovery", type: "channel" }).run();
   db.insert(schema.channelAgentMembers).values({ channelId, agentId, lastReadSeq: 0 }).run();

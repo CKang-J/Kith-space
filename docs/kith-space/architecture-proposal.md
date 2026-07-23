@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述个人 AgentOS 的目标模块边界。A2-A6、Home/Space root 的 H1-H4、P-A8、本轮聊天/壳层 UI、P-A9.0-P-A9.7、P-A10.0–P-A10.7与系统Memory Advisor Provider切片0–4均已完成。当前 workspace schema v9、app.db v5、per-surface SessionModule、三家 v2 bridge、durable delivery/turn、server-owned direct-mention thread、Context Envelope、实时父级ACL、broker-backed `kith-core` MCP/CLI Gateway、revisioned episodic memory、安装级可替换Advisor Provider/记忆面板、turn inspector、session checklist/short wake、snapshot与compaction telemetry已落地；2026-07-23 已接受但尚未实现统一模型/运行器控制面、Pi第四家正式v2 runtime和记忆设置UI重构。H5继续作为独立后续。P-A9 完整规格见 `../superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`，P-A10 规格见 `../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`，待实现控制面见`../superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`。
+> 本文描述个人 AgentOS 的目标模块边界。A2-A6、Home/Space root 的 H1-H4、P-A8、本轮聊天/壳层 UI、P-A9.0-P-A9.7、P-A10.0–P-A10.7、系统Memory Advisor Provider切片0–4与统一模型/运行器控制面均已完成。当前 workspace schema v10、app.db v6、per-surface SessionModule、四家 v2 runtime、durable delivery/turn、Context Envelope、broker-backed MCP/CLI Gateway、revisioned episodic memory、安装级模型/运行器/Advisor控制面、snapshot与compaction telemetry已落地。H5继续作为独立后续。完整控制面见`../superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`。
 
 ## 1. 架构原则
 
@@ -376,9 +376,9 @@ Provider设置、不可变revision和单调provider/revocation epoch属于安装
 
 内置Provider精确锁定`@earendil-works/pi-ai@0.81.1`并设为fresh install默认，Claude Code保留为显式可切换Provider；既有安装保持`legacy_runtime`。Kith-owned `pi-advisor-helper.mjs`只通过锁定版本公开`createModels`、显式provider factory、`models.getModel`与`models.completeSimple()`完成一次调用，不实例化Pi AgentSession、agent loop、工具或资源发现，也不依赖系统已安装的Pi CLI。Provider与`Advisor Model Profile`正交：后者独立选择模型供应商、模型、API、thinking、endpoint、凭据来源与数据政策，切换聊天runtime或Provider均不默默换模型。
 
-本机Pi CLI只作为可选配置/凭据来源。Human明确触发后，Kith纯数据解析器以真实路径、owner/mode、`O_NOFOLLOW`和同一FD前后`fstat`读取全局`settings.json`、`models.json`和选定provider的`auth.json`来源，生成脱敏不可变快照；不读取Space项目`.pi`配置，不加载extension/skill/session，不调用命令/env resolver、OAuth刷新、provider hook或写回。新安装“默认Pi”只设置Provider初值，没有兼容Model Profile、凭据、能力探测与per-Agent consent时仍保持setup且不读取evidence。实现模块位于`src/advisor-provider/`、`src/runtime/worker/maintenance/advisorRunController.ts`、`piSdkAdvisorProvider.ts`和`pi-advisor-helper.ts`；app.db v5与workspace schema v9分别承担安装级revision/epoch和Space内consent/job/run。完整架构、数据模型、时序、迁移切片、失败模式、安全门禁和验收矩阵见`../superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md`。
+本机Pi CLI只作为可选配置/凭据来源。Human明确触发后，Kith纯数据解析器以真实路径、owner/mode、`O_NOFOLLOW`和同一FD前后`fstat`读取全局`settings.json`、`models.json`和选定provider的`auth.json`来源，生成脱敏不可变快照；不读取Space项目`.pi`配置，不加载extension/skill/session，不调用命令/env resolver、OAuth刷新、provider hook或写回。新安装“默认Pi”只设置Provider初值，没有兼容Model Profile、凭据、能力探测与per-Agent consent时仍保持setup且不读取evidence。实现模块位于`src/advisor-provider/`、`src/runtime/worker/maintenance/advisorRunController.ts`、`piSdkAdvisorProvider.ts`和`pi-advisor-helper.ts`；Advisor Provider基础控制面由app.db v5与workspace schema v9承担，当前总版本app.db v6/workspace schema v10在其上增加统一模型/runtime控制面和Space内Agent绑定。完整架构、数据模型、时序、迁移切片、失败模式、安全门禁和验收矩阵见`../superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md`。
 
-## 13. 统一模型/运行器控制面与 Pi Runtime（已接受，待实现）
+## 13. 统一模型/运行器控制面与 Pi Runtime（已实现）
 
 2026-07-23 的后续目标把安装级配置拆为三个正交对象：
 
@@ -390,6 +390,8 @@ Provider设置、不可变revision和单调provider/revocation epoch属于安装
 
 Core新增窄`ModelProviderConnectionService`、`ModelConfigurationService`、`RuntimeProfileService`、`AdvisorBindingService`和脱敏presenter；Worker新增`RuntimeConfigCompilerRegistry`，按runtime把统一配置翻译为参数、child-only环境、Kith-owned临时配置和fingerprint。聊天runtime另有`RuntimeCredentialActivationPort`：Core只下发绑定session/generation/revisions/epoch/digest/expiry的无密钥descriptor，Worker通过Worker-only本机控制通道单次兑换，明文只短暂进入Worker内存和child env。安全相关配置变化先提升安装级`runtime_configuration_epoch`阻断旧admission，再撤销attempt/activation和关闭旧session，不能把异步`restart_required`当安全门。Claude Code使用启动参数/官方环境，Codex使用启动override或临时`CODEX_HOME`/profile，OpenCode继续使用`OPENCODE_CONFIG_CONTENT`，Pi使用Kith-owned`PI_CODING_AGENT_DIR`与RPC启动配置。Kith可显式、只读导入Pi/Claude/Codex/OpenCode安全配置元数据，但默认不修改任何用户CLI全局文件；未来写回若存在，必须是独立、显式、diff/备份/原子/可回滚的高级动作。
 
-Pi当前已有`src/daemon/piRuntime.ts` experimental print-mode one-shot和真实JSONL fixture，但`src/turns/turnScheduler.ts`与`RUNTIME_V2_CAPABILITY_MATRIX`只承认Claude/Codex/OpenCode。目标把Pi提升为第四家正式P-A10 v2 runtime：使用本机外部Pi CLI的RPC模式，每个surface拥有独占hosted-session generation目录；默认禁用project/user extension、skill、prompt、theme、context和未声明更新/telemetry网络；以版本化真实probe验证strict LF、correlated response、session、abort、`agent_settled`、usage和compaction，其中只有`agent_settled`映射turn terminal。snapshot只保存不透明ID/相对文件名并执行目录、owner、mode、schema、size和fingerprint校验。Pi没有内置MCP时以现有`kith-space` CLI Gateway提供完整工具并诚实报告MCP unsupported；后续Pi extension如实现，只能是Transport Adapter，不能复制领域规则。Pi Agent runtime与内置Pi SDK Advisor的helper/session/权限始终分离。
+Agent启动 admission 同样 fail closed：除合法legacy绑定外，解析结果不是`ready`时，Core在创建/恢复runtime session之前直接拒绝。Human必须在Agent详情的独立绑定编辑器中重新确认当前默认fingerprint或选择固定配置；确认后才创建携带当前epoch的新generation，避免`restart_required`状态被一次普通“启动”静默绕过。
 
-app.db计划从v5升级到v6，新增稳定连接/模型配置/runtime profile及其不可变revision和脱敏CLI导入快照；workspace.db计划在v9之后为Agent增加模型绑定字段，同时保留`runtime/model/reasoning/runtime_config`作为迁移与回滚输入。配置revision变化不会热改旧session，受影响Agent进入`restart_required`并由新generation生效。具体数据模型、compiler契约、权限边界、UI、迁移和验收见`../superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`。
+`src/runtime/adapters/piRpcRuntimeV2.ts`已把本机外部Pi CLI提升为第四家正式P-A10 v2 runtime：每个surface generation使用Kith-owned目录，strict LF + streaming UTF-8解析、correlated response、`get_state`、abort、usage、compaction和`agent_settled`终态均有独立fixture。启动固定禁用project/user extension、skill、prompt template、theme、context、更新检查和telemetry；snapshot只保存不透明session id与fingerprint。Pi通过既有`kith-space` CLI Gateway使用工具并诚实报告MCP unsupported，与内置Pi SDK Advisor的helper/session/activation完全分离。
+
+app.db v6新增稳定连接、模型配置、runtime profile及其不可变revision、短寿命probe和脱敏CLI导入快照；workspace.db v10增加Agent模型绑定、跨安装确认快照与session runtime epoch，同时保留旧runtime/model/runtime_config作迁移输入。`model-control/`拥有领域服务与脱敏presenter，`runtime/config/`拥有四家窄compiler、单次凭据activation和fail-closed epoch gate。配置revision变化提升安装级epoch，旧session admission立即失效并由新generation生效；默认不写任何CLI全局配置。

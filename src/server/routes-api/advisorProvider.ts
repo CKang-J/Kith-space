@@ -106,6 +106,7 @@ export async function handleAdvisorProvider(ctx: HumanCtx): Promise<boolean> {
           const current = service.currentExecution();
           if (current.snapshot.executionSnapshotDigest !== execution.snapshot.executionSnapshotDigest) throw new AdvisorProviderError("provider_revision_changed");
           return providerCredentialPort.issue({
+            audience: "advisor",
             credentialRef: execution.credentialRef, credentialSourceKind: execution.profile.credentialSourceKind,
             backendId: execution.profile.backendId, apiKind: execution.profile.apiKind,
             expectedCredentialIdentityDigest: prepared.snapshot.credentialIdentityDigest,

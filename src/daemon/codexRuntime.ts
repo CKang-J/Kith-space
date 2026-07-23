@@ -271,7 +271,9 @@ export const codexRuntime: Runtime = {
       }
     })();
 
-    proc.stderr?.on("data", (c: Buffer) => { const t = c.toString().trim(); if (t) cb.log.debug("codex stderr", { t: t.slice(0, 300) }); });
+    proc.stderr?.on("data", (c: Buffer) => {
+      if (c.length) cb.log.debug("codex stderr received", { bytes: c.length });
+    });
     proc.on("error", (e: NodeJS.ErrnoException) => {
       spawnFailed = true;
       const detail = e.code === "ENOENT" ? "codex not found" : "codex spawn failed";

@@ -73,7 +73,7 @@ test("Claude, Codex, and opencode chat Agents share one consented system Provide
       allowedEgress: ["https://api.anthropic.com"], modelMetadata: { supportedThinking: ["off"] },
     });
     provider.recordProbe(true);
-    db.insert(schema.channels).values({ id: channelId, spaceId, name: "shared", type: "public" }).run();
+    db.insert(schema.channels).values({ id: channelId, spaceId, name: "shared", type: "channel" }).run();
     let seq = 0;
     const fake = new FakeSystemProvider();
     const agents: Array<{ agentId: string; sessionId: string }> = [];

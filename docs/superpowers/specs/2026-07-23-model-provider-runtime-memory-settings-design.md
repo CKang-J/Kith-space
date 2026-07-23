@@ -1,6 +1,6 @@
 # Kith-space 模型供应商、运行器与记忆设置重构方案
 
-> 状态：Accepted / Pending implementation
+> 状态：Implemented
 >
 > 日期：2026-07-23
 >
@@ -9,6 +9,8 @@
 > 前置规格：`2026-07-22-system-memory-advisor-provider-design.md`
 >
 > 证据来源：当前实现、2026-07-23 真实界面审计、`reference/codeg` 的 Apache-2.0 设置交互，以及 Claude Code / Codex / OpenCode / Pi 官方配置文档
+>
+> 实施说明：本规格已落地为 app.db v6、workspace.db v10、四家runtime compiler、Worker-only凭据activation、Pi RPC v2 runtime及拆分后的设置/Agent记忆界面；文末验收矩阵继续保留为回归清单，不表示待实施状态。
 
 ## 1. 决策摘要
 

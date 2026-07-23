@@ -14,6 +14,7 @@ export interface RuntimeSessionConfiguration {
   adapterVersion: string;
   engineHostFingerprint?: string | null;
   workspaceRootFingerprint: string;
+  runtimeConfigurationEpoch?: number;
   allowWorkspaceRelocationResume?: boolean;
 }
 
@@ -186,6 +187,7 @@ export class SessionModule {
         && current.runtime === configuration.runtime
         && current.model === (configuration.model ?? null)
         && current.runtimeConfigFingerprint === fingerprint
+        && current.runtimeConfigurationEpoch === (configuration.runtimeConfigurationEpoch ?? null)
         && current.adapterVersion === configuration.adapterVersion
         && current.engineHostFingerprint === (configuration.engineHostFingerprint ?? null)
         && workspaceCompatible;
@@ -231,6 +233,7 @@ export class SessionModule {
         runtime: configuration.runtime,
         model: configuration.model ?? null,
         runtimeConfigFingerprint: fingerprint,
+        runtimeConfigurationEpoch: configuration.runtimeConfigurationEpoch ?? null,
         adapterVersion: configuration.adapterVersion,
         engineHostFingerprint: configuration.engineHostFingerprint ?? null,
         workspaceRootFingerprint: configuration.workspaceRootFingerprint,

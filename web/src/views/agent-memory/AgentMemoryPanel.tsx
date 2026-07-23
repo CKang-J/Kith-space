@@ -131,7 +131,13 @@ export function AgentMemoryPanel({ agentId }: { agentId: string }) {
         <button role="tab" aria-selected={view === "files"} className={view === "files" ? "on" : ""} onClick={() => setView("files")}>{t("members.memoryPanel.files")}</button>
       </div>
       {view === "structured" ? <>
-        <AdvisorStatusCard state={advisor} jobs={jobs} suppressions={suppressions} busy={advisorBusy} onPatch={patchAdvisor} onRevokeSuppression={revokeSuppression} onConsent={consentAdvisor} onRevokeConsent={revokeAdvisorConsent} />
+        <details className="memory-advisor-controls">
+          <summary>
+            <span>Memory Advisor</span>
+            <small>{advisor ? (advisor.settings.enabled ? "已启用" : "已停用") : "正在读取"} · {jobs.length} 个任务</small>
+          </summary>
+          <AdvisorStatusCard state={advisor} jobs={jobs} suppressions={suppressions} busy={advisorBusy} onPatch={patchAdvisor} onRevokeSuppression={revokeSuppression} onConsent={consentAdvisor} onRevokeConsent={revokeAdvisorConsent} />
+        </details>
         {error ? <div className="memory-panel-error">{error}</div> : null}
         <StructuredMemoryView agentId={agentId} refreshToken={structuredRefresh} onDataChanged={() => void loadControlPlane()} />
       </> : <Suspense fallback={<div className="empty">{t("members.loading")}</div>}><FilesMemoryView agentId={agentId} /></Suspense>}

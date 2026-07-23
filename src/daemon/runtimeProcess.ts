@@ -6,8 +6,10 @@ export function spawnRuntimeProcess(
   command: string,
   args: readonly string[],
   options: SpawnOptions,
+  protocol?: { rawBytes?: boolean },
 ): ChildProcess {
   const child = crossSpawn(command, args, options);
+  if (protocol?.rawBytes) return child;
   // Runtime protocols are UTF-8 text streams. Let Node keep decoder state across arbitrary pipe
   // chunks so a multibyte character split by the OS is not replaced before JSON/JSONL parsing.
   child.stdout?.setEncoding("utf8");

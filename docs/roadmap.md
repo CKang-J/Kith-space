@@ -168,6 +168,8 @@ P-A10.3已实现Context Envelope、MessageContextSnapshot、server-owned direct-
 
 2026-07-22形成、2026-07-23修订并完成的[系统级可替换Memory Advisor Provider方案](./superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md)已把自动提炼从聊天Agent runtime解耦：新安装默认使用Desktop内置、精确锁版的Pi SDK Provider，Claude Code可切换，执行Provider与结构化记忆的Model Profile独立版本化。Human可手工选择模型供应商/模型/API/endpoint/thinking/凭据来源，或显式、安全地从Pi CLI全局配置导入模型目录；项目`.pi`、命令表达式和动态资源发现不进入Advisor。Claude/Codex/opencode聊天Agent在逐Agent授权后均可使用同一个系统Provider，runtime-neutral的结构化recall与Human管理继续独立可用。该方案不命名为P-A10.8，也不吞并受限consolidation、skill reconciliation和runtime security/approval/Vault；后三者继续分别后置为P-A11、P-A12、P-S1。
 
+2026-07-23接受的[模型供应商、运行器与记忆设置重构方案](./superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md)已实现：app.db v6与workspace.db v10承载不可变连接/模型/runtime revision和Agent绑定，四家窄compiler默认不写CLI全局配置；Pi使用外部CLI RPC进入正式v2矩阵，Pi SDK Advisor保持独立。设置新增“模型与供应商”“运行器”，Memory Advisor改为执行器+模型配置摘要，Agent创建支持runtime default/pinned绑定与草稿恢复。
+
 ### 4.4 本机跨 Space 聚合
 
 以 Home Spaces 目录和 SpaceDirectoryService 为地基，在真实 `scope = current | all` 数据契约上提供跨 Space Inbox、Tasks、Calendar 和信息流。聚合遍历本机 Space 数据库，不引入云端或多用户语义。

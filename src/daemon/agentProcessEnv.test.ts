@@ -45,3 +45,26 @@ test("agent runtime env preserves provider access but strips every host capabili
     "CLAUDECODE",
   ]) assert.equal(env[name], undefined, `${name} must not reach an agent runtime`);
 });
+
+test("managed runtime env strips every ambient provider credential before compiler activation", () => {
+  const env = buildAgentProcessEnv({
+    source: {
+      PATH: "provider-bin",
+      OPENAI_API_KEY: "openai",
+      ANTHROPIC_AUTH_TOKEN: "anthropic",
+      AWS_SECRET_ACCESS_KEY: "aws",
+      CUSTOM_BEARER_TOKEN: "custom",
+      LANG: "en_US.UTF-8",
+    },
+    binDir: "agent-bin",
+    serverUrl: "http://127.0.0.1:7777",
+    agentId: "agent-1",
+    agentToken: "agent-token",
+    managedConfiguration: true,
+  });
+  assert.equal(env.OPENAI_API_KEY, undefined);
+  assert.equal(env.ANTHROPIC_AUTH_TOKEN, undefined);
+  assert.equal(env.AWS_SECRET_ACCESS_KEY, undefined);
+  assert.equal(env.CUSTOM_BEARER_TOKEN, undefined);
+  assert.equal(env.LANG, "en_US.UTF-8");
+});

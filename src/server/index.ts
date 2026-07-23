@@ -25,6 +25,9 @@ import { handleTurnGateway } from "./turn-gateway/routes.js";
 import { startMemoryAdvisorScheduler } from "../memory/memoryAdvisorService.js";
 import { startDurableTurnRecovery } from "./harnessComposition.js";
 import { AdvisorProviderSettingsService } from "../advisor-provider/advisorProviderSettingsService.js";
+import { handleRuntimeCredentialRedemption } from "./runtimeCredentialRedemption.js";
+import { RuntimeProfileService } from "../model-control/runtimeProfileService.js";
+import { runtimeConfigurationEpochGate } from "../runtime/config/runtimeConfigurationEpochGate.js";
 
 assertInternalCredentialsConfigured();
 
@@ -114,6 +117,7 @@ const server = http.createServer(async (req, res) => {
       if (!requestPeerIsLoopback(req) && !isDesktopTrustedRequest(req)) return sendErr(res, 404, "not found");
       return sendJson(res, 200, { ok: true, service: "kith-space", workerConnected: isWorkerConnected(), time: new Date().toISOString() });
     }
+    if (await handleRuntimeCredentialRedemption(req, res, url, method)) return;
     if (await handleTurnGateway(req, res, url, method)) return;
     if (await handleAgentApi(req, res, url, method)) return;
     if (await handleApi(req, res, url, method)) return;
@@ -135,6 +139,7 @@ attachSocketIO(server); // human-side realtime (socket.io, /socket.io/)
 attachWs(server);       // daemon control plane (raw ws, /daemon/connect)
 startReminderScheduler(); // reminder scheduler: fires at due time, wakes the author
 new AdvisorProviderSettingsService().recover();
+runtimeConfigurationEpochGate.open(new RuntimeProfileService().runtimeConfigurationEpoch());
 const stopMemoryAdvisorScheduler = startMemoryAdvisorScheduler();
 let stopDurableTurnRecovery = () => {};
 

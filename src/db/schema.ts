@@ -33,6 +33,18 @@ export const agents = sqliteTable("agents", {
   model: text("model"),
   runtime: text("runtime").default("claude").notNull(),
   runtimeConfig: text("runtime_config", { mode: "json" }).$type<Record<string, unknown>>().default({}).notNull(),
+  modelBindingMode: text("model_binding_mode").$type<"runtime_default" | "pinned">(),
+  modelConfigurationId: text("model_configuration_id"),
+  modelConfigurationRevision: integer("model_configuration_revision"),
+  modelBindingLabelSnapshot: text("model_binding_label_snapshot"),
+  modelBindingFingerprint: text("model_binding_fingerprint"),
+  confirmedEffectiveProviderSnapshot: text("confirmed_effective_provider_snapshot", { mode: "json" }).$type<Record<string, unknown>>(),
+  confirmedInstallationIdentityDigest: text("confirmed_installation_identity_digest"),
+  modelBindingState: text("model_binding_state")
+    .$type<"legacy" | "ready" | "setup_required" | "confirmation_required" | "incompatible" | "restart_required">()
+    .default("legacy")
+    .notNull(),
+  runtimeRestartRequired: integer("runtime_restart_required", { mode: "boolean" }).default(false).notNull(),
   executionMode: text("execution_mode").default("auto").notNull(),
   envVars: text("env_vars", { mode: "json" }).$type<Record<string, string>>().default({}).notNull(),
   agentTokenHash: text("agent_token_hash"),
@@ -48,7 +60,20 @@ export const agents = sqliteTable("agents", {
   createdAt: timestamp("created_at").default(now).notNull(),
 }, (t) => ({
   bySpace: index("agents_space_idx").on(t.spaceId),
+  byModelBinding: index("agents_model_binding_idx").on(t.modelBindingState, t.modelBindingMode),
   nameUniq: uniqueIndex("agents_name_uniq").on(t.spaceId, t.name).where(sql`${t.deletedAt} is null`),
+  modelBindingCheck: check("agents_model_binding_check", sql`
+    (${t.modelBindingState} = 'legacy' and ${t.modelBindingMode} is null
+      and ${t.modelConfigurationId} is null and ${t.modelConfigurationRevision} is null)
+    or (${t.modelBindingMode} = 'runtime_default'
+      and ${t.modelConfigurationId} is null and ${t.modelConfigurationRevision} is null)
+    or (${t.modelBindingMode} = 'pinned'
+      and ${t.modelConfigurationId} is not null and ${t.modelConfigurationRevision} is not null)
+  `),
+  modelBindingStateCheck: check("agents_model_binding_state_check", sql`
+    ${t.modelBindingState} in ('legacy', 'ready', 'setup_required', 'confirmation_required', 'incompatible', 'restart_required')
+  `),
+  runtimeRestartRequiredCheck: check("agents_runtime_restart_required_check", sql`${t.runtimeRestartRequired} in (0, 1)`),
 }));
 
 export type AgentHarnessMode = "legacy" | "migrating" | "v2";
@@ -75,6 +100,7 @@ export const runtimeSessions = sqliteTable("runtime_sessions", {
   runtime: text("runtime").notNull(),
   model: text("model"),
   runtimeConfigFingerprint: text("runtime_config_fingerprint").notNull(),
+  runtimeConfigurationEpoch: integer("runtime_configuration_epoch"),
   adapterVersion: text("adapter_version").notNull(),
   engineSessionId: text("engine_session_id"),
   engineHostFingerprint: text("engine_host_fingerprint"),

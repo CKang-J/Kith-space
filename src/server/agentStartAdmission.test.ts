@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import test from "node:test";
+import { eq } from "drizzle-orm";
 import type { WebSocket } from "ws";
 import { closeSpaceDb, dbForSpace, registerSpace, schema, unregisterSpace } from "../db/index.js";
 import {
@@ -107,6 +108,38 @@ test("a v2 manual start returns only a body-free per-surface inbox summary", asy
     const serialized = JSON.stringify(result);
     assert.equal(serialized.includes("public body"), false);
     assert.equal(serialized.includes("private body"), false);
+  } finally {
+    closeSpaceDb(spaceId);
+    unregisterSpace(spaceId);
+  }
+});
+
+test("a v2 Agent with a stale model binding cannot be marked active", async () => {
+  const spaceId = randomUUID();
+  const agentId = randomUUID();
+  const rootPath = path.join(kithSpaceHome(), "v2-stale-model-binding", spaceId);
+  registerSpace({ id: spaceId, name: "V2 stale binding", slug: `v2-stale-${spaceId}`, rootPath });
+  const db = dbForSpace(spaceId);
+  try {
+    db.insert(schema.agents).values({
+      id: agentId,
+      spaceId,
+      name: "stale-binding-agent",
+      displayName: "Stale Binding Agent",
+      status: "inactive",
+      modelBindingMode: "runtime_default",
+      modelBindingState: "restart_required",
+      runtimeRestartRequired: true,
+    }).run();
+    db.insert(schema.agentHarnessState).values({ agentId, mode: "v2" }).run();
+
+    const result = await startAgent(spaceId, agentId);
+
+    assert.equal(result.ok, false);
+    assert.match(result.reason ?? "", /confirm the Agent model binding/);
+    const agent = db.select().from(schema.agents).where(eq(schema.agents.id, agentId)).get()!;
+    assert.equal(agent.status, "inactive");
+    assert.equal(agent.activity, "offline");
   } finally {
     closeSpaceDb(spaceId);
     unregisterSpace(spaceId);

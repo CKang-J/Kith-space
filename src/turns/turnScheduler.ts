@@ -7,6 +7,7 @@ import { createLogger } from "../log.js";
 import { WorkerAdmissionUncertainError } from "../local-runtime/workerHub.js";
 import type { RuntimeWorkerPort } from "../runtime/contract/runtimeWorkerPort.js";
 import { RUNTIME_V2_CAPABILITY_MATRIX } from "../runtime/adapters/runtimeV2CapabilityMatrix.js";
+import { RuntimeProfileService } from "../model-control/runtimeProfileService.js";
 import { SessionModule, type RuntimeSessionRecord } from "../sessions/sessionModule.js";
 import { coreLoopbackUrl } from "../server/localEndpoint.js";
 import { TurnCapabilityService, type PreparedTurnCapability } from "../capabilities/turnCapabilityService.js";
@@ -17,11 +18,47 @@ import { assertAgentSurfaceAccessInTransaction } from "../channels/agentSurfaceA
 import { SessionWakeupService } from "../sessions/sessionWakeupService.js";
 import { SessionSnapshotService } from "../sessions/sessionSnapshotService.js";
 import type { RuntimeSessionSnapshot } from "../runtime/contract/sessionSnapshot.js";
+import { RuntimeConfigurationActivationService } from "../model-control/runtimeConfigurationActivationService.js";
+import { runtimeConfigurationEpochGate } from "../runtime/config/runtimeConfigurationEpochGate.js";
+import { appDataConnection } from "../app-data/appDatabase.js";
+import { AgentModelBindingService } from "../model-control/agentModelBindingService.js";
 
 const LEASE_MS = Number(process.env.KITH_SPACE_TURN_LEASE_MS ?? 90_000);
 const HEARTBEAT_MS = Math.max(1_000, Math.min(30_000, Math.floor(LEASE_MS / 3)));
 const TURN_DEADLINE_MS = Number(process.env.KITH_SPACE_TURN_DEADLINE_MS ?? 10 * 60_000);
 const DISPATCH_BATCH_LIMIT = 8;
+
+function installationIdentityDigest(): string {
+  return String(appDataConnection().prepare(`
+    SELECT installation_identity_digest FROM advisor_provider_settings WHERE singleton_id = 1
+  `).pluck().get());
+}
+
+function bindingFingerprintMatches(agent: {
+  runtime: string;
+  modelBindingMode: "runtime_default" | "pinned" | null;
+  modelConfigurationId: string | null;
+  modelConfigurationRevision: number | null;
+  modelBindingFingerprint: string | null;
+}): boolean {
+  if (!agent.modelBindingMode) return false;
+  try {
+    const resolved = new AgentModelBindingService().resolve(
+      agent.runtime as any,
+      agent.modelBindingMode === "runtime_default"
+        ? { mode: "runtime_default" }
+        : {
+          mode: "pinned",
+          modelConfigurationId: agent.modelConfigurationId ?? "",
+          modelConfigurationRevision: agent.modelConfigurationRevision ?? 0,
+        },
+    );
+    return resolved.modelBindingState === "ready"
+      && resolved.modelBindingFingerprint === agent.modelBindingFingerprint;
+  } catch {
+    return false;
+  }
+}
 
 export interface HarnessTurnSchedulerOptions {
   runtimeWorker: RuntimeWorkerPort;
@@ -241,8 +278,28 @@ export class HarnessTurnScheduler {
       schema.agentDeliveryItems.targetSurfaceId,
     ).all();
     for (const target of pending) {
-      const agent = db.select({ status: schema.agents.status }).from(schema.agents).where(eq(schema.agents.id, target.agentId)).get();
-      if (agent?.status !== "active") continue;
+      const agent = db.select({
+        status: schema.agents.status,
+        modelBindingState: schema.agents.modelBindingState,
+        runtimeRestartRequired: schema.agents.runtimeRestartRequired,
+        confirmedInstallationIdentityDigest: schema.agents.confirmedInstallationIdentityDigest,
+        runtime: schema.agents.runtime,
+        modelBindingMode: schema.agents.modelBindingMode,
+        modelConfigurationId: schema.agents.modelConfigurationId,
+        modelConfigurationRevision: schema.agents.modelConfigurationRevision,
+        modelBindingFingerprint: schema.agents.modelBindingFingerprint,
+      }).from(schema.agents).where(eq(schema.agents.id, target.agentId)).get();
+      if (agent?.status !== "active" || agent.modelBindingState !== "ready" || agent.runtimeRestartRequired
+        || agent.confirmedInstallationIdentityDigest !== installationIdentityDigest()
+        || !bindingFingerprintMatches(agent)) {
+        if (agent?.status === "active" && agent.modelBindingState === "ready") {
+          db.update(schema.agents).set({
+            modelBindingState: "confirmation_required",
+            runtimeRestartRequired: true,
+          }).where(eq(schema.agents.id, target.agentId)).run();
+        }
+        continue;
+      }
       const config = await this.options.agentConfig(spaceId, target.agentId);
       if (!config || !isSupportedRuntime(config.runtime)) continue;
       const matrix = RUNTIME_V2_CAPABILITY_MATRIX[config.runtime];
@@ -254,6 +311,7 @@ export class HarnessTurnScheduler {
           runtimeConfig: config.runtimeConfig ?? null,
           adapterVersion: matrix.adapterVersion,
           workspaceRootFingerprint: createHash("sha256").update(config.workspaceRoot).digest("hex"),
+          runtimeConfigurationEpoch: new RuntimeProfileService().runtimeConfigurationEpoch(),
           allowWorkspaceRelocationResume: matrix.capabilities.cwdRelocatableResume,
         });
         new TurnLedger(spaceId, db, this.now).bindPendingDeliveries(session);
@@ -274,13 +332,33 @@ export class HarnessTurnScheduler {
     const session = db.select().from(schema.runtimeSessions).where(eq(schema.runtimeSessions.id, turn.runtimeSessionId)).get();
     if (!session || session.retiredAt) return;
     const config = await this.options.agentConfig(spaceId, turn.agentId);
-    const agent = db.select({ status: schema.agents.status }).from(schema.agents).where(eq(schema.agents.id, turn.agentId)).get();
+    const runtimeConfigurationEpoch = new RuntimeProfileService().runtimeConfigurationEpoch();
+    const agent = db.select({
+      status: schema.agents.status,
+      modelBindingState: schema.agents.modelBindingState,
+      runtimeRestartRequired: schema.agents.runtimeRestartRequired,
+      confirmedInstallationIdentityDigest: schema.agents.confirmedInstallationIdentityDigest,
+      runtime: schema.agents.runtime,
+      modelBindingMode: schema.agents.modelBindingMode,
+      modelConfigurationId: schema.agents.modelConfigurationId,
+      modelConfigurationRevision: schema.agents.modelConfigurationRevision,
+      modelBindingFingerprint: schema.agents.modelBindingFingerprint,
+    }).from(schema.agents).where(eq(schema.agents.id, turn.agentId)).get();
     const ledger = new TurnLedger(spaceId, db, this.now);
-    if (agent?.status !== "active") {
-      ledger.retirePendingTurn(turn.id, "agent_inactive");
+    if (agent?.status !== "active" || agent.modelBindingState !== "ready" || agent.runtimeRestartRequired
+      || agent.confirmedInstallationIdentityDigest !== installationIdentityDigest()
+      || !bindingFingerprintMatches(agent)) {
+      if (agent?.status === "active" && agent.modelBindingState === "ready") {
+        db.update(schema.agents).set({
+          modelBindingState: "confirmation_required",
+          runtimeRestartRequired: true,
+        }).where(eq(schema.agents.id, turn.agentId)).run();
+      }
+      ledger.retirePendingTurn(turn.id, agent?.status !== "active" ? "agent_inactive" : "runtime_configuration_changed");
       return;
     }
-    if (!config || !isSupportedRuntime(config.runtime) || config.runtime !== session.runtime) {
+    if (!config || !isSupportedRuntime(config.runtime) || config.runtime !== session.runtime
+      || session.runtimeConfigurationEpoch !== runtimeConfigurationEpoch) {
       this.log.warn("turn runtime is unavailable", { spaceId, turnId, agentId: turn.agentId, runtime: config?.runtime });
       ledger.retirePendingTurn(turn.id, "runtime_configuration_changed");
       if (config && isSupportedRuntime(config.runtime)) this.armAt(spaceId, this.now() + 1);
@@ -322,6 +400,7 @@ export class HarnessTurnScheduler {
       throw error;
     }
     let prepared: PreparedTurnCapability | null = null;
+    let runtimeCredentialHandle: string | null = null;
     const deadlineAt = this.now() + TURN_DEADLINE_MS;
     try {
       prepared = capabilityService.prepare(claimed.attempt.id);
@@ -330,36 +409,58 @@ export class HarnessTurnScheduler {
         prepared.claims.activationId,
         continuityMode,
       );
-      const admission = await this.options.runtimeWorker.admitTurn({
-        type: "agent:turn:admit",
-        source: "turn",
-        commandId: claimed.attempt.id,
-        spaceId,
-        agentId: turn.agentId,
-        config,
-        session: sessionDescriptor(session, restoredSnapshot),
-        broker: { sessionHandle: prepared.sessionHandle, endpoint: coreLoopbackUrl() },
-        turn: {
-          turnId: turn.id,
+      await runtimeConfigurationEpochGate.withAdmission(runtimeConfigurationEpoch, async () => {
+        const activationService = new RuntimeConfigurationActivationService();
+        const runtimeActivation = await activationService.issue({
+          spaceId,
+          agentId: turn.agentId,
+          runtimeSessionId: session.id,
+          sessionGeneration: session.sessionGeneration,
+          workerGeneration: generation,
+          runtimeConfigurationEpoch,
+        });
+        runtimeCredentialHandle = runtimeActivation?.credentialHandle ?? null;
+        const effectiveConfig = runtimeActivation ? {
+          ...config,
+          runtimeConfig: {
+            ...(config.runtimeConfig ?? {}),
+            managedRuntimeConfiguration: runtimeActivation,
+          },
+        } : config;
+        const admission = await this.options.runtimeWorker.admitTurn({
+          type: "agent:turn:admit",
+          source: "turn",
+          commandId: claimed.attempt.id,
+          spaceId,
+          agentId: turn.agentId,
+          config: effectiveConfig,
+          session: sessionDescriptor(session, restoredSnapshot),
+          broker: { sessionHandle: prepared!.sessionHandle, endpoint: coreLoopbackUrl() },
+          turn: {
+            turnId: turn.id,
+            attemptId: claimed.attempt.id,
+            context: assembled.renderedContext,
+            capabilityActivationId: prepared!.claims.activationId,
+            deadlineAt,
+          },
+        });
+        if (admission.status !== "admitted") throw new Error(admission.reason ?? `turn admission ${admission.status}`);
+        ledger.markAdmitted(claimed.attempt.id);
+        await this.options.dispatch?.commitTurn(spaceId, turn.id);
+        capabilityService.activate(prepared!);
+        if (!this.options.runtimeWorker.activateTurn({
+          type: "agent:turn:activate",
+          generation,
           attemptId: claimed.attempt.id,
-          context: assembled.renderedContext,
-          capabilityActivationId: prepared.claims.activationId,
-          deadlineAt,
-        },
+          activationId: prepared!.claims.activationId,
+        })) throw new Error("Worker disconnected before turn activation");
+        ledger.markRunning(claimed.attempt.id);
       });
-      if (admission.status !== "admitted") throw new Error(admission.reason ?? `turn admission ${admission.status}`);
-      ledger.markAdmitted(claimed.attempt.id);
-      await this.options.dispatch?.commitTurn(spaceId, turn.id);
-      capabilityService.activate(prepared);
-      if (!this.options.runtimeWorker.activateTurn({
-        type: "agent:turn:activate",
-        generation,
-        attemptId: claimed.attempt.id,
-        activationId: prepared.claims.activationId,
-      })) throw new Error("Worker disconnected before turn activation");
-      ledger.markRunning(claimed.attempt.id);
       this.trackHeartbeat(spaceId, claimed.attempt.id, owner, generation, deadlineAt);
     } catch (error) {
+      if (runtimeCredentialHandle) {
+        new RuntimeConfigurationActivationService().revoke(runtimeCredentialHandle);
+      }
       if (error instanceof WorkerAdmissionUncertainError) {
         this.log.warn("turn admission uncertain; lease recovery will decide", { spaceId, turnId, attemptId: claimed.attempt.id, generation });
         this.armAt(spaceId, claimed.attempt.leaseExpiresAt.getTime());
@@ -454,7 +555,7 @@ export class HarnessTurnScheduler {
 }
 
 function isSupportedRuntime(runtime: string | undefined): runtime is keyof typeof RUNTIME_V2_CAPABILITY_MATRIX {
-  return runtime === "claude" || runtime === "codex" || runtime === "opencode";
+  return runtime === "claude" || runtime === "codex" || runtime === "opencode" || runtime === "pi";
 }
 
 function sessionDescriptor(session: RuntimeSessionRecord, snapshot: RuntimeSessionSnapshot | null) {

@@ -10,12 +10,13 @@ import { useConfirm, useEscClose } from "../ConfirmModal.tsx";
 import { useToast } from "../toast.tsx";
 import i18n from "../i18n";
 import { mergeWorkspaceSearch, workspaceLocationForModule, workspaceSearchForShellState } from "../shell/workspaceRoute.ts";
-import { LOCAL_RUNTIME_DEFAULT, useRuntimeDiscovery } from "../useRuntimeDiscovery.ts";
+import { useRuntimeDiscovery } from "../useRuntimeDiscovery.ts";
 import { agentStatusLabel } from "../agentStatus.ts";
 import { SearchField } from "../components/SearchField.tsx";
 import { AgentDefaultResponseModeCard } from "./agent-response-mode/AgentDefaultResponseModeCard.tsx";
 import { normalizeAgentResponseMode } from "./agent-response-mode/responseModeModel.ts";
 import { AgentMemoryPanel } from "./agent-memory/AgentMemoryPanel.tsx";
+import { AgentModelBindingEditor } from "./model-settings/AgentModelBindingEditor.tsx";
 
 // Unified agent status label: fine-grained activity (working/thinking/online) takes priority;
 // offline/absent falls back to lifecycle status (active/sleeping/inactive).
@@ -210,6 +211,7 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
                 <button className="joinbtn" onClick={startEdit}>{t("members.editProfile")}</button>
               </div>
             </div>
+            <AgentModelBindingEditor agent={a} api={api} onSaved={refetch} />
             <AgentDefaultResponseModeCard
               agentId={id}
               value={normalizeAgentResponseMode(a.defaultResponseMode)}
@@ -404,35 +406,57 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
   const [name, setName] = useState(prefill?.name ?? ""); const [desc, setDesc] = useState(prefill?.description ?? "");
   const [fast, setFast] = useState(false);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
+  const [bindingMode, setBindingMode] = useState<"runtime_default" | "pinned">("runtime_default");
+  const [modelConfigurations, setModelConfigurations] = useState<any[]>([]);
+  const [modelConfigurationId, setModelConfigurationId] = useState("");
   const {
     runtime, setRuntime, runtimeOptions, runtimesLoading, runtimeError, runtimeInstalled,
-    supportsLocalDefault, model, models, modelsLoading, modelError, selectModel, retryModels,
-    reasoning, setReasoning,
-  } = useRuntimeDiscovery(api);
+  } = useRuntimeDiscovery(api, false);
+  useEffect(() => {
+    void api("GET", "/api/settings/model-configurations")
+      .then((result: any) => setModelConfigurations(result.items ?? []))
+      .catch(() => setModelConfigurations([]));
+  }, [api]);
+  useEffect(() => {
+    const saved = sessionStorage.getItem("kith-agent-create-draft");
+    if (!saved) return;
+    try {
+      const value = JSON.parse(saved);
+      if (!prefill?.name && typeof value.name === "string") setName(value.name);
+      if (!prefill?.description && typeof value.description === "string") setDesc(value.description);
+      if (value.bindingMode === "runtime_default" || value.bindingMode === "pinned") setBindingMode(value.bindingMode);
+      if (typeof value.modelConfigurationId === "string") setModelConfigurationId(value.modelConfigurationId);
+    } catch { /* ignore stale draft */ }
+  }, []);
+  useEffect(() => {
+    sessionStorage.setItem("kith-agent-create-draft", JSON.stringify({
+      name, description: desc, runtime, bindingMode, modelConfigurationId,
+    }));
+  }, [bindingMode, desc, modelConfigurationId, name, runtime]);
   const create = async () => {
     const nm = name.trim();
     if (!nm) { setErr(t("members.nameRequired")); return; }
     if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(nm) || nm.length > 64) { setErr(t("members.nameInvalid")); return; } // @mention handle must be token-safe; keep regex + length 64 in sync with core.ts AGENT_NAME_RE / MAX_AGENT_NAME
     if (!runtimeInstalled) { setErr(t("members.runtimeUnavailable")); return; }
-    if (!model) { setErr(t("members.modelRequired")); return; }
+    if (bindingMode === "pinned" && !modelConfigurationId) { setErr("请选择 Kith 模型配置"); return; }
     setBusy(true); setErr("");
     try {
-      const r = await api("POST", "/api/agents", { name: nm, description: desc.trim() || null, runtime, model: model && model !== LOCAL_RUNTIME_DEFAULT ? model : null, reasoning: thinkingLevels.length ? (reasoning || null) : null, fastMode: fast });
+      const selectedConfiguration = modelConfigurations.find((item) => item.id === modelConfigurationId);
+      const r = await api("POST", "/api/agents", { name: nm,
+        description: desc.trim() || null, runtime,
+        model: null,
+        modelBinding: bindingMode === "pinned"
+          ? { mode: "pinned", modelConfigurationId, modelConfigurationRevision: selectedConfiguration?.currentRevision ?? 1 }
+          : { mode: "runtime_default" },
+        reasoning: null, fastMode: fast,
+      });
       if (r?.error) { setErr(r.error); return; }
       await reload();
       if (r?.id) { if (r.started === false) toast.info(t("members.agentCreatedOffline")); onCreated?.({ id: r.id, name: r.name ?? nm }); }
+      sessionStorage.removeItem("kith-agent-create-draft");
       onClose();
     } catch (e: any) { setErr(String(e?.message || e)); } finally { setBusy(false); }
   };
-  const selModel = models.find((m) => m.id === model);
-  const thinkingLevels = selModel?.thinking?.levels ?? [];
-  const modelOpts = [
-    ...(supportsLocalDefault ? [{ value: LOCAL_RUNTIME_DEFAULT, label: t("members.useLocalDefault") }] : []),
-    ...(models.length
-      ? models.map((m) => ({ value: m.id, label: m.label || m.id }))
-      : []),
-  ];
-  const modelLoadingOpts = [{ value: "", label: t("members.detectingModels"), disabled: true }];
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -444,20 +468,22 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
           <Select ariaLabel="Runtime" value={runtime} options={runtimeOptions} onChange={setRuntime} placeholder={runtimesLoading ? t("members.detectingRuntimes") : undefined} />
         </fieldset>
         {runtimeError && <div className="form-err">{runtimeError}</div>}
-        <label>{t("common.model")}</label>
-        {/* During probe flight: disable interaction and show a localized detection placeholder. */}
-        <fieldset disabled={modelsLoading || !runtimeInstalled} style={{ border: 0, padding: 0, margin: 0, opacity: modelsLoading || !runtimeInstalled ? 0.6 : 1 }}>
-          <Select ariaLabel="Model" value={modelsLoading ? "" : model} options={modelsLoading ? modelLoadingOpts : modelOpts} onChange={selectModel} placeholder={modelError || undefined} />
-        </fieldset>
-        {modelError && <div className="form-err">{modelError} <button type="button" className="cancel" onClick={retryModels}>{t("members.retryModelDetection")}</button></div>}
-        {thinkingLevels.length > 0 && <>
-          <label>{t("members.reasoningLabel")}</label>
-          <Select ariaLabel="Reasoning" value={reasoning} onChange={setReasoning}
-            options={[{ value: "", label: t("members.reasoningDefault") }, ...thinkingLevels.map((l) => ({ value: l.value, label: l.label }))]} />
-        </>}
+        <label>模型绑定</label>
+        <Select ariaLabel="模型绑定方式" value={bindingMode} onChange={(value) => setBindingMode(value as "runtime_default" | "pinned")}
+          options={[
+            { value: "runtime_default", label: "跟随运行器默认配置" },
+            { value: "pinned", label: "固定 Kith 模型配置" },
+          ]} />
+        {bindingMode === "pinned" ? <>
+          <label>Kith 模型配置</label>
+          <Select ariaLabel="Kith 模型配置" value={modelConfigurationId} onChange={setModelConfigurationId}
+            options={modelConfigurations.filter((item) => item.compatibility?.[runtime]?.supported)
+              .map((item) => ({ value: item.id, label: `${item.displayName} · ${item.provider.displayName}` }))}
+            placeholder="请先在“设置 → 模型与供应商”创建兼容配置" />
+        </> : null}
         <label className="ck-row"><input type="checkbox" checked={fast} onChange={(e) => setFast(e.target.checked)} /><span>{t("members.fastMode")}</span></label>
         {err && <div className="form-err">{err}</div>}
-        <div className="acts"><button className="cancel" onClick={onClose}>{t("members.cancel")}</button><button className="ok" onClick={create} disabled={busy || runtimesLoading || modelsLoading || !runtimeInstalled || !model}>{busy ? t("members.creating") : t("members.create")}</button></div>
+        <div className="acts"><button className="cancel" onClick={onClose}>{t("members.cancel")}</button><button className="ok" onClick={create} disabled={busy || runtimesLoading || !runtimeInstalled || (bindingMode === "pinned" && !modelConfigurationId)}>{busy ? t("members.creating") : t("members.create")}</button></div>
       </div>
     </div>
   );

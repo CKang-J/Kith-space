@@ -78,6 +78,13 @@
       "when": 1784800000000,
       "tag": "0010_system_advisor_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1784880000000,
+      "tag": "0011_model_runtime_bindings",
+      "breakpoints": true
     }
   ]
 }

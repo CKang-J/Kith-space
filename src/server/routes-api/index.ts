@@ -39,6 +39,7 @@ import { handleMemories } from "./memories.js";
 import { handleMemoryAdvisor } from "./memoryAdvisor.js";
 import { handleDisclosureGrants } from "./disclosureGrants.js";
 import { handleAdvisorProvider } from "./advisorProvider.js";
+import { handleModelSettings } from "./modelSettings.js";
 
 export async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, method: string): Promise<boolean> {
   const p = url.pathname;
@@ -66,6 +67,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (await handleLocalRuntimeHumanScope(humanCtx)) return true;
   if (await handleSpacesHumanScope(humanCtx)) return true;
   if (await handleAdvisorProvider(humanCtx)) return true;
+  if (await handleModelSettings(humanCtx)) return true;
 
   // ---- gate 2: require a registered local Space context ----
   const spaceId = spaceIdHeader(req);

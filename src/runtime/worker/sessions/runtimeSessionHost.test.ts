@@ -16,6 +16,7 @@ function record(id: string, agentId = "agent-1", surfaceId = id): RuntimeSession
     runtime: "claude",
     model: null,
     runtimeConfigFingerprint: "fingerprint",
+    runtimeConfigurationEpoch: null,
     adapterVersion: "test",
     engineSessionId: null,
     engineHostFingerprint: null,
@@ -104,6 +105,47 @@ test("session host restores the validated adapter snapshot and returns monotonic
   const fallback = await host.snapshotAll();
   assert.equal(fallback[0]?.snapshotVersion, 7);
   await host.closeAll();
+});
+
+test("session host prepares managed configuration once per resident session and cleans it on close", async () => {
+  let prepared = 0;
+  let cleaned = 0;
+  const runtime: RuntimeV2 = {
+    name: "claude",
+    capabilities: {
+      resumableSession: true, persistentProcess: true, mcp: "none",
+      hooks: { beforeTool: false, afterTool: false, beforeCompact: false, afterCompact: false, stopFinalize: false },
+      usage: "none", cancellation: "process",
+      context: { modelWindow: "unknown", tokenEstimator: "approximate" },
+      cwdRelocatableResume: false, toolIsolation: "none",
+    },
+    async openSession(options) {
+      return {
+        async runTurn() { return { outcome: "completed", engineSessionId: options.runtimeSessionId }; },
+        async cancel() {},
+        async snapshot() { return { schemaVersion: 1, payload: {} }; },
+        async close() {},
+      };
+    },
+  };
+  const session = record("session-lazy-prepare");
+  const base = request(session, "first");
+  const open = base.open;
+  const host = new RuntimeSessionHost(() => runtime);
+  const lazy = (suffix: string) => ({
+    ...request(session, suffix),
+    open,
+    cleanup: async () => { cleaned += 1; },
+  });
+
+  prepared += 1;
+  await host.runTurn(lazy("first"));
+  const second = request(session, "second");
+  await host.runTurn({ ...second, open: undefined, workerGeneration: open.workerGeneration });
+  assert.equal(prepared, 1);
+  assert.equal(cleaned, 0);
+  await host.closeAll();
+  assert.equal(cleaned, 1);
 });
 
 test("session host activates broker per turn, serializes one Agent, and LRU-evicts resident processes", async () => {

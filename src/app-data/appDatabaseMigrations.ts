@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 
-export const APP_DATABASE_SCHEMA_VERSION = 5;
+export const APP_DATABASE_SCHEMA_VERSION = 6;
 
 export type AppDatabaseCompatibilityReason = "integrity" | "future" | "schema";
 
@@ -252,6 +252,13 @@ const APP_V5_LEGACY_CHECKSUMS = new Set([
   "935bab99c7fa6ecb6b79e0eabba2ee4e074f12f62551998c9d58daf05c6a2d0b",
 ]);
 
+// A pre-release v6 build migrated legacy Advisor models before runtime compatibility
+// snapshots were populated. The schema is identical; accepting its immutable journal
+// lets the Human create or revise a model configuration instead of bricking app.db.
+const APP_V6_LEGACY_CHECKSUMS = new Set([
+  "7425bd0ddb8903b18ffed0d17f074f26a53561a249616feba1bc179c9676b8cc",
+]);
+
 const APP_V4_USER_GLOBAL_MEMORY_FOREIGN_KEYS_SQL = `
   CREATE TABLE user_episodic_memories_v4 (
     id TEXT PRIMARY KEY NOT NULL,
@@ -450,6 +457,258 @@ APP_SCHEMA_V5.set("pi_cli_config_imports", [
   "file_identities_json", "imported_at",
 ]);
 
+const APP_V6_MODEL_RUNTIME_CONTROL_PLANE_SQL = `
+  ALTER TABLE installation_state
+    ADD COLUMN runtime_configuration_epoch INTEGER NOT NULL DEFAULT 1
+      CHECK (runtime_configuration_epoch >= 1);
+
+  CREATE TABLE model_provider_connections (
+    id TEXT PRIMARY KEY NOT NULL,
+    display_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    current_revision INTEGER NOT NULL CHECK (current_revision >= 1),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (id, current_revision)
+      REFERENCES model_provider_connection_revisions(connection_id, revision)
+      DEFERRABLE INITIALLY DEFERRED
+  );
+  CREATE TABLE model_provider_connection_revisions (
+    connection_id TEXT NOT NULL REFERENCES model_provider_connections(id) ON DELETE RESTRICT,
+    revision INTEGER NOT NULL CHECK (revision >= 1),
+    backend_id TEXT NOT NULL,
+    api_kind TEXT NOT NULL,
+    canonical_origin TEXT NOT NULL,
+    network_class TEXT NOT NULL CHECK (network_class IN ('loopback', 'lan', 'public_cloud', 'custom')),
+    credential_source_kind TEXT NOT NULL CHECK (credential_source_kind IN ('pi_cli_auth', 'kith_secret', 'env_ref', 'keyless_local')),
+    credential_ref TEXT,
+    credential_identity_digest TEXT NOT NULL,
+    data_policy_revision TEXT NOT NULL,
+    data_policy_provenance TEXT NOT NULL CHECK (data_policy_provenance IN ('vendor_verified', 'human_asserted', 'unknown')),
+    allowed_egress_json TEXT NOT NULL,
+    capability_snapshot_json TEXT NOT NULL,
+    source_kind TEXT NOT NULL CHECK (source_kind IN ('manual', 'pi_import', 'claude_import', 'codex_import', 'opencode_import', 'legacy_advisor')),
+    source_snapshot_digest TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (connection_id, revision)
+  );
+  CREATE INDEX model_provider_connection_revisions_backend_idx
+    ON model_provider_connection_revisions (backend_id, api_kind, revision);
+
+  CREATE TABLE model_configurations (
+    id TEXT PRIMARY KEY NOT NULL,
+    display_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    current_revision INTEGER NOT NULL CHECK (current_revision >= 1),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (id, current_revision)
+      REFERENCES model_configuration_revisions(configuration_id, revision)
+      DEFERRABLE INITIALLY DEFERRED
+  );
+  CREATE TABLE model_configuration_revisions (
+    configuration_id TEXT NOT NULL REFERENCES model_configurations(id) ON DELETE RESTRICT,
+    revision INTEGER NOT NULL CHECK (revision >= 1),
+    provider_connection_id TEXT NOT NULL,
+    provider_revision INTEGER NOT NULL,
+    model_id TEXT NOT NULL,
+    reasoning TEXT,
+    context_window INTEGER CHECK (context_window IS NULL OR context_window > 0),
+    max_output_tokens INTEGER CHECK (max_output_tokens IS NULL OR max_output_tokens > 0),
+    input_capabilities_json TEXT NOT NULL,
+    runtime_compatibility_snapshot_json TEXT NOT NULL,
+    options_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (configuration_id, revision),
+    FOREIGN KEY (provider_connection_id, provider_revision)
+      REFERENCES model_provider_connection_revisions(connection_id, revision)
+      ON DELETE RESTRICT
+  );
+  CREATE INDEX model_configuration_revisions_provider_idx
+    ON model_configuration_revisions (provider_connection_id, provider_revision, revision);
+
+  CREATE TABLE runtime_profiles (
+    runtime_id TEXT PRIMARY KEY NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    default_binding_mode TEXT NOT NULL CHECK (default_binding_mode IN ('kith_model_configuration', 'unmanaged_cli_native', 'unset')),
+    default_model_configuration_id TEXT,
+    default_model_configuration_revision INTEGER,
+    current_revision INTEGER NOT NULL CHECK (current_revision >= 1),
+    updated_at INTEGER NOT NULL,
+    CHECK (
+      (default_binding_mode = 'kith_model_configuration'
+        AND default_model_configuration_id IS NOT NULL
+        AND default_model_configuration_revision IS NOT NULL)
+      OR
+      (default_binding_mode IN ('unmanaged_cli_native', 'unset')
+        AND default_model_configuration_id IS NULL
+        AND default_model_configuration_revision IS NULL)
+    ),
+    FOREIGN KEY (default_model_configuration_id, default_model_configuration_revision)
+      REFERENCES model_configuration_revisions(configuration_id, revision)
+      ON DELETE RESTRICT,
+    FOREIGN KEY (runtime_id, current_revision)
+      REFERENCES runtime_profile_revisions(runtime_id, revision)
+      DEFERRABLE INITIALLY DEFERRED
+  );
+  CREATE TABLE runtime_profile_revisions (
+    runtime_id TEXT NOT NULL REFERENCES runtime_profiles(runtime_id) ON DELETE RESTRICT,
+    revision INTEGER NOT NULL CHECK (revision >= 1),
+    executable_preference TEXT,
+    runtime_options_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (runtime_id, revision)
+  );
+  CREATE TABLE runtime_probe_cache (
+    runtime_id TEXT PRIMARY KEY NOT NULL REFERENCES runtime_profiles(runtime_id) ON DELETE CASCADE,
+    executable_digest TEXT NOT NULL,
+    compiler_policy_version INTEGER NOT NULL CHECK (compiler_policy_version >= 1),
+    observed_version TEXT,
+    status TEXT NOT NULL CHECK (status IN ('available', 'not_installed', 'version_too_old', 'capability_unsupported', 'error')),
+    capability_digest TEXT,
+    diagnostics_json TEXT NOT NULL,
+    probed_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE TABLE cli_config_import_snapshots (
+    id TEXT PRIMARY KEY NOT NULL,
+    runtime_id TEXT NOT NULL,
+    source_paths_digest TEXT NOT NULL,
+    source_mtime_digest TEXT NOT NULL,
+    sanitized_payload_json TEXT NOT NULL,
+    warnings_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX cli_config_import_snapshots_runtime_idx
+    ON cli_config_import_snapshots (runtime_id, created_at);
+
+  ALTER TABLE advisor_provider_settings ADD COLUMN model_configuration_id TEXT;
+  ALTER TABLE advisor_provider_settings ADD COLUMN model_configuration_revision INTEGER;
+  ALTER TABLE advisor_model_profile_revisions ADD COLUMN source_model_configuration_id TEXT;
+  ALTER TABLE advisor_model_profile_revisions ADD COLUMN source_model_configuration_revision INTEGER;
+
+  INSERT INTO runtime_profiles (
+    runtime_id, enabled, default_binding_mode,
+    default_model_configuration_id, default_model_configuration_revision,
+    current_revision, updated_at
+  ) VALUES
+    ('claude', 1, 'unset', NULL, NULL, 1, unixepoch() * 1000),
+    ('codex', 1, 'unset', NULL, NULL, 1, unixepoch() * 1000),
+    ('opencode', 1, 'unset', NULL, NULL, 1, unixepoch() * 1000),
+    ('pi', 1, 'unset', NULL, NULL, 1, unixepoch() * 1000);
+  INSERT INTO runtime_profile_revisions (
+    runtime_id, revision, executable_preference, runtime_options_json, created_at
+  ) VALUES
+    ('claude', 1, 'claude', '{}', unixepoch() * 1000),
+    ('codex', 1, 'codex', '{}', unixepoch() * 1000),
+    ('opencode', 1, 'opencode', '{}', unixepoch() * 1000),
+    ('pi', 1, 'pi', '{}', unixepoch() * 1000);
+
+  INSERT INTO model_provider_connections (
+    id, display_name, status, current_revision, created_at, updated_at
+  )
+  SELECT 'legacy-advisor-provider', backend_id, 'active', 1, created_at, created_at
+  FROM advisor_model_profile_revisions
+  WHERE revision = (SELECT current_model_profile_revision FROM advisor_provider_settings WHERE singleton_id = 1);
+  INSERT INTO model_provider_connection_revisions (
+    connection_id, revision, backend_id, api_kind, canonical_origin, network_class,
+    credential_source_kind, credential_ref, credential_identity_digest,
+    data_policy_revision, data_policy_provenance, allowed_egress_json,
+    capability_snapshot_json, source_kind, source_snapshot_digest, created_at
+  )
+  SELECT
+    'legacy-advisor-provider', 1, backend_id, api_kind, canonical_origin, network_class,
+    credential_source_kind, credential_ref, credential_identity_digest,
+    data_policy_revision, data_policy_provenance, allowed_egress_json,
+    '{}', 'legacy_advisor', source_snapshot_digest, created_at
+  FROM advisor_model_profile_revisions
+  WHERE revision = (SELECT current_model_profile_revision FROM advisor_provider_settings WHERE singleton_id = 1);
+
+  INSERT INTO model_configurations (
+    id, display_name, status, current_revision, created_at, updated_at
+  )
+  SELECT 'legacy-advisor-model', model_id, 'active', 1, created_at, created_at
+  FROM advisor_model_profile_revisions
+  WHERE revision = (SELECT current_model_profile_revision FROM advisor_provider_settings WHERE singleton_id = 1);
+  INSERT INTO model_configuration_revisions (
+    configuration_id, revision, provider_connection_id, provider_revision, model_id,
+    reasoning, context_window, max_output_tokens, input_capabilities_json,
+    runtime_compatibility_snapshot_json, options_json, created_at
+  )
+  SELECT
+    'legacy-advisor-model', 1, 'legacy-advisor-provider', 1, model_id,
+    thinking_level,
+    json_extract(model_metadata_json, '$.contextWindow'),
+    json_extract(model_metadata_json, '$.maxOutputTokens'),
+    coalesce(json_extract(model_metadata_json, '$.inputCapabilities'), '["text"]'),
+    CASE api_kind
+      WHEN 'anthropic-messages' THEN '{"claude":{"supported":true},"codex":{"supported":false,"reason":"requires_responses_api"},"opencode":{"supported":true},"pi":{"supported":true}}'
+      WHEN 'openai-responses' THEN '{"claude":{"supported":false,"reason":"wire_api_not_supported"},"codex":{"supported":true},"opencode":{"supported":true},"pi":{"supported":true}}'
+      WHEN 'openai-completions' THEN '{"claude":{"supported":false,"reason":"wire_api_not_supported"},"codex":{"supported":false,"reason":"requires_responses_api"},"opencode":{"supported":true},"pi":{"supported":true}}'
+      WHEN 'google-generative-ai' THEN '{"claude":{"supported":false,"reason":"wire_api_not_supported"},"codex":{"supported":false,"reason":"requires_responses_api"},"opencode":{"supported":true},"pi":{"supported":true}}'
+      WHEN 'google-vertex' THEN '{"claude":{"supported":true},"codex":{"supported":false,"reason":"requires_responses_api"},"opencode":{"supported":true},"pi":{"supported":true}}'
+      WHEN 'bedrock-converse-stream' THEN '{"claude":{"supported":true},"codex":{"supported":false,"reason":"requires_responses_api"},"opencode":{"supported":false,"reason":"wire_api_not_supported"},"pi":{"supported":true}}'
+      ELSE '{"claude":{"supported":false,"reason":"wire_api_not_supported"},"codex":{"supported":false,"reason":"requires_responses_api"},"opencode":{"supported":false,"reason":"wire_api_not_supported"},"pi":{"supported":true}}'
+    END,
+    '{}', created_at
+  FROM advisor_model_profile_revisions
+  WHERE revision = (SELECT current_model_profile_revision FROM advisor_provider_settings WHERE singleton_id = 1);
+
+  UPDATE advisor_provider_settings
+  SET model_configuration_id = 'legacy-advisor-model',
+      model_configuration_revision = 1
+  WHERE singleton_id = 1 AND current_model_profile_revision IS NOT NULL;
+  UPDATE advisor_model_profile_revisions
+  SET source_model_configuration_id = 'legacy-advisor-model',
+      source_model_configuration_revision = 1
+  WHERE revision = (SELECT current_model_profile_revision FROM advisor_provider_settings WHERE singleton_id = 1);
+`;
+
+const APP_SCHEMA_V6 = new Map(APP_SCHEMA_V5);
+APP_SCHEMA_V6.set("installation_state", [
+  "singleton_key", "home_space_id", "content_hmac_key", "runtime_configuration_epoch",
+]);
+APP_SCHEMA_V6.set("model_provider_connections", [
+  "id", "display_name", "status", "current_revision", "created_at", "updated_at",
+]);
+APP_SCHEMA_V6.set("model_provider_connection_revisions", [
+  "connection_id", "revision", "backend_id", "api_kind", "canonical_origin", "network_class",
+  "credential_source_kind", "credential_ref", "credential_identity_digest", "data_policy_revision",
+  "data_policy_provenance", "allowed_egress_json", "capability_snapshot_json", "source_kind",
+  "source_snapshot_digest", "created_at",
+]);
+APP_SCHEMA_V6.set("model_configurations", [
+  "id", "display_name", "status", "current_revision", "created_at", "updated_at",
+]);
+APP_SCHEMA_V6.set("model_configuration_revisions", [
+  "configuration_id", "revision", "provider_connection_id", "provider_revision", "model_id",
+  "reasoning", "context_window", "max_output_tokens", "input_capabilities_json",
+  "runtime_compatibility_snapshot_json", "options_json", "created_at",
+]);
+APP_SCHEMA_V6.set("runtime_profiles", [
+  "runtime_id", "enabled", "default_binding_mode", "default_model_configuration_id",
+  "default_model_configuration_revision", "current_revision", "updated_at",
+]);
+APP_SCHEMA_V6.set("runtime_profile_revisions", [
+  "runtime_id", "revision", "executable_preference", "runtime_options_json", "created_at",
+]);
+APP_SCHEMA_V6.set("runtime_probe_cache", [
+  "runtime_id", "executable_digest", "compiler_policy_version", "observed_version", "status",
+  "capability_digest", "diagnostics_json", "probed_at", "expires_at",
+]);
+APP_SCHEMA_V6.set("cli_config_import_snapshots", [
+  "id", "runtime_id", "source_paths_digest", "source_mtime_digest",
+  "sanitized_payload_json", "warnings_json", "created_at",
+]);
+APP_SCHEMA_V6.set("advisor_provider_settings", [
+  ...APP_SCHEMA_V5.get("advisor_provider_settings")!,
+  "model_configuration_id", "model_configuration_revision",
+]);
+APP_SCHEMA_V6.set("advisor_model_profile_revisions", [
+  ...APP_SCHEMA_V5.get("advisor_model_profile_revisions")!,
+  "source_model_configuration_id", "source_model_configuration_revision",
+]);
+
 function baselineChecksum(): string {
   return createHash("sha256").update(APP_BASELINE_SQL).digest("hex");
 }
@@ -511,7 +770,7 @@ function assertIntegrity(sqlite: Database.Database, dbPath: string): void {
 
 function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_DATABASE_SCHEMA_VERSION): void {
   const missing: string[] = [];
-  const expectedSchema = version >= 5 ? APP_SCHEMA_V5 : version >= 4 ? APP_SCHEMA_V4 : version >= 3 ? APP_SCHEMA_V3 : version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
+  const expectedSchema = version >= 6 ? APP_SCHEMA_V6 : version >= 5 ? APP_SCHEMA_V5 : version >= 4 ? APP_SCHEMA_V4 : version >= 3 ? APP_SCHEMA_V3 : version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
   for (const [table, requiredColumns] of expectedSchema) {
     const actual = tableColumns(sqlite, table);
     if (actual.size === 0) {
@@ -620,6 +879,37 @@ function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_D
     const singletonCount = Number(sqlite.prepare("SELECT count(*) FROM advisor_provider_settings").pluck().get());
     if (singletonCount !== 1 || invalidSingleton) missing.push("advisor_provider_settings (singleton/reference integrity)");
   }
+  if (version >= 6) {
+    const indexes = new Set((sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all() as Array<{ name: string }>).map((row) => row.name));
+    for (const index of [
+      "model_provider_connection_revisions_backend_idx",
+      "model_configuration_revisions_provider_idx",
+      "cli_config_import_snapshots_runtime_idx",
+    ]) if (!indexes.has(index)) missing.push(`${index} (index)`);
+    const runtimeProfilesSql = String(sqlite.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'runtime_profiles'",
+    ).pluck().get() ?? "").replaceAll(/\s+/g, " ").toLowerCase();
+    for (const fragment of [
+      "default_binding_mode in ('kith_model_configuration', 'unmanaged_cli_native', 'unset')",
+      "default_binding_mode = 'kith_model_configuration'",
+      "default_binding_mode in ('unmanaged_cli_native', 'unset')",
+    ]) if (!runtimeProfilesSql.includes(fragment)) missing.push(`runtime_profiles (${fragment})`);
+    const epoch = Number(sqlite.prepare(
+      "SELECT runtime_configuration_epoch FROM installation_state WHERE singleton_key = 1",
+    ).pluck().get());
+    if (!Number.isSafeInteger(epoch) || epoch < 1) missing.push("installation_state.runtime_configuration_epoch (value)");
+    for (const runtimeId of ["claude", "codex", "opencode", "pi"]) {
+      const row = sqlite.prepare(`
+        SELECT default_binding_mode, default_model_configuration_id, default_model_configuration_revision
+        FROM runtime_profiles WHERE runtime_id = ?
+      `).get(runtimeId) as {
+        default_binding_mode: string;
+        default_model_configuration_id: string | null;
+        default_model_configuration_revision: number | null;
+      } | undefined;
+      if (!row) missing.push(`runtime_profiles.${runtimeId}`);
+    }
+  }
   if (missing.length > 0) {
     throw new AppDatabaseMigrationError(
       "schema",
@@ -639,6 +929,7 @@ function expectedJournal(version: number) {
     ...(version >= 3 ? [{ version: 3, name: "user-global-memory", checksum: migrationChecksum(APP_V3_USER_GLOBAL_MEMORY_SQL) }] : []),
     ...(version >= 4 ? [{ version: 4, name: "user-global-memory-foreign-keys", checksum: migrationChecksum(APP_V4_USER_GLOBAL_MEMORY_FOREIGN_KEYS_SQL) }] : []),
     ...(version >= 5 ? [{ version: 5, name: "advisor-provider-control-plane", checksum: migrationChecksum(APP_V5_ADVISOR_PROVIDER_CONTROL_PLANE_SQL) }] : []),
+    ...(version >= 6 ? [{ version: 6, name: "model-runtime-control-plane", checksum: migrationChecksum(APP_V6_MODEL_RUNTIME_CONTROL_PLANE_SQL) }] : []),
   ];
 }
 
@@ -652,7 +943,8 @@ function assertJournal(sqlite: Database.Database, dbPath: string, version = APP_
     if (!item || row.version !== item.version || row.name !== item.name) return false;
     return row.checksum === item.checksum
       || (row.version === 3 && APP_V3_LEGACY_CHECKSUMS.has(row.checksum))
-      || (row.version === 5 && APP_V5_LEGACY_CHECKSUMS.has(row.checksum));
+      || (row.version === 5 && APP_V5_LEGACY_CHECKSUMS.has(row.checksum))
+      || (row.version === 6 && APP_V6_LEGACY_CHECKSUMS.has(row.checksum));
   });
   if (!consistent) {
     throw new AppDatabaseMigrationError(
@@ -833,6 +1125,25 @@ export function migrateAppDatabase(sqlite: Database.Database, dbPath: string, op
       `).run(5, "advisor-provider-control-plane", migrationChecksum(APP_V5_ADVISOR_PROVIDER_CONTROL_PLANE_SQL), Date.now());
     });
     applyAdvisorProviderControlPlane.immediate();
+    version = 5;
+  }
+  if (version === 5) {
+    assertSchema(sqlite, dbPath, 5);
+    assertJournal(sqlite, dbPath, 5);
+    const applyModelRuntimeControlPlane = sqlite.transaction(() => {
+      sqlite.exec(APP_V6_MODEL_RUNTIME_CONTROL_PLANE_SQL);
+      assertSchema(sqlite, dbPath, 6);
+      const foreignKeyViolation = sqlite.prepare("PRAGMA foreign_key_check").get();
+      if (foreignKeyViolation) {
+        throw new AppDatabaseMigrationError("schema", `app.db at ${dbPath} failed v6 foreign-key validation`);
+      }
+      sqlite.pragma("user_version = 6");
+      sqlite.prepare(`
+        INSERT INTO app_migration_journal (version, name, checksum, applied_at)
+        VALUES (?, ?, ?, ?)
+      `).run(6, "model-runtime-control-plane", migrationChecksum(APP_V6_MODEL_RUNTIME_CONTROL_PLANE_SQL), Date.now());
+    });
+    applyModelRuntimeControlPlane.immediate();
   }
   assertCompatibleAppDatabase(sqlite, dbPath, { requireCurrentVersion: true });
 }

@@ -82,8 +82,13 @@ export class MemoryManagementService {
     if (ownerAgentId) this.memories.hasSourceAccess(memoryId, ownerAgentId);
     const detail = this.memories.getHumanDetail(memoryId);
     const proposal = this.db.select().from(schema.memoryAdvisorProposals).where(eq(schema.memoryAdvisorProposals.memoryId, memoryId)).get();
-    const advisorJob = proposal?.jobId ? this.db.select().from(schema.memoryAdvisorJobs)
-      .where(eq(schema.memoryAdvisorJobs.id, proposal.jobId)).get() : null;
+    const createdBy = detail.memory.createdBy;
+    const creatorJobId = createdBy?.type === "system" && createdBy.id.startsWith("memory-advisor:")
+      ? createdBy.id.slice("memory-advisor:".length)
+      : null;
+    const advisorJobId = proposal?.jobId ?? creatorJobId;
+    const advisorJob = advisorJobId ? this.db.select().from(schema.memoryAdvisorJobs)
+      .where(eq(schema.memoryAdvisorJobs.id, advisorJobId)).get() : null;
     const recalls = this.db.select().from(schema.memoryRecallObservations)
       .where(eq(schema.memoryRecallObservations.memoryId, memoryId)).orderBy(desc(schema.memoryRecallObservations.recalledAt)).all();
     return { ...detail, proposal: proposal ?? null, advisorJob: advisorJob ?? null, recalls };

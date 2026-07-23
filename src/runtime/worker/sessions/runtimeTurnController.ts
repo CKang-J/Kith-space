@@ -9,7 +9,11 @@ import type {
   WorkerAdmissionCommand,
 } from "../../contract/runtimeWorkerPort.js";
 import { RuntimeTurnResultSchema, type RuntimeEventEnvelope, type RuntimeTurnResult } from "../../contract/v2/runtimeContract.js";
-import { prepareRuntimeSession } from "./runtimeSessionPreparation.js";
+import {
+  prepareRuntimeSession,
+  type PreparedRuntimeSession,
+  type RuntimeSessionOpenOptions,
+} from "./runtimeSessionPreparation.js";
 import { RuntimeSessionHost } from "./runtimeSessionHost.js";
 
 interface PendingAck {
@@ -33,7 +37,7 @@ export interface RuntimeTurnControllerOptions {
   terminalRetryMs?: number;
   shutdownTimeoutMs?: number;
   send: (message: unknown) => boolean;
-  prepare?: typeof prepareRuntimeSession;
+  prepare?: (input: Parameters<typeof prepareRuntimeSession>[0]) => Promise<PreparedRuntimeSession | RuntimeSessionOpenOptions>;
 }
 
 /** Worker-only execution controller. Core remains authoritative for leases, capabilities, and outcomes. */
@@ -211,18 +215,27 @@ export class RuntimeTurnController {
   private async run(command: TurnAdmitCommand & { generation: number }): Promise<void> {
     let result: RuntimeTurnResult;
     try {
-      const open = await (this.options.prepare ?? prepareRuntimeSession)({
-        config: command.config as AgentConfig,
-        record: command.session,
-        workerGeneration: command.generation,
-        broker: command.broker,
-      });
+      let prepared: PreparedRuntimeSession | null = null;
+      const canReuse = typeof this.host.canReuseSession === "function"
+        && this.host.canReuseSession(command.session, command.generation, command.broker.sessionHandle);
+      if (!canReuse) {
+        const candidate = await (this.options.prepare ?? prepareRuntimeSession)({
+          config: command.config as AgentConfig,
+          record: command.session,
+          workerGeneration: command.generation,
+          broker: command.broker,
+        });
+        prepared = "open" in candidate ? candidate : { open: candidate };
+      }
       if (this.shuttingDown || this.cancelledAttempts.has(command.turn.attemptId) || command.generation !== this.latestGeneration) {
+        await prepared?.cleanup?.().catch(() => {});
         return;
       }
       result = RuntimeTurnResultSchema.parse(await this.host.runTurn({
         record: command.session,
-        open,
+        workerGeneration: command.generation,
+        open: prepared?.open,
+        cleanup: prepared?.cleanup,
         broker: command.broker,
         turn: command.turn,
         sink: { emit: (event) => this.emitEvent(command.spaceId, event) },

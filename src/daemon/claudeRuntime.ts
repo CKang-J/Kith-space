@@ -27,12 +27,14 @@ export function buildClaudeArgs(p: {
   reasoningEffort?: string | null;
   sessionId?: string | null;
   mcpConfigFile?: string | null;
+  managedArgs?: readonly string[];
 }): string[] {
   const args = [
     "-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose",
     "--dangerously-skip-permissions", "--permission-mode", "bypassPermissions", "--include-partial-messages",
     "--disallowed-tools", "EnterPlanMode,ExitPlanMode,ScheduleWakeup,CronCreate,CronList,CronDelete,AskUserQuestion",
     ...p.promptFileFlag,
+    ...(p.managedArgs ?? []),
   ];
   if (p.model) args.push("--model", p.model);
   const effort = typeof p.reasoningEffort === "string" && CLAUDE_EFFORTS.has(p.reasoningEffort) ? p.reasoningEffort : null;
@@ -55,6 +57,11 @@ export const claudeRuntime: Runtime = {
     let promptFlag = ["--append-system-prompt", opts.systemPrompt];
     try { const pf = claudePromptFile(opts); writeFileSync(pf, opts.systemPrompt); promptFlag = ["--append-system-prompt-file", pf]; } catch { /* fallback to inline */ }
     const rc = opts.runtimeConfig;
+    const compiled = rc?.compiledRuntimeConfiguration;
+    const managedArgs = compiled && typeof compiled === "object"
+      && Array.isArray((compiled as { args?: unknown }).args)
+      ? (compiled as { args: unknown[] }).args.filter((value): value is string => typeof value === "string")
+      : [];
     const args = buildClaudeArgs({
       promptFileFlag: promptFlag,
       model: opts.model,
@@ -63,6 +70,7 @@ export const claudeRuntime: Runtime = {
       mcpConfigFile: typeof opts.mcpBootstrap?.descriptor.configFile === "string"
         ? opts.mcpBootstrap.descriptor.configFile
         : null,
+      managedArgs,
     });
 
     const proc = spawnRuntimeProcess("claude", args, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: opts.env });
@@ -84,7 +92,9 @@ export const claudeRuntime: Runtime = {
       buf += c.toString(); const lines = buf.split("\n"); buf = lines.pop() ?? "";
       for (const ln of lines) { if (ln.trim()) parseLine(ln); }
     });
-    proc.stderr?.on("data", (c: Buffer) => { const t = c.toString().trim(); if (t) cb.log.debug("claude stderr", { t: t.slice(0, 300) }); });
+    proc.stderr?.on("data", (c: Buffer) => {
+      if (c.length) cb.log.debug("claude stderr received", { bytes: c.length });
+    });
     proc.on("error", (e) => {
       cb.log.error("claude spawn failed", { detail: String((e as any)?.message ?? e) });
       cb.onActivity("offline", "claude not found");

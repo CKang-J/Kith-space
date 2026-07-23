@@ -12,7 +12,7 @@ export interface RuntimeModelOption {
 
 type ApiCall = (method: string, path: string, body?: unknown) => Promise<any>;
 
-export function useRuntimeDiscovery(api: ApiCall) {
+export function useRuntimeDiscovery(api: ApiCall, discoverModels = true) {
   const { t } = useTranslation();
   const apiRef = useRef(api);
   apiRef.current = api;
@@ -51,7 +51,7 @@ export function useRuntimeDiscovery(api: ApiCall) {
 
   useEffect(() => {
     let cancelled = false;
-    if (!runtime || !runtimeInstalled) {
+    if (!discoverModels || !runtime || !runtimeInstalled) {
       setModels([]); setModel(""); setModelError(""); setModelsLoading(false);
       return () => { cancelled = true; };
     }
@@ -81,7 +81,7 @@ export function useRuntimeDiscovery(api: ApiCall) {
       }
     })();
     return () => { cancelled = true; };
-  }, [modelProbeRevision, runtime, runtimeInstalled, supportsLocalDefault, t]);
+  }, [discoverModels, modelProbeRevision, runtime, runtimeInstalled, supportsLocalDefault, t]);
 
   const selectModel = (next: string) => {
     setModel(next);

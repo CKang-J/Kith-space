@@ -194,6 +194,17 @@ test("settings locations preserve the installation-level Memory Advisor resource
   assert.equal(new URL(target, "http://kith-space.local").searchParams.get("settings"), "advisor");
 });
 
+test("settings locations preserve model and runtime control-plane resources", () => {
+  for (const resource of ["models", "runtimes"]) {
+    const target = workspaceLocationForModule(
+      "/s/home/channel/all",
+      "",
+      { moduleId: "settings", settings: resource },
+    );
+    assert.equal(new URL(target, "http://kith-space.local").searchParams.get("settings"), resource);
+  }
+});
+
 test("module resources are decoded only for their owning module", () => {
   const search = "?taskScope=channel-1&agent=agent-1&settings=desktop";
 

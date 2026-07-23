@@ -36,6 +36,7 @@ import {
   waitForLegacyDataPlaneDrain,
 } from "../../agents/legacyDataPlaneDrain.js";
 import { AdvisorProviderSettingsService } from "../../advisor-provider/advisorProviderSettingsService.js";
+import { AgentModelBindingService } from "../../model-control/agentModelBindingService.js";
 
 export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   const { req, res, url, method, p, humanId, spaceId } = ctx;
@@ -46,7 +47,14 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   if (p === "/api/agents" && method === "GET") {
     const agents = await db.select().from(schema.agents).where(and(eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt)));
     // creatorType lets the client exclude non-interactive system-owned identities from rosters and pickers.
-    return (sendJson(res, 200, agents.map((a) => ({ id: a.id, name: a.name, displayName: a.displayName, description: a.description, status: a.status, activity: a.activity, model: a.model, runtime: a.runtime, avatarUrl: a.avatarUrl, creatorType: a.creatorType, defaultResponseMode: a.defaultResponseMode }))), true);
+    return (sendJson(res, 200, agents.map((a) => ({
+      id: a.id, name: a.name, displayName: a.displayName, description: a.description,
+      status: a.status, activity: a.activity, model: a.model, runtime: a.runtime,
+      avatarUrl: a.avatarUrl, creatorType: a.creatorType, defaultResponseMode: a.defaultResponseMode,
+      modelBindingMode: a.modelBindingMode, modelConfigurationId: a.modelConfigurationId,
+      modelConfigurationRevision: a.modelConfigurationRevision, modelConfigurationLabel: a.modelBindingLabelSnapshot,
+      modelBindingState: a.modelBindingState, runtimeRestartRequired: a.runtimeRestartRequired,
+    }))), true);
   }
   if (p === "/api/agents" && method === "POST") {
     const b = await readJson(req);
@@ -56,7 +64,9 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     try { description = resolveRoleDescription(b.description, b.roleTemplate); }
     catch (error) { return (sendErr(res, 400, (error as Error).message), true); }
     if (descTooLong(description)) return (sendErr(res, 400, DESC_TOO_LONG), true);
-    const runtimeModelError = validateRuntimeModel(b.runtime || "claude", b.model);
+    const runtimeModelError = b.modelBinding === undefined
+      ? validateRuntimeModel(b.runtime || "claude", b.model)
+      : null;
     if (runtimeModelError) return (sendErr(res, 400, runtimeModelError), true);
     // Machine assignment is retired. Reject the old field explicitly so stale clients do not appear to succeed.
     if (Object.prototype.hasOwnProperty.call(b, "machineId")) return (sendErr(res, 400, "machineId is no longer supported"), true);
@@ -64,20 +74,45 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     // becomes an unreachable routing blind spot. ON CONFLICT against the agents_name_uniq partial index is
     // race-proof (no SELECT-then-INSERT gap): a duplicate live name inserts no row → friendly 409. Soft-deleted
     // names are excluded by the index predicate, so a deleted agent's name can be reused.
+    let modelBinding: ReturnType<AgentModelBindingService["resolve"]> | null = null;
+    if (b.modelBinding?.mode === "runtime_default") {
+      modelBinding = new AgentModelBindingService().resolve(b.runtime || "claude", { mode: "runtime_default" });
+    } else if (b.modelBinding?.mode === "pinned"
+      && typeof b.modelBinding.modelConfigurationId === "string"
+      && Number.isSafeInteger(b.modelBinding.modelConfigurationRevision)) {
+      try {
+        modelBinding = new AgentModelBindingService().resolve(b.runtime || "claude", {
+          mode: "pinned", modelConfigurationId: b.modelBinding.modelConfigurationId,
+          modelConfigurationRevision: b.modelBinding.modelConfigurationRevision,
+        });
+      } catch (error: any) {
+        return (sendErr(res, 409, error?.message ?? "model binding unavailable", { code: error?.code }), true);
+      }
+    } else if (b.modelBinding !== undefined) {
+      return (sendErr(res, 400, "invalid model binding"), true);
+    }
+    const requestedRuntime = b.runtime || "claude";
+    const useV2 = Object.prototype.hasOwnProperty.call(RUNTIME_V2_CAPABILITY_MATRIX, requestedRuntime);
+    if (useV2 && modelBinding === null) {
+      return (sendErr(res, 409, "Harness v2 Agent requires an explicit model binding", {
+        code: "model_binding_required",
+      }), true);
+    }
     const [agent] = await db.insert(schema.agents).values({
       spaceId, name: b.name, displayName: b.displayName || b.name, description,
-      model: b.model || null, runtime: b.runtime || "claude",
+      ...(modelBinding ?? {}),
+      model: modelBinding?.model ?? (b.model || null), runtime: requestedRuntime,
       runtimeConfig: { provider: b.provider ?? "default", model: b.model ?? null, reasoningEffort: b.reasoning ?? null, mode: b.fastMode ? "fast" : "default" },
       envVars: b.envVars ?? {}, executionMode: b.fastMode ? "fast" : "auto", creatorType: "human", creatorId: humanId,
     }).onConflictDoNothing().returning();
     if (!agent) return (sendErr(res, 409, `an agent named "${b.name}" already exists`), true);
     const runtime = agent!.runtime as keyof typeof RUNTIME_V2_CAPABILITY_MATRIX;
-    const useV2 = Object.prototype.hasOwnProperty.call(RUNTIME_V2_CAPABILITY_MATRIX, runtime);
     let started = false;
     if (useV2) {
       try {
         const introduction = await initializeNewV2Agent(spaceId, agent!.id);
-        const workerReady = isWorkerConnected() && workerRuntimes().includes(runtime);
+        const bindingReady = modelBinding?.modelBindingState === "ready";
+        const workerReady = bindingReady && isWorkerConnected() && workerRuntimes().includes(runtime);
         await db.update(schema.agents).set({ activity: workerReady ? "working" : "offline" }).where(eq(schema.agents.id, agent!.id));
         await publish(spaceId, { type: "dm:new", channelId: introduction.channel.id, participantHumanIds: [humanId] });
         await publish(spaceId, {
@@ -99,7 +134,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     await publish(spaceId, { type: "agent:created", agent: { id: created.id, name: created.name, displayName: created.displayName, description: created.description, status: created.status, activity: created.activity, model: created.model, runtime: created.runtime, defaultResponseMode: created.defaultResponseMode } });
     // Start immediately on create: the client only POSTs /agents. If the local Worker is offline,
     // startAgent returns ok:false without blocking creation.
-    if (useV2) await scheduleV2Turns(spaceId);
+    if (useV2 && modelBinding?.modelBindingState === "ready") await scheduleV2Turns(spaceId);
     else started = (await startAgent(spaceId, agent!.id, "create")).ok;
     return (sendJson(res, 200, { id: agent!.id, name: agent!.name, started }), true);
   }
@@ -111,6 +146,12 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
       avatarUrl: a.avatarUrl, description: a.description, status: a.status, activity: a.activity,
       sessionId: a.sessionId, model: a.model, runtime: a.runtime, runtimeConfig: a.runtimeConfig,
       executionMode: a.executionMode, envVars: a.envVars, scopes: a.scopes,
+      modelBindingMode: a.modelBindingMode, modelConfigurationId: a.modelConfigurationId,
+      modelConfigurationRevision: a.modelConfigurationRevision, modelConfigurationLabel: a.modelBindingLabelSnapshot,
+      modelFingerprint: a.modelBindingFingerprint,
+      effectiveProviderSnapshot: a.confirmedEffectiveProviderSnapshot,
+      installationIdentityDigest: a.confirmedInstallationIdentityDigest,
+      modelBindingState: a.modelBindingState, runtimeRestartRequired: a.runtimeRestartRequired,
       defaultResponseMode: a.defaultResponseMode,
       creatorType: a.creatorType, creatorId: a.creatorId, createdAt: a.createdAt,
     }) : sendErr(res, 404, "agent not found"), true);
@@ -125,13 +166,38 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
       return (sendErr(res, 409, "rollback the Agent to legacy before selecting a runtime without Harness v2 support", { code: "harness_runtime_unsupported" }), true);
     }
     if ((b.runtime !== undefined || b.model !== undefined) && harnessMode === "v2") {
+      if (!b.modelBinding) {
+        return (sendErr(res, 400, "Harness v2 runtime/model changes require an explicit model binding", {
+          code: "model_binding_required",
+        }), true);
+      }
       const activeTurn = db.select({ id: schema.agentTurns.id }).from(schema.agentTurns).where(and(
         eq(schema.agentTurns.agentId, am[1]!),
         inArray(schema.agentTurns.status, ["pending", "running", "retry_wait"]),
       )).get();
       if (activeTurn) return (sendErr(res, 409, "runtime or model cannot change while an Agent turn is non-terminal", { code: "agent_turn_active", turnId: activeTurn.id }), true);
     }
-    for (const k of ["displayName", "description", "model", "runtime", "avatarUrl"]) if (b[k] !== undefined) patch[k] = b[k];
+    for (const k of ["displayName", "description", "avatarUrl"]) if (b[k] !== undefined) patch[k] = b[k];
+    if (harnessMode === "v2" && b.modelBinding) {
+      const existing = db.select({ runtime: schema.agents.runtime }).from(schema.agents)
+        .where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.spaceId, spaceId))).get();
+      const runtime = String(b.runtime ?? existing?.runtime ?? "");
+      try {
+        const resolved = b.modelBinding.mode === "runtime_default"
+          ? new AgentModelBindingService().resolve(runtime as any, { mode: "runtime_default" })
+          : new AgentModelBindingService().resolve(runtime as any, {
+            mode: "pinned",
+            modelConfigurationId: String(b.modelBinding.modelConfigurationId ?? ""),
+            modelConfigurationRevision: Number(b.modelBinding.modelConfigurationRevision),
+          });
+        Object.assign(patch, resolved, { runtime, model: resolved.model });
+      } catch (error: any) {
+        return (sendErr(res, 409, error?.message ?? "model binding unavailable", { code: error?.code }), true);
+      }
+    } else {
+      if (b.runtime !== undefined) patch.runtime = b.runtime;
+      if (b.model !== undefined) patch.model = b.model;
+    }
     if (b.envVars !== undefined) patch.envVars = b.envVars;
     let defaultResponseModeChanged = false;
     if (Object.prototype.hasOwnProperty.call(b, "defaultResponseMode")) {

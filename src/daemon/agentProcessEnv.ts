@@ -17,6 +17,14 @@ function isHostOnlyEnv(name: string): boolean {
   return normalized.startsWith("KITH_SPACE_") || HOST_ONLY_ENV.has(normalized);
 }
 
+function isAmbientProviderCredential(name: string): boolean {
+  const normalized = name.toUpperCase();
+  return /(?:^|_)(?:API_KEY|ACCESS_KEY|SECRET_KEY|AUTH_TOKEN|OAUTH_TOKEN|BEARER_TOKEN|CREDENTIALS?)(?:$|_)/
+    .test(normalized)
+    || /^(?:OPENAI|ANTHROPIC|AWS|GOOGLE|GEMINI|AZURE|BEDROCK|VERTEX|DEEPSEEK|MISTRAL|GROQ|COHERE|OPENROUTER)_/
+      .test(normalized);
+}
+
 /** Agent runtimes receive provider access and one per-agent capability, never host capabilities. */
 export function buildAgentProcessEnv(input: {
   source?: Readonly<NodeJS.ProcessEnv>;
@@ -24,12 +32,14 @@ export function buildAgentProcessEnv(input: {
   serverUrl: string;
   agentId: string;
   agentToken: string;
+  managedConfiguration?: boolean;
 }): NodeJS.ProcessEnv {
   const source = input.source ?? process.env;
   const env: NodeJS.ProcessEnv = {};
   const sourcePath = Object.entries(source).find(([name]) => name.toUpperCase() === "PATH")?.[1] ?? "";
   for (const [name, value] of Object.entries(source)) {
-    if (name.toUpperCase() !== "PATH" && !isHostOnlyEnv(name)) env[name] = value;
+    if (name.toUpperCase() !== "PATH" && !isHostOnlyEnv(name)
+      && !(input.managedConfiguration && isAmbientProviderCredential(name))) env[name] = value;
   }
   env.FORCE_COLOR = "0";
   env.PATH = `${input.binDir}${path.delimiter}${sourcePath}`;

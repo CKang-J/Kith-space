@@ -499,7 +499,7 @@
 
 ## 决策 32：模型配置由 Kith 统一管理，CLI 配置只读导入并在启动时注入
 
-**状态**：Accepted / Pending implementation（2026-07-23）。
+**状态**：Implemented（2026-07-23）。
 
 **结论**：Kith-space 的安装级 `app.db` 成为模型供应商连接、可复用模型配置、运行器默认值和 Memory Advisor 模型绑定的产品事实源。供应商连接与 Claude Code、Codex、OpenCode、Pi 等 runtime 解耦，由 runtime 专属 compiler 按 API 协议、认证方式和本机版本判断兼容；Agent 只保存“跟随运行器默认”或“固定某个模型配置 revision”的绑定意图，不复制 endpoint 或密钥。运行器默认值显式区分 Kith 模型配置、受限的 `unmanaged_cli_native` 与未设置三态，不能用 nullable 字段混淆；CLI-native 不可用于 Advisor。
 
@@ -512,6 +512,8 @@
 **推理与权衡**：自动修改全局 CLI 配置会影响 Kith 之外的终端、引入并发覆盖、schema/版本/企业 managed policy 冲突，并扩大密钥复制面；只靠各 CLI 自有配置又无法提供 Agent/Advisor 可复用、可审计和可迁移的统一体验。Kith-owned 配置加 per-launch compiler 把副作用限制在 Kith 子进程，代价是需要维护四家窄 adapter、在 Codex 等 machine-local 配置受限的 runtime 上使用临时配置根，并在 Space 移机缺少安装级配置时明确进入 `setup_required`。
 
 **安全边界**：新增长期密钥、读取本机 CLI 文件和显示一次性 secret 只接受 Desktop 私有信任；普通授权浏览器可查看脱敏配置和选择已有绑定，但 LAN HTTP 不承载新密钥。聊天 runtime 新增独立 `RuntimeCredentialActivationPort`：Core 只发送强绑定、无密钥 descriptor，Worker 通过 Worker-only 本机控制通道单次兑换，明文只进入当前 Worker 内存与 child env，并在失败、取消、关闭、超时或 lease 变化时撤销；不得复用 Advisor activation，也不得进入 workspace.db、普通控制消息、日志或 UI。完整规格见 `docs/superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`。
+
+**实施事实**：app.db v6与workspace.db v10迁移、稳定对象/不可变revision、三态runtime default、Agent绑定快照、runtime epoch、四家compiler registry、独立聊天activation、Pi RPC v2、脱敏presenter和Settings三页已落地。Pi使用本机0.81.1外部CLI，fixture覆盖strict LF/UTF-8半帧、correlated response、usage、abort、compaction与`agent_settled`；MCP保持unsupported并通过CLI Gateway。CLI导入只读固定用户级文件、拒绝symlink/超限/动态资源，默认从不写回。
 
 ---
 

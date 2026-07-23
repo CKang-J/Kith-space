@@ -15,13 +15,52 @@ import { buildHarnessV2SystemPrompt } from "../../../daemon/prompt.js";
 import { resolveAgentWorkspacePaths } from "../../../agents/agentWorkspacePaths.js";
 import type { OpenRuntimeSessionOptions } from "../../contract/v2/runtimeContract.js";
 import type { HostedRuntimeSessionRecord } from "./runtimeSessionHost.js";
+import { WORKER_TOKEN_HEADER, workerBootstrapToken } from "../../../local-runtime/internalCredentials.js";
+import { runtimeConfigCompilerRegistry } from "../../config/runtimeConfigCompilerRegistry.js";
+import type { ManagedRuntimeConfigurationActivation } from "../../../model-control/runtimeConfigurationActivationService.js";
 
 export type GatewayCapabilityMode = "mcp_with_cli_fallback" | "mcp_only" | "cli_only";
+export type RuntimeSessionOpenOptions = Omit<OpenRuntimeSessionOptions, "runtimeSessionId" | "sessionGeneration" | "broker">;
+
+export interface PreparedRuntimeSession {
+  open: RuntimeSessionOpenOptions;
+  cleanup?: () => Promise<void>;
+}
 
 export interface RuntimeGatewayLaunch {
   capabilityMode: GatewayCapabilityMode;
   cliAvailable: boolean;
   mcpBootstrap: OpenRuntimeSessionOptions["mcpBootstrap"];
+}
+
+async function compileManagedRuntimeConfiguration(
+  config: AgentConfig,
+  runtimeStateDir: string,
+) {
+  const activation = config.runtimeConfig?.managedRuntimeConfiguration as ManagedRuntimeConfigurationActivation | undefined;
+  if (!activation) return null;
+  const response = await fetch(new URL("/internal/runtime-credentials/redeem", config.serverUrl), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      [WORKER_TOKEN_HEADER]: workerBootstrapToken(),
+    },
+    body: JSON.stringify({
+      credentialHandle: activation.credentialHandle,
+      binding: activation.binding,
+    }),
+  });
+  if (!response.ok) throw new Error(`runtime_credential_activation_failed:${response.status}`);
+  const credential = await response.json() as { value?: unknown; identityDigest?: unknown };
+  if (!(typeof credential.value === "string" || credential.value === null)
+    || typeof credential.identityDigest !== "string") {
+    throw new Error("runtime_credential_activation_failed:invalid_response");
+  }
+  const compiler = runtimeConfigCompilerRegistry.get(activation.input.runtimeId);
+  return compiler.compile(
+    { ...activation.input, runtimeStateDir },
+    { value: credential.value, identityDigest: credential.identityDigest },
+  );
 }
 
 const verifiedMcpLaunches = new Set<string>();
@@ -143,7 +182,7 @@ export async function prepareRuntimeSession(input: {
   broker: OpenRuntimeSessionOptions["broker"];
   runtimeStateRoot?: string;
   binDir?: string;
-}): Promise<Omit<OpenRuntimeSessionOptions, "runtimeSessionId" | "sessionGeneration" | "broker">> {
+}): Promise<PreparedRuntimeSession> {
   const paths = resolveAgentWorkspacePaths(input.config, input.runtimeStateRoot);
   const memory = resolveMemoryLayerPaths(paths.workspaceRoot, paths.agentMemoryDir);
   await Promise.all([
@@ -154,13 +193,23 @@ export async function prepareRuntimeSession(input: {
   try { await access(memory.agent.indexFile); }
   catch { await writeFile(memory.agent.indexFile, seedMemory(input.config.displayName || input.config.name, input.config.description)); }
   const here = path.dirname(fileURLToPath(import.meta.url));
-  let gateway = resolveRuntimeGatewayLaunch({
-    here,
-    runtimeStateDir: paths.runtimeStateDir,
-    sessionId: input.record.id,
-    electron: !!process.versions.electron,
-  });
-  gateway = await verifyRuntimeGatewayLaunch(gateway);
+  let gateway = input.config.runtime === "pi"
+    ? {
+      capabilityMode: "cli_only" as const,
+      cliAvailable: true,
+      mcpBootstrap: {
+        mode: "none" as const,
+        serverName: "kith-core",
+        descriptor: { capabilityMode: "cli_only", unsupportedReason: "pi_rpc_has_no_mcp_bootstrap" },
+      },
+    }
+    : resolveRuntimeGatewayLaunch({
+      here,
+      runtimeStateDir: paths.runtimeStateDir,
+      sessionId: input.record.id,
+      electron: !!process.versions.electron,
+    });
+  if (input.config.runtime !== "pi") gateway = await verifyRuntimeGatewayLaunch(gateway);
   const systemText = buildHarnessV2SystemPrompt({
     name: input.config.name,
     displayName: input.config.displayName,
@@ -174,38 +223,63 @@ export async function prepareRuntimeSession(input: {
     capabilityMode: gateway.capabilityMode,
   });
   const processBinDir = input.binDir ?? (gateway.cliAvailable ? ensureKithSpaceBin() : paths.runtimeStateDir);
+  const managedConfiguration = Boolean(
+    input.config.runtimeConfig?.managedRuntimeConfiguration
+      && typeof input.config.runtimeConfig.managedRuntimeConfiguration === "object",
+  );
   const env = buildAgentProcessEnv({
     binDir: processBinDir,
     serverUrl: input.config.serverUrl,
     agentId: input.config.agentId,
     agentToken: "",
+    managedConfiguration,
   });
-  if (gateway.mcpBootstrap.mode === "config") {
-    const descriptor = gateway.mcpBootstrap.descriptor;
-    await writeFile(String(descriptor.configFile), JSON.stringify({
-      mcpServers: { "kith-core": { command: descriptor.command, args: descriptor.args, env: descriptor.env } },
-    }), { encoding: "utf8", mode: 0o600 });
+  const compiled = await compileManagedRuntimeConfiguration(input.config, paths.runtimeStateDir);
+  try {
+    if (gateway.mcpBootstrap.mode === "config") {
+      const descriptor = gateway.mcpBootstrap.descriptor;
+      await writeFile(String(descriptor.configFile), JSON.stringify({
+        mcpServers: { "kith-core": { command: descriptor.command, args: descriptor.args, env: descriptor.env } },
+      }), { encoding: "utf8", mode: 0o600 });
+    }
+    const open: RuntimeSessionOpenOptions = {
+      workerGeneration: input.workerGeneration,
+      address: {
+        spaceId: input.record.spaceId,
+        agentId: input.record.agentId,
+        surfaceKind: input.record.surfaceKind,
+        surfaceId: input.record.surfaceId,
+      },
+      cwd: paths.workspaceRoot,
+      runtimeStateDir: paths.runtimeStateDir,
+      model: compiled?.effectiveModelId ?? input.config.model,
+      runtimeConfig: {
+        ...(input.config.runtimeConfig ?? {}),
+        ...(compiled ? {
+          compiledRuntimeConfiguration: {
+            args: [...compiled.args],
+            ephemeralFiles: compiled.ephemeralFiles.map((file) => ({ ...file })),
+            fingerprint: compiled.fingerprint,
+          },
+          reasoningEffort: compiled.effectiveReasoning,
+        } : {}),
+      },
+      engineSessionId: input.record.engineSessionId,
+      restoredSnapshot: input.record.restoredSnapshot ?? null,
+      systemPrompt: {
+        text: systemText,
+        version: "harness-v2.1",
+        digest: createHash("sha256").update(systemText).digest("hex"),
+      },
+      mcpBootstrap: gateway.mcpBootstrap,
+      env: { ...env, ...(compiled?.env ?? {}) },
+    };
+    return {
+      open,
+      ...(compiled ? { cleanup: compiled.cleanup } : {}),
+    };
+  } catch (error) {
+    await compiled?.cleanup().catch(() => {});
+    throw error;
   }
-  return {
-    workerGeneration: input.workerGeneration,
-    address: {
-      spaceId: input.record.spaceId,
-      agentId: input.record.agentId,
-      surfaceKind: input.record.surfaceKind,
-      surfaceId: input.record.surfaceId,
-    },
-    cwd: paths.workspaceRoot,
-    runtimeStateDir: paths.runtimeStateDir,
-    model: input.config.model,
-    runtimeConfig: input.config.runtimeConfig ?? undefined,
-    engineSessionId: input.record.engineSessionId,
-    restoredSnapshot: input.record.restoredSnapshot ?? null,
-    systemPrompt: {
-      text: systemText,
-      version: "harness-v2.1",
-      digest: createHash("sha256").update(systemText).digest("hex"),
-    },
-    mcpBootstrap: gateway.mcpBootstrap,
-    env,
-  };
 }

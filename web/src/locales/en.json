@@ -384,6 +384,8 @@
     "searchPlaceholder": "Search messages…",
     "searchNoResults": "No messages matching \"{{q}}\".",
     "settingsNavHuman": "Human Profile",
+    "settingsNavModels": "Models & Providers",
+    "settingsNavRuntimes": "Runtimes",
     "settingsNavSpace": "Space Profile",
     "settingsNavAdvisor": "Memory Advisor",
     "settingsNavDesktop": "Desktop & Web",

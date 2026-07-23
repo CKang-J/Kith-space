@@ -10,6 +10,7 @@ test("credential activation is single-use, run/generation/snapshot bound, and ne
   const stored = port.storeKithSecret("anthropic", "top-secret-api-key");
   assert.equal(stored.credentialIdentityDigest.includes("top-secret"), false);
   const handle = port.issue({
+    audience: "advisor",
     credentialRef: stored.credentialRef,
     credentialSourceKind: "kith_secret",
     backendId: "anthropic",
@@ -24,6 +25,7 @@ test("credential activation is single-use, run/generation/snapshot bound, and ne
   assert.equal(handle.includes("top-secret"), false);
   assert.throws(() => port.redeem(handle, { runId: "other", providerEpoch: 4, workerGeneration: 8, executionSnapshotDigest: "snapshot" }), /provider_auth_required/);
   const validHandle = port.issue({
+    audience: "advisor",
     credentialRef: stored.credentialRef,
     credentialSourceKind: "kith_secret",
     backendId: "anthropic",

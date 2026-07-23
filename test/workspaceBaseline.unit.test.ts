@@ -66,6 +66,12 @@ test("fresh Space database uses the Personal AgentOS baseline and seeds its Spac
     assert.deepEqual(columns(sqlite, "spaces"), ["id", "name", "slug", "avatar_url", "created_at"]);
     assert.ok(columns(sqlite, "agents").includes("introduced_at"), "agents must persist successful Human introduction");
     assert.ok(columns(sqlite, "agents").includes("default_response_mode"), "agents must persist their default response mode");
+    for (const field of [
+      "model_binding_mode", "model_configuration_id", "model_configuration_revision",
+      "model_binding_label_snapshot", "model_binding_fingerprint",
+      "confirmed_effective_provider_snapshot", "confirmed_installation_identity_digest",
+      "model_binding_state", "runtime_restart_required",
+    ]) assert.ok(columns(sqlite, "agents").includes(field), `agents must persist ${field}`);
     for (const field of ["response_mode_override", "ambient_wake_after_seq", "mention_wake_after_seq"]) {
       assert.ok(columns(sqlite, "channel_agent_members").includes(field), `channel_agent_members must persist ${field}`);
     }

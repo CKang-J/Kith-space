@@ -11,7 +11,9 @@ import { useTranslation } from "react-i18next";
 import { getDesktopBridge, resolveSettingsSection } from "../desktopBridge.ts";
 import { DesktopSettings } from "./DesktopSettings.tsx";
 import { workspaceLocationForConversation, workspaceLocationForModule } from "../shell/workspaceRoute.ts";
-import { AdvisorProviderSettings } from "./advisor-provider/AdvisorProviderSettings.tsx";
+import { MemoryAdvisorSettings } from "./advisor-provider/MemoryAdvisorSettings.tsx";
+import { ModelProviderSettings } from "./model-settings/ModelProviderSettings.tsx";
+import { RuntimeSettings } from "./model-settings/RuntimeSettings.tsx";
 
 interface TasksProps {
   channelIdOverride?: string | null;
@@ -241,6 +243,8 @@ export function Search() {
 const SETTINGS: [string, string][] = [
   ["human", "misc.settingsNavHuman"],
   ["space", "misc.settingsNavSpace"],
+  ["models", "misc.settingsNavModels"],
+  ["runtimes", "misc.settingsNavRuntimes"],
   ["advisor", "misc.settingsNavAdvisor"],
 ];
 export function Settings({ sectionOverride }: { sectionOverride?: string } = {}) {
@@ -279,8 +283,12 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
             ? <HumanSettings api={api} />
             : cur === "space"
               ? <SpaceSettings api={api} spaceId={spaceId} />
+              : cur === "models"
+                ? <ModelProviderSettings api={api} />
+              : cur === "runtimes"
+                ? <RuntimeSettings api={api} />
               : cur === "advisor"
-                ? <AdvisorProviderSettings api={api} />
+                ? <MemoryAdvisorSettings api={api} />
               : cur === "desktop" && desktopBridge
                 ? <DesktopSettings bridge={desktopBridge} />
                 : <div className="empty">{t("misc.settingsWip", { section: cur })}</div>}

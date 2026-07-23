@@ -106,31 +106,31 @@
 : 早期设想里"原生 agent"指跑在自研 runtime 内、操控更丝滑的 agent。本项目 v1 已锁定**不自研 runtime**，所有 agent 均为**外接**——连接本机已有 runtime。所谓"原生丝滑"改由 MCP 工具层 + UI 桥实现，而非 in-app runtime。故在 Kith-space 语境中不存在"原生 agent"，只有外接 agent；提到"原生"多指复用 runtime 的原生文件/工具能力。
 
 **Runtime**
-: agent 的执行引擎，即本机已安装的 agent CLI（当前强路径为 Claude Code / Codex / opencode；2026-07-23 已接受把 Pi 升级为第四个正式 v2 runtime）。产品把它当可插拔组件，不再造一个。
+: agent 的执行引擎，即本机已安装的 agent CLI。当前正式 P-A10 v2 runtime 为 Claude Code、Codex、OpenCode 和 Pi；产品把它当可插拔组件，不再造一个。
 
 **Runtime 适配器**
 : 把某个 runtime CLI 接入统一 `Runtime` 接口的适配层，负责启动进程、驱动一轮对话、解析其输出、回吐 session/活动/轨迹。新增一个 runtime = 实现一个 `Runtime` 对象并注册。注册表已带 8 条，v1 只把三条做稳。
 
 **模型供应商连接 / Model Provider Connection**
-: Kith 安装级管理的模型 API 连接，描述 endpoint、API 协议、凭据来源、数据目的地、网络/数据政策和能力状态；它不绑定某个聊天 runtime。同一连接可被兼容的 Agent runtime 与 Memory Advisor 复用，是否兼容由 runtime compiler 判断。2026-07-23 方案已接受、尚待实现。
+: Kith 安装级管理的模型 API 连接，描述 endpoint、API 协议、凭据来源、数据目的地、网络/数据政策和能力状态；它不绑定某个聊天 runtime。同一连接可被兼容的 Agent runtime 与 Memory Advisor 复用，是否兼容由 runtime compiler 判断。app.db v6已实现稳定对象与不可变revision。
 
 **模型配置 / Model Configuration**
-: Kith 安装级、可复用且 revisioned 的“供应商连接 + 模型 ID + reasoning/能力快照”。Agent 可以跟随运行器默认或固定某个模型配置，Memory Advisor 也选择一个兼容模型配置；它不保存明文密钥，也不等同于 runtime session。2026-07-23 方案已接受、尚待实现。
+: Kith 安装级、可复用且 revisioned 的“供应商连接 + 模型 ID + reasoning/能力快照”。Agent 可以跟随运行器默认或固定某个模型配置，Memory Advisor 也选择一个兼容模型配置；它不保存明文密钥，也不等同于 runtime session。app.db v6已实现。
 
 **运行器配置 / Runtime Profile**
-: 每个本机 runtime 的安装级配置，保存可执行物偏好、三态默认绑定（Kith 模型配置 / 受限的 CLI 自有配置 / 未设置）和少量 runtime 专属选项；短寿命版本/能力 probe 另存缓存。Kith 在 Agent 启动时通过专属 compiler 把它编译为参数、child-only 环境和临时配置，不默认修改用户 CLI 全局文件。2026-07-23 方案已接受、尚待实现。
+: 每个本机 runtime 的安装级配置，保存可执行物偏好、三态默认绑定（Kith 模型配置 / 受限的 CLI 自有配置 / 未设置）和少量 runtime 专属选项；短寿命版本/能力 probe 另存缓存。Kith 在 Agent 启动时通过专属 compiler 把它编译为参数、child-only 环境和临时配置，不默认修改用户 CLI 全局文件。app.db v6已实现。
 
 **CLI 自有配置 / Unmanaged CLI Native**
-: Human 显式委托某个本机 CLI 自己决定账户、供应商或默认模型的受限运行器状态。Kith 只记录可探测身份与变化摘要，不能保证完整数据目的地，也不能把它用于 Memory Advisor；它与“尚未配置”是两个不同状态。2026-07-23 方案已接受、尚待实现。
+: Human 显式委托某个本机 CLI 自己决定账户、供应商或默认模型的受限运行器状态。Kith 只记录可探测身份与变化摘要，不能保证完整数据目的地，也不能把它用于 Memory Advisor；它与“尚未配置”是两个不同状态。Runtime Profile三态绑定已实现该边界。
 
 **Runtime Config Compiler / 运行器配置编译器**
-: 把统一的供应商连接、模型配置和运行器配置翻译为一次 Kith 子进程启动所需参数、环境、临时文件与 fingerprint 的窄适配层；它不拥有 Agent、频道、session 或记忆业务。配置 revision 变化后必须由新 session generation 生效。2026-07-23 方案已接受、尚待实现。
+: 把统一的供应商连接、模型配置和运行器配置翻译为一次 Kith 子进程启动所需参数、环境、临时文件与 fingerprint 的窄适配层；它不拥有 Agent、频道、session 或记忆业务。Claude Code、Codex、OpenCode、Pi四家compiler已实现，配置revision变化后由新session generation生效。
 
 **Runtime Credential Activation / 运行器短时凭据激活**
-: 聊天 runtime 专用、绑定 runtime session/generation、Worker lease、配置 revisions、epoch、digest 与过期时间的一次性凭据兑换边界。Core 普通执行计划不携带密钥，Worker 只通过本机私有控制通道兑换，明文短暂进入当前 Worker 内存与 child env，并在失败、取消、关闭或超时时撤销；它不复用 Advisor activation。2026-07-23 方案已接受、尚待实现。
+: 聊天 runtime 专用、绑定 runtime session/generation、Worker lease、配置 revisions、epoch、digest 与过期时间的一次性凭据兑换边界。Core 普通执行计划不携带密钥，Worker 只通过本机私有控制通道单次兑换，明文短暂进入当前 Worker 内存与 child env，并在失败、取消、关闭或超时时撤销；它不复用 Advisor activation。app.db v6/runtime控制通道已实现。
 
 **Pi Agent Runtime**
-: 对本机外部 Pi CLI 的正式 runtime 适配目标。现有 experimental print-mode one-shot adapter 将升级为 RPC 模式的 P-A10 v2 per-surface session，接入 durable turn、Context Envelope、Kith CLI Gateway、usage、cancel、snapshot 和 compaction telemetry；它与内置 Pi SDK Memory Advisor 是两条独立路径。2026-07-23 方案已接受、尚待实现。
+: 对本机外部 Pi CLI 的正式 P-A10 v2 runtime 适配器。它以RPC模式维护per-surface session，接入durable turn、Context Envelope、Kith CLI Gateway、usage、cancel、snapshot和compaction telemetry；默认禁用项目/用户extension、skill、prompt、theme和context资源，MCP诚实标为unsupported。它与内置Pi SDK Memory Advisor是两条独立路径。
 
 **交流表面 / Surface**
 : Agent 一段局部对话所属的稳定产品对象，当前聊天类表面为公开频道、私有频道、Human-Agent DM 和话题。P-A10已以surface隔离runtime session；任务沿用其owning thread，不另造聊天表面。automation只保留未来类型，必须等对应事实源/cursor/ACL另立契约。
@@ -345,7 +345,7 @@
 : Desktop 信任凭据和 Local Runtime Worker 控制凭据的统称。两者彼此独立，也不与浏览器 Access Token 或 agent session token 复用。Desktop 每次启动/重启受管进程组都会重新生成；只有手动分进程开发才临时使用 `KITH_SPACE_DESKTOP_TOKEN` 和 `KITH_SPACE_WORKER_TOKEN` 注入。
 
 **每工作区独立 SQLite 文件**
-: 每个 Space 把自己的元数据、消息、任务、频道、Agent、membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 schema v9在v8 advisor/recall/session能力上增加逐Agent Provider/Model consent、job执行快照和独立Provider Run审计；v2–v8合法journal前缀均可原地续迁，postflight按版本、journal、表/列/索引/FK校验。`agents.session_id`只作legacy rollback来源；`user_global`结构化记忆不进入任一workspace，由当前app.db v5独立持有。
+: 每个 Space 把自己的元数据、消息、任务、频道、Agent、membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 schema v10在v9上增加Agent模型绑定、跨安装确认快照和runtime epoch；v2–v9合法journal前缀均可原地续迁。`agents.session_id`只作legacy rollback来源；`user_global`结构化记忆不进入任一workspace，由当前app.db v6独立持有。
 
 **`.kith/`**
 : Space root 下承载其可移植状态的目录：`workspace.db`（Space 元数据、agent 阵容、频道、消息和任务）、`memory/`（Space Memory）、`agents/<agentId>/`（Agent Memory）和 `uploads/`（附件对象）。runtime prompt、日志和宿主临时状态不放在这里。

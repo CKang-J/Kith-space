@@ -16,6 +16,7 @@ import { claudeRuntime } from "../../daemon/claudeRuntime.js";
 import { codexRuntime } from "../../daemon/codexRuntime.js";
 import { opencodeRuntime } from "../../daemon/opencodeRuntime.js";
 import { createLogger } from "../../log.js";
+import { piRpcRuntimeV2 } from "./piRpcRuntimeV2.js";
 
 interface ActiveTurn {
   input: RuntimeTurnInput;
@@ -245,5 +246,6 @@ export function getRuntimeV2(name: string): RuntimeV2 | null {
   if (name === "claude") return claudeRuntimeV2;
   if (name === "codex") return codexRuntimeV2;
   if (name === "opencode") return opencodeRuntimeV2;
+  if (name === "pi") return piRpcRuntimeV2;
   return null;
 }
