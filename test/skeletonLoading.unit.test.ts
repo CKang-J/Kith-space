@@ -3,7 +3,7 @@
 //
 // Guards three things that are easy to silently break:
 //   1. ready=false / switch-in-flight renders a skeleton, not a blank null (main.tsx route guards).
-//   2. The workspace skeleton follows the current single-window shell and its three layout modes.
+//   2. The workspace skeleton follows the current single-window shell and its shared primary card.
 //   3. The shimmer is disabled under prefers-reduced-motion.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -25,10 +25,12 @@ test("workspace skeleton follows the current single-window shell and panel langu
   assert.doesNotMatch(skeletonTsx, /shell-topbar|skel-topbar/, "the retired global top bar must not remain in the skeleton");
   assert.match(skeletonTsx, /<SidebarContextSkeleton \/>/, "the workspace context must load inside the conversation list");
   assert.match(skeletonTsx, /skel-sidebar-context/, "the sidebar context must have a dedicated placeholder");
-  assert.match(skeletonTsx, /shell-work-panel shell-chat-main-card/, "ChatOnly must use an independent work panel");
-  assert.match(skeletonTsx, /shell-work-panel shell-module-workspace/, "module loading must use an independent work panel");
+  assert.match(skeletonTsx, /shell-primary-workspace-card shell-chat-main-card/, "Chat must use the shared primary card");
+  assert.match(skeletonTsx, /shell-primary-workspace-card shell-module-workspace/, "module loading must use the shared primary card");
   assert.match(skeletonTsx, /WORKSPACE_MODULES\.has\(requestedModule\)/, "only legal module query values may change the skeleton mode");
-  assert.match(skeletonTsx, /params\.get\("chat"\) !== "0"/, "chat=0 must produce the ModuleOnly skeleton");
+  assert.match(skeletonTsx, /activeModule !== "settings"/, "Settings must keep the Chat skeleton behind its modal");
+  assert.match(skeletonTsx, /contentModule \? <ConversationListSkeleton \/>/, "module loading must retain the left navigation skeleton");
+  assert.doesNotMatch(skeletonTsx, /DockSkeleton|workspace-dock|shell-dock-zone/, "the retired Dock must not return");
 
   assert.doesNotMatch(skeletonTsx, /(?:^|[\s"'])\.app(?:[\s"'.]|$)/m, "the retired .app shell must not return");
   assert.doesNotMatch(skeletonTsx, /\brail\b/i, "the retired side rail must not return");

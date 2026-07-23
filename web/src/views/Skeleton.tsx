@@ -41,16 +41,6 @@ function SidebarContextSkeleton() {
   );
 }
 
-function DockSkeleton() {
-  return (
-    <footer className="shell-dock-zone skel-dock-zone" aria-hidden="true">
-      <div className="workspace-dock skel-dock">
-        {Array.from({ length: 5 }).map((_, i) => <div key={i} className="skel-box skel-dock-item" />)}
-      </div>
-    </footer>
-  );
-}
-
 function ConversationListSkeleton() {
   return (
     <aside className="shell-work-panel shell-chat-conversations skel-conversations" aria-hidden="true">
@@ -74,36 +64,22 @@ function TraceSkeleton() {
   );
 }
 
-function ChatPanelSkeleton({ compact, dock }: { compact: boolean; dock: boolean }) {
-  if (compact) {
-    return (
-      <section className="shell-work-panel shell-chat-workspace shell-chat-workspace--compact skel-chat-compact">
-        <header className="shell-chat-compact-tools skel-chat-compact-tools" aria-hidden="true">
-          <div className="skel-box skel-compact-action" />
-          <div className="skel-box skel-compact-title" />
-          <div className="skel-box skel-compact-action" />
-        </header>
-        <div className="skel-chat-scroll"><ChatSkeleton /></div>
-      </section>
-    );
-  }
-
+function ChatPanelSkeleton() {
   return (
     <section className="shell-chat-workspace shell-chat-workspace--full skel-chat-full">
       <ConversationListSkeleton />
-      <section className="shell-work-panel shell-chat-main-card skel-chat-main">
+      <section className="shell-work-panel shell-primary-workspace-card shell-chat-main-card skel-chat-main">
         <div className="skel-chat-head" aria-hidden="true"><div className="skel-box skel-chat-title" /></div>
         <div className="skel-chat-scroll"><ChatSkeleton /></div>
-        {dock ? <DockSkeleton /> : null}
       </section>
       <TraceSkeleton />
     </section>
   );
 }
 
-function ModulePanelSkeleton({ dock }: { dock: boolean }) {
+function ModulePanelSkeleton() {
   return (
-    <section className="shell-work-panel shell-module-workspace skel-module-panel">
+    <section className="shell-work-panel shell-primary-workspace-card shell-module-workspace skel-module-panel">
       <div className="skel-module-content" aria-hidden="true">
         <aside className="skel-module-sidebar">
           <div className="skel-box skel-panel-title" />
@@ -117,12 +93,11 @@ function ModulePanelSkeleton({ dock }: { dock: boolean }) {
           <div className="skel-box skel-module-card skel-module-card--short" />
         </div>
       </div>
-      {dock ? <DockSkeleton /> : null}
     </section>
   );
 }
 
-// A root/channel bootstrap is ChatOnly. A legal module query mirrors Split or ModuleOnly without mounting product data.
+// A root/channel bootstrap mirrors the persistent sidebar plus either Chat or one selected module.
 export function WorkspaceSkeleton({ chat = false }: { chat?: boolean }) {
   const { t } = useTranslation();
   const { search } = useLocation();
@@ -131,8 +106,8 @@ export function WorkspaceSkeleton({ chat = false }: { chat?: boolean }) {
   const activeModule = !chat && requestedModule && WORKSPACE_MODULES.has(requestedModule)
     ? requestedModule
     : null;
-  const chatVisible = activeModule === null || params.get("chat") !== "0";
-  const mode = activeModule === null ? "chat-only" : chatVisible ? "split" : "module-only";
+  const contentModule = activeModule && activeModule !== "settings" ? activeModule : null;
+  const mode = contentModule ? "module-only" : "chat-only";
 
   return (
     <main
@@ -144,9 +119,8 @@ export function WorkspaceSkeleton({ chat = false }: { chat?: boolean }) {
       aria-label={t("common.loadingWorkspace")}
     >
       <div className="shell-workspace-canvas skel-workspace-canvas">
-        {chatVisible ? <ChatPanelSkeleton compact={mode === "split"} dock={mode === "chat-only"} /> : null}
-        {mode === "split" ? <div className="shell-drag-divider skel-divider" aria-hidden="true" /> : null}
-        {activeModule ? <ModulePanelSkeleton dock /> : null}
+        {contentModule ? <ConversationListSkeleton /> : null}
+        {contentModule ? <ModulePanelSkeleton /> : <ChatPanelSkeleton />}
       </div>
     </main>
   );

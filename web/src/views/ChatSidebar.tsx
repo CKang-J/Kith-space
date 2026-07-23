@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { useTranslation } from "react-i18next";
 import { LiveAgentBar } from "./LiveAgentBar.tsx";
 import { ConversationListContent } from "./ConversationListContent.tsx";
 
@@ -27,27 +26,6 @@ export function ChatSidebar({
         />
       </div>
       <LiveAgentBar />
-    </aside>
-  );
-}
-
-export function ConversationDrawerSidebar({
-  channelIdOverride,
-  preserveSearch = "",
-  onNavigate,
-}: Omit<ChatSidebarProps, "moduleNavigation"> = {}) {
-  const { t } = useTranslation();
-
-  return (
-    <aside className="sidebar conversation-drawer-sidebar">
-      <div className="sb-scroll">
-        <div className="sb-title">{t("nav.channel")}</div>
-        <ConversationListContent
-          channelIdOverride={channelIdOverride}
-          preserveSearch={preserveSearch}
-          onNavigate={onNavigate}
-        />
-      </div>
     </aside>
   );
 }

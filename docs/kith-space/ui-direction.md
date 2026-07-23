@@ -2,7 +2,7 @@
 
 本文是 Kith-space 当前 UI 信息架构与视觉语言的权威说明。单窗口交互契约见 `docs/superpowers/specs/2026-07-10-kith-space-single-window-workspace-design.md`，个人 AgentOS 宿主与产品边界见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，Home/Space root 补充设计见 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`；Chat 壳层、侧栏模块入口、会话抽屉和案例展示退役的最新覆盖规格见 `docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md`；模型与供应商、运行器、Memory Advisor和Agent记忆页的实现覆盖见`docs/superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`。现有可交互线框 `docs/prototypes/kith-space-single-window-flow.html` 只覆盖早期三态壳，不代表最新 ChatOnly 导航目标。
 
-结论前置：Kith-space 采用**单窗口工作区**。首次启动先初始化唯一 Human，普通冷启动随后进入 `Home` Chat；Home 是真实总控 Space，并比普通 Space 多 Spaces 模块。Chat 是默认主页与基础工作面，功能模块打开后，界面只在 Chat 全宽、Chat + 模块分屏、模块全宽三种形态间切换。ChatOnly 的模块入口位于左侧常驻栏，模块打开后切换为 Module Pane 底部 Dock；案例展示退出目标信息架构。此前的“空间总览壳 + 空间内部壳”、旧 `Layout` 回退、Landing 与 PWA 入口均保持删除。
+结论前置：Kith-space 采用**单窗口工作区**。首次启动先初始化唯一 Human，普通冷启动随后进入 `Home` Chat；Home 是真实总控 Space，并比普通 Space 多 Spaces 模块。左侧栏始终负责 Space、会话和模块导航；右侧只有一个主卡片槽位，在 Chat 与 Spaces / Inbox / Tasks / Agents 之间切换，不再并排展开第二工作面。Settings 以覆盖 Chat 的模态层呈现。底部 Dock、Split/ModuleOnly 双工作面和案例展示均已退出当前信息架构。
 
 ---
 
@@ -13,15 +13,15 @@
 - 窗口沿用原有浅灰画布；中心 Chat 保持独立白色圆角卡片，会话导航取消卡片底板并直接使用画布背景，两者以既有间隙分开。
 - 全局 40px 顶部栏已退役；工作区画布四周统一保留 10px，共用面板采用 18px 圆角；Space、当前会话上下文和快速切换入口位于 ChatOnly 左侧会话列表顶部。标题、导航、正文和元信息统一使用系统无衬线字体，不为功能标题单独使用衬线字体。
 - 原有中心 Chat 卡片式 UI、圆角、间隙和表面层级不得因壳层导航改造被拉平或移除；常驻会话导航不再使用独立卡片表面。
-- 新增纵向模块入口、会话列表和 Split 会话抽屉不使用贯穿式横线或竖线分割；归档频道入口与常驻 agent 状态区同样只用留白、分组标题与行底色组织层级。
-- ChatOnly 常驻会话导航不显示“对话”总标题；上方模块图标与下方“频道 / 私信”分组标题共用左侧基线。Split 临时抽屉仍保留自身标题。
+- 纵向模块入口和会话列表不使用贯穿式横线或竖线分割；归档频道入口与常驻 agent 状态区同样只用留白、分组标题与行底色组织层级。
+- 常驻会话导航不显示“对话”总标题；上方模块图标与下方“频道 / 私信”分组标题共用左侧基线。
 - 活跃行使用克制的浅表面色，Human 消息保持 `#eff4fb`，Agent 消息使用中性浅灰，不建立互相竞争的多套强调色。
-- Chat 标题栏相对 Chat 卡片左右固定 14px，与 24px 私聊头像在 52px 标题栏中的上下留白一致，不跟随消息宽度变化；频道标题以 18px 线性 Hash 图标替代文本 `#`，与左侧频道栏使用同一图标体系。Agent 私聊标题使用“头像 + 16px/700 昵称 + 12px/400 状态”，不显示 `@` 前缀或 AI 标签，状态文字复用 Agents 页面同一套本地化映射。休眠状态统一使用低对比暖灰色状态点，在线、工作和错误状态继续保留各自语义色。ChatOnly 与 Split 的消息区统一使用 10px 水平内边距，日期分隔、消息流、system 任务事件与 Composer 使用同一条 1040px 居中内容轨道；system 事件内部 Markdown 同样居中。Composer 左边界对齐头像槽、右边界对齐消息内容列的最大右边界，滚动区使用左右对称的稳定槽位消除滚动条造成的偏移和单侧空白，并只允许纵向滚动；宽屏左右留白对称，窄屏不会被隐藏工具栏撑出横向滚动条。
+- Chat 标题栏相对 Chat 卡片左右固定 14px，与 24px 私聊头像在 52px 标题栏中的上下留白一致，不跟随消息宽度变化；频道标题以 18px 线性 Hash 图标替代文本 `#`，与左侧频道栏使用同一图标体系。Agent 私聊标题使用“头像 + 16px/700 昵称 + 12px/400 状态”，不显示 `@` 前缀或 AI 标签，状态文字复用 Agents 页面同一套本地化映射。休眠状态统一使用低对比暖灰色状态点，在线、工作和错误状态继续保留各自语义色。消息区使用 10px 水平内边距，日期分隔、消息流、system 任务事件与 Composer 使用同一条 1040px 居中内容轨道；system 事件内部 Markdown 同样居中。Composer 左边界对齐头像槽、右边界对齐消息内容列的最大右边界，滚动区使用左右对称的稳定槽位消除滚动条造成的偏移和单侧空白，并只允许纵向滚动；宽屏左右留白对称，窄屏不会被隐藏工具栏撑出横向滚动条。
 - 不把现有业务视图一比一重画成原型；原型负责布局与交互，现有 Kith-space UI 负责内容呈现。
 
 品牌标志采用“三层本地 Space”概念：暖白、鼠尾草绿与近黑三张错位平面表达 Home 和多个本地 Space，前景平面形成 `K`。用户确认的生成设计稿及其原始像素裁切是唯一母版；应用图标按母版 120/558 的标准圆角比例精确裁出透明四角，浏览器使用同源 RGBA PNG，Windows/Electron 使用同源多尺寸 ICO，不重新描摹 SVG。完整资产与回归约束见 `docs/brand.md`。
 
-这套“中心 Chat 卡片 + 画布会话导航 + 留白分组 + 克制浮层”的语言用于三态切换，避免不同状态像三套产品。
+这套“统一主卡片 + 画布会话导航 + 留白分组 + 克制浮层”的语言同时用于 Chat、业务模块和 Settings，避免不同页面像几套产品。
 
 ---
 
@@ -30,70 +30,61 @@
 应用只有一个 `WorkspaceFrame`：
 
 ```text
-ChatOnly 左侧列表首行：当前 Space / 当前会话 / Space 快速切换；全局搜索由其下方入口或 `Ctrl/Command + K` 唤出
+左侧列表首行：当前 Space / 当前会话 / Space 快速切换；全局搜索由其下方入口或 `Ctrl/Command + K` 唤出
 ┌────────────────────────────────────────────────────────────┐
-│ Chat Pane       │ 聚合面板（可选） │ 10px 可拖拽区 │ Module Pane │
-│                 │ 轨迹/话题/文件   │                 │ Dock        │
+│ 常驻左侧导航    │ 右侧统一主卡片：Chat 或当前业务模块       │
+│                 │ Chat 可附带轨迹 / 话题 / 文件聚合面板     │
 └────────────────────────────────────────────────────────────┘
 ```
 
 - 未初始化时进入本地 Human 资料页；普通冷启动进入自动创建的 Home Chat，显式 Space 深链接直达目标，托盘恢复保留现有窗口现场。
-- Space 名称保留快速切换入口；H4 已把默认创建、已有文件夹接入和完整目录管理移入 Home 的 Spaces 模块。ChatOnly 左侧列表首行只保留快速切换、失联重连和“管理空间”跳转。
-- Search 位于 ChatOnly 左侧列表的 Space/会话上下文下方，通过按钮和 `Cmd/Ctrl + K` 进入，不占 Dock 槽位。
-- 同时最多显示一个 Chat Pane、一个当前会话聚合面板和一个 Module Pane；聚合面板只依附可见 Chat，不是第二个 Module。
-- Split 默认让 Chat 占可用工作区的 25%、Module 占其余空间；Chat 下限为 `max(360px, 25%)`。ChatOnly 的主 Chat 卡片沿用同一 360px 绝对下限。Tasks / Search 的模块下限为 560px，其余现有模块为 640px；模块不再使用固定 960px 上限。
-- 分区间完整 10px 间隙都是拖拽热区，悬停或拖动时才显示短握柄，不显示贯穿全高的分隔线。
-- 宽度不足以容纳双栏时不强行压缩，临时退化为单 Pane；窗口变宽后恢复此前的双栏意图。
-- 三栏宽度优先级为当前主要工作面、Module、聚合面板、固定会话列表；不能同时满足最小宽度时先临时把聚合面板收至 `0` 并保留打开意图，ModuleOnly 不单独显示聚合面板。从 ChatOnly 打开任一模块时主动关闭聚合面板且返回 ChatOnly 后不自动恢复；进入 Split 后仍可由标题栏按钮手动重新展开。
-- 拖拽偏好保存为工作区宽度比例而非像素。Split 内切换模块保留该比例；从 ChatOnly 打开模块、关闭模块后重新打开，或从 ModuleOnly 恢复 Chat 时，均回到 Chat 25% 的默认下限。
+- Space 名称保留快速切换入口；H4 已把默认创建、已有文件夹接入和完整目录管理移入 Home 的 Spaces 模块。左侧列表首行只保留快速切换、失联重连和“管理空间”跳转。
+- Search 位于 Space/会话上下文下方，通过按钮和 `Cmd/Ctrl + K` 进入。
+- 同时最多显示一个右侧主卡片。Chat 可附带当前会话聚合面板；业务模块替换 Chat 时不显示该聚合面板。
+- Chat 与业务模块复用 `shell-primary-workspace-card` 的圆角、边界、背景和可用尺寸。模块内部已有对象侧栏可以保留，但不能再创建第二个外层工作面或底部导航。
+- Settings 不占用主卡片路由槽位，而是在 Chat 上方打开模态层；关闭、遮罩点击和 Esc 都返回原 Chat，设置分区切换使用 replace history，避免关闭后浏览器返回立即重开弹窗。
 
-当前 Space 的频道或 Human-Agent DM 由规范会话 pathname 表达；打开模块时在同一 URL 上增加 `?module=<id>`，ModuleOnly 再增加 `chat=0`。Tasks 使用 `taskScope`，Agents 使用 `agent` 与 `agentTab`，Settings 使用 `settings` 表达自己的模块资源；不属于当前模块的资源参数会被清除。切换频道或 DM 时保留 active module、Chat 显隐和该模块的资源 query，并替换旧会话的 `msg`/`thread` 等临时焦点。因此一个 URL 可以同时表达“频道 A + Tasks + Split”，在紧凑会话抽屉切频道不会关闭模块，也不会把旧消息焦点带到新会话。
+当前 Space 的频道或 Human-Agent DM 由规范会话 pathname 表达；打开业务模块时在同一 URL 上增加 `?module=<id>&chat=0`，Settings 使用 `?module=settings&settings=<section>`。Tasks 使用 `taskScope`，Agents 使用 `agent` 与 `agentTab` 表达自己的资源；不属于当前模块的资源参数会被清除。每个模块只有一种规范呈现：业务模块替换 Chat，Settings 覆盖 Chat，不再允许入口不同导致同一页面生成两套 URL。
 
-浏览器刷新、前进和后退都以 URL 为准恢复三态；会话列表、聚合面板、聚合 Tab 与文件筛选等短暂界面状态不进入 URL。`/tasks`、`/agent`、`/settings` 等旧模块实体路径不再作为兼容深链，未知 Space 子路径会规范化到 `/s/:slug/channel` 并保留有效 query/hash。`?legacy=1` 与旧 `Layout` 已删除。
+浏览器刷新、前进和后退都以 URL 为准恢复 Chat、业务模块或 Settings 模态层；会话列表、聚合面板、聚合 Tab 与文件筛选等短暂界面状态不进入 URL。`/tasks`、`/agent`、`/settings` 等旧模块实体路径不再作为兼容深链，未知 Space 子路径会规范化到 `/s/:slug/channel` 并保留有效 query/hash。`?legacy=1` 与旧 `Layout` 已删除。
 
 ---
 
-## 3. 三态布局与模块导航
+## 3. 单主卡片布局与模块导航
 
-### 3.1 状态机
+### 3.1 呈现状态
 
 ```text
-ChatOnly   = Chat 可见，Module 不存在
-Split      = Chat 可见，Module 可见
-ModuleOnly = Chat 隐藏，Module 可见
+Chat       = 左侧导航 + 右侧 Chat 主卡片
+Module     = 左侧导航 + 右侧业务模块主卡片
+Settings   = Chat 保持挂载 + Settings 模态层
 ```
 
-系统不允许 Chat 与 Module 同时隐藏。
-
-| 当前状态 | 模块入口位置 | 点击 Chat | 点击当前模块 | 点击其他模块 |
+| 当前状态 | 模块入口位置 | 点击当前模块 | 点击其他业务模块 | 点击 Settings |
 |---|---|---|---|---|
-| ChatOnly | 左侧纵向模块列表 | 无 Chat 入口 | 不适用 | 点击任一模块后打开 Split；空间不足时打开 ModuleOnly |
-| Split | Module Pane 底部 Dock | 进入 ModuleOnly | 关闭模块，回到 ChatOnly | 保持 Split 并替换模块 |
-| ModuleOnly | Module Pane 底部 Dock | 恢复 Split | 关闭模块，回到 ChatOnly | 保持 ModuleOnly 并替换模块 |
+| Chat | 左侧常驻栏 | 不适用 | 右侧主卡片切换为模块 | 在 Chat 上打开模态层 |
+| Module | 左侧常驻栏 | 关闭模块并返回 Chat | 原位替换右侧主卡片 | 返回 Chat 并打开模态层 |
+| Settings | 左侧底层保持但不可交互 | 关闭弹窗返回 Chat | 先关闭弹窗后由左侧选择 | 保持弹窗并切换设置分区 |
 
-这意味着 Chat 控制只在模块已打开时出现并负责 Chat 显隐；ChatOnly 已经明确处于 Chat，不渲染重复的 Chat 项。
+### 3.2 常驻侧栏模块导航
 
-### 3.2 ChatOnly 侧栏模块导航
-
-ChatOnly 的左侧常驻栏按 Space 类型显示纵向“图标 + 文字”模块入口：
+左侧常驻栏按 Space 类型显示纵向“图标 + 文字”模块入口：
 
 - Home：`Spaces | Inbox | Tasks | Agents | Settings`。
 - 普通 Space：`Inbox | Tasks | Agents | Settings`。
 
 - Chat 不进入列表；Search 位于 Space/会话上下文下方，并继续支持 `Ctrl/Command + K`。
 - 入口复用同一模块注册表，行高 36–40px、图标 18px、标签 14px，使用轻量 hover/active 表面，不绘制行边框或阴影。
-- 点击入口写入现有 `module` query；固定左侧栏随后隐藏，工作区进入 Split 或响应式 ModuleOnly。
-- ChatOnly 不挂载底部 Dock，也不再为 Dock 预留 Composer 下方空间。
+- 点击入口写入规范 `module` query；左侧栏保持不动，右侧主卡片原位切换。
+- 点击当前激活的业务模块会移除模块 query 并返回 Chat。
+- 工作区不挂载底部 Dock，也不为 Dock 预留空间。
 
-### 3.3 模块打开态 Dock
+### 3.3 Settings 模态层
 
-- Split 和 ModuleOnly 的 Dock 位于 Module Pane 底部。
-- Chat 按钮只显示图标，用激活底色表达 Chat 是否可见，不因激活而展开。
-- 业务模块默认只显示图标；当前模块横向展开并显示名称。
-- 点击当前模块关闭 Module Pane 并回到 ChatOnly；此时 Dock 卸载，左侧常驻栏恢复。
-- Dock 白底、1px `#e0e0e0` 边框、12px 圆角和轻工具层阴影，距面板底部 14px；其所在面板预留空间，不覆盖模块内容。
-- Dock 项高 39px；未激活宽 41px，激活模块宽 122px；图标 18px、标签 13px。
-- 未激活项用 `#fafafa`，激活项用 `#f5f5f5`，不使用高饱和强调色。
+- Settings 复用既有 Human、Space、模型与供应商、运行器、自动整理记忆和 Desktop 内容，不复制第二套设置表单。
+- 模态层有明确标题、关闭按钮、遮罩关闭、Esc、焦点圈定和底层 `inert`；二级供应商弹窗打开时，Esc 只关闭最上层。
+- 桌面宽度使用左侧设置分区导航和右侧内容；小于 640px 时分区导航改为顶部横向滚动列表，内容保持可读。
+- 设置分区切换替换当前 history entry；关闭弹窗同样替换为 Chat URL，浏览器返回不会重新打开刚关闭的设置。
 
 Spaces 只在 Home 出现；Agents 只显示当前 Space 的 agent 队伍；唯一 Human 的资料位于全局 Settings。Calendar、Canvas 等真实能力成熟后插入同一模块注册表；当前不展示无功能的空入口。
 
@@ -129,36 +120,27 @@ Chat 导航侧栏 | 当前会话与 Composer | 聚合面板（轨迹 / 话题 / 
 - **正文身份提及**：消息正文中的 Agent/Human `@昵称` 使用无底块的蓝色链接样式，hover 或键盘聚焦时显示细下划线；点击后以该 token 为锚点打开与消息头像一致的 Agent/Human 身份卡片，不再跳转 Agent 模块或 Human 设置。频道、话题和任务引用继续保持各自既有样式与导航行为，`@all` 仍不可点击。
 - **回复预览与话题边界**：required 唤醒可以在原会话显示 Agent 临时回复预览；若 Agent 直接在该会话发送正式消息，预览平滑收敛为持久化消息；若 Agent 按要求改在触发消息的话题中回复，则在首条正式回复持久化后移除对应 Agent 的父会话预览，单纯创建空话题不提前清理。工具调用后的“已回复”“没有待处理消息”等 runtime 尾部文本只留在轨迹，不显示为刷新即消失的主会话消息。
 - 实时轨迹只展示当前 base conversation 的本次前端会话缓冲；话题轨迹归一到父会话，无作用域或跨会话 ambiguous 事件不进入任何会话聚合面板。
-- 会话列表与聚合面板都沿物理边界把宽度变为 `0`，内容随边界裁切，不使用淡入淡出或贯穿全高的收起长条；两者使用 Chat 侧栏曲线，Module 保持自己的切换曲线。
-- ChatOnly 与空间足够的 Split 中，频道设置占用聚合面板位置；Split 下仍位于 Chat 与 Module 之间。空间不足时复用同一个设置组件，在 Chat 内从右侧以裁切宽度动画打开临时抽屉，不覆盖 Module，也不复制第二套表单。
+- 会话列表保持常驻；聚合面板沿物理边界把宽度变为 `0`，内容随边界裁切，不使用淡入淡出或贯穿全高的收起长条。
+- Chat 中的频道设置优先占用聚合面板位置；空间不足时复用同一个设置组件，在 Chat 内从右侧以裁切宽度动画打开临时抽屉，不复制第二套表单。
 - 归档频道保留历史消息、话题、文件、成员和设置阅读入口，但以顶部只读提示替代 Composer，并关闭回复、附件、reaction、任务状态/创建、action card 和成员修改等写入口。顶部提示直接提供“恢复频道”，设置首页同时提供恢复与永久删除；恢复后留在当前频道并回到活跃列表，永久删除必须准确输入频道名称。每个 Space 的 `# all` 是必需频道：名称和可见性锁定，归档入口隐藏；删除动作保留为置灰入口并明确说明系统必需频道不能删除，服务端仍执行最终保护。
 
-### 4.2 Chat 紧凑
+### 4.2 Chat 与模块切换
 
-打开模块进入 Split 时，会话列表不再占固定栏位，Chat 收成一张紧凑面板；本次状态迁移会先关闭聚合面板，用户在宽度允许时手动重新展开后，聚合面板作为 Chat 与 Module 的同级面板留在两者之间：
-
-```text
-[会话抽屉] 当前会话 | 聚合面板 | Module
-消息流
-Composer
-```
-
-- 会话抽屉从 Chat 左侧覆盖打开，只覆盖 Chat Pane，不挤压或遮挡聚合面板与 Module。
-- 会话抽屉只组合“已保存、频道、私信”三个产品导航分组；置顶与已归档仍是频道内部结构。它不显示纵向模块入口、Chat、案例展示或固定侧栏底部的 agent 运行状态。
-- 抽屉切换会话后继续保留 active module、Chat 显隐和合法 module resource query；Escape、遮罩关闭与焦点返回沿用现有行为。
-- 话题和 agent profile 属于 Chat 内部临时层，不占用 Module Pane；模块打开且话题存在时，紧凑 Chat 只显示话题，不再并排保留父会话消息流；聚合面板仍由自己的标题图标控制。
-- Chat 被隐藏时，Chat 的临时层随之卸载；恢复后回到当前会话。
+- 业务模块打开时 Chat 主卡片卸载，左侧 Space / 会话 / 模块导航保持挂载；返回 Chat 时恢复按 Space 记住的最近会话。
+- 话题、agent profile 和频道设置属于 Chat 内部临时层，不占用业务模块主卡片。
+- 从 Chat 打开指定会话 Tasks 时，把会话 id 固化为 `taskScope`；其他业务模块不会继承不属于自己的 resource query。
+- 业务模块不提供第二套会话抽屉、Chat 显隐按钮或 Dock。
 
 ---
 
 ## 5. 模块工作面与作用域
 
-- 当前模块包括 Inbox、Tasks、Agents、Settings；Home 另有 Spaces；Search 由 ChatOnly 左侧入口打开。Computers/Machines 不再是产品模块。
-- 一次只显示一个 Module Pane，切换 Dock 项直接替换模块。
-- Inbox、Tasks、Agents、Settings 只读取当前 Space 数据；Spaces 只读取 app.db registry 和真实摘要。切换 Space 时 Chat 与普通模块数据源一起切换。
+- 当前业务模块包括 Inbox、Tasks、Agents；Home 另有 Spaces；Search 由左侧入口或快捷键打开；Settings 是模态层。Computers/Machines 不再是产品模块。
+- 一次只显示一个业务模块，切换左侧导航项直接替换右侧主卡片。
+- Inbox、Tasks、Agents 和 Settings 只读取当前 Space 数据；Spaces 只读取 app.db registry 和真实摘要。切换 Space 时 Chat 与普通模块数据源一起切换。
 - Web Store 与路由状态只使用 `SpaceInfo/spaceId/spaces` 和 `/s/:slug`；请求只发送 `x-space-id`，不得在前端保留旧 Server 双命名。
-- Tasks 保留旧布局的范围侧栏，可在当前 Space 的全部任务与指定频道任务之间切换；切换范围不得改变当前 Split / ModuleOnly 姿态。
-- 模块加载失败或空状态只在自身面板处理，Chat 保持可用。
+- Tasks 保留范围侧栏，可在当前 Space 的全部任务与指定频道任务之间切换；切换范围不得改变当前主卡片模块。
+- 模块加载失败或空状态只在自身面板处理；左侧导航仍可返回 Chat。
 - 模块不得直接控制 Chat 内部组件；Chat 也不得依赖具体模块的数据结构。
 - 普通模块契约为未来的 `scope = current | all` 预留语义，但当前不显示尚不可用的跨 Space 开关。
 
@@ -179,14 +161,9 @@ H4 已复用 H3 领域/API 能力交付本节：Home Spaces 提供卡片网格�
 
 ## 6. Chat 与模块联动
 
-布局先建立两层上下文语义，数据契约将在 Runtime 契约 v2 阶段正式落地：
-
-- **模块级自动感知**：打开 Tasks 后，Chat 知道当前 Space 正在展示 Tasks。
-- **对象级显式聚焦**：任务、文件、agent 等只有通过“在 Chat 中讨论”才成为 focused item。
-
-每条消息发送时应固化一个结构化 `MessageContextSnapshot`，包含 Space、会话、当前模块、Context Stack 和 focused item。UI 与服务端保存 Kith-space 自己的结构，不把 OpenLoaf 的 `<stack>` XML 硬编码进核心模型；不同 runtime 适配器再按需要编码为 XML、JSON 或提示文本。
-
-A5 已完成工作区入口与规范 URL 收口，但 `MessageContextSnapshot`、Composer Context 标签及服务端持久化仍属于后续工作，不得误标为已实现。
+- 业务模块与 Chat 不同时显示，因此仅打开模块不会暗中改变下一条聊天消息的上下文。
+- 任务、文件、agent 等对象只有通过明确的“在 Chat 中讨论”动作，才会返回 Chat 并成为 focused item。
+- 每条消息发送时固化结构化 `MessageContextSnapshot`，包含 Space、会话、可见 UI context 和 focused item；UI 与服务端保存 Kith-space 自己的结构，不把特定 runtime 提示格式硬编码进核心模型。
 
 ---
 
@@ -194,21 +171,22 @@ A5 已完成工作区入口与规范 URL 收口，但 `MessageContextSnapshot`�
 
 当前生产壳已完成 A5 入口收口与 P-A7 H4：`App` 只渲染 `WorkspaceFrame`；Agents、Human Settings、Desktop Settings 与 Home-only Spaces 已落地，登录/注册/邀请、Computers、Landing、Features、PWA、SSR/prerender、旧 `Layout` 与 `?legacy=1` 均已退出活跃代码。Agent 详情的“记忆”标签与概览路径通过兼容的 workspace-files API 展示并读取当前 Space 的 `<space>/.kith/agents/<agentId>`；`agentTab=workspace` 只作为既有深链兼容值保留，不再表示共享 Space 工作区。普通冷启动进入 stable Home，显式 ready 深链接仍优先；普通 Space 不显示也不能激活 Spaces。
 
-决策 28 的 Chat 壳层切片**已完成代码、自动化验证与用户手动视觉验收**：`SidebarModuleNavigation` 提供 ChatOnly 纵向模块入口，`ConversationListContent` 由固定侧栏和 Split 窄抽屉共享；ChatOnly 不挂载 Dock，模块打开态仍使用含 Chat 控制的 `WorkspaceDock`。案例展示的入口、产品路由、视图、数据、资产与专属表现分支已删除，旧 URL 仅作 SPA 兼容并规范化到当前 Space 默认频道。状态以 `docs/progress.md` 为准。
+决策 28 的 Chat 壳层在 2026-07-23 按用户反馈再次收敛：`SidebarModuleNavigation` 在 Chat 与模块页中始终可见，`ConversationListContent` 继续复用既有会话数据；Spaces、Inbox、Tasks、Agents 在右侧复用 Chat 的同一主卡片槽位，不再展开第二工作面。`WorkspaceDock` 已删除，Settings 使用独立模态层并复用原设置内容。案例展示继续保持退役。状态以 `docs/progress.md` 为准。
 
 单窗口壳按职责拆在 `web/src/shell/`：
 
-- `WorkspaceFrame.tsx`：路由同步、Chat / 聚合面板 / Module 响应式编排、聚合内容/频道设置短暂场景与拖拽边界。
+- `WorkspaceFrame.tsx`：路由同步、Chat / 业务模块主卡片切换、Settings 模态层、聚合内容和频道设置短暂场景编排。
 - `useChannelSettingsScene.ts`：频道设置场景、脏状态退出确认、焦点恢复以及刷新/历史后退保护。
-- `workspaceLayout.ts`：无 React 依赖的三态状态机。
-- `paneConstraints.ts`：集中计算 Chat 响应式下限、聚合面板目标宽度、三栏可见阈值、各模块下限、单 Pane 阈值和比例到像素的夹取结果。
-- `shellStore.ts`：`useSyncExternalStore` 保存版本化模块宽度比例，并按 Space 持久化最近 Chat 位置；模块与 Chat 显隐由 URL 表达，避免双重状态源。
-- `workspaceRoute.ts`：解析规范会话 pathname，把 `module/chat` 与模块拥有的 `taskScope/agent/agentTab/settings` query 映射回三态，并在会话导航时只保留持久布局/模块资源；Human profile、机器旧路由和旧模块实体路径均不再映射模块。
-- `ChatWorkspace.tsx`：当前负责固定/抽屉会话列表和 Chat 工作面；新切片继续由它编排侧栏/抽屉挂载，但共享会话内容不再通过完整 `ChatSidebar` 在两处复用。
+- `workspaceLayout.ts`：无 React 依赖的 Chat/模块选择状态；Settings 选择映射为模态呈现。
+- `paneConstraints.ts`：集中计算 Chat 与会话聚合面板的响应式下限和目标宽度。
+- `shellStore.ts`：按 Space 持久化最近 Chat 位置；模块呈现由 URL 表达，避免双重状态源。
+- `workspaceRoute.ts`：解析规范会话 pathname，把业务模块规范为 `module=<id>&chat=0`、Settings 规范为覆盖 Chat 的 `module=settings`，并保留当前模块拥有的 `taskScope/agent/agentTab/settings` resource query。
+- `ChatWorkspace.tsx`：负责常驻会话列表和 Chat 工作面；业务模块通过同级主卡片槽位替换它。
+- `SettingsDialog.tsx`：承载 Settings 模态层、顶层 Esc、焦点圈定/恢复和遮罩关闭；二级设置弹窗打开时不越级关闭。
 - `conversation-aggregate/`：轨迹、话题、文件三个会话级子视图；`components/SlidingTabs.tsx` 统一承载 tab/radio 两类滑动分段控件，聚合 Tab 与响应模式不再维护两套选中底板。
 - `channel-settings/`：设置场景壳、常规/成员/通知钻取页与永久删除确认；宽窄布局复用同一组件。`ArchivedChannelGroup.tsx` 单独负责默认收起的归档频道入口。
 - `ModuleWorkspace.tsx`：现有业务视图薄适配。
-- `WorkspaceDock.tsx` / `WorkspaceContextRow.tsx`：模块打开态 Dock 与 ChatOnly 左侧列表中的 Space/会话上下文；`WorkspaceDock` 不在 ChatOnly 挂载，全局 `WorkspaceTopBar` 已退役。
+- `SidebarModuleNavigation.tsx` / `WorkspaceContextRow.tsx`：常驻模块入口与 Space/会话上下文；全局 `WorkspaceTopBar` 和 `WorkspaceDock` 均已退役。
 - `workspaceModules.tsx`：模块注册、路由和图标元数据。
 
 复用 `Chat.tsx`、`LiveTrace.tsx`、`TaskBoard.tsx`、Inbox、Settings 与现有 agent 列表能力；Chat 不再内嵌 Tasks/Files Tab，文件筛选与话题索引也不继续堆入大文件。新切片把 `ChatSidebar.tsx` 收敛为常驻侧栏组合，并新增独立纵向模块导航与共享会话分组；这不是恢复旧的全局 `IconRail`。产品模块已从 Members 收敛为 Agents（内部文件名 `Members.tsx` 暂留）；Computers 与旧 `Layout` 已删除。旧 `OverviewShell`、`SpaceShell`、`IconRail`、`RightDock` 和 `ChatSlot` 继续保持删除。
@@ -227,11 +205,11 @@ P-A8 的前端边界保持独立：`agent-response-mode/` feature 承担 Agent �
 - Desktop 设置区只在检测到 `window.kithDesktop` 窄 preload bridge 时显示；普通浏览器直接进入该路由会回落到 Human 设置，并且服务端对管理 API 返回 404。隐藏入口不是唯一安全边界。
 - LAN 模式首次开启会先展示确认面板，明确说明 HTTP 未加密、只限受信任私网、禁止端口转发/公网暴露；用户确认后才改变监听。自动生成/轮换的访问 Token 保持一次性显示，直到用户主动确认已保存。
 
-一句话：**Chat 是基础工作面；ChatOnly 用左侧纵向入口打开模块，模块打开后由 Dock 统一切换模块和控制 Chat 显隐。**
+一句话：**Chat 是基础工作面；左侧纵向入口始终控制右侧同一主卡片在 Chat 与模块间切换，Settings 以模态层打开。**
 
 ## 9. P-A10 Agent Harness v2 的分阶段 UI 增量
 
-P-A10 不改变 WorkspaceFrame、ChatOnly/Split/ModuleOnly、中心 Chat 卡片或 Module Dock，只扩展现有 Chat/Agents 信息架构：
+P-A10 不改变 WorkspaceFrame 的单窗口边界、中心 Chat 卡片或 Chat/Agents 信息架构：
 
 - Human 在顶层频道明确 `@Agent` 后，root 消息下创建/复用话题，required reply placeholder 和持久 Agent 回复都归入该话题；父频道不显示引用式伪回复。`@all` 继续是频道广播，不自动建立高 fan-out 话题。
 - 消息“展开步骤”从单一轨迹扩展为“上下文 / 步骤 / 用量 / 结果”：区分 turn 前自动注入、Agent 后续主动查询、因隐私只给 projection/ref 和因预算/故障省略的来源；步骤按 attempt 展示安全 thinking summary 与工具事件；结果显示逐 delivery obligation、operation/output、replied/ceded/failed/cancelled 和重试/lease。

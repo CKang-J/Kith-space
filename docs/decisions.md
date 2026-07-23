@@ -27,8 +27,8 @@
 | 11 | UI 投入 | 信息架构现在定死，视觉学 OpenLoaf，豁免"去 AI 味"清单 |
 | 12 | 壳形态 | 单窗口工作区；普通冷启动进入 Home，旧双壳被推翻 |
 | 13 | Chat 地位 | Chat 是默认基础工作面；仅在模块已打开时可收起 |
-| 14 | Dock 与模块 | Home 增加 Spaces；普通 Space 保持 `Chat | Inbox | Tasks | Agents | Settings` |
-| 15 | 布局能力 | ChatOnly / Split / ModuleOnly 三态，可拖拽分隔 |
+| 14 | 导航与模块 | Home 增加 Spaces；普通 Space 保持 `Inbox | Tasks | Agents | Settings`；左侧栏常驻 |
+| 15 | 布局能力 | 右侧单主卡片在 Chat/业务模块间切换；Settings 使用模态层 |
 | 16 | 跨 Space 视角 | 不恢复薄总览壳；Home Spaces 先落真实目录，聚合能力渐进实现 |
 | 17 | 宿主形态 | Desktop 是唯一正式宿主，可选本机/LAN 浏览器入口 |
 | 18 | 数据层 | 迁移到 SQLite + 进程内替代 Redis |
@@ -41,7 +41,7 @@
 | 25 | 会话聚合面板 | 轨迹/话题/文件收敛为当前会话辅助面板，轨迹按 base conversation 隔离 |
 | 26 | Agent 频道响应模式 | Agent 默认值加频道成员覆盖；私聊与明确任务指派不受模式限制 |
 | 27 | 频道全体提及 | Human 的规范 token `@all` 快照当前频道 Agent；主动/被动必回，静音不唤醒 |
-| 28 | Chat 壳层导航 | ChatOnly 使用左侧纵向模块入口；模块打开态使用 Dock；案例展示退役 |
+| 28 | Chat 壳层导航 | 左侧纵向模块入口常驻；右侧主卡片在 Chat 与模块间切换；Settings 使用弹窗；Dock 与案例展示退役 |
 | 29 | 代码架构与性能语言 | 保留 Desktop/Core/Worker 与 TypeScript 主栈；P-A9.0–P-A9.7 的实现、最终门禁与一次独立只读终审已完成，Rust 只由性能证据触发 |
 | 30 | Agent Harness v2 | per-surface session + durable delivery/logical turn/attempt + Context Envelope + revisioned episodic memory + restricted advisor + broker-backed MCP/CLI Gateway + snapshot/compaction telemetry；P-A10.0–P-A10.7 已完成 |
 
@@ -213,19 +213,19 @@
 
 ## 决策 14：模块集合与工作姿态控制器
 
-**当前结论（2026-07-17 再修正）**：Home 的模块集合为 `Spaces | Inbox | Tasks | Agents | Settings`，普通 Space 为 `Inbox | Tasks | Agents | Settings`；Chat 是基础工作面而不是业务模块。ChatOnly 通过左侧常驻栏的纵向图标文字列表打开模块，不显示重复的 Chat 项或底部 Dock。模块打开后，横向 Dock 迁入 Module Pane 底部，并增加 Chat 图标负责 Split / ModuleOnly 切换；当前模块横向展开并显示名称。`Spaces` 只在 Home 有效，`Members` 收敛为当前 Space 的 `Agents`，`Computers` 删除，唯一 Human 的资料位于全局 Settings；Search 位于 ChatOnly 左侧列表的 Space/会话上下文下方。一次只打开一个模块。模块不拥有独立 pathname，而是在当前频道、DM 或收藏会话路径上使用 `?module=<id>`；合法 resource query 分别为 Tasks 的 `taskScope`、Agents 的 `agent`/`agentTab` 与 Settings 的 `settings`。切换会话保留当前模块及其 resource，切换模块则清除不属于新模块的 resource。完整修正见决策 28。
+**当前结论（2026-07-23 再修正）**：Home 的模块集合为 `Spaces | Inbox | Tasks | Agents | Settings`，普通 Space 为 `Inbox | Tasks | Agents | Settings`；Chat 是基础工作面而不是业务模块。左侧常驻栏以纵向图标文字列表统一控制 Chat 与业务模块，不显示重复 Chat 项或底部 Dock。点击 Spaces、Inbox、Tasks、Agents 时，左侧栏保持不动，右侧复用 Chat 的同一主卡片槽位切换内容；Settings 使用模态层。模块继续在当前会话 pathname 上使用 `?module=<id>` 及既有 resource query。完整修正见决策 28。
 
-**原决定**：Dock 曾被限定为“窄右栏容器自身的底部导航”，实时轨迹也曾作为右栏模块之一；随后 Dock 又被设为 ChatOnly、Split、ModuleOnly 都常驻的统一底部控制器。最新方向保留模块作为可伸缩第二工作面和模块打开态 Dock，但 ChatOnly 改用更符合会话浏览上下文的左侧纵向入口。
+**原决定**：Dock 曾被限定为“窄右栏容器自身的底部导航”，实时轨迹也曾作为右栏模块之一；随后 Dock 又被设为 ChatOnly、Split、ModuleOnly 都常驻的统一底部控制器，再迁移为只在模块打开态出现。2026-07-23 的当前方向最终退役 Dock 与可伸缩第二工作面。
 
-**推理与权衡**：ChatOnly 已有一块持续可见的左侧导航空间，把业务模块入口放入其中可以移除覆盖 Composer 附近的悬浮控制器，并让图标和文字始终可读；模块打开后固定会话栏隐藏，Dock 接手模块替换与 Chat 显隐，因此同一时刻仍只有一套模块导航。代价是导航控制器会随工作姿态迁移，但迁移与“是否存在 Module Pane”一一对应，不需要用户理解额外布局状态。
+**推理与权衡**：左侧已有持续可见的 Space、会话与上下文导航空间，把业务模块入口稳定放在这里可以移除覆盖 Composer 附近的悬浮控制器，并让图标和文字始终可读。模块打开后左侧栏保持不动，右侧主卡片原位替换，因此同一时刻只有一套模块导航，也不再需要用户理解导航迁移、Chat 显隐或 Split 比例。
 
 ---
 
-## 决策 15：布局收敛为 ChatOnly / Split / ModuleOnly 三态
+## 决策 15：主卡片在 Chat 与模块间切换
 
-**当前结论（2026-07-11 三次修正）**：工作区只有三种合法状态：ChatOnly、Split、ModuleOnly。Split 默认让 Chat 占可用工作区的 25%、Module 占其余空间，Chat 下限为 `max(360px, 25%)`；完整面板间隙均为可拖拽热区。Split 内切换模块保留拖拽比例，关闭重开模块或从 ModuleOnly 恢复 Chat 时重置为默认比例。不同模块使用 560px / 640px 内容下限，Module 不设固定最大宽度；窗口过窄时临时退化为单 Pane，不压缩出不可用的双栏。
+**当前结论（2026-07-23 修正）**：工作区不再同时并排 Chat 与业务模块。左侧导航保持稳定，右侧单一主卡片显示 Chat 或 Spaces/Inbox/Tasks/Agents 之一；Settings 作为模态层覆盖当前工作区。旧 Split 比例、拖拽分隔和 ModuleOnly→Split 恢复控制不再属于活跃产品壳。
 
-**交互约束**：Split 点击 Chat 进入 ModuleOnly；ModuleOnly 点击 Chat 恢复 Split；点击当前模块关闭模块并回到 ChatOnly；点击其他模块替换内容且保持当前 Chat 可见性。Chat 和 Module 不得同时隐藏。
+**交互约束**：点击模块使右侧主卡片切换到该模块；点击当前模块返回 Chat；点击其他模块原位替换内容。Settings 点击打开模态层，关闭后回到原 Chat 会话。左侧栏始终保留唯一模块导航。
 
 **原决定**：“模块提升到中心”“右栏隐藏”“左细图标条”是基于旧双壳与固定右栏得出的动作。新状态机用三个直接可见的工作姿态取代这些概念，左细图标条随双壳一起取消。
 
@@ -395,9 +395,9 @@
 
 ---
 
-## 决策 28：ChatOnly 使用侧栏模块导航，模块打开态继续使用 Dock
+## 决策 28：侧栏统一控制主卡片切换，Dock 退役
 
-**结论（2026-07-15）**：ChatOnly 不再显示底部悬浮 Dock。当前 Space 可用模块进入左侧常驻 Chat 导航栏，以“图标 + 文字”的纵向列表展示；该列表不显示 Chat，Home 比普通 Space 多 Spaces。点击模块后固定左侧栏隐藏，工作区继续进入既有 Split 或响应式 ModuleOnly；此时横向 Dock 位于 Module Pane 底部，并保留 Chat 图标负责 Split / ModuleOnly 切换。Split 的会话列表按钮继续打开只覆盖 Chat Pane 的抽屉，但抽屉产品内容只包含“已保存、频道、私信”。
+**结论（2026-07-23 修正）**：当前 Space 可用模块始终位于左侧常驻 Chat 导航栏，以“图标 + 文字”的纵向列表展示；该列表不显示 Chat，Home 比普通 Space 多 Spaces。点击 Spaces、Inbox、Tasks 或 Agents 后，左侧栏不隐藏，右侧 Chat 主卡片原位切换为对应模块；不再创建 Split 第二工作面，也不再挂载横向 Dock。点击当前模块返回 Chat。Settings 保留同一 URL/resource 契约，但以覆盖当前工作区的模态层呈现。
 
 **视觉结论（按用户最终反馈修正）**：保留原有浅灰画布与中心 Chat 卡片，不修改 Chat 的圆角、间隙和既有表面层级；常驻会话导航取消独立卡片底板，直接使用应用画布背景。新增纵向模块入口、会话列表和 Split 会话抽屉不使用贯穿式横线或竖线分割，只用留白、分组标题和行底色建立层级。标题、导航、消息元信息和正文统一使用无衬线字体；Human 消息继续使用 `#eff4fb`，Agent 使用中性浅灰。
 
@@ -405,9 +405,9 @@
 
 **背景与选择**：现有 ChatOnly 的模块导航分散在底部 Dock。备选方案包括继续保留底部 Dock、恢复纯图标 Rail、或把模块入口并入现有会话栏。用户选择第三种，并明确采用参考图的纵向图标文字节奏、删除重复 Chat 项和案例展示；模块打开后复用已经建立的 Dock 与三态，不创造第四种壳。实施中一度把主工作区改为连续背板，用户随后明确否定该变化并锁定“原有卡片式 Chat UI 不修改、会话列表不用直线分割”。
 
-**推理与权衡**：ChatOnly 的左侧栏天然承载“我要去哪里”，纵向文字标签比悬浮纯图标更易扫读，也能把中心区域还给消息与 Composer。模块打开后隐藏固定栏，可以避免左侧栏和 Dock 同时存在；Dock 中保留 Chat 是因为它此时承担布局控制而非重复导航。代价是模块入口会随工作姿态从左侧纵向列表迁移到横向 Dock，但迁移条件只有“模块是否打开”一个，且 URL 状态机不变。完整规格见 `docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md`。
+**推理与权衡**：左侧栏天然承载“我要去哪里”，纵向文字标签比悬浮纯图标更易扫读。模块打开后继续迁移到 Dock 会让导航位置变化，并让右侧出现与 Chat 不同的第二套卡片骨架；常驻侧栏加同槽位内容替换减少了布局概念，也保持圆角、尺寸、画布间隙和视线位置稳定。Settings 信息密度和内部二级导航较高，独立模态层比把它伪装成普通内容页更明确。完整规格见 `docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md`。
 
-**实施状态**：代码与自动化验证已完成。`SidebarModuleNavigation` 复用统一模块注册表，`ConversationListContent` 为常驻侧栏与 Split 抽屉提供共享会话分组；ChatOnly 不再挂载 Dock，模块态仍由 `WorkspaceDock` 控制。中心 Chat 卡片、圆角、画布间隙和配色已经恢复，常驻会话导航直接使用画布背景，新模块入口与会话抽屉不绘制贯穿分隔线；统一无衬线字体，Chat 标题栏固定左右 14px，与标题内容上下留白一致；ChatOnly 与 Split 统一为 10px 消息 gutter，ChatOnly 主卡片沿用 360px Chat 绝对下限，消息、日期分隔与 Composer 使用 1040px 居中轨道。消息流只承担纵向滚动，隐藏工具栏不会再撑出横向滚动条。案例展示的入口、产品路由、视图、数据、资产及专属分支已删除；服务端仅保留旧 URL 的 SPA fallback，由客户端规范化到当前 Space 默认频道。用户已于 2026-07-18 完成本轮手动视觉验收。
+**实施状态**：2026-07-23 新修正已实现。`SidebarModuleNavigation` 复用统一模块注册表并暴露当前项；`WorkspaceDock`、Dock 样式和 Dock 骨架已删除。Chat 与模块复用 `shell-primary-workspace-card` 外框，模块态在左侧继续组合 `ChatSidebar`，Settings 由独立 `SettingsDialog` 复用既有设置内容。URL 与模块 resource query 保持可恢复。案例展示继续保持退役。
 
 ---
 

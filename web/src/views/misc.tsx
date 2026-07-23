@@ -273,7 +273,7 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
       <aside className="sidebar">
         <div className="sb-scroll">
         <div className="sb-title">{t("nav.settings")}</div>
-        <div className="settings-nav">{settingsEntries.map(([k, labelKey]) => <button key={k} className={"item" + (cur === k ? " active" : "")} onClick={() => nav(workspaceLocationForModule(location.pathname, location.search, { moduleId: "settings", settings: k }))}>{t(labelKey)}</button>)}</div>
+        <div className="settings-nav">{settingsEntries.map(([k, labelKey]) => <button key={k} className={"item" + (cur === k ? " active" : "")} onClick={() => nav(workspaceLocationForModule(location.pathname, location.search, { moduleId: "settings", settings: k }), { replace: true })}>{t(labelKey)}</button>)}</div>
         </div>
       </aside>
       <main className="content-col">

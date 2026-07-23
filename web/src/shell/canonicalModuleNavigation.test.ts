@@ -39,11 +39,11 @@ test("conversation navigation consumers preserve the active module query", () =>
   assert.match(frame, /workspaceSearchForShellState\(location\.search, layoutState\)/);
 });
 
-test("opening a module from ChatOnly closes the aggregate panel", () => {
+test("opening a content module closes the aggregate panel", () => {
   const frame = fs.readFileSync(new URL("./WorkspaceFrame.tsx", import.meta.url), "utf8");
 
   assert.match(
     frame,
-    /previousModule === null && activeModule !== null\) \{[\s\S]*?setAggregateOpen\(false\);/,
+    /next\.activeModule !== null && next\.activeModule !== "settings"\) setAggregateOpen\(false\);/,
   );
 });

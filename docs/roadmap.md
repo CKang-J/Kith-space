@@ -1,6 +1,6 @@
 # Kith-space 产品路线图
 
-> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式；2026-07-15 锁定 ChatOnly 侧栏模块导航与模块打开态 Dock；2026-07-18 完成 P-A9 桌面模块化单体架构收敛；2026-07-20 P-A10 Agent Harness v2 的 P-A10.0–P-A10.7 已完成代码、迁移、文档、自动化和Desktop/Web真实验收。完整边界见对应 `docs/superpowers/specs/` 规格，当前工程状态见 `docs/progress.md`。
+> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式；2026-07-23 将 Chat 壳层收敛为左侧常驻导航与右侧同槽位主卡片切换并退役 Dock；2026-07-18 完成 P-A9 桌面模块化单体架构收敛；2026-07-20 P-A10 Agent Harness v2 的 P-A10.0–P-A10.7 已完成代码、迁移、文档、自动化和Desktop/Web真实验收。完整边界见对应 `docs/superpowers/specs/` 规格，当前工程状态见 `docs/progress.md`。
 
 ## 1. 产品终点与永久边界
 
@@ -21,10 +21,10 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 - P1：派发深度、唤醒预算与急停护栏。
 - P2：三层记忆与通用角色模板。
 - P3：任务领域与 HTTP 接口。
-- P4：单窗口 ChatOnly / Split / ModuleOnly 工作区、可拖拽面板、模块切换与任务范围侧栏；ChatOnly 使用侧栏模块入口，模块打开态使用 Module Pane 底部 Dock。
+- P4：单窗口工作区、模块切换与任务范围侧栏；左侧模块入口常驻，右侧同一主卡片在 Chat 与模块间切换，Settings 使用模态层，Dock 已退役。
 - Runtime 调研：Claude Code、Codex、opencode 适配边界与 Runtime 契约 v2 草案。
 
-聊天消息流密度与交互重构、Chat 壳层与侧栏模块导航均已按对应 2026-07-15 规格完成代码、自动化验证与用户手动视觉验收。当前已落地 ChatOnly 纵向模块入口、Split 三组会话抽屉、模块打开态 Dock、中心 Chat 卡片保护、直接使用画布背景且无直线分隔的常驻会话导航，以及案例展示退役；全局 `Ctrl/Command + K` 消息搜索的第一阶段展示优化也已完成，以双行结果提供可读会话、发送者、相对时间、查询词高亮及话题父消息摘要/回复数，不再显示内部 DM/thread 名称。A1-A6、P-A7 H1-H4、P-A8 与 P-A9 均已完成；下一阶段候选已收敛为 P-A10 Agent Harness v2，获得实现授权后从 P-A10.0 的 migration 前置、契约冻结和真实 adapter/中文 recall 基线开始。
+聊天消息流密度与交互重构、Chat 壳层与侧栏模块导航均已实现。2026-07-23 后的当前壳层使用常驻纵向模块入口、右侧 Chat/模块同槽位主卡片和 Settings 模态层；Dock 与 Split 第二工作面已经退役。中心 Chat 卡片保护、直接使用画布背景且无直线分隔的会话导航、案例展示退役和全局 `Ctrl/Command + K` 消息搜索保持有效。
 
 ## 3. 当前路线：个人 AgentOS 本机化
 
@@ -82,7 +82,7 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 状态：已完成。
 
 - Desktop 首次启动通过仅 Desktop 私有信任可达的 setup API 收集 Human 名称、可选邮箱和描述，幂等初始化唯一 Human 与 `Home`；普通浏览器不会探测或调用该入口。全新 Desktop 目录不再要求 seed。
-- 普通 Space 模块集合固定为 `Inbox | Tasks | Agents | Settings`，Home 额外包含 `Spaces`。ChatOnly 使用不含 Chat 的左侧纵向入口；模块打开态 Dock 保留 Chat 作为布局控制。
+- 普通 Space 模块集合固定为 `Inbox | Tasks | Agents | Settings`，Home 额外包含 `Spaces`。左侧纵向入口常驻并控制右侧同一主卡片切页；Settings 使用模态层。
 - `Members` 改为当前 Space 的 `Agents`；Human 资料进入全局 Settings；`Computers` 已在 A2.4 提前删除。
 - 已删除 landing、登录、注册、邀请、PWA 和 `?legacy=1`/旧 `Layout`，静态路由只提供产品壳与 canonical Space 路径。
 - 模块统一挂在当前 Chat/收藏等会话 pathname 上，以 `?module=<id>` 和模块专属 resource query 表达；切换频道、DM 或收藏时保留当前模块及其合法 resource，不再生成 `/tasks`、`/agent`、`/settings` 等旧模块 pathname。

@@ -126,7 +126,7 @@ export function MemoryAdvisorSettings({ api }: { api: Api }) {
       {error ? <div className="settings-alert settings-alert--error" role="alert">{error}</div> : null}
       {notice ? <div className="settings-alert settings-alert--success" role="status" aria-live="polite">{notice}</div> : null}
 
-      <section className="advisor-settings-card">
+      <section className="memory-settings-card">
         <header>
           <span className="runtime-logo runtime-logo--large"><Brain size={22} /></span>
           <div><h3>记忆整理方式</h3><p>整理任务在后台独立运行，不会占用聊天 Agent 的会话。</p></div>
@@ -135,7 +135,7 @@ export function MemoryAdvisorSettings({ api }: { api: Api }) {
           </span>
         </header>
 
-        <div className="advisor-settings-grid">
+        <div className="memory-settings-grid">
           <label className="settings-field">
             <span>由谁整理</span>
             <select value={summary.executor?.id ?? ""} disabled={Boolean(busy)}
@@ -168,7 +168,7 @@ export function MemoryAdvisorSettings({ api }: { api: Api }) {
           </label>
         </div>
 
-        <div className="advisor-explainer">
+        <div className="memory-settings-explainer">
           <Sparkles size={18} />
           <div>
             <strong>什么时候会整理？</strong>

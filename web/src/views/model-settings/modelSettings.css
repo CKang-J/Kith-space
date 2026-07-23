@@ -258,11 +258,15 @@
 .runtime-detail-title h3 { margin: 0; font-size: 18px; line-height: 1.25; }
 .runtime-detail-title p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.settings-switch {
+.model-settings .settings-switch {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 8px;
+  margin: 0;
+  color: inherit;
+  letter-spacing: normal;
+  text-transform: none;
   cursor: pointer;
 }
 
@@ -379,17 +383,20 @@
 .runtime-status-row strong.is-ready { color: #197342; }
 .runtime-status-row strong.is-warning { color: #956800; }
 
-.settings-field {
+.model-settings .settings-field {
   display: grid;
   min-width: 0;
   gap: 7px;
+  margin: 0;
   color: #404146;
   font-size: 13px;
   font-weight: 650;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
-.settings-field input,
-.settings-field select {
+.model-settings .settings-field input,
+.model-settings .settings-field select {
   width: 100%;
   min-width: 0;
   height: 40px;
@@ -404,9 +411,9 @@
   outline: none;
 }
 
-.settings-field input:focus,
-.settings-field select:focus { border-color: #4c4d51; box-shadow: 0 0 0 3px rgb(32 33 36 / 9%); }
-.settings-field small { color: var(--settings-muted); font-size: 12px; font-weight: 450; line-height: 1.4; }
+.model-settings .settings-field input:focus,
+.model-settings .settings-field select:focus { border-color: #4c4d51; box-shadow: 0 0 0 3px rgb(32 33 36 / 9%); }
+.model-settings .settings-field small { color: var(--settings-muted); font-size: 12px; font-weight: 450; line-height: 1.4; }
 
 .settings-advanced,
 .settings-import-panel {
@@ -628,14 +635,14 @@
 .settings-empty-state h3 { margin: 14px 0 0; font-size: 18px; }
 .settings-empty-state p { max-width: 480px; margin: 8px 0 18px; color: var(--settings-muted); line-height: 1.5; }
 
-.advisor-settings-card {
+.memory-settings-card {
   overflow: hidden;
   border: 1px solid var(--settings-border);
   border-radius: 15px;
   background: #fff;
 }
 
-.advisor-settings-card > header {
+.memory-settings-card > header {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -644,17 +651,17 @@
   border-bottom: 1px solid var(--settings-border);
 }
 
-.advisor-settings-card h3 { margin: 0; font-size: 17px; }
-.advisor-settings-card header p { margin: 5px 0 0; color: var(--settings-muted); font-size: 13px; line-height: 1.45; }
+.memory-settings-card h3 { margin: 0; font-family: inherit; font-size: 17px; font-weight: 650; }
+.memory-settings-card header p { margin: 5px 0 0; color: var(--settings-muted); font-size: 13px; line-height: 1.45; }
 
-.advisor-settings-grid {
+.memory-settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   padding: 18px;
 }
 
-.advisor-explainer {
+.memory-settings-explainer {
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -666,10 +673,10 @@
   color: #465262;
 }
 
-.advisor-explainer svg { flex: 0 0 auto; margin-top: 1px; }
-.advisor-explainer strong { font-size: 13px; }
-.advisor-explainer p { margin: 4px 0 0; color: #66707c; font-size: 13px; line-height: 1.5; }
-.advisor-settings-card > footer { display: flex; justify-content: flex-end; padding: 0 18px 18px; }
+.memory-settings-explainer svg { flex: 0 0 auto; margin-top: 1px; }
+.memory-settings-explainer strong { font-size: 13px; }
+.memory-settings-explainer p { margin: 4px 0 0; color: #66707c; font-size: 13px; line-height: 1.5; }
+.memory-settings-card > footer { display: flex; justify-content: flex-end; padding: 0 18px 18px; }
 
 .settings-diagnostics-list { display: grid; gap: 8px; margin: 14px 15px 12px; }
 .settings-diagnostics-list div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; font-size: 13px; }
@@ -789,11 +796,11 @@
   .runtime-overview__actions { justify-content: flex-start; }
   .provider-summary,
   .settings-form-grid,
-  .advisor-settings-grid { grid-template-columns: 1fr; }
+  .memory-settings-grid { grid-template-columns: 1fr; }
   .settings-catalog__items { grid-template-columns: 1fr; }
   .settings-switch { align-self: flex-start; }
-  .advisor-settings-card > header { grid-template-columns: auto minmax(0, 1fr); }
-  .advisor-settings-card > header .settings-status-pill { grid-column: 1 / -1; justify-self: start; }
+  .memory-settings-card > header { grid-template-columns: auto minmax(0, 1fr); }
+  .memory-settings-card > header .settings-status-pill { grid-column: 1 / -1; justify-self: start; }
   .provider-overview__header,
   .provider-overview-card { grid-template-columns: 1fr; align-items: stretch; }
   .provider-overview__header { flex-direction: column; align-items: stretch; }

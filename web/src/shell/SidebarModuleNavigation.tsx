@@ -1,16 +1,18 @@
 import { Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { dockModulesForSpace } from "./workspaceModules.tsx";
-import type { DockModuleId } from "./workspaceLayout.ts";
+import { sidebarModulesForSpace } from "./workspaceModules.tsx";
+import type { SidebarModuleId, WorkspaceModuleId } from "./workspaceLayout.ts";
 
 interface SidebarModuleNavigationProps {
+  activeModule: WorkspaceModuleId | null;
   isHome: boolean;
   unreadCount: number;
   onSearch(): void;
-  onModuleSelect(moduleId: DockModuleId): void;
+  onModuleSelect(moduleId: SidebarModuleId): void;
 }
 
 export function SidebarModuleNavigation({
+  activeModule,
   isHome,
   unreadCount,
   onSearch,
@@ -28,13 +30,15 @@ export function SidebarModuleNavigation({
         <Search size={18} aria-hidden="true" />
         <span className="sidebar-module-navigation__label">{t("nav.search")}</span>
       </button>
-      {dockModulesForSpace(isHome).map((module) => {
+      {sidebarModulesForSpace(isHome).map((module) => {
         const ModuleIcon = module.Icon;
+        const active = activeModule === module.id;
         return (
           <button
             key={module.id}
             type="button"
-            className="sidebar-module-navigation__item"
+            className={`sidebar-module-navigation__item${active ? " is-active" : ""}`}
+            aria-current={active ? "page" : undefined}
             onClick={() => onModuleSelect(module.id)}
           >
             <ModuleIcon size={18} aria-hidden="true" />

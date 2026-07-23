@@ -22,7 +22,6 @@ test("Machine and Computers are absent from the frontend product surface", () =>
   const runtimeDiscovery = source("./useRuntimeDiscovery.ts");
   const misc = source("./views/misc.tsx");
   const modules = source("./shell/workspaceModules.tsx");
-  const dock = source("./shell/WorkspaceDock.tsx");
 
   assert.doesNotMatch(store, /interface Machine\b|\bmachines\b|latestDaemonVersion|machine:status|\/machines/);
   assert.doesNotMatch(main, /\bComputers\b|path="computer/);
@@ -31,11 +30,10 @@ test("Machine and Computers are absent from the frontend product surface", () =>
   assert.doesNotMatch(misc, /export function Computers|ConnectComputerWizard|sk_machine|DaemonUpdateModal/);
   assert.doesNotMatch(modules, /computers|Monitor/);
   assert.deepEqual(
-    [...modules.matchAll(/\{ id: "([^"]+)",[^\n]+dock: true \}/g)].map((match) => match[1]),
+    [...modules.matchAll(/\{ id: "([^"]+)",[^\n]+sidebar: true \}/g)].map((match) => match[1]),
     ["spaces", "inbox", "tasks", "agents", "settings"],
   );
-  assert.match(modules, /\{ id: "search",[^\n]+dock: false \}/);
-  assert.match(dock, /<MessageCircle size=\{18\} \/>/);
+  assert.match(modules, /\{ id: "search",[^\n]+sidebar: false \}/);
   assert.match(runtimeDiscovery, /\/api\/local-runtime\/models\/\$\{runtime\}/);
   assert.match(agents, /api\("POST", "\/api\/agents", \{ name:/);
 });
