@@ -534,9 +534,12 @@ main.content-col > .composer{position:absolute;left:var(--scrollbar-gutter);righ
 .memory-advisor-controls{border-bottom:1px solid var(--hair);background:var(--panel)}
 .memory-advisor-controls>summary{display:flex;justify-content:space-between;gap:12px;padding:11px 16px;cursor:pointer}
 .memory-advisor-controls>summary small{color:var(--muted);overflow-wrap:anywhere}
-.memory-filter-menu{position:relative}
-.memory-filter-menu>summary{cursor:pointer;white-space:nowrap}
-.memory-filter-menu>div{position:absolute;z-index:5;right:0;top:calc(100% + 6px);display:grid;gap:8px;min-width:230px;padding:10px;border:1px solid var(--hair);border-radius:10px;background:var(--panel);box-shadow:var(--shadow)}
+.memory-filter-menu{position:relative;flex:none}
+.memory-filter-trigger{min-height:30px;border:1px solid var(--hair-strong);border-radius:8px;background:var(--surface);color:var(--ink-2);padding:5px 10px;font:600 12px var(--sans);white-space:nowrap;cursor:pointer}
+.memory-filter-trigger:hover,.memory-filter-trigger[aria-expanded="true"]{background:var(--surface-strong);color:var(--ink)}
+.memory-filter-trigger:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.memory-filter-popover{position:fixed;isolation:isolate;z-index:60;display:grid;gap:8px;overflow:auto;padding:10px;border:1px solid var(--hair-strong);border-radius:10px;background:var(--surface);box-shadow:0 8px 28px var(--shadow-3)}
+.memory-filter-popover>.sel{min-width:0}
 .agent-memory-view-tabs{display:flex;gap:4px;padding:10px 28px 0;border-bottom:1px solid var(--hair);background:var(--surface)}
 .agent-memory-view-tabs button,.memory-status-tabs button{border:0;background:transparent;color:var(--muted);font:600 13px var(--sans);padding:7px 11px;cursor:pointer;border-radius:8px 8px 0 0}
 .agent-memory-view-tabs button.on,.memory-status-tabs button.on{background:var(--surface-strong);color:var(--ink)}
@@ -592,7 +595,7 @@ main.content-col > .composer{position:absolute;left:var(--scrollbar-gutter);righ
 .agent-memory-files{margin-top:0}
 @media(max-width:900px){.memory-browser{grid-template-columns:minmax(220px,42%) minmax(0,1fr)}.memory-toolbar>.sel{min-width:118px}.memory-detail-grid{grid-template-columns:1fr}}
 @media(max-width:680px){.memory-advisor-card{margin:10px 12px 0}.memory-advisor-head{align-items:flex-start;flex-wrap:wrap}.memory-advisor-head>div:first-child{flex-basis:100%}.memory-toolbar{padding:9px 12px}.memory-status-tabs{width:100%}.memory-search{max-width:none;flex-basis:100%}.memory-toolbar>.sel{flex:1}.memory-browser{display:flex;flex-direction:column;overflow:auto}.memory-list-pane{flex:none;max-height:42vh;border-right:0;border-bottom:1px solid var(--hair)}.memory-detail-pane{overflow:visible;padding:16px 14px}.memory-replacement-fields{grid-template-columns:1fr}.agent-memory-files{flex-direction:column;overflow:auto}.agent-memory-files .ws-tree{width:auto;max-height:40vh;box-shadow:0 1px 0 var(--hair)}.agent-memory-files .ws-view{overflow:visible}.agent-memory-view-tabs{padding-left:14px}}
-@container (max-width:680px){.memory-toolbar{padding:9px 12px}.memory-status-tabs{width:100%}.memory-search{max-width:none;flex-basis:100%}.memory-browser{display:flex;flex-direction:column;overflow:auto}.memory-list-pane{flex:none;max-height:42cqh;border-right:0;border-bottom:1px solid var(--hair)}.memory-detail-pane{overflow:visible;padding:16px 14px}.memory-filter-menu>div{position:fixed;left:16px;right:16px;top:auto;bottom:16px;max-height:60vh;overflow:auto}}
+@container (max-width:680px){.memory-toolbar{padding:9px 12px}.memory-status-tabs{width:100%}.memory-search{max-width:none;flex-basis:100%}.memory-browser{display:flex;flex-direction:column;overflow:auto}.memory-list-pane{flex:none;max-height:42cqh;border-right:0;border-bottom:1px solid var(--hair)}.memory-detail-pane{overflow:visible;padding:16px 14px}}
 .kv{display:flex;align-items:center;gap:8px;font-size:14px;margin-top:6px}.kv b{color:var(--muted);font-weight:600;min-width:88px;flex:none}
 .kv-v{display:inline-flex;align-items:center;gap:6px}
 /* .empty: inline placeholder for sidebar lists / sub-section bodies. Uses --muted (not --muted-soft) so

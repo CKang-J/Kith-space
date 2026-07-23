@@ -6,6 +6,7 @@ import { useStore } from "../../store.tsx";
 import { useConfirm } from "../../ConfirmModal.tsx";
 import { fmtDateTime } from "../../format.ts";
 import { MemoryDetailPane } from "./MemoryDetailPane.tsx";
+import { MemoryFilterMenu } from "./MemoryFilterMenu.tsx";
 import { MEMORY_KINDS, MEMORY_SCOPES, memoryFreshness, memoryListPath, statusForTab, uniqueKey } from "./memoryPanelModel.ts";
 import type {
   MemoryDetail,
@@ -172,9 +173,8 @@ export function StructuredMemoryView({ agentId, onDataChanged, refreshToken = 0 
           {(["active", "proposals", "archived"] as const).map((value) => <button role="tab" aria-selected={tab === value} className={tab === value ? "on" : ""} key={value} onClick={() => changeTab(value)}>{t(`members.memoryPanel.tabs.${value}`)}</button>)}
         </div>
         <label className="memory-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("members.memoryPanel.filters.search")} /></label>
-        <details className="memory-filter-menu">
-          <summary>筛选{kind || scope || revokedOnly ? " · 已启用" : ""}</summary>
-          <div>
+        <MemoryFilterMenu label={`筛选${kind || scope || revokedOnly ? " · 已启用" : ""}`}>
+          <>
             <Select value={kind} options={kindOptions} onChange={(value) => setFilter(setKind, value)} ariaLabel={t("members.memoryPanel.filters.kind")} />
             <Select value={scope} options={scopeOptions} onChange={(value) => setFilter(setScope, value)} ariaLabel={t("members.memoryPanel.filters.scope")} />
             {tab === "archived" ? <Select value={archiveStatus} options={(["archived", "superseded", "rejected"] as const).map((value) => ({ value, label: t(`members.memoryPanel.status.${value}`) }))} onChange={(value) => { setArchiveStatus(value as MemoryStatus); setPage(1); }} ariaLabel={t("members.memoryPanel.filters.status")} /> : null}
@@ -182,8 +182,8 @@ export function StructuredMemoryView({ agentId, onDataChanged, refreshToken = 0 
             <button type="button" className="cancel" onClick={() => {
               setKind(""); setScope(""); setRevokedOnly(false); setQuery(""); setPage(1);
             }}>清除筛选</button>
-          </div>
-        </details>
+          </>
+        </MemoryFilterMenu>
       </div>
       {error ? <div className="memory-panel-error">{error}</div> : null}
       <div className="memory-browser">
