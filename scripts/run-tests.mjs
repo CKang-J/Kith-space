@@ -35,7 +35,11 @@ function testEnv() {
 function run(label, args) {
   const { home, env } = testEnv();
   process.stdout.write(`\n[test] ${label}\n`);
-  const result = spawnSync(process.execPath, [tsxCli, ...args], { cwd: root, env, stdio: "inherit" });
+  const result = spawnSync(
+    process.execPath,
+    [tsxCli, "--tsconfig", path.join(root, "tsconfig.test.json"), ...args],
+    { cwd: root, env, stdio: "inherit" },
+  );
   rmSync(home, { recursive: true, force: true });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }

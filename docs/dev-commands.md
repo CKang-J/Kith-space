@@ -92,7 +92,7 @@ pnpm test --integration  # 集成测试
 pnpm test                # 全量测试
 ```
 
-测试 runner 会同时生成临时 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR`，避免污染真实 app data 和 `~/Kith-space`。手工直跑单个测试时必须同时设置两者；只给fixture传`rootPath`仍可能把Space注册进默认`~/.kith-space/app.db`，不能代替app data隔离。standalone integration应在finally注销自己的registry并删除fixture root，但这只是崩溃外的第二道防线，不能作为省略环境变量的理由。
+测试 runner 会同时生成临时 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR`，避免污染真实 app data 和 `~/Kith-space`，并显式使用根目录 `tsconfig.test.json`，使 tsx 行为测试与 Vite/Web TypeScript 共用 `@/* → web/src/*` 别名而不修改 Core 根配置。手工直跑单个测试时必须同时设置两者，并使用 `pnpm exec tsx --tsconfig tsconfig.test.json --test <测试文件>`；只给fixture传`rootPath`仍可能把Space注册进默认`~/.kith-space/app.db`，不能代替app data隔离。standalone integration应在finally注销自己的registry并删除fixture root，但这只是崩溃外的第二道防线，不能作为省略环境变量的理由。
 
 ## 5. 构建与打包
 

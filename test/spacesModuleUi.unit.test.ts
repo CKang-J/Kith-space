@@ -10,6 +10,8 @@ const hostPickerUrl = new URL("../web/src/spaces/HostDirectoryPicker.tsx", impor
 const hostDirectoryApiUrl = new URL("../web/src/spaces/hostDirectoryApi.ts", import.meta.url);
 const cardMenuUrl = new URL("../web/src/spaces/SpaceCardMenu.tsx", import.meta.url);
 const renameDialogUrl = new URL("../web/src/spaces/SpaceRenameDialog.tsx", import.meta.url);
+const searchFieldUrl = new URL("../web/src/components/SearchField.tsx", import.meta.url);
+const searchFieldCssUrl = new URL("../web/src/components/SearchField.css", import.meta.url);
 const cssUrl = new URL("../web/src/spaces/SpacesModule.css", import.meta.url);
 
 test("Home Spaces module exposes only local Space lifecycle actions", () => {
@@ -34,17 +36,25 @@ test("Space cards expose accessible project actions and focused dialogs", () => 
   const renameDialog = fs.readFileSync(renameDialogUrl, "utf8");
 
   assert.match(source, /<SpaceCardMenu/);
-  assert.match(source, /onContextMenu=/);
-  assert.match(source, /contextMenuRequest/);
+  assert.match(source, /<SpaceCardContextMenu/);
+  assert.doesNotMatch(source, /onContextMenu=|contextMenuRequest/);
   assert.match(source, /copyText\(space\.rootPath\)/);
   assert.match(source, /removeSpace\(space\.id\)/);
-  assert.match(menu, /aria-haspopup="menu"/);
-  assert.match(menu, /role="menuitem"/);
+  assert.match(menu, /DropdownMenuTrigger/);
+  assert.match(menu, /DropdownMenuItem/);
+  assert.match(menu, /ContextMenuTrigger/);
+  assert.match(menu, /ContextMenuItem/);
+  assert.match(menu, /data-disabled:pointer-events-auto/);
+  assert.doesNotMatch(menu, /document\.addEventListener|createPortal/);
   assert.match(menu, /spacesModule\.revealInFileManager/);
   assert.match(menu, /spacesModule\.favorite/);
   assert.match(menu, /spacesModule\.remove/);
-  assert.match(renameDialog, /role="dialog"/);
-  assert.match(renameDialog, /aria-modal="true"/);
+  assert.match(renameDialog, /<Dialog open/);
+  assert.match(renameDialog, /DialogTitle/);
+  assert.match(renameDialog, /FieldGroup/);
+  assert.match(renameDialog, /sm:max-w-none/);
+  assert.match(renameDialog, /if \(busy\) event\.preventDefault\(\)/);
+  assert.doesNotMatch(renameDialog, /createPortal|useEscClose/);
 });
 
 test("Space creation choices live under one accessible New Space menu", () => {
@@ -53,11 +63,30 @@ test("Space creation choices live under one accessible New Space menu", () => {
 
   assert.match(source, /<SpaceCreateMenu onSelect=\{openCreate\} \/>/);
   assert.doesNotMatch(source, /onClick=\{\(\) => openCreate\("attach"\)\}/);
-  assert.match(menu, /aria-haspopup="menu"/);
-  assert.match(menu, /role="menu"/);
-  assert.match(menu, /role="menuitem"/);
+  assert.match(menu, /DropdownMenuTrigger/);
+  assert.match(menu, /DropdownMenuContent/);
+  assert.match(menu, /DropdownMenuGroup/);
+  assert.match(menu, /DropdownMenuItem/);
+  assert.match(menu, /type="button"/);
+  assert.doesNotMatch(menu, /document\.addEventListener/);
   assert.match(menu, /spacesModule\.createBlank/);
   assert.match(menu, /spacesModule\.attachExisting/);
+});
+
+test("Shared search field composes the shadcn input group without a legacy CSS module", () => {
+  const searchField = fs.readFileSync(searchFieldUrl, "utf8");
+
+  assert.match(searchField, /InputGroup/);
+  assert.match(searchField, /InputGroupInput/);
+  assert.match(searchField, /InputGroupAddon/);
+  assert.match(searchField, /InputGroupButton/);
+  assert.match(searchField, /cn\(/);
+  assert.match(searchField, /--search-field-height,40px/);
+  assert.match(searchField, /rounded-full/);
+  assert.match(searchField, /focus-visible:!shadow-none/);
+  assert.match(searchField, /focus-visible\]:shadow-none/);
+  assert.doesNotMatch(searchField, /<input|<button/);
+  assert.equal(fs.existsSync(searchFieldCssUrl), false);
 });
 
 test("Space creation uses a modal and browser host-directory picker", () => {
@@ -84,9 +113,10 @@ test("Spaces module keeps the card grid responsive inside the existing module pa
   assert.match(css, /\.spaces-module__card\s*\{[^}]*border-radius:/s);
 });
 
-test("Spaces search keeps the same neutral surface while focused", () => {
+test("Spaces search uses the shared pill geometry without feature CSS overrides", () => {
+  const source = fs.readFileSync(sourceUrl, "utf8");
   const css = fs.readFileSync(cssUrl, "utf8");
 
-  assert.match(css, /\.spaces-module__search\s*\{[^}]*background:\s*var\(--canvas\)/s);
-  assert.match(css, /\.spaces-module__search:focus-within\s*\{[^}]*background:\s*var\(--canvas\)/s);
+  assert.match(source, /className="w-\[min\(276px,100%\)\]"/);
+  assert.doesNotMatch(css, /\.spaces-module__search/);
 });

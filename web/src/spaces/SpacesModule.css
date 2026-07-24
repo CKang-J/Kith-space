@@ -90,52 +90,6 @@
   background: var(--error-soft);
 }
 
-.spaces-module__create {
-  position: relative;
-  display: flex;
-}
-
-.spaces-module__create .spaces-module__action > .is-open { transform: rotate(180deg); }
-
-.spaces-module__create-menu {
-  position: absolute;
-  top: calc(100% + 7px);
-  right: 0;
-  z-index: 20;
-  display: flex;
-  width: 220px;
-  flex-direction: column;
-  gap: 3px;
-  padding: 6px;
-  border: 1px solid var(--hair-strong);
-  border-radius: 11px;
-  background: var(--surface);
-  box-shadow: 0 10px 28px var(--shadow-2);
-}
-
-.spaces-module__create-menu > button {
-  display: flex;
-  width: 100%;
-  height: 38px;
-  align-items: center;
-  gap: 9px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ink-2);
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.spaces-module__create-menu > button:hover,
-.spaces-module__create-menu > button:focus-visible {
-  background: var(--canvas-soft);
-  color: var(--ink);
-  outline: none;
-}
-
 .spaces-module__error {
   margin-top: 14px;
   padding: 9px 11px;
@@ -153,18 +107,6 @@
   justify-content: center;
   gap: 12px;
   margin: 0;
-}
-
-.spaces-module__search {
-  width: min(280px, 100%);
-  height: 38px;
-  border-radius: 10px;
-  background: var(--canvas);
-}
-
-.spaces-module__search:focus-within {
-  background: var(--canvas);
-  box-shadow: inset 0 0 0 1px var(--hair-strong);
 }
 
 .spaces-module__count {
@@ -342,10 +284,6 @@
   box-shadow: 0 1px 1px var(--card-shadow);
 }
 
-.spaces-module__card:has(.spaces-module__card-menu.is-open) {
-  z-index: 5;
-}
-
 .spaces-module__card:hover {
   border-color: var(--hair-strong);
   box-shadow: 0 7px 22px var(--shadow-1);
@@ -483,13 +421,6 @@
 .spaces-module__card--missing .spaces-module__card-action,
 .spaces-module__card--error .spaces-module__card-action { color: var(--ink); }
 
-.spaces-module__card-menu {
-  position: absolute;
-  top: 13px;
-  right: 12px;
-  z-index: 3;
-}
-
 .spaces-module__card-select {
   position: absolute;
   top: 17px;
@@ -545,176 +476,6 @@
   cursor: default;
 }
 
-.spaces-module__card-menu-trigger {
-  display: inline-flex;
-  width: 30px;
-  height: 30px;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.spaces-module__card-menu-trigger:hover,
-.spaces-module__card-menu-trigger:focus-visible,
-.spaces-module__card-menu.is-open .spaces-module__card-menu-trigger {
-  outline: 0;
-  background: var(--canvas-soft);
-  color: var(--ink);
-}
-
-.spaces-module__card-menu-popover {
-  position: absolute;
-  top: calc(100% + 5px);
-  right: 0;
-  display: flex;
-  width: 190px;
-  flex-direction: column;
-  gap: 0;
-  border: 1px solid var(--hair-strong);
-  border-radius: 12px;
-  background: var(--surface);
-  box-shadow: 0 8px 24px var(--shadow-2);
-  padding: 4px;
-}
-
-.spaces-module__card-menu-popover.is-context {
-  position: fixed;
-  right: auto;
-  z-index: 20;
-}
-
-.spaces-module__card-menu-popover > button {
-  display: flex;
-  width: 100%;
-  min-height: 34px;
-  align-items: center;
-  gap: 10px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ink);
-  padding: 6px 10px;
-  font: inherit;
-  font-size: 14px;
-  line-height: 20px;
-  text-align: left;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.spaces-module__card-menu-popover > button > svg {
-  flex: 0 0 auto;
-  color: var(--muted);
-}
-
-.spaces-module__card-menu-popover > button:hover:not(:disabled),
-.spaces-module__card-menu-popover > button:focus-visible {
-  outline: 0;
-  background: var(--canvas-soft);
-}
-
-.spaces-module__card-menu-popover > button:disabled {
-  color: var(--muted);
-  opacity: .45;
-  cursor: not-allowed;
-}
-
-.spaces-module__card-menu-popover > button.is-danger {
-  color: var(--error);
-}
-
-.spaces-module__card-menu-popover > button.is-danger > svg {
-  color: var(--muted);
-}
-
-.spaces-module__card-menu-separator {
-  height: 1px;
-  margin: 4px -4px;
-  background: var(--hair);
-}
-
-.spaces-module__rename-backdrop {
-  z-index: 90;
-}
-
-.spaces-module__rename-dialog {
-  width: min(420px, calc(100vw - 32px));
-  border-radius: 16px;
-  background: var(--surface);
-  box-shadow: 0 18px 56px var(--shadow-5);
-  padding: 22px;
-}
-
-.spaces-module__rename-dialog h3 {
-  margin: 0 0 16px;
-  color: var(--ink);
-  font-family: var(--serif);
-  font-size: 22px;
-  font-weight: 500;
-}
-
-.spaces-module__rename-dialog label {
-  display: block;
-  margin-bottom: 6px;
-  color: var(--body);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.spaces-module__rename-dialog input {
-  width: 100%;
-  border: 1px solid var(--hair-strong);
-  border-radius: 9px;
-  outline: 0;
-  background: var(--surface);
-  color: var(--ink);
-  padding: 9px 10px;
-  font: inherit;
-  font-size: 13px;
-}
-
-.spaces-module__rename-dialog input:focus-visible {
-  border-color: var(--tint-blue-ink);
-  box-shadow: 0 0 0 2px var(--tint-blue-strong);
-}
-
-.spaces-module__rename-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 18px;
-}
-
-.spaces-module__rename-actions button {
-  min-height: 34px;
-  border-radius: 999px;
-  padding: 7px 14px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.spaces-module__rename-cancel {
-  border: 1px solid var(--hair-strong);
-  background: var(--surface);
-  color: var(--ink-2);
-}
-
-.spaces-module__rename-confirm {
-  border: 1px solid var(--ink-2);
-  background: var(--ink-2);
-  color: var(--on-ink);
-}
-
-.spaces-module__rename-actions button:disabled {
-  cursor: default;
-  opacity: .48;
-}
-
 .spaces-module__empty {
   display: flex;
   min-height: 280px;
@@ -750,8 +511,6 @@
   .spaces-module__actions { width: 100%; }
   .spaces-module__action { flex: 1; justify-content: center; }
   .spaces-module__action--icon { flex: 0 0 38px; }
-  .spaces-module__create { flex: 1; }
-  .spaces-module__create > .spaces-module__action { width: 100%; }
   .spaces-module__grid { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
   .spaces-module__dialog-backdrop { padding: 12px; }
   .spaces-module__dialog { max-height: calc(100vh - 24px); padding: 16px; }

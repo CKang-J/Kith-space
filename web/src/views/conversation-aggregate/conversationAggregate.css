@@ -199,11 +199,6 @@
   margin-top: 10px;
 }
 
-.conversation-files__search-field {
-  --search-field-height: 40px;
-  background: var(--canvas);
-}
-
 .conversation-file__actions button,
 .conversation-file__actions a {
   display: grid;

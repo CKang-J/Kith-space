@@ -197,8 +197,7 @@
 }
 
 .channel-settings__field input,
-.channel-settings__field textarea,
-.channel-settings-delete-dialog input {
+.channel-settings__field textarea {
   width: 100%;
   border: 1px solid var(--hair-strong);
   border-radius: 9px;
@@ -217,8 +216,7 @@
 }
 
 .channel-settings__field input:focus-visible,
-.channel-settings__field textarea:focus-visible,
-.channel-settings-delete-dialog input:focus-visible {
+.channel-settings__field textarea:focus-visible {
   border-color: var(--tint-blue-ink);
   box-shadow: 0 0 0 2px var(--tint-blue-strong);
 }
@@ -276,8 +274,7 @@
   opacity: .66;
 }
 
-.channel-settings__form-actions,
-.channel-settings-delete-dialog__actions {
+.channel-settings__form-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
@@ -467,10 +464,6 @@
   white-space: nowrap;
 }
 
-.channel-settings-delete-backdrop {
-  z-index: 80;
-}
-
 .channel-settings-member-dialog-backdrop {
   z-index: 90;
 }
@@ -558,38 +551,8 @@
   gap: 8px;
 }
 
-.channel-settings-delete-dialog {
-  width: min(420px, calc(100vw - 32px));
-  border-radius: 14px;
-  background: var(--surface);
-  box-shadow: 0 14px 48px var(--shadow-5);
-  padding: 22px;
-}
-
-.channel-settings-delete-dialog h3 {
-  margin: 0 0 8px;
-  color: var(--ink);
-  font-size: 18px;
-}
-
-.channel-settings-delete-dialog p {
-  margin: 0 0 16px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.channel-settings-delete-dialog label {
-  display: block;
-  margin-bottom: 6px;
-  color: var(--body);
-  font-size: 12px;
-  font-weight: 600;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .channel-settings *,
-  .channel-settings-delete-dialog * {
+  .channel-settings * {
     scroll-behavior: auto !important;
     transition-duration: .01ms !important;
   }

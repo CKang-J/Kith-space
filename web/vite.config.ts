@@ -39,6 +39,8 @@ export default defineConfig({
             "react-dom/client",
             "react-router-dom",
           ],
+          // Shared shadcn/Radix primitives
+          "ui-vendor": ["radix-ui"],
           // Heavy markdown pipeline (react-markdown + plugins)
           "markdown": ["react-markdown", "rehype-raw", "rehype-sanitize", "remark-breaks", "remark-gfm"],
           // Drag-and-drop

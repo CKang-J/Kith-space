@@ -20,7 +20,7 @@ import { copyText } from "../clipboard.ts";
 import { getDesktopBridge } from "../desktopBridge.ts";
 import { useStore, type SpaceInfo } from "../store.tsx";
 import { useToast } from "../toast.tsx";
-import { SpaceCardMenu, type SpaceCardContextMenuRequest } from "./SpaceCardMenu.tsx";
+import { SpaceCardContextMenu, SpaceCardMenu } from "./SpaceCardMenu.tsx";
 import { SpaceCreateMenu, type SpaceCreateIntent } from "./SpaceCreateMenu.tsx";
 import { SpaceFolderDialog } from "./SpaceFolderDialog.tsx";
 import type { SpaceFolderIntent } from "./SpaceFolderForm.tsx";
@@ -73,7 +73,6 @@ export function SpacesModule() {
   const [spaceActionBusy, setSpaceActionBusy] = useState(false);
   const [spaceActionError, setSpaceActionError] = useState("");
   const [favoriteIds, setFavoriteIds] = useState(storedFavoriteSpaces);
-  const [contextMenuRequest, setContextMenuRequest] = useState<SpaceCardContextMenuRequest | null>(null);
   const [bulkSelectionEnabled, setBulkSelectionEnabled] = useState(false);
   const [selectedSpaceIds, setSelectedSpaceIds] = useState<Set<string>>(() => new Set());
   const [bulkRemoving, setBulkRemoving] = useState(false);
@@ -182,7 +181,6 @@ export function SpacesModule() {
   const toggleBulkSelection = () => {
     if (bulkSelectionEnabled) setSelectedSpaceIds(new Set());
     setBulkSelectionEnabled((current) => !current);
-    setContextMenuRequest(null);
   };
 
   const toggleSelectedSpace = (spaceId: string) => {
@@ -288,7 +286,7 @@ export function SpacesModule() {
         </div>
         <div className="spaces-module__toolbar">
           <SearchField
-            className="spaces-module__search"
+            className="w-[min(276px,100%)]"
             value={query}
             onValueChange={setQuery}
             clearLabel={t("spacesModule.clearSearch")}
@@ -357,83 +355,84 @@ export function SpacesModule() {
           {visibleSpaces.map((space) => {
             const ready = space.status === "ready";
             const lastOpened = formatLastOpened(space.lastOpenedAt);
+            const menuProps = {
+              favorite: favoriteIds.has(space.id),
+              revealAvailable: !!desktopBridge && !!space.rootPath,
+              onOpen: () => openSpace(space),
+              onReveal: () => void revealSpace(space),
+              onCopyPath: () => void copySpacePath(space),
+              onRename: () => {
+                setSpaceActionError("");
+                setRenameTarget(space);
+              },
+              onToggleFavorite: () => toggleFavorite(space.id),
+              onRemove: () => void requestRemove(space),
+            };
             return (
-              <article
+              <SpaceCardContextMenu
                 key={space.id}
-                className={`spaces-module__card spaces-module__card--${space.status}${selectedSpaceIds.has(space.id) ? " is-selected" : ""}`}
-                onContextMenu={(event) => {
-                  if (bulkSelectionEnabled) return;
-                  if (event.target instanceof Element && event.target.closest(".spaces-module__card-menu")) return;
-                  event.preventDefault();
-                  setContextMenuRequest({ spaceId: space.id, clientX: event.clientX, clientY: event.clientY });
-                }}
+                disabled={bulkSelectionEnabled}
+                {...menuProps}
               >
-                {bulkSelectionEnabled ? (
-                  <label className="spaces-module__card-select">
-                    <input
-                      type="checkbox"
-                      checked={selectedSpaceIds.has(space.id)}
-                      onChange={() => toggleSelectedSpace(space.id)}
-                      disabled={bulkRemoving}
-                      aria-label={t("spacesModule.selectSpace", { name: space.name })}
-                    />
-                    <span className="spaces-module__card-select-box" aria-hidden="true">
-                      {selectedSpaceIds.has(space.id) ? <Check size={13} strokeWidth={2.5} /> : null}
-                    </span>
-                  </label>
-                ) : (
-                  <SpaceCardMenu
-                    spaceName={space.name}
-                    favorite={favoriteIds.has(space.id)}
-                    revealAvailable={!!desktopBridge && !!space.rootPath}
-                    contextMenuRequest={contextMenuRequest?.spaceId === space.id ? contextMenuRequest : null}
-                    onOpen={() => openSpace(space)}
-                    onReveal={() => void revealSpace(space)}
-                    onCopyPath={() => void copySpacePath(space)}
-                    onRename={() => {
-                      setSpaceActionError("");
-                      setRenameTarget(space);
-                    }}
-                    onToggleFavorite={() => toggleFavorite(space.id)}
-                    onRemove={() => void requestRemove(space)}
-                  />
-                )}
-                <button
-                  type="button"
-                  onClick={() => openSpace(space)}
-                  aria-label={`${space.name}: ${t(statusKey(space.status))}`}
-                  disabled={bulkSelectionEnabled}
+                <article
+                  className={`spaces-module__card spaces-module__card--${space.status}${selectedSpaceIds.has(space.id) ? " is-selected" : ""}`}
                 >
-                  <span className="spaces-module__card-top">
-                    <span className="spaces-module__folder"><Folder size={24} /></span>
-                    {favoriteIds.has(space.id) || !ready ? (
-                      <span className={`spaces-module__status spaces-module__status--${space.status}`}>
-                        {favoriteIds.has(space.id) ? <Star size={12} fill="currentColor" aria-label={t("spacesModule.favorited")} /> : null}
-                        {!ready ? <AlertTriangle size={13} aria-hidden="true" /> : null}
-                        {!ready ? t(statusKey(space.status)) : null}
+                  {bulkSelectionEnabled ? (
+                    <label className="spaces-module__card-select">
+                      <input
+                        type="checkbox"
+                        checked={selectedSpaceIds.has(space.id)}
+                        onChange={() => toggleSelectedSpace(space.id)}
+                        disabled={bulkRemoving}
+                        aria-label={t("spacesModule.selectSpace", { name: space.name })}
+                      />
+                      <span className="spaces-module__card-select-box" aria-hidden="true">
+                        {selectedSpaceIds.has(space.id) ? <Check size={13} strokeWidth={2.5} /> : null}
+                      </span>
+                    </label>
+                  ) : (
+                    <SpaceCardMenu
+                      spaceName={space.name}
+                      {...menuProps}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => openSpace(space)}
+                    aria-label={`${space.name}: ${t(statusKey(space.status))}`}
+                    disabled={bulkSelectionEnabled}
+                  >
+                    <span className="spaces-module__card-top">
+                      <span className="spaces-module__folder"><Folder size={24} /></span>
+                      {favoriteIds.has(space.id) || !ready ? (
+                        <span className={`spaces-module__status spaces-module__status--${space.status}`}>
+                          {favoriteIds.has(space.id) ? <Star size={12} fill="currentColor" aria-label={t("spacesModule.favorited")} /> : null}
+                          {!ready ? <AlertTriangle size={13} aria-hidden="true" /> : null}
+                          {!ready ? t(statusKey(space.status)) : null}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="spaces-module__name">{space.name}</span>
+                    <span className="spaces-module__path" title={space.rootPath}>
+                      <span>{t("spacesModule.pathLabel")}</span>
+                      {space.rootPath || "-"}
+                    </span>
+                    <span className="spaces-module__last-opened-row">
+                      <span className="spaces-module__last-opened">
+                        {lastOpened ? t("spacesModule.lastOpened", { time: lastOpened }) : t("spacesModule.neverOpened")}
+                      </span>
+                      {ready ? <ArrowRight className="spaces-module__card-arrow" size={15} aria-hidden="true" /> : null}
+                    </span>
+                    {!ready && space.rootError ? <span className="spaces-module__root-error">{space.rootError}</span> : null}
+                    {!ready ? (
+                      <span className="spaces-module__card-action">
+                        {t("spacesModule.reconnect")}
+                        <Link2 size={15} />
                       </span>
                     ) : null}
-                  </span>
-                  <span className="spaces-module__name">{space.name}</span>
-                  <span className="spaces-module__path" title={space.rootPath}>
-                    <span>{t("spacesModule.pathLabel")}</span>
-                    {space.rootPath || "-"}
-                  </span>
-                  <span className="spaces-module__last-opened-row">
-                    <span className="spaces-module__last-opened">
-                      {lastOpened ? t("spacesModule.lastOpened", { time: lastOpened }) : t("spacesModule.neverOpened")}
-                    </span>
-                    {ready ? <ArrowRight className="spaces-module__card-arrow" size={15} aria-hidden="true" /> : null}
-                  </span>
-                  {!ready && space.rootError ? <span className="spaces-module__root-error">{space.rootError}</span> : null}
-                  {!ready ? (
-                    <span className="spaces-module__card-action">
-                      {t("spacesModule.reconnect")}
-                      <Link2 size={15} />
-                    </span>
-                  ) : null}
-                </button>
-              </article>
+                  </button>
+                </article>
+              </SpaceCardContextMenu>
             );
           })}
         </div>

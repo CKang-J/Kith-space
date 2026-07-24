@@ -27,7 +27,7 @@ Kith 意为"你熟识信任的一圈自己人"——正是这些懂你（有记�
 
 开发进行中。以 open-tag 为底座（Apache-2.0）二次开发，吸收 OpenLoaf 的界面气质与理念。已完成 SQLite（每 Space 独立 db）、编排护栏、三层记忆、任务后端和由左侧导航控制右侧主卡片切换的单窗口生产壳。
 
-共享前端当前使用 React 19.2.8 + TypeScript + Vite 5；自 2026-07-24 起，新增 UI 统一使用 Tailwind CSS v4 与 shadcn/ui，存量 CSS 按触达组件渐进迁移，不做一次性视觉重写。开发约束见 [`AGENTS.md`](./AGENTS.md)，组件命令见 [`docs/dev-commands.md`](./docs/dev-commands.md)。
+共享前端当前使用 React 19.2.8 + TypeScript + Vite 5；自 2026-07-24 起，新增 UI 统一使用 Tailwind CSS v4 与 shadcn/ui，存量 CSS 按触达组件渐进迁移，不做一次性视觉重写。首批迁移已覆盖通用搜索、Space 新建/卡片菜单、Space 重命名和频道删除确认。开发约束见 [`AGENTS.md`](./AGENTS.md)，组件命令见 [`docs/dev-commands.md`](./docs/dev-commands.md)。
 
 当前最高优先级是 2026-07-11 锁定的本机化转向：正式产品只有 Electron Desktop，一个 Human、一个本机 Local Runtime Worker、多个本地 Space；浏览器入口是 Desktop 可选开放的本机/LAN 附属能力。多真人、多机器、服务器部署、云同步、Docker、账户登录和独立 Web 发行路线已经取消。完整规格见 [`个人 AgentOS 本机化路线设计`](./docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md)。
 

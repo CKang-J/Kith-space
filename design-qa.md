@@ -148,3 +148,40 @@ final result: passed
 - 最终验证：942 项单测中 931 通过、11 项平台条件跳过、0 失败；集成测试、TypeScript 类型检查、Web 生产构建和 `git diff --check` 全部通过。
 
 final result: passed
+
+---
+
+# 通用搜索框与首批 shadcn/ui 迁移视觉 QA
+
+- Source: `/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-3007fc60-7388-420f-b24f-ebe0a86233f3.png`
+- Implementation screenshot: `/tmp/kith-dev-full-final.png`
+- Focused comparison: `/tmp/kith-searchfield-focused-comparison-final.png`（左侧为参考图，右侧为实际渲染）
+- Viewport: `1042 × 863 CSS px`
+- Screenshot density: 浏览器页面 `devicePixelRatio = 2`；浏览器截图为 `1042 × 863 px`；聚焦区域统一放大到参考图的 2× 密度比较。
+- State: Space 模块搜索框；输入为空且已获得输入焦点。
+
+## Full-view comparison
+
+参考图只包含搜索框局部，没有可对齐的完整页面。完整实现截图用于检查搜索框在 Space 模块中的实际上下文：组件未裁切，和标题、创建按钮及卡片列表的间距正常，未引起相邻布局回归。
+
+## Focused region comparison
+
+参考图可见主体为 `276 × 40 CSS px`（原图中 `552 × 80 px`，按 2× 密度换算）。实际渲染测量同为 `276 × 40 CSS px`，圆角、`#ececec` 背景、13px 占位文字和 Lucide 搜索图标的位置一致。实际英文文案来自当前测试环境语言；中文环境按调用场景使用对应搜索提示。
+
+聚焦后，输入元素与外层 Input Group 的 `box-shadow` 均已验证为透明；外层没有线框、描边、阴影或浏览器默认 focus ring。
+
+## Findings
+
+- 初次对比：InputGroup addon 继承 shadcn `muted-foreground`，图标比参考图偏深。
+- 初次聚焦：项目既有全局 `input:focus-visible` 规则向输入框注入了 2px 黑色阴影。
+- 修正：搜索图标显式使用现有 `--muted-soft`；SearchField 输入以 Tailwind important utility 覆盖全局黑色阴影，外层在聚焦时也保持无框无阴影。
+- 最终检查：组件尺寸、圆角、底色、图标/文字色和留白通过；新菜单、右键菜单、重命名弹窗、频道删除弹窗均完成真实交互检查，浏览器控制台无错误。
+- 最终验证：936 项单测中 925 通过、11 项平台条件跳过、0 失败；相关契约测试、TypeScript 类型检查、Web 生产构建和 `git diff --check` 全部通过。
+
+## Comparison history
+
+1. 参考图 vs 初次实际渲染：发现图标偏深、聚焦态存在黑色阴影。
+2. 调整语义色与 focus-visible 阴影后复验：图标与占位文字同为 `rgb(168, 162, 158)`，输入与外层聚焦线框全部消失。
+3. 最终同尺寸局部对比及完整页面检查：通过。
+
+final result: passed
