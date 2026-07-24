@@ -74,8 +74,13 @@ export function SpaceSwitcher({ targetPathForSlug }: { targetPathForSlug?: (slug
   };
 
   return (
-    <div className="sw-wrap">
-      <button className="brand" title={cur?.name || "Kith-space"} aria-label={t("space.switchAriaLabel")} onClick={toggleOpen}>
+    <div className="sw-wrap" data-menu-open={open || undefined}>
+      <button
+        className="brand"
+        aria-label={t("space.switchAriaLabel")}
+        aria-expanded={open}
+        onClick={toggleOpen}
+      >
         {spaceAvatar ? <img className="brand-img" src={spaceAvatar} alt="" /> : (cur?.name?.[0]?.toUpperCase() || "K")}
         <span className="dot" />
       </button>

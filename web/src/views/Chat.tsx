@@ -581,9 +581,8 @@ export function Chat({
                     style={isNewMsg ? { "--msg-delay": `${staggerIdx * 60}ms` } as CSSProperties : undefined}
                     onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ m, x: e.clientX, y: e.clientY }); }}
                     avatar={continuation ? null : avatar}
-                    continuationTimestamp={m.senderType === "agent" ? null : continuation ? fmtMessageTime(m.createdAt) : null}
                     header={continuation || isDm ? null : <MessageHeader sender={sender} />}
-                    footerTimestamp={m.senderType === "agent" ? fmtMessageTime(m.createdAt) : null}
+                    footerTimestamp={fmtMessageTime(m.createdAt)}
                     afterBubble={tm?.replyCount ? <MessageTopicPreview
                       meta={tm}
                       onOpen={() => startThread(m)}
@@ -784,7 +783,6 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
           : m.senderId
             ? <button type="button" className="msg-av clickable" aria-label={t("chat.openHumanCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => onOpenHumanCard(m.senderName, senderAvatar(m), event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></button>
             : <span className="msg-av"><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></span>}
-        continuationTimestamp={m.senderType === "agent" ? null : continuation ? fmtMessageTime(m.createdAt) : null}
         header={continuation ? null : <MessageHeader
           sender={deletedAgent
             ? <DeletedAgentName displayName={m.senderName} />
@@ -794,7 +792,7 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
               ? <span className="who">{m.senderName}</span>
               : <span className="who">{m.senderName}</span>}
         />}
-        footerTimestamp={m.senderType === "agent" ? fmtMessageTime(m.createdAt) : null}
+        footerTimestamp={fmtMessageTime(m.createdAt)}
         toolbar={<MessageToolbar>
           {m.producedByTurnId ? <TurnDetailsButton turnId={m.producedByTurnId} /> : null}
           {!readOnly ? <ReactionToolbarButton onReact={(emoji) => react(m.id, emoji, false)} /> : null}

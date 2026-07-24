@@ -66,6 +66,11 @@
   transform: translate(0, -50%);
 }
 
+.workspace-navigation-rail__space:has(.sw-wrap[data-menu-open="true"])::after {
+  opacity: 0;
+  transform: translate(4px, -50%);
+}
+
 .workspace-navigation-rail .sw-wrap {
   position: relative;
 }
@@ -192,14 +197,24 @@
   will-change: width, flex-basis;
 }
 
+.shell-aggregate-gap {
+  position: relative;
+}
+
+.shell-aggregate-gap::before {
+  position: absolute;
+  top: 51px;
+  right: 0;
+  left: 0;
+  border-bottom: 1px solid var(--shell-border);
+  content: "";
+  pointer-events: none;
+}
+
 .shell-conversation-aggregate > * {
   width: 300px;
   min-width: 300px;
   height: 100%;
-}
-
-.shell-conversation-aggregate > .conversation-aggregate {
-  border-left: 0;
 }
 
 .shell-workspace-frame[data-aggregate-transitioning="true"] .shell-chat-workspace,

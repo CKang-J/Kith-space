@@ -5,6 +5,7 @@ import fs from "node:fs";
 const read = (path: string) => fs.readFileSync(new URL(path, import.meta.url), "utf8");
 
 const globalCss = read("../web/src/styles.css");
+const shellCss = read("../web/src/shell/shell.css");
 const aggregateCss = read("../web/src/views/conversation-aggregate/conversationAggregate.css");
 const searchField = read("../web/src/components/SearchField.tsx");
 
@@ -16,4 +17,9 @@ test("file filters and the shared search pill use their approved neutral surface
   assert.match(aggregateCss, /\.conversation-files__filter\s*\{[^}]*background:\s*var\(--canvas\)/s);
   assert.match(searchField, /bg-\[var\(--surface-strong\)\]/);
   assert.doesNotMatch(aggregateCss, /\.conversation-files__search-field/);
+});
+
+test("conversation aggregate panel keeps a visible neutral divider on its left edge", () => {
+  assert.match(aggregateCss, /\.conversation-aggregate\s*\{[^}]*border-left:\s*1px solid #e5e5e5/s);
+  assert.doesNotMatch(shellCss, /\.shell-conversation-aggregate > \.conversation-aggregate\s*\{[^}]*border-left:\s*0/s);
 });

@@ -9,9 +9,9 @@
 }
 
 .spaces-module__header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 24px;
   padding-bottom: 22px;
   border-bottom: 1px solid var(--hair);
@@ -29,6 +29,7 @@
 .spaces-module__actions {
   display: flex;
   flex: none;
+  justify-self: end;
   gap: 8px;
 }
 
@@ -102,7 +103,6 @@
 .spaces-module__toolbar {
   display: flex;
   min-width: 0;
-  flex: 1;
   align-items: center;
   justify-content: center;
   gap: 12px;
@@ -506,9 +506,9 @@
 
 @media (max-width: 820px) {
   .spaces-module { padding: 22px 20px 32px; }
-  .spaces-module__header { align-items: stretch; flex-direction: column; }
+  .spaces-module__header { display: flex; align-items: stretch; flex-direction: column; }
   .spaces-module__toolbar { width: 100%; max-width: none; justify-content: flex-start; }
-  .spaces-module__actions { width: 100%; }
+  .spaces-module__actions { width: 100%; justify-self: stretch; }
   .spaces-module__action { flex: 1; justify-content: center; }
   .spaces-module__action--icon { flex: 0 0 38px; }
   .spaces-module__grid { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }

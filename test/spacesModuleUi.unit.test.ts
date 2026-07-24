@@ -45,6 +45,8 @@ test("Space cards expose accessible project actions and focused dialogs", () => 
   assert.match(menu, /ContextMenuTrigger/);
   assert.match(menu, /ContextMenuItem/);
   assert.match(menu, /data-disabled:pointer-events-auto/);
+  assert.match(menu, /bg-transparent/);
+  assert.match(menu, /data-\[state=open\]:bg-\[var\(--canvas-soft\)\]/);
   assert.doesNotMatch(menu, /document\.addEventListener|createPortal/);
   assert.match(menu, /spacesModule\.revealInFileManager/);
   assert.match(menu, /spacesModule\.favorite/);
@@ -119,4 +121,12 @@ test("Spaces search uses the shared pill geometry without feature CSS overrides"
 
   assert.match(source, /className="w-\[min\(276px,100%\)\]"/);
   assert.doesNotMatch(css, /\.spaces-module__search/);
+});
+
+test("Spaces header keeps the search group centered independently of side actions", () => {
+  const css = fs.readFileSync(cssUrl, "utf8");
+
+  assert.match(css, /\.spaces-module__header\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) auto minmax\(0,\s*1fr\)/s);
+  assert.match(css, /\.spaces-module__actions\s*\{[^}]*justify-self:\s*end/s);
+  assert.match(css, /@media \(max-width:\s*820px\)[\s\S]*?\.spaces-module__header\s*\{[^}]*display:\s*flex/s);
 });
