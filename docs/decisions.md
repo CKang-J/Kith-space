@@ -2,7 +2,7 @@
 
 ## 前言
 
-这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）；随后授权浏览器的目录选择收敛为受限主机目录浏览器（决策 24）。2026-07-14 又锁定会话聚合面板（决策 25）与 Agent 频道响应模式（决策 26）；2026-07-15 在该响应机制上补充 Human 专属的频道全体提及（决策 27），并把 ChatOnly 的模块导航迁入左侧栏、模块打开态继续使用 Dock，同时退役案例展示（决策 28）。2026-07-18 本轮 UI 验收结束后，项目锁定“保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，以模块化单体渐进收敛、性能证据驱动 Rust 决策”的工程路线（决策 29）；P-A10的Agent Harness v2形成决策30，2026-07-22至23又形成并修订系统Memory Advisor Provider提案（决策31）。当前结论以每条决策中的最新修正和决策21-31为准。
+这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）；随后授权浏览器的目录选择收敛为受限主机目录浏览器（决策 24）。2026-07-14 又锁定会话聚合面板（决策 25）与 Agent 频道响应模式（决策 26）；2026-07-15 在该响应机制上补充 Human 专属的频道全体提及（决策 27），并把 ChatOnly 的模块导航迁入左侧栏、模块打开态继续使用 Dock，同时退役案例展示（决策 28）。2026-07-18 本轮 UI 验收结束后，项目锁定“保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，以模块化单体渐进收敛、性能证据驱动 Rust 决策”的工程路线（决策 29）；P-A10 的 Agent Harness v2 形成决策 30，2026-07-22 至 23 又形成并修订系统 Memory Advisor Provider、模型配置和快捷安装边界（决策 31–33）；2026-07-24 新增前端统一采用 Tailwind CSS v4 + shadcn/ui 的渐进迁移决策（决策 34）。当前结论以每条决策中的最新修正和决策 21–34 为准。
 
 盘问的方式是一次给一个决策、每次给一个明确建议，让用户在 either/or 之间做取舍。会话过程中有几条决策被推翻或修正过（底座、runtime、Redis 的真实用途、聊天历史随文件夹走的成本），这些演化本身是理解项目为什么长成现在这样的关键，因此单列一节保留。
 
@@ -44,6 +44,10 @@
 | 28 | Chat 壳层导航 | 左侧纵向模块入口常驻；右侧主卡片在 Chat 与模块间切换；Settings 使用弹窗；Dock 与案例展示退役 |
 | 29 | 代码架构与性能语言 | 保留 Desktop/Core/Worker 与 TypeScript 主栈；P-A9.0–P-A9.7 的实现、最终门禁与一次独立只读终审已完成，Rust 只由性能证据触发 |
 | 30 | Agent Harness v2 | per-surface session + durable delivery/logical turn/attempt + Context Envelope + revisioned episodic memory + restricted advisor + broker-backed MCP/CLI Gateway + snapshot/compaction telemetry；P-A10.0–P-A10.7 已完成 |
+| 31 | Memory Advisor Provider | 结构化记忆提炼使用安装级可替换 Provider，与聊天 runtime 解耦 |
+| 32 | 模型配置 | Kith 管理供应商、模型与运行器绑定；CLI 配置只读导入并按启动注入 |
+| 33 | Runtime 快捷安装 | 只安装和删除 Kith-owned 锁版副本，不接管系统 CLI |
+| 34 | 前端样式与组件基线 | 新增 UI 使用 Tailwind CSS v4 + shadcn/ui，存量 CSS 按触达范围渐进迁移 |
 
 ---
 
@@ -526,6 +530,20 @@
 **推理与权衡**：只给安装命令会让普通用户仍需理解npm、PATH和版本兼容；直接全局安装或接管各CLI配置则会影响Kith之外的终端、扩大删除权限并引入供应链与配置冲突。Kith-owned锁版副本把快捷安装的便利限定在可撤销目录内，代价是支持版本升级必须更新清单并验收，且安装/删除后需要重启Worker，不能假装热生效。
 
 **安全边界**：安装与删除只接受Desktop trusted请求，API不接受包名、命令、registry或任意目标路径；普通Web只读取脱敏的安装、版本和账号状态。账号探测只返回`ready / signed_out / unknown`与人类可读摘要，不回传CLI原始输出或凭据。模型配置仍遵循决策32：Kith是事实源，CLI配置只读导入且不写回。
+
+---
+
+## 决策 34：新增前端统一使用 Tailwind CSS v4 与 shadcn/ui
+
+**状态**：Implemented（2026-07-24，基础设施与规则已落地）。
+
+**结论**：React UI 的新增样式统一使用 Tailwind CSS v4 原子类，基础交互组件优先使用 shadcn/ui。组件从 `@/components/ui/*` 导入，条件类名统一通过 `@/lib/utils` 的 `cn()` 合并，颜色优先使用 shadcn 语义 Token。除 Tailwind/shadcn 主题基础层和无法枚举的运行时几何值外，不新增全局 CSS、局部 CSS、CSS Modules 或内联样式。
+
+**迁移边界**：当前已验收界面仍有大量 `styles.css` 与 feature CSS，不能为技术栈切换做一次性重写。新增组件遵循新基线；结构性修改已有组件时，在范围可控的前提下迁移被触达组件；纯缺陷修复允许外科式维护存量 CSS。迁移不得改变已有信息架构、视觉验收结果、可访问性或业务行为。
+
+**推理与权衡**：Tailwind 把新增样式约束收口到组件附近，shadcn/ui 提供可维护、可审查且保留源码所有权的基础组件，能减少重复弹窗、菜单、表单和状态逻辑。代价是迁移期存在两套样式表达；通过“新增强制、存量渐进”和语义 Token 隔离控制复杂度，而不是扩大改动面换取名义上的统一。
+
+**实施事实**：Vite 已接入 `@tailwindcss/vite`；`web/components.json` 使用 Radix/Nova、Lucide 与 CSS variables；`@/*` 映射到 `web/src/*`；`web/src/lib/utils.ts` 提供 `cn()`；首个 `Button` 组件位于 `web/src/components/ui/button.tsx`。`web/src/styles.css` 是唯一 Tailwind/shadcn 主题入口；迁移期只导入 Tailwind theme/utilities、不启用全局 Preflight，基础边框/焦点规则只作用于 `data-slot` 组件，同时保留既有系统字体，并将 shadcn 的 `muted` 底层变量与存量 `--muted` 文本色隔离，避免初始化改变现有 UI。
 
 ---
 

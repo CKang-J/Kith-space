@@ -18,6 +18,14 @@ pnpm install
 
 应用使用 SQLite，不需要 Postgres、Redis 或 `db:push`。
 
+前端已初始化 Tailwind CSS v4 与 shadcn/ui。添加基础组件前先检查 `web/src/components/ui/`，缺少时从仓库根目录运行：
+
+```powershell
+pnpm --dir web exec shadcn add button
+```
+
+把 `button` 替换为所需组件名；不要手工复制 registry 源码，也不要重复添加已有组件。组件配置位于 `web/components.json`，新增组件应保持 `@/components/ui/*` 与 `@/lib/utils` 别名。
+
 ## 2. 启动 Desktop 开发环境
 
 日常开发推荐只运行这一条：

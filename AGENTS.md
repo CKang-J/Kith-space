@@ -68,7 +68,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 当前数据版本：workspace schema v10增加Agent模型绑定、跨安装确认快照和runtime epoch；app.db v6增加供应商连接、模型配置、runtime profile不可变revision、三态默认绑定和CLI脱敏导入快照。下方较早的v9/v5描述仅是本轮实现前的历史基线。
 
-- 技术栈：TypeScript / Node（Core Service + 安装级唯一 Local Runtime Worker；目录/命令仍暂用 server/daemon）、Electron 43.1.0 + electron-builder 26.15.3（正式 Desktop 宿主与 Windows 打包）、React + Vite（共享 UI）、Drizzle ORM。
+- 技术栈：TypeScript / Node（Core Service + 安装级唯一 Local Runtime Worker；目录/命令仍暂用 server/daemon）、Electron 43.1.0 + electron-builder 26.15.3（正式 Desktop 宿主与 Windows 打包）、React + Vite + Tailwind CSS v4 + shadcn/ui（共享 UI）、Drizzle ORM。
 - 包管理：**pnpm 11.13.1**（由根目录 `packageManager` 固定；workspace 仅根目录 + `web/`，`pnpm-lock.yaml`）。安装 `pnpm install`。注意 pnpm 的传参约定：脚本参数**直接跟在后面、不加 `--`**——用 `pnpm test --unit` / `pnpm test --integration`，**不要**写 `pnpm test -- --integration`。公共 daemon 包与 npm/OIDC 发布 workflow 已在 A6 删除；仓库不再维护公共 npm 发行路线。
 - 数据层：**SQLite**。每 Space 一个 `<folder>/.kith/workspace.db`；中央 `app.db` 保存唯一 Human、稳定 Home 身份、Space registry、Web 模式、访问 Token 哈希/版本、浏览器会话、Desktop设置、Human-only user-global episodic memory、安装级Advisor Provider控制面，以及模型供应商、模型配置和runtime profile。当前workspace schema v10在v9逐Agent Advisor consent/job/run审计基础上增加Agent模型绑定、跨安装确认快照和session runtime epoch；app.db当前为v6，在v5 Advisor Provider控制面上增加连接/模型/runtime不可变revision、三态默认绑定、probe和CLI脱敏导入快照。`agents.session_id`仍只作互斥legacy rollback来源。app data 默认 `~/.kith-space`，默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`；`KITH_SPACE_HOME` 只覆盖 app data，`KITH_SPACE_SPACES_DIR` 独立覆盖开发/测试默认 Space 容器。P-A7 H2 已把 Claude Code、Codex、opencode、Pi 的 cwd 切到所属 Space root，把 Agent Memory 放入 `<space>/.kith/agents/<agentId>`，把 adapter 临时状态和Pi generation留在app data runtime目录；Agents 详情的“记忆”文件浏览器只读取当前 agentMemoryDir。Copilot/Kimi/Cursor 仍为 experimental adapter并暂用runtime state cwd。H3/H4的Space root与Home边界不变。v2–v9合法workspace前缀与app.db v1–v5会按immutable manifest/journal迁移到当前版本；更旧legacy或future schema明确拒绝。
 - 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。测试 runner 会同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向随机临时 profile，零 Postgres/Redis 即可全绿；当前验收单测基线为916通过、11个平台条件skip、0失败，旧 `publicNavContract` 失败已随失效的 public landing 路线删除。改动配套跑测试再提交。
@@ -76,6 +76,40 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 - Git/PR：采用轻量 GitHub Flow，只保留长期分支 `main`；从最新 `main` 创建短分支，通过 PR 和 CI 后 Squash 合入。提交使用中文 Conventional Commits，必要时用中文要点说明原因、边界和验证结果。完整流程见 `CONTRIBUTING.md`。
 - 提交权限：只在用户明确要求时创建提交、推送或 PR；先分支，不直推 `main`。
 - 安全：外接 runtime 的高权限是追踪中的技术债。LAN 浏览器 v1 使用 HTTP + 访问 Token且仅限受信任私网；邮箱/浏览器等不可信内容模块上线前，必须先完成 HTTPS 与审批/沙箱权限升级（见 `decisions.md` 决策 8/17/21）。
+
+## 前端开发规范与规则
+
+### 技术栈规范
+
+- 前端框架使用 React + TypeScript，构建工具使用 Vite。
+- 新增 UI 与新增样式统一使用 Tailwind CSS v4；除主题变量、Tailwind/shadcn 基础层及必须维护的存量样式外，不新增全局 CSS、局部 CSS 或 CSS Modules。
+- 基础 UI 组件优先使用 shadcn/ui，并从 `@/components/ui/*` 导入；先检查已有组件或用 shadcn CLI 添加，不手写已有的复杂交互组件。
+- 存量 CSS 按触达范围渐进迁移，不做一次性全量重写。对已有页面做结构性 UI 修改时，在范围可控的前提下迁移被修改组件；纯缺陷修复可最小修改原样式，避免为了迁移扩大改动面。
+
+### 组件架构与导入规范
+
+- 界面、交互逻辑、请求、工具和类型保持清晰边界；组件 Props 必须定义明确的 TypeScript 类型。
+- Button、Card、Dialog、Dropdown Menu、Tabs、表单控件等基础元素优先复用 shadcn/ui；弹窗、菜单、标签页等复杂交互不得重复手写状态机。
+- 动态或条件类名统一使用 `@/lib/utils` 的 `cn()`，不手写模板字符串拼接。
+- 使用 `@/*` 路径别名导入 `web/src/*`，避免新增深层相对路径。
+
+### 样式与布局标准
+
+- 新写布局、间距、颜色、排版以及 hover/focus/disabled 等状态必须通过 Tailwind 原子类表达。
+- 禁止内联 `style={{ ... }}`；仅鼠标实时坐标、测量结果、Canvas 偏移等无法预先枚举的运行时数值允许例外，并应附简短说明。
+- 使用 `sm:`、`md:`、`lg:` 等响应式前缀；颜色优先使用 `bg-background`、`text-foreground`、`bg-muted` 等 shadcn 语义 Token，不散落原始颜色值。暗色主题通过语义 Token 适配，仅在语义 Token 无法表达时使用 `dark:`。
+- 间距优先使用 `flex/grid + gap-*`，不使用 `space-x-*` / `space-y-*`；宽高相同使用 `size-*`。
+- shadcn 组件优先使用既有 variant 和 size；业务层 `className` 主要负责布局，不覆盖组件内部颜色与排版。
+
+### 前端代码质量检查
+
+生成或重构 React 前端代码时，至少确认：
+
+1. 组件职责单一、拆分适度，没有把界面、请求和复杂状态继续堆入大型组件。
+2. 已优先复用 shadcn/ui，Dialog/Sheet/Drawer 具备可访问标题，表单、菜单、Tabs 等遵循组件组合约束。
+3. Props 与状态类型明确，`cn()`、语义 Token、响应式和键盘/焦点状态使用正确。
+4. 未新增无必要的 CSS 文件、CSS Modules、内联样式或重复实现的基础交互组件。
+5. `pnpm run typecheck` 与 `pnpm run web:build` 通过；涉及行为时补充并运行相应测试。
 
 ## AI 协作与工具
 

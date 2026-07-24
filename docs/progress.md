@@ -12,6 +12,7 @@
 
 ## 一、现在在哪
 
+- 2026-07-24 前端新增开发基线切换为 Tailwind CSS v4 + shadcn/ui：Vite 已接入 Tailwind 插件，`@/*` 路径别名、`web/components.json`、`@/lib/utils` 的 `cn()` 和首个 `Button` 基础组件已落地。新增 UI 强制使用 Tailwind 原子类与 shadcn 语义 Token，存量 `styles.css`/feature CSS 按触达组件渐进迁移，不进行一次性视觉重写；迁移期不启用 Tailwind Preflight，并保留既有系统字体、隔离 shadcn `muted` 与存量 `--muted` 文本色，避免当前已验收界面发生无意变化。
 - 2026-07-24 全局字体尺度收敛为11/12/14/16/20px五档 Token，正文基准为14px，聊天正文与Markdown改为复用基准字号和1.68阅读行高；更小字号仅用于元数据，更大字号仅用于标题层级。该条覆盖下方仍用于描述历史过程的旧消息字号。
 - 2026-07-24 Chat 顶栏频道名称、消息中栏标题及“已保存”/频道名称/Agent 名称、聚合面板标题均已降为400常规字重，层级继续由字号、位置和留白承担。
 
@@ -153,6 +154,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 ## 六、验证与工作约定
 
 - 包管理使用 pnpm；脚本参数直接跟在后面，例如 `pnpm test --unit`。
+- 新增前端 UI 使用 Tailwind CSS v4 + shadcn/ui；先复用 `web/src/components/ui/`，缺少组件时使用 `pnpm --dir web exec shadcn add <component>`。
 - 常规验证：`pnpm run typecheck`、`pnpm test --unit`、`pnpm test --integration`、`pnpm --dir web run build`。
 - 测试 runner 同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向同一个随机临时 profile 的不同子目录；手写测试若绕过 runner，必须显式覆盖默认 Space 容器或直接传 rootPath，绝不在真实 `~/Kith-space` 生成 fixture。
 - P-A10.4 当前全量unit为772通过、11个平台条件skip、0失败；typecheck、完整integration、Desktop build/production bundle（含22项`kith-core-mcp.mjs`工具）与Web build（2643 modules）通过。新增定向覆盖真实Gateway后端的MCP/CLI/CLI parser同域结果与reply normalization/附件原子绑定、Task全链路/single-flight/写事务内撤权、custom scope denial、三家bootstrap config、stdio握手失败降级/双路fail-closed、turn-start ACK前不启动runtime、常驻进程过期activation、跨私密ref-only projection与search oracle关闭、later-query审计与freshness claim轮换、checklist CAS/operation幂等、跨turn short wake、progress/turn inspector、25 MiB/10文件超限与连接中断整批拒绝、临时附件过期/崩溃清扫和manual body-free inbox summary。第三轮独立对抗审查及附件生命周期聚焦复核最终均为P0/P1/P2清零；`0007`状态、expiry与文件orphan GC闭环通过迁移/hash与压力回归。三家MCP bootstrap当前仅为`fixture_v2`；最终`desktop:dev` / 7777真实UI及provider live smoke仍须在P-A10.5–P-A10.7全部落地后按完整场景矩阵执行，不能用当前自动化代替。

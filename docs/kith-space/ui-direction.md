@@ -26,6 +26,12 @@ Chat 顶栏的频道名称、消息中栏标题及其中的“已保存”、频
 
 这套“统一主卡片 + 画布会话导航 + 留白分组 + 克制浮层”的语言同时用于 Chat、业务模块和 Settings，避免不同页面像几套产品。
 
+### 1.1 前端样式实现基线
+
+自 2026-07-24 起，新增 UI 采用 Tailwind CSS v4 与 shadcn/ui。基础组件从 `@/components/ui/*` 复用，条件类名通过 `@/lib/utils` 的 `cn()` 合并，颜色使用 `background`、`foreground`、`muted`、`border`、`ring` 等语义设计 Token。新增样式不再写入全局 CSS、局部 CSS、CSS Modules 或内联 `style`；只有 Tailwind/shadcn 主题基础层和无法枚举的运行时几何值例外。
+
+当前 `styles.css` 与各 feature CSS 仍承载已验收的存量界面，不进行一次性重写。后续结构性修改某个组件时，在改动范围可控的前提下迁移该组件；纯缺陷修复允许外科式维护原 CSS。该渐进边界避免仅为换样式技术而改变现有信息架构、视觉验收结果或交互契约。
+
 ---
 
 ## 2. 顶层骨架
