@@ -230,7 +230,7 @@ export function useConversationThreads({
 
 export interface ThreadPanelModel {
   messages: Msg[];
-  scrollRef: RefObject<HTMLDivElement>;
+  scrollRef: RefObject<HTMLDivElement | null>;
   followPending: boolean;
   toggleFollow(followed: boolean, onChange: (followed: boolean) => void): Promise<void>;
   markDone(onDone: () => void): Promise<void>;

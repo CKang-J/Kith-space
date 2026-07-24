@@ -27,7 +27,7 @@
 |---|---|---|
 | Desktop 宿主 | Electron 43.1.0、electron-builder 26.15.3 | 提供跨平台窗口、托盘、文件选择、进程监督和正式安装包，符合 Desktop-first |
 | 本机核心 | Node.js + TypeScript 5.6、HTTP、Socket.IO 4.8、`ws` 8.21 | 为 Desktop、授权浏览器和 Agent CLI 提供同一份本机行为与信任边界 |
-| UI | React 18 + Vite 5 | Desktop renderer 与可选浏览器入口共享，避免维护两套客户端 |
+| UI | React 19.2.8 + Vite 5 | Desktop renderer 与可选浏览器入口共享，避免维护两套客户端 |
 | 数据 | SQLite、`better-sqlite3` 12.11、Drizzle ORM 0.45 | 每 Space 单文件、自包含、可移植；同步原生驱动适合单机写入模型 |
 | Agent 执行 | 唯一 Local Runtime Worker + Runtime Adapter + 外部 CLI | 遵守“不自研 runtime”，把模型调用和工具循环交给现有 runtime |
 | 包管理 | pnpm 11.13.1 | 单仓库、根目录与 `web/` workspace，当前无需引入多语言构建系统 |

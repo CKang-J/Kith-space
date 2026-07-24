@@ -53,7 +53,7 @@ Core Service 根据 Web 模式监听：
 
 Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件。客户端能力由不可伪造的宿主桥决定：`web/src/desktopBridge.ts:62` 只有检测到窄 preload bridge 时才开放 Desktop 设置区；普通浏览器请求该区会经 `resolveSettingsSection`（`:67`）回落到 Human 设置，并且服务端仍拒绝其管理调用。Human Settings 的规范 resource 是 `settings=human`；Desktop Settings 管理 Web 模式、端口、Token 轮换、浏览器会话撤销、关闭行为和自启动。
 
-共享 UI 的当前实现栈是 React 18、TypeScript、Vite 5、Tailwind CSS v4 与 shadcn/ui。`web/vite.config.ts` 接入 Tailwind Vite 插件并把 `@/*` 映射到 `web/src/*`；`web/components.json` 固定 shadcn 的 Radix/Nova、语义 CSS 变量和 Lucide 图标配置，`web/src/lib/utils.ts` 提供统一 `cn()`。新增基础组件进入 `web/src/components/ui/`，业务 feature 只组合这些源码组件，不反向把业务状态写入 UI 基础层。
+共享 UI 的当前实现栈是 React 19.2.8、TypeScript、Vite 5、Tailwind CSS v4 与 shadcn/ui（`web/package.json:19`）。React 19 升级只更新 React/React DOM 与对应类型，不连带升级 Vite、React Router，也不在版本迁移中引入 Actions 等新 API；现有 `createRoot`、StrictMode 和客户端 SPA 边界保持不变。`web/vite.config.ts:15` 接入 Tailwind Vite 插件，`:18` 把 `@/*` 映射到 `web/src/*`，`:34` 将 `react-dom/client` 与 React/Router 一起稳定切入 `react-vendor`，避免框架代码回落到业务主包；`web/components.json` 固定 shadcn 的 Radix/Nova、语义 CSS 变量和 Lucide 图标配置，`web/src/lib/utils.ts` 提供统一 `cn()`。新增基础组件进入 `web/src/components/ui/`，业务 feature 只组合这些源码组件，不反向把业务状态写入 UI 基础层。
 
 Tailwind/shadcn 是新增 UI 的强制基线，存量 CSS 是迁移债而非新代码模板。`web/src/styles.css` 暂时同时承载既有全局规则和 Tailwind/shadcn 主题入口；迁移期只加载 Tailwind theme/utilities，不启用会全局重置元素的 Preflight，并把 shadcn 基础边框/焦点规则限定到带 `data-slot` 的组件。shadcn 的 `muted` 语义变量使用独立底层变量映射，避免覆盖存量 `--muted` 文本色。迁移按被触达组件渐进进行，不以全量重写换取表面一致。
 

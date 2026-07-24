@@ -42,7 +42,7 @@ export function keepPinnedToBottomDuringEnter(
 }
 
 export interface ConversationViewportModel {
-  scrollRef: RefObject<HTMLDivElement>;
+  scrollRef: RefObject<HTMLDivElement | null>;
   showJump: boolean;
   onScroll(): void;
   toBottom(): void;

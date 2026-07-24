@@ -213,10 +213,10 @@ function ActionCardMsg({
 
 interface ChatShellControls {
   conversationListOpen?: boolean;
-  conversationToggleRef?: RefObject<HTMLButtonElement>;
+  conversationToggleRef?: RefObject<HTMLButtonElement | null>;
   aggregateOpen?: boolean;
   aggregateAvailable?: boolean;
-  aggregateToggleRef?: RefObject<HTMLButtonElement>;
+  aggregateToggleRef?: RefObject<HTMLButtonElement | null>;
   onToggleConversationList?(): void;
   onToggleAggregate?(): void;
   onOpenTasks?(conversationId: string): void;

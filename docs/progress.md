@@ -12,6 +12,7 @@
 
 ## 一、现在在哪
 
+- 2026-07-24 共享前端已从 React 18.3.1 升级到 React/React DOM 19.2.8，并同步 `@types/react` 19.2.17、`@types/react-dom` 19.2.3。入口继续使用 `createRoot`、现代 JSX transform 与 StrictMode；本次不连带升级 Vite/React Router，不采用 React 19 新 API。React 19 更精确的 ref 类型暴露了 5 个文件中的 7 处 DOM ref 可空性旧声明，已统一改为 `RefObject<Element | null>`；这些类型修复未改变运行逻辑、JSX 或样式。构建分块同步纳入 `react-dom/client`，避免 React DOM 回落到业务主包。
 - 2026-07-24 前端新增开发基线切换为 Tailwind CSS v4 + shadcn/ui：Vite 已接入 Tailwind 插件，`@/*` 路径别名、`web/components.json`、`@/lib/utils` 的 `cn()` 和首个 `Button` 基础组件已落地。新增 UI 强制使用 Tailwind 原子类与 shadcn 语义 Token，存量 `styles.css`/feature CSS 按触达组件渐进迁移，不进行一次性视觉重写；迁移期不启用 Tailwind Preflight，并保留既有系统字体、隔离 shadcn `muted` 与存量 `--muted` 文本色，避免当前已验收界面发生无意变化。
 - 2026-07-24 全局字体尺度收敛为11/12/14/16/20px五档 Token，正文基准为14px，聊天正文与Markdown改为复用基准字号和1.68阅读行高；更小字号仅用于元数据，更大字号仅用于标题层级。该条覆盖下方仍用于描述历史过程的旧消息字号。
 - 2026-07-24 Chat 顶栏频道名称、消息中栏标题及“已保存”/频道名称/Agent 名称、聚合面板标题均已降为400常规字重，层级继续由字号、位置和留白承担。

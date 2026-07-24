@@ -33,7 +33,12 @@ export default defineConfig({
       output: {
         manualChunks: {
           // Stable framework — cached longest; separate from app code
-          "react-vendor": ["react", "react-dom", "react-router-dom"],
+          "react-vendor": [
+            "react",
+            "react-dom",
+            "react-dom/client",
+            "react-router-dom",
+          ],
           // Heavy markdown pipeline (react-markdown + plugins)
           "markdown": ["react-markdown", "rehype-raw", "rehype-sanitize", "remark-breaks", "remark-gfm"],
           // Drag-and-drop
