@@ -8,7 +8,7 @@ interface ChatWorkspaceProps {
   channelId: string | null;
   aggregateOpen: boolean;
   aggregateAvailable: boolean;
-  aggregateToggleRef: RefObject<HTMLButtonElement>;
+  aggregateToggleRef: RefObject<HTMLButtonElement | null>;
   onToggleAggregate(): void;
   onOpenTasks(conversationId: string): void;
   onOpenChannelSettings(channelId: string, trigger?: HTMLButtonElement): void;
@@ -23,7 +23,7 @@ interface ChatSurfaceProps {
   channelId: string | null;
   aggregateOpen: boolean;
   aggregateAvailable: boolean;
-  aggregateToggleRef: RefObject<HTMLButtonElement>;
+  aggregateToggleRef: RefObject<HTMLButtonElement | null>;
   onToggleAggregate(): void;
   onOpenTasks(conversationId: string): void;
   onOpenChannelSettings(channelId: string, trigger?: HTMLButtonElement): void;

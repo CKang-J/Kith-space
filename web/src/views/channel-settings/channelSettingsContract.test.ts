@@ -29,7 +29,17 @@ test("required and archived channels expose only the allowed settings actions", 
   assert.match(index, /\/archive`/);
   assert.match(index, /\/unarchive`/);
   assert.match(dialog, /matchesDeleteConfirmation\(confirmation, channelName\)/);
-  assert.match(dialog, /autoFocus/);
+  assert.match(dialog, /AlertDialogContent/);
+  assert.match(dialog, /AlertDialogCancel/);
+  assert.match(dialog, /FieldGroup/);
+  assert.match(dialog, /<Input/);
+  assert.match(dialog, /onOpenAutoFocus/);
+  assert.match(dialog, /confirmationInputRef\.current\?\.focus\(\)/);
+  assert.match(dialog, /overlayProps=\{\{ onClick: close \}\}/);
+  assert.match(dialog, /if \(busy\) event\.preventDefault\(\)/);
+  assert.match(dialog, /data-\[size=default\]:sm:max-w-none/);
+  assert.match(dialog, /bg-\[var\(--error\)\]/);
+  assert.doesNotMatch(dialog, /createPortal|useEscClose/);
 });
 
 test("member and notification pages use the agreed channel-scoped API contracts", () => {

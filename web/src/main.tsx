@@ -16,7 +16,6 @@ import "./i18n";
 import "./styles.css";
 import "./components/SlidingTabs.css";
 import "./views/chat-message/chatMessage.css";
-import "./components/SearchField.css";
 import "./scrollbar";
 
 // Home waits for the HttpOnly Cookie session bootstrap. Anonymous browser clients see the Access

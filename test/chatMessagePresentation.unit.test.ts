@@ -93,8 +93,8 @@ test("topic replies render as a separate reference-style card and preserve relat
 test("consecutive messages suppress repeated identity while keeping bubble alignment", () => {
   assert.match(chatSrc, /shouldGroupMessage\(prevMsg, m\)/);
   assert.match(chatSrc, /shouldGroupMessage\(m, nextMsg\)/);
-  assert.match(chatSrc, /continuationTimestamp=\{m\.senderType === "agent" \? null : continuation \? fmtMessageTime\(m\.createdAt\) : null\}/);
-  assert.match(chatSrc, /footerTimestamp=\{m\.senderType === "agent" \? fmtMessageTime\(m\.createdAt\) : null\}/);
+  assert.doesNotMatch(chatSrc, /continuationTimestamp=\{m\.senderType === "agent"/);
+  assert.match(chatSrc, /footerTimestamp=\{fmtMessageTime\(m\.createdAt\)\}/);
   assert.match(messageCss, /\.chat-message:hover \.chat-message__continuation-timestamp/);
   assert.match(messageCss, /\.chat-message--has-continuation\{margin-bottom:6px\}/);
 });

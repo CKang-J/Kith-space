@@ -1,18 +1,29 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, type ReactElement } from "react";
+import type { LucideIcon } from "lucide-react";
 import { Copy, Ellipsis, ExternalLink, FolderOpen, Pencil, Star, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuGroup,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 
-export interface SpaceCardContextMenuRequest {
-  spaceId: string;
-  clientX: number;
-  clientY: number;
-}
-
-interface SpaceCardMenuProps {
-  spaceName: string;
+interface SpaceCardMenuActions {
   favorite: boolean;
   revealAvailable: boolean;
-  contextMenuRequest: SpaceCardContextMenuRequest | null;
   onOpen(): void;
   onReveal(): void;
   onCopyPath(): void;
@@ -21,129 +32,175 @@ interface SpaceCardMenuProps {
   onRemove(): void;
 }
 
-export function SpaceCardMenu({
-  spaceName,
+interface SpaceCardMenuProps extends SpaceCardMenuActions {
+  spaceName: string;
+}
+
+interface SpaceCardContextMenuProps extends SpaceCardMenuActions {
+  children: ReactElement;
+  disabled?: boolean;
+}
+
+interface SpaceMenuItem {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  onSelect(): void;
+  disabled?: boolean;
+  title?: string;
+  destructive?: boolean;
+  filled?: boolean;
+}
+
+function useSpaceMenuGroups({
   favorite,
   revealAvailable,
-  contextMenuRequest,
   onOpen,
   onReveal,
   onCopyPath,
   onRename,
   onToggleFavorite,
   onRemove,
-}: SpaceCardMenuProps) {
+}: SpaceCardMenuActions): SpaceMenuItem[][] {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const [contextPosition, setContextPosition] = useState<{ left: number; top: number } | null>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!contextMenuRequest) {
-      setOpen(false);
-      setContextPosition(null);
-      return;
-    }
-    setContextPosition({ left: contextMenuRequest.clientX, top: contextMenuRequest.clientY });
-    setOpen(true);
-  }, [contextMenuRequest]);
+  return [
+    [
+      { key: "open", label: t("spacesModule.open"), icon: ExternalLink, onSelect: onOpen },
+      {
+        key: "reveal",
+        label: t("spacesModule.revealInFileManager"),
+        icon: FolderOpen,
+        onSelect: onReveal,
+        disabled: !revealAvailable,
+        title: !revealAvailable ? t("spacesModule.desktopOnly") : undefined,
+      },
+      { key: "copy", label: t("spacesModule.copyPath"), icon: Copy, onSelect: onCopyPath },
+    ],
+    [
+      { key: "rename", label: t("spacesModule.rename"), icon: Pencil, onSelect: onRename },
+      {
+        key: "favorite",
+        label: t(favorite ? "spacesModule.unfavorite" : "spacesModule.favorite"),
+        icon: Star,
+        onSelect: onToggleFavorite,
+        filled: favorite,
+      },
+    ],
+    [
+      {
+        key: "remove",
+        label: t("spacesModule.remove"),
+        icon: Trash2,
+        onSelect: onRemove,
+        destructive: true,
+      },
+    ],
+  ];
+}
 
-  useLayoutEffect(() => {
-    if (!open || !contextPosition || !popoverRef.current) return;
-    const bounds = popoverRef.current.getBoundingClientRect();
-    const left = Math.max(8, Math.min(contextPosition.left, window.innerWidth - bounds.width - 8));
-    const top = Math.max(8, Math.min(contextPosition.top, window.innerHeight - bounds.height - 8));
-    if (left !== contextPosition.left || top !== contextPosition.top) setContextPosition({ left, top });
-  }, [contextPosition, open]);
+const menuContentClassName =
+  "w-[190px] min-w-[190px] rounded-xl border border-[var(--hair-strong)] bg-[var(--surface)] p-1 text-[14px] shadow-[0_8px_24px_var(--shadow-2)] ring-0";
+const menuItemClassName =
+  "min-h-[34px] gap-2.5 rounded-lg px-2.5 py-1.5 text-[14px] leading-5 focus:bg-[var(--canvas-soft)]";
 
-  useEffect(() => {
-    if (!open) return;
-    const closeOutside = (event: PointerEvent) => {
-      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) {
-        setOpen(false);
-        setContextPosition(null);
-      }
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setOpen(false);
-      setContextPosition(null);
-      triggerRef.current?.focus();
-    };
-    document.addEventListener("pointerdown", closeOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open]);
+function DropdownSpaceMenuItems({ groups }: { groups: SpaceMenuItem[][] }) {
+  return groups.map((group, groupIndex) => (
+    <Fragment key={group[0]?.key ?? groupIndex}>
+      {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
+      <DropdownMenuGroup>
+        {group.map((item) => {
+          const Icon = item.icon;
+          return (
+            <DropdownMenuItem
+              key={item.key}
+              variant={item.destructive ? "destructive" : "default"}
+              className={cn(menuItemClassName, item.disabled && "data-disabled:pointer-events-auto")}
+              disabled={item.disabled}
+              title={item.title}
+              onSelect={item.onSelect}
+            >
+              <Icon data-icon="inline-start" fill={item.filled ? "currentColor" : "none"} aria-hidden="true" />
+              {item.label}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuGroup>
+    </Fragment>
+  ));
+}
 
-  const select = (action: () => void) => {
-    setOpen(false);
-    setContextPosition(null);
-    action();
-  };
+function ContextSpaceMenuItems({ groups }: { groups: SpaceMenuItem[][] }) {
+  return groups.map((group, groupIndex) => (
+    <Fragment key={group[0]?.key ?? groupIndex}>
+      {groupIndex > 0 ? <ContextMenuSeparator /> : null}
+      <ContextMenuGroup>
+        {group.map((item) => {
+          const Icon = item.icon;
+          return (
+            <ContextMenuItem
+              key={item.key}
+              variant={item.destructive ? "destructive" : "default"}
+              className={cn(menuItemClassName, item.disabled && "data-disabled:pointer-events-auto")}
+              disabled={item.disabled}
+              title={item.title}
+              onSelect={item.onSelect}
+            >
+              <Icon data-icon="inline-start" fill={item.filled ? "currentColor" : "none"} aria-hidden="true" />
+              {item.label}
+            </ContextMenuItem>
+          );
+        })}
+      </ContextMenuGroup>
+    </Fragment>
+  ));
+}
+
+export function SpaceCardMenu({ spaceName, ...actions }: SpaceCardMenuProps) {
+  const { t } = useTranslation();
+  const groups = useSpaceMenuGroups(actions);
 
   return (
-    <div ref={rootRef} className={`spaces-module__card-menu${open ? " is-open" : ""}`}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="spaces-module__card-menu-trigger"
-        aria-label={t("spacesModule.menuLabel", { name: spaceName })}
-        title={t("spacesModule.menuLabel", { name: spaceName })}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => {
-          setContextPosition(null);
-          setOpen((value) => !value);
-        }}
-      >
-        <Ellipsis size={18} aria-hidden="true" />
-      </button>
-      {open ? (
-        <div
-          ref={popoverRef}
-          className={`spaces-module__card-menu-popover${contextPosition ? " is-context" : ""}`}
-          role="menu"
-          style={contextPosition ?? undefined}
-        >
-          <button type="button" role="menuitem" onClick={() => select(onOpen)}>
-            <ExternalLink size={16} aria-hidden="true" />
-            {t("spacesModule.open")}
-          </button>
-          <button
+    <div
+      className="spaces-module__card-menu absolute top-[13px] right-3 z-[3]"
+      onContextMenu={(event) => event.stopPropagation()}
+    >
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
             type="button"
-            role="menuitem"
-            onClick={() => select(onReveal)}
-            disabled={!revealAvailable}
-            title={!revealAvailable ? t("spacesModule.desktopOnly") : undefined}
+            variant="ghost"
+            size="icon"
+            className="size-[30px] rounded-lg bg-transparent text-[var(--muted)] hover:bg-[var(--canvas-soft)] hover:text-[var(--ink)] data-[state=open]:bg-[var(--canvas-soft)] data-[state=open]:text-[var(--ink)]"
+            aria-label={t("spacesModule.menuLabel", { name: spaceName })}
+            title={t("spacesModule.menuLabel", { name: spaceName })}
           >
-            <FolderOpen size={16} aria-hidden="true" />
-            {t("spacesModule.revealInFileManager")}
-          </button>
-          <button type="button" role="menuitem" onClick={() => select(onCopyPath)}>
-            <Copy size={16} aria-hidden="true" />
-            {t("spacesModule.copyPath")}
-          </button>
-          <div className="spaces-module__card-menu-separator" role="separator" />
-          <button type="button" role="menuitem" onClick={() => select(onRename)}>
-            <Pencil size={16} aria-hidden="true" />
-            {t("spacesModule.rename")}
-          </button>
-          <button type="button" role="menuitem" onClick={() => select(onToggleFavorite)}>
-            <Star size={16} fill={favorite ? "currentColor" : "none"} aria-hidden="true" />
-            {t(favorite ? "spacesModule.unfavorite" : "spacesModule.favorite")}
-          </button>
-          <div className="spaces-module__card-menu-separator" role="separator" />
-          <button type="button" role="menuitem" className="is-danger" onClick={() => select(onRemove)}>
-            <Trash2 size={16} aria-hidden="true" />
-            {t("spacesModule.remove")}
-          </button>
-        </div>
-      ) : null}
+            <Ellipsis aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" sideOffset={5} className={menuContentClassName}>
+          <DropdownSpaceMenuItems groups={groups} />
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
+  );
+}
+
+export function SpaceCardContextMenu({
+  children,
+  disabled = false,
+  ...actions
+}: SpaceCardContextMenuProps) {
+  const groups = useSpaceMenuGroups(actions);
+
+  if (disabled) return children;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent className={menuContentClassName}>
+        <ContextSpaceMenuItems groups={groups} />
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

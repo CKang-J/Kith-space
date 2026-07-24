@@ -68,7 +68,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 当前数据版本：workspace schema v10增加Agent模型绑定、跨安装确认快照和runtime epoch；app.db v6增加供应商连接、模型配置、runtime profile不可变revision、三态默认绑定和CLI脱敏导入快照。下方较早的v9/v5描述仅是本轮实现前的历史基线。
 
-- 技术栈：TypeScript / Node（Core Service + 安装级唯一 Local Runtime Worker；目录/命令仍暂用 server/daemon）、Electron 43.1.0 + electron-builder 26.15.3（正式 Desktop 宿主与 Windows 打包）、React + Vite + Tailwind CSS v4 + shadcn/ui（共享 UI）、Drizzle ORM。
+- 技术栈：TypeScript / Node（Core Service + 安装级唯一 Local Runtime Worker；目录/命令仍暂用 server/daemon）、Electron 43.1.0 + electron-builder 26.15.3（正式 Desktop 宿主与 Windows 打包）、React 19.2.8 + Vite 5 + Tailwind CSS v4 + shadcn/ui（共享 UI）、Drizzle ORM。
 - 包管理：**pnpm 11.13.1**（由根目录 `packageManager` 固定；workspace 仅根目录 + `web/`，`pnpm-lock.yaml`）。安装 `pnpm install`。注意 pnpm 的传参约定：脚本参数**直接跟在后面、不加 `--`**——用 `pnpm test --unit` / `pnpm test --integration`，**不要**写 `pnpm test -- --integration`。公共 daemon 包与 npm/OIDC 发布 workflow 已在 A6 删除；仓库不再维护公共 npm 发行路线。
 - 数据层：**SQLite**。每 Space 一个 `<folder>/.kith/workspace.db`；中央 `app.db` 保存唯一 Human、稳定 Home 身份、Space registry、Web 模式、访问 Token 哈希/版本、浏览器会话、Desktop设置、Human-only user-global episodic memory、安装级Advisor Provider控制面，以及模型供应商、模型配置和runtime profile。当前workspace schema v10在v9逐Agent Advisor consent/job/run审计基础上增加Agent模型绑定、跨安装确认快照和session runtime epoch；app.db当前为v6，在v5 Advisor Provider控制面上增加连接/模型/runtime不可变revision、三态默认绑定、probe和CLI脱敏导入快照。`agents.session_id`仍只作互斥legacy rollback来源。app data 默认 `~/.kith-space`，默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`；`KITH_SPACE_HOME` 只覆盖 app data，`KITH_SPACE_SPACES_DIR` 独立覆盖开发/测试默认 Space 容器。P-A7 H2 已把 Claude Code、Codex、opencode、Pi 的 cwd 切到所属 Space root，把 Agent Memory 放入 `<space>/.kith/agents/<agentId>`，把 adapter 临时状态和Pi generation留在app data runtime目录；Agents 详情的“记忆”文件浏览器只读取当前 agentMemoryDir。Copilot/Kimi/Cursor 仍为 experimental adapter并暂用runtime state cwd。H3/H4的Space root与Home边界不变。v2–v9合法workspace前缀与app.db v1–v5会按immutable manifest/journal迁移到当前版本；更旧legacy或future schema明确拒绝。
 - 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。测试 runner 会同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向随机临时 profile，零 Postgres/Redis 即可全绿；当前验收单测基线为916通过、11个平台条件skip、0失败，旧 `publicNavContract` 失败已随失效的 public landing 路线删除。改动配套跑测试再提交。
@@ -81,7 +81,7 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 ### 技术栈规范
 
-- 前端框架使用 React + TypeScript，构建工具使用 Vite。
+- 前端框架使用 React 19 + TypeScript，构建工具使用 Vite。
 - 新增 UI 与新增样式统一使用 Tailwind CSS v4；除主题变量、Tailwind/shadcn 基础层及必须维护的存量样式外，不新增全局 CSS、局部 CSS 或 CSS Modules。
 - 基础 UI 组件优先使用 shadcn/ui，并从 `@/components/ui/*` 导入；先检查已有组件或用 shadcn CLI 添加，不手写已有的复杂交互组件。
 - 存量 CSS 按触达范围渐进迁移，不做一次性全量重写。对已有页面做结构性 UI 修改时，在范围可控的前提下迁移被修改组件；纯缺陷修复可最小修改原样式，避免为了迁移扩大改动面。

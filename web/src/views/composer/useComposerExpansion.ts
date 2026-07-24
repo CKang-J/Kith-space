@@ -13,7 +13,7 @@ export function composerTextNeedsExpansion(text: string, measuredWidth: number, 
   return text.includes("\n") || (availableWidth > 0 && measuredWidth >= availableWidth);
 }
 
-export function useComposerExpansion(text: string, inputRef: RefObject<HTMLTextAreaElement>, taskActive: boolean) {
+export function useComposerExpansion(text: string, inputRef: RefObject<HTMLTextAreaElement | null>, taskActive: boolean) {
   const boxRef = useRef<HTMLDivElement>(null);
   const textRef = useRef(text);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);

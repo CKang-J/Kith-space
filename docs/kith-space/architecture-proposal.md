@@ -53,9 +53,11 @@ Core Service 根据 Web 模式监听：
 
 Electron 和桌面浏览器复用同一 React UI、HTTP API 和 socket.io 事件。客户端能力由不可伪造的宿主桥决定：`web/src/desktopBridge.ts:62` 只有检测到窄 preload bridge 时才开放 Desktop 设置区；普通浏览器请求该区会经 `resolveSettingsSection`（`:67`）回落到 Human 设置，并且服务端仍拒绝其管理调用。Human Settings 的规范 resource 是 `settings=human`；Desktop Settings 管理 Web 模式、端口、Token 轮换、浏览器会话撤销、关闭行为和自启动。
 
-共享 UI 的当前实现栈是 React 18、TypeScript、Vite 5、Tailwind CSS v4 与 shadcn/ui。`web/vite.config.ts` 接入 Tailwind Vite 插件并把 `@/*` 映射到 `web/src/*`；`web/components.json` 固定 shadcn 的 Radix/Nova、语义 CSS 变量和 Lucide 图标配置，`web/src/lib/utils.ts` 提供统一 `cn()`。新增基础组件进入 `web/src/components/ui/`，业务 feature 只组合这些源码组件，不反向把业务状态写入 UI 基础层。
+共享 UI 的当前实现栈是 React 19.2.8、TypeScript、Vite 5、Tailwind CSS v4 与 shadcn/ui（`web/package.json:19`）。React 19 升级只更新 React/React DOM 与对应类型，不连带升级 Vite、React Router，也不在版本迁移中引入 Actions 等新 API；现有 `createRoot`、StrictMode 和客户端 SPA 边界保持不变。`web/vite.config.ts:15` 接入 Tailwind Vite 插件，`:18` 把 `@/*` 映射到 `web/src/*`；`tsconfig.test.json:4`-`:9` 只为 tsx 单测镜像同一别名，并由 `scripts/run-tests.mjs:38`-`:43` 显式选择，不扩大 Core 根 TypeScript 配置的解析边界。`web/vite.config.ts:36`-`:43` 将 React/Router 与 Radix 分别稳定切入 `react-vendor`、`ui-vendor`，避免框架和基础交互代码回落到业务主包。`web/components.json` 固定 shadcn 的 Radix/Nova、语义 CSS 变量和 Lucide 图标配置，`web/src/lib/utils.ts` 提供统一 `cn()`。新增基础组件进入 `web/src/components/ui/`，业务 feature 只组合这些源码组件，不反向把业务状态写入 UI 基础层。
 
 Tailwind/shadcn 是新增 UI 的强制基线，存量 CSS 是迁移债而非新代码模板。`web/src/styles.css` 暂时同时承载既有全局规则和 Tailwind/shadcn 主题入口；迁移期只加载 Tailwind theme/utilities，不启用会全局重置元素的 Preflight，并把 shadcn 基础边框/焦点规则限定到带 `data-slot` 的组件。shadcn 的 `muted` 语义变量使用独立底层变量映射，避免覆盖存量 `--muted` 文本色。迁移按被触达组件渐进进行，不以全量重写换取表面一致。
+
+首批存量迁移继续保持“业务状态在 feature、交互语义在基础组件”的边界：`web/src/components/SearchField.tsx:18`-`:64` 组合 Input Group 并保留受调用方控制的 value/clear 契约；`web/src/spaces/SpaceCreateMenu.tsx:14`-`:59` 使用 Dropdown Menu，`web/src/spaces/SpaceCardMenu.tsx:159`-`:206` 让同一组业务动作同时服务按钮菜单与卡片右键菜单；`web/src/spaces/SpaceRenameDialog.tsx:22`-`:103` 和 `web/src/views/channel-settings/ChannelDeleteDialog.tsx:25`-`:108` 分别组合 Dialog/Alert Dialog、Field、Input 与 Button。旧组件自建的 portal、document 级事件监听和菜单坐标状态已退役；Alert Dialog 基础层只增加窄 `overlayProps` 透传，以保留现有非 busy 遮罩点击取消行为，不把频道业务写入基础层。
 
 首次初始化位于产品 Store 之前：`web/src/main.tsx:58` 定义正常产品根，`web/src/main.tsx:78` 再用 `DesktopSetupBoundary` 包住它，因此未初始化时不会先创建 `StoreProvider` 或发起 Space bootstrap。`web/src/personalSetup.ts:54` 只在检测到完整 preload bridge 时启用检查；普通浏览器不探测 setup API，只进入既有 Cookie 会话探测与 Access Token Gate。`web/src/personalSetupBoundary.tsx:22` 负责 loading、可恢复表单、错误重试和完成后一次性挂载正常产品树。
 

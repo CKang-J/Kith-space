@@ -8,6 +8,7 @@ const frame = read("../web/src/shell/WorkspaceFrame.tsx");
 const chatWorkspace = read("../web/src/shell/ChatWorkspace.tsx");
 const moduleNavigation = read("../web/src/shell/SidebarModuleNavigation.tsx");
 const navigationRail = read("../web/src/shell/WorkspaceNavigationRail.tsx");
+const spaceSwitcher = read("../web/src/SpaceSwitcher.tsx");
 const quickSwitcher = read("../web/src/QuickSwitcher.tsx");
 const messageSearchResultRow = read("../web/src/quick-switcher/MessageSearchResultRow.tsx");
 const sidebar = read("../web/src/views/ChatSidebar.tsx");
@@ -34,6 +35,15 @@ test("ChatOnly uses a persistent icon rail with a dedicated Messages entry and h
   assert.match(shellCss, /--shell-gap:\s*0/);
   assert.match(shellCss, /\.workspace-navigation-rail\s*\{[\s\S]*?flex:\s*0 0 68px;[\s\S]*?border-right:\s*1px solid var\(--shell-border\)/);
   assert.match(shellCss, /\.sidebar-module-navigation__item::after\s*\{[\s\S]*?content:\s*attr\(data-tooltip\)/);
+});
+
+test("Space switcher uses a white menu, neutral hover, and suppresses its rail tooltip while open", () => {
+  assert.match(spaceSwitcher, /data-menu-open=\{open \|\| undefined\}/);
+  assert.match(spaceSwitcher, /aria-expanded=\{open\}/);
+  assert.doesNotMatch(spaceSwitcher, /className="brand"[^>]*title=/);
+  assert.match(globalCss, /\.sw-pop\{[^}]*background:#fff/);
+  assert.match(globalCss, /\.sw-item:hover\{background:#f5f5f5\}/);
+  assert.match(shellCss, /\.workspace-navigation-rail__space:has\(\.sw-wrap\[data-menu-open="true"\]\)::after\s*\{[^}]*opacity:\s*0/s);
 });
 
 test("Ctrl+K and the rail Search icon open the categorized global search", () => {
@@ -141,7 +151,8 @@ test("the shell uses the reference-style flat icon rail, message pane, and chat 
   assert.match(shellCss, /\.shell-chat-workspace--full > \.shell-chat-conversations\s*\{[\s\S]*?margin-right:\s*0/);
   assert.match(shellCss, /\.shell-chat-conversations\s*\{[\s\S]*?border-right:\s*1px solid var\(--shell-border\);[\s\S]*?background:\s*#fff;[\s\S]*?box-shadow:\s*none/);
   assert.doesNotMatch(shellCss, /shell-chat-workspace--compact|shell-chat-drawer/);
-  assert.match(shellCss, /\.shell-conversation-aggregate > \.conversation-aggregate\s*\{[\s\S]*?border-left:\s*0/);
+  assert.doesNotMatch(shellCss, /\.shell-conversation-aggregate > \.conversation-aggregate\s*\{[\s\S]*?border-left:\s*0/);
+  assert.match(shellCss, /\.shell-aggregate-gap::before\s*\{[\s\S]*?top:\s*51px;[\s\S]*?border-bottom:\s*1px solid var\(--shell-border\)/);
   assert.match(frame, /<ConversationAggregatePanel[\s\S]*?onClose=\{toggleAggregate\}/);
   assert.match(shellCss, /\.shell-chat-conversations > \.sidebar\s*\{[\s\S]*?background:\s*#fff/);
   assert.match(shellCss, /\.sidebar-module-navigation__item\s*\{[\s\S]*?width:\s*42px;[\s\S]*?height:\s*42px;[\s\S]*?padding:\s*0/);

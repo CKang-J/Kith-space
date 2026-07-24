@@ -543,7 +543,7 @@
 
 **推理与权衡**：Tailwind 把新增样式约束收口到组件附近，shadcn/ui 提供可维护、可审查且保留源码所有权的基础组件，能减少重复弹窗、菜单、表单和状态逻辑。代价是迁移期存在两套样式表达；通过“新增强制、存量渐进”和语义 Token 隔离控制复杂度，而不是扩大改动面换取名义上的统一。
 
-**实施事实**：Vite 已接入 `@tailwindcss/vite`；`web/components.json` 使用 Radix/Nova、Lucide 与 CSS variables；`@/*` 映射到 `web/src/*`；`web/src/lib/utils.ts` 提供 `cn()`；首个 `Button` 组件位于 `web/src/components/ui/button.tsx`。`web/src/styles.css` 是唯一 Tailwind/shadcn 主题入口；迁移期只导入 Tailwind theme/utilities、不启用全局 Preflight，基础边框/焦点规则只作用于 `data-slot` 组件，同时保留既有系统字体，并将 shadcn 的 `muted` 底层变量与存量 `--muted` 文本色隔离，避免初始化改变现有 UI。
+**实施事实**：共享 UI 使用 React 19.2.8 + TypeScript + Vite 5；React 19 升级保持 `createRoot`/StrictMode 和现有 SPA 架构，不捆绑 Router/Vite 大版本或新 API 重构。Vite 已接入 `@tailwindcss/vite`；`web/components.json` 使用 Radix/Nova、Lucide 与 CSS variables；`@/*` 映射到 `web/src/*`；`web/src/lib/utils.ts` 提供 `cn()`。`web/src/styles.css` 是唯一 Tailwind/shadcn 主题入口；迁移期只导入 Tailwind theme/utilities、不启用全局 Preflight，基础边框/焦点规则只作用于 `data-slot` 组件，同时保留既有系统字体，并将 shadcn 的 `muted` 底层变量与存量 `--muted` 文本色隔离，避免初始化改变现有 UI。首批迁移已覆盖通用搜索、Space 新建菜单、Space 卡片按钮/右键菜单、Space 重命名和频道删除确认；使用 Input Group、Dropdown Menu、Context Menu、Dialog、Alert Dialog、Field、Input 与 Button 替换自建交互，同时删除对应旧 CSS、portal、全局监听和坐标状态。搜索框保留参考图视觉，聚焦时不出现黑框；Radix 独立进入 `ui-vendor` 构建分块。
 
 ---
 

@@ -151,7 +151,6 @@ export function ConversationFiles({ conversationId, onJumpToMessage }: Conversat
         >
           <SearchField
             ref={searchInputRef}
-            className="conversation-files__search-field"
             value={filters.query}
             onValueChange={(query) => updateFilters({ query })}
             tabIndex={filters.searchOpen ? 0 : -1}
