@@ -64,6 +64,11 @@
   color: var(--ink);
 }
 
+.spaces-module__action--icon[aria-pressed="true"] {
+  background: var(--canvas-soft);
+  color: var(--ink);
+}
+
 .spaces-module__action .is-spinning { animation: spaces-module-spin .8s linear infinite; }
 
 @keyframes spaces-module-spin { to { transform: rotate(360deg); } }
@@ -75,6 +80,15 @@
 }
 
 .spaces-module__action--primary:hover { background: var(--ink); }
+
+.spaces-module__action--danger {
+  border-color: color-mix(in srgb, var(--error) 32%, var(--hair-strong));
+  color: var(--error);
+}
+
+.spaces-module__action--danger:hover:not(:disabled) {
+  background: var(--error-soft);
+}
 
 .spaces-module__create {
   position: relative;
@@ -337,6 +351,11 @@
   box-shadow: 0 7px 22px var(--shadow-1);
 }
 
+.spaces-module__card.is-selected {
+  border-color: var(--ink-2);
+  box-shadow: 0 0 0 1px var(--ink-2);
+}
+
 .spaces-module__card--missing,
 .spaces-module__card--error { background: var(--canvas-soft); }
 
@@ -469,6 +488,61 @@
   top: 13px;
   right: 12px;
   z-index: 3;
+}
+
+.spaces-module__card-select {
+  position: absolute;
+  top: 17px;
+  right: 16px;
+  z-index: 3;
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.spaces-module__card-select input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.spaces-module__card-select-box {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--hair-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--on-ink);
+  transition: border-color .14s ease, background-color .14s ease;
+}
+
+.spaces-module__card-select input:checked + .spaces-module__card-select-box {
+  border-color: var(--ink-2);
+  background: var(--ink-2);
+}
+
+.spaces-module__card-select input:focus-visible + .spaces-module__card-select-box {
+  outline: 2px solid var(--tint-blue-ink);
+  outline-offset: 2px;
+}
+
+.spaces-module__card-select input:disabled + .spaces-module__card-select-box {
+  opacity: .55;
+  cursor: default;
+}
+
+.spaces-module__card > button:disabled {
+  cursor: default;
 }
 
 .spaces-module__card-menu-trigger {

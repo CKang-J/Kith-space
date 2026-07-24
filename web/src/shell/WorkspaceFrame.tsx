@@ -8,34 +8,28 @@ import { ChannelSettingsPanel } from "../views/channel-settings/index.ts";
 import { ConversationAggregatePanel } from "../views/conversation-aggregate/ConversationAggregatePanel.tsx";
 import { LiveTrace } from "../views/LiveTrace.tsx";
 import { ChatWorkspace } from "./ChatWorkspace.tsx";
-import { DragDivider } from "./DragDivider.tsx";
 import { ModuleWorkspace } from "./ModuleWorkspace.tsx";
-import { SidebarModuleNavigation } from "./SidebarModuleNavigation.tsx";
-import { WorkspaceDock } from "./WorkspaceDock.tsx";
-import { WorkspaceTopBar } from "./WorkspaceTopBar.tsx";
+import { SettingsDialog } from "./SettingsDialog.tsx";
+import {
+  WORKSPACE_NAVIGATION_RAIL_WIDTH,
+  WorkspaceNavigationRail,
+} from "./WorkspaceNavigationRail.tsx";
 import {
   shellActions,
   storedChatLocation,
-  useShellStore,
 } from "./shellStore.ts";
-import {
-  DEFAULT_MODULE_RATIO,
-  aggregatePaneConstraints,
-  moduleRatioFromWidth,
-  paneConstraints,
-} from "./paneConstraints.ts";
+import { aggregatePaneConstraints } from "./paneConstraints.ts";
 import {
   INITIAL_WORKSPACE_LAYOUT,
   deriveWorkspaceMode,
   selectWorkspaceModule,
-  toggleChat,
   workspaceLayoutForSpace,
-  type DockModuleId,
+  type ContentModuleId,
+  type SidebarModuleId,
   type WorkspaceLayoutState,
   type WorkspaceModuleId,
 } from "./workspaceLayout.ts";
-import { useWorkspacePaneTransition, workspacePaneWidthsWithAggregate } from "./workspacePaneTransition.ts";
-import { parseWorkspaceRoute, workspaceLayoutFromRoute, workspaceLocationForModule, workspaceSearchForLayout, workspaceSearchForShellState } from "./workspaceRoute.ts";
+import { parseWorkspaceRoute, workspaceLayoutFromRoute, workspaceLocationForModule, workspaceModuleResourceFromSearch, workspaceSearchForLayout, workspaceSearchForShellState } from "./workspaceRoute.ts";
 import { useChannelSettingsScene } from "./useChannelSettingsScene.ts";
 
 export function WorkspaceFrame() {
@@ -44,7 +38,6 @@ export function WorkspaceFrame() {
   const location = useLocation();
   const navigate = useNavigate();
   const { channels, archivedChannels, dms, slug, spaceId, spaces, unread, visibleAgents, me, api, reload, attachmentUrl } = useStore();
-  const { moduleRatio } = useShellStore();
   const workspaceRef = useRef<HTMLDivElement>(null);
   const aggregatePanelRef = useRef<HTMLElement>(null);
   const aggregateToggleRef = useRef<HTMLButtonElement>(null);
@@ -65,11 +58,13 @@ export function WorkspaceFrame() {
   const requestedLayoutState: WorkspaceLayoutState = workspaceLayoutFromRoute(route, location.search);
   const isHome = spaces.some((space) => space.id === spaceId && space.isHome);
   const layoutState = workspaceLayoutForSpace(requestedLayoutState, isHome);
-  const { activeModule, chatVisible } = layoutState;
-  const { animatedLayout, isTransitioning, previousLayout } = useWorkspacePaneTransition(layoutState);
+  const { activeModule } = layoutState;
+  const settingsOpen = activeModule === "settings";
+  const contentModuleId = activeModule && activeModule !== "settings"
+    ? activeModule as ContentModuleId
+    : null;
+  const chatVisible = contentModuleId === null;
   const routeChannelId = route.isChannelRoute ? route.resourceId : null;
-  const previousActiveModuleRef = useRef<WorkspaceModuleId | null>(activeModule);
-  const openingModule = previousActiveModuleRef.current === null && activeModule !== null;
   const confirmSettingsDiscard = useCallback(() => confirm({
     title: t("channelSettings.discardTitle"),
     message: t("channelSettings.discardDescription"),
@@ -128,6 +123,11 @@ export function WorkspaceFrame() {
   }, []);
 
   useEffect(() => {
+    workspaceRef.current?.toggleAttribute("inert", settingsOpen);
+    return () => workspaceRef.current?.removeAttribute("inert");
+  }, [settingsOpen]);
+
+  useEffect(() => {
     if (route.isChannelRoute) {
       const conversationSearch = workspaceSearchForLayout(location.search, INITIAL_WORKSPACE_LAYOUT);
       shellActions.rememberChatLocation(`${location.pathname}${conversationSearch}`, routeChannelId ?? null);
@@ -138,12 +138,6 @@ export function WorkspaceFrame() {
     if (requestedLayoutState.activeModule !== "spaces" || isHome) return;
     navigate(`${location.pathname}${workspaceSearchForLayout(location.search, INITIAL_WORKSPACE_LAYOUT)}`, { replace: true });
   }, [isHome, location.pathname, location.search, navigate, requestedLayoutState.activeModule]);
-
-  useEffect(() => {
-    const previousModule = previousActiveModuleRef.current;
-    previousActiveModuleRef.current = activeModule;
-    if (previousModule === null && activeModule !== null) shellActions.resetModuleRatio();
-  }, [activeModule]);
 
   const rememberedChat = storedChatLocation(slug);
   const fallbackConversation = channels.find((channel) => channel.name === "all") ?? channels[0] ?? dms[0];
@@ -159,24 +153,14 @@ export function WorkspaceFrame() {
   const layoutBaseSearch = route.isChatRoute ? location.search : rememberedChatSearch;
   const layoutSearch = workspaceSearchForShellState(location.search, layoutState);
   const aggregateEligible = route.isChannelRoute && currentChannelId !== null;
-  const aggregateRequested = aggregateEligible && aggregateOpen;
-  const effectiveModuleRatio = openingModule ? DEFAULT_MODULE_RATIO : moduleRatio;
-  const panes = activeModule ? paneConstraints(workspaceWidth, activeModule, effectiveModuleRatio) : null;
   const mode = deriveWorkspaceMode(layoutState);
-  const animatedRatio = animatedLayout.activeModule === activeModule ? effectiveModuleRatio : moduleRatio;
-  const animatedWidths = workspacePaneWidthsWithAggregate(animatedLayout, workspaceWidth, animatedRatio, aggregateRequested);
-  const previousWidths = workspacePaneWidthsWithAggregate(previousLayout, workspaceWidth, moduleRatio, aggregateRequested);
-  const targetWidths = workspacePaneWidthsWithAggregate(layoutState, workspaceWidth, effectiveModuleRatio, aggregateRequested);
-  const availableWidths = workspacePaneWidthsWithAggregate(layoutState, workspaceWidth, effectiveModuleRatio, aggregateEligible);
-  const visibleModuleId = activeModule ?? previousLayout.activeModule;
-  const renderChat = animatedWidths.chat > 0 || previousWidths.chat > 0 || targetWidths.chat > 0;
-  const renderModule = visibleModuleId !== null
-    && (animatedWidths.module > 0 || previousWidths.module > 0 || targetWidths.module > 0);
-  const renderDivider = Math.max(previousWidths.divider, targetWidths.divider) > 0;
-  const showSplitChat = animatedWidths.chat > 0 && animatedWidths.module > 0;
-  const aggregateAvailable = aggregateEligible && chatVisible && availableWidths.aggregateAvailable;
-  const aggregateVisible = animatedWidths.aggregate > 0;
-  const visualMode = showSplitChat ? "split" : animatedWidths.module > 0 ? "module-only" : "chat-only";
+  const contentWorkspaceWidth = Math.max(0, workspaceWidth - WORKSPACE_NAVIGATION_RAIL_WIDTH);
+  const aggregateConstraints = aggregatePaneConstraints(contentWorkspaceWidth);
+  const aggregateAvailable = aggregateEligible && chatVisible && aggregateConstraints.canShow;
+  const aggregateVisible = aggregateAvailable && aggregateOpen;
+  const aggregateWidth = aggregateVisible ? aggregateConstraints.width : 0;
+  const aggregateGap = aggregateVisible ? 10 : 0;
+  const chatWidth = Math.max(0, contentWorkspaceWidth - aggregateWidth - aggregateGap);
   const paneStyle = (width: number): CSSProperties => ({
     width,
     flexBasis: width,
@@ -193,35 +177,35 @@ export function WorkspaceFrame() {
     if (retiredShowcaseRoute && !fallbackConversationId) return;
     const normalizationLayout: WorkspaceLayoutState = activeModule === null
       ? INITIAL_WORKSPACE_LAYOUT
-      : { activeModule, chatVisible };
+      : { activeModule, chatVisible: activeModule === "settings" };
     const normalizationPathname = retiredShowcaseRoute ? fallbackChatPathname : rememberedChatPathname;
     navigate(`${normalizationPathname}${workspaceSearchForShellState(location.search, normalizationLayout)}`, { replace: true });
-  }, [activeModule, chatVisible, fallbackChatPathname, fallbackConversationId, location.search, navigate, rememberedChatPathname, retiredShowcaseRoute, route.isChatRoute]);
+  }, [activeModule, fallbackChatPathname, fallbackConversationId, location.search, navigate, rememberedChatPathname, retiredShowcaseRoute, route.isChatRoute]);
 
-  const navigateLayout = (next: WorkspaceLayoutState) => {
-    navigate(`${layoutPathname}${workspaceSearchForLayout(layoutBaseSearch, next)}`);
+  const navigateLayout = (next: WorkspaceLayoutState, options: { replace?: boolean } = {}) => {
+    navigate(`${layoutPathname}${workspaceSearchForLayout(layoutBaseSearch, next)}`, options);
   };
 
   const selectModule = async (moduleId: WorkspaceModuleId) => {
     const next = selectWorkspaceModule(layoutState, moduleId);
-    if (next.activeModule === null) return navigateLayout(next);
-    const openingNextModule = activeModule === null;
-    const nextRatio = openingNextModule ? DEFAULT_MODULE_RATIO : moduleRatio;
-    const nextPanes = paneConstraints(workspaceWidth, next.activeModule, nextRatio);
-    const target = { ...next, chatVisible: nextPanes.canSplit ? next.chatVisible : false };
-    if (!(await requestSettingsExit(!target.chatVisible))) return;
-    navigateLayout(target);
+    if (!(await requestSettingsExit(next.activeModule !== null && next.activeModule !== "settings"))) return;
+    if (next.activeModule !== null && next.activeModule !== "settings") setAggregateOpen(false);
+    navigateLayout(next);
+  };
+
+  const selectChat = async () => {
+    if (!(await requestSettingsExit(false))) return;
+    navigateLayout(INITIAL_WORKSPACE_LAYOUT);
   };
 
   const openConversationTasks = async (conversationId: string) => {
-    const nextRatio = activeModule === null ? DEFAULT_MODULE_RATIO : moduleRatio;
-    const nextPanes = paneConstraints(workspaceWidth, "tasks", nextRatio);
-    if (!(await requestSettingsExit(!nextPanes.canSplit))) return;
+    if (!(await requestSettingsExit(true))) return;
+    setAggregateOpen(false);
     navigate(workspaceLocationForModule(
       layoutPathname,
       layoutBaseSearch,
       { moduleId: "tasks", taskScope: conversationId },
-      { chatVisible: nextPanes.canSplit },
+      { chatVisible: false },
     ));
   };
 
@@ -261,33 +245,6 @@ export function WorkspaceFrame() {
     (settingsTriggerRef.current ?? aggregateToggleRef.current)?.focus();
   }, [aggregateVisible]);
 
-  const toggleChatPane = async () => {
-    const next = toggleChat(layoutState);
-    if (next.activeModule === null) return;
-    if (!(await requestSettingsExit(!next.chatVisible))) return;
-    if (!chatVisible && next.chatVisible) shellActions.resetModuleRatio();
-    navigateLayout(next);
-  };
-
-  const dock = (
-    <WorkspaceDock
-      activeModule={activeModule}
-      chatVisible={chatVisible}
-      unreadCount={unreadCount}
-      isHome={isHome}
-      onChatToggle={() => void toggleChatPane()}
-      onModuleSelect={(moduleId: DockModuleId) => void selectModule(moduleId)}
-    />
-  );
-  const sidebarModuleNavigation = (
-    <SidebarModuleNavigation
-      isHome={isHome}
-      unreadCount={unreadCount}
-      onSearch={() => setQuickSwitcherOpen(true)}
-      onModuleSelect={(moduleId: DockModuleId) => void selectModule(moduleId)}
-    />
-  );
-
   const settingsInDrawer = !!settingsChannel && !aggregateAvailable;
   const channelSettings = settingsChannel ? (
     <ChannelSettingsPanel
@@ -310,22 +267,22 @@ export function WorkspaceFrame() {
     <main
       className="shell-workspace-frame"
       data-layout-mode={mode}
-      data-pane-transitioning={isTransitioning ? "true" : undefined}
       data-aggregate-transitioning={aggregateTransitioning ? "true" : undefined}
-      data-visual-mode={visualMode}
+      data-visual-mode={mode}
     >
-      <WorkspaceTopBar
-        activeModule={activeModule}
-        channelId={currentChannelId}
-        layoutSearch={layoutSearch}
-      />
       <div ref={workspaceRef} className="shell-workspace-canvas">
-        {renderChat ? (
+        <WorkspaceNavigationRail
+          activeModule={activeModule}
+          isHome={isHome}
+          layoutSearch={layoutSearch}
+          unreadCount={unreadCount}
+          onChatSelect={() => void selectChat()}
+          onSearch={() => setQuickSwitcherOpen(true)}
+          onModuleSelect={(moduleId: SidebarModuleId) => void selectModule(moduleId)}
+        />
+        {chatVisible ? (
           <ChatWorkspace
             channelId={currentChannelId}
-            compact={showSplitChat}
-            threadOnly={activeModule !== null}
-            layoutSearch={layoutSearch}
             aggregateOpen={aggregateOpen}
             aggregateAvailable={aggregateAvailable}
             aggregateToggleRef={aggregateToggleRef}
@@ -335,17 +292,16 @@ export function WorkspaceFrame() {
             onNavigateConversation={(target) => void requestConversationNavigation(target)}
             settingsDrawer={settingsInDrawer ? channelSettings : undefined}
             settingsDrawerOpen={settingsInDrawer && aggregateOpen}
-            moduleNavigation={sidebarModuleNavigation}
-            style={paneStyle(animatedWidths.chat)}
+            style={paneStyle(chatWidth)}
           />
         ) : null}
-        {aggregateEligible ? (
+        {aggregateEligible && chatVisible ? (
           <>
-            <div className="shell-aggregate-gap" style={paneStyle(animatedWidths.aggregateGap)} aria-hidden="true" />
+            <div className="shell-aggregate-gap" style={paneStyle(aggregateGap)} aria-hidden="true" />
             <aside
               ref={aggregatePanelRef}
               className="shell-work-panel shell-conversation-aggregate"
-              style={paneStyle(animatedWidths.aggregate)}
+              style={paneStyle(aggregateWidth)}
               aria-label="当前会话聚合面板"
               aria-hidden={!aggregateVisible}
             >
@@ -355,32 +311,25 @@ export function WorkspaceFrame() {
                 trace={<div className="conversation-trace conversation-aggregate__scroll"><LiveTrace conversationId={currentChannelId!} showHeading={false} /></div>}
                 settings={settingsInDrawer ? undefined : channelSettings}
                 settingsOpen={!!settingsChannel && !settingsInDrawer}
+                onClose={toggleAggregate}
                 onOpenTopic={(parentMessageId) => updateConversationFocus("thread", parentMessageId)}
                 onJumpToMessage={(messageId) => updateConversationFocus("msg", messageId)}
               />
             </aside>
           </>
         ) : null}
-        {renderDivider ? (
-          <DragDivider
-            disabled={isTransitioning || !panes?.canSplit}
-            value={animatedWidths.module}
-            min={panes?.moduleMin ?? 0}
-            max={aggregateVisible && activeModule
-              ? aggregatePaneConstraints(workspaceWidth, activeModule, true).moduleMax
-              : panes?.moduleMax ?? workspaceWidth}
-            style={paneStyle(animatedWidths.divider)}
-            onChange={(width) => shellActions.setModuleRatio(moduleRatioFromWidth(width, workspaceWidth))}
-          />
-        ) : null}
-        {renderModule && visibleModuleId ? (
+        {contentModuleId ? (
           <ModuleWorkspace
-            moduleId={visibleModuleId}
-            dock={animatedLayout.activeModule !== null ? dock : undefined}
-            style={paneStyle(animatedWidths.module)}
+            moduleId={contentModuleId}
           />
         ) : null}
       </div>
+      {settingsOpen ? (
+        <SettingsDialog
+          section={workspaceModuleResourceFromSearch(location.search, "settings")}
+          onClose={() => navigateLayout(INITIAL_WORKSPACE_LAYOUT, { replace: true })}
+        />
+      ) : null}
       {quickSwitcherOpen ? <QuickSwitcher onClose={() => setQuickSwitcherOpen(false)} /> : null}
     </main>
   );

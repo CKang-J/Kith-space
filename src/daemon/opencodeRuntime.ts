@@ -6,14 +6,16 @@
 //  1. stdin MUST be "ignore" — with a piped/non-TTY stdout, `opencode run` BLOCKS reading stdin
 //     forever (it never emits a single event). The daemon uses pipe stdio, so this would hang every
 //     agent. We pass the message as argv and close stdin.
-//  2. --auto is required for headless runs (otherwise it waits on approval),
-//     and NODE_OPTIONS is stripped from the child env (a proxy flag like `--use-env-proxy` makes some
+//  2. Headless permission policy belongs to the child-only internal agent config. OpenCode 1.15.10
+//     removed the older `run --auto` flag, so passing it is not version-compatible. NODE_OPTIONS is
+//     stripped from the child env (a proxy flag like `--use-env-proxy` makes some
 //     bundled CLIs refuse to start). The system prompt is injected into a child-only internal agent
 //     through OPENCODE_CONFIG_CONTENT; user/project AGENTS.md files are never modified.
 import type { ChildProcess } from "node:child_process";
 import type { Runtime, StartOpts, RuntimeCallbacks, RuntimeSession, TrajectoryEntry } from "./runtime.js";
 import { spawnRuntimeProcess } from "./runtimeProcess.js";
 import { validateRuntimeModel } from "../local-runtime/runtimeCatalog.js";
+import type { NormalizedUsage } from "../runtime/contract/v2/runtimeContract.js";
 
 const MAX = 2000;
 const clip = (s: unknown) => String(s ?? "").slice(0, MAX);
@@ -24,9 +26,18 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 /** Merge Kith's transparent execution agent into OpenCode's child-only inline config. */
-export function buildOpencodeConfigContent(systemPrompt: string, existing?: string): string {
+export function buildOpencodeConfigContent(systemPrompt: string, existing?: string, mcpBootstrap?: StartOpts["mcpBootstrap"]): string {
   const base = existing?.trim() ? record(JSON.parse(existing)) : {};
   const agents = record(base.agent);
+  const mcp = record(base.mcp);
+  const descriptor = mcpBootstrap?.descriptor ?? {};
+  const command = typeof descriptor.command === "string" ? descriptor.command : null;
+  const args = Array.isArray(descriptor.args) && descriptor.args.every((arg) => typeof arg === "string")
+    ? descriptor.args as string[]
+    : [];
+  const environment = descriptor.env && typeof descriptor.env === "object" && !Array.isArray(descriptor.env)
+    ? descriptor.env as Record<string, unknown>
+    : {};
   return JSON.stringify({
     ...base,
     agent: {
@@ -35,8 +46,10 @@ export function buildOpencodeConfigContent(systemPrompt: string, existing?: stri
         description: "Internal Kith-space runtime execution agent",
         mode: "primary",
         prompt: systemPrompt,
+        permission: { "*": "allow" },
       },
     },
+    ...(command ? { mcp: { ...mcp, "kith-core": { type: "local", command: [command, ...args], environment, enabled: true } } } : {}),
   });
 }
 
@@ -58,6 +71,7 @@ export interface OpencodeEmit {
   activity?: { activity: string; detail: string };
   sessionId?: string;
   error?: string;
+  usage?: NormalizedUsage;
 }
 
 // handleOpencodeEvent maps one parsed `opencode run --format json` event to kith-space callbacks.
@@ -86,13 +100,27 @@ export function handleOpencodeEvent(evt: any): OpencodeEmit {
       // opencode exits 0 on model errors; the failure is a top-level JSON event (not a non-zero exit)
       out.error = String(evt.error?.data?.message ?? evt.error?.name ?? "opencode error");
       break;
+    case "step_finish": {
+      const tokens = part.tokens ?? {};
+      const cache = tokens.cache ?? {};
+      out.usage = {
+        ...(Number.isFinite(tokens.input) ? { inputTokens: Number(tokens.input) } : {}),
+        ...(Number.isFinite(tokens.output) ? { outputTokens: Number(tokens.output) } : {}),
+        ...(Number.isFinite(tokens.reasoning) ? { reasoningTokens: Number(tokens.reasoning) } : {}),
+        ...(Number.isFinite(cache.read) ? { cacheReadTokens: Number(cache.read) } : {}),
+        ...(Number.isFinite(cache.write) ? { cacheWriteTokens: Number(cache.write) } : {}),
+        ...(Number.isFinite(part.cost) ? { costUsd: Number(part.cost) } : {}),
+        source: "incremental",
+      };
+      break;
+    }
     // step_finish / other lifecycle events: process exit is the authoritative turn-done signal.
   }
   return out;
 }
 
 function buildArgs(message: string, opts: StartOpts, sessionId: string | null): string[] {
-  const args = ["run", "--format", "json", "--auto", "--agent", KITH_OPENCODE_AGENT, "--dir", opts.cwd];
+  const args = ["run", "--format", "json", "--agent", KITH_OPENCODE_AGENT, "--dir", opts.cwd];
   const model = opts.model && opts.model !== "default" ? opts.model : "";
   if (model) args.push("--model", model);
   const v = variant(opts.runtimeConfig);
@@ -119,10 +147,10 @@ class OpencodeRun {
     // uses PWD (not just cwd) to anchor project discovery.
     this.env = { ...opts.env, PWD: opts.cwd };
     delete this.env.NODE_OPTIONS;
-    try { this.env.OPENCODE_CONFIG_CONTENT = buildOpencodeConfigContent(opts.systemPrompt, this.env.OPENCODE_CONFIG_CONTENT); }
+    try { this.env.OPENCODE_CONFIG_CONTENT = buildOpencodeConfigContent(opts.systemPrompt, this.env.OPENCODE_CONFIG_CONTENT, opts.mcpBootstrap); }
     catch (e) {
       cb.log.warn("opencode: invalid existing OPENCODE_CONFIG_CONTENT ignored", { detail: String(e) });
-      this.env.OPENCODE_CONFIG_CONTENT = buildOpencodeConfigContent(opts.systemPrompt);
+      this.env.OPENCODE_CONFIG_CONTENT = buildOpencodeConfigContent(opts.systemPrompt, undefined, opts.mcpBootstrap);
     }
     if (this.sessionId) cb.onSession(this.sessionId);
     this.enqueue(opts.initialPrompt);
@@ -143,9 +171,9 @@ class OpencodeRun {
     const proc = spawnRuntimeProcess("opencode", args, { cwd: this.opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: this.env });
     this.proc = proc;
     let buf = "";
-    const errTail: string[] = [];
-    let errLen = 0;
+    let stderrBytes = 0;
     let emittedError = false;
+    const usage: Omit<NormalizedUsage, "source"> = {};
     const processLine = (ln: string) => {
       const t = ln.trim(); if (!t) return;
       let evt: any; try { evt = JSON.parse(t); } catch { return; }
@@ -159,6 +187,12 @@ class OpencodeRun {
         this.cb.onTrajectory([{ kind: "text", text: `[opencode error] (${this.opts.model}) ${emit.error.slice(0, 500)}` }]);
         this.cb.onActivity("error", emit.error.slice(0, 200));
       }
+      if (emit.usage) {
+        for (const key of ["inputTokens", "outputTokens", "reasoningTokens", "cacheReadTokens", "cacheWriteTokens", "costUsd"] as const) {
+          const value = emit.usage[key];
+          if (typeof value === "number") usage[key] = (usage[key] ?? 0) + value;
+        }
+      }
       if (emit.activity) this.cb.onActivity(emit.activity.activity, emit.activity.detail);
       if (emit.trajectory.length) this.cb.onTrajectory(emit.trajectory);
     };
@@ -168,25 +202,33 @@ class OpencodeRun {
       for (const ln of lines) processLine(ln);
     });
     proc.stderr?.on("data", (c: Buffer) => {
-      const t = c.toString(); errTail.push(t); errLen += t.length;
-      while (errLen > 4096 && errTail.length > 1) errLen -= errTail.shift()!.length;
+      stderrBytes += c.length;
     });
     proc.on("error", (e) => {
       this.proc = null; this.turnBusy = false; if (this.stopped) return;
       this.cb.log.error("opencode spawn failed", { detail: String((e as any)?.message ?? e) });
       this.cb.onActivity("offline", "opencode not found");
+      this.cb.onTurnResult?.({ outcome: "failed", errorCode: "opencode_spawn_failed" });
       if (!this.everSucceeded) this.cb.onExit(1); else this.pump();
     });
     proc.on("exit", (code) => {
       if (buf.trim()) processLine(buf); buf = "";
       this.proc = null; this.turnBusy = false; if (this.stopped) return;
-      if (code === 0 && !emittedError) { this.everSucceeded = true; this.cb.onActivity("online", ""); this.pump(); return; }
-      const tail = errTail.join("").trim();
-      const detail = tail || `opencode exited ${code ?? "signal"}`;
-      if (!emittedError) {
-        this.cb.onTrajectory([{ kind: "text", text: `[opencode error] (${this.opts.model}) ${clip(detail).slice(0, 500)}` }]);
-        this.cb.onActivity("error", detail.split("\n").filter(Boolean).pop()!.slice(0, 200));
+      if (code === 0 && !emittedError) {
+        this.everSucceeded = true;
+        if (Object.keys(usage).length) this.cb.onUsage?.({ ...usage, source: "final" });
+        this.cb.onActivity("online", "");
+        this.cb.onTurnResult?.({ outcome: "completed" });
+        this.pump();
+        return;
       }
+      const detail = `opencode exited ${code ?? "signal"}`;
+      if (!emittedError) {
+        this.cb.onTrajectory([{ kind: "text", text: `[opencode error] (${this.opts.model}) runtime process failed` }]);
+        this.cb.onActivity("error", detail);
+      }
+      if (stderrBytes) this.cb.log.debug("opencode stderr received", { bytes: stderrBytes });
+      this.cb.onTurnResult?.({ outcome: "failed", errorCode: emittedError ? "opencode_provider_error" : "opencode_process_failed" });
       if (!this.everSucceeded) { this.cb.onExit(emittedError ? 1 : (code ?? 1)); return; } // first-turn hard failure → crashed
       this.pump(); // later-turn failure → keep the session alive so the next message can retry
     });

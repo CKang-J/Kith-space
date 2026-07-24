@@ -17,6 +17,7 @@ test("the Store and Chat keep archived channels discoverable but read-only", () 
   const store = readFileSync(new URL("../store.tsx", import.meta.url), "utf8");
   const sidebar = readFileSync(new URL("./ConversationListContent.tsx", import.meta.url), "utf8");
   const chat = readFileSync(new URL("./Chat.tsx", import.meta.url), "utf8");
+  const threadModel = readFileSync(new URL("../features/conversation/model/useConversationThreads.ts", import.meta.url), "utf8");
 
   assert.match(store, /archivedChannels: Channel\[\]/);
   assert.match(store, /Promise\.all\(\[[\s\S]*\/api\/channels\?archived=only/);
@@ -27,7 +28,7 @@ test("the Store and Chat keep archived channels discoverable but read-only", () 
   assert.match(chat, /channelSettings\.restoreChannel/);
   assert.doesNotMatch(chat, /function EditChannelModal/);
   assert.match(chat, /const conversationReadOnly = isArchived/);
-  assert.match(chat, /conversationReadOnly && !meta\?\.threadChannelId/);
+  assert.match(threadModel, /isArchived && !metadata\?\.threadChannelId/);
   assert.match(chat, /<ThreadPanel[\s\S]*readOnly=\{conversationReadOnly\}/);
   assert.match(chat, /<Reactions[^>]+readOnly=\{conversationReadOnly\}/);
   assert.match(chat, /!readOnly \? <div className="ctx-rx"/);

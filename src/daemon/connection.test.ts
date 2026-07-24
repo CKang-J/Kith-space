@@ -123,3 +123,26 @@ test("accepted connections watchdog-reconnect when the server stops sending fram
   t.mock.timers.tick(1000);
   assert.equal(created.length, 2, "watchdog-triggered close should use normal reconnect flow");
 });
+
+test("disconnect cleanup finishes before a Worker reconnects to a restarted Core", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const created: FakeWs[] = [];
+  let finishCleanup!: () => void;
+  const cleanup = new Promise<void>((resolve) => { finishCleanup = resolve; });
+  const conn = new Connection("http://x", "k", () => {}, () => {}, () => {
+    const socket = new FakeWs();
+    created.push(socket);
+    return socket;
+  }, () => cleanup);
+  conn.connect();
+  created[0]!.emit("message", Buffer.from(JSON.stringify({ type: "ready:ack" })));
+  created[0]!.emit("close", 1006, Buffer.from(""));
+  t.mock.timers.tick(10_000);
+  assert.equal(created.length, 1);
+  finishCleanup();
+  await Promise.resolve();
+  await Promise.resolve();
+  t.mock.timers.tick(1_000);
+  assert.equal(created.length, 2);
+  conn.close();
+});

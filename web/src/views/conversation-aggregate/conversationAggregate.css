@@ -12,10 +12,59 @@
   color: #292725;
 }
 
+.conversation-aggregate__topbar {
+  display: flex;
+  height: 52px;
+  flex: 0 0 52px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.conversation-aggregate__topbar h2 {
+  min-width: 0;
+  margin: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #171717;
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-aggregate__close {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #777;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.conversation-aggregate__close:hover {
+  background: #f5f5f5;
+  color: #171717;
+}
+
+.conversation-aggregate__close:focus-visible {
+  outline: 2px solid #23211f;
+  outline-offset: 2px;
+}
+
 .conversation-aggregate__header {
   flex: 0 0 auto;
-  padding: 12px;
-  border-bottom: 1px solid #efede9;
+  padding: 12px 12px 8px;
 }
 
 .conversation-aggregate__content,

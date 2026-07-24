@@ -22,7 +22,6 @@ test("Machine and Computers are absent from the frontend product surface", () =>
   const runtimeDiscovery = source("./useRuntimeDiscovery.ts");
   const misc = source("./views/misc.tsx");
   const modules = source("./shell/workspaceModules.tsx");
-  const dock = source("./shell/WorkspaceDock.tsx");
 
   assert.doesNotMatch(store, /interface Machine\b|\bmachines\b|latestDaemonVersion|machine:status|\/machines/);
   assert.doesNotMatch(main, /\bComputers\b|path="computer/);
@@ -31,11 +30,10 @@ test("Machine and Computers are absent from the frontend product surface", () =>
   assert.doesNotMatch(misc, /export function Computers|ConnectComputerWizard|sk_machine|DaemonUpdateModal/);
   assert.doesNotMatch(modules, /computers|Monitor/);
   assert.deepEqual(
-    [...modules.matchAll(/\{ id: "([^"]+)",[^\n]+dock: true \}/g)].map((match) => match[1]),
+    [...modules.matchAll(/\{ id: "([^"]+)",[^\n]+sidebar: true \}/g)].map((match) => match[1]),
     ["spaces", "inbox", "tasks", "agents", "settings"],
   );
-  assert.match(modules, /\{ id: "search",[^\n]+dock: false \}/);
-  assert.match(dock, /<MessageCircle size=\{18\} \/>/);
+  assert.match(modules, /\{ id: "search",[^\n]+sidebar: false \}/);
   assert.match(runtimeDiscovery, /\/api\/local-runtime\/models\/\$\{runtime\}/);
   assert.match(agents, /api\("POST", "\/api\/agents", \{ name:/);
 });
@@ -52,8 +50,7 @@ test("Human membership, invite, and profile surfaces are absent", () => {
   assert.doesNotMatch(agents, /HumanProfile|InviteHumanModal|manageMembers/);
   assert.doesNotMatch(chatSidebar, /\bhumans\b|\buserIds\b|\bjoinChannel\b/);
   assert.doesNotMatch(chat, /data\?\.humans|\{\s*userId\s*\}|\/members\/(?:join|leave)|chat\.memberKind|chat\.join/);
-  assert.match(chat, /setMembers\(data\?\.agents \|\| \[\]\)/);
-  assert.match(chat, /\/members`, \{ agentId \}/);
+  assert.doesNotMatch(chat, /ChannelMembersModal|chat\.channelMembers|UsersRound/);
   assert.doesNotMatch(quickSwitcher, /kind:\s*"human"|channels\/dm[^\n]+userId|unknownUser/);
   assert.doesNotMatch(settings, /InvitesSettings|NotificationsSettings|notification-settings|settingsNavInvites/);
   assert.match(settings, /\/api\/human\/profile/);
@@ -74,7 +71,7 @@ test("channel copy describes Human authority separately from agent membership", 
 test("the frontend exposes only the local product shell", () => {
   const app = source("./App.tsx");
   const frame = source("./shell/WorkspaceFrame.tsx");
-  const topBar = source("./shell/WorkspaceTopBar.tsx");
+  const navigationRail = source("./shell/WorkspaceNavigationRail.tsx");
   const index = source("../index.html");
   const webPackage = JSON.parse(source("../package.json")) as { scripts: { build: string } };
   const removedPaths = [
@@ -93,8 +90,11 @@ test("the frontend exposes only the local product shell", () => {
   assert.match(app, /return <WorkspaceFrame \/>/);
   assert.doesNotMatch(app, /Layout|legacy|useLocation|useState/);
   assert.doesNotMatch(frame, /legacyHref/);
-  assert.doesNotMatch(topBar, /legacyHref|MoreHorizontal|<a\b/);
-  assert.doesNotMatch(topBar, /onOpenSearch|QuickSwitcher|shell-topbar__tools/);
+  assert.doesNotMatch(navigationRail, /legacyHref|MoreHorizontal|<a\b/);
+  assert.doesNotMatch(navigationRail, /QuickSwitcher|shell-topbar__tools/);
+  assert.match(navigationRail, /<SpaceSwitcher[\s\S]*?<SidebarModuleNavigation/);
+  assert.match(frame, /<WorkspaceNavigationRail/);
+  assert.doesNotMatch(frame, /<WorkspaceTopBar|shell-topbar/);
   assert.match(frame, /<QuickSwitcher onClose=/);
   assert.equal(webPackage.scripts.build, "vite build");
   assert.match(index, /<title>Kith-space<\/title>/);

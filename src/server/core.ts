@@ -1,47 +1,66 @@
 // Message core: seq assignment, @mention parsing, DB write, SSE broadcast (human), wake delivery (agent), target resolution.
 import { randomUUID } from "node:crypto";
-import { and, eq, ne, desc, gt, inArray, like, or, isNull, isNotNull, sql } from "drizzle-orm";
+import { and, eq, ne, desc, gt, inArray, like, or, isNull } from "drizzle-orm";
 import { dbForSpace, schema, spaceRecord } from "../db/index.js";
 import { nextSeq, publish } from "./realtime.js";
 import { isWorkerConnected, sendToWorker, workerRuntimes } from "../local-runtime/workerHub.js";
 import type { AgentStartReason } from "../local-runtime/agentStart.js";
-import { agentHasScope } from "./scopes.js";
 import { newKey, hashToken } from "./auth.js";
 import { createLogger } from "../log.js";
 import { coreLoopbackUrl } from "./localEndpoint.js";
 import { clearAgentIntroductionTurns, completeAgentIntroductionTurn, consumeAgentIntroductionTurn, restoreAgentIntroductionTurn, setAgentIntroductionTurn } from "./agentIntroduction.js";
 import { getHumanIdentity, humanIdentityForHandle, humanIdentityForId } from "../human/humanIdentity.js";
-import { followHumanThread, humanChannelState, reactivateFollowedHumanThread, trackHumanDm } from "../human/humanChannelState.js";
+import { humanChannelState, trackHumanDm } from "../human/humanChannelState.js";
 import { canHumanReadChannel } from "./channelAccess.js";
-import { canAutoJoinMentionedMembers } from "./agentWakePolicy.js";
 import { SqliteDispatchState, normalizeTaskExecutionMode, type DispatchMessageContext, type TaskExecutionMode, type WakeReservation } from "./dispatchGuard.js";
-import { assignTaskRecord, claimTaskRecord, convertMessageRecord, createTaskRecord, transitionTaskRecord, unclaimTaskRecord } from "./tasks/taskRepository.js";
-import { taskAssigneeFromMentions } from "./tasks/taskMentionAssignment.js";
-import { TASK_STATUSES, TaskOperationError, isTaskStatus, type TaskStatus } from "./tasks/taskTypes.js";
-import { assertChannelWritable, channelLifecycleState } from "../channels/channelLifecycle.js";
+import { TaskOperationError, type TaskStatus } from "../tasks/taskTypes.js";
+import { channelLifecycleState } from "../channels/channelLifecycle.js";
 import {
-  containsChannelAllMention,
-  mergeChannelAllMentions,
-  type MessageMention,
-} from "../channels/channelAllMention.js";
-import { initialAgentResponseWakeWatermarks, resolveAgentResponseMode } from "../agents/agentResponseSettings.js";
-import { decideAgentMessageResponse } from "../agents/agentResponseDelivery.js";
+  addChannelMembers,
+  channelMaxSeq,
+  channelMembers,
+  membersToAutoJoin,
+  parseMentions,
+  spaceMembers,
+  type ConversationMember,
+} from "../channels/channelMembership.js";
+import {
+  persistedMessageMention,
+  serializeMessage,
+  type ReactionAggregate,
+} from "../messages/messageSerialization.js";
+import {
+  AgentIntroductionAlreadyCompletedError,
+  AgentIntroductionTokenRejectedError,
+  agentReplyStreamId,
+  createConversationModules,
+  type ConversationEventSink,
+  type CreateTaskCommand,
+  type MessageContext,
+  type PostMessageCommand,
+  type PreparedAction,
+  type WakeDispatchInput,
+} from "../messages/messagePostingModule.js";
+import { createWakeDispatchPort } from "./messageWakeDispatchAdapter.js";
+import { runtimeWorkerPort } from "../runtime/control/runtimeWorkerAdapter.js";
+import { WorkerAdmissionUncertainError } from "../local-runtime/workerHub.js";
+import { threadModule } from "./threadModuleAdapter.js";
+import {
+  createTaskLifecycleModule,
+  type TaskLifecycleModule,
+} from "../tasks/taskLifecycleModule.js";
+import { SessionModule } from "../sessions/sessionModule.js";
+import { DeliveryJournal } from "../deliveries/deliveryJournal.js";
+import { normalizeMessageContextSnapshot } from "../context/messageContextSnapshot.js";
+import { harnessTurnScheduler, scheduleV2Turns, turnCapabilityService } from "./harnessComposition.js";
+import { inboxSummary, type InboxSummary } from "../deliveries/inboxSummary.js";
+import { configureTaskGatewayPort } from "../capabilities/taskGatewayPort.js";
+import { getTaskDetails, reportTask, submitTaskDelivery } from "../tasks/taskService.js";
+import { clearAgentPrivateMemory } from "../memory/memoryLifecycle.js";
 
-export { TASK_STATUSES } from "./tasks/taskTypes.js";
+export { TASK_STATUSES } from "../tasks/taskTypes.js";
 
-export class AgentIntroductionAlreadyCompletedError extends Error {
-  constructor(public readonly agentId: string) {
-    super(`agent introduction already completed: ${agentId}`);
-    this.name = "AgentIntroductionAlreadyCompletedError";
-  }
-}
-
-export class AgentIntroductionTokenRejectedError extends Error {
-  constructor(public readonly agentId: string) {
-    super(`agent introduction token is no longer active: ${agentId}`);
-    this.name = "AgentIntroductionTokenRejectedError";
-  }
-}
+export { AgentIntroductionAlreadyCompletedError, AgentIntroductionTokenRejectedError };
 
 const log = createLogger("server:core");
 // Per-agent raw token cache (server process memory; DB stores hash only). Injected into agent process at spawn; resolveAgent looks up by hash. See slice10.
@@ -67,194 +86,21 @@ export const AGENT_NAME_RE = /^[A-Za-z][A-Za-z0-9_-]*$/;
 export const INVALID_AGENT_NAME = `Agent name must be 1-${MAX_AGENT_NAME} characters, start with a letter, and contain only letters, numbers, hyphens, and underscores`;
 export const invalidAgentName = (s: unknown): boolean => typeof s !== "string" || s.length > MAX_AGENT_NAME || !AGENT_NAME_RE.test(s);
 
-export interface Member { type: "human" | "agent"; id: string; name: string; displayName: string; }
-
-function persistedMessageMention(row: typeof schema.messageMentions.$inferSelect): MessageMention {
-  return {
-    type: row.mentionType as MessageMention["type"],
-    id: row.mentionId,
-    name: row.mentionName,
-  };
-}
-
-export async function channelMembers(spaceId: string, channelId: string): Promise<Member[]> {
-  const db = dbForSpace(spaceId);
-  const channel = (await db.select({ id: schema.channels.id, type: schema.channels.type }).from(schema.channels).where(and(
-    eq(schema.channels.id, channelId),
-    eq(schema.channels.spaceId, spaceId),
-    isNull(schema.channels.deletedAt),
-  )))[0];
-  if (!channel) return [];
-  const rows = await db.select().from(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, channelId));
-  const out: Member[] = [];
-  const human = getHumanIdentity();
-  const state = await humanChannelState(spaceId, channelId);
-  const includesHuman = channel.type === "channel" || channel.type === "private"
-    || (channel.type === "dm" && Boolean(state?.dmAgentId))
-    || (channel.type === "thread" && Boolean(state?.threadFollowedAt));
-  if (human && includesHuman) out.push({ type: "human", id: human.id, name: human.handle, displayName: human.displayName });
-  for (const r of rows) {
-    const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, r.agentId), isNull(schema.agents.deletedAt))))[0];
-    if (a) out.push({ type: "agent", id: a.id, name: a.name, displayName: a.displayName });
-  }
-  return out;
-}
-
-/** Highest message seq currently in a channel (0 if empty). seq is monotonic within the Space, so this is
- *  the channel's read "watermark" at this instant — any message that arrives later has a strictly higher seq. */
-export async function channelMaxSeq(spaceId: string, channelId: string): Promise<number> {
-  const db = dbForSpace(spaceId);
-  const [r] = await db.select({ seq: schema.messages.seq }).from(schema.messages)
-    .where(eq(schema.messages.channelId, channelId)).orderBy(desc(schema.messages.seq)).limit(1);
-  return r?.seq ?? 0;
-}
-
-/** Add channel members. An AGENT joins "caught up" at the channel watermark (its lastReadSeq starts at the
- *  channel's current max seq), so its first `kith-space message check` surfaces only messages sent AFTER it
- *  joined — not the channel's pre-join backlog (which it can still pull on demand via `message read`). Without
- *  this, a fresh member's lastReadSeq=0 makes every prior message "unread", flooding a newly created or newly
- *  invited agent with the whole channel history it never needed. Human cursor/follow state is stored separately.
- *  Pass `watermark` to override
- *  the agent watermark (the @-mention path passes triggeringSeq-1 so the triggering message stays unread);
- *  Idempotent via onConflictDoNothing: re-adding an existing agent never rewinds or fast-forwards a real read cursor. */
-export async function addChannelMembers(spaceId: string, channelId: string, members: { type: "human" | "agent"; id: string }[], opts?: { watermark?: number }): Promise<void> {
-  const agents = members.filter((member): member is { type: "agent"; id: string } => member.type === "agent");
-  if (!agents.length) return;
-  const db = dbForSpace(spaceId);
-  const wm = opts?.watermark ?? await channelMaxSeq(spaceId, channelId);
-  const wakeWatermarks = initialAgentResponseWakeWatermarks(wm);
-  await db.insert(schema.channelAgentMembers)
-    .values(agents.map((member) => ({
-      channelId,
-      agentId: member.id,
-      lastReadSeq: wm,
-      ...wakeWatermarks,
-    })))
-    .onConflictDoNothing();
-}
-
-export function parseMentions(content: string, members: Member[]) {
-  const found = new Map<string, Member>();
-  const re = /@([A-Za-z0-9_\u4e00-\u9fa5-]+)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(content))) {
-    const name = m[1]!;
-    const hit = members.find((x) => x.name.toLowerCase() === name.toLowerCase());
-    if (hit) found.set(hit.id, hit);
-  }
-  return [...found.values()];
-}
-
-/** All @-addressable members of a workspace: its live agents + the one local Human. */
-export async function spaceMembers(spaceId: string): Promise<Member[]> {
-  const db = dbForSpace(spaceId);
-  const out: Member[] = [];
-  const human = getHumanIdentity();
-  if (human) out.push({ type: "human", id: human.id, name: human.handle, displayName: human.displayName });
-  // System-owned identities have no runtime process and are not reachable teammates. Keep them out of the
-  // membership pool so public-channel mention matching cannot auto-join or wake a non-interactive record.
-  const ags = await db.select().from(schema.agents).where(and(eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt), ne(schema.agents.creatorType, "system")));
-  for (const a of ags) out.push({ type: "agent", id: a.id, name: a.name, displayName: a.displayName });
-  return out;
-}
-
-/** Pure decision for Slack-style auto-join: of the workspace members @-referenced in `content`, which are
- *  not yet members of the channel (`current`) and therefore need to be added. Reuses parseMentions so the
- *  matching can never drift from how mentions are actually recorded. */
-export function membersToAutoJoin(content: string, workspace: Member[], current: Member[]): Member[] {
-  const have = new Set(current.map((m) => m.type + ":" + m.id));
-  return parseMentions(content, workspace).filter((r) => !have.has(r.type + ":" + r.id));
-}
-
-/** The member set an @-mention in this channel may pull in (auto-join) — who already has access to the space,
- *  so adding them leaks nothing. A thread inherits its PARENT channel's reach, the same parent-channel
- *  inheritance `canReadChannel` (socketio.ts) uses for read access: a public channel's thread reaches the
- *  whole workspace, a private channel's thread only its parent's members, a DM's thread only the two parties.
- *  A top-level public `channel` reaches the workspace; `private`/`dm` reach only their current members, so an
- *  @ to a non-member there stays a no-op (unchanged behaviour). */
-async function mentionAutoJoinPool(spaceId: string, ch: typeof schema.channels.$inferSelect): Promise<Member[]> {
-  const db = dbForSpace(spaceId);
-  let target = ch;
-  if (ch.type === "thread" && ch.parentMessageId) {
-    const parent = (await db.select().from(schema.messages).where(eq(schema.messages.id, ch.parentMessageId)))[0];
-    const pch = parent ? (await db.select().from(schema.channels).where(eq(schema.channels.id, parent.channelId)))[0] : undefined;
-    if (pch) target = pch; // depth 1: a parent channel is never itself a thread
-    // Orphaned thread (parent message/channel deleted): fall back to the thread's own members — a conservative
-    // no-op for @-ing a non-member (the pre-fix behaviour), but log it so a silently-dropped @ is debuggable.
-    else log.warn("thread parent channel unresolved; @-mention reach falls back to thread members", { channelId: ch.id, parentMessageId: ch.parentMessageId });
-  }
-  return target.type === "channel" ? await spaceMembers(spaceId) : await channelMembers(spaceId, target.id);
-}
-
-async function channelAllMentionScope(
-  spaceId: string,
-  channel: typeof schema.channels.$inferSelect,
-): Promise<typeof schema.channels.$inferSelect | null> {
-  if (channel.type === "channel" || channel.type === "private") return channel;
-  if (channel.type !== "thread" || !channel.parentMessageId) return null;
-  const db = dbForSpace(spaceId);
-  const parentMessage = (await db.select({ channelId: schema.messages.channelId }).from(schema.messages).where(and(
-    eq(schema.messages.id, channel.parentMessageId),
-    eq(schema.messages.spaceId, spaceId),
-  )))[0];
-  if (!parentMessage) return null;
-  const parentChannel = (await db.select().from(schema.channels).where(and(
-    eq(schema.channels.id, parentMessage.channelId),
-    eq(schema.channels.spaceId, spaceId),
-    isNull(schema.channels.deletedAt),
-  )))[0];
-  return parentChannel?.type === "channel" || parentChannel?.type === "private" ? parentChannel : null;
-}
-
-/** Add @-mentioned non-members to a channel, drawn from `pool` (its @-reach — see mentionAutoJoinPool); returns
- *  those added. Idempotent via onConflictDoNothing; broadcasts a membership update so every client refreshes. */
-async function autoJoinMentioned(spaceId: string, channelId: string, content: string, current: Member[], pool: Member[], watermark: number): Promise<Member[]> {
-  const toAdd = membersToAutoJoin(content, pool, current);
-  if (!toAdd.length) return [];
-  // watermark = triggeringSeq-1: the @ message that pulled them in stays unread (the agent must see the @), but
-  // the channel's prior backlog is marked read so an auto-joined agent isn't flooded with history on first check.
-  await addChannelMembers(spaceId, channelId, toAdd.map((m) => ({ type: m.type, id: m.id })), { watermark });
-  await publish(spaceId, { type: "channel:members-updated", channelId });
-  return toAdd;
-}
-
-// Message serialization shape for message:new socket event (omits internal searchVector/agentSendKey).
-export interface ReactionAgg { emoji: string; count: number; reactorIds: string[]; reactorNames: string[]; }
-export function serializeMsg(msg: typeof schema.messages.$inferSelect, mentions: MessageMention[], atts: (typeof schema.attachments.$inferSelect)[] = [], reactions: ReactionAgg[] = []) {
-  return {
-    id: msg.id, seq: msg.seq, channelId: msg.channelId, threadId: msg.threadId,
-    senderType: msg.senderType, senderId: msg.senderId, senderName: msg.senderName, senderMembershipStatus: "active",
-    messageType: msg.messageType, content: msg.content, actionMetadata: msg.actionMetadata ?? null,
-    taskStatus: msg.taskStatus, taskNumber: msg.taskNumber,
-    taskAssigneeType: msg.taskAssigneeType, taskAssigneeId: msg.taskAssigneeId,
-    taskClaimedAt: msg.taskClaimedAt, taskCompletedAt: msg.taskCompletedAt,
-    taskParentId: msg.taskParentId, taskRevision: msg.taskRevision,
-    taskExecutionMode: msg.taskExecutionMode,
-    dispatchChainId: msg.dispatchChainId, dispatchDepth: msg.dispatchDepth,
-    attachments: atts.map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType, sizeBytes: a.sizeBytes })),
-    mentions: mentions.map((x) => ({ type: x.type, id: x.id, name: x.name })),
-    reactions,
-    createdAt: msg.createdAt, updatedAt: msg.updatedAt,
-  };
-}
-
-export function agentReplyStreamId(messageId: string, agentId: string): string {
-  return `${messageId}:${agentId}`;
-}
+export type Member = ConversationMember;
+export type ReactionAgg = ReactionAggregate;
+export {
+  addChannelMembers,
+  agentReplyStreamId,
+  channelMaxSeq,
+  channelMembers,
+  membersToAutoJoin,
+  parseMentions,
+  spaceMembers,
+};
+export const serializeMsg = serializeMessage;
 
 type AllowedWakeReservation = Extract<WakeReservation, { allowed: true }>;
 type BlockedWakeReservation = Extract<WakeReservation, { allowed: false }>;
-
-async function taskMessageIdForChannel(
-  spaceId: string,
-  ch: typeof schema.channels.$inferSelect | undefined,
-): Promise<string | null> {
-  if (ch?.type !== "thread" || !ch.parentMessageId) return null;
-  const db = dbForSpace(spaceId);
-  const parent = db.select({ id: schema.messages.id, taskStatus: schema.messages.taskStatus })
-    .from(schema.messages).where(and(eq(schema.messages.id, ch.parentMessageId), eq(schema.messages.spaceId, spaceId))).get();
-  return parent?.taskStatus ? parent.id : null;
-}
 
 export async function reportDispatchRejection(o: {
   state: SqliteDispatchState;
@@ -301,7 +147,7 @@ async function reserveDispatchWake(o: {
   targetAgentName: string;
   fallbackChannelId: string;
 }): Promise<AllowedWakeReservation | null> {
-  const reservation = await o.state.reserveWake({
+  const reservation = await o.state.getOrReserveWake({
     ...o.dispatch,
     messageId: o.messageId,
     targetAgentId: o.targetAgentId,
@@ -455,18 +301,15 @@ export async function listSaved(spaceId: string, limit: number, offset: number) 
   return { saved, hasMore };
 }
 
-export async function agentConfig(spaceId: string, agentId: string) {
-  const db = dbForSpace(spaceId);
-  // Skip soft-deleted agents (treated as non-existent → null, which every caller already handles): otherwise the
-  // mint branch below would re-set `agentTokenHash` on a deleted row, reverting the clear done on delete (C4).
-  const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, agentId), isNull(schema.agents.deletedAt))))[0];
-  if (!a) return null;
+async function agentConfigFromRow(a: typeof schema.agents.$inferSelect) {
+  const db = dbForSpace(a.spaceId);
   const space = spaceRecord(a.spaceId);
   if (!space) return null;
   // Per-agent independent token (sk_agent_* prefix, slice10):
   // cache hit → reuse; first time → mint + store hash + cache raw; agent already running (cache lost after server restart but agent still running) → do not re-mint or send new token (daemon ignores agent:start for running agents, agent continues using old token, server verifies via DB hash) → zero desync.
-  let token = agentRawTokens.get(a.id);
-  if (!token && !(a.status === "active" && a.agentTokenHash)) {
+  const legacyHarness = new SessionModule(a.spaceId, db).harnessMode(a.id) === "legacy";
+  let token = legacyHarness ? agentRawTokens.get(a.id) : undefined;
+  if (legacyHarness && !token && !(a.status === "active" && a.agentTokenHash)) {
     token = newKey("sk_agent_");
     agentRawTokens.set(a.id, token);
     await db.update(schema.agents).set({ agentTokenHash: hashToken(token) }).where(eq(schema.agents.id, a.id));
@@ -478,265 +321,279 @@ export async function agentConfig(spaceId: string, agentId: string) {
   };
 }
 
-export async function createMessage(opts: {
-  spaceId: string; channelId: string;
-  senderType: "human" | "agent" | "system"; senderId: string | null; senderName: string;
-  content: string; messageType?: string; threadId?: string | null; asTask?: boolean; attachmentIds?: string[];
+export interface CreateMessageOptions {
+  messageId?: string;
+  taskWritePrecondition?: (tx: import("../counters.js").SpaceTransaction, channelId: string) => void;
+  spaceId: string;
+  channelId: string;
+  senderType: "human" | "agent" | "system";
+  senderId: string | null;
+  senderName: string;
+  content: string;
+  messageType?: string;
+  threadId?: string | null;
+  asTask?: boolean;
+  attachmentIds?: string[];
   taskExecutionMode?: TaskExecutionMode;
   taskParentId?: string | null;
   introductionAgentId?: string;
   introductionToken?: string;
-  actionMetadata?: unknown; // action-card and other platform action payloads (slice09)
-}) {
-  const db = dbForSpace(opts.spaceId);
-  await assertChannelWritable(opts.spaceId, opts.channelId);
-  // Resolve addressable mentions before allocating a seq or changing membership. In particular, an invalid
-  // multi-Agent "As Task" submission must fail without persisting a task or auto-joining anyone.
-  const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, opts.channelId)))[0];
-  if (opts.asTask && !ch) throw new TaskOperationError("NOT_FOUND", "task channel not found");
-  let members = await channelMembers(opts.spaceId, opts.channelId);
-  const mentionPool = ch && canAutoJoinMentionedMembers(opts.senderType) && opts.content.includes("@")
-    ? await mentionAutoJoinPool(opts.spaceId, ch)
-    : members;
-  const addressableMentions = parseMentions(opts.content, mentionPool);
-  const hasHumanChannelAllToken = opts.senderType === "human" && containsChannelAllMention(opts.content);
-  if (opts.asTask && hasHumanChannelAllToken) {
-    throw new TaskOperationError("INVALID_ARGUMENT", "As Task does not support @all; mention exactly one Agent or leave the task unassigned");
-  }
-  const channelAllScope = ch && hasHumanChannelAllToken
-    ? await channelAllMentionScope(opts.spaceId, ch)
-    : null;
-  const channelAllRecipients = channelAllScope
-    ? (await channelMembers(opts.spaceId, channelAllScope.id)).filter((member) => member.type === "agent")
-    : [];
-  const taskAssigneeId = taskAssigneeFromMentions({
-    asTask: Boolean(opts.asTask),
-    senderType: opts.senderType,
-    channelType: ch?.type ?? "channel",
-    mentions: addressableMentions,
-  });
-  const taskAssignee = taskAssigneeId
-    ? (await db.select().from(schema.agents).where(and(
-        eq(schema.agents.id, taskAssigneeId),
-        eq(schema.agents.spaceId, opts.spaceId),
-        isNull(schema.agents.deletedAt),
-      )))[0]
-    : null;
-  if (taskAssigneeId && !taskAssignee) throw new TaskOperationError("INVALID_ARGUMENT", "task assignee is unavailable");
-  const messageId = randomUUID();
-  const seq = await nextSeq(opts.spaceId);
-  // Channel row fetched once; its type drives task-number scope (per-DM vs per-Space), thread auto-follow, mention auto-join, and wake routing below.
-  const dispatchState = new SqliteDispatchState(opts.spaceId);
-  const taskMessageId = opts.asTask ? messageId : await taskMessageIdForChannel(opts.spaceId, ch);
-  const dispatch = await dispatchState.resolveMessageContext({
-    messageId,
-    channelId: opts.channelId,
-    senderType: opts.senderType,
-    senderId: opts.senderId,
-    taskMessageId,
-  });
-  const messageValues = {
-    id: messageId,
-    seq, spaceId: opts.spaceId, channelId: opts.channelId,
-    senderType: opts.senderType, senderId: opts.senderId, senderName: opts.senderName,
-    messageType: opts.messageType ?? "chat", content: opts.content,
-    actionMetadata: opts.actionMetadata ?? null,
-    threadId: opts.threadId ?? null, searchText: opts.content,
-    taskStatus: null, taskNumber: null,
-    taskExecutionMode: normalizeTaskExecutionMode(opts.taskExecutionMode) ?? "autopilot",
-    dispatchChainId: dispatch.chainId,
-    dispatchDepth: dispatch.dispatchDepth,
-  } satisfies typeof schema.messages.$inferInsert;
-  const msg = opts.asTask
-    ? createTaskRecord({
-        spaceId: opts.spaceId,
-        channel: ch!,
-        message: messageValues,
-        parentTaskId: opts.taskParentId,
-        assigneeId: taskAssigneeId,
-      })
-    : opts.introductionAgentId && opts.introductionToken
-      ? (() => {
-          if (!consumeAgentIntroductionTurn(opts.spaceId, opts.introductionAgentId!, opts.introductionToken!)) {
-            throw new AgentIntroductionTokenRejectedError(opts.introductionAgentId!);
-          }
-          try {
-            const introduction = db.transaction((tx) => {
-              const claimed = tx.update(schema.agents).set({ introducedAt: new Date() }).where(and(
-                eq(schema.agents.id, opts.introductionAgentId!),
-                eq(schema.agents.spaceId, opts.spaceId),
-                isNull(schema.agents.introducedAt),
-              )).returning({ id: schema.agents.id }).get();
-              if (!claimed) throw new AgentIntroductionAlreadyCompletedError(opts.introductionAgentId!);
-              return tx.insert(schema.messages).values(messageValues).returning().get();
-            });
-            completeAgentIntroductionTurn(opts.spaceId, opts.introductionAgentId!, opts.introductionToken!);
-            return introduction;
-          } catch (error) {
-            restoreAgentIntroductionTurn(opts.spaceId, opts.introductionAgentId!, opts.introductionToken!);
-            throw error;
-          }
-        })()
-      : (await db.insert(schema.messages).values(messageValues).returning())[0]!;
-  await dispatchState.ensureChain({ ...dispatch, rootMessageId: messageId, channelId: opts.channelId });
-
-  // auto-follow: reply to thread → sender auto-joins; replying after done clears done and brings thread back to inbox
-  if (opts.senderId && opts.senderType !== "system" && ch?.type === "thread") {
-    if (opts.senderType === "human") await followHumanThread(opts.spaceId, opts.channelId);
-    else await addChannelMembers(opts.spaceId, opts.channelId, [{ type: "agent", id: opts.senderId }], { watermark: seq });
-    await reactivateFollowedHumanThread(opts.spaceId, opts.channelId);
-  }
-
-  // Attachments: backfill messageId/channelId onto the attachment uploaded earlier, so it appears in the channel Files list
-  let atts: (typeof schema.attachments.$inferSelect)[] = [];
-  if (opts.attachmentIds?.length) {
-    await db.update(schema.attachments).set({ messageId: msg.id, channelId: opts.channelId }).where(inArray(schema.attachments.id, opts.attachmentIds));
-    atts = await db.select().from(schema.attachments).where(inArray(schema.attachments.id, opts.attachmentIds));
-  }
-
-  // Human-authored Slack-style mention auto-join: @-mentioning someone who isn't in this channel yet pulls them in, so the
-  // mention is recorded + delivered (wake / inbox) instead of being silently dropped. A thread inherits its
-  // parent channel's @-reach (mentionAutoJoinPool — the same parent-channel inheritance canReadChannel uses),
-  // so @-ing a teammate who hasn't replied in the thread yet still wakes them. Public channel → whole
-  // workspace; private/dm (and their threads) → existing members only, so an @ to a non-member stays a no-op.
-  // Agent-authored text must not mutate channel membership: a model casually mentioning @Reviewer should not
-  // pull that agent into a channel and start a reply loop.
-  if (!taskAssigneeId && ch && canAutoJoinMentionedMembers(opts.senderType) && opts.content.includes("@")) {
-    const joined = await autoJoinMentioned(opts.spaceId, opts.channelId, opts.content, members, mentionPool, seq - 1);
-    if (joined.length) members = [...members, ...joined];
-  }
-  if (channelAllScope && ch?.type === "thread") {
-    const currentAgentIds = new Set(members.filter((member) => member.type === "agent").map((member) => member.id));
-    const joined = channelAllRecipients.filter((member) => !currentAgentIds.has(member.id));
-    if (joined.length) {
-      await addChannelMembers(opts.spaceId, opts.channelId, joined.map((member) => ({ type: "agent", id: member.id })), { watermark: seq - 1 });
-      await publish(opts.spaceId, { type: "channel:members-updated", channelId: opts.channelId });
-      members = [...members, ...joined];
-    }
-  }
-  // A targeted task may address a public-channel Agent without granting parent-channel membership. Keep the
-  // validated mention on the task message while the assignment service grants only the owning thread access.
-  const ordinaryMentions = taskAssigneeId ? addressableMentions : parseMentions(opts.content, members);
-  const mentions: MessageMention[] = channelAllScope
-    ? mergeChannelAllMentions(ordinaryMentions, channelAllRecipients, channelAllScope.id)
-    : ordinaryMentions;
-  if (mentions.length) {
-    await db.insert(schema.messageMentions).values(
-      mentions.map((x) => ({ messageId: msg.id, mentionType: x.type, mentionId: x.id, mentionName: x.name })),
-    );
-  }
-  await db.update(schema.channels).set({ lastMessageAt: new Date() }).where(eq(schema.channels.id, opts.channelId));
-
-  // Task message + number + owning thread are committed together by createTaskRecord.
-  // Human-side realtime
-  await publish(opts.spaceId, { type: "message", channelId: opts.channelId, message: { ...serializeMsg(msg, mentions, atts), channelType: ch?.type ?? null } });
-  if (opts.asTask) {
-    await publish(opts.spaceId, { type: "task", op: "created", task: serializeMsg(msg, mentions, atts) });
-    const actor = (opts.senderType === "human" || opts.senderType === "agent") && opts.senderId ? { type: opts.senderType, id: opts.senderId } : undefined;
-    await sysTaskMsg(opts.spaceId, opts.channelId, `${opts.senderName} created task #${msg.taskNumber} "${taskTitle(opts.content)}"`, actor); // audit trail (task system messages)
-    if (taskAssignee) await dispatchTaskAssignment(opts.spaceId, msg, taskAssignee, actor);
-  }
-
-  // Agent-side wake: the same response policy is reused by reconnect catch-up and message check.
-  const isDm = ch?.type === "dm";
-  // Message in thread channel → broadcast thread:updated (parentMessageId + replyCount + participantIds)
-  await publishThreadUpdated(opts.spaceId, ch, opts.senderId, opts.senderType);
-  const mentionedAgents = new Set(mentions.filter((m) => m.type === "agent").map((m) => m.id));
-  // inbox notice uses human-readable target (#name / dm:@sender), not uuid. threads use channel name.
-  const targetName = isDm ? `dm:@${opts.senderName}` : `#${ch?.name ?? opts.channelId}`;
-  const msgShort = msg.id.slice(0, 8);
-  const parentTask = ch?.type === "thread" && ch.parentMessageId
-    ? (await db.select({
-        taskStatus: schema.messages.taskStatus,
-        taskAssigneeId: schema.messages.taskAssigneeId,
-      }).from(schema.messages).where(eq(schema.messages.id, ch.parentMessageId)))[0]
-    : null;
-  const woken: string[] = [];
-  for (const mem of members) {
-    if (mem.type !== "agent" || mem.id === opts.senderId) continue;
-    // A targeted channel task is dispatched once through its owning thread. It must not also ambient-wake
-    // parent-channel members (including the assignee when they already belong to the parent channel).
-    if (taskAssigneeId) continue;
-    const mentioned = mentionedAgents.has(mem.id);
-    const responseMode = await resolveAgentResponseMode(opts.spaceId, opts.channelId, mem.id);
-    if (!responseMode) continue;
-    const decision = decideAgentMessageResponse({
-      agentId: mem.id,
-      channelType: (ch?.type ?? "channel") as "channel" | "private" | "dm" | "thread",
-      senderType: opts.senderType,
-      effectiveMode: responseMode.effectiveResponseMode,
-      messageSeq: seq,
-      mentioned,
-      taskAssigneeId: msg.taskStatus ? msg.taskAssigneeId : null,
-      parentTaskAssigneeId: parentTask?.taskAssigneeId ?? null,
-      isTask: Boolean(msg.taskStatus),
-      ambientWakeAfterSeq: responseMode.ambientWakeAfterSeq,
-      mentionWakeAfterSeq: responseMode.mentionWakeAfterSeq,
-    });
-    if (!decision.wake) continue;
-    // Preserve the existing capability boundary for ambient inbox scanning. Direct and explicit mention
-    // deliveries retain their established reachability behavior.
-    if (decision.deliveryClass === "ambient") {
-      const a0 = (await db.select({ scopes: schema.agents.scopes }).from(schema.agents).where(eq(schema.agents.id, mem.id)))[0];
-      if (!agentHasScope(a0?.scopes, "inbox:receive")) continue;
-    }
-    const reservation = await reserveDispatchWake({
-      state: dispatchState,
-      dispatch,
-      messageId: msg.id,
-      targetAgentId: mem.id,
-      targetAgentName: mem.name,
-      fallbackChannelId: opts.channelId,
-    });
-    if (!reservation) continue;
-    const target = await agentStartTarget(opts.spaceId, mem.id);
-    if (!target.ok) {
-      await dispatchState.releaseWake(reservation.reservationId);
-      if (target.reason !== "agent not found") await markAgentUnavailable(opts.spaceId, mem.id, target.reason);
-      continue;
-    }
-    const replyStreamId = agentReplyStreamId(msg!.id, mem.id);
-    if (decision.directive === "required") {
-      await publish(opts.spaceId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, triggerMessageId: msg.id, op: "start" });
-    }
-    const startSent = sendAgentStart(target, mem.id, "wake");
-    const deliverSent = startSent && sendAgentDeliver(target, {
-      agentId: mem.id,
-      seq,
-      from: opts.senderName,
-      target: opts.channelId,
-      targetName,
-      msgShort,
-      isTask: Boolean(msg.taskStatus || parentTask?.taskStatus),
-      message: { content: opts.content },
-      mentioned,
-      streamId: replyStreamId,
-      responseDirective: decision.directive,
-      responseReason: decision.reason,
-    });
-    if (!deliverSent) {
-      await dispatchState.releaseWake(reservation.reservationId);
-      if (decision.directive === "required") {
-        await publish(opts.spaceId, { type: "agent:reply", agentId: mem.id, channelId: opts.channelId, streamId: replyStreamId, name: mem.displayName || mem.name, op: "error", text: "local runtime worker offline" });
-      }
-      await markAgentUnavailable(opts.spaceId, mem.id, "local runtime worker offline");
-      continue;
-    }
-    await dispatchState.commitWake(reservation.reservationId, {
-      agentId: mem.id,
-      channelId: msg.threadId ?? opts.channelId,
-      chainId: dispatch.chainId,
-      dispatchDepth: dispatch.dispatchDepth,
-    });
-    woken.push(`${mem.name}${mentioned ? "(@)" : ""}:${decision.directive}`);
-  }
-  log.info("message created", {
-    seq, channel: opts.channelId, from: opts.senderName, kind: opts.senderType,
-    mentions: mentions.map((x) => x.name),
-    wakeAgents: woken,
-  });
-  return msg;
+  actionMetadata?: unknown;
+  contextSnapshot?: unknown;
+  memoryPolicy?: "eligible" | "exclude";
 }
+
+const conversationEventSink: ConversationEventSink = { publish };
+let composedConversationModules: ReturnType<typeof createConversationModules> | null = null;
+
+function conversationModules(): ReturnType<typeof createConversationModules> {
+  if (composedConversationModules) return composedConversationModules;
+  const wakeDispatch = createWakeDispatchPort({
+    eventSink: conversationEventSink,
+    runtimeWorker: runtimeWorkerPort,
+    resolveTarget: agentStartTarget,
+    resolveTargets: agentStartTargets,
+    isTarget(value): value is AgentStartTarget { return value.ok; },
+    wakeStartCommand(target, input: WakeDispatchInput, deliveryId) {
+      return {
+        type: "agent:start",
+        source: "wake",
+        deliveryId,
+        spaceId: input.spaceId,
+        agentId: input.targetAgent.id,
+        config: target.cfg,
+        reason: "wake",
+        delivery: {
+          seq: input.delivery.seq,
+          from: input.delivery.from,
+          target: input.delivery.target,
+          targetName: input.delivery.targetName,
+          msgShort: input.delivery.msgShort,
+          isTask: input.delivery.isTask,
+          mentioned: input.delivery.mentioned,
+          ...(input.delivery.streamId ? { streamId: input.delivery.streamId } : {}),
+          responseDirective: input.delivery.responseDirective,
+          responseReason: input.delivery.responseReason,
+        },
+      };
+    },
+    markUnavailable: markAgentUnavailable,
+  });
+  composedConversationModules = createConversationModules({
+    eventSink: conversationEventSink,
+    wakeDispatch,
+    introductionProof: {
+      consume: consumeAgentIntroductionTurn,
+      complete: completeAgentIntroductionTurn,
+      restore: restoreAgentIntroductionTurn,
+    },
+    deliveryJournal: new DeliveryJournal(scheduleV2Turns),
+  });
+  return composedConversationModules;
+}
+
+export async function dispatchLegacyTurnOutputMentions(input: {
+  spaceId: string;
+  messageId: string;
+  targetSurfaceId: string;
+  targetAgentIds: string[];
+}): Promise<void> {
+  await conversationModules().legacyMentionDispatch.dispatch(input);
+}
+
+export async function recoverLegacyTurnOutputMentions(spaceId: string): Promise<void> {
+  await conversationModules().legacyMentionDispatch.recover(spaceId);
+}
+
+let composedTaskLifecycle: TaskLifecycleModule | null = null;
+
+function taskLifecycle(): TaskLifecycleModule {
+  if (composedTaskLifecycle) return composedTaskLifecycle;
+  composedTaskLifecycle = createTaskLifecycleModule({
+    eventSink: conversationEventSink,
+    threads: threadModule,
+    scheduleDurableDeliveries: scheduleV2Turns,
+    onTaskScopeRevoked(spaceId, revoked) {
+      turnCapabilityService(spaceId).closeSessions(revoked.sessionIds);
+      harnessTurnScheduler.cancelRevokedAttempts(revoked.attempts);
+    },
+    wake: {
+      async prepare(input) {
+        const dispatch = await new SqliteDispatchState(input.spaceId).resolveMessageContext({
+          messageId: input.messageId,
+          channelId: input.channelId,
+          senderType: input.senderType,
+          senderId: input.senderId,
+          taskMessageId: input.taskMessageId,
+        });
+        return {
+          chainId: dispatch.chainId,
+          dispatchDepth: dispatch.dispatchDepth,
+          taskMessageId: dispatch.taskMessageId ?? input.taskMessageId,
+        };
+      },
+      async dispatch(input) {
+        if (new SessionModule(input.spaceId).harnessMode(input.target.id) === "v2") {
+          await scheduleV2Turns(input.spaceId);
+          return;
+        }
+        const state = new SqliteDispatchState(input.spaceId);
+        const reservation = await reserveDispatchWake({
+          state,
+          dispatch: input.dispatch,
+          messageId: input.audit.id,
+          targetAgentId: input.target.id,
+          targetAgentName: input.target.name,
+          fallbackChannelId: input.audit.channelId,
+        });
+        if (!reservation) return;
+        const target = await agentStartTarget(input.spaceId, input.target.id);
+        if (target.ok) {
+          try {
+            const admission = await runtimeWorkerPort.start({
+              type: "agent:start",
+              source: "wake",
+              deliveryId: reservation.reservationId,
+              spaceId: input.spaceId,
+              agentId: input.target.id,
+              config: target.cfg,
+              reason: "wake",
+              delivery: {
+                seq: input.audit.seq,
+                from: input.from,
+                target: input.audit.channelId,
+                targetName: `task #${input.task.taskNumber}`,
+                msgShort: input.audit.id.slice(0, 8),
+                isTask: true,
+                mentioned: true,
+                responseDirective: input.responseDirective,
+                responseReason: input.responseReason,
+              },
+            });
+            if (admission.status === "rejected") {
+              await state.releaseWake(reservation.reservationId);
+              return;
+            }
+            await state.commitWake(reservation.reservationId, {
+              agentId: input.target.id,
+              channelId: input.audit.channelId,
+              chainId: input.dispatch.chainId,
+              dispatchDepth: input.dispatch.dispatchDepth,
+            });
+          } catch (error) {
+            if (!(error instanceof WorkerAdmissionUncertainError)) {
+              log.warn("task wake admission remained pending", { agentId: input.target.id, detail: String(error) });
+            }
+          }
+        } else {
+          await state.releaseWake(reservation.reservationId);
+          if (target.reason !== "agent not found") {
+            await markAgentUnavailable(input.spaceId, input.target.id, target.reason);
+          }
+        }
+      },
+    },
+    onPostCommitError(operation, error) {
+      log.warn("task post-commit operation failed", {
+        operation,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    },
+  });
+  return composedTaskLifecycle;
+}
+
+configureTaskGatewayPort({
+  create: ({ messageId, spaceId, channelId, actor, title, executionMode, parentTaskId, writePrecondition }) => createMessage({
+    messageId, spaceId, channelId, senderType: "agent", senderId: actor.id, senderName: actor.name,
+    content: title, asTask: true, taskExecutionMode: executionMode, taskParentId: parentTaskId, taskWritePrecondition: writePrecondition,
+  }),
+  claim: (spaceId, taskId, agentId, expectedRevision, writePrecondition) => taskLifecycle().claim(spaceId, taskId, "agent", agentId, expectedRevision, writePrecondition),
+  update: (spaceId, taskId, status, agentId, input, writePrecondition) => taskLifecycle().setStatus(spaceId, taskId, status, { type: "agent", id: agentId }, input, writePrecondition),
+  assign: (spaceId, taskId, targetAgentId, agentId, expectedRevision, writePrecondition) => taskLifecycle().assign(spaceId, taskId, targetAgentId, { type: "agent", id: agentId }, expectedRevision, writePrecondition),
+  unclaim: (spaceId, taskId, agentId, expectedRevision, writePrecondition) => taskLifecycle().unclaim(spaceId, taskId, { type: "agent", id: agentId }, expectedRevision, writePrecondition),
+  details: getTaskDetails,
+  report: reportTask,
+  deliver: submitTaskDelivery,
+});
+
+function messageContext(options: CreateMessageOptions): MessageContext {
+  return {
+    spaceId: options.spaceId,
+    channelId: options.channelId,
+    sender: { type: options.senderType, id: options.senderId, name: options.senderName },
+    threadId: options.threadId,
+    uiSnapshot: options.senderType === "human"
+      ? normalizeMessageContextSnapshot(options.contextSnapshot, options.spaceId)
+      : null,
+    memoryPolicy: options.senderType === "human" ? options.memoryPolicy ?? "eligible" : "exclude",
+  };
+}
+
+export async function agentConfig(spaceId: string, agentId: string) {
+  const db = dbForSpace(spaceId);
+  // Skip soft-deleted agents (treated as non-existent → null, which every caller already handles): otherwise the
+  // mint branch below would re-set `agentTokenHash` on a deleted row, reverting the clear done on delete (C4).
+  const agent = db.select().from(schema.agents).where(and(
+    eq(schema.agents.id, agentId),
+    eq(schema.agents.spaceId, spaceId),
+    isNull(schema.agents.deletedAt),
+  )).get();
+  return agent ? agentConfigFromRow(agent) : null;
+}
+
+async function agentConfigs(agents: (typeof schema.agents.$inferSelect)[]) {
+  const configs = new Map<string, NonNullable<Awaited<ReturnType<typeof agentConfigFromRow>>>>();
+  for (const agent of agents) {
+    const config = await agentConfigFromRow(agent);
+    if (config) configs.set(agent.id, config);
+  }
+  return configs;
+}
+
+export async function createMessage(options: CreateMessageOptions) {
+  const modules = conversationModules();
+  const context = messageContext(options);
+  if (options.asTask) {
+    const command: CreateTaskCommand = {
+      messageId: options.messageId,
+      writePrecondition: options.taskWritePrecondition,
+      context,
+      title: options.content,
+      executionMode: normalizeTaskExecutionMode(options.taskExecutionMode) ?? "autopilot",
+      parentTaskId: options.taskParentId,
+      attachmentIds: options.attachmentIds,
+    };
+    return modules.tasks.create(command);
+  }
+  let command: PostMessageCommand;
+  if (options.messageType === "action") {
+    const metadata = options.actionMetadata as { kind?: unknown; action?: unknown } | null;
+    if (metadata?.kind !== "action-card" || !metadata.action || typeof metadata.action !== "object") {
+      throw new TaskOperationError("INVALID_ARGUMENT", "prepared action metadata is required");
+    }
+    command = { kind: "action-proposal", context, action: metadata.action as PreparedAction };
+  } else if (options.introductionAgentId && options.introductionToken) {
+    command = {
+      kind: "agent-introduction",
+      context,
+      content: options.content,
+      attachmentIds: options.attachmentIds,
+      proof: { agentId: options.introductionAgentId, token: options.introductionToken },
+    };
+  } else if (options.senderType === "system") {
+    command = { kind: "reminder", context, content: options.content };
+  } else {
+    command = {
+      kind: "chat",
+      context,
+      content: options.content,
+      attachmentIds: options.attachmentIds,
+    };
+  }
+  return modules.messagePosting.post(command);
+}
+
 
 /** Target resolution: #name / dm:@name / thread #name:shortid or dm:@name:shortid.
  *  Thread suffix shortid = 8-char short id of the parent message → resolve/create the thread channel for that parent message (thread = standalone channel, unified for human/agent). */
@@ -749,15 +606,23 @@ export async function canAgentReadChannel(spaceId: string, channelId: string, ag
   const db = dbForSpace(spaceId);
   const lifecycle = await channelLifecycleState(spaceId, channelId);
   if (lifecycle === "deleted" || lifecycle === "missing") return false;
-  const member = (await db.select().from(schema.channelAgentMembers).where(and(eq(schema.channelAgentMembers.channelId, channelId), eq(schema.channelAgentMembers.agentId, agentId))))[0];
-  if (member) return true;
   const ch = (await db.select().from(schema.channels).where(eq(schema.channels.id, channelId)))[0];
   if (!ch || ch.spaceId !== spaceId || ch.deletedAt) return false;
-  if (ch.type === "channel") return true;                                  // public: any agent in the Space may read
-  if (ch.parentMessageId) {                                                // thread: visibility follows its parent message's channel
+  const member = (await db.select().from(schema.channelAgentMembers).where(and(eq(schema.channelAgentMembers.channelId, channelId), eq(schema.channelAgentMembers.agentId, agentId))))[0];
+  if (ch.type === "thread") {
+    if (!member || (member.accessExpiresAt && member.accessExpiresAt.getTime() <= Date.now())) return false;
+    if (member.accessKind === "task_scoped") return Boolean(member.taskScope);
+    if (!ch.parentMessageId) return false;
     const parent = (await db.select().from(schema.messages).where(eq(schema.messages.id, ch.parentMessageId)))[0];
-    if (parent) return canAgentReadChannel(spaceId, parent.channelId, agentId); // depth 1 (a parent channel is never itself a thread)
+    if (!parent) return false;
+    const parentMember = (await db.select().from(schema.channelAgentMembers).where(and(
+      eq(schema.channelAgentMembers.channelId, parent.channelId),
+      eq(schema.channelAgentMembers.agentId, agentId),
+    )))[0];
+    return Boolean(parentMember && (!parentMember.accessExpiresAt || parentMember.accessExpiresAt.getTime() > Date.now()));
   }
+  if (member && (!member.accessExpiresAt || member.accessExpiresAt.getTime() > Date.now())) return true;
+  if (ch.type === "channel") return true;                                  // public: any agent in the Space may read
   return false;                                                            // private / DM the agent is not a member of
 }
 
@@ -856,85 +721,10 @@ export async function getOrCreateDM(spaceId: string, aId: string, aType: string,
 
 /** Find/create thread channel (thread = channel with type=thread, carrying parentMessageId). Idempotent. creator added as member = auto follow. */
 export async function getOrCreateThread(spaceId: string, parentMessageId: string, creator?: { type: "human" | "agent"; id: string }) {
-  const db = dbForSpace(spaceId);
-  const parent = (await db.select({ channelId: schema.messages.channelId }).from(schema.messages).where(and(
-    eq(schema.messages.id, parentMessageId),
-    eq(schema.messages.spaceId, spaceId),
-  )))[0];
-  if (!parent) throw new Error(`parent message not found: ${parentMessageId}`);
-  await assertChannelWritable(spaceId, parent.channelId);
-  let thread = (await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.type, "thread"), eq(schema.channels.parentMessageId, parentMessageId))))[0];
-  let created = false;
-  if (!thread) {
-    // Atomic create: partitioned unique index (spaceId, parentMessageId WHERE type=thread) ensures only one row under concurrency; losing insert returns empty → re-select.
-    const [ch] = await db.insert(schema.channels).values({ spaceId, type: "thread", parentMessageId, name: `thread-${parentMessageId.slice(0, 8)}` }).onConflictDoNothing().returning();
-    thread = ch ?? (await db.select().from(schema.channels).where(and(eq(schema.channels.spaceId, spaceId), eq(schema.channels.type, "thread"), eq(schema.channels.parentMessageId, parentMessageId))))[0]!;
-    created = Boolean(ch);
-    if (ch) { // only add thread root member on the actual new creation (skip for the losing insert)
-      const parentMessage = (await db.select().from(schema.messages).where(eq(schema.messages.id, parentMessageId)))[0];
-      if (parentMessage?.senderType === "human") await followHumanThread(spaceId, thread.id);
-      else if (parentMessage?.senderType === "agent" && parentMessage.senderId) {
-        await addChannelMembers(spaceId, thread.id, [{ type: "agent", id: parentMessage.senderId }]);
-      }
-    }
-  }
-  if (creator?.type === "human") await followHumanThread(spaceId, thread.id);
-  else if (creator) await addChannelMembers(spaceId, thread.id, [{ type: "agent", id: creator.id }]);
-  if (created) await publishThreadUpdated(spaceId, thread, creator?.id ?? null, creator?.type ?? "system");
-  return thread;
+  return threadModule.getOrCreateThread(spaceId, parentMessageId, creator);
 }
 
-// ── Tasks (message-as-task): convert / claim / unclaim / status, all emit task:updated ──────
-async function taskMentions(spaceId: string, messageId: string): Promise<MessageMention[]> {
-  const db = dbForSpace(spaceId);
-  const mts = await db.select().from(schema.messageMentions).where(eq(schema.messageMentions.messageId, messageId));
-  return mts.map(persistedMessageMention);
-}
-async function emitTaskUpdated(spaceId: string, msg: typeof schema.messages.$inferSelect): Promise<void> {
-  await publish(spaceId, { type: "task", op: "updated", task: serializeMsg(msg, await taskMentions(spaceId, msg.id)) });
-}
-
-/** Mark an existing message as a task (open + assign taskNumber). */
-// ── Task lifecycle system messages (convert/claim/unclaim/status each emit one messageType:system audit entry) ──
-const taskTitle = (s: string) => { const t = ((s || "").split("\n")[0] ?? "").trim(); return t.length > 40 ? t.slice(0, 40) + "…" : t; };
-
-async function assertMessageChannelWritable(spaceId: string, messageId: string): Promise<boolean> {
-  const message = (await dbForSpace(spaceId).select({ channelId: schema.messages.channelId }).from(schema.messages).where(and(
-    eq(schema.messages.id, messageId),
-    eq(schema.messages.spaceId, spaceId),
-  )))[0];
-  if (!message) return false;
-  await assertChannelWritable(spaceId, message.channelId);
-  return true;
-}
-// Task status system message copy (Title-Case + status emoji prefix). Emojis confirmed for in_progress 🔄 / in_review 👁; todo/done/closed pending confirmation, no guessing.
-const STATUS_LABEL: Record<string, string> = { todo: "Todo", in_progress: "In Progress", in_review: "In Review", done: "Done", closed: "Closed" };
-const STATUS_EMOJI: Record<string, string> = { in_progress: "🔄", in_review: "👁" };
-async function actorName(spaceId: string, type: "human" | "agent", id: string): Promise<string> {
-  const db = dbForSpace(spaceId);
-  if (type === "agent") { const a = (await db.select().from(schema.agents).where(eq(schema.agents.id, id)))[0]; return a?.displayName || a?.name || "agent"; }
-  return humanIdentityForId(id)?.displayName ?? "someone";
-}
 type DispatchAuditContext = DispatchMessageContext & { messageId?: string };
-
-async function prepareTaskActionDispatch(
-  spaceId: string,
-  taskMessageId: string,
-  channelId: string,
-  by?: { type: "human" | "agent"; id: string },
-) {
-  const messageId = randomUUID();
-  const state = new SqliteDispatchState(spaceId);
-  const dispatch = await state.resolveMessageContext({
-    messageId,
-    channelId,
-    senderType: by?.type ?? "system",
-    senderId: by?.id ?? null,
-    taskMessageId,
-  });
-  await state.ensureChain({ ...dispatch, rootMessageId: messageId, channelId });
-  return { messageId, state, dispatch };
-}
 
 // Lightweight system message: only insert + publish message, no wake/no task creation (otherwise every status change wakes all agents = noise)
 async function sysTaskMsg(
@@ -946,21 +736,28 @@ async function sysTaskMsg(
 ) {
   const db = dbForSpace(spaceId);
   const seq = await nextSeq(spaceId);
-  const [m] = await db.insert(schema.messages).values({
-    ...(dispatch?.messageId ? { id: dispatch.messageId } : {}),
-    seq,
-    spaceId,
-    channelId,
-    senderType: "system",
-    senderId: actor?.id ?? null,
-    senderName: "system",
-    messageType: "system",
-    content,
-    searchText: content,
-    dispatchChainId: dispatch?.chainId ?? null,
-    dispatchDepth: dispatch?.dispatchDepth ?? null,
-  }).returning();
+  const m = db.transaction((tx) => {
+    const inserted = tx.insert(schema.messages).values({
+      ...(dispatch?.messageId ? { id: dispatch.messageId } : {}),
+      seq,
+      spaceId,
+      channelId,
+      senderType: "system",
+      senderId: actor?.id ?? null,
+      senderName: "system",
+      messageType: "system",
+      content,
+      memoryPolicy: "exclude",
+      searchText: content,
+      dispatchChainId: dispatch?.chainId ?? null,
+      dispatchDepth: dispatch?.dispatchDepth ?? null,
+    }).returning().get();
+    new DeliveryJournal().persistChannelMessageInTransaction(tx, spaceId, inserted);
+    tx.update(schema.channels).set({ lastMessageAt: new Date() }).where(eq(schema.channels.id, channelId)).run();
+    return inserted;
+  });
   await publishTaskSystemMessage(spaceId, m!, actor);
+  await scheduleV2Turns(spaceId);
   return m!;
 }
 
@@ -984,15 +781,7 @@ export async function convertMessageToTask(
   by?: { type: "human" | "agent"; id: string },
   executionMode: TaskExecutionMode = "autopilot",
 ) {
-  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
-  const result = convertMessageRecord({ spaceId, messageId, executionMode });
-  if (!result) return null;
-  if (!result.changed) return result.task;
-  const upd = result.task;
-  await publish(spaceId, { type: "task", op: "created", task: serializeMsg(upd, await taskMentions(spaceId, messageId)) });
-  const an = by ? await actorName(spaceId, by.type, by.id) : "Someone";
-  await sysTaskMsg(spaceId, upd.channelId, `${an} converted a message to task #${upd.taskNumber} "${taskTitle(upd.content)}"`, by);
-  return upd;
+  return taskLifecycle().convertMessage(spaceId, messageId, by, executionMode);
 }
 
 /** Claim a task → in_progress + assignee. */
@@ -1038,107 +827,11 @@ export async function resolveMessageId(spaceId: string, idOrShort: string | unde
 }
 
 export async function claimTask(spaceId: string, messageId: string, assigneeType: "human" | "agent", assigneeId: string, expectedRevision?: number) {
-  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
-  const result = claimTaskRecord({ spaceId, messageId, assigneeType, assigneeId, expectedRevision });
-  if (!result) return null;
-  const upd = result.task;
-  if (!result.changed) return upd;
-  await emitTaskUpdated(spaceId, upd);
-  await sysTaskMsg(spaceId, upd.channelId, `${await actorName(spaceId, assigneeType, assigneeId)} claimed #${upd.taskNumber} "${taskTitle(upd.content)}"`, { type: assigneeType, id: assigneeId });
-  return upd;
+  return taskLifecycle().claim(spaceId, messageId, assigneeType, assigneeId, expectedRevision);
 }
 
 export async function unclaimTask(spaceId: string, messageId: string, by?: { type: "human" | "agent"; id: string }, expectedRevision?: number) {
-  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
-  const result = unclaimTaskRecord({ spaceId, messageId, by, expectedRevision });
-  if (!result) return null;
-  const upd = result.task;
-  if (!result.changed) return upd;
-  await emitTaskUpdated(spaceId, upd);
-  await sysTaskMsg(spaceId, upd.channelId, `${by ? await actorName(spaceId, by.type, by.id) : "Someone"} released #${upd.taskNumber} "${taskTitle(upd.content)}"`, by);
-  return upd;
-}
-
-async function dispatchTaskAssignment(
-  spaceId: string,
-  task: typeof schema.messages.$inferSelect,
-  target: typeof schema.agents.$inferSelect,
-  by?: { type: "human" | "agent"; id: string },
-): Promise<void> {
-  const db = dbForSpace(spaceId);
-  const thread = await getOrCreateThread(spaceId, task.id);
-  const threadCh = thread.id;
-  if (!task.threadId) {
-    await db.update(schema.messages).set({ threadId: threadCh }).where(eq(schema.messages.id, task.id));
-    task.threadId = threadCh;
-  }
-  // A task-only assignee gets the minimum required access: the owning task thread, not the parent channel.
-  // Join at the current boundary so earlier thread history stays context-on-demand while this assignment event
-  // (written immediately below) remains unread and can be delivered as required.
-  await addChannelMembers(spaceId, threadCh, [{ type: "agent", id: target.id }]);
-
-  const actor = by ? await actorName(spaceId, by.type, by.id) : "Someone";
-  const assigneeName = target.displayName || target.name;
-  const action = await prepareTaskActionDispatch(spaceId, task.id, threadCh, by);
-  const sysMsg = await sysTaskMsg(
-    spaceId,
-    threadCh,
-    `${actor} assigned #${task.taskNumber} "${taskTitle(task.content)}" to ${assigneeName}`,
-    by,
-    { ...action.dispatch, messageId: action.messageId },
-  );
-  const responseDecision = decideAgentMessageResponse({
-    agentId: target.id,
-    channelType: "thread",
-    senderType: "system",
-    effectiveMode: target.defaultResponseMode,
-    messageSeq: sysMsg.seq,
-    explicitTaskAssignment: true,
-  });
-  if (!responseDecision.wake || responseDecision.directive === "observe") return;
-
-  const reservation = await reserveDispatchWake({
-    state: action.state,
-    dispatch: action.dispatch,
-    messageId: sysMsg.id,
-    targetAgentId: target.id,
-    targetAgentName: target.name,
-    fallbackChannelId: threadCh,
-  });
-  if (!reservation) return;
-  const startTarget = await agentStartTarget(spaceId, target.id);
-  if (startTarget.ok) {
-    const startSent = sendAgentStart(startTarget, target.id, "wake");
-    const deliverSent = startSent && sendAgentDeliver(startTarget, {
-      agentId: target.id,
-      seq: sysMsg.seq,
-      from: actor,
-      target: threadCh,
-      targetName: `task #${task.taskNumber}`,
-      msgShort: sysMsg.id.slice(0, 8),
-      isTask: true,
-      message: { content: `#${task.taskNumber} assigned to you` },
-      mentioned: true,
-      responseDirective: responseDecision.directive,
-      responseReason: responseDecision.reason,
-    });
-    if (!deliverSent) {
-      await action.state.releaseWake(reservation.reservationId);
-      await markAgentUnavailable(spaceId, target.id, "local runtime worker offline");
-    } else {
-      await action.state.commitWake(reservation.reservationId, {
-        agentId: target.id,
-        channelId: threadCh,
-        chainId: action.dispatch.chainId,
-        dispatchDepth: action.dispatch.dispatchDepth,
-      });
-    }
-  } else if (startTarget.reason !== "agent not found") {
-    await action.state.releaseWake(reservation.reservationId);
-    await markAgentUnavailable(spaceId, target.id, startTarget.reason);
-  } else {
-    await action.state.releaseWake(reservation.reservationId);
-  }
+  return taskLifecycle().unclaim(spaceId, messageId, by, expectedRevision);
 }
 
 export async function assignTask(
@@ -1148,36 +841,11 @@ export async function assignTask(
   by?: { type: "human" | "agent"; id: string },
   expectedRevision?: number,
 ) {
-  const db = dbForSpace(spaceId);
-  const target = (await db.select().from(schema.agents).where(and(
-    eq(schema.agents.id, assigneeId),
-    eq(schema.agents.spaceId, spaceId),
-    isNull(schema.agents.deletedAt),
-  )))[0];
-  if (!target) return null;
-  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
-
-  const result = assignTaskRecord({ spaceId, messageId, assigneeId, by, expectedRevision });
-  if (!result) return null;
-  const upd = result.task;
-  if (!result.changed) return upd;
-
-  await emitTaskUpdated(spaceId, upd);
-  await dispatchTaskAssignment(spaceId, upd, target, by);
-  return upd;
+  return taskLifecycle().assign(spaceId, messageId, assigneeId, by, expectedRevision);
 }
 
 export async function setTaskExecutionMode(spaceId: string, messageId: string, mode: TaskExecutionMode) {
-  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
-  const db = dbForSpace(spaceId);
-  const [upd] = await db.update(schema.messages).set({ taskExecutionMode: mode, taskRevision: sql`${schema.messages.taskRevision} + 1`, updatedAt: new Date() }).where(and(
-    eq(schema.messages.id, messageId),
-    eq(schema.messages.spaceId, spaceId),
-    isNotNull(schema.messages.taskStatus),
-  )).returning();
-  if (!upd) return null;
-  await emitTaskUpdated(spaceId, upd);
-  return upd;
+  return taskLifecycle().setExecutionMode(spaceId, messageId, mode);
 }
 
 /** Change status (todo|in_progress|in_review|done|closed); done/closed records completedAt; done auto-creates thread. */
@@ -1188,113 +856,12 @@ export async function setTaskStatus(
   by?: { type: "human" | "agent"; id: string },
   concurrency: { from?: TaskStatus; expectedRevision?: number } = {},
 ) {
-  if (!isTaskStatus(status)) throw new TaskOperationError("INVALID_TRANSITION", `invalid task status: ${status}`);
-  const db = dbForSpace(spaceId);
-  const current = db.select().from(schema.messages).where(and(
-    eq(schema.messages.id, messageId),
-    eq(schema.messages.spaceId, spaceId),
-    isNotNull(schema.messages.taskStatus),
-  )).get();
-  if (!current) return null;
-  if (current.taskStatus === status) return current;
-  await assertChannelWritable(spaceId, current.channelId);
-  const th = await getOrCreateThread(spaceId, current.id);
-  const threadCh = th.id;
-  if (!current.threadId) await db.update(schema.messages).set({ threadId: threadCh }).where(eq(schema.messages.id, current.id));
-  const actor = by ? await actorName(spaceId, by.type, by.id) : "Someone";
-  const label = STATUS_LABEL[status] ?? status;
-  const emoji = STATUS_EMOJI[status] ? STATUS_EMOJI[status] + " " : ""; // confirmed for in_progress/in_review; others pending confirmation, no guessing
-  const content = `${emoji}${actor} moved #${current.taskNumber} "${taskTitle(current.content)}" to ${label}`;
-  const action = await prepareTaskActionDispatch(spaceId, current.id, threadCh, by);
-  const auditSeq = await nextSeq(spaceId);
-  const result = transitionTaskRecord({
-    spaceId,
-    messageId,
-    to: status,
-    ...concurrency,
-    audit: {
-      id: action.messageId,
-      seq: auditSeq,
-      spaceId,
-      channelId: threadCh,
-      senderType: "system",
-      senderId: by?.id ?? null,
-      senderName: "system",
-      messageType: "system",
-      content,
-      searchText: content,
-      dispatchChainId: action.dispatch.chainId,
-      dispatchDepth: action.dispatch.dispatchDepth,
-    },
-  });
-  if (!result) return null;
-  const upd = result.task;
-  if (!result.changed) return upd;
-  await emitTaskUpdated(spaceId, upd); // task message itself updated (taskStatus) → lands in CHANNEL, updates badge + board in channel (verified: message:updated and task:updated both land in the channel)
-  upd.threadId = threadCh;
-  const sysMsg = result.audit!;
-  await publishTaskSystemMessage(spaceId, sysMsg, by);
-  // Wake the assigned agent (only when changed by someone else). Verified: human changes status → assignee agent fires agent:activity working detail="Message received".
-  if (upd.taskAssigneeType === "agent" && upd.taskAssigneeId && by?.id !== upd.taskAssigneeId) {
-    // Repair a missing task membership without marking this already-persisted required event as read.
-    await addChannelMembers(spaceId, threadCh, [{ type: "agent", id: upd.taskAssigneeId }], { watermark: sysMsg.seq - 1 });
-    const assignee = db.select({
-      name: schema.agents.name,
-      defaultResponseMode: schema.agents.defaultResponseMode,
-    }).from(schema.agents).where(eq(schema.agents.id, upd.taskAssigneeId)).get();
-    const responseDecision = decideAgentMessageResponse({
-      agentId: upd.taskAssigneeId,
-      channelType: "thread",
-      senderType: "system",
-      effectiveMode: assignee?.defaultResponseMode ?? "active",
-      messageSeq: sysMsg.seq,
-      explicitTaskAssignment: true,
-    });
-    if (!responseDecision.wake || responseDecision.directive === "observe") return upd;
-    const reservation = await reserveDispatchWake({
-      state: action.state,
-      dispatch: action.dispatch,
-      messageId: sysMsg.id,
-      targetAgentId: upd.taskAssigneeId,
-      targetAgentName: assignee?.name ?? upd.taskAssigneeId,
-      fallbackChannelId: threadCh,
-    });
-    if (!reservation) return upd;
-    const target = await agentStartTarget(spaceId, upd.taskAssigneeId);
-    if (target.ok) {
-      const startSent = sendAgentStart(target, upd.taskAssigneeId, "wake");
-      const deliverSent = startSent && sendAgentDeliver(target, { type: "agent:deliver", agentId: upd.taskAssigneeId, seq: sysMsg.seq, from: actor, target: threadCh, targetName: `task #${upd.taskNumber}`, msgShort: sysMsg.id.slice(0, 8), isTask: true, message: { content: `#${upd.taskNumber} → ${label}` }, mentioned: true, responseDirective: responseDecision.directive, responseReason: responseDecision.reason });
-      if (!deliverSent) {
-        await action.state.releaseWake(reservation.reservationId);
-        await markAgentUnavailable(spaceId, upd.taskAssigneeId, "local runtime worker offline");
-      } else {
-        await action.state.commitWake(reservation.reservationId, {
-          agentId: upd.taskAssigneeId,
-          channelId: threadCh,
-          chainId: action.dispatch.chainId,
-          dispatchDepth: action.dispatch.dispatchDepth,
-        });
-      }
-    } else if (target.reason !== "agent not found") {
-      await action.state.releaseWake(reservation.reservationId);
-      await markAgentUnavailable(spaceId, upd.taskAssigneeId, target.reason);
-    } else {
-      await action.state.releaseWake(reservation.reservationId);
-    }
-  }
-  return upd;
+  return taskLifecycle().setStatus(spaceId, messageId, status, by, concurrency);
 }
 
 /** Delete task: revert to regular message — clear task fields, source message retained; emit task:deleted. */
 export async function deleteTask(spaceId: string, messageId: string) {
-  if (!(await assertMessageChannelWritable(spaceId, messageId))) return null;
-  const db = dbForSpace(spaceId);
-  const [upd] = await db.update(schema.messages)
-    .set({ taskStatus: null, taskNumber: null, taskAssigneeType: null, taskAssigneeId: null, taskClaimedAt: null, taskCompletedAt: null, taskParentId: null, taskRevision: 0, updatedAt: new Date() })
-    .where(and(eq(schema.messages.id, messageId), eq(schema.messages.spaceId, spaceId), isNotNull(schema.messages.taskStatus))).returning();
-  if (!upd) return null;
-  await publish(spaceId, { type: "task", op: "deleted", channelId: upd.channelId, taskId: upd.id });
-  return upd;
+  return taskLifecycle().delete(spaceId, messageId);
 }
 
 // ── Agent lifecycle: start/stop/reset through the one installation-local runtime worker ──
@@ -1312,36 +879,66 @@ async function markAgentUnavailable(spaceId: string, agentId: string, reason: st
 type AgentStartTarget = { ok: true; cfg: NonNullable<Awaited<ReturnType<typeof agentConfig>>> };
 type AgentControlTarget = { ok: true; spaceId: string; workspaceRoot: string };
 
-function sendAgentStart(target: AgentStartTarget, agentId: string, reason: AgentStartReason): boolean {
-  const introductionToken = reason !== "wake" && !target.cfg.introduced ? randomUUID() : null;
-  const msg = { type: "agent:start", agentId, config: { ...target.cfg, introductionToken: introductionToken ?? undefined }, reason };
-  setAgentIntroductionTurn(target.cfg.spaceId, agentId, introductionToken);
-  const sent = sendToWorker(msg);
-  if (!sent) setAgentIntroductionTurn(target.cfg.spaceId, agentId, null);
-  return sent;
-}
-
-function sendAgentDeliver(_target: AgentStartTarget, msg: Record<string, unknown>): boolean {
-  return sendToWorker({ type: "agent:deliver", ...msg });
-}
-
 function sendAgentControl(_target: AgentControlTarget, msg: Record<string, unknown>): boolean {
   return sendToWorker(msg);
 }
 
 async function agentStartTarget(spaceId: string, agentId: string): Promise<AgentStartTarget | { ok: false; reason: string }> {
   const db = dbForSpace(spaceId);
-  const a = (await db.select({
-    runtime: schema.agents.runtime,
-  }).from(schema.agents)
-    .where(and(eq(schema.agents.id, agentId), eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt))))[0];
-  if (!a) return { ok: false, reason: "agent not found" };
+  const agent = db.select().from(schema.agents)
+    .where(and(eq(schema.agents.id, agentId), eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt))).get();
+  if (!agent) return { ok: false, reason: "agent not found" };
+  if (new SessionModule(spaceId, db).harnessMode(agentId) !== "legacy") {
+    return { ok: false, reason: "Agent is assigned to the v2 harness" };
+  }
   if (!isWorkerConnected()) return { ok: false, reason: "local runtime worker offline" };
-  const runtime = a.runtime ?? "claude";
+  const runtime = agent.runtime ?? "claude";
   if (!workerRuntimes().includes(runtime)) return { ok: false, reason: `runtime unavailable: ${runtime}` };
-  const cfg = await agentConfig(spaceId, agentId);
+  const cfg = await agentConfigFromRow(agent);
   if (!cfg) return { ok: false, reason: "agent not found" };
   return { ok: true, cfg };
+}
+
+async function agentStartTargets(
+  spaceId: string,
+  agentIds: string[],
+): Promise<ReadonlyMap<string, AgentStartTarget | { ok: false; reason: string }>> {
+  const uniqueIds = [...new Set(agentIds)];
+  const result = new Map<string, AgentStartTarget | { ok: false; reason: string }>();
+  if (!uniqueIds.length) return result;
+  const agents = dbForSpace(spaceId).select().from(schema.agents).where(and(
+    inArray(schema.agents.id, uniqueIds),
+    eq(schema.agents.spaceId, spaceId),
+    isNull(schema.agents.deletedAt),
+  )).all();
+  const sessions = new SessionModule(spaceId);
+  const agentById = new Map(agents.map((agent) => [agent.id, agent]));
+  for (const agentId of uniqueIds) {
+    if (!agentById.has(agentId)) result.set(agentId, { ok: false, reason: "agent not found" });
+  }
+  if (!isWorkerConnected()) {
+    for (const agentId of uniqueIds) {
+      if (agentById.has(agentId)) result.set(agentId, { ok: false, reason: "local runtime worker offline" });
+    }
+    return result;
+  }
+  const runtimes = new Set(workerRuntimes());
+  const availableAgents = agents.filter((agent) => {
+    if (sessions.harnessMode(agent.id) !== "legacy") {
+      result.set(agent.id, { ok: false, reason: "Agent is assigned to the v2 harness" });
+      return false;
+    }
+    const runtime = agent.runtime ?? "claude";
+    if (runtimes.has(runtime)) return true;
+    result.set(agent.id, { ok: false, reason: `runtime unavailable: ${runtime}` });
+    return false;
+  });
+  const configs = await agentConfigs(availableAgents);
+  for (const agent of availableAgents) {
+    const cfg = configs.get(agent.id);
+    result.set(agent.id, cfg ? { ok: true, cfg } : { ok: false, reason: "agent not found" });
+  }
+  return result;
 }
 async function agentControlTarget(spaceId: string, agentId: string): Promise<AgentControlTarget | { ok: false; reason: string }> {
   const db = dbForSpace(spaceId);
@@ -1353,28 +950,91 @@ async function agentControlTarget(spaceId: string, agentId: string): Promise<Age
   if (!space) return { ok: false, reason: "space not found" };
   return { ok: true, spaceId, workspaceRoot: space.rootPath };
 }
+export interface AgentStartResult {
+  ok: boolean;
+  reason?: string;
+  inboxSummary?: InboxSummary;
+}
+
 /** Start an agent (requires the installation-local runtime worker to be online). */
-export async function startAgent(spaceId: string, agentId: string, reason: AgentStartReason = "manual"): Promise<{ ok: boolean; reason?: string }> {
+export async function startAgent(spaceId: string, agentId: string, reason: Exclude<AgentStartReason, "wake"> = "manual"): Promise<AgentStartResult> {
   const db = dbForSpace(spaceId);
+  const harnessMode = new SessionModule(spaceId, db).harnessMode(agentId);
+  if (harnessMode === "v2") {
+    const binding = db.select({
+      state: schema.agents.modelBindingState,
+      restartRequired: schema.agents.runtimeRestartRequired,
+    }).from(schema.agents).where(and(
+      eq(schema.agents.id, agentId),
+      eq(schema.agents.spaceId, spaceId),
+      isNull(schema.agents.deletedAt),
+    )).get();
+    if (!binding) return { ok: false, reason: "agent not found" };
+    if (binding.state !== "legacy" && (binding.state !== "ready" || binding.restartRequired)) {
+      return { ok: false, reason: `model binding is ${binding.state}; confirm the Agent model binding before starting` };
+    }
+    const summary = inboxSummary(spaceId, agentId, db);
+    await db.update(schema.agents).set({ status: "active", activity: isWorkerConnected() ? "working" : "offline" })
+      .where(and(eq(schema.agents.id, agentId), eq(schema.agents.spaceId, spaceId), isNull(schema.agents.deletedAt)));
+    await publishAgentState(spaceId, agentId);
+    await scheduleV2Turns(spaceId);
+    return { ok: true, inboxSummary: summary };
+  }
+  if (harnessMode === "migrating") return { ok: false, reason: "Agent harness migration is incomplete" };
   const target = await agentStartTarget(spaceId, agentId);
   if (!target.ok) {
     if (target.reason !== "agent not found") await markAgentUnavailable(spaceId, agentId, target.reason);
     return { ok: false, reason: target.reason };
   }
-  if (!sendAgentStart(target, agentId, reason)) {
+  const commandId = randomUUID();
+  const introductionToken = !target.cfg.introduced ? randomUUID() : null;
+  setAgentIntroductionTurn(spaceId, agentId, introductionToken);
+  let admission;
+  try {
+    admission = await runtimeWorkerPort.start({
+      type: "agent:start",
+      source: "manual",
+      commandId,
+      spaceId,
+      agentId,
+      config: { ...target.cfg, introductionToken: introductionToken ?? undefined },
+      reason,
+    });
+  } catch (error) {
+    setAgentIntroductionTurn(spaceId, agentId, null);
     await markAgentUnavailable(spaceId, agentId, "local runtime worker offline");
-    return { ok: false, reason: "local runtime worker offline" };
+    return { ok: false, reason: error instanceof Error ? error.message : "local runtime worker offline" };
   }
-  await db.update(schema.agents).set({ status: "active", activity: "working" }).where(eq(schema.agents.id, agentId));
-  await publishAgentState(spaceId, agentId);
+  if (admission.status === "rejected") {
+    setAgentIntroductionTurn(spaceId, agentId, null);
+    return { ok: false, reason: admission.reason ?? "local runtime worker rejected start" };
+  }
+  if (admission.status === "admitted") {
+    await db.update(schema.agents).set({ status: "active", activity: "working" }).where(eq(schema.agents.id, agentId));
+    await publishAgentState(spaceId, agentId);
+  }
   return { ok: true };
 }
 export async function stopAgent(spaceId: string, agentId: string): Promise<boolean> {
   const db = dbForSpace(spaceId);
   clearAgentIntroductionTurns(spaceId, agentId);
+  if (new SessionModule(spaceId, db).harnessMode(agentId) === "v2") {
+    await harnessTurnScheduler.cancelAgent(spaceId, agentId);
+    try {
+      if (isWorkerConnected()) await harnessTurnScheduler.closeAgentSessions(spaceId, agentId, "stop");
+    } catch (error) {
+      log.warn("v2 Agent session close was not acknowledged", { agentId, detail: String(error) });
+    }
+    await db.update(schema.agents).set({ status: "inactive", activity: "offline" }).where(and(eq(schema.agents.id, agentId), eq(schema.agents.spaceId, spaceId)));
+    await publishAgentState(spaceId, agentId);
+    return true;
+  }
   const target = await agentControlTarget(spaceId, agentId);
   if (target.ok) {
-    if (!sendAgentControl(target, { type: "agent:stop", agentId })) log.warn("agent stop target unavailable", { agentId, reason: "local runtime worker offline" });
+    try {
+      const admission = await runtimeWorkerPort.stop({ type: "agent:stop", source: "lifecycle", commandId: randomUUID(), spaceId, agentId });
+      if (admission.status === "rejected") log.warn("agent stop rejected", { agentId, reason: admission.reason });
+    } catch (error) { log.warn("agent stop target unavailable", { agentId, reason: String(error) }); }
   } else if (target.reason !== "agent not found") {
     log.warn("agent stop target unavailable", { agentId, reason: target.reason });
   }
@@ -1385,11 +1045,32 @@ export async function stopAgent(spaceId: string, agentId: string): Promise<boole
 export async function resetAgent(spaceId: string, agentId: string, clearAgentMemory = false): Promise<boolean> {
   const db = dbForSpace(spaceId);
   clearAgentIntroductionTurns(spaceId, agentId);
+  const sessions = new SessionModule(spaceId, db);
+  if (sessions.harnessMode(agentId) === "v2") {
+    await harnessTurnScheduler.cancelAgent(spaceId, agentId);
+    try {
+      if (isWorkerConnected()) await harnessTurnScheduler.closeAgentSessions(spaceId, agentId, "reset");
+    } catch (error) {
+      log.warn("v2 Agent reset close was not acknowledged", { agentId, detail: String(error) });
+    }
+    const sessionIds = db.select({ id: schema.runtimeSessions.id }).from(schema.runtimeSessions).where(and(
+      eq(schema.runtimeSessions.agentId, agentId),
+      isNull(schema.runtimeSessions.retiredAt),
+    )).all();
+    for (const session of sessionIds) turnCapabilityService(spaceId).closeSession(session.id);
+    sessions.retireAgentSessions(agentId);
+  }
   const target = await agentControlTarget(spaceId, agentId);
   if (target.ok) {
-    if (!sendAgentControl(target, { type: "agent:reset", agentId, spaceId: target.spaceId, workspaceRoot: target.workspaceRoot, clearAgentMemory })) log.warn("agent reset target unavailable", { agentId, reason: "local runtime worker offline" });
+    try {
+      const admission = await runtimeWorkerPort.reset({ type: "agent:reset", source: "lifecycle", commandId: randomUUID(), agentId, spaceId: target.spaceId, workspaceRoot: target.workspaceRoot, clearAgentMemory });
+      if (admission.status === "rejected") log.warn("agent reset rejected", { agentId, reason: admission.reason });
+    } catch (error) { log.warn("agent reset target unavailable", { agentId, reason: String(error) }); }
   } else if (target.reason !== "agent not found") {
     log.warn("agent reset target unavailable", { agentId, reason: target.reason });
+  }
+  if (clearAgentMemory) {
+    clearAgentPrivateMemory(spaceId, agentId);
   }
   await db.update(schema.agents).set({
     status: "inactive",

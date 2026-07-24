@@ -6,7 +6,7 @@ import { findAttachmentById } from "../../db/lookup.js";
 import { parseUpload } from "../attachments.js";
 import { assertChannelWritable } from "../../channels/channelLifecycle.js";
 import { canHumanReadChannel } from "../channelAccess.js";
-import { deleteObject, readObject } from "../storage.js";
+import { deleteObject, readObject } from "../../files/localObjectStorage.js";
 import { sendErr, sendJson } from "../util.js";
 
 /**

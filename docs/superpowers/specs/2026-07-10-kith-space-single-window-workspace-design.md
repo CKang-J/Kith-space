@@ -1,9 +1,9 @@
 # Kith-space 单窗口工作区前端架构设计
 
-> 2026-07-12 路线修正：本文的单窗口、三态、Dock 交互和面板视觉继续有效；产品模块与宿主边界以 `2026-07-11-personal-agent-os-local-pivot-design.md` 和 `2026-07-12-home-space-and-space-root-design.md` 为准。普通冷启动进入 Home，Home Dock 增加 Spaces；`Members` 已改为 `Agents`，`Computers` 删除，旧 `Layout` 不再保留。
+> 2026-07-18 状态修正：本文的单窗口和三态基础已经实现并完成本轮用户验收；ChatOnly 导航与 Dock 的最终形态由 `2026-07-15-chat-shell-sidebar-module-navigation-design.md` 覆盖。产品模块与宿主边界以 `2026-07-11-personal-agent-os-local-pivot-design.md` 和 `2026-07-12-home-space-and-space-root-design.md` 为准。普通冷启动进入 Home，Home 提供 Spaces；`Members` 已改为 `Agents`，`Computers` 和旧 `Layout` 已删除。
 
 - 日期：2026-07-10
-- 状态：设计与线框已确认，生产壳第一版联调中
+- 状态：设计已实现；最终壳层形态、自动化验证与本轮用户验收均已完成（2026-07-18）
 - 阶段：P4 前端信息架构纠偏与桌面线框原型
 - 依据：用户提供的 Kith-space 截图、OpenLoaf 界面截图与手绘交互图
 
@@ -346,7 +346,7 @@ Composer 上方展示紧凑标签，例如：
 - 不整块重写 `Chat.tsx` 或 `Layout.tsx`。
 - 新增壳、状态机、模块注册和 Context Stack 时按职责拆分。
 - 通过薄适配复用现有视图。
-- 保留现有界面回退入口，待新壳完整验收后再单独清理。
+- 该条是当时的迁移约束；新壳验收后的回退入口清理状态以 2026-07-15 壳层规格和当前源码为准，不再据此保留旧产品路线。
 
 ## 13. 桌面线框原型
 

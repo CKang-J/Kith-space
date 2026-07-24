@@ -34,6 +34,12 @@ import { handleChannels } from "./channels.js";
 import { handleMessages } from "./messages.js";
 import { handleTasks } from "./tasks.js";
 import { handleDispatch } from "./dispatch.js";
+import { handleTurns } from "./turns.js";
+import { handleMemories } from "./memories.js";
+import { handleMemoryAdvisor } from "./memoryAdvisor.js";
+import { handleDisclosureGrants } from "./disclosureGrants.js";
+import { handleAdvisorProvider } from "./advisorProvider.js";
+import { handleModelSettings } from "./modelSettings.js";
 
 export async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, method: string): Promise<boolean> {
   const p = url.pathname;
@@ -60,6 +66,8 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (await handleHostDirectories(humanCtx)) return true;
   if (await handleLocalRuntimeHumanScope(humanCtx)) return true;
   if (await handleSpacesHumanScope(humanCtx)) return true;
+  if (await handleAdvisorProvider(humanCtx)) return true;
+  if (await handleModelSettings(humanCtx)) return true;
 
   // ---- gate 2: require a registered local Space context ----
   const spaceId = spaceIdHeader(req);
@@ -71,9 +79,13 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   const spaceCtx: SpaceCtx = { ...humanCtx, spaceId };
 
   if (await handleAgents(spaceCtx)) return true;
+  if (await handleMemoryAdvisor(spaceCtx)) return true;
   if (await handleReminders(spaceCtx)) return true;
   if (await handleChannels(spaceCtx)) return true;
   if (await handleMessages(spaceCtx)) return true;
+  if (await handleTurns(spaceCtx)) return true;
+  if (await handleDisclosureGrants(spaceCtx)) return true;
+  if (await handleMemories(spaceCtx)) return true;
   if (await handleAttachments(spaceCtx)) return true;
   if (await handleSpacePreferences(spaceCtx)) return true;
   if (await handleDispatch(spaceCtx)) return true;

@@ -68,6 +68,14 @@ Kith-space 是纯开源项目，采用 MIT / Apache 这类宽松许可。这不�
 
 产品不走闭源商业化路线。宽松许可意味着任何人都能自由使用、修改、分发和商用，我们希望它成为一个可以被信任、被二次创造的公共基础。
 
+### 六、Desktop 监督的模块化单体，性能用证据而不是语言信仰决定
+
+Kith-space 保留 Electron 监督 Core Service、唯一 Local Runtime Worker 和 React UI 的本机拓扑。Core 为 Desktop、授权浏览器和 Agent CLI 提供同一份本机领域权威；Worker 隔离外部 runtime 进程。两者都是 Desktop 产品内部边界，不代表重新走向服务器部署或微服务。
+
+代码结构采用渐进式模块化单体：消息、任务、Agent、频道、文件、Space 与 Runtime 各自形成高内聚的深 Module，通过窄 Interface 和必要 Seam 协作；Transport 与宿主 Adapter 只负责协议和平台差异。优先以特征测试和小切片收敛职责，不做大爆炸式目录重排，也不为抽象而抽象。
+
+TypeScript / Node / Electron / SQLite 继续作为主技术栈。Agent 群聊的主要等待通常来自外部 runtime、模型、工具和无界 fan-out，而不是语言本身。只有可重复基线和 profiler 证明某个稳定热点确实受 JavaScript CPU 限制，且跨平台构建收益大于成本时，才允许把该窄 Implementation 换成 Rust Adapter；全量 Rust 重写不是当前路线。完整工程契约见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
+
 ## 长远愿景：MVP 只是第一个切片
 
 这一节是本文的重点。

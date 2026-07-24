@@ -10,8 +10,13 @@ export function sendErr(res: ServerResponse, code: number, error: string, extra:
 export async function readJson<T = any>(req: IncomingMessage): Promise<T> {
   return new Promise((resolve) => {
     let d = "";
-    req.on("data", (c) => (d += c));
-    req.on("end", () => { try { resolve((d ? JSON.parse(d) : {}) as T); } catch { resolve({} as T); } });
+    let settled = false;
+    req.on("data", (c) => {
+      if (settled) return;
+      d += c;
+      if (Buffer.byteLength(d) > 2 * 1024 * 1024) { settled = true; resolve({} as T); req.destroy(); }
+    });
+    req.on("end", () => { if (!settled) { try { resolve((d ? JSON.parse(d) : {}) as T); } catch { resolve({} as T); } } });
   });
 }
 function header(req: IncomingMessage, name: string): string | null {

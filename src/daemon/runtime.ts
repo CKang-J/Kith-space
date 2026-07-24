@@ -1,6 +1,8 @@
 // Runtime abstraction: each runtime (claude/codex/…) owns its process and protocol lifecycle.
 // Types only — no implementation imports, avoiding circular dependencies with concrete runtime files.
 import type { Logger } from "../log.js";
+import type { NormalizedUsage } from "../runtime/contract/v2/runtimeContract.js";
+import type { McpBootstrapDescriptor } from "../runtime/contract/v2/runtimeContract.js";
 
 export interface TrajectoryEntry {
   kind: "thinking" | "text" | "tool" | "status";
@@ -13,6 +15,9 @@ export interface RuntimeCallbacks {
   onSession(sessionId: string | null): void;          // receive/update/clear session id (claude session_id / codex threadId)
   onActivity(activity: string, detail?: string): void; // working|thinking|online|offline
   onTrajectory(entries: TrajectoryEntry[]): void;      // streaming trajectory: thinking/text/tool entries
+  onUsage?(usage: NormalizedUsage): void;
+  onCompaction?(phase: "started" | "completed", metadata?: Record<string, unknown>): void;
+  onTurnResult?(result: { outcome: "completed" | "failed" | "cancelled"; errorCode?: string }): void;
   onExit(code: number | null): void;
   log: Logger;
 }
@@ -25,6 +30,7 @@ export interface StartOpts {
   sessionId?: string | null;       // for session resume
   systemPrompt: string;            // injected system prompt (claude=--append-system-prompt; codex=developerInstructions)
   env: NodeJS.ProcessEnv;          // includes PATH injection for kith-space + KITH_SPACE_* env vars
+  mcpBootstrap?: McpBootstrapDescriptor;
   initialPrompt: string;           // lifecycle drive message selected for create, manual start, or delivery wake
 }
 

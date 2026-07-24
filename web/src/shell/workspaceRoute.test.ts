@@ -68,12 +68,12 @@ test("retired Showcase paths keep valid module state for client normalization", 
   );
 });
 
-test("URL can encode a channel and module at the same time", () => {
+test("URL derives one canonical presentation for each module", () => {
   const channel = parseWorkspaceRoute("/s/space/channel/ch-1");
 
   assert.deepEqual(workspaceLayoutFromRoute(channel, "?module=tasks"), {
     activeModule: "tasks",
-    chatVisible: true,
+    chatVisible: false,
   });
   assert.deepEqual(workspaceLayoutFromRoute(channel, "?module=tasks&chat=0"), {
     activeModule: "tasks",
@@ -85,7 +85,7 @@ test("URL can encode a channel and module at the same time", () => {
   });
   assert.deepEqual(workspaceLayoutFromRoute(channel, "?module=spaces"), {
     activeModule: "spaces",
-    chatVisible: true,
+    chatVisible: false,
   });
 });
 
@@ -101,12 +101,12 @@ test("module state is accepted only from the query contract", () => {
   });
 });
 
-test("layout search preserves non-layout conversation state", () => {
-  const splitSearch = workspaceSearchForLayout("?thread=thread-1", {
+test("layout search preserves non-layout conversation state and canonicalizes module presentation", () => {
+  const moduleSearch = workspaceSearchForLayout("?thread=thread-1", {
     activeModule: "agents",
     chatVisible: true,
   });
-  const moduleOnlySearch = workspaceSearchForLayout(splitSearch, {
+  const moduleOnlySearch = workspaceSearchForLayout(moduleSearch, {
     activeModule: "agents",
     chatVisible: false,
   });
@@ -115,7 +115,8 @@ test("layout search preserves non-layout conversation state", () => {
     chatVisible: true,
   });
 
-  assert.equal(new URLSearchParams(splitSearch).get("module"), "agents");
+  assert.equal(new URLSearchParams(moduleSearch).get("module"), "agents");
+  assert.equal(new URLSearchParams(moduleSearch).get("chat"), "0");
   assert.equal(new URLSearchParams(moduleOnlySearch).get("chat"), "0");
   assert.equal(new URLSearchParams(chatSearch).get("thread"), "thread-1");
   assert.equal(new URLSearchParams(chatSearch).has("module"), false);
@@ -141,7 +142,7 @@ test("switching modules removes resource state owned by other modules", () => {
   assert.equal(chatParams.has("agent"), false);
 });
 
-test("module locations preserve the Chat pathname and current layout posture", () => {
+test("module locations preserve the Chat pathname and use the canonical module posture", () => {
   const target = workspaceLocationForModule(
     "/s/space/channel/channel-1",
     "?module=tasks&taskScope=channel-2&chat=0&thread=thread-1",
@@ -157,7 +158,7 @@ test("module locations preserve the Chat pathname and current layout posture", (
   assert.equal(url.searchParams.has("taskScope"), false);
 });
 
-test("opening a module from Chat creates Split and selects its resource", () => {
+test("opening content replaces Chat while settings opens over Chat", () => {
   const tasksTarget = workspaceLocationForModule(
     "/s/space/channel/channel-1",
     "?msg=message-1",
@@ -173,7 +174,7 @@ test("opening a module from Chat creates Split and selects its resource", () => 
 
   assert.equal(tasksUrl.searchParams.get("module"), "tasks");
   assert.equal(tasksUrl.searchParams.get("taskScope"), "space");
-  assert.equal(tasksUrl.searchParams.has("chat"), false);
+  assert.equal(tasksUrl.searchParams.get("chat"), "0");
   assert.equal(settingsUrl.searchParams.get("settings"), "human");
   assert.equal(settingsUrl.searchParams.has("taskScope"), false);
 });
@@ -189,6 +190,22 @@ test("settings locations normalize retired and unknown resources to Human", () =
   }
 });
 
+test("settings locations preserve the installation-level Memory Advisor resource", () => {
+  const target = workspaceLocationForModule("/s/home/channel/all", "", { moduleId: "settings", settings: "advisor" });
+  assert.equal(new URL(target, "http://kith-space.local").searchParams.get("settings"), "advisor");
+});
+
+test("settings locations preserve model and runtime control-plane resources", () => {
+  for (const resource of ["models", "runtimes"]) {
+    const target = workspaceLocationForModule(
+      "/s/home/channel/all",
+      "",
+      { moduleId: "settings", settings: resource },
+    );
+    assert.equal(new URL(target, "http://kith-space.local").searchParams.get("settings"), resource);
+  }
+});
+
 test("module resources are decoded only for their owning module", () => {
   const search = "?taskScope=channel-1&agent=agent-1&settings=desktop";
 
@@ -198,7 +215,7 @@ test("module resources are decoded only for their owning module", () => {
   assert.equal(workspaceModuleResourceFromSearch(search, "inbox"), null);
 });
 
-test("conversation navigation keeps an open module in Split", () => {
+test("conversation navigation preserves the active content module", () => {
   const target = mergeWorkspaceSearch(
     "/s/space/channel/ch-2?msg=message-1",
     "?module=tasks",

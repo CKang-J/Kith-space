@@ -1,6 +1,6 @@
 import type { ServerResponse } from "node:http";
 import { sendErr } from "../util.js";
-import { isTaskOperationError } from "./taskTypes.js";
+import { isTaskOperationError } from "../../tasks/taskTypes.js";
 
 export function sendTaskOperationError(res: ServerResponse, error: unknown): boolean {
   if (!isTaskOperationError(error)) return false;

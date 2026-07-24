@@ -1,10 +1,9 @@
 import "../src/env.ts";
 import assert from "node:assert/strict";
-import type { WebSocket } from "ws";
 import { eq } from "drizzle-orm";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { addChannelMembers, createMessage, getOrCreateThread } from "../src/server/core.ts";
-import { registerWorker, unregisterWorker, updateWorkerSnapshot } from "../src/local-runtime/workerHub.ts";
+import { admittedWakeDeliveries, connectAdmittingWorker } from "./helpers/admittingWorker.ts";
 import { CHANNEL_ALL_MENTION_TYPE } from "../src/channels/channelAllMention.ts";
 
 const { db, schema, spaceId, human } = integrationDatabase("agent-response-delivery");
@@ -17,12 +16,9 @@ const [active, passive, silent] = await db.insert(schema.agents).values([
 assert.ok(channel && active && passive && silent);
 await addChannelMembers(spaceId, channel.id, [active, passive, silent].map((agent) => ({ type: "agent", id: agent.id })));
 
-const sent: Record<string, any>[] = [];
-const socket = { readyState: 1, send(data: string) { sent.push(JSON.parse(data)); } } as unknown as WebSocket;
-const lease = registerWorker(socket);
-updateWorkerSnapshot(lease, { runtimes: ["claude"], runningAgents: [] });
-const deliveries = () => sent.filter((message) => message.type === "agent:deliver");
-const reset = () => { sent.length = 0; };
+const worker = connectAdmittingWorker({ runtimes: ["claude"] });
+const deliveries = () => admittedWakeDeliveries(worker.messages);
+const reset = () => worker.clear();
 
 try {
   await createMessage({
@@ -47,9 +43,8 @@ try {
     content: "@passive please inspect; @silent keep this as context",
   });
   assert.deepEqual(deliveries().map((message) => [message.agentId, message.responseDirective, message.responseReason]).sort(), [
-    [active.id, "optional", "human_ambient_message"],
     [passive.id, "required", "explicit_mention"],
-  ].sort());
+  ].sort(), "a direct mention wakes only its thread targets; ambient channel participants do not share that turn");
 
   reset();
   const broadcast = await createMessage({
@@ -174,5 +169,5 @@ try {
   const assignedThreadMembers = await db.select().from(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.channelId, assigned.threadId!));
   assert.ok(assignedThreadMembers.some((member) => member.agentId === silent.id));
 } finally {
-  unregisterWorker(lease);
+  worker.disconnect();
 }

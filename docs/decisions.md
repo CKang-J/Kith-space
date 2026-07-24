@@ -2,7 +2,7 @@
 
 ## 前言
 
-这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）；随后授权浏览器的目录选择收敛为受限主机目录浏览器（决策 24）。2026-07-14 又锁定会话聚合面板（决策 25）与 Agent 频道响应模式（决策 26）；2026-07-15 在该响应机制上补充 Human 专属的频道全体提及（决策 27），并把 ChatOnly 的模块导航迁入左侧栏、模块打开态继续使用 Dock，同时退役案例展示（决策 28）。当前结论以每条决策中的最新修正和决策 21-28 为准。
+这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）；随后授权浏览器的目录选择收敛为受限主机目录浏览器（决策 24）。2026-07-14 又锁定会话聚合面板（决策 25）与 Agent 频道响应模式（决策 26）；2026-07-15 在该响应机制上补充 Human 专属的频道全体提及（决策 27），并把 ChatOnly 的模块导航迁入左侧栏、模块打开态继续使用 Dock，同时退役案例展示（决策 28）。2026-07-18 本轮 UI 验收结束后，项目锁定“保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，以模块化单体渐进收敛、性能证据驱动 Rust 决策”的工程路线（决策 29）；P-A10 的 Agent Harness v2 形成决策 30，2026-07-22 至 23 又形成并修订系统 Memory Advisor Provider、模型配置和快捷安装边界（决策 31–33）；2026-07-24 新增前端统一采用 Tailwind CSS v4 + shadcn/ui 的渐进迁移决策（决策 34）。当前结论以每条决策中的最新修正和决策 21–34 为准。
 
 盘问的方式是一次给一个决策、每次给一个明确建议，让用户在 either/or 之间做取舍。会话过程中有几条决策被推翻或修正过（底座、runtime、Redis 的真实用途、聊天历史随文件夹走的成本），这些演化本身是理解项目为什么长成现在这样的关键，因此单列一节保留。
 
@@ -27,8 +27,8 @@
 | 11 | UI 投入 | 信息架构现在定死，视觉学 OpenLoaf，豁免"去 AI 味"清单 |
 | 12 | 壳形态 | 单窗口工作区；普通冷启动进入 Home，旧双壳被推翻 |
 | 13 | Chat 地位 | Chat 是默认基础工作面；仅在模块已打开时可收起 |
-| 14 | Dock 与模块 | Home 增加 Spaces；普通 Space 保持 `Chat | Inbox | Tasks | Agents | Settings` |
-| 15 | 布局能力 | ChatOnly / Split / ModuleOnly 三态，可拖拽分隔 |
+| 14 | 导航与模块 | Home 增加 Spaces；普通 Space 保持 `Inbox | Tasks | Agents | Settings`；左侧栏常驻 |
+| 15 | 布局能力 | 右侧单主卡片在 Chat/业务模块间切换；Settings 使用模态层 |
 | 16 | 跨 Space 视角 | 不恢复薄总览壳；Home Spaces 先落真实目录，聚合能力渐进实现 |
 | 17 | 宿主形态 | Desktop 是唯一正式宿主，可选本机/LAN 浏览器入口 |
 | 18 | 数据层 | 迁移到 SQLite + 进程内替代 Redis |
@@ -41,7 +41,13 @@
 | 25 | 会话聚合面板 | 轨迹/话题/文件收敛为当前会话辅助面板，轨迹按 base conversation 隔离 |
 | 26 | Agent 频道响应模式 | Agent 默认值加频道成员覆盖；私聊与明确任务指派不受模式限制 |
 | 27 | 频道全体提及 | Human 的规范 token `@all` 快照当前频道 Agent；主动/被动必回，静音不唤醒 |
-| 28 | Chat 壳层导航 | ChatOnly 使用左侧纵向模块入口；模块打开态使用 Dock；案例展示退役 |
+| 28 | Chat 壳层导航 | 左侧纵向模块入口常驻；右侧主卡片在 Chat 与模块间切换；Settings 使用弹窗；Dock 与案例展示退役 |
+| 29 | 代码架构与性能语言 | 保留 Desktop/Core/Worker 与 TypeScript 主栈；P-A9.0–P-A9.7 的实现、最终门禁与一次独立只读终审已完成，Rust 只由性能证据触发 |
+| 30 | Agent Harness v2 | per-surface session + durable delivery/logical turn/attempt + Context Envelope + revisioned episodic memory + restricted advisor + broker-backed MCP/CLI Gateway + snapshot/compaction telemetry；P-A10.0–P-A10.7 已完成 |
+| 31 | Memory Advisor Provider | 结构化记忆提炼使用安装级可替换 Provider，与聊天 runtime 解耦 |
+| 32 | 模型配置 | Kith 管理供应商、模型与运行器绑定；CLI 配置只读导入并按启动注入 |
+| 33 | Runtime 快捷安装 | 只安装和删除 Kith-owned 锁版副本，不接管系统 CLI |
+| 34 | 前端样式与组件基线 | 新增 UI 使用 Tailwind CSS v4 + shadcn/ui，存量 CSS 按触达范围渐进迁移 |
 
 ---
 
@@ -211,21 +217,21 @@
 
 ## 决策 14：模块集合与工作姿态控制器
 
-**当前结论（2026-07-15 再修正）**：Home 的模块集合为 `Spaces | Inbox | Tasks | Agents | Settings`，普通 Space 为 `Inbox | Tasks | Agents | Settings`；Chat 是基础工作面而不是业务模块。ChatOnly 通过左侧常驻栏的纵向图标文字列表打开模块，不显示重复的 Chat 项或底部 Dock。模块打开后，横向 Dock 迁入 Module Pane 底部，并增加 Chat 图标负责 Split / ModuleOnly 切换；当前模块横向展开并显示名称。`Spaces` 只在 Home 有效，`Members` 收敛为当前 Space 的 `Agents`，`Computers` 删除，唯一 Human 的资料位于全局 Settings，Search 位于顶部入口。一次只打开一个模块。模块不拥有独立 pathname，而是在当前频道、DM 或收藏会话路径上使用 `?module=<id>`；合法 resource query 分别为 Tasks 的 `taskScope`、Agents 的 `agent`/`agentTab` 与 Settings 的 `settings`。切换会话保留当前模块及其 resource，切换模块则清除不属于新模块的 resource。完整修正见决策 28。
+**当前结论（2026-07-23 最新修正）**：Home 的业务模块集合为 `Spaces | Inbox | Tasks | Agents | Settings`，普通 Space 为 `Inbox | Tasks | Agents | Settings`；Chat 通过最左侧 Messages 图标返回。常驻纯图标栏统一控制 Messages、Search 与业务模块，所有入口提供 tooltip，不显示底部 Dock。点击 Spaces、Inbox、Tasks、Agents 时图标栏保持不动，消息中栏退出，右侧复用同一主工作区槽位切换内容；Settings 使用模态层。模块继续在当前会话 pathname 上使用 `?module=<id>` 及既有 resource query。完整修正见决策 28。
 
-**原决定**：Dock 曾被限定为“窄右栏容器自身的底部导航”，实时轨迹也曾作为右栏模块之一；随后 Dock 又被设为 ChatOnly、Split、ModuleOnly 都常驻的统一底部控制器。最新方向保留模块作为可伸缩第二工作面和模块打开态 Dock，但 ChatOnly 改用更符合会话浏览上下文的左侧纵向入口。
+**原决定**：Dock 曾被限定为“窄右栏容器自身的底部导航”，实时轨迹也曾作为右栏模块之一；随后 Dock 又被设为 ChatOnly、Split、ModuleOnly 都常驻的统一底部控制器，再迁移为只在模块打开态出现。2026-07-23 的当前方向最终退役 Dock 与可伸缩第二工作面。
 
-**推理与权衡**：ChatOnly 已有一块持续可见的左侧导航空间，把业务模块入口放入其中可以移除覆盖 Composer 附近的悬浮控制器，并让图标和文字始终可读；模块打开后固定会话栏隐藏，Dock 接手模块替换与 Chat 显隐，因此同一时刻仍只有一套模块导航。代价是导航控制器会随工作姿态迁移，但迁移与“是否存在 Module Pane”一一对应，不需要用户理解额外布局状态。
+**推理与权衡**：纯图标栏稳定承载功能导航，独立消息中栏承载频道和私信，二者不再混为一层；tooltip 与可访问名称补足图标识别。模块打开后图标栏保持不动，右侧主工作区原位替换，因此同一时刻只有一套模块导航，也不再需要用户理解导航迁移、Chat 显隐或 Split 比例。
 
 ---
 
-## 决策 15：布局收敛为 ChatOnly / Split / ModuleOnly 三态
+## 决策 15：主卡片在 Chat 与模块间切换
 
-**当前结论（2026-07-11 三次修正）**：工作区只有三种合法状态：ChatOnly、Split、ModuleOnly。Split 默认让 Chat 占可用工作区的 25%、Module 占其余空间，Chat 下限为 `max(360px, 25%)`；完整面板间隙均为可拖拽热区。Split 内切换模块保留拖拽比例，关闭重开模块或从 ModuleOnly 恢复 Chat 时重置为默认比例。不同模块使用 560px / 640px 内容下限，Module 不设固定最大宽度；窗口过窄时临时退化为单 Pane，不压缩出不可用的双栏。
+**当前结论（2026-07-23 最新修正）**：工作区不再同时并排 Chat 与业务模块。最左侧图标导航保持稳定；Messages 激活时显示消息中栏与 Chat，业务模块激活时消息中栏退出并由唯一主工作区显示 Spaces/Inbox/Tasks/Agents 之一；Settings 作为模态层覆盖当前工作区。旧 Split 比例、拖拽分隔和 ModuleOnly→Split 恢复控制不再属于活跃产品壳。
 
-**交互约束**：Split 点击 Chat 进入 ModuleOnly；ModuleOnly 点击 Chat 恢复 Split；点击当前模块关闭模块并回到 ChatOnly；点击其他模块替换内容且保持当前 Chat 可见性。Chat 和 Module 不得同时隐藏。
+**交互约束**：点击模块使主工作区切换到该模块；点击 Messages 返回当前 Chat；点击当前业务模块仍返回 Chat；点击其他模块原位替换内容。Settings 点击打开模态层，关闭后回到原 Chat 会话。图标栏始终保留唯一模块导航。
 
-**原决定**：“模块提升到中心”“右栏隐藏”“左细图标条”是基于旧双壳与固定右栏得出的动作。新状态机用三个直接可见的工作姿态取代这些概念，左细图标条随双壳一起取消。
+**原决定**：“模块提升到中心”“右栏隐藏”与旧 `IconRail` 都基于旧双壳和固定右栏。最新实现虽然恢复了窄图标导航这一视觉层级，但没有恢复旧组件、旧双工作面或 Chat 显隐状态机。
 
 **推理与权衡**：有限状态机比多个互相叠加的开关更容易解释、测试和恢复。拖拽比例仍保留用户自由；响应式降级为未来窄窗方案预留接口。代价是当前不做任意停靠和多模块并排，但这不是 v1 的目标。
 
@@ -311,7 +317,7 @@
 
 **Windows 发行姿态**：Desktop 是唯一正式发行路径，但“有安装器文件”和“已公开发行”必须分开。A6 锁定 x64、per-user、assisted NSIS；本地/CI 产物默认未签名，CI 只上传 artifact。代码签名证书是公开分发的硬前置，真实安装/卸载测试也是正式发布验收的一部分。该约束不改变未来 macOS/Linux 路线，只规定当前 Windows v1 的可验证边界。
 
-**实施状态（2026-07-12）**：A2-A6 的原定代码切片与 P-A7 H1-H4 已落地；app data/Space root 分离、Space root cwd、可移植 Agent Memory、文件夹创建/接入/重连、stable Home 默认入口与 Home-only Spaces 模块均已完成。当前等待用户验收；H5 与 Runtime 契约 v2 继续暂停。
+**实施状态（2026-07-18 更新）**：A2-A6 的原定代码切片与 P-A7 H1-H4 已落地；app data/Space root 分离、Space root cwd、可移植 Agent Memory、文件夹创建/接入/重连、stable Home 默认入口与 Home-only Spaces 模块均已完成，并通过本轮用户验收。H5 与 Runtime 契约 v2 继续等待决策 29 的 P-A9 Module Interface 稳定。
 
 ---
 
@@ -337,7 +343,7 @@
 
 **实施边界**：H1-H4（路径、cwd/记忆、文件夹接入、Home Spaces UI）属于 A1-A6 验收前置修复。跨 Space 写编排 H5 后续渐进实现，先只读真实摘要，再接 task/message/dispatch；没有真实数据前不做占位视图。完整规格见 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
 
-**实施状态**：P-A7 H1-H4 已完成。`src/paths.ts` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，并以 `KITH_SPACE_SPACES_DIR` 独立隔离默认 Space 容器；app.db 保存稳定 homeSpaceId，Home 默认根为 `~/Kith-space/Home`。`src/agents/agentWorkspacePaths.ts` 与 `AgentManager` 已把主要 runtime cwd、Agent Memory 和 runtime state 拆为三个路径，并对派生删除路径做容器逃逸校验；项目 skills 使用 Space root，profile/reset 与 Human 侧记忆浏览使用对应 Agent Memory，同 agent reset/start 串行。OpenCode 已用 child-only inline execution agent 替代覆盖用户 `AGENTS.md`。H3 的 `SpaceRootService` 和 Space API 已实现默认创建、普通目录接入、兼容 workspace.db 稳定 ID 复用、`ready | missing | error` 列表状态与移动后重新定位；重复 root/ID、损坏或不兼容数据库、symlink 和身份不匹配会拒绝，冲突 slug 只调整本机路由别名，接入/打开共用 SQLite 完整性与表列校验。普通 API 不隐式重建缺失 root，relocate 失败回滚 registry；失联深链和全失联恢复保持 relocate 可达。H4 已以 stable Home 身份实现普通冷启动 Home、Home-only Spaces Dock/卡片、搜索/刷新/创建/接入/重连、最近打开记录与同窗导航；普通 Space 不能激活该模块。SpaceSwitcher 只保留快速切换、应急重连和 Home Spaces 入口。当前等待用户验收，H5 未开始。
+**实施状态**：P-A7 H1-H4 已完成。`src/paths.ts` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，并以 `KITH_SPACE_SPACES_DIR` 独立隔离默认 Space 容器；app.db 保存稳定 homeSpaceId，Home 默认根为 `~/Kith-space/Home`。`src/agents/agentWorkspacePaths.ts` 与 `AgentManager` 已把主要 runtime cwd、Agent Memory 和 runtime state 拆为三个路径，并对派生删除路径做容器逃逸校验；项目 skills 使用 Space root，profile/reset 与 Human 侧记忆浏览使用对应 Agent Memory，同 agent reset/start 串行。OpenCode 已用 child-only inline execution agent 替代覆盖用户 `AGENTS.md`。H3 的 `SpaceRootService` 和 Space API 已实现默认创建、普通目录接入、兼容 workspace.db 稳定 ID 复用、`ready | missing | error` 列表状态与移动后重新定位；重复 root/ID、损坏或不兼容数据库、symlink 和身份不匹配会拒绝，冲突 slug 只调整本机路由别名，接入/打开共用 SQLite 完整性与表列校验。普通 API 不隐式重建缺失 root，relocate 失败回滚 registry；失联深链和全失联恢复保持 relocate 可达。H4 已以 stable Home 身份实现普通冷启动 Home、Home-only Spaces Dock/卡片、搜索/刷新/创建/接入/重连、最近打开记录与同窗导航；普通 Space 不能激活该模块。SpaceSwitcher 只保留快速切换、应急重连和 Home Spaces 入口。2026-07-18 本轮用户验收已完成，H5 未开始。
 
 ---
 
@@ -393,19 +399,151 @@
 
 ---
 
-## 决策 28：ChatOnly 使用侧栏模块导航，模块打开态继续使用 Dock
+## 决策 28：侧栏统一控制主卡片切换，Dock 退役
 
-**结论（2026-07-15）**：ChatOnly 不再显示底部悬浮 Dock。当前 Space 可用模块进入左侧常驻 Chat 导航栏，以“图标 + 文字”的纵向列表展示；该列表不显示 Chat，Home 比普通 Space 多 Spaces。点击模块后固定左侧栏隐藏，工作区继续进入既有 Split 或响应式 ModuleOnly；此时横向 Dock 位于 Module Pane 底部，并保留 Chat 图标负责 Split / ModuleOnly 切换。Split 的会话列表按钮继续打开只覆盖 Chat Pane 的抽屉，但抽屉产品内容只包含“已保存、频道、私信”。
+**结论（2026-07-23 最新修正）**：工作区最左侧常驻 `68px` 纯图标导航栏，顺序为 Messages、Search、Spaces（Home only）、Inbox、Tasks、Agents、Settings；每个入口通过 hover/focus tooltip 显示名称。Messages 是 Chat 的正式入口，激活时在图标栏右侧显示只含已保存、频道、私信和运行状态的消息中栏，消息中栏不放搜索框。点击 Spaces、Inbox、Tasks 或 Agents 后图标栏不隐藏，消息中栏随 Chat 退出，右侧主工作区原位切换为对应模块；不再创建 Split 第二工作面，也不挂载横向 Dock。Settings 保留同一 URL/resource 契约，但以覆盖当前工作区的模态层呈现。
 
-**视觉结论（按用户最终反馈修正）**：保留原有浅灰画布与中心 Chat 卡片，不修改 Chat 的圆角、间隙和既有表面层级；常驻会话导航取消独立卡片底板，直接使用应用画布背景。新增纵向模块入口、会话列表和 Split 会话抽屉不使用贯穿式横线或竖线分割，只用留白、分组标题和行底色建立层级。标题、导航、消息元信息和正文统一使用无衬线字体；Human 消息继续使用 `#eff4fb`，Agent 使用中性浅灰。
+**视觉结论（2026-07-24 按用户最新反馈修正）**：采用参考图的连续三栏表面：最左图标栏使用 `#f5f5f5` 且不绘制右边线，白色消息中栏和白色 Chat 主区只用约 `#f0f0f0` 的必要细分隔线区分；消息中栏使用“消息 / 已保存 / 频道 / 私信”的清楚层级，不放搜索框。Human 消息右对齐并使用 `#e7f0fe` 气泡；Agent 消息左对齐并使用 `#f5f5f5` 气泡，消息头像统一为 `36px`。频道 Agent 保留常规字重昵称且气泡顶部落在头像圆心，私聊隐藏重复昵称并让气泡与头像顶部平齐。Agent 时间只显示气泡下方 `HH:mm`，仅在消息 hover/focus 时出现；hover 工具栏与“更多”菜单使用一致的白色表面、浅边线、圆角和投影，并按发送方向优先放在 Agent 气泡右侧或 Human 气泡左侧，空间不足时放到上方。话题回复预览从气泡分离为独立 hover 卡片；话题分栏从主标题栏下方开始，父消息无重复背景，头像和 Agent 气泡使用对称安全边距。日期使用居中灰色胶囊。Composer 本轮保持不变。
 
 **案例展示边界**：案例展示不再属于目标信息架构，实施时完整删除入口、路由、静态视图、演示资产、专属文案/样式/测试和仅为该只读场景存在的产品分支；真实归档频道继续承担只读能力和回归覆盖。旧 Showcase URL 规范化到当前 Space 默认频道，不保留兼容产品页。
 
-**背景与选择**：现有 ChatOnly 的模块导航分散在底部 Dock。备选方案包括继续保留底部 Dock、恢复纯图标 Rail、或把模块入口并入现有会话栏。用户选择第三种，并明确采用参考图的纵向图标文字节奏、删除重复 Chat 项和案例展示；模块打开后复用已经建立的 Dock 与三态，不创造第四种壳。实施中一度把主工作区改为连续背板，用户随后明确否定该变化并锁定“原有卡片式 Chat UI 不修改、会话列表不用直线分割”。
+**背景与选择**：该决策先后经历了底部 Dock、单一“图标 + 文字”侧栏与最新双层左侧导航。最新参考图和用户反馈明确要求把模块入口收窄为纯图标，并把频道/私信迁入右侧独立消息中栏，同时补充 Messages 入口；输入框与消息中栏搜索不在本轮范围。
 
-**推理与权衡**：ChatOnly 的左侧栏天然承载“我要去哪里”，纵向文字标签比悬浮纯图标更易扫读，也能把中心区域还给消息与 Composer。模块打开后隐藏固定栏，可以避免左侧栏和 Dock 同时存在；Dock 中保留 Chat 是因为它此时承担布局控制而非重复导航。代价是模块入口会随工作姿态从左侧纵向列表迁移到横向 Dock，但迁移条件只有“模块是否打开”一个，且 URL 状态机不变。完整规格见 `docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md`。
+**推理与权衡**：最左侧图标栏只回答“去哪个功能”，消息中栏只回答“打开哪个会话”，职责拆分后不会再把频道、私信和业务模块混在同一长列表。tooltip 与 `aria-label` 补足纯图标的识别和可访问性；模块继续同槽位替换，避免恢复 Dock 或第二工作面。Settings 信息密度和内部二级导航较高，继续使用独立模态层。完整规格见 `docs/superpowers/specs/2026-07-23-chat-icon-rail-message-pane-design.md`。
 
-**实施状态**：代码与自动化验证已完成。`SidebarModuleNavigation` 复用统一模块注册表，`ConversationListContent` 为常驻侧栏与 Split 抽屉提供共享会话分组；ChatOnly 不再挂载 Dock，模块态仍由 `WorkspaceDock` 控制。中心 Chat 卡片、圆角、画布间隙和配色已经恢复，常驻会话导航直接使用画布背景，新模块入口与会话抽屉不绘制贯穿分隔线；统一无衬线字体，Chat 标题栏固定左右 14px，与标题内容上下留白一致；ChatOnly 与 Split 统一为 10px 消息 gutter，ChatOnly 主卡片沿用 360px Chat 绝对下限，消息、日期分隔与 Composer 使用 1040px 居中轨道。消息流只承担纵向滚动，隐藏工具栏不会再撑出横向滚动条。案例展示的入口、产品路由、视图、数据、资产及专属分支已删除；服务端仅保留旧 URL 的 SPA fallback，由客户端规范化到当前 Space 默认频道。当前等待用户手动视觉验收。
+**实施状态**：2026-07-23 最新修正已实现。`WorkspaceNavigationRail` 组合 SpaceSwitcher 和纯图标 `SidebarModuleNavigation`；`ChatSidebar` 只在 Chat 中挂载消息中栏，业务模块态只保留图标栏。Settings 由独立 `SettingsDialog` 复用既有设置内容。URL 与模块 resource query 保持可恢复，`WorkspaceDock` 与案例展示继续保持退役。
+
+---
+
+## 决策 29：保留 Desktop/Core/Worker 拓扑，以模块化单体渐进收敛；Rust 只由性能证据触发
+
+**结论（2026-07-18）**：Kith-space 继续使用 Electron Desktop Supervisor + Node/TypeScript Core Service + 安装级唯一 Local Runtime Worker + React UI + SQLite 的本机拓扑。Core 收窄为组合根和 HTTP/Socket Transport Adapter，Worker 负责外部 runtime 进程隔离；消息、任务、Agent、频道、文件、Space 与 Runtime 控制逐步形成高内聚的深 Module。P-A9 不做全量 Rust 重写、微服务化或把 Core 塞回 Electron main。
+
+**职责与依赖约束**：设计遵循高内聚低耦合、单一职责、开放封闭、KISS、DRY、迪米特法则、依赖倒置和关注点分离。Transport 只做认证、解析、序列化；业务用例通过窄 Interface 暴露；SQLite、Socket、外部 CLI 和 OS 行为由必要 Adapter 实现。领域 Module 不导入 `src/server/` 或 `src/desktop/`，Human HTTP、Agent data plane 与未来 MCP 复用同一消息/任务 Interface。SQLite 与本地文件系统用真实临时资源测试，不为每张表建立通用 Repository。
+
+**为何保留 Core 与 Worker**：Core 为 sandboxed renderer、Desktop 与授权本机/LAN 浏览器、Agent CLI 提供同一份本机权威、Space guard 和实时行为；这不是公网 server 路线。Worker 隔离长时间运行且可能崩溃/取消的外部 runtime 进程，并承载每 Agent 顺序、容量和停机排空；这不是远程 daemon。合并二者会降低故障隔离，合并进 Electron main 会让宿主生命周期重新耦合业务与数据库。
+
+**Worker 接纳与重放边界**：Core 写入 WebSocket 不等于 Worker 已接纳。Message/Task Module 通过 `WakeDispatchPort` 提交 effect，Core 控制层再用 `RuntimeWorkerPort` 的稳定 deliveryId 等待 `admitted | queued | rejected`；wake 使用 reservationId，手动与生命周期命令使用独立 commandId 且不占 wake budget。Core 的 get-or-reserve 以 `(spaceId, chainId, messageId, targetAgentId)` 为持久逻辑键，只在接纳 ack 后提交 wake；断线用同一 reservation 重放，重复 command/ack 与 reconnect 不得重复消耗 wake budget，Agent check/read 推进的 `lastReadSeq` 关闭未读重放窗口。若现有 `dispatch_wakes` 不能证明持久唯一性，必须先补独立 schema/迁移/恢复设计，不能只用内存去重。
+
+**可靠性口径**：上述契约保证接纳确认与未读重放，不保证外部 runtime 端到端 exactly-once。Agent 已 check/read、推进 `lastReadSeq` 后若在回复前崩溃，恢复仍需要 Runtime 契约 v2 的 turn completion 语义；P-A9 不得把该已知窗口表述成“绝不丢工作”。
+
+**为何不全量换 Rust**：当前负载主要是 SQLite、WebSocket、文件与子进程 I/O，以及外部模型/工具等待；`better-sqlite3` 已使用原生实现。现有瓶颈首先是职责集中、fan-out 重复查询、缺少安装级 runtime 背压和 Chat 控制层拥挤，语言重写不能解决这些结构问题，反而增加 Electron/Node/Rust IPC、三端原生产物、签名、ABI、诊断和双语言维护成本。
+
+**Rust 决策门**：只有可重复性能基线显示产品 SLO 未达标、结构性问题已经消除、profiler 把多数可控 CPU 时间归因到一个稳定且可独立输入输出的 Module，并且 Windows/macOS/Linux 构建维护收益为正时，才另立 ADR 评估 sidecar、N-API 或独立二进制 Adapter。替换必须保持 Module Interface 和可回滚路径；全量 Core/项目重写不属于当前路线。
+
+**实施方式**：P-A9.0 先冻结全部消息写入与 Agent 端点所有权矩阵、静态依赖基线、当前 Worker socket-send/reconnect 行为和 1/5/10/20 Agent Core/UI 基线，并产出 P-A9.4 admission/replay 目标契约清单；不要求尚未实现的 ack 测试提前变绿，也不把 socket-send 指标命名为 admission SLO。之后按 Message/Task、Agent Transport、领域依赖、Runtime admission/session 容量、Chat 控制层和证据驱动性能优化逐切片迁移。依赖测试对当前唯一 `agents/agentDeletion -> server/storage` 采用精确临时 allowlist，P-A9.3 强制清除；每个切片保留短期兼容 facade、迁移调用方后删除旧 Implementation。默认不改 schema、公开 URL、Agent CLI 或 `/daemon/connect` 路径；可靠性需要 schema 时必须单独设计。完整规格见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
+
+**实施状态**：方案已锁定，P-A9.0 当前行为特征测试、精确依赖护栏、Core/UI 性能基线、fake Runtime harness 与 P-A9.4 目标契约清单已完成；P-A9.1a–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审也已完成，并以 `d5261c1` 收口提交。随后真实存量数据暴露了空闲常驻 RuntimeSession 占满容量、队列在 120 秒 TTL 后过期的回归；修复保持容量/队列参数不变，由 AgentManager 按既有消息合并批次和 adapter `online/error` activity 终态产生本地 idle hint，再结合队列压力决定空闲会话是否立即让位，同时让 queued 手动启动延迟到实际 admitted 才进入工作态，并让失败 wake 终止可见回复占位。这不新增跨 Core/Worker 的 turn-complete 协议。socket-send 仍只作为同步 enqueue 诊断指标，total 口径已切到 admission ack，持久 get-or-reserve、RuntimeSession 容量队列以及 P-A9.6 的 20-Agent SQL 260→151 绝对 SLO 结果都已落地。Runtime 契约 v2 在 P-A9 收口时尚未开始，后续已由 P-A10 完成；H5 仍未开始。
+
+---
+
+## 决策 30：Agent Harness v2 采用 per-surface session、durable delivery/turn、Context Envelope 与双层记忆
+
+**状态**：Accepted / Implemented。P-A10.0–P-A10.7 已完成迁移、workspace schema v8/app.db v4、Runtime v2 bridge、per-surface registry、durable turn、server-owned direct-mention thread、Context Envelope、实时父级ACL、turn inspector、完整`kith-core` MCP/CLI Gateway、revisioned episodic memory、restricted advisor/记忆管理UI，以及checklist/snapshot/compaction telemetry。
+
+**结论**：同一 Agent 的频道、Human-Agent DM 与话题使用独立、可恢复的 runtime session；automation 只保留未来扩展类型，P-A10 不启用。消息事务先逐 Agent 持久化 durable delivery item，scheduler 再按 target session 形成 logical turn；每次执行追加带 Worker generation/lease 的 attempt。Core 持久 Context Envelope、逐输入 obligation、operation/output、usage 与 reply/cede/fail 终态，Worker 只持可重建的 engine process/session handle。Human 顶层 direct mention 默认由服务端原子创建 root/thread/membership/delivery，并锁定 Agent reply target；模型 stdout 不直接成为消息。
+
+记忆继续保留 User/Space/Agent 三层 `MEMORY.md + notes/`，另加 Agent-scoped structured episodic memory：canonical item指向不可变 revision，typed evidence/relation、disclosure projection、forget suppression、稳定 continuity bundle、中文2/3-gram+FTS recall、advisor，以及 Human manage/Agent recall/debug 三个显式 view。消息记录仍是事实源，记忆只是带来源、可纠正、可归档的派生线索；embedding仅作为后置可替换 Port。
+
+工具由 Capability Gateway 统一：turn/session 原子能力和生产力模块优先 MCP，受控 CLI/shell 可用时现有 `kith-space` CLI 作为兼容 Adapter；二者调用同一领域 Module。常驻 runtime 不通过普通环境变量持有 per-turn bearer，而由 session-bound broker 激活当前 attempt；Core实时校验 Agent/Space/surface/input/watermark/scope/expiry。授权、错发、operation冲突与确定性披露失败 fail-closed；recall/advisor/consolidation失败 fail-open。Gateway是唯一受支持产品 API，但在OS sandbox前不是物理隔离。公开频道目标语义收紧为“可发现、加入后读写”，私有频道只对成员可见；跨频道不自动注入原文，私密来源按canonical/internal/shareable/ref投影披露并审计。
+
+**推理与权衡**：Helio实测证明“像真实同事”不需要一个全局无限session，而来自局部session、自动recall、权威历史查询、私有wiki、turn ledger和严格消息交付协议的组合。两路对抗性审查进一步证明，若消息提交后才创建turn、只存一个可变attempt、让模型自带随机幂等key或只保存current memory text，仍会在崩溃、合批、父频道root、撤权和forget时失去正确性。Kith-space因此在P-A9地基上增加durable delivery inbox、logical turn/attempt/output、broker与immutable memory revision，而不是复制Helio的云控制面或继续依赖prompt。代价是v6/v7表与迁移显著增加，消息事务多出有界fan-out写入，必须以P-A9 SLO、RSS/FD和中文recall基线验证。
+
+**备选方案**：
+
+- 每 Agent 一个全局 session：因跨频道污染、无法独立逐出/压缩/审计而否决；
+- 每消息冷 session：因连续性、成本和工具状态丢失而否决；
+- 只用三层文件记忆：保留但不足以承担低延迟 top-k、纠错链和管理面板；
+- 只用向量记忆：无法替代权威消息和来源审计；
+- 全 CLI 或全 MCP：前者结构脆弱，后者不能覆盖支持不完整的 runtime，故采用共享领域实现的双 Adapter；
+- Worker 直接写 workspace.db：破坏 Core 单一写入权威和 P-A9 模块边界，否决。
+- 仅在 post-commit 创建 pending turn：Core 崩溃会丢 required work，改为消息事务写 durable delivery；
+- per-turn token 固定注入常驻进程 env：无法轮换且可被 shell 读取，改为 broker activation；
+- memory只保存current text或hard delete：无法重建历史revision且会被advisor重新学习，改为revision+suppression。
+
+**提案默认值**：direct mention总是开话题（`@all`例外）；公开频道join后可读；通过严格evidence门槛的agent-private候选可自动active且可关闭；detail默认90天；同一Agent单turn串行；silent可加入thread但不wake；记忆删除拆成archive/delete/forget+suppress；OS sandbox前只声明产品内私有。这些值仍可由用户在编码前推翻，推翻需同步规格/ADR/验收。P-A10.0只冻结契约和修复migration前置，不改变UI行为。
+
+**P-A10.0 实施状态**：`src/db/spaceDatabaseSchemaHistory.ts` 与 `spaceDatabaseCompatibility.ts` 已把 migration 前检查改为 immutable version manifest + journal hash/prefix，future DB 不再与 legacy 共用删除引导；`src/app-data/appDatabaseMigrations.ts` 建立 app.db v1、checksum journal和事务回滚。`src/runtime/contract/v2/` 与 deliveries/turns/context/capabilities/memory contract冻结目标codec，但当前v1 adapter仍按能力矩阵标missing/unsupported。该切片不改变schema v5、`agents.session_id`、CLI写权限或UI。
+
+**P-A10.1 实施状态**：workspace schema v6 新增 `agent_harness_state/runtime_sessions` 与 current-generation partial unique index；v5迁移显式记录legacy并保留 `agents.session_id`，不猜测旧全局session属于哪个surface。Core `SessionModule`强制drain后的 `legacy→migrating→v2` 和回滚，runtime/model/config/adapter/host/workspace变化创建新generation。stable broker handle只有匹配的短时attempt activation才能兑换claims；Worker session host分离active turn与resident process、同Agent串行并LRU逐出。Claude/Codex/opencode bridge提供显式session change/completion/final usage/process cancel；Kith MCP、tool isolation、cwd relocation和compaction telemetry仍为unsupported。legacy API/Worker/reconnect/start在非legacy mode下拒绝，P-A10.2前不切实际产品Agent。
+
+**P-A10.2 实施状态**：schema v6 的后续 migration journal 前缀新增 durable delivery、turn/attempt/event、operation/output/input mapping、activation/context/disclosure/checklist/wakeup 表和既有消息/membership列；同版本的 P-A10.1 前缀仍可合法续迁。Message/Task/output 与 delivery 同事务提交，task非assignee也得到observe事实，连续frontier以`seq > watermark`的分页join推进；actionable delivery逐条复用既有dispatch reservation和wake budget。Core持有turn lease、同步续租broker claim、obligation和server-owned output权威；stop/reset使用cancel+未结input requeue而非retry，rollback以稳定acceptedAt在任何外部副作用前授权并在最终事务复核。Worker的admitted+activated总量有界，admission 120秒TTL，同Agent排队可取消，安装级Space FIFO配合每Space/Agent有界批次；event有64KiB单条、2000条/8MiB聚合上限、critical预留和truncation摘要，terminal使用strict usage codec与128KiB envelope cap，在Core幂等ACK前保留重传，Core generation推进会清理旧admission/preparing/running/terminal，过期lease的event/output/terminal均fail closed。2026-07-20真实registry中一个故意损坏的schema测试Space暴露`allSpaceDbs()` eager scan会让健康P10 Space的event/terminal ACK一并失败；现在Worker event显式携带admission `spaceId`，Core只在该Space内核对turn/attempt/session，安装级ready/offline/lookup/reminder扫描逐Space跳过不可用项。过期attempt恢复后真实两条旧消息和一条新消息均形成reply、output、usage与trajectory。Agent reply解析当前成员mention并继承唯一dispatch chain/depth，含mention的多链合并被拒绝且实时事件携带mention，防止绕过递归wake预算。runtime配置漂移退休旧turn并requeue未结input，由新session generation重绑，不形成热循环。最小loopback Gateway和CLI只开放`turn context/reply/cede`；既有Agent切换先关闭legacy admission并等待在途HTTP drain，legacy/v2不双消费。逐调用实时membership/父话题ACL已由P-A10.3补齐；完整MCP与其余产品工具仍属P-A10.4。
+
+**P-A10.3 实施状态**：Human/Agent direct mention在消息事务内建立唯一thread与合法参与者，v2 `turn.reply`同样不能绕过该语义；root来源cursor保持父频道而session/output固定到thread，现有thread内只能加入已有父级访问权的Agent。mixed cutover中v2 mention只写durable delivery，legacy mention复用同一响应模式/水位线判定并只把actionable dispatch reservation与output同事务提交，由Conversation Module执行/重启扫描恢复；post-commit设置变化产生的确定性no-wake会原子退款预算，migrating消息由cutover backfill接管，不双消费；workspace v6第三个不可变journal前缀增加reserved wake恢复索引。`@all`不建thread，silent只获得terminal observe。Context Envelope保存current batch、root、root前as-of父频道快照、continuity profile、task/attachment/UI不可变snapshot、文件记忆索引ref、预算/omission和多source watermark；冻结frontier不吸收未绑定later delivery，required超8k按连续前缀拆到后续turn。app.db v2保存不出库的安装级HMAC key，删除source只剩不可逆tombstone。Gateway、Context assembly与output提交都重验当前membership；Human移除和Agent自助leave同事务失效普通child session/attempt/capability/wakeup，非父级task assignee使用带task ref与到期时间的`task_scoped`grant并在release/reassign/任务终态、admission前自然到期或运行中heartbeat越界时撤销。Agent持久回复通过`producedByTurnId`进入Context/Steps/Usage/Outcome抽屉，omitted/ref-only不返回正文；output surface在冻结watermark之后出现Human/其他Agent消息时返回`stale_context`。完整MCP与refresh留给P-A10.4。
+
+**P-A10.4 实施状态**：`CapabilityGateway`成为MCP与CLI Transport Adapter之后的共同领域入口，覆盖context refresh、server-owned reply/cede、progress/turn inspector、ACL约束的conversation read/search、surface checklist、short wake、capability describe，以及通过窄port复用既有Task Module的list/get/create/claim/update/assign/unclaim/report/deliver；两个Adapter复用冻结的canonical strict reply/cede schema、CAS/idempotency、崩溃reconciliation和operation ledger。Agent custom scopes决定reply、attachment、task与conversation能力；required turn缺少`message:send`时在runtime admission前失败。JSON POST先有界解析再授权，每个领域写事务内原子重验activation/lease/generation/实时scope/父级ACL，Core单写进程对同operation single-flight，create/report/deliver以operation ID精确reconcile。v2临时附件按turn/activation/owner/server-owned surface与一小时expiry持久化，reply与message原子绑定；25 MiB超限或批内任一失败清理本批对象，temporary/deleting/bound状态及启动/调度GC恢复文件/SQLite崩溃窗口。跨private/DM disclosure domain在P-A10.5策略引擎前read只给`ref_only`、search不形成关键词oracle。stable broker handle仍只在当前attempt activation内有权，常驻进程逐调用读取短时descriptor。later-query source/watermark追加审计并旋转freshness claim，原Envelope不改写。Runtime准备按文件存在性选择mode后执行真实stdio/list-tools探针，探针失败只在CLI可执行时降级，否则在外部模型启动前返回`mcp_bootstrap_failed`；实际MCP/CLI调用更新有界transport诊断。short wake保存原始业务幂等键并由`UNIQUE(session_id,idempotency_key)`保证同generation跨turn重试仍只产生一条trigger。manual start只返回body-free逐surface inbox summary。真实Gateway fixture同时跑MCP、CLI client与CLI parser，并覆盖reply normalization/attachment/Task写；三家provider bootstrap在最终Desktop smoke前仍暂标`fixture_v2`，tool isolation、cwd relocation和compaction telemetry明确unsupported。P-A10.4未开放任意写Gateway，也未提前实现memory/H5/P-S1。
+
+**P-A10.5 实施状态**：workspace schema v7与app.db v3分别引入Space内和Human-only user-global episodic memory；当前app.db v4用独立、可回滚的rebuild migration修复早期v3变体缺失的复合revision FK，接受已知immutable v3 journal checksum但不放松当前schema gate。迁移前拒绝orphan，事务内保留canonical/revision/evidence/relation以及未重建的tag/lexical/FTS数据，失败回滚并恢复连接外键开关。canonical只指向append-only revision，typed evidence/relation、tag、suppression、actor域幂等mutation ledger和normalized FTS均已落地。Human控制面支持CAS lifecycle、历史revision/relation审计、replacement pointer与suppression解除；secret和权威exclude source拒绝入库。两库continuity/query候选按统一score breakdown合并，读取与最终reply都重验message/turn/file生命周期、跨Space ACL和validity；mixed evidence使用最严格projection。forget以secure-delete+WAL truncate清除正文，Agent full reset/delete只清private结构化记忆。Context Envelope冻结revision/HMAC/projection/score/evidence，Agent通过`knowledge:read`约束的`memory.recall/get`读取；一次性grant固定turn/source revision/target/action digest/TTL并由reply事务consume-once。P-A10.5没有自动advisor或Human记忆面板；它们仍由P-A10.6实施。
+
+**P-A10.6–P-A10.7 实施状态**：workspace schema v8增加restricted advisor control plane、proposal/recall observation与session revision；Claude maintenance运行在无工具/MCP/CLI、ephemeral cwd的独立Port，provider结果经typed actor/evidence、exclude/secret、source ACL、suppression、dedupe、成本/批次/lease验证后才能active/proposed，Codex/opencode当前明确unsupported。Advisor在provider返回和最终写事务内再次CAS校验job lease、Agent/source生命周期，混合retry/source cap按job结算，canonical/revision/evidence/proposal/conflict relation/mutation原子提交；安装级队列限制跨Space maintenance并发。Human面板提供Structured/Files、manage/recall/debug、proposal/revision/relation/evidence/disclosure/source revoke/suppression与advisor freshness，并允许Human把撤权来源的item以新manual revision确认为独立知识而不恢复旧ACL。Core启动和每5秒执行幂等durable-turn恢复扫描，封闭message+delivery提交后所有post-commit effect都失败且再无新事件的窗口。snapshot按session/generation/checksum/64KiB门禁持久和恢复，checklist/short wake跨restart使用session单调revision；compaction以持久turn event revision作为下一Envelope一次性`post_compaction`标记，terminal可重建append后投影失败窗口；高频preview以250ms窗口按类合并并在critical/terminal/cancel/close前flush，event/terminal/usage即时ACK并有60秒snapshot兜底。Codex提供可映射compaction telemetry，Claude/opencode不伪造统一summary。真实Desktop/Web验收发现并根治了Worker turn identity漏接`source=turn`、v2明确任务被legacy task wake双消费并误停Agent、terminal usage未承接final usage event三条跨边界问题。
+
+完整规格：`docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
+
+---
+
+## 决策 31：结构化记忆提炼采用安装级可替换 Advisor Provider，与聊天 runtime 解耦
+
+**状态**：Accepted / Implemented。2026-07-23按“内置Pi为新安装默认、Claude可切换、模型设置独立”修订并完成切片0–4。fresh install进入`provider_v1 + pi_sdk + setup_required`，既有安装保持`legacy_runtime`；Claude/Codex/opencode聊天Agent在逐Agent授权后可共用系统Provider，结构化recall、Human管理与文件记忆不受Provider状态限制。
+
+**结论**：Memory Advisor的业务管线继续由Core `MemoryAdvisorService`拥有，但执行一次结构化completion的能力收敛为安装级`AdvisorProvider`。它不是普通Agent，不具备身份、频道membership、DM、消息发送、工具、MCP、持久session、业务ACL或数据库写入权。同一个Provider可在Human显式授权后处理Claude Code、Codex、opencode聊天Agent产生的eligible turn，聊天runtime的session、工具、模型和配置不被复用。
+
+设置、job/run和审计必须区分三层：本机execution adapter、不可变`Advisor Model Profile`（实际model provider/model/API/endpoint/credential source/data policy）和完整出站计划（canonical endpoint、region、credential identity、tenant/project、proxy/allowed egress）。新安装默认选择Desktop内置、精确锁版的Pi SDK Provider，Claude Code作为可切换Provider；既有安装不静默切换处理方。Adapter必须在读取evidence与外发正文前完成无正文preflight，任何unknown或漂移fail-closed；调用后校验只作二次审计。每个job/run同时固定Provider revision、Model Profile revision、installation identity、Provider/revocation epoch、配置/能力digest、egress、source-scope与per-Agent consent epoch；凭据通过绑定run/epoch/Worker generation的短时单次activation handle注入，不持久化。Core用`ProviderEpochGate`封闭最终app epoch复核与workspace事务提交之间的设置切换窗口。旧`enabled=1`不构成云端外发授权，Agent ACL可见但不在consent scope的DM/私有正文不得外发；跨机器、撤回后重授或边界变化也不能静默重路由或批量重放历史。Provider返回只是不可信candidate，仍需经过既有typed schema、memory-poisoning policy、source ACL、secret/noise、suppression、dedupe、disclosure、lease、Agent/Space lifecycle和最终原子事务。
+
+**推理与权衡**：为每种聊天runtime分别实现maintenance会重复无工具、MCP/session/cwd/environment隔离、schema、取消、usage和版本兼容，并使记忆能力随聊天引擎漂移。普通内置Agent又拥有过多身份、会话和工具能力。安装级无状态Provider用更窄接口获得更低维护成本和一致记忆体验，但引入app.db Provider revision/epoch、workspace per-Agent consent epoch、provider run、配置漂移恢复与独立设置UI。迁移先冻结现有Claude结果，再补最小env、临时HOME、可执行物完整性与进程树终止能力；外发授权控制面上线时，旧enabled状态不自动继承为consent，Codex/opencode也只在明确授权后开放。
+
+**Pi边界**：Kith-space内置并精确锁版`@earendil-works/pi-ai`，用Kith-owned helper通过锁定版本公开的`createModels`/provider factory/`models.completeSimple()`执行一次completion，不启动完整Pi coding agent、AgentSession、agent loop、文件/shell工具、项目配置或资源发现。系统Pi CLI不是执行依赖，只能由Human显式触发；Kith自有纯数据解析器只读其全局模型目录和所选凭据来源，不调用命令/env resolver、OAuth刷新、provider hook或写回。项目`.pi`、`!command`、复合环境插值与动态网络刷新都不执行。导入生成脱敏不可变快照，配置变化需刷新、重新预检并按边界重新授权。Pi不是sandbox，选择Pi也不代表数据留在本机，仍需显示并授权实际backend/model/destination。
+
+**备选方案**：否决“每聊天runtime各做一套Advisor”，因为安全与维护逻辑重复；否决“普通内置Agent”与“内置完整Pi coding agent”，因为权限面和资源发现面过大；否决“只调用系统Pi CLI”，因为版本、PATH、全局配置和供应链不可复现；暂缓“捆绑本地模型权重”，因为分发、硬件、质量与许可证成本。保留确定性规则作为模型前后的admission/validation而非唯一语义提炼器；Pi SDK统一多模型调用仍必须走相同授权和审计。
+
+**实施边界**：本决策不命名为P-A10.8，也不吞并P-A11 consolidation、P-A12 skill reconciliation或P-S1 sandbox/approval/Vault。完整提案见`docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md`。
+
+**实施事实**：app.db v5持久Provider/Model Profile revision、installation identity、provider/revocation epoch、迁移状态与Pi CLI脱敏快照；workspace schema v9持久逐Agent consent、job执行快照和独立Provider Run。内置`@earendil-works/pi-ai@0.81.1`经one-shot helper只调用公开`createModels → provider factory → getModel → completeSimple`，构建依赖图拒绝`pi-agent-core`、`pi-coding-agent`和compat。CredentialPort、模型Compiler/认证矩阵、artifact digest、最小env/临时HOME、DNS pinning、redirect拒绝、pre/postflight、ProviderEpochGate和最终ACL/epoch复核均已进入实际执行链路。通用Core→Worker completion命令只携带单次activation handle，凭据由Worker经独立本机兑换消息按run/epoch/generation/snapshot取回；Agent/Space/来源频道撤权、设置切换与probe使用同一active-run取消屏障，Core断线时Worker先清理旧helper与准备态再重连。设置UI与Agent Memory面板分别承担安装级配置/诊断/Run审计和逐Agent授权/撤权。
+
+---
+
+## 决策 32：模型配置由 Kith 统一管理，CLI 配置只读导入并在启动时注入
+
+**状态**：Implemented（2026-07-23）。
+
+**结论**：Kith-space 的安装级 `app.db` 成为模型供应商连接、可复用模型配置、运行器默认值和 Memory Advisor 模型绑定的产品事实源。供应商连接与 Claude Code、Codex、OpenCode、Pi 等 runtime 解耦，由 runtime 专属 compiler 按 API 协议、认证方式和本机版本判断兼容；Agent 只保存“跟随运行器默认”或“固定某个模型配置 revision”的绑定意图，不复制 endpoint 或密钥。运行器默认值显式区分 Kith 模型配置、受限的 `unmanaged_cli_native` 与未设置三态，不能用 nullable 字段混淆；CLI-native 不可用于 Advisor。
+
+**配置边界**：Kith 可以由 Human 显式触发、只读并脱敏地导入受支持的 Pi/Claude/Codex/OpenCode 全局配置，但默认不写回任何 CLI 用户配置。Core 固定 provider/model/runtime revision 和执行 fingerprint，Local Runtime Worker 在每次启动时用参数、child-only 环境和 Kith-owned 临时配置注入；配置变化先提升安装级 runtime epoch、阻断旧 admission，再进入新的 session generation，不热改或错误 resume 旧 session。未来“同步到 CLI”若实现，只能是显式、展示 diff、备份、原子写入和可回滚的高级动作，不能成为正常运行依赖。
+
+**Pi Runtime**：Pi 从现有 experimental print-mode one-shot adapter 提升为正式 P-A10 v2 runtime，优先适配本机外部 Pi CLI 的 RPC 模式，接入 per-surface session、durable turn、Context Envelope、Kith CLI Gateway、usage、cancel、snapshot 和 compaction telemetry。Pi Agent runtime 与内置 `pi-ai` Memory Advisor 是两条独立路径，不共享 session、工具权限或执行配置；Pi 没有内置 MCP 时必须诚实标记 unsupported，不能把 CLI fallback 伪报成 MCP。正式 ready 必须通过版本化 RPC 基线与默认禁用项目/用户 extension、skill、prompt、theme、context 的安全启动探针，并以 `agent_settled` 作为唯一 turn terminal。
+
+**UI 结论**：Settings 增加“模型与供应商”和“运行器”。模型页采用单列来源总览，添加与编辑复用同一弹窗并在其中维护该供应商的模型；一次保存由服务端聚合命令在runtime configuration写锁内读取当前状态，并在单一app.db事务内提交供应商revision、模型增删改和runtime epoch，不能由前端逐接口形成部分保存，也不能让排队并发请求复用旧快照。删除采用二次确认，仍被运行器、Advisor或任一可用Space active pinned Agent引用时fail-closed；软删除Agent不再占用，任一已登记Space不可访问时拒绝删除。disabled配置不再进入选择器或执行解析。Memory Advisor 页只负责启用状态、执行器、模型配置、真实数据目的地与授权影响，revision/epoch/digest 和 Provider Run 进入高级诊断。Agent 记忆页把 Advisor 收敛为摘要条与管理抽屉，主体空间优先给结构化记忆列表/详情；类型和范围筛选收敛为单一菜单。现有 `Advisor Model Profile` 继续作为内部不可变执行快照，不再作为普通用户直接编辑的产品概念。
+
+**推理与权衡**：自动修改全局 CLI 配置会影响 Kith 之外的终端、引入并发覆盖、schema/版本/企业 managed policy 冲突，并扩大密钥复制面；只靠各 CLI 自有配置又无法提供 Agent/Advisor 可复用、可审计和可迁移的统一体验。Kith-owned 配置加 per-launch compiler 把副作用限制在 Kith 子进程，代价是需要维护四家窄 adapter、在 Codex 等 machine-local 配置受限的 runtime 上使用临时配置根，并在 Space 移机缺少安装级配置时明确进入 `setup_required`。
+
+**安全边界**：普通授权浏览器可管理供应商/模型和选择已有绑定；新增或更换长期密钥额外要求Desktop私有信任，或请求peer、Host与Origin三者全部为loopback且Origin/Host同源（含端口）。本机`localhost:7777`因此可获得与Desktop一致的供应商体验，但跨端口localhost页面与LAN HTTP不承载新密钥。任何已保存密钥的供应商只要backend、API协议、endpoint、network class或allowed egress发生变化，都必须重新输入密钥，禁止旧credential ref静默跟随新的执行身份或目的地。读取本机CLI文件、显示一次性secret与导出诊断仍仅Desktop。聊天 runtime 新增独立 `RuntimeCredentialActivationPort`：Core 只发送强绑定、无密钥 descriptor，Worker 通过Worker-only本机控制通道单次兑换，明文只进入当前Worker内存与child env，并在失败、取消、关闭、超时或lease变化时撤销；不得复用Advisor activation，也不得进入workspace.db、普通控制消息、日志或UI。完整规格见 `docs/superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`。
+
+**实施事实**：app.db v6与workspace.db v10迁移、稳定对象/不可变revision、三态runtime default、Agent绑定快照、runtime epoch、四家compiler registry、独立聊天activation、Pi RPC v2、脱敏presenter和Settings三页已落地。Pi使用本机0.81.1外部CLI，fixture覆盖strict LF/UTF-8半帧、correlated response、usage、abort、compaction与`agent_settled`；MCP保持unsupported并通过CLI Gateway。CLI导入只读固定用户级文件、拒绝symlink/超限/动态资源，默认从不写回。
+
+---
+
+## 决策 33：快捷安装只管理 Kith-owned runtime 副本
+
+**状态**：Implemented（2026-07-23）。
+
+**结论**：运行器页可以在Desktop trust下快捷安装Claude Code、Codex、OpenCode和Pi，但只允许Kith内置清单中的固定包名与支持版本，并安装到`<appData>/managed-runtimes/<runtimeId>`。Worker下次启动时把Kith-owned bin放到自身PATH前部；Kith不修改系统PATH、不覆盖或卸载系统CLI、不写账号文件和模型全局配置。安装/删除逐runtime串行并使用同父目录staging/隔离目录补偿回滚；删除动作也只能删除Kith-owned目录，且不会清空用户已有的自定义可执行路径。系统PATH另有同名CLI时，下次Worker启动自动回退。
+
+**推理与权衡**：只给安装命令会让普通用户仍需理解npm、PATH和版本兼容；直接全局安装或接管各CLI配置则会影响Kith之外的终端、扩大删除权限并引入供应链与配置冲突。Kith-owned锁版副本把快捷安装的便利限定在可撤销目录内，代价是支持版本升级必须更新清单并验收，且安装/删除后需要重启Worker，不能假装热生效。
+
+**安全边界**：安装与删除只接受Desktop trusted请求，API不接受包名、命令、registry或任意目标路径；普通Web只读取脱敏的安装、版本和账号状态。账号探测只返回`ready / signed_out / unknown`与人类可读摘要，不回传CLI原始输出或凭据。模型配置仍遵循决策32：Kith是事实源，CLI配置只读导入且不写回。
+
+---
+
+## 决策 34：新增前端统一使用 Tailwind CSS v4 与 shadcn/ui
+
+**状态**：Implemented（2026-07-24，基础设施与规则已落地）。
+
+**结论**：React UI 的新增样式统一使用 Tailwind CSS v4 原子类，基础交互组件优先使用 shadcn/ui。组件从 `@/components/ui/*` 导入，条件类名统一通过 `@/lib/utils` 的 `cn()` 合并，颜色优先使用 shadcn 语义 Token。除 Tailwind/shadcn 主题基础层和无法枚举的运行时几何值外，不新增全局 CSS、局部 CSS、CSS Modules 或内联样式。
+
+**迁移边界**：当前已验收界面仍有大量 `styles.css` 与 feature CSS，不能为技术栈切换做一次性重写。新增组件遵循新基线；结构性修改已有组件时，在范围可控的前提下迁移被触达组件；纯缺陷修复允许外科式维护存量 CSS。迁移不得改变已有信息架构、视觉验收结果、可访问性或业务行为。
+
+**推理与权衡**：Tailwind 把新增样式约束收口到组件附近，shadcn/ui 提供可维护、可审查且保留源码所有权的基础组件，能减少重复弹窗、菜单、表单和状态逻辑。代价是迁移期存在两套样式表达；通过“新增强制、存量渐进”和语义 Token 隔离控制复杂度，而不是扩大改动面换取名义上的统一。
+
+**实施事实**：Vite 已接入 `@tailwindcss/vite`；`web/components.json` 使用 Radix/Nova、Lucide 与 CSS variables；`@/*` 映射到 `web/src/*`；`web/src/lib/utils.ts` 提供 `cn()`；首个 `Button` 组件位于 `web/src/components/ui/button.tsx`。`web/src/styles.css` 是唯一 Tailwind/shadcn 主题入口；迁移期只导入 Tailwind theme/utilities、不启用全局 Preflight，基础边框/焦点规则只作用于 `data-slot` 组件，同时保留既有系统字体，并将 shadcn 的 `muted` 底层变量与存量 `--muted` 文本色隔离，避免初始化改变现有 UI。
 
 ---
 

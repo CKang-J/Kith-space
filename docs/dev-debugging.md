@@ -46,6 +46,10 @@ pnpm run browser-access:dev lan --port 7777 --token "a-custom-token-at-least-16-
 
 浏览器首次访问时输入访问 Token，随后使用持久 HttpOnly Cookie 会话。URL 不携带 Token，也不支持旧的 `?as=` 参数。
 
+完整Desktop/Web验收必须从产品正常流程开始：用`pnpm run desktop:dev`启动fresh profile，在Desktop首次创建Human，再进入“Settings → Desktop & Web”，把模式切到“Local only”，点击生成或轮换Token；模式改变后重启Desktop/Core，再在7777输入这次界面显示的一次性Token。Token只应临时保存在测试进程内存，不得写入源码、fixture、环境示例、快照、日志说明或验收文档。
+
+需要检查Electron渲染DOM时，开发脚本允许把参数转发给Electron：`pnpm run desktop:dev --remote-debugging-port=9222`。只可在本机隔离profile使用并在验收后停止进程；不要给LAN地址开放该端口，也不要从DevTools输出一次性Token。production bundle/pack不会自动启用调试端口。
+
 ## 3. 数据库与调试数据
 
 正式 Desktop 首次初始化不需要 `seed`。以下命令只用于手动分进程、测试 fixture 或 schema 调试：
@@ -111,3 +115,64 @@ pnpm run desktop:dist    # x64、per-user、assisted NSIS 安装器
 ```
 
 `desktop:pack` 和 `desktop:dist` 会先为 Electron x64 强制重建 `better-sqlite3`，打包结束或失败后再恢复本地 Node ABI。安装器当前未签名，公开分发前必须配置 Windows 代码签名证书。A6 的具体构建与 smoke 验收记录以 [`progress.md`](./progress.md) 为准。
+
+## 8. P-A9 Chat 浏览器基线与回归
+
+Chat 基线只能在全新临时 profile 上运行，且只用于 UI 首次可见、实时追加和滚动 SLO；它不测量 Core/Worker admission、容量或 SQL。先创建一个绝对临时目录并保存 fixture 输出：
+
+```powershell
+$profile = Join-Path $env:TEMP ("kith-space-p-a9-ui-" + [guid]::NewGuid().ToString("N"))
+pnpm exec tsx scripts/p-a9/prepare-chat-baseline.ts --profile $profile --port 7777
+```
+
+fixture 要求 `$profile` 尚不存在，并为 100/500/1000 各创建一对等量频道、5 个独立 realtime 频道和随机生成的 local browser access token（都在一次性 JSON 输出中）。随后按第 1、2 节配置同一个 profile、临时 Desktop/Worker credential，启动 Core 与 Vite：
+
+```powershell
+$env:KITH_SPACE_HOME = Join-Path $profile "app-data"
+$env:KITH_SPACE_SPACES_DIR = Join-Path $profile "spaces"
+```
+
+不要复用真实 app data，也不要把 fixture 输出的临时 token 当正式凭据。
+
+在授权的内置 Browser 打开 Vite，注入 `scripts/p-a9/chat-browser-probe.js`。Vite `/api` 开发代理已显式启用 keep-alive，重复切换不得改用为每次请求强制关闭连接的临时代理配置。记录前让测试页保持前台，并用短 rAF 采样确认频率接近显示器刷新率；Windows 上后台或被遮挡的内置 Browser 可能降到约 1 Hz，这类 round 必须丢弃并重新测量。首次可见使用 fixture 的 `channelPairs`，把每对 A/B 的 `name` 映射为 `channelName` 后先交替预热 100 次，再记录 5 个独立的 100 次 round：
+
+```js
+const targets = [pair.a, pair.b].map(({ name, targetText }) => ({ channelName: name, targetText }));
+await pA9BrowserProbe.renderRound(targets, 100); // warmup，不记录
+const rounds = [];
+for (let round = 0; round < 5; round += 1) rounds.push(await pA9BrowserProbe.renderRound(targets, 100));
+```
+
+每个记录 round 的 `durationsMs.length` 必须为 100；不得用一次频道打开伪称 p95。实时轮次使用独立 `appendChannels`，先 `armRealtime(round, 100)`，再从终端执行：
+
+```powershell
+pnpm exec tsx scripts/p-a9/append-chat-baseline.ts `
+  --server http://127.0.0.1:7777 `
+  --desktop-token <temporary-desktop-token> `
+  --space-id <fixture-space-id> `
+  --channel-id <fixture-append-channel-id> `
+  --round 1
+```
+
+追加完成后调用 `readRealtime()`。滚动样本先调用 `loadHistory(100|500|1000)`，确认 article 全量挂载，再执行 5 次 `scrollRound(100)`。结束时调用 `cleanup()`、停止 Core/Vite 并删除本轮临时 profile。Core SQL 与 Worker admission 证据分别由 `core-baseline.ts` 和 `runtime-baseline.ts` 采集；统计口径、真实样本和绝对 SLO 见 [`performance/p-a9-baseline.md`](./performance/p-a9-baseline.md)。
+
+## 9. P-A10 Runtime Contract 基线
+
+P-A10.0 的可执行 adapter fixture运行：
+
+```powershell
+pnpm exec tsx --test src/runtime/contract/v2/runtimeContract.test.ts src/daemon/runtimeContractBaseline.test.ts
+```
+
+Claude/Codex fixture证明同一常驻进程可串行处理两轮，opencode fixture证明one-shot子进程会在第二轮携带首轮session ID；三者同时验证显式completion与可映射的final usage，bridge会把最后一次normalized usage带入terminal供Core持久。P-A10.1–P-A10.5覆盖critical ACK、cancel/generation、durable turn、server-owned thread、Context/ACL、MCP/CLI、临时附件和episodic memory。P-A10.6增加workspace v8 advisor migration、restricted MaintenanceRuntimePort、tool isolation、typed validation、source/cost/lease/backoff/suppression、管理API和Structured/Files面板；当前Claude maintenance为supported，Codex/opencode为unsupported。P-A10.7增加snapshot session/generation/checksum/64KiB/secret门、immediate+60秒ACK、checklist/wake revision、restart恢复、event backpressure和Codex compaction mapping；Claude/opencode compaction明确unsupported。`desktop:bundle`同时生成`runtime/kith-core-mcp.mjs`与`agent-cli.mjs`，当前MCP工具数为24。provider能力以contract suite和live smoke分别记录，unsupported不得改写为“未测试”。
+
+v2 runtime子进程只看到stable `KITH_SPACE_BROKER_HANDLE`、loopback endpoint和mode `0600` activation file路径；activation file在每个attempt运行前写入、结束后删除，MCP/CLI常驻进程每次调用都会重新读取。不要把handle、activation ID或文件内容复制到日志、fixture或问题报告；它们不是浏览器Access Token，也不能脱离当前lease使用。Gateway只接受loopback请求并再次核对DB中的attempt/session generation/input scope和实时surface ACL。Core或Worker重启时旧generation事件会被拒绝，scanner在lease过期后恢复；不要人工修改attempt状态来“解卡”。
+
+真实 smoke 只能在隔离Space/runtime state中执行，必须使用已登录的Claude Code/Codex和显式opencode provider/model。usage只能来自raw engine event；tool isolation必须用实际shell/file探针验证；relocation必须在两个root放不同marker；不能用模型自述或prompt“不要调用工具”代替证据。
+
+## 10. 系统 Memory Advisor Provider 调试
+
+- 开发态helper默认位于`desktop/dist/runtime/pi-advisor-helper.mjs`；packaged Desktop从resources runtime解析，并用`process.execPath`配合`ELECTRON_RUN_AS_NODE=1`启动。`KITH_SPACE_PI_ADVISOR_HELPER`只用于测试/开发显式覆盖，不应写入用户配置。
+- 每run创建独立临时HOME/cwd并只传allowlist env和一个显式凭据值；不得为了排障恢复完整`process.env`、系统profile、ADC、IMDS、代理变量或用户HOME。Claude Provider同样使用绝对可执行路径、artifact digest、临时HOME与显式凭据。
+- Pi CLI导入只在Human点击后读取所选全局目录。Importer不会执行`!command`、复合env、OAuth refresh/login、provider hook、网络刷新或写回；命令/危险env/literal secret/过期OAuth只形成脱敏warning。不要把`auth.json`、凭据、Access Token、activation handle或helper stdin/stdout复制进日志和fixture。
+- Settings诊断页只显示可执行物是否存在、digest是否匹配、隔离策略和脱敏Provider Run；`provider_preflight_destination_mismatch`通常表示DNS分类、allowed origin、proxy或metadata边界不一致，`provider_postflight_destination_mismatch`表示redirect或DNS/egress漂移，均应根因修复而非关闭门禁。

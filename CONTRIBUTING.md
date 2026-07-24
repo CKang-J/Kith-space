@@ -35,6 +35,7 @@ git switch -c feat/short-description
 ## 开发与验证
 
 - 保持最小必要修改，匹配现有风格。
+- 新增前端 UI 使用 Tailwind CSS v4 与 shadcn/ui，优先复用 `web/src/components/ui/`，并遵循 `AGENTS.md` 的前端开发规范；存量 CSS 只按触达范围渐进迁移。
 - 提交前查看 `git status`、`git diff --stat` 和 `git diff`，确认没有密钥、本机路径、生成物或无关文件。
 - 代码改动至少运行 `pnpm run typecheck` 和相关测试；完整测试命令见 `docs/dev-commands.md`。
 - 只改文档时不要求本地运行完整代码测试，但仍需检查链接、命令和差异；PR 中如实注明未运行的检查。

@@ -186,6 +186,7 @@ export function dbForSpace(spaceId: string, options: { allowCreate?: boolean } =
   try {
     assertCompatibleBaseline(sqlite, dbPath);
     sqlite.pragma("foreign_keys = ON");
+    sqlite.pragma("secure_delete = ON");
     sqlite.pragma("journal_mode = WAL");
     sqlite.pragma("busy_timeout = 5000");
     const db = drizzle(sqlite, { schema });
@@ -213,11 +214,36 @@ export function allSpaceDbs(): { space: SpaceRecord; db: SpaceDb }[] {
   return listSpaces().map((space) => ({ space, db: dbForSpace(space.id) }));
 }
 
+/** Cross-Space background scans must not let one missing or incompatible Space poison every healthy Space. */
+export function availableSpaceDbs(
+  onUnavailable?: (space: SpaceRecord, error: unknown) => void,
+): { space: SpaceRecord; db: SpaceDb }[] {
+  const available: { space: SpaceRecord; db: SpaceDb }[] = [];
+  for (const space of listSpaces()) {
+    try {
+      available.push({ space, db: dbForSpace(space.id) });
+    } catch (error) {
+      onUnavailable?.(space, error);
+    }
+  }
+  return available;
+}
+
 export function closeSpaceDb(spaceId: string): void {
   const conn = spaceConnections.get(spaceId);
   if (!conn) return;
   conn.sqlite.close();
   spaceConnections.delete(spaceId);
+}
+
+/** Flushes zeroed pages and removes WAL frames after a privacy-sensitive hard delete. */
+export function purgeDeletedSpaceContent(spaceId: string): void {
+  const conn = spaceConnections.get(spaceId);
+  if (!conn) throw new Error(`Space database is not open: ${spaceId}`);
+  const result = conn.sqlite.pragma("wal_checkpoint(TRUNCATE)") as Array<{ busy: number }>;
+  if (result.some((row) => row.busy !== 0)) {
+    throw new Error(`Space database privacy checkpoint is busy: ${spaceId}`);
+  }
 }
 
 export function closeAllDatabases(): void {

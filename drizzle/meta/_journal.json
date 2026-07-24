@@ -29,6 +29,62 @@
       "when": 1784024369419,
       "tag": "0003_agent_response_modes",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1784457381025,
+      "tag": "0004_agent_harness_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1784458418697,
+      "tag": "0005_agent_durable_turns",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784467852894,
+      "tag": "0006_legacy_dispatch_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1784472700000,
+      "tag": "0007_temporary_attachment_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1784474300000,
+      "tag": "0008_episodic_memory_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1784480000000,
+      "tag": "0009_memory_advisor",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1784800000000,
+      "tag": "0010_system_advisor_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1784880000000,
+      "tag": "0011_model_runtime_bindings",
+      "breakpoints": true
     }
   ]
 }

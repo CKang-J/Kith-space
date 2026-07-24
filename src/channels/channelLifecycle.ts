@@ -18,38 +18,49 @@ export class ChannelLifecycleError extends Error {
 
 type Channel = typeof schema.channels.$inferSelect;
 
-export async function channelLifecycleState(spaceId: string, channelId: string): Promise<ChannelLifecycleState> {
+async function channelLifecycleRecord(
+  spaceId: string,
+  channelId: string,
+): Promise<{ state: ChannelLifecycleState; channel: Channel | null }> {
   const db = dbForSpace(spaceId);
   const channel = (await db.select().from(schema.channels).where(and(
     eq(schema.channels.id, channelId),
     eq(schema.channels.spaceId, spaceId),
   )))[0];
-  if (!channel) return "missing";
-  if (channel.deletedAt) return "deleted";
-  if (channel.type !== "thread") return channel.archivedAt ? "archived" : "active";
-  if (!channel.parentMessageId) return "missing";
+  if (!channel) return { state: "missing", channel: null };
+  if (channel.deletedAt) return { state: "deleted", channel };
+  if (channel.type !== "thread") return { state: channel.archivedAt ? "archived" : "active", channel };
+  if (!channel.parentMessageId) return { state: "missing", channel };
 
   const parent = (await db.select({ channelId: schema.messages.channelId }).from(schema.messages).where(and(
     eq(schema.messages.id, channel.parentMessageId),
     eq(schema.messages.spaceId, spaceId),
   )))[0];
-  if (!parent) return "missing";
+  if (!parent) return { state: "missing", channel };
   const root = (await db.select({ archivedAt: schema.channels.archivedAt, deletedAt: schema.channels.deletedAt })
     .from(schema.channels).where(and(
       eq(schema.channels.id, parent.channelId),
       eq(schema.channels.spaceId, spaceId),
     )))[0];
-  if (!root) return "missing";
-  if (root.deletedAt) return "deleted";
-  return root.archivedAt || channel.archivedAt ? "archived" : "active";
+  if (!root) return { state: "missing", channel };
+  if (root.deletedAt) return { state: "deleted", channel };
+  return { state: root.archivedAt || channel.archivedAt ? "archived" : "active", channel };
 }
 
-export async function assertChannelWritable(spaceId: string, channelId: string): Promise<void> {
-  const state = await channelLifecycleState(spaceId, channelId);
-  if (state === "active") return;
+export async function channelLifecycleState(spaceId: string, channelId: string): Promise<ChannelLifecycleState> {
+  return (await channelLifecycleRecord(spaceId, channelId)).state;
+}
+
+export async function requireWritableChannel(spaceId: string, channelId: string): Promise<Channel> {
+  const { state, channel } = await channelLifecycleRecord(spaceId, channelId);
+  if (state === "active" && channel) return channel;
   if (state === "archived") throw new ChannelLifecycleError("channel_archived", "channel is archived and read-only", 409);
   if (state === "deleted") throw new ChannelLifecycleError("channel_deleted", "channel is deleted", 409);
   throw new ChannelLifecycleError("channel_not_found", "channel not found", 404);
+}
+
+export async function assertChannelWritable(spaceId: string, channelId: string): Promise<void> {
+  await requireWritableChannel(spaceId, channelId);
 }
 
 /** Filter list-like surfaces while preserving direct reads of archived history. */

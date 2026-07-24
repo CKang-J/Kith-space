@@ -19,7 +19,8 @@ test("active Core Service paths use the installation-local worker instead of Mac
   assert.doesNotMatch(localRuntime, /\/machines|schema\.machines/);
   assert.match(catchup, /const spaces = listSpaces\(\)/);
   assert.match(catchup, /for \(const space of spaces\)/);
-  assert.match(catchup, /sendToWorker/);
+  assert.match(catchup, /runtimeWorkerPortForLease\(lease\)/);
+  assert.match(catchup, /getOrReserveWake/);
   assert.doesNotMatch(catchup, /schema\.machines|schema\.agents\.machineId|sendToMachine/);
 });
 

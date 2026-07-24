@@ -1,7 +1,7 @@
 # Kith-space 频道设置、归档与删除设计
 
 - 日期：2026-07-14
-- 状态：已实现、通过命令与浏览器验证并完成一次最终 review，待用户验收
+- 状态：已实现、通过命令与浏览器验证、完成一次最终 review，并通过 2026-07-18 本轮用户验收
 - 范围：频道设置场景、常规/成员/通知页面、归档频道分组、频道恢复与删除、`# all` 必需频道保护
 - 设计基线：`cdcfe4b`；实现位于 `codex/ui-adjustments`，与本规格同一提交交付
 
@@ -356,7 +356,7 @@ pnpm run web:build
 
 ## 16. 文档落地边界
 
-本文所述设置场景、归档分组、通知持久化、统一只读 guard 与 `# all` 自动修复已经落地。该切片把保持 19 张产品表的 workspace.db 升级为 schema v4；当前 P-A8 之后为 schema v5。`human_channel_states.notification_level` 使用 `all | mentions | none` 三档且默认 `all`；Store 分离维护活跃/归档频道，窄屏设置复用同一组件进入 Chat 右侧抽屉。该切片验证时 `pnpm run typecheck`、561/561 全量单测、完整集成测试与 Web build（2602 modules）通过；真实浏览器覆盖通知持久化、归档只读/直接恢复/删除、未保存设置的历史后退保护、窄宽度设置抽屉和模块并排布局，控制台无 warning/error。按约定仅执行的一次最终 review 已完成，发现的模块边界、历史返回、归档父频道 Mentions/Tasks 隔离、直接恢复入口和基线文档问题均已修复，未再发起第二轮 review；当前状态为“待用户验收”。
+本文所述设置场景、归档分组、通知持久化、统一只读 guard 与 `# all` 自动修复已经落地。该切片把保持 19 张产品表的 workspace.db 升级为 schema v4；当前 P-A8 之后为 schema v5。`human_channel_states.notification_level` 使用 `all | mentions | none` 三档且默认 `all`；Store 分离维护活跃/归档频道，窄屏设置复用同一组件进入 Chat 右侧抽屉。该切片验证时 `pnpm run typecheck`、561/561 全量单测、完整集成测试与 Web build（2602 modules）通过；真实浏览器覆盖通知持久化、归档只读/直接恢复/删除、未保存设置的历史后退保护、窄宽度设置抽屉和模块并排布局，控制台无 warning/error。按约定仅执行的一次最终 review 已完成，发现的模块边界、历史返回、归档父频道 Mentions/Tasks 隔离、直接恢复入口和基线文档问题均已修复，未再发起第二轮 review；2026-07-18 本轮用户验收已完成。
 
 实现交付同步：
 

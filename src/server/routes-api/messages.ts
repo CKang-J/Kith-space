@@ -144,8 +144,11 @@ export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
     if (!human) return (sendErr(res, 403, "not the local Human"), true);
     const mode = normalizeTaskExecutionMode(b.taskExecutionMode ?? b.executionMode);
     if (b.asTask && !mode) return (sendErr(res, 400, "executionMode must be autopilot or plan-first"), true);
+    if (b.memoryPolicy !== undefined && b.memoryPolicy !== "eligible" && b.memoryPolicy !== "exclude") {
+      return (sendErr(res, 400, "memoryPolicy must be eligible or exclude"), true);
+    }
     try {
-      const msg = await createMessage({ spaceId, channelId: b.channelId, senderType: "human", senderId: humanId, senderName: human.displayName, content: b.content || "", asTask: !!b.asTask, taskExecutionMode: mode ?? undefined, attachmentIds: hasAtt ? b.attachmentIds : undefined });
+      const msg = await createMessage({ spaceId, channelId: b.channelId, senderType: "human", senderId: humanId, senderName: human.displayName, content: b.content || "", asTask: !!b.asTask, taskExecutionMode: mode ?? undefined, attachmentIds: hasAtt ? b.attachmentIds : undefined, contextSnapshot: b.contextSnapshot, memoryPolicy: b.memoryPolicy ?? "eligible" });
       return (sendJson(res, 200, { ok: true, id: msg.id, seq: msg.seq }), true);
     } catch (error) {
       if (sendTaskOperationError(res, error)) return true;

@@ -3,19 +3,21 @@
 import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 import { decideAgentMessageResponse, type AgentResponseDeliveryDecision } from "../agents/agentResponseDelivery.js";
 import { resolveAgentResponseMode } from "../agents/agentResponseSettings.js";
+import { agentHasScope } from "../agents/agentScopes.js";
 import { channelLifecycleState } from "../channels/channelLifecycle.js";
 import { dbForSpace, listSpaces, schema } from "../db/index.js";
 import { createLogger } from "../log.js";
 import {
   isWorkerLeaseCurrent,
-  sendToWorkerForLease,
   workerRuntimes,
   type WorkerLease,
 } from "../local-runtime/workerHub.js";
+import { WorkerAdmissionUncertainError } from "../local-runtime/workerHub.js";
+import { runtimeWorkerPortForLease } from "../runtime/control/runtimeWorkerAdapter.js";
 import { setAgentIntroductionTurn } from "./agentIntroduction.js";
+import { SessionModule } from "../sessions/sessionModule.js";
 import { agentConfig, reportDispatchRejection } from "./core.js";
 import { SqliteDispatchState, type DispatchMessageContext } from "./dispatchGuard.js";
-import { agentHasScope } from "./scopes.js";
 
 const log = createLogger("server:catchup");
 // lastReadSeq is the durable idempotency boundary; this short cooldown only prevents reconnect flapping from
@@ -153,6 +155,7 @@ export async function catchUpAgentsOnWorker(runningIds: string[], lease: WorkerL
   }
   lastRun = { at: now, generation: lease.generation };
   const availableRuntimes = new Set(workerRuntimes());
+  const runtimeWorker = runtimeWorkerPortForLease(lease);
   const spaces = listSpaces();
 
   let woke = 0;
@@ -168,6 +171,7 @@ export async function catchUpAgentsOnWorker(runningIds: string[], lease: WorkerL
     scanned += list.length;
     for (const agent of list) {
       if (!isWorkerLeaseCurrent(lease)) return;
+      if (new SessionModule(spaceId, db).harnessMode(agent.id) !== "legacy") continue;
       let backlog: AgentResponseBacklog | null = null;
       try {
         backlog = await computeBacklog(spaceId, agent.id, agent.scopes);
@@ -184,13 +188,12 @@ export async function catchUpAgentsOnWorker(runningIds: string[], lease: WorkerL
       const state = new SqliteDispatchState(spaceId);
       await state.ensureChain({ ...backlog.dispatch, rootMessageId: backlog.messageId, channelId: backlog.channelId });
       if (!isWorkerLeaseCurrent(lease)) return;
-      const reservation = await state.reserveWake({
+      const reservation = await state.getOrReserveWake({
         ...backlog.dispatch,
         messageId: backlog.messageId,
         targetAgentId: agent.id,
       });
       if (!isWorkerLeaseCurrent(lease)) {
-        if (reservation.allowed) await state.releaseWake(reservation.reservationId);
         return;
       }
       if (!reservation.allowed) {
@@ -207,36 +210,47 @@ export async function catchUpAgentsOnWorker(runningIds: string[], lease: WorkerL
         continue;
       }
 
-      let sent = false;
       setAgentIntroductionTurn(spaceId, agent.id, null);
-      if (!runningIds.includes(agent.id)) {
-        const cfg = await agentConfig(spaceId, agent.id);
-        if (!isWorkerLeaseCurrent(lease)) {
-          await state.releaseWake(reservation.reservationId);
-          return;
-        }
-        sent = Boolean(cfg) && sendToWorkerForLease(lease, {
-          type: "agent:start",
-          agentId: agent.id,
-          config: cfg,
-          reason: "wake",
-        });
-      } else {
-        sent = sendToWorkerForLease(lease, {
-          type: "agent:deliver",
-          agentId: agent.id,
+      try {
+        const delivery = {
           seq: 0,
           from: backlog.from,
-          target: "",
+          target: backlog.channelId,
           targetName: backlog.targetName,
-          msgShort: "",
+          msgShort: backlog.messageId.slice(0, 8),
           isTask: false,
-          mentioned: false,
+          mentioned: backlog.responseDirective === "required",
           responseDirective: backlog.responseDirective,
           responseReason: backlog.responseReason,
-        });
-      }
-      if (sent) {
+        } as const;
+        const admission = runningIds.includes(agent.id)
+          ? await runtimeWorker.deliver({
+              type: "agent:deliver",
+              source: "wake",
+              deliveryId: reservation.reservationId,
+              spaceId,
+              agentId: agent.id,
+              ...delivery,
+            })
+          : await (async () => {
+              const cfg = await agentConfig(spaceId, agent.id);
+              if (!cfg || !isWorkerLeaseCurrent(lease)) throw new WorkerAdmissionUncertainError("Worker lease changed during catch-up", lease.generation, reservation.reservationId);
+              return runtimeWorker.start({
+                type: "agent:start",
+                source: "wake",
+                deliveryId: reservation.reservationId,
+                spaceId,
+                agentId: agent.id,
+                config: cfg,
+                reason: "wake",
+                delivery,
+              });
+            })();
+        if (admission.status === "rejected") {
+          await state.releaseWake(reservation.reservationId);
+          if (!isWorkerLeaseCurrent(lease)) return;
+          continue;
+        }
         await state.commitWake(reservation.reservationId, {
           agentId: agent.id,
           channelId: backlog.contextChannelId,
@@ -245,9 +259,11 @@ export async function catchUpAgentsOnWorker(runningIds: string[], lease: WorkerL
         });
         if (!isWorkerLeaseCurrent(lease)) return;
         woke++;
-      } else {
-        await state.releaseWake(reservation.reservationId);
-        if (!isWorkerLeaseCurrent(lease)) return;
+      } catch (error) {
+        if (!(error instanceof WorkerAdmissionUncertainError)) {
+          log.warn("catch-up admission remained pending", { agentId: agent.id, detail: String(error) });
+        }
+        return;
       }
     }
   }

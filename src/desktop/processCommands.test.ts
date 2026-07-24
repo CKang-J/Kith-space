@@ -26,5 +26,24 @@ test("packaged Desktop runs internal Core and Worker bundles without tsx or Vite
   assert.equal(commands.worker.env?.NODE_PATH, undefined);
   assert.equal(commands.core.env?.KITH_SPACE_WEB_DIST, path.join(resourcesPath, "web/dist"));
   assert.equal(commands.core.env?.KITH_SPACE_MIGRATIONS_DIR, path.join(resourcesPath, "drizzle"));
+  assert.equal(commands.core.env?.KITH_SPACE_PI_ADVISOR_HELPER, path.join(resourcesPath, "runtime/pi-advisor-helper.mjs"));
+  assert.equal(commands.worker.env?.KITH_SPACE_PI_ADVISOR_HELPER, path.join(resourcesPath, "runtime/pi-advisor-helper.mjs"));
   assert.equal(commands.core.env?.NODE_PATH, path.join(appRoot, "node_modules"));
+});
+
+test("development Desktop serves the built web shell from Core for browser access", () => {
+  const appRoot = path.resolve("/repo/kith-space");
+  const commands = buildDesktopProcessCommands({
+    mode: "development",
+    appRoot,
+    resourcesPath: path.join(appRoot, "desktop/resources"),
+    executable: process.execPath,
+    tsxCli: path.join(appRoot, "node_modules/tsx/dist/cli.mjs"),
+    viteCli: path.join(appRoot, "web/node_modules/vite/bin/vite.js"),
+    uiPort: 5273,
+  });
+
+  assert.equal(commands.core.env?.KITH_SPACE_WEB_DIST, path.join(appRoot, "web", "dist"));
+  assert.equal(commands.core.env?.KITH_SPACE_PI_ADVISOR_HELPER, path.join(appRoot, "desktop/dist/runtime/pi-advisor-helper.mjs"));
+  assert.equal(commands.worker.env?.KITH_SPACE_PI_ADVISOR_HELPER, path.join(appRoot, "desktop/dist/runtime/pi-advisor-helper.mjs"));
 });

@@ -167,7 +167,7 @@ Dock 按 Space 类型固定：Home 为 `Chat | Spaces | Inbox | Tasks | Agents |
 
 分离 app data 与默认 Space 容器；建立稳定 homeSpaceId 和用户可见 Home；把 runtime cwd 与 Agent Memory 归位到所属 Space；补 Desktop 文件夹接入和 Home-only Spaces 模块。跨 Space 写编排在路径与 UI 地基验收后渐进实现。
 
-实施状态：H1-H4 代码切片已完成并等待用户验收；H5 跨 Space 编排与 Runtime 契约 v2 均未开始。
+实施状态：H1-H4 代码切片与 2026-07-18 本轮用户验收均已完成；P-A9 与后续 P-A10 Runtime 契约 v2 已完成，H5 跨 Space 编排仍未开始。
 
 验收：普通冷启动进入 Home Chat；用户可创建或接入文件夹 Space；agent 相对业务文件写入 Space root；复制 Space 带走 workspace.db、Space/Agent Memory、附件和用户文件；Home Spaces 使用真实 registry 且不恢复旧 OverviewShell。完整切片见 `2026-07-12-home-space-and-space-root-design.md`。
 
@@ -176,7 +176,7 @@ Dock 按 Space 类型固定：Home 为 `Chat | Spaces | Inbox | Tasks | Agents |
 - 每个阶段独立验证、独立提交，并同步相应权威文档。
 - 不在路线清理中顺手重写消息、任务、记忆或 runtime 适配器。
 - open-tag 仍是 Apache-2.0 底座；OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
-- 当前 P4 视觉微调暂停，待本机化基础收敛后再继续。
+- P4 与本轮 UI 验收已结束；P-A9 只把现有交互作为回归基线，不在架构切片中夹带视觉重做。
 - 邮箱、浏览器等高风险模块必须等待 HTTPS 与 runtime 权限升级，不得在现有 HTTP LAN + bypass 权限前提下上线。
 
 ## 12. 明确非目标

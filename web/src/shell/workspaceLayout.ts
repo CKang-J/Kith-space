@@ -6,9 +6,10 @@ export type WorkspaceModuleId =
   | "settings"
   | "search";
 
-export type DockModuleId = Exclude<WorkspaceModuleId, "search">;
+export type SidebarModuleId = Exclude<WorkspaceModuleId, "search">;
+export type ContentModuleId = Exclude<WorkspaceModuleId, "settings">;
 
-export type WorkspaceMode = "chat-only" | "split" | "module-only";
+export type WorkspaceMode = "chat-only" | "module-only";
 
 export type WorkspaceLayoutState =
   | { activeModule: null; chatVisible: true }
@@ -24,8 +25,9 @@ export function workspaceLayoutForSpace(state: WorkspaceLayoutState, isHome: boo
 }
 
 export function deriveWorkspaceMode(state: WorkspaceLayoutState): WorkspaceMode {
-  if (state.activeModule === null) return "chat-only";
-  return state.chatVisible ? "split" : "module-only";
+  return state.activeModule === null || state.activeModule === "settings"
+    ? "chat-only"
+    : "module-only";
 }
 
 export function selectWorkspaceModule(
@@ -33,12 +35,7 @@ export function selectWorkspaceModule(
   moduleId: WorkspaceModuleId,
 ): WorkspaceLayoutState {
   if (state.activeModule === moduleId) return INITIAL_WORKSPACE_LAYOUT;
-  return { activeModule: moduleId, chatVisible: state.chatVisible };
-}
-
-export function toggleChat(state: WorkspaceLayoutState): WorkspaceLayoutState {
-  if (state.activeModule === null) return state;
-  return { ...state, chatVisible: !state.chatVisible };
+  return { activeModule: moduleId, chatVisible: moduleId === "settings" };
 }
 
 export function openRouteModule(

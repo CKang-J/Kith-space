@@ -192,7 +192,10 @@ async function main() {
     name: `reader-${suffix}`,
     displayName: "Lifecycle Reader",
   }).returning();
-  await db.insert(schema.channelAgentMembers).values({ channelId: thread.id, agentId: reader!.id });
+  await db.insert(schema.channelAgentMembers).values([
+    { channelId: active!.id, agentId: reader!.id },
+    { channelId: thread.id, agentId: reader!.id },
+  ]);
   check("Human can read archived channel history", await canHumanReadChannel(spaceId, active!.id));
   check("Human can read topics under an archived channel", await canHumanReadChannel(spaceId, thread.id));
   check("member agent can read topics under an archived channel", await canAgentReadChannel(spaceId, thread.id, reader!.id));

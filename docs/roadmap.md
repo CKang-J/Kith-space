@@ -1,6 +1,6 @@
 # Kith-space 产品路线图
 
-> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式；2026-07-15 锁定 ChatOnly 侧栏模块导航与模块打开态 Dock。完整边界见对应 `docs/superpowers/specs/` 规格，当前工程状态见 `docs/progress.md`。
+> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式；2026-07-23 将 Chat 壳层收敛为左侧常驻导航与右侧同槽位主卡片切换并退役 Dock；2026-07-18 完成 P-A9 桌面模块化单体架构收敛；2026-07-20 P-A10 Agent Harness v2 的 P-A10.0–P-A10.7 已完成代码、迁移、文档、自动化和Desktop/Web真实验收。完整边界见对应 `docs/superpowers/specs/` 规格，当前工程状态见 `docs/progress.md`。
 
 ## 1. 产品终点与永久边界
 
@@ -21,10 +21,10 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 - P1：派发深度、唤醒预算与急停护栏。
 - P2：三层记忆与通用角色模板。
 - P3：任务领域与 HTTP 接口。
-- P4：单窗口 ChatOnly / Split / ModuleOnly 工作区、可拖拽面板、模块切换与任务范围侧栏；ChatOnly 使用侧栏模块入口，模块打开态使用 Module Pane 底部 Dock。
+- P4：单窗口工作区、模块切换与任务范围侧栏；左侧模块入口常驻，右侧同一主卡片在 Chat 与模块间切换，Settings 使用模态层，Dock 已退役。
 - Runtime 调研：Claude Code、Codex、opencode 适配边界与 Runtime 契约 v2 草案。
 
-聊天消息流密度与交互重构、Chat 壳层与侧栏模块导航均已按对应 2026-07-15 规格完成代码与自动化验证，等待用户手动视觉验收，不计为完整验收通过。当前已落地 ChatOnly 纵向模块入口、Split 三组会话抽屉、模块打开态 Dock、中心 Chat 卡片保护、直接使用画布背景且无直线分隔的常驻会话导航，以及案例展示退役；全局 `Ctrl/Command + K` 消息搜索的第一阶段展示优化也已完成，以双行结果提供可读会话、发送者、相对时间、查询词高亮及话题父消息摘要/回复数，不再显示内部 DM/thread 名称。A1-A6 原定代码切片、P-A7 H1-H4 与 P-A8 Agent 频道响应模式已完成，当前等待用户验收；验收前不进入 Runtime 契约 v2 或 H5 跨 Space 编排。
+聊天消息流密度与交互重构、Chat 壳层与侧栏模块导航均已实现。2026-07-23 后的当前壳层使用常驻纵向模块入口、右侧 Chat/模块同槽位主卡片和 Settings 模态层；Dock 与 Split 第二工作面已经退役。中心 Chat 卡片保护、直接使用画布背景且无直线分隔的会话导航、案例展示退役和全局 `Ctrl/Command + K` 消息搜索保持有效。
 
 ## 3. 当前路线：个人 AgentOS 本机化
 
@@ -36,7 +36,7 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 
 ### P-A2 本地领域与数据模型
 
-状态：原定切片与 P-A7 H1-H4 已完成并等待用户验收。中央 `app.db`、唯一 Human、默认 `Home`、canonical Space 契约、唯一 Local Runtime Worker、19 表 workspace.db baseline 与 Space 级附件目录已落地；H1-H4 已补齐稳定 homeSpaceId、用户可见 Home root、Space root cwd、可移植 Agent Memory、文件夹创建/接入/重连契约，以及 Home-only Spaces 目录。
+状态：原定切片与 P-A7 H1-H4 已完成，并通过 2026-07-18 本轮用户验收。中央 `app.db`、唯一 Human、默认 `Home`、canonical Space 契约、唯一 Local Runtime Worker、19 表 workspace.db baseline 与 Space 级附件目录已落地；H1-H4 已补齐稳定 homeSpaceId、用户可见 Home root、Space root cwd、可移植 Agent Memory、文件夹创建/接入/重连契约，以及 Home-only Spaces 目录。
 
 - 把中央 registry 扩展并更名为 `app.db`。
 - 实现唯一 Human 和首次资料初始化；自动创建 `Home` Space。
@@ -82,7 +82,7 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 状态：已完成。
 
 - Desktop 首次启动通过仅 Desktop 私有信任可达的 setup API 收集 Human 名称、可选邮箱和描述，幂等初始化唯一 Human 与 `Home`；普通浏览器不会探测或调用该入口。全新 Desktop 目录不再要求 seed。
-- 普通 Space 模块集合固定为 `Inbox | Tasks | Agents | Settings`，Home 额外包含 `Spaces`。ChatOnly 使用不含 Chat 的左侧纵向入口；模块打开态 Dock 保留 Chat 作为布局控制。
+- 普通 Space 模块集合固定为 `Inbox | Tasks | Agents | Settings`，Home 额外包含 `Spaces`。左侧纵向入口常驻并控制右侧同一主卡片切页；Settings 使用模态层。
 - `Members` 改为当前 Space 的 `Agents`；Human 资料进入全局 Settings；`Computers` 已在 A2.4 提前删除。
 - 已删除 landing、登录、注册、邀请、PWA 和 `?legacy=1`/旧 `Layout`，静态路由只提供产品壳与 canonical Space 路径。
 - 模块统一挂在当前 Chat/收藏等会话 pathname 上，以 `?module=<id>` 和模块专属 resource query 表达；切换频道、DM 或收藏时保留当前模块及其合法 resource，不再生成 `/tasks`、`/agent`、`/settings` 等旧模块 pathname。
@@ -106,7 +106,7 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 
 ### P-A7 Home 总控 Space 与 Space root 归位
 
-状态：设计与 H1-H4 代码切片已完成，当前停在用户验收；H5 和 Runtime 契约 v2 都未开始。
+状态：设计与 H1-H4 代码切片已完成，并通过 2026-07-18 本轮用户验收；H5 尚未开始，Runtime 契约 v2 已由后续 P-A10 完成。
 
 - H1 路径地基（已完成）：分离 `~/.kith-space` app data 与 `~/Kith-space` 默认 Space 容器；建立稳定 homeSpaceId 和 `~/Kith-space/Home`，并以 `KITH_SPACE_SPACES_DIR` 隔离开发/测试 Space 容器。
 - H2 runtime cwd/记忆（已完成）：Claude Code、Codex、opencode 以 Space root 为 cwd；Agent Memory 移到 `<space>/.kith/agents/<agentId>`；adapter 临时状态移到 app data runtime 目录；文件树、skills、profile 与 reset 同步采用带防逃逸校验的三路径契约，同 agent reset/start 串行且 reset 不删除共享 Space 文件。OpenCode prompt 通过 child-only inline config 隔离，不覆盖用户 `AGENTS.md`；Copilot/Kimi/Cursor 仍标 experimental，并暂用 runtime state cwd 避免其 `AGENTS.md` 注入覆盖用户文件。
@@ -114,13 +114,13 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 - H4 Home UI（已完成）：普通冷启动进入稳定 Home Chat，显式 ready 深链接仍优先；Home 模块集合增加真实 registry 驱动的 Spaces 卡片模块，支持搜索、刷新、默认创建、已有文件夹接入、失联重连和同窗进入，并记录 ready Space 的最近打开时间。普通 Space 不显示该模块且会移除无效 query；SpaceSwitcher 收敛为快速切换、应急重连与 Home Spaces 入口，不恢复 OverviewShell。
 - H5 跨 Space 编排：后续先做真实只读摘要，再做受审计、幂等且不冒充 Human 的 task/message/agent dispatch。
 
-H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integration、2571-module Web build 与 Desktop build；仍由用户实际验收 Home/普通 Dock、Spaces 卡片、文件夹操作与同窗切换。agent 相对业务文件写入所属 Space root；复制 Space 带走 workspace.db、Space/Agent Memory、附件和用户文件；Home Spaces 只使用真实 registry，普通 Space 不出现该模块；测试隔离不会污染真实 `~/Kith-space`。
+H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integration、2571-module Web build 与 Desktop build；用户已完成 Home/普通 Dock、Spaces 卡片、文件夹操作与同窗切换的本轮验收。agent 相对业务文件写入所属 Space root；复制 Space 带走 workspace.db、Space/Agent Memory、附件和用户文件；Home Spaces 只使用真实 registry，普通 Space 不出现该模块；测试隔离不会污染真实 `~/Kith-space`。
 
 完整规格：`docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
 
 ### P-A8 Agent 频道响应模式
 
-状态：设计与代码切片均已完成，当前等待用户验收。该切片是 P4 频道协作体验的增量能力，没有启动 H5，也没有提前展开完整 Runtime 契约 v2。
+状态：设计与代码切片均已完成，并通过 2026-07-18 本轮用户验收。该切片是 P4 频道协作体验的增量能力，没有启动 H5，也没有提前展开完整 Runtime 契约 v2。
 
 - 每个 Agent 在当前 Space 保存 `active | mention_only | silent` 默认值；每个顶层频道 membership 保存可空覆盖，有效值为“频道覆盖 ?? Agent 默认”。
 - Human 普通频道消息只环境唤醒主动成员且允许 Agent 判断后静默；被动成员只在明确 `@` 或已参与话题收到 Human 跟进时唤醒；静音成员不因频道事件自动唤醒。
@@ -131,11 +131,32 @@ H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integrati
 
 实现与验证：schema v5、统一响应策略/设置模块、实时投递/reconnect/message check/prompt 指令、单一 mention 任务 assignee、Human `@all` 接收者快照、Agent 默认卡片和消息头像 Agent 卡片内的频道覆盖控件均已落地；三档矩阵覆盖顶层频道、话题、DM、任务、全体提及和 Worker 重连。频道卡片只修改当前频道覆盖并可恢复继承，Agent 默认值仍由 Agent 页面管理。模式切换以独立 watermark 保证不追溯唤醒且不伪造已读；真实浏览器已验证默认值、频道覆盖、恢复继承、双窗口实时同步、多 Agent 任务拦截，以及“所有人 `@all`”候选/任务模式隐藏。完整规格：`docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
 
-## 4. 本机化基础完成后的能力路线
+### P-A9 Desktop 监督的模块化单体架构收敛
+
+状态：P-A9.0–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审已完成并提交；真实存量数据暴露的 Runtime admission 队列饥饿和错误状态传播也已修复，不再扩张 P-A9 范围。
+
+- 保留 Electron Desktop Supervisor、Core Service、唯一 Local Runtime Worker、React UI 与外部 runtime 的进程拓扑；Core/Worker 都是 Desktop 内部边界，不恢复服务器部署或远程 daemon。
+- 保留 TypeScript / Node / Electron / React / SQLite 主技术栈，不做 Rust 全量重写。Rust 只在性能基线与 profiler 证明单一稳定 CPU 热点后，才可作为窄 Adapter 单独评估。
+- 以高内聚低耦合、单一职责、开放封闭、KISS、DRY、迪米特法则、依赖倒置和分层架构为约束，依次收敛 Message/Task、Agent 数据面、频道/文件、Runtime 与 Chat 控制层。
+- `src/server/` 已收窄为组合根和 Transport Adapter；业务 Module 不反向依赖 server/desktop，Human、Agent CLI 与未来 MCP 复用同一用例 Interface。P-A9.3 已把 Agent 删除与本地对象存储迁入领域目录，P-A9.7 已删除旧 facade 和依赖护栏的临时 allowlist 机制。
+- P-A9.0 已冻结全部消息写入调用方、31 个 Agent 端点、当前 Worker socket-send/reconnect 与 Chat 特征矩阵，建立 1/5/10/20 Agent Core 基线、100/500/1000 消息 UI 基线与各自绝对 SLO，并产出 16 项 P-A9.4 admission/replay 目标契约清单。P-A9.6 的 20-Agent SQL 已从 260 降到 151，绝对 SLO 通过。当前 socket-send 只作诊断指标；P-A9.0 的 total 仍止于 socket enqueue，而当前 total 口径已经等到 admission ack，RuntimeSession 容量/背压与持久 get-or-reserve 也已落地。冻结数据见 `docs/performance/p-a9-baseline.md`，矩阵见 `docs/architecture/p-a9-contract-matrices.md`。
+- Message/Task 通过 `WakeDispatchPort` 隔离唤醒副作用；Core 的 dispatch guard 按逻辑键持久 `get-or-reserve`，Core→Worker 的 `RuntimeWorkerPort` 使用稳定 deliveryId 和 `admitted | queued | rejected` ack，Worker admission 容量为 `capacity=4`、`queue=128`、`ttl=120s`。wake 复用 reservationId，手动与生命周期命令使用独立 commandId；Core 只在接纳后 commit wake，断线按同一逻辑键重放而不重复消耗 wake budget，`lastReadSeq` 关闭未读重放窗口。
+- 全阶段不改现有产品行为、公开 URL、Agent CLI 或 `/daemon/connect` 路径；默认不改 schema，若现有表无法保证重放幂等则停下并单独设计迁移。每个切片独立验证、独立回滚。
+
+完整规格：`docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
+
+## 4. 架构收敛后的能力路线
 
 ### 4.1 Runtime 契约 v2
 
-统一 Claude Code、Codex、opencode 的生命周期、usage 回调、取消、完成事件和 MCP bootstrap。它是模块、记忆写入和可靠编排的共同前置。
+该能力已由 P-A10 Agent Harness v2 实现：
+
+- 以 `(spaceId, agentId, surfaceKind, surfaceId)` 建立 per-surface resumable session；
+- 统一 Claude Code、Codex、opencode 的 turn lifecycle、usage、取消、completion、tool/compaction event 和 MCP bootstrap，但保留各 engine 内层语义；
+- 建立消息事务内 durable delivery、logical turn/attempt/operation/output ledger、来源 delivery frontier、server-owned reply target 和逐输入 reply/cede/fail finalize gate；
+- P-A10.0–P-A10.7 已完成；P-A11 consolidation、P-A12 skill reconciliation、P-S1 sandbox/approval/Vault与H5继续使用独立迁移、契约和验收，不并回P-A10。
+
+完整提案：`docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
 
 ### 4.2 生产力模块
 
@@ -143,7 +164,11 @@ H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integrati
 
 ### 4.3 记忆与上下文
 
-实现结构化 `memory_save`、检索和衰减策略；实现 `MessageContextSnapshot`，让消息携带当前 Space、模块、打开对象和 focused item 的结构化快照。
+P-A10.3已实现Context Envelope、MessageContextSnapshot、server-owned direct-mention thread、实时父级ACL与turn inspector；P-A10.4已实现同域MCP/CLI Gateway、later-query refresh、权威conversation/turn查询、按activation原子绑定且可过期/崩溃清扫的临时附件、session checklist、short wake和manual inbox summary；P-A10.5已实现canonical+immutable revision结构化episodic memory、Human CAS生命周期、disclosure grant/suppression、source ACL、continuity+中文FTS recall、Agent `memory.recall/get`与Context注入；P-A10.6–P-A10.7已完成restricted advisor、Human manage/recall/debug面板、snapshot/checklist revision与可支持的compaction telemetry。现有 User/Space/Agent 三层 `MEMORY.md + notes/` 继续保留，结构化记忆是带 typed evidence/relation 的附加层，不替代文件记忆。
+
+2026-07-22形成、2026-07-23修订并完成的[系统级可替换Memory Advisor Provider方案](./superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md)已把自动提炼从聊天Agent runtime解耦：新安装默认使用Desktop内置、精确锁版的Pi SDK Provider，Claude Code可切换，执行Provider与结构化记忆的Model Profile独立版本化。Human可手工选择模型供应商/模型/API/endpoint/thinking/凭据来源，或显式、安全地从Pi CLI全局配置导入模型目录；项目`.pi`、命令表达式和动态资源发现不进入Advisor。Claude/Codex/opencode聊天Agent在逐Agent授权后均可使用同一个系统Provider，runtime-neutral的结构化recall与Human管理继续独立可用。该方案不命名为P-A10.8，也不吞并受限consolidation、skill reconciliation和runtime security/approval/Vault；后三者继续分别后置为P-A11、P-A12、P-S1。
+
+2026-07-23接受的[模型供应商、运行器与记忆设置重构方案](./superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md)已实现：app.db v6与workspace.db v10承载不可变连接/模型/runtime revision和Agent绑定，四家窄compiler默认不写CLI全局配置；Pi使用外部CLI RPC进入正式v2矩阵，Pi SDK Advisor保持独立。设置新增“模型与供应商”“运行器”，Memory Advisor改为执行器+模型配置摘要，Agent创建支持runtime default/pinned绑定与草稿恢复。
 
 ### 4.4 本机跨 Space 聚合
 
@@ -162,6 +187,7 @@ Windows v1 稳定后支持 macOS 和 Linux。系统托盘、自启动、文件�
 - harness 优先、角色通用、不做场景专用硬流程。
 - 不自研 runtime，模块经 MCP 暴露。
 - local-first、Desktop-first、一个 Human、一台本机。
+- Desktop 监督的模块化单体；深 Module、小 Interface、必要 Seam，性能优化必须有基线与 profiler 证据。
 - 外科手术式改动，每阶段独立验证和提交。
 - OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
 - 文档与代码同一阶段同步；当前实现和目标态必须明确区分。

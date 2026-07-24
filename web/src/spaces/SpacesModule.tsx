@@ -2,11 +2,15 @@ import { useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
+  Check,
+  CheckSquare,
   Folder,
   FolderOpen,
   Link2,
   RefreshCw,
   Star,
+  Trash2,
+  X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -21,6 +25,7 @@ import { SpaceCreateMenu, type SpaceCreateIntent } from "./SpaceCreateMenu.tsx";
 import { SpaceFolderDialog } from "./SpaceFolderDialog.tsx";
 import type { SpaceFolderIntent } from "./SpaceFolderForm.tsx";
 import { SpaceRenameDialog } from "./SpaceRenameDialog.tsx";
+import { removeSpacesInOrder } from "./spaceBatchRemoval.ts";
 import "./SpacesModule.css";
 
 type SpacesFlow = SpaceFolderIntent | null;
@@ -69,6 +74,9 @@ export function SpacesModule() {
   const [spaceActionError, setSpaceActionError] = useState("");
   const [favoriteIds, setFavoriteIds] = useState(storedFavoriteSpaces);
   const [contextMenuRequest, setContextMenuRequest] = useState<SpaceCardContextMenuRequest | null>(null);
+  const [bulkSelectionEnabled, setBulkSelectionEnabled] = useState(false);
+  const [selectedSpaceIds, setSelectedSpaceIds] = useState<Set<string>>(() => new Set());
+  const [bulkRemoving, setBulkRemoving] = useState(false);
 
   const childSpaces = [...spaces.filter((space) => !space.isHome)]
     .sort((a, b) => Number(favoriteIds.has(b.id)) - Number(favoriteIds.has(a.id)));
@@ -171,6 +179,56 @@ export function SpacesModule() {
     }
   };
 
+  const toggleBulkSelection = () => {
+    if (bulkSelectionEnabled) setSelectedSpaceIds(new Set());
+    setBulkSelectionEnabled((current) => !current);
+    setContextMenuRequest(null);
+  };
+
+  const toggleSelectedSpace = (spaceId: string) => {
+    setSelectedSpaceIds((current) => {
+      const next = new Set(current);
+      if (next.has(spaceId)) next.delete(spaceId);
+      else next.add(spaceId);
+      return next;
+    });
+  };
+
+  const requestBulkRemove = async () => {
+    if (bulkRemoving || selectedSpaceIds.size === 0) return;
+    const selectedIds = childSpaces.filter((space) => selectedSpaceIds.has(space.id)).map((space) => space.id);
+    if (selectedIds.length === 0) return;
+    const accepted = await confirm({
+      title: t("spacesModule.bulkRemoveConfirmTitle", { count: selectedIds.length }),
+      message: t("spacesModule.bulkRemoveConfirmDescription"),
+      confirmLabel: t("spacesModule.bulkRemove", { count: selectedIds.length }),
+      danger: true,
+    });
+    if (!accepted) return;
+    setBulkRemoving(true);
+    setCatalogError("");
+    try {
+      const { removedIds, failedIds } = await removeSpacesInOrder(selectedIds, removeSpace);
+      if (removedIds.length > 0) {
+        setFavoriteIds((current) => {
+          const next = new Set(current);
+          for (const spaceId of removedIds) next.delete(spaceId);
+          persistFavoriteSpaces(next);
+          return next;
+        });
+      }
+      setSelectedSpaceIds(new Set(failedIds));
+      if (failedIds.length > 0) {
+        setCatalogError(t("spacesModule.bulkRemoveFailed", { count: failedIds.length }));
+      } else {
+        setBulkSelectionEnabled(false);
+        toast.info(t("spacesModule.bulkRemoveSuccess", { count: removedIds.length }));
+      }
+    } finally {
+      setBulkRemoving(false);
+    }
+  };
+
   const refresh = async () => {
     if (refreshing) return;
     setRefreshing(true);
@@ -242,6 +300,28 @@ export function SpacesModule() {
         <div className="spaces-module__actions">
           <button
             type="button"
+            className="spaces-module__action spaces-module__action--icon spaces-module__action--bulk"
+            onClick={toggleBulkSelection}
+            disabled={bulkRemoving}
+            aria-pressed={bulkSelectionEnabled}
+            aria-label={t(bulkSelectionEnabled ? "spacesModule.cancelBulkManage" : "spacesModule.bulkManage")}
+            title={t(bulkSelectionEnabled ? "spacesModule.cancelBulkManage" : "spacesModule.bulkManage")}
+          >
+            {bulkSelectionEnabled ? <X size={17} aria-hidden="true" /> : <CheckSquare size={17} aria-hidden="true" />}
+          </button>
+          {bulkSelectionEnabled ? (
+            <button
+              type="button"
+              className="spaces-module__action spaces-module__action--danger"
+              onClick={() => void requestBulkRemove()}
+              disabled={bulkRemoving || selectedSpaceIds.size === 0}
+            >
+              <Trash2 size={16} aria-hidden="true" />
+              {t("spacesModule.bulkRemove", { count: selectedSpaceIds.size })}
+            </button>
+          ) : null}
+          <button
+            type="button"
             className="spaces-module__action spaces-module__action--icon"
             onClick={refresh}
             disabled={refreshing}
@@ -280,32 +360,49 @@ export function SpacesModule() {
             return (
               <article
                 key={space.id}
-                className={`spaces-module__card spaces-module__card--${space.status}`}
+                className={`spaces-module__card spaces-module__card--${space.status}${selectedSpaceIds.has(space.id) ? " is-selected" : ""}`}
                 onContextMenu={(event) => {
+                  if (bulkSelectionEnabled) return;
                   if (event.target instanceof Element && event.target.closest(".spaces-module__card-menu")) return;
                   event.preventDefault();
                   setContextMenuRequest({ spaceId: space.id, clientX: event.clientX, clientY: event.clientY });
                 }}
               >
-                <SpaceCardMenu
-                  spaceName={space.name}
-                  favorite={favoriteIds.has(space.id)}
-                  revealAvailable={!!desktopBridge && !!space.rootPath}
-                  contextMenuRequest={contextMenuRequest?.spaceId === space.id ? contextMenuRequest : null}
-                  onOpen={() => openSpace(space)}
-                  onReveal={() => void revealSpace(space)}
-                  onCopyPath={() => void copySpacePath(space)}
-                  onRename={() => {
-                    setSpaceActionError("");
-                    setRenameTarget(space);
-                  }}
-                  onToggleFavorite={() => toggleFavorite(space.id)}
-                  onRemove={() => void requestRemove(space)}
-                />
+                {bulkSelectionEnabled ? (
+                  <label className="spaces-module__card-select">
+                    <input
+                      type="checkbox"
+                      checked={selectedSpaceIds.has(space.id)}
+                      onChange={() => toggleSelectedSpace(space.id)}
+                      disabled={bulkRemoving}
+                      aria-label={t("spacesModule.selectSpace", { name: space.name })}
+                    />
+                    <span className="spaces-module__card-select-box" aria-hidden="true">
+                      {selectedSpaceIds.has(space.id) ? <Check size={13} strokeWidth={2.5} /> : null}
+                    </span>
+                  </label>
+                ) : (
+                  <SpaceCardMenu
+                    spaceName={space.name}
+                    favorite={favoriteIds.has(space.id)}
+                    revealAvailable={!!desktopBridge && !!space.rootPath}
+                    contextMenuRequest={contextMenuRequest?.spaceId === space.id ? contextMenuRequest : null}
+                    onOpen={() => openSpace(space)}
+                    onReveal={() => void revealSpace(space)}
+                    onCopyPath={() => void copySpacePath(space)}
+                    onRename={() => {
+                      setSpaceActionError("");
+                      setRenameTarget(space);
+                    }}
+                    onToggleFavorite={() => toggleFavorite(space.id)}
+                    onRemove={() => void requestRemove(space)}
+                  />
+                )}
                 <button
                   type="button"
                   onClick={() => openSpace(space)}
                   aria-label={`${space.name}: ${t(statusKey(space.status))}`}
+                  disabled={bulkSelectionEnabled}
                 >
                   <span className="spaces-module__card-top">
                     <span className="spaces-module__folder"><Folder size={24} /></span>

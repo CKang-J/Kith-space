@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageCircle, X, Wrench, ChevronRight, Check, Copy, Eye, EyeOff } from "lucide-react";
+import { MessageCircle, X, Wrench } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkBreaks from "remark-breaks";
-import rehypeSanitize from "rehype-sanitize";
 import { useTranslation } from "react-i18next";
 import { useStore } from "../store.tsx";
 import { fmtDateTime } from "../format";
@@ -12,14 +8,15 @@ import { Avatar, AvatarPicker, resolveAvatar } from "../Avatar.tsx";
 import { Select } from "../Select.tsx";
 import { useConfirm, useEscClose } from "../ConfirmModal.tsx";
 import { useToast } from "../toast.tsx";
-import { CodeBlock, ColorSwatch, GithubAlertBlockquote, colorValueFromTag, markdownSchema, markdownUrlTransform, remarkColorSwatches, remarkGithubAlerts, remarkHtmlAsText } from "../messageRender.tsx";
 import i18n from "../i18n";
 import { mergeWorkspaceSearch, workspaceLocationForModule, workspaceSearchForShellState } from "../shell/workspaceRoute.ts";
-import { LOCAL_RUNTIME_DEFAULT, useRuntimeDiscovery } from "../useRuntimeDiscovery.ts";
+import { useRuntimeDiscovery } from "../useRuntimeDiscovery.ts";
 import { agentStatusLabel } from "../agentStatus.ts";
 import { SearchField } from "../components/SearchField.tsx";
 import { AgentDefaultResponseModeCard } from "./agent-response-mode/AgentDefaultResponseModeCard.tsx";
 import { normalizeAgentResponseMode } from "./agent-response-mode/responseModeModel.ts";
+import { AgentMemoryPanel } from "./agent-memory/AgentMemoryPanel.tsx";
+import { AgentModelBindingEditor } from "./model-settings/AgentModelBindingEditor.tsx";
 
 // Unified agent status label: fine-grained activity (working/thinking/online) takes priority;
 // offline/absent falls back to lifecycle status (active/sleeping/inactive).
@@ -193,7 +190,7 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
           <button key={k} className={tab === k ? "on" : ""} onClick={() => setSp((prev) => { const n = new URLSearchParams(prev); n.set("agentTab", k); return n; })}>{label}</button>
         ))}
       </div>
-      {tab === "workspace" ? <MemoryTab id={id} />
+      {tab === "workspace" ? <AgentMemoryPanel agentId={id} />
         : tab === "activity" ? <ActivityTab id={id} name={a.name} />
         : tab === "permissions" ? <PermissionsTab id={id} />
         : tab === "integrations" ? <AppsTab id={id} />
@@ -214,6 +211,7 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
                 <button className="joinbtn" onClick={startEdit}>{t("members.editProfile")}</button>
               </div>
             </div>
+            <AgentModelBindingEditor agent={a} api={api} onSaved={refetch} />
             <AgentDefaultResponseModeCard
               agentId={id}
               value={normalizeAgentResponseMode(a.defaultResponseMode)}
@@ -376,59 +374,6 @@ function AgentMemoryRoot({ id }: { id: string }) {
   return <>{root}</>;
 }
 
-export function MemoryTab({ id }: { id: string }) {
-  const { t } = useTranslation();
-  const { api } = useStore();
-  const [files, setFiles] = useState<any[]>([]);
-  const [err, setErr] = useState("");
-  const [sel, setSel] = useState<{ path: string; content?: string; error?: string } | null>(null);
-  const [mode, setMode] = useState<"preview" | "raw">("preview"); // .md files default to preview
-  const [expanded, setExpanded] = useState<Set<string>>(new Set()); // tracks expanded directories (collapsed by default, toggled via onToggleDir)
-  const [copied, setCopied] = useState(false);
-  const [showHidden, setShowHidden] = useState(false); // dot-prefixed files hidden by default (like ls; toggle for ls -a behavior)
-  const [root, setRoot] = useState("..."); // shown in root bar + copied by copy button; replaced by this Agent's Space-local memory path
-  useEffect(() => { setSel(null); setExpanded(new Set()); setRoot("..."); (async () => { const d = await api("GET", `/api/agents/${id}/workspace-files`); if (d.error) { setErr(d.error); setFiles([]); } else { setErr(""); setFiles(d.files || []); if (d.root) setRoot(d.root); } })(); }, [id]);
-  const open = async (f: any) => { setMode("preview"); const d = await api("GET", `/api/agents/${id}/workspace-files/read?path=${encodeURIComponent(f.path)}`); setSel({ path: f.path, content: d.content, error: d.error }); };
-  const toggleDir = (path: string) => setExpanded((s) => { const n = new Set(s); n.has(path) ? n.delete(path) : n.add(path); return n; });
-  const copyRoot = () => navigator.clipboard?.writeText(root).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
-  // Collapse filter: a node is visible iff all its ancestor directories are expanded (top-level visible by default, subdirs collapsed)
-  const visible = files.filter((f) => { const parts = f.path.split("/"); if (!showHidden && parts.some((seg: string) => seg.startsWith("."))) return false; for (let i = 1; i < parts.length; i++) if (!expanded.has(parts.slice(0, i).join("/"))) return false; return true; });
-  const isMd = !!sel && /\.md$/i.test(sel.path);
-  return (
-    <div className="ws">
-      <div className="ws-tree">
-        <div className="ws-rootbar">
-          <span className="ws-root" title={root}>{root}</span>
-          <button className="ws-copy" title={showHidden ? t("members.hideDotFiles") : t("members.showHiddenFiles")} onClick={() => setShowHidden((v) => !v)}>{showHidden ? <EyeOff size={12} /> : <Eye size={12} />}</button>
-          <button className="ws-copy" title={copied ? t("members.copied") : t("members.copyPath")} onClick={copyRoot}>{copied ? <Check size={12} /> : <Copy size={12} />}</button>
-        </div>
-        {err ? <div className="empty">{err}</div> : files.length === 0 ? <div className="empty">{t("members.memoryEmpty")}</div>
-          : visible.map((f) => (
-            <div key={f.path} className={"ws-row" + (sel?.path === f.path ? " active" : "")} style={{ paddingLeft: 6 + (f.path.split("/").length - 1) * 14 }}
-              onClick={() => (f.isDirectory ? toggleDir(f.path) : open(f))}>
-              <span className={"grow" + (f.name?.toLowerCase() === "memory.md" ? " ws-mem" : "")}>{f.isDirectory && <ChevronRight size={12} className={"ws-caret" + (expanded.has(f.path) ? " open" : "")} style={{ verticalAlign: "-2px" }} />}{f.name}</span>{!f.isDirectory && <span className="ws-size">{f.size}</span>}
-            </div>
-          ))}
-      </div>
-      <div className="ws-view">
-        {!sel ? <div className="hint">{t("members.memoryHint")}</div>
-          : sel.error ? <div className="empty">{sel.error}</div>
-            : <>
-                <div className="ws-path">{sel.path}
-                  {isMd && <span className="ws-toggle">
-                    <button className={mode === "preview" ? "on" : ""} onClick={() => setMode("preview")}>Preview</button>
-                    <button className={mode === "raw" ? "on" : ""} onClick={() => setMode("raw")}>Raw</button>
-                  </span>}
-                </div>
-                {isMd && mode === "preview"
-                  ? <div className="ws-md"><ReactMarkdown urlTransform={markdownUrlTransform} remarkPlugins={[remarkGfm, remarkBreaks, remarkHtmlAsText, remarkGithubAlerts, remarkColorSwatches]} rehypePlugins={[[rehypeSanitize, markdownSchema]]} components={{ a: ({ href, children }) => { const color = colorValueFromTag(href); return color ? <ColorSwatch value={color} /> : <a href={href} target="_blank" rel="noreferrer">{children}</a>; }, blockquote: ({ node: _node, children, ...props }) => <GithubAlertBlockquote {...props}>{children}</GithubAlertBlockquote>, pre: ({ children }) => <CodeBlock>{children}</CodeBlock> }}>{sel.content || ""}</ReactMarkdown></div>
-                  : <pre className="ws-content">{sel.content}</pre>}
-              </>}
-      </div>
-    </div>
-  );
-}
-
 function AgentProfileEditModal({ name, displayName, description, onDisplayNameChange, onDescriptionChange, onClose, onSave }: {
   name: string; displayName: string; description: string;
   onDisplayNameChange: (value: string) => void; onDescriptionChange: (value: string) => void;
@@ -461,35 +406,59 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
   const [name, setName] = useState(prefill?.name ?? ""); const [desc, setDesc] = useState(prefill?.description ?? "");
   const [fast, setFast] = useState(false);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
+  const [bindingMode, setBindingMode] = useState<"runtime_default" | "pinned">("runtime_default");
+  const [modelConfigurations, setModelConfigurations] = useState<any[]>([]);
+  const [modelConfigurationId, setModelConfigurationId] = useState("");
   const {
     runtime, setRuntime, runtimeOptions, runtimesLoading, runtimeError, runtimeInstalled,
-    supportsLocalDefault, model, models, modelsLoading, modelError, selectModel, retryModels,
-    reasoning, setReasoning,
-  } = useRuntimeDiscovery(api);
+  } = useRuntimeDiscovery(api, false);
+  useEffect(() => {
+    void api("GET", "/api/settings/model-configurations")
+      .then((result: any) => setModelConfigurations(
+        (result.items ?? []).filter((item: any) => item.status === "active"),
+      ))
+      .catch(() => setModelConfigurations([]));
+  }, [api]);
+  useEffect(() => {
+    const saved = sessionStorage.getItem("kith-agent-create-draft");
+    if (!saved) return;
+    try {
+      const value = JSON.parse(saved);
+      if (!prefill?.name && typeof value.name === "string") setName(value.name);
+      if (!prefill?.description && typeof value.description === "string") setDesc(value.description);
+      if (value.bindingMode === "runtime_default" || value.bindingMode === "pinned") setBindingMode(value.bindingMode);
+      if (typeof value.modelConfigurationId === "string") setModelConfigurationId(value.modelConfigurationId);
+    } catch { /* ignore stale draft */ }
+  }, []);
+  useEffect(() => {
+    sessionStorage.setItem("kith-agent-create-draft", JSON.stringify({
+      name, description: desc, runtime, bindingMode, modelConfigurationId,
+    }));
+  }, [bindingMode, desc, modelConfigurationId, name, runtime]);
   const create = async () => {
     const nm = name.trim();
     if (!nm) { setErr(t("members.nameRequired")); return; }
     if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(nm) || nm.length > 64) { setErr(t("members.nameInvalid")); return; } // @mention handle must be token-safe; keep regex + length 64 in sync with core.ts AGENT_NAME_RE / MAX_AGENT_NAME
     if (!runtimeInstalled) { setErr(t("members.runtimeUnavailable")); return; }
-    if (!model) { setErr(t("members.modelRequired")); return; }
+    if (bindingMode === "pinned" && !modelConfigurationId) { setErr("请选择 Kith 模型配置"); return; }
     setBusy(true); setErr("");
     try {
-      const r = await api("POST", "/api/agents", { name: nm, description: desc.trim() || null, runtime, model: model && model !== LOCAL_RUNTIME_DEFAULT ? model : null, reasoning: thinkingLevels.length ? (reasoning || null) : null, fastMode: fast });
+      const selectedConfiguration = modelConfigurations.find((item) => item.id === modelConfigurationId);
+      const r = await api("POST", "/api/agents", { name: nm,
+        description: desc.trim() || null, runtime,
+        model: null,
+        modelBinding: bindingMode === "pinned"
+          ? { mode: "pinned", modelConfigurationId, modelConfigurationRevision: selectedConfiguration?.currentRevision ?? 1 }
+          : { mode: "runtime_default" },
+        reasoning: null, fastMode: fast,
+      });
       if (r?.error) { setErr(r.error); return; }
       await reload();
       if (r?.id) { if (r.started === false) toast.info(t("members.agentCreatedOffline")); onCreated?.({ id: r.id, name: r.name ?? nm }); }
+      sessionStorage.removeItem("kith-agent-create-draft");
       onClose();
     } catch (e: any) { setErr(String(e?.message || e)); } finally { setBusy(false); }
   };
-  const selModel = models.find((m) => m.id === model);
-  const thinkingLevels = selModel?.thinking?.levels ?? [];
-  const modelOpts = [
-    ...(supportsLocalDefault ? [{ value: LOCAL_RUNTIME_DEFAULT, label: t("members.useLocalDefault") }] : []),
-    ...(models.length
-      ? models.map((m) => ({ value: m.id, label: m.label || m.id }))
-      : []),
-  ];
-  const modelLoadingOpts = [{ value: "", label: t("members.detectingModels"), disabled: true }];
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -501,20 +470,22 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
           <Select ariaLabel="Runtime" value={runtime} options={runtimeOptions} onChange={setRuntime} placeholder={runtimesLoading ? t("members.detectingRuntimes") : undefined} />
         </fieldset>
         {runtimeError && <div className="form-err">{runtimeError}</div>}
-        <label>{t("common.model")}</label>
-        {/* During probe flight: disable interaction and show a localized detection placeholder. */}
-        <fieldset disabled={modelsLoading || !runtimeInstalled} style={{ border: 0, padding: 0, margin: 0, opacity: modelsLoading || !runtimeInstalled ? 0.6 : 1 }}>
-          <Select ariaLabel="Model" value={modelsLoading ? "" : model} options={modelsLoading ? modelLoadingOpts : modelOpts} onChange={selectModel} placeholder={modelError || undefined} />
-        </fieldset>
-        {modelError && <div className="form-err">{modelError} <button type="button" className="cancel" onClick={retryModels}>{t("members.retryModelDetection")}</button></div>}
-        {thinkingLevels.length > 0 && <>
-          <label>{t("members.reasoningLabel")}</label>
-          <Select ariaLabel="Reasoning" value={reasoning} onChange={setReasoning}
-            options={[{ value: "", label: t("members.reasoningDefault") }, ...thinkingLevels.map((l) => ({ value: l.value, label: l.label }))]} />
-        </>}
+        <label>模型绑定</label>
+        <Select ariaLabel="模型绑定方式" value={bindingMode} onChange={(value) => setBindingMode(value as "runtime_default" | "pinned")}
+          options={[
+            { value: "runtime_default", label: "跟随运行器默认配置" },
+            { value: "pinned", label: "固定 Kith 模型配置" },
+          ]} />
+        {bindingMode === "pinned" ? <>
+          <label>Kith 模型配置</label>
+          <Select ariaLabel="Kith 模型配置" value={modelConfigurationId} onChange={setModelConfigurationId}
+            options={modelConfigurations.filter((item) => item.compatibility?.[runtime]?.supported)
+              .map((item) => ({ value: item.id, label: `${item.displayName} · ${item.provider.displayName}` }))}
+            placeholder="请先在“设置 → 模型与供应商”创建兼容配置" />
+        </> : null}
         <label className="ck-row"><input type="checkbox" checked={fast} onChange={(e) => setFast(e.target.checked)} /><span>{t("members.fastMode")}</span></label>
         {err && <div className="form-err">{err}</div>}
-        <div className="acts"><button className="cancel" onClick={onClose}>{t("members.cancel")}</button><button className="ok" onClick={create} disabled={busy || runtimesLoading || modelsLoading || !runtimeInstalled || !model}>{busy ? t("members.creating") : t("members.create")}</button></div>
+        <div className="acts"><button className="cancel" onClick={onClose}>{t("members.cancel")}</button><button className="ok" onClick={create} disabled={busy || runtimesLoading || !runtimeInstalled || (bindingMode === "pinned" && !modelConfigurationId)}>{busy ? t("members.creating") : t("members.create")}</button></div>
       </div>
     </div>
   );

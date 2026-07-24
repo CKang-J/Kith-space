@@ -88,7 +88,7 @@ export function workspaceLayoutFromRoute(route: WorkspaceRouteMatch, search: str
   if (moduleId === null) return INITIAL_WORKSPACE_LAYOUT;
   return {
     activeModule: moduleId,
-    chatVisible: params.get("chat") !== "0",
+    chatVisible: moduleId === "settings",
   };
 }
 
@@ -104,7 +104,7 @@ export function workspaceSearchForLayout(search: string, state: WorkspaceLayoutS
   });
   if (state.activeModule !== null) {
     params.set("module", state.activeModule);
-    if (!state.chatVisible) params.set("chat", "0");
+    if (state.activeModule !== "settings") params.set("chat", "0");
   }
   const encoded = params.toString();
   return encoded ? `?${encoded}` : "";
@@ -136,7 +136,8 @@ const setOptionalParam = (params: URLSearchParams, key: string, value: string | 
 
 const normalizeSettingsResource = (value: string | null | undefined) => {
   if (value === null || value === undefined) return value;
-  return value === "human" || value === "space" || value === "desktop" ? value : "human";
+  return value === "human" || value === "space" || value === "models" || value === "runtimes"
+    || value === "advisor" || value === "desktop" ? value : "human";
 };
 
 export function workspaceLocationForModule(
@@ -145,10 +146,9 @@ export function workspaceLocationForModule(
   target: WorkspaceModuleTarget,
   options: { chatVisible?: boolean } = {},
 ) {
-  const currentLayout = workspaceLayoutFromRoute(parseWorkspaceRoute(pathname), search);
   const nextSearch = workspaceSearchForLayout(search, {
     activeModule: target.moduleId,
-    chatVisible: options.chatVisible ?? currentLayout.chatVisible,
+    chatVisible: options.chatVisible ?? target.moduleId === "settings",
   });
   const params = new URLSearchParams(nextSearch);
 

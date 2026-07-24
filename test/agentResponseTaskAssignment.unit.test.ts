@@ -6,7 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { closeSpaceDb, dbForSpace, registerSpace, schema, unregisterSpace } from "../src/db/index.ts";
 import { kithSpaceHome } from "../src/paths.ts";
 import { createMessage } from "../src/server/core.ts";
-import { TaskOperationError } from "../src/server/tasks/taskTypes.ts";
+import { TaskOperationError } from "../src/tasks/taskTypes.ts";
 
 async function withChannel(
   run: (fixture: { spaceId: string; channelId: string; targetId: string; otherId: string }) => Promise<void>,

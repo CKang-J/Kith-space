@@ -1,8 +1,7 @@
 import "../src/env.ts";
-import type { WebSocket } from "ws";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { createMessage } from "../src/server/core.ts";
-import { registerWorker, unregisterWorker, updateWorkerSnapshot } from "../src/local-runtime/workerHub.ts";
+import { admittedWakeDeliveries, connectAdmittingWorker } from "./helpers/admittingWorker.ts";
 import { SqliteDispatchState } from "../src/server/dispatchGuard.ts";
 
 let failures = 0;
@@ -27,20 +26,18 @@ async function main() {
     { channelId: channel!.id, agentId: tester!.id },
   ]);
 
-  const sent: Record<string, unknown>[] = [];
-  const socket = { readyState: 1, send(data: string) { sent.push(JSON.parse(data)); } } as unknown as WebSocket;
-  const workerLease = registerWorker(socket);
-  updateWorkerSnapshot(workerLease, { runtimes: ["claude"], runningAgents: [] });
+  const worker = connectAdmittingWorker({ runtimes: ["claude"] });
   try {
     const root = await createMessage({ spaceId, channelId: channel!.id, senderType: "human", senderId: owner!.id, senderName: owner!.name, content: "@leader coordinate this" });
-    const delegated = await createMessage({ spaceId, channelId: channel!.id, senderType: "agent", senderId: leader!.id, senderName: leader!.name, content: "@dev implement; @tester verify" });
-    const reported = await createMessage({ spaceId, channelId: channel!.id, senderType: "agent", senderId: dev!.id, senderName: dev!.name, content: "@leader implementation ready" });
+    if (!root.threadId) throw new Error("direct mention did not create a server-owned thread");
+    const delegated = await createMessage({ spaceId, channelId: root.threadId, senderType: "agent", senderId: leader!.id, senderName: leader!.name, content: "@dev implement; @tester verify" });
+    const reported = await createMessage({ spaceId, channelId: root.threadId, senderType: "agent", senderId: dev!.id, senderName: dev!.name, content: "@leader implementation ready" });
 
     check("Human wake starts at depth 0", root.dispatchDepth === 0);
     check("leader delegation inherits the chain at depth 1", delegated.dispatchChainId === root.dispatchChainId && delegated.dispatchDepth === 1);
     check("dev report returns on the same chain at depth 2", reported.dispatchChainId === root.dispatchChainId && reported.dispatchDepth === 2);
 
-    const delivers = sent.filter((message) => message.type === "agent:deliver");
+    const delivers = admittedWakeDeliveries(worker.messages);
     check("initial @leader wakes leader", delivers.some((message) => message.agentId === leader!.id && message.msgShort === root.id.slice(0, 8)));
     check("leader @dev wakes dev", delivers.some((message) => message.agentId === dev!.id && message.msgShort === delegated.id.slice(0, 8)));
     check("leader @tester wakes tester", delivers.some((message) => message.agentId === tester!.id && message.msgShort === delegated.id.slice(0, 8)));
@@ -49,7 +46,7 @@ async function main() {
     const status = await new SqliteDispatchState(spaceId).spaceStatus();
     check("successful wake budget records the four deliveries", status.wakeCount === 4);
   } finally {
-    unregisterWorker(workerLease);
+    worker.disconnect();
   }
 }
 

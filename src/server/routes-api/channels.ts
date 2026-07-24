@@ -19,7 +19,7 @@ import { addChannelMembers, getOrCreateDM, getOrCreateThread } from "../core.js"
 import { publish } from "../realtime.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { canHumanReadChannel } from "../channelAccess.js";
-import { listThreadSummaries } from "../channels/threadSummaries.js";
+import { listThreadSummaries } from "../../channels/threadSummaries.js";
 import { activeChannels, assertChannelWritable, isRequiredChannel } from "../../channels/channelLifecycle.js";
 import { deletedAgentIds, humanChannels } from "./shared.js";
 import {
@@ -27,6 +27,7 @@ import {
   listChannelAgentResponseModes,
   setChannelAgentResponseModeOverride,
 } from "../../agents/agentResponseSettings.js";
+import { revokeChannelAgentAccess } from "../channelAccessRevocation.js";
 
 const notSentBy = (humanId: string) => or(isNull(schema.messages.senderId), ne(schema.messages.senderId, humanId));
 
@@ -327,10 +328,7 @@ export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
     if (b.humanId !== undefined) return (sendErr(res, 400, "Human channel membership is not configurable"), true);
     const agentId = String(b.agentId ?? "").trim();
     if (!agentId) return (sendErr(res, 400, "agentId required"), true);
-    await db.delete(schema.channelAgentMembers).where(and(
-      eq(schema.channelAgentMembers.channelId, cmem[1]!),
-      eq(schema.channelAgentMembers.agentId, agentId),
-    ));
+    await revokeChannelAgentAccess(spaceId, cmem[1]!, agentId);
     await publish(spaceId, { type: "channel:members-updated", channelId: cmem[1]! });
     return (sendJson(res, 200, { ok: true }), true);
   }

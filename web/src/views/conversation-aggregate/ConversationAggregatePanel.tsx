@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { X } from "lucide-react";
 import {
   SlidingTabs,
   slidingTabId,
@@ -16,6 +17,7 @@ export interface ConversationAggregatePanelProps {
   trace: ReactNode;
   settings?: ReactNode;
   settingsOpen?: boolean;
+  onClose(): void;
   onOpenTopic(parentMessageId: string): void;
   onJumpToMessage(messageId: string): void;
 }
@@ -25,6 +27,7 @@ export function ConversationAggregatePanel({
   trace,
   settings,
   settingsOpen = false,
+  onClose,
   onOpenTopic,
   onJumpToMessage,
 }: ConversationAggregatePanelProps) {
@@ -40,9 +43,22 @@ export function ConversationAggregatePanel({
   return (
     <section className="conversation-aggregate" aria-label={t("conversationAggregate.title")}>
       <div className="conversation-aggregate__content" hidden={settingsOpen}>
+        <div className="conversation-aggregate__topbar">
+          <h2>{t("conversationAggregate.title")}</h2>
+          <button
+            type="button"
+            className="conversation-aggregate__close"
+            title={t("conversationAggregate.close")}
+            aria-label={t("conversationAggregate.close")}
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
+        </div>
         <header className="conversation-aggregate__header">
           <SlidingTabs<ConversationAggregateTab>
             id={tabsId}
+            className="conversation-aggregate__tabs"
             value={activeTab}
             options={tabs}
             onChange={(tab) => setActiveTab(tab)}

@@ -1,6 +1,7 @@
 import { and, eq, inArray, or } from "drizzle-orm";
-import { dbForSpace, schema } from "../db/index.js";
-import { deleteObject } from "../server/storage.js";
+import { dbForSpace, purgeDeletedSpaceContent, schema } from "../db/index.js";
+import { deleteObject } from "../files/localObjectStorage.js";
+import { clearAgentPrivateMemoryInTransaction } from "../memory/memoryLifecycle.js";
 
 /**
  * Permanently remove the Human↔Agent private conversation while leaving the
@@ -25,6 +26,7 @@ export async function deleteAgentAndPrivateConversations(spaceId: string, agentI
       .all()
       .map((row) => row.channelId);
     const dmChannelIds = [...new Set([...humanDmChannelIds, ...agentDmChannelIds])];
+    clearAgentPrivateMemoryInTransaction(tx, agentId, "agent_deleted");
     tx.delete(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.agentId, agentId)).run();
     tx.update(schema.agents).set({
       deletedAt: new Date(),
@@ -88,6 +90,7 @@ export async function deleteAgentAndPrivateConversations(spaceId: string, agentI
     tx.delete(schema.channels).where(inArray(schema.channels.id, channelIds)).run();
     return { channelIds, storageKeys };
   });
+  purgeDeletedSpaceContent(spaceId);
   await Promise.allSettled(deleted.storageKeys.map((storageKey) => deleteObject(spaceId, storageKey)));
   return deleted.channelIds;
 }

@@ -16,3 +16,11 @@ test("an Agent DM header links to that Agent's module profile", () => {
   assert.match(zh, /"openAgentProfile"\s*:\s*"打开 Agent 页面"/);
   assert.match(en, /"openAgentProfile"\s*:\s*"Open Agent profile"/);
 });
+
+test("a channel header uses the same linear Hash icon as the channel list", () => {
+  assert.match(chat, /<h1 className=\{isDm \? "chat-head__dm-title" : "chat-head__channel-title"\}>/);
+  assert.match(chat, /<Hash size=\{18\} className="channel-row-icon" aria-hidden="true" \/>/);
+  assert.doesNotMatch(chat, /"# " \+ \(cur\?\.name/);
+  assert.match(css, /\.chat-head__rail>\.chat-head__channel-title\{[^}]*display:flex[^}]*align-items:center[^}]*gap:4px[^}]*font-weight:400/);
+  assert.match(css, /\.chat-head__channel-title \.channel-row-icon\{[^}]*color:var\(--muted-soft\)/);
+});

@@ -21,6 +21,13 @@ import { assertInternalCredentialsConfigured, isDesktopTrustedRequest } from "..
 import { browserOriginAllowed, requestPeerIsLoopback } from "./browserSessionHttp.js";
 import { resolveCorePort } from "./localEndpoint.js";
 import { ChannelLifecycleError } from "../channels/channelLifecycle.js";
+import { handleTurnGateway } from "./turn-gateway/routes.js";
+import { startMemoryAdvisorScheduler } from "../memory/memoryAdvisorService.js";
+import { startDurableTurnRecovery } from "./harnessComposition.js";
+import { AdvisorProviderSettingsService } from "../advisor-provider/advisorProviderSettingsService.js";
+import { handleRuntimeCredentialRedemption } from "./runtimeCredentialRedemption.js";
+import { RuntimeProfileService } from "../model-control/runtimeProfileService.js";
+import { runtimeConfigurationEpochGate } from "../runtime/config/runtimeConfigurationEpochGate.js";
 
 assertInternalCredentialsConfigured();
 
@@ -110,6 +117,8 @@ const server = http.createServer(async (req, res) => {
       if (!requestPeerIsLoopback(req) && !isDesktopTrustedRequest(req)) return sendErr(res, 404, "not found");
       return sendJson(res, 200, { ok: true, service: "kith-space", workerConnected: isWorkerConnected(), time: new Date().toISOString() });
     }
+    if (await handleRuntimeCredentialRedemption(req, res, url, method)) return;
+    if (await handleTurnGateway(req, res, url, method)) return;
     if (await handleAgentApi(req, res, url, method)) return;
     if (await handleApi(req, res, url, method)) return;
     const isRead = method === "GET" || method === "HEAD";
@@ -129,6 +138,10 @@ const server = http.createServer(async (req, res) => {
 attachSocketIO(server); // human-side realtime (socket.io, /socket.io/)
 attachWs(server);       // daemon control plane (raw ws, /daemon/connect)
 startReminderScheduler(); // reminder scheduler: fires at due time, wakes the author
+new AdvisorProviderSettingsService().recover();
+runtimeConfigurationEpochGate.open(new RuntimeProfileService().runtimeConfigurationEpoch());
+const stopMemoryAdvisorScheduler = startMemoryAdvisorScheduler();
+let stopDurableTurnRecovery = () => {};
 
 server.on("error", (error: NodeJS.ErrnoException) => {
   const message = error.code === "EADDRINUSE"
@@ -141,18 +154,24 @@ server.on("error", (error: NodeJS.ErrnoException) => {
 
 // Durability guard: before accepting traffic, align in-memory seq/task counters to each Space DB maximum.
 // Prevents seq rollback and silent message drops after a process restart.
+let shutdownStarted = false;
 reconcileCounters()
   .then((r) => log.info("counters reconciled", r))
   .catch((e) => log.error("counter reconcile failed (continuing)", { detail: String(e?.message ?? e) }))
-  .finally(() => server.listen(PORT, HOST, () => {
-    log.info("control plane up", { url: `http://${HOST}:${PORT}`, browserMode: accessPolicy.getSettings().mode, health: `http://${HOST}:${PORT}/health`, logs: "~/.kith-space/logs/" });
-    process.send?.({ type: "kith:core-ready", host: HOST, port: PORT, browserMode: accessPolicy.getSettings().mode });
-  }));
+  .finally(() => {
+    if (shutdownStarted) return;
+    stopDurableTurnRecovery = startDurableTurnRecovery();
+    server.listen(PORT, HOST, () => {
+      log.info("control plane up", { url: `http://${HOST}:${PORT}`, browserMode: accessPolicy.getSettings().mode, health: `http://${HOST}:${PORT}/health`, logs: "~/.kith-space/logs/" });
+      process.send?.({ type: "kith:core-ready", host: HOST, port: PORT, browserMode: accessPolicy.getSettings().mode });
+    });
+  });
 
-let shutdownStarted = false;
 const shutdown = () => {
   if (shutdownStarted) return;
   shutdownStarted = true;
+  stopMemoryAdvisorScheduler();
+  stopDurableTurnRecovery();
   const forcedExit = setTimeout(() => process.exit(0), 3_000);
   forcedExit.unref();
   server.close(() => process.exit(0));

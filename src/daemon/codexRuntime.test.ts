@@ -5,7 +5,20 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { codexRuntime } from "./codexRuntime.js";
+import { codexCompactionEvent, codexRuntime } from "./codexRuntime.js";
+
+test("Codex maps the generated app-server contextCompaction item without inventing a summary", () => {
+  assert.deepEqual(codexCompactionEvent("item/started", { item: { id: "compact-1", type: "contextCompaction" } }), {
+    phase: "started", metadata: { protocol: "item/started", itemId: "compact-1" },
+  });
+  assert.deepEqual(codexCompactionEvent("item/completed", { item: { id: "compact-1", type: "contextCompaction" } }), {
+    phase: "completed", metadata: { protocol: "item/completed", itemId: "compact-1" },
+  });
+  assert.deepEqual(codexCompactionEvent("thread/compacted", { turnId: "turn-1" }), {
+    phase: "completed", metadata: { protocol: "thread/compacted", turnId: "turn-1" },
+  });
+  assert.equal(codexCompactionEvent("item/completed", { item: { id: "message", type: "agentMessage" } }), null);
+});
 
 test("missing codex binary reports offline instead of crashing daemon", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "kith-space-codex-missing-"));

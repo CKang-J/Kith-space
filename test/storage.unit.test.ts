@@ -20,7 +20,7 @@ process.env.KITH_SPACE_STORAGE = "s3";
 
 const { closeAppDatabase, registerSpace } = await import("../src/app-data/appDatabase.ts");
 const { spaceUploadsDir } = await import("../src/paths.ts");
-const { readObject, saveObject } = await import("../src/server/storage.ts");
+const { readObject, saveObject } = await import("../src/files/localObjectStorage.ts");
 
 const spaceA = "storage-space-a";
 const spaceB = "storage-space-b";

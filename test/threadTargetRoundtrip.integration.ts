@@ -51,7 +51,7 @@ async function main() {
   await setup();
 
   console.log("\n[1] a task (thread-anchor) message's shown target round-trips to its thread");
-  const task = await createMessage({ spaceId, channelId, senderType: "human", senderId: ownerId, senderName: "owner", content: "please do the thing", asTask: true });
+  const task = await createMessage({ spaceId, channelId, senderType: "human", senderId: ownerId, senderName: "owner", content: `@agent_${ts} please do the thing`, asTask: true });
   const taskRow = (await db.select().from(schema.messages).where(eq(schema.messages.id, task.id)))[0]!;
   check("task message has a thread (threadId set)", !!taskRow.threadId);
   const shown = await targetOf(task.id);

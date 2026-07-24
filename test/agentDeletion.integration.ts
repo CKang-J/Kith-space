@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 import { and, eq } from "drizzle-orm";
 import { closeAllDatabases, schema } from "../src/db/index.ts";
 import { handleApi } from "../src/server/routes-api/index.ts";
-import { readObject, saveObject } from "../src/server/storage.ts";
+import { readObject, saveObject } from "../src/files/localObjectStorage.ts";
 import { integrationDatabase } from "./helpers/workspace.ts";
 
 type ResponseCapture = { status: number; body: any };

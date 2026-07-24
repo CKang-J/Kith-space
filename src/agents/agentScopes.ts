@@ -1,0 +1,49 @@
+export interface ScopeDefinition {
+  key: string;
+  group: string;
+  label: string;
+  description: string;
+}
+
+export const AGENT_SCOPES: ScopeDefinition[] = [
+  { key: "inbox:receive", group: "Notifications", label: "Receive inbox events", description: "Receive new inbox events; get woken by others'/agents' activity." },
+  { key: "space:read", group: "Space", label: "Read Space info", description: "List channels, members, and agents in the current Space." },
+  { key: "channel:read", group: "Channels", label: "View channel members", description: "View members of joined channels." },
+  { key: "channel:join", group: "Channels", label: "Join channels", description: "Join visible public channels." },
+  { key: "channel:leave", group: "Channels", label: "Leave channels", description: "Leave joined channels." },
+  { key: "thread:unfollow", group: "Threads", label: "Unfollow threads", description: "Stop receiving deliveries from a thread." },
+  { key: "message:read", group: "Messages", label: "Read messages", description: "View, read, search, and resolve messages." },
+  { key: "message:send", group: "Messages", label: "Send messages", description: "Send messages to channels, DMs, and threads." },
+  { key: "attachment:upload", group: "Attachments", label: "Upload attachments", description: "Upload files as message attachments." },
+  { key: "attachment:view", group: "Attachments", label: "View attachments", description: "Download and view attachments." },
+  { key: "task:read", group: "Tasks", label: "Read tasks", description: "List tasks on channel task boards." },
+  { key: "task:write", group: "Tasks", label: "Write tasks", description: "Create, claim, release, and update tasks." },
+  { key: "knowledge:read", group: "Knowledge", label: "Read knowledge", description: "Fetch topics from the agent knowledge base." },
+  { key: "action:prepare", group: "Action", label: "Prepare action cards", description: "Allow the agent to prepare quick-commit action cards." },
+];
+
+export const ALL_AGENT_SCOPE_KEYS = AGENT_SCOPES.map((scope) => scope.key);
+const SCOPE_SET = new Set(ALL_AGENT_SCOPE_KEYS);
+
+export interface AgentScopes {
+  granted: string[];
+  mode: "default" | "custom";
+  revision: number;
+  updatedAt: string;
+}
+
+export const isAgentScopeLiteral = (value: unknown): value is string =>
+  typeof value === "string" && SCOPE_SET.has(value);
+
+export function effectiveAgentScopes(stored: AgentScopes | null | undefined): AgentScopes {
+  return stored ?? {
+    granted: [...ALL_AGENT_SCOPE_KEYS],
+    mode: "default",
+    revision: 0,
+    updatedAt: new Date(0).toISOString(),
+  };
+}
+
+export function agentHasScope(stored: AgentScopes | null | undefined, scope: string): boolean {
+  return effectiveAgentScopes(stored).granted.includes(scope);
+}

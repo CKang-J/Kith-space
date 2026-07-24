@@ -24,6 +24,59 @@ function turnParams(opts: StartOpts, threadId: string, text: string): Record<str
   return { threadId, input: [{ type: "text", text }], ...(effort ? { effort } : {}) };
 }
 
+export function buildCodexAppServerArgs(mcpBootstrap?: StartOpts["mcpBootstrap"]): string[] {
+  const descriptor = mcpBootstrap?.descriptor ?? {};
+  const mcpCommand = typeof descriptor.command === "string" ? descriptor.command : null;
+  const mcpArgs = Array.isArray(descriptor.args) && descriptor.args.every((arg) => typeof arg === "string")
+    ? descriptor.args as string[]
+    : [];
+  const mcpEnv = descriptor.env && typeof descriptor.env === "object" && !Array.isArray(descriptor.env)
+    ? descriptor.env as Record<string, unknown>
+    : {};
+  const args = ["app-server", "--listen", "stdio://"];
+  if (!mcpCommand) return args;
+  args.push(
+    "-c", `mcp_servers.kith-core.command=${JSON.stringify(mcpCommand)}`,
+    "-c", `mcp_servers.kith-core.args=${JSON.stringify(mcpArgs)}`,
+  );
+  for (const [name, value] of Object.entries(mcpEnv)) {
+    if (typeof value === "string") args.push("-c", `mcp_servers.kith-core.env.${name}=${JSON.stringify(value)}`);
+  }
+  return args;
+}
+
+function normalizedUsage(value: any) {
+  if (!value || typeof value !== "object") return null;
+  const number = (...keys: string[]) => {
+    for (const key of keys) if (Number.isFinite(value[key])) return Number(value[key]);
+    return undefined;
+  };
+  const usage = {
+    inputTokens: number("inputTokens", "input_tokens", "input"),
+    outputTokens: number("outputTokens", "output_tokens", "output"),
+    reasoningTokens: number("reasoningTokens", "reasoning_tokens", "reasoning"),
+    cacheReadTokens: number("cacheReadTokens", "cache_read_tokens", "cached_input_tokens"),
+    cacheWriteTokens: number("cacheWriteTokens", "cache_write_tokens"),
+    costUsd: number("costUsd", "cost_usd", "cost"),
+    durationMs: number("durationMs", "duration_ms"),
+    source: "final" as const,
+  };
+  return Object.values(usage).some((item) => typeof item === "number") ? usage : null;
+}
+
+export function codexCompactionEvent(method: string, params: any): { phase: "started" | "completed"; metadata: Record<string, unknown> } | null {
+  if (method === "thread/compacted") {
+    return { phase: "completed", metadata: { protocol: "thread/compacted", turnId: params?.turnId ?? null } };
+  }
+  if (method !== "item/started" && method !== "item/completed") return null;
+  const item = params?.item;
+  if (item?.type !== "contextCompaction") return null;
+  return {
+    phase: method === "item/started" ? "started" : "completed",
+    metadata: { protocol: method, itemId: item.id ?? null },
+  };
+}
+
 class CodexClient {
   private nextId = 0;
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
@@ -31,6 +84,8 @@ class CodexClient {
   private proto: "unknown" | "legacy" | "raw" = "unknown";
   threadId = "";
   onTurnDone: ((aborted: boolean) => void) | null = null;
+  private compactionStarted = false;
+  private compactionCompleted = false;
 
   constructor(private proc: ChildProcess, private cb: RuntimeCallbacks) {
     proc.stdout?.on("data", (c: Buffer) => {
@@ -87,17 +142,38 @@ class CodexClient {
 
   private handleRaw(method: string, params: any): void {
     if (this.threadId && params.threadId && params.threadId !== this.threadId) return; // ignore events from other threads
-    if (method === "turn/started") { this.cb.onActivity("working", "turn"); }
+    const compactionEvent = codexCompactionEvent(method, params);
+    if (method === "turn/started") {
+      this.compactionStarted = false;
+      this.compactionCompleted = false;
+      this.cb.onActivity("working", "turn");
+    }
     else if (method === "turn/completed") {
       const status = params?.turn?.status;
       const aborted = ["cancelled", "canceled", "aborted", "interrupted"].includes(status);
       if (status === "failed") this.cb.onTrajectory([{ kind: "text", text: "[codex turn failed] " + (params?.turn?.error?.message || "") }]);
-      this.cb.onActivity("online", ""); this.onTurnDone?.(aborted);
+      const usage = normalizedUsage(params?.turn?.usage ?? params?.usage);
+      if (usage) this.cb.onUsage?.(usage);
+      const failed = status === "failed";
+      this.cb.onActivity(failed ? "error" : "online", failed ? (params?.turn?.error?.message || "codex turn failed") : "");
+      this.cb.onTurnResult?.({
+        outcome: aborted ? "cancelled" : failed ? "failed" : "completed",
+        ...(failed ? { errorCode: "codex_turn_failed" } : {}),
+      });
+      this.onTurnDone?.(aborted);
     } else if (method === "item/agentMessage/delta" || method === "item/reasoning/summaryTextDelta" || method === "item/reasoning/textDelta") {
       // The current UI stores each trajectory entry as a separate row, so token deltas would spam
       // the timeline. Emit the completed item text below instead.
     } else if (method === "item/commandExecution/outputDelta" || method === "command/exec/outputDelta" || method === "process/outputDelta") {
       // stdout/stderr chunks are often large and noisy; surface the command item itself instead.
+    } else if (compactionEvent) {
+      if (compactionEvent.phase === "started" && !this.compactionStarted) {
+        this.compactionStarted = true;
+        this.cb.onCompaction?.("started", compactionEvent.metadata);
+      } else if (compactionEvent.phase === "completed" && !this.compactionCompleted) {
+        this.compactionCompleted = true;
+        this.cb.onCompaction?.("completed", compactionEvent.metadata);
+      }
     } else if (method === "item/started" || method === "item/completed") {
       const item = params?.item;
       if (!item) return;
@@ -110,7 +186,11 @@ class CodexClient {
         this.cb.onTrajectory([{ kind: "tool", toolName: item.type, toolInput: clip(toolInput).slice(0, 160) }]);
       }
     } else if (method === "error") {
-      if (!params.willRetry) { this.cb.onTrajectory([{ kind: "text", text: "[codex error] " + (params?.error?.message || params?.message || "") }]); this.onTurnDone?.(false); }
+      if (!params.willRetry) {
+        this.cb.onTrajectory([{ kind: "text", text: "[codex error] " + (params?.error?.message || params?.message || "") }]);
+        this.cb.onTurnResult?.({ outcome: "failed", errorCode: "codex_runtime_error" });
+        this.onTurnDone?.(false);
+      }
     }
   }
 
@@ -120,8 +200,15 @@ class CodexClient {
       case "agent_message": if (msg.message) this.cb.onTrajectory([{ kind: "text", text: clip(msg.message) }]); break;
       case "exec_command_begin": this.cb.onActivity("working", "Running command…"); this.cb.onTrajectory([{ kind: "tool", toolName: "exec_command", toolInput: clip(msg.command).slice(0, 120) }]); break;
       case "patch_apply_begin": this.cb.onTrajectory([{ kind: "tool", toolName: "patch_apply" }]); break;
-      case "task_complete": this.cb.onActivity("online", ""); this.onTurnDone?.(false); break;
-      case "turn_aborted": this.onTurnDone?.(true); break;
+      case "task_complete": {
+        const usage = normalizedUsage(msg.usage);
+        if (usage) this.cb.onUsage?.(usage);
+        this.cb.onActivity("online", "");
+        this.cb.onTurnResult?.({ outcome: "completed" });
+        this.onTurnDone?.(false);
+        break;
+      }
+      case "turn_aborted": this.cb.onTurnResult?.({ outcome: "cancelled" }); this.onTurnDone?.(true); break;
     }
   }
 }
@@ -132,7 +219,8 @@ export const codexRuntime: Runtime = {
   start(opts: StartOpts, cb: RuntimeCallbacks): RuntimeSession {
     // Do not override CODEX_HOME: use the user's default ~/.codex (which contains subscription auth state).
     // Per-agent CODEX_HOME isolation + auth/MCP injection is a future improvement.
-    const proc = spawnRuntimeProcess("codex", ["app-server", "--listen", "stdio://"], { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: opts.env });
+    const appServerArgs = buildCodexAppServerArgs(opts.mcpBootstrap);
+    const proc = spawnRuntimeProcess("codex", appServerArgs, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: opts.env });
     const client = new CodexClient(proc, cb);
     let ready = false;
     let spawnFailed = false;
@@ -183,7 +271,9 @@ export const codexRuntime: Runtime = {
       }
     })();
 
-    proc.stderr?.on("data", (c: Buffer) => { const t = c.toString().trim(); if (t) cb.log.debug("codex stderr", { t: t.slice(0, 300) }); });
+    proc.stderr?.on("data", (c: Buffer) => {
+      if (c.length) cb.log.debug("codex stderr received", { bytes: c.length });
+    });
     proc.on("error", (e: NodeJS.ErrnoException) => {
       spawnFailed = true;
       const detail = e.code === "ENOENT" ? "codex not found" : "codex spawn failed";

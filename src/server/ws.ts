@@ -2,7 +2,7 @@
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import type { Server } from "node:http";
 import { and, desc, eq, isNull, notInArray } from "drizzle-orm";
-import { allSpaceDbs, dbForSpace, schema } from "../db/index.js";
+import { availableSpaceDbs, dbForSpace, schema } from "../db/index.js";
 import { safeEqual } from "./auth.js";
 import { publish } from "./realtime.js";
 import { createLogger } from "../log.js";
@@ -12,15 +12,28 @@ import { locateAgent } from "../local-runtime/agentLocator.js";
 import { WORKER_TOKEN_HEADER, isLoopbackAddress, workerBootstrapToken } from "../local-runtime/internalCredentials.js";
 import { resolveTrajectoryScope } from "./trajectoryScope.js";
 import { createWorkerMessageQueue } from "./workerMessageQueue.js";
+import { terminalWakeReplyEvent } from "./workerQueueOutcome.js";
+import type { WorkerQueueOutcome } from "../runtime/contract/runtimeWorkerPort.js";
 import {
   isWorkerLeaseCurrent,
   isWorkerLeaseLatest,
   registerWorker,
+  resolveWorkerAdmission,
   resolveWorkerRequest,
   unregisterWorker,
   updateWorkerSnapshot,
   type WorkerLease,
 } from "../local-runtime/workerHub.js";
+import { SessionModule } from "../sessions/sessionModule.js";
+import { MAX_RUNTIME_TERMINAL_BYTES, RuntimeEventEnvelopeSchema, RuntimeTurnResultSchema, type RuntimeTurnResult } from "../runtime/contract/v2/runtimeContract.js";
+import { WorkerSessionSnapshotReportSchema } from "../runtime/contract/sessionSnapshot.js";
+import { assertTerminalSnapshotIdentity, SessionSnapshotService } from "../sessions/sessionSnapshotService.js";
+import { SessionCompactionMarkerService } from "../sessions/sessionCompactionMarker.js";
+import { TurnLedger } from "../turns/turnLedger.js";
+import { locateTurnTarget } from "../turns/turnTargetLocator.js";
+import { harnessTurnScheduler, scheduleV2Turns, turnCapabilityService, turnOutputService } from "./harnessComposition.js";
+import { providerCredentialPort } from "../advisor-provider/credentialPort.js";
+import { AdvisorProviderError } from "../advisor-provider/contracts.js";
 
 const log = createLogger("server:ws");
 
@@ -62,15 +75,29 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
         if (!updateWorkerSnapshot(lease, { runtimes, runningAgents })) return;
         if (!await reconcileWorkerReady(runningAgents, lease)) return;
         if (!isWorkerLeaseCurrent(lease)) return;
-        try { ws.send(JSON.stringify({ type: "ready:ack" })); } catch { /* */ }
+        try { ws.send(JSON.stringify({ type: "ready:ack", generation: lease.generation })); } catch { /* */ }
         void catchUpAgentsOnWorker(runningAgents, lease)
           .catch((e: any) => log.error("worker reconnect catch-up failed", { detail: String(e?.message ?? e) }));
+        for (const { space } of workerAvailableSpaceDbs()) {
+          if (!isWorkerLeaseCurrent(lease)) return;
+          void scheduleV2Turns(space.id).catch((e: any) => log.error("v2 turn recovery failed", { spaceId: space.id, detail: String(e?.message ?? e) }));
+        }
         log.info("local runtime worker ready", { runtimes, runningAgents: runningAgents.length, daemonVersion: msg.daemonVersion });
+      }
+      else if (msg.type === "agent:turn:event") {
+        await onTurnEvent(ws, msg, lease);
+      }
+      else if (msg.type === "agent:turn:terminal") {
+        await onTurnTerminal(ws, msg, lease);
+      }
+      else if (msg.type === "agent:session:snapshot") {
+        await onSessionSnapshot(ws, msg, lease);
       }
       else if (msg.type === "agent:status" || msg.type === "agent:activity") await onAgentUpdate(msg, lease);
       else if (msg.type === "agent:session" && msg.agentId) {
         const located = await locateAgent(msg.agentId);
         if (!located || !isWorkerLeaseCurrent(lease)) return;
+        if (new SessionModule(located.spaceId, located.db).harnessMode(msg.agentId) !== "legacy") return;
         await located.db.update(schema.agents).set({ sessionId: msg.sessionId }).where(eq(schema.agents.id, msg.agentId));
         if (!isWorkerLeaseCurrent(lease)) return;
         await publish(located.spaceId, { type: "agent:session", agentId: msg.agentId, sessionId: msg.sessionId });
@@ -78,6 +105,7 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
       else if (msg.type === "agent:trajectory" && msg.agentId) {
         const located = await locateAgent(msg.agentId);
         if (!located || !isWorkerLeaseCurrent(lease)) return;
+        if (new SessionModule(located.spaceId, located.db).harnessMode(msg.agentId) !== "legacy") return;
         const trajectoryScope = await resolveTrajectoryScope(located.db, msg);
         if (!isWorkerLeaseCurrent(lease)) return;
         await publish(located.spaceId, { type: "trajectory", agentId: msg.agentId, name: located.agent.name, entries: msg.entries ?? [], ...trajectoryScope });
@@ -91,9 +119,53 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
       else if (msg.type === "agent:reply" && msg.agentId && msg.channelId && msg.streamId) {
         const located = await locateAgent(msg.agentId);
         if (!located || !isWorkerLeaseCurrent(lease)) return;
+        if (new SessionModule(located.spaceId, located.db).harnessMode(msg.agentId) !== "legacy") return;
         await publish(located.spaceId, { type: "agent:reply", agentId: msg.agentId, channelId: msg.channelId, streamId: msg.streamId, name: msg.name ?? located.agent.displayName ?? located.agent.name, op: msg.op, text: msg.text ?? "" });
       }
-      else if ((msg.type === "workspace:file_tree" || msg.type === "workspace:file_content" || msg.type === "skills:list" || msg.type === "models") && msg.requestId) resolveWorkerRequest(msg.requestId, msg);
+      else if (msg.type === "worker:admission") {
+        resolveWorkerAdmission(lease, msg);
+      }
+      else if (msg.type === "advisor:credential:redeem") {
+        if (typeof msg.requestId !== "string" || typeof msg.credentialHandle !== "string" || typeof msg.runId !== "string"
+          || !Number.isSafeInteger(msg.providerEpoch) || msg.workerGeneration !== lease.generation
+          || typeof msg.executionSnapshotDigest !== "string") return;
+        try {
+          const redeemed = providerCredentialPort.redeem(msg.credentialHandle, {
+            runId: msg.runId,
+            providerEpoch: msg.providerEpoch,
+            workerGeneration: lease.generation,
+            executionSnapshotDigest: msg.executionSnapshotDigest,
+          });
+          if (!isWorkerLeaseCurrent(lease)) return;
+          const { identityDigest: _identityDigest, ...credential } = redeemed;
+          ws.send(JSON.stringify({ type: "advisor:credential:result", requestId: msg.requestId, ok: true, credential }));
+        } catch (error) {
+          if (!isWorkerLeaseCurrent(lease)) return;
+          ws.send(JSON.stringify({ type: "advisor:credential:result", requestId: msg.requestId, ok: false,
+            errorCode: error instanceof AdvisorProviderError ? error.code : "provider_auth_required" }));
+        }
+      }
+      else if (msg.type === "worker:queue:outcome") {
+        const outcome = msg as WorkerQueueOutcome;
+        if (msg.source === "wake" && typeof msg.id === "string" && typeof msg.spaceId === "string"
+          && (msg.status === "cancelled" || msg.status === "expired" || msg.status === "failed")) {
+          const { SqliteDispatchState } = await import("./dispatchGuard.js");
+          await new SqliteDispatchState(msg.spaceId).markWakePending(msg.id);
+          const located = typeof msg.agentId === "string" ? await locateAgent(msg.agentId) : null;
+          if (located && located.spaceId === msg.spaceId && isWorkerLeaseCurrent(lease)) {
+            const reply = terminalWakeReplyEvent(outcome, located.agent.displayName ?? located.agent.name);
+            if (reply) await publish(located.spaceId, reply);
+          }
+        }
+        log.debug("runtime queue outcome", {
+          status: msg.status,
+          source: msg.source,
+          agentId: msg.agentId,
+          spaceId: msg.spaceId,
+          queuedMs: msg.queuedMs,
+        });
+      }
+      else if ((msg.type === "workspace:file_tree" || msg.type === "workspace:file_content" || msg.type === "skills:list" || msg.type === "models" || msg.type === "maintenance:result" || msg.type === "advisor:result") && msg.requestId) resolveWorkerRequest(msg.requestId, msg, lease);
     } catch (e: any) { log.error("ws handler error", { type: msg?.type, detail: String(e?.message ?? e) }); }
   }, (error) => {
     log.error("ws message queue error", { detail: String((error as any)?.message ?? error) });
@@ -115,12 +187,13 @@ function stringList(value: unknown): string[] {
 export async function reconcileWorkerReady(runningIds: string[], lease: WorkerLease): Promise<boolean> {
   if (!isWorkerLeaseCurrent(lease)) return false;
   const running = new Set(runningIds);
-  for (const { space, db } of allSpaceDbs()) {
+  for (const { space, db } of workerAvailableSpaceDbs()) {
     if (!isWorkerLeaseCurrent(lease)) return false;
     const agents = await db.select().from(schema.agents).where(isNull(schema.agents.deletedAt));
     if (!isWorkerLeaseCurrent(lease)) return false;
     for (const agent of agents) {
       if (!isWorkerLeaseCurrent(lease)) return false;
+      if (new SessionModule(space.id, db).harnessMode(agent.id) !== "legacy") continue;
       if (running.has(agent.id)) {
         const activity = agent.activity === "offline" || agent.activity === "sleeping" ? "online" : agent.activity;
         if (agent.status === "active" && activity === agent.activity) continue;
@@ -143,13 +216,14 @@ export async function reconcileWorkerReady(runningIds: string[], lease: WorkerLe
 
 export async function markAllAgentsOffline(lease: WorkerLease): Promise<boolean> {
   if (!isWorkerLeaseLatest(lease)) return false;
-  for (const { space, db } of allSpaceDbs()) {
+  for (const { space, db } of workerAvailableSpaceDbs()) {
     if (!isWorkerLeaseLatest(lease)) return false;
     const agents = await db.select().from(schema.agents)
       .where(and(isNull(schema.agents.deletedAt), eq(schema.agents.status, "active")));
     if (!isWorkerLeaseLatest(lease)) return false;
     for (const agent of agents) {
       if (!isWorkerLeaseLatest(lease)) return false;
+      if (new SessionModule(space.id, db).harnessMode(agent.id) !== "legacy") continue;
       await db.update(schema.agents).set({ status: "inactive", activity: "offline" }).where(eq(schema.agents.id, agent.id));
       if (!isWorkerLeaseLatest(lease)) return false;
       await publish(space.id, { type: "agent", id: agent.id, name: agent.name, status: "inactive", activity: "offline" });
@@ -159,10 +233,206 @@ export async function markAllAgentsOffline(lease: WorkerLease): Promise<boolean>
   return isWorkerLeaseLatest(lease);
 }
 
+async function onTurnEvent(ws: WebSocket, msg: any, lease: WorkerLease): Promise<void> {
+  const eventId = typeof msg?.event?.eventId === "string" ? msg.event.eventId : "";
+  try {
+    if (!isWorkerLeaseCurrent(lease)) throw new Error("stale Worker lease");
+    const event = RuntimeEventEnvelopeSchema.parse(msg.event);
+    if (event.workerGeneration !== lease.generation) throw new Error("stale Worker generation");
+    if (typeof msg.spaceId !== "string") throw new Error("turn event Space identity is missing");
+    const db = locateTurnTarget({
+      spaceId: msg.spaceId,
+      turnId: event.turnId,
+      attemptId: event.attemptId,
+      sessionId: event.sessionId,
+    });
+    if (!db) throw new Error("turn event target not found");
+    const inserted = new TurnLedger(db.spaceId, db.db).appendEvent(event);
+    if (inserted) {
+      await projectTurnEvent(db.spaceId, db.db, event).catch((error) => {
+        log.warn("v2 turn event projection failed after durable append", { eventId: event.eventId, detail: errorMessage(error) });
+      });
+    }
+    if (!isWorkerLeaseCurrent(lease)) throw new Error("Worker lease changed during event commit");
+    ws.send(JSON.stringify({ type: "agent:turn:event:ack", eventId: event.eventId, ok: true }));
+  } catch (error) {
+    if (eventId && isWorkerLeaseCurrent(lease)) {
+      ws.send(JSON.stringify({ type: "agent:turn:event:ack", eventId, ok: false, error: errorMessage(error) }));
+    }
+  }
+}
+
+async function onTurnTerminal(ws: WebSocket, msg: any, lease: WorkerLease): Promise<void> {
+  const attemptId = typeof msg.attemptId === "string" ? msg.attemptId : "";
+  let spaceId: string | null = null;
+  try {
+    if (Buffer.byteLength(JSON.stringify(msg), "utf8") > MAX_RUNTIME_TERMINAL_BYTES) throw new Error("runtime terminal envelope exceeds the byte limit");
+    if (!attemptId || msg.generation !== lease.generation || !isWorkerLeaseCurrent(lease)) throw new Error("stale Worker terminal state");
+    if (typeof msg.spaceId !== "string" || typeof msg.turnId !== "string" || typeof msg.sessionId !== "string" || !Number.isInteger(msg.sessionGeneration)) {
+      throw new Error("invalid Worker terminal identity");
+    }
+    const located = locateTurnTarget({ spaceId: msg.spaceId, turnId: msg.turnId, attemptId, sessionId: msg.sessionId });
+    if (!located) throw new Error("turn terminal target not found");
+    spaceId = located.spaceId;
+    const attempt = located.db.select().from(schema.agentTurnAttempts).where(eq(schema.agentTurnAttempts.id, attemptId)).get();
+    const turn = located.db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, msg.turnId)).get();
+    if (!attempt || !turn || attempt.workerGeneration !== lease.generation || turn.sessionGeneration !== msg.sessionGeneration
+      || msg.agentId !== turn.agentId || msg.spaceId !== turn.spaceId) {
+      throw new Error("turn terminal identity does not match its live attempt");
+    }
+    // Rebuild the consumable cursor from append-only events before every terminal ack. This closes the
+    // crash window where event append succeeded but its best-effort projection did not run.
+    new SessionCompactionMarkerService(spaceId, located.db).reconcile(turn.runtimeSessionId, turn.sessionGeneration);
+    if (["succeeded", "failed", "cancelled", "lost"].includes(attempt.status)) {
+      if (!isWorkerLeaseCurrent(lease)) throw new Error("Worker lease changed before duplicate terminal acknowledgement");
+      ws.send(JSON.stringify({ type: "agent:turn:terminal:ack", attemptId, ok: true }));
+      return;
+    }
+    const result = runtimeTurnResult(msg.result);
+    const ledger = new TurnLedger(spaceId, located.db);
+    ledger.markRuntimeTerminal(attemptId, result);
+    turnCapabilityService(spaceId).revokeAttempt(attemptId);
+    let completed = false;
+    if (result.outcome === "completed") {
+      const finalized = turnOutputService(spaceId).finalizeAttempt(attemptId);
+      completed = finalized.finalized;
+      if (!finalized.finalized) ledger.failAttempt(attemptId, "required_input_unresolved");
+    }
+    if (result.sessionSnapshot) {
+      try {
+        assertTerminalSnapshotIdentity(result.sessionSnapshot, {
+          spaceId: turn.spaceId,
+          sessionId: turn.runtimeSessionId,
+          sessionGeneration: turn.sessionGeneration,
+        });
+        new SessionSnapshotService(spaceId, located.db).persist(result.sessionSnapshot);
+      }
+      catch (error) {
+        log.warn("runtime session snapshot rejected without blocking terminal ack", { attemptId, detail: errorMessage(error) });
+      }
+    }
+    await projectTurnTerminal(spaceId, located.db, turn, attemptId, result, completed).catch((error) => {
+      log.warn("v2 turn terminal projection failed after durable commit", { attemptId, detail: errorMessage(error) });
+    });
+    harnessTurnScheduler.finishAttempt(spaceId, attemptId);
+    if (!isWorkerLeaseCurrent(lease)) throw new Error("Worker lease changed during terminal commit");
+    ws.send(JSON.stringify({ type: "agent:turn:terminal:ack", attemptId, ok: true }));
+  } catch (error) {
+    if (attemptId && isWorkerLeaseCurrent(lease)) {
+      ws.send(JSON.stringify({ type: "agent:turn:terminal:ack", attemptId, ok: false, error: errorMessage(error) }));
+    }
+  }
+}
+
+async function onSessionSnapshot(ws: WebSocket, msg: any, lease: WorkerLease): Promise<void> {
+  const requestId = typeof msg.requestId === "string" ? msg.requestId : "";
+  try {
+    if (!requestId || msg.generation !== lease.generation || !isWorkerLeaseCurrent(lease)) throw new Error("stale Worker snapshot");
+    const report = WorkerSessionSnapshotReportSchema.parse(msg.report);
+    const result = new SessionSnapshotService(report.spaceId).persist(report);
+    if (!isWorkerLeaseCurrent(lease)) throw new Error("Worker lease changed during snapshot commit");
+    ws.send(JSON.stringify({ type: "agent:session:snapshot:ack", requestId, ok: true, snapshotVersion: result.snapshotVersion }));
+  } catch (error) {
+    if (requestId && isWorkerLeaseCurrent(lease)) {
+      ws.send(JSON.stringify({ type: "agent:session:snapshot:ack", requestId, ok: false, error: errorMessage(error) }));
+    }
+  }
+}
+
+function workerAvailableSpaceDbs() {
+  return availableSpaceDbs((space, error) => {
+    log.warn("skipping unavailable Space during Worker registry scan", {
+      spaceId: space.id,
+      detail: errorMessage(error),
+    });
+  });
+}
+
+function runtimeTurnResult(value: unknown): RuntimeTurnResult {
+  return RuntimeTurnResultSchema.parse(value);
+}
+
+async function projectTurnEvent(
+  spaceId: string,
+  db: ReturnType<typeof dbForSpace>,
+  event: import("../runtime/contract/v2/runtimeContract.js").RuntimeEventEnvelope,
+): Promise<void> {
+  const turn = db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, event.turnId)).get();
+  const session = turn ? db.select().from(schema.runtimeSessions).where(eq(schema.runtimeSessions.id, turn.runtimeSessionId)).get() : null;
+  const agent = turn ? db.select().from(schema.agents).where(eq(schema.agents.id, turn.agentId)).get() : null;
+  if (!turn || !session || !agent) return;
+  const scope = { scope: "scoped", channelId: session.surfaceId, conversationId: session.surfaceId, streamId: turn.id };
+  const text = typeof event.payload.text === "string" ? event.payload.text : "";
+  const toolName = typeof event.payload.toolName === "string" ? event.payload.toolName : "";
+  const toolInput = typeof event.payload.toolInput === "string" ? event.payload.toolInput : "";
+  const activity = event.kind === "thinking_summary" ? "thinking" : "working";
+  if (event.kind === "compaction_completed") {
+    new SessionCompactionMarkerService(spaceId, db).recordPersistedEvent(event);
+  }
+  if (event.kind === "turn_started" || event.kind === "thinking_summary" || event.kind === "tool_started" || event.kind === "activity") {
+    db.update(schema.agents).set({ status: "active", activity }).where(eq(schema.agents.id, agent.id)).run();
+    await publish(spaceId, { type: "agent", id: agent.id, name: agent.name, status: "active", activity, detail: text.slice(0, 200), ...scope });
+  }
+  if (event.kind === "thinking_summary" || event.kind === "text_preview" || event.kind === "tool_started" || event.kind === "tool_completed" || event.kind === "tool_failed") {
+    await publish(spaceId, {
+      type: "trajectory",
+      agentId: agent.id,
+      name: agent.name,
+      entries: [{
+        kind: toolName ? "tool" : event.kind === "thinking_summary" ? "thinking" : "text",
+        text: text.slice(0, 2_000),
+        ...(toolName ? { toolName, toolInput: toolInput.slice(0, 1_000) } : {}),
+      }],
+      ...scope,
+    });
+  }
+  if (turn.effectiveDirective === "required") {
+    if (event.kind === "turn_started") {
+      await publish(spaceId, { type: "agent:reply", agentId: agent.id, channelId: session.surfaceId, streamId: turn.id, name: agent.displayName || agent.name, op: "start", text: "" });
+    } else if (event.kind === "text_preview" && text) {
+      await publish(spaceId, { type: "agent:reply", agentId: agent.id, channelId: session.surfaceId, streamId: turn.id, name: agent.displayName || agent.name, op: "delta", text });
+    }
+  }
+  await logActivity(spaceId, agent.id, {
+    kind: toolName ? "tool" : event.kind,
+    activity,
+    detail: event.kind,
+    ...(toolName ? { toolName, toolInput: toolInput.slice(0, 500) } : {}),
+    ...(event.kind === "thinking_summary" ? { text: text.slice(0, 200) } : {}),
+  });
+}
+
+async function projectTurnTerminal(
+  spaceId: string,
+  db: ReturnType<typeof dbForSpace>,
+  turn: typeof schema.agentTurns.$inferSelect,
+  attemptId: string,
+  result: RuntimeTurnResult,
+  completed: boolean,
+): Promise<void> {
+  const session = db.select().from(schema.runtimeSessions).where(eq(schema.runtimeSessions.id, turn.runtimeSessionId)).get();
+  const agent = db.select().from(schema.agents).where(eq(schema.agents.id, turn.agentId)).get();
+  if (!session || !agent) return;
+  const activity = completed ? "online" : "error";
+  const detail = completed ? "" : result.outcome === "completed" ? "required input unresolved; retry scheduled" : result.errorCode ?? `runtime ${result.outcome}`;
+  db.update(schema.agents).set({ status: "active", activity }).where(eq(schema.agents.id, agent.id)).run();
+  const scope = { scope: "scoped", channelId: session.surfaceId, conversationId: session.surfaceId, streamId: turn.id };
+  await publish(spaceId, { type: "agent", id: agent.id, name: agent.name, status: "active", activity, detail, ...scope });
+  if (turn.effectiveDirective === "required") {
+    await publish(spaceId, { type: "agent:reply", agentId: agent.id, channelId: session.surfaceId, streamId: turn.id, name: agent.displayName || agent.name, op: completed ? "done" : "error", text: detail });
+  }
+  await logActivity(spaceId, agent.id, { kind: "status", activity, detail, attemptId });
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function onAgentUpdate(msg: any, lease: WorkerLease): Promise<void> {
   if (!msg.agentId) return;
   const located = await locateAgent(msg.agentId);
   if (!located || !isWorkerLeaseCurrent(lease)) return;
+  if (new SessionModule(located.spaceId, located.db).harnessMode(msg.agentId) !== "legacy") return;
   const patch: Record<string, unknown> = {};
   if (msg.type === "agent:status") patch.status = msg.status;
   if (msg.type === "agent:activity") patch.activity = msg.activity;

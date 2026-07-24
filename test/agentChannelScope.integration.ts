@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { and, eq } from "drizzle-orm";
 import { closeAllDatabases, dbForSpace, schema } from "../src/db/index.ts";
 import { ensurePersonalApp } from "../src/db/personalApp.ts";
 import { agentConfig } from "../src/server/core.ts";
@@ -273,6 +275,49 @@ try {
     [alpha.id, beta.id].sort(),
   );
   assert.equal("humans" in privateMembers.body, false);
+
+  const leaveRootId = randomUUID();
+  const leaveThreadId = randomUUID();
+  await db.insert(schema.messages).values({
+    id: leaveRootId, spaceId: home.id, channelId: privateChannel.id, seq: 4,
+    senderType: "human", senderId: human.id, senderName: human.name, content: "leave root", threadId: leaveThreadId,
+  });
+  await db.insert(schema.channels).values({
+    id: leaveThreadId, spaceId: home.id, name: "leave-thread", type: "thread", parentMessageId: leaveRootId,
+  });
+  await db.insert(schema.channelAgentMembers).values({ channelId: leaveThreadId, agentId: beta.id });
+  const leaveSessionId = randomUUID();
+  await db.insert(schema.runtimeSessions).values({
+    id: leaveSessionId, spaceId: home.id, agentId: beta.id, surfaceKind: "thread", surfaceId: leaveThreadId,
+    sessionGeneration: 1, runtime: "codex", runtimeConfigFingerprint: "leave", adapterVersion: "test",
+    workspaceRootFingerprint: "root", status: "running",
+  });
+  const leaveTurnId = randomUUID();
+  await db.insert(schema.agentTurns).values({
+    id: leaveTurnId, runtimeSessionId: leaveSessionId, sessionGeneration: 1, spaceId: home.id, agentId: beta.id,
+    effectiveDirective: "required", status: "running",
+  });
+  const leaveAttemptId = randomUUID();
+  await db.insert(schema.agentTurnAttempts).values({
+    id: leaveAttemptId, turnId: leaveTurnId, attemptNo: 1, status: "running", workerGeneration: 1,
+    leaseOwner: "test", leaseExpiresAt: new Date(Date.now() + 60_000),
+  });
+  await db.insert(schema.turnCapabilityActivations).values({
+    id: randomUUID(), turnId: leaveTurnId, attemptId: leaveAttemptId, sessionGeneration: 1, workerGeneration: 1,
+    claimsDigest: "leave", status: "active", expiresAt: new Date(Date.now() + 60_000),
+  });
+  const leave = await agentApi(betaConfig.agentToken, beta.id, "POST", "/agent-api/channel/leave", { target: `#${privateChannel.name}` });
+  assert.equal(leave.status, 200);
+  assert.equal(db.select().from(schema.channelAgentMembers).where(and(
+    eq(schema.channelAgentMembers.channelId, privateChannel.id),
+    eq(schema.channelAgentMembers.agentId, beta.id),
+  )).get(), undefined);
+  assert.equal(db.select().from(schema.channelAgentMembers).where(and(
+    eq(schema.channelAgentMembers.channelId, leaveThreadId),
+    eq(schema.channelAgentMembers.agentId, beta.id),
+  )).get(), undefined);
+  assert.equal(db.select().from(schema.runtimeSessions).where(eq(schema.runtimeSessions.id, leaveSessionId)).get()?.status, "disabled");
+  assert.equal(db.select().from(schema.agentTurnAttempts).where(eq(schema.agentTurnAttempts.id, leaveAttemptId)).get()?.errorCode, "parent_access_revoked");
 
   const otherRoot = path.join(root, "other");
   mkdirSync(otherRoot, { recursive: true });

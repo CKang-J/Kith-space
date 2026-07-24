@@ -26,17 +26,21 @@ export function buildClaudeArgs(p: {
   model?: string | null;
   reasoningEffort?: string | null;
   sessionId?: string | null;
+  mcpConfigFile?: string | null;
+  managedArgs?: readonly string[];
 }): string[] {
   const args = [
     "-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose",
     "--dangerously-skip-permissions", "--permission-mode", "bypassPermissions", "--include-partial-messages",
     "--disallowed-tools", "EnterPlanMode,ExitPlanMode,ScheduleWakeup,CronCreate,CronList,CronDelete,AskUserQuestion",
     ...p.promptFileFlag,
+    ...(p.managedArgs ?? []),
   ];
   if (p.model) args.push("--model", p.model);
   const effort = typeof p.reasoningEffort === "string" && CLAUDE_EFFORTS.has(p.reasoningEffort) ? p.reasoningEffort : null;
   if (effort) args.push("--effort", effort);
   if (p.sessionId) args.push("--resume", p.sessionId);
+  if (p.mcpConfigFile) args.push("--mcp-config", p.mcpConfigFile, "--strict-mcp-config");
   return args;
 }
 
@@ -53,11 +57,20 @@ export const claudeRuntime: Runtime = {
     let promptFlag = ["--append-system-prompt", opts.systemPrompt];
     try { const pf = claudePromptFile(opts); writeFileSync(pf, opts.systemPrompt); promptFlag = ["--append-system-prompt-file", pf]; } catch { /* fallback to inline */ }
     const rc = opts.runtimeConfig;
+    const compiled = rc?.compiledRuntimeConfiguration;
+    const managedArgs = compiled && typeof compiled === "object"
+      && Array.isArray((compiled as { args?: unknown }).args)
+      ? (compiled as { args: unknown[] }).args.filter((value): value is string => typeof value === "string")
+      : [];
     const args = buildClaudeArgs({
       promptFileFlag: promptFlag,
       model: opts.model,
       reasoningEffort: rc && typeof rc.reasoningEffort === "string" ? rc.reasoningEffort : null,
       sessionId: opts.sessionId,
+      mcpConfigFile: typeof opts.mcpBootstrap?.descriptor.configFile === "string"
+        ? opts.mcpBootstrap.descriptor.configFile
+        : null,
+      managedArgs,
     });
 
     const proc = spawnRuntimeProcess("claude", args, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: opts.env });
@@ -79,7 +92,9 @@ export const claudeRuntime: Runtime = {
       buf += c.toString(); const lines = buf.split("\n"); buf = lines.pop() ?? "";
       for (const ln of lines) { if (ln.trim()) parseLine(ln); }
     });
-    proc.stderr?.on("data", (c: Buffer) => { const t = c.toString().trim(); if (t) cb.log.debug("claude stderr", { t: t.slice(0, 300) }); });
+    proc.stderr?.on("data", (c: Buffer) => {
+      if (c.length) cb.log.debug("claude stderr received", { bytes: c.length });
+    });
     proc.on("error", (e) => {
       cb.log.error("claude spawn failed", { detail: String((e as any)?.message ?? e) });
       cb.onActivity("offline", "claude not found");
@@ -93,7 +108,21 @@ export const claudeRuntime: Runtime = {
         sessionId = e.session_id; cb.onSession(e.session_id); cb.onActivity("working", "starting");
       } else if (e.type === "result") {
         if (e.session_id) { sessionId = e.session_id; cb.onSession(e.session_id); }
-        cb.onActivity("online", "");
+        const usage = e.usage && typeof e.usage === "object" ? e.usage : {};
+        if (Object.keys(usage).length || typeof e.duration_ms === "number" || typeof e.total_cost_usd === "number") {
+          cb.onUsage?.({
+            ...(Number.isFinite(usage.input_tokens) ? { inputTokens: usage.input_tokens } : {}),
+            ...(Number.isFinite(usage.output_tokens) ? { outputTokens: usage.output_tokens } : {}),
+            ...(Number.isFinite(usage.cache_read_input_tokens) ? { cacheReadTokens: usage.cache_read_input_tokens } : {}),
+            ...(Number.isFinite(usage.cache_creation_input_tokens) ? { cacheWriteTokens: usage.cache_creation_input_tokens } : {}),
+            ...(Number.isFinite(e.total_cost_usd) ? { costUsd: e.total_cost_usd } : {}),
+            ...(Number.isFinite(e.duration_ms) ? { durationMs: e.duration_ms } : {}),
+            source: "final",
+          });
+        }
+        const failed = e.is_error === true || (typeof e.subtype === "string" && e.subtype !== "success");
+        cb.onActivity(failed ? "error" : "online", failed ? clip(e.result || e.subtype || "claude turn failed") : "");
+        cb.onTurnResult?.({ outcome: failed ? "failed" : "completed", ...(failed ? { errorCode: `claude_${e.subtype || "error"}` } : {}) });
       } else if (e.type === "assistant") {
         const content = e.message?.content; const traj: TrajectoryEntry[] = []; let activity = "thinking", detail = "";
         if (Array.isArray(content)) {

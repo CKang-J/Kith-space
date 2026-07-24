@@ -1,22 +1,20 @@
 .sliding-tabs {
   --sliding-tabs-count: 1;
   --sliding-tabs-index: 0;
-  --sliding-tabs-inset: 4px;
-  --sliding-tabs-gutter: 8px;
+  --sliding-tabs-inset: 2px;
+  --sliding-tabs-gutter: 4px;
   position: relative;
   display: grid;
   grid-template-columns: repeat(var(--sliding-tabs-count), minmax(0, 1fr));
-  min-height: 44px;
+  min-height: 40px;
   padding: var(--sliding-tabs-inset);
   overflow: visible;
-  border-radius: 13px;
+  border-radius: 12px;
   background: #f5f5f5;
   isolation: isolate;
 }
 
 .sliding-tabs--compact {
-  --sliding-tabs-inset: 3px;
-  --sliding-tabs-gutter: 6px;
   min-height: 38px;
   border-radius: 11px;
 }
@@ -28,21 +26,20 @@
   bottom: var(--sliding-tabs-inset);
   left: var(--sliding-tabs-inset);
   width: calc((100% - var(--sliding-tabs-gutter)) / var(--sliding-tabs-count));
-  border: 1px solid rgb(0 0 0 / 3%);
+  border: 1px solid rgb(0 0 0 / 2%);
   border-radius: 10px;
   background: #fff;
   box-shadow:
-    0 0 0 .5px rgb(0 0 0 / 2%),
-    0 1px 2px rgb(0 0 0 / 7%),
+    0 1px 2px rgb(0 0 0 / 5%),
     0 3px 8px rgb(0 0 0 / 6%),
-    0 8px 18px rgb(0 0 0 / 3%);
+    0 7px 18px rgb(0 0 0 / 3%);
   transform: translateX(calc(var(--sliding-tabs-index) * 100%));
   transition: transform 240ms cubic-bezier(.22, 1, .36, 1);
   will-change: transform;
 }
 
 .sliding-tabs--compact .sliding-tabs__indicator {
-  border-radius: 8px;
+  border-radius: 9px;
 }
 
 .sliding-tabs__tab {
@@ -53,10 +50,10 @@
   padding: 0 10px;
   border: 0;
   border-radius: 10px;
-  color: #777;
+  color: #333;
   background: transparent;
   font: inherit;
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
   line-height: 1;
   letter-spacing: 0;
@@ -65,10 +62,10 @@
 }
 
 .sliding-tabs--compact .sliding-tabs__tab {
-  min-height: 32px;
+  min-height: 34px;
   padding-inline: 8px;
-  border-radius: 8px;
-  font-size: 12.5px;
+  border-radius: 9px;
+  font-size: 13px;
 }
 
 .sliding-tabs__tab:hover:not(:disabled):not([aria-selected="true"]):not([aria-checked="true"]) {
@@ -79,7 +76,7 @@
 .sliding-tabs__tab[aria-selected="true"],
 .sliding-tabs__tab[aria-checked="true"] {
   color: #171717;
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .sliding-tabs__tab:disabled {

@@ -11,6 +11,9 @@ import { useTranslation } from "react-i18next";
 import { getDesktopBridge, resolveSettingsSection } from "../desktopBridge.ts";
 import { DesktopSettings } from "./DesktopSettings.tsx";
 import { workspaceLocationForConversation, workspaceLocationForModule } from "../shell/workspaceRoute.ts";
+import { MemoryAdvisorSettings } from "./advisor-provider/MemoryAdvisorSettings.tsx";
+import { ModelProviderSettings } from "./model-settings/ModelProviderSettings.tsx";
+import { RuntimeSettings } from "./model-settings/RuntimeSettings.tsx";
 
 interface TasksProps {
   channelIdOverride?: string | null;
@@ -240,6 +243,9 @@ export function Search() {
 const SETTINGS: [string, string][] = [
   ["human", "misc.settingsNavHuman"],
   ["space", "misc.settingsNavSpace"],
+  ["models", "misc.settingsNavModels"],
+  ["runtimes", "misc.settingsNavRuntimes"],
+  ["advisor", "misc.settingsNavAdvisor"],
 ];
 export function Settings({ sectionOverride }: { sectionOverride?: string } = {}) {
   const section = sectionOverride;
@@ -267,7 +273,7 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
       <aside className="sidebar">
         <div className="sb-scroll">
         <div className="sb-title">{t("nav.settings")}</div>
-        <div className="settings-nav">{settingsEntries.map(([k, labelKey]) => <button key={k} className={"item" + (cur === k ? " active" : "")} onClick={() => nav(workspaceLocationForModule(location.pathname, location.search, { moduleId: "settings", settings: k }))}>{t(labelKey)}</button>)}</div>
+        <div className="settings-nav">{settingsEntries.map(([k, labelKey]) => <button key={k} className={"item" + (cur === k ? " active" : "")} onClick={() => nav(workspaceLocationForModule(location.pathname, location.search, { moduleId: "settings", settings: k }), { replace: true })}>{t(labelKey)}</button>)}</div>
         </div>
       </aside>
       <main className="content-col">
@@ -277,6 +283,12 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
             ? <HumanSettings api={api} />
             : cur === "space"
               ? <SpaceSettings api={api} spaceId={spaceId} />
+              : cur === "models"
+                ? <ModelProviderSettings api={api} />
+              : cur === "runtimes"
+                ? <RuntimeSettings api={api} />
+              : cur === "advisor"
+                ? <MemoryAdvisorSettings api={api} />
               : cur === "desktop" && desktopBridge
                 ? <DesktopSettings bridge={desktopBridge} />
                 : <div className="empty">{t("misc.settingsWip", { section: cur })}</div>}

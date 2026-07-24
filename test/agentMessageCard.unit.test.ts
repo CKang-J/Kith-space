@@ -9,6 +9,7 @@ const cardSrc = fs.readFileSync(new URL("../web/src/views/chat-message/AgentMess
 const frameSrc = fs.readFileSync(new URL("../web/src/views/chat-message/MessageIdentityCardFrame.tsx", import.meta.url), "utf8");
 const defaultModeCardSrc = fs.readFileSync(new URL("../web/src/views/agent-response-mode/AgentDefaultResponseModeCard.tsx", import.meta.url), "utf8");
 const aggregateSrc = fs.readFileSync(new URL("../web/src/views/conversation-aggregate/ConversationAggregatePanel.tsx", import.meta.url), "utf8");
+const aggregateCss = fs.readFileSync(new URL("../web/src/views/conversation-aggregate/conversationAggregate.css", import.meta.url), "utf8");
 const slidingControlSrc = fs.readFileSync(new URL("../web/src/components/SlidingTabs.tsx", import.meta.url), "utf8");
 const slidingControlCss = fs.readFileSync(new URL("../web/src/components/SlidingTabs.css", import.meta.url), "utf8");
 const messageCss = fs.readFileSync(new URL("../web/src/views/chat-message/chatMessage.css", import.meta.url), "utf8");
@@ -86,15 +87,36 @@ test("shared sliding control owns the card and aggregate panel selection visuals
   assert.match(slidingControlSrc, /semantics === "tabs" \? "tablist" : "radiogroup"/);
   assert.match(slidingControlSrc, /role: "radio" as const/);
   const track = ruleBody(".sliding-tabs", slidingControlCss);
+  assert.match(track, /--sliding-tabs-inset\s*:\s*2px/);
+  assert.match(track, /--sliding-tabs-gutter\s*:\s*4px/);
+  assert.match(track, /min-height\s*:\s*40px/);
+  assert.match(track, /border-radius\s*:\s*12px/);
   assert.match(track, /background\s*:\s*#f5f5f5/);
   const indicator = ruleBody(".sliding-tabs__indicator", slidingControlCss);
-  assert.match(indicator, /0 1px 2px rgb\(0 0 0 \/ 7%\)/);
+  assert.match(indicator, /border-radius\s*:\s*10px/);
+  assert.match(indicator, /0 1px 2px rgb\(0 0 0 \/ 5%\)/);
   assert.match(indicator, /0 3px 8px rgb\(0 0 0 \/ 6%\)/);
   assert.match(indicator, /transition\s*:\s*transform 240ms cubic-bezier\(\.22, 1, \.36, 1\)/);
+  const selected = ruleBody(".sliding-tabs__tab[aria-selected=\"true\"],\n.sliding-tabs__tab[aria-checked=\"true\"]", slidingControlCss);
+  assert.match(selected, /font-weight\s*:\s*500/);
+  assert.match(ruleBody(".sliding-tabs--compact", slidingControlCss), /min-height\s*:\s*38px/);
+  assert.match(ruleBody(".sliding-tabs--compact .sliding-tabs__tab", slidingControlCss), /min-height\s*:\s*34px/);
   const action = ruleBody(".agent-message-card__actions>button");
   assert.match(action, /background\s*:\s*#f7f7f7/);
   const actionHover = ruleBody(".agent-message-card__actions>button:hover:not(:disabled)");
   assert.match(actionHover, /background\s*:\s*#f0f0f0/);
+});
+
+test("aggregate panel uses a title bar, circular close action, and reference-style tabs", () => {
+  assert.match(aggregateSrc, /className="conversation-aggregate__topbar"/);
+  assert.match(aggregateSrc, /className="conversation-aggregate__close"/);
+  assert.match(aggregateSrc, /className="conversation-aggregate__tabs"/);
+  assert.match(ruleBody(".conversation-aggregate__topbar", aggregateCss), /height\s*:\s*52px/);
+  assert.match(ruleBody(".conversation-aggregate__topbar", aggregateCss), /border-bottom\s*:\s*1px solid #f0f0f0/);
+  assert.match(ruleBody(".conversation-aggregate__topbar h2", aggregateCss), /font-weight\s*:\s*400/);
+  assert.doesNotMatch(ruleBody(".conversation-aggregate__header", aggregateCss), /border-bottom/);
+  assert.match(ruleBody(".conversation-aggregate__close", aggregateCss), /border-radius\s*:\s*50%/);
+  assert.doesNotMatch(aggregateCss, /\.conversation-aggregate__tabs(?:\.sliding-tabs|\s+\.sliding-tabs__)/);
 });
 
 test("the retired message badge and hover-menu files are removed", () => {

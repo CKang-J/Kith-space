@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { ChatMessageItem, MessageHeader } from "./chat-message/ChatMessageItem.tsx";
 
-const WORKSPACE_MODULES = new Set(["inbox", "tasks", "agents", "settings", "search"]);
+const WORKSPACE_MODULES = new Set(["spaces", "inbox", "tasks", "agents", "settings", "search"]);
 
 // One placeholder message row: avatar block plus name and body lines of varied width.
 function SkelMsg({ w }: { w: string }) {
@@ -31,34 +31,30 @@ export function ChatSkeleton() {
   );
 }
 
-function TopBarSkeleton() {
+function NavigationRailSkeleton({ itemCount }: { itemCount: number }) {
   return (
-    <header className="shell-topbar skel-topbar" aria-hidden="true">
-      <div className="skel-box skel-topbar-brand" />
-      <div className="skel-box skel-topbar-space" />
-      <div className="skel-box skel-topbar-context" />
-      <div className="shell-topbar__spacer" />
-    </header>
-  );
-}
-
-function DockSkeleton() {
-  return (
-    <footer className="shell-dock-zone skel-dock-zone" aria-hidden="true">
-      <div className="workspace-dock skel-dock">
-        {Array.from({ length: 5 }).map((_, i) => <div key={i} className="skel-box skel-dock-item" />)}
+    <aside className="workspace-navigation-rail skel-navigation-rail" aria-hidden="true">
+      <div className="skel-box skel-navigation-rail__brand" />
+      <div className="skel-navigation-rail__items">
+        {Array.from({ length: itemCount }).map((_, index) => (
+          <div key={index} className="skel-box skel-navigation-rail__item" />
+        ))}
       </div>
-    </footer>
+    </aside>
   );
 }
 
 function ConversationListSkeleton() {
   return (
     <aside className="shell-work-panel shell-chat-conversations skel-conversations" aria-hidden="true">
-      <div className="skel-box skel-panel-title" />
-      {Array.from({ length: 7 }).map((_, i) => (
-        <div key={i} className="skel-box skel-panel-line" style={{ width: `${72 - (i % 3) * 12}%` }} />
-      ))}
+      <div className="chat-navigation-sidebar__header skel-conversations__header">
+        <div className="skel-box skel-panel-title" />
+      </div>
+      <div className="skel-conversations__list">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="skel-box skel-panel-line" style={{ width: `${88 - (i % 3) * 10}%` }} />
+        ))}
+      </div>
     </aside>
   );
 }
@@ -74,36 +70,22 @@ function TraceSkeleton() {
   );
 }
 
-function ChatPanelSkeleton({ compact, dock }: { compact: boolean; dock: boolean }) {
-  if (compact) {
-    return (
-      <section className="shell-work-panel shell-chat-workspace shell-chat-workspace--compact skel-chat-compact">
-        <header className="shell-chat-compact-tools skel-chat-compact-tools" aria-hidden="true">
-          <div className="skel-box skel-compact-action" />
-          <div className="skel-box skel-compact-title" />
-          <div className="skel-box skel-compact-action" />
-        </header>
-        <div className="skel-chat-scroll"><ChatSkeleton /></div>
-      </section>
-    );
-  }
-
+function ChatPanelSkeleton() {
   return (
     <section className="shell-chat-workspace shell-chat-workspace--full skel-chat-full">
       <ConversationListSkeleton />
-      <section className="shell-work-panel shell-chat-main-card skel-chat-main">
+      <section className="shell-work-panel shell-primary-workspace-card shell-chat-main-card skel-chat-main">
         <div className="skel-chat-head" aria-hidden="true"><div className="skel-box skel-chat-title" /></div>
         <div className="skel-chat-scroll"><ChatSkeleton /></div>
-        {dock ? <DockSkeleton /> : null}
       </section>
       <TraceSkeleton />
     </section>
   );
 }
 
-function ModulePanelSkeleton({ dock }: { dock: boolean }) {
+function ModulePanelSkeleton() {
   return (
-    <section className="shell-work-panel shell-module-workspace skel-module-panel">
+    <section className="shell-work-panel shell-primary-workspace-card shell-module-workspace skel-module-panel">
       <div className="skel-module-content" aria-hidden="true">
         <aside className="skel-module-sidebar">
           <div className="skel-box skel-panel-title" />
@@ -117,22 +99,22 @@ function ModulePanelSkeleton({ dock }: { dock: boolean }) {
           <div className="skel-box skel-module-card skel-module-card--short" />
         </div>
       </div>
-      {dock ? <DockSkeleton /> : null}
     </section>
   );
 }
 
-// A root/channel bootstrap is ChatOnly. A legal module query mirrors Split or ModuleOnly without mounting product data.
+// A root/channel bootstrap mirrors the persistent sidebar plus either Chat or one selected module.
 export function WorkspaceSkeleton({ chat = false }: { chat?: boolean }) {
   const { t } = useTranslation();
-  const { search } = useLocation();
+  const { pathname, search } = useLocation();
   const params = new URLSearchParams(search);
   const requestedModule = params.get("module");
   const activeModule = !chat && requestedModule && WORKSPACE_MODULES.has(requestedModule)
     ? requestedModule
     : null;
-  const chatVisible = activeModule === null || params.get("chat") !== "0";
-  const mode = activeModule === null ? "chat-only" : chatVisible ? "split" : "module-only";
+  const contentModule = activeModule && activeModule !== "settings" ? activeModule : null;
+  const mode = contentModule ? "module-only" : "chat-only";
+  const navigationItemCount = pathname.startsWith("/s/home/") ? 7 : 6;
 
   return (
     <main
@@ -143,11 +125,9 @@ export function WorkspaceSkeleton({ chat = false }: { chat?: boolean }) {
       aria-busy="true"
       aria-label={t("common.loadingWorkspace")}
     >
-      <TopBarSkeleton />
       <div className="shell-workspace-canvas skel-workspace-canvas">
-        {chatVisible ? <ChatPanelSkeleton compact={mode === "split"} dock={mode === "chat-only"} /> : null}
-        {mode === "split" ? <div className="shell-drag-divider skel-divider" aria-hidden="true" /> : null}
-        {activeModule ? <ModulePanelSkeleton dock /> : null}
+        <NavigationRailSkeleton itemCount={navigationItemCount} />
+        {contentModule ? <ModulePanelSkeleton /> : <ChatPanelSkeleton />}
       </div>
     </main>
   );

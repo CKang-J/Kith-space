@@ -1,11 +1,16 @@
 import type Database from "better-sqlite3";
-import { getTableColumns, getTableName, type Table } from "drizzle-orm";
-import * as schema from "./schema.js";
+import {
+  MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION,
+  requiredSpaceForeignKeys,
+  requiredSpaceIndexes,
+  requiredSpaceSchema,
+  SPACE_DATABASE_SCHEMA_VERSION,
+  WORKSPACE_MIGRATION_HISTORY,
+} from "./spaceDatabaseSchemaHistory.js";
 
-export const SPACE_DATABASE_SCHEMA_VERSION = 5;
-export const MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION = 2;
+export { MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION, SPACE_DATABASE_SCHEMA_VERSION };
 
-export type SpaceDatabaseCompatibilityReason = "integrity" | "legacy" | "schema";
+export type SpaceDatabaseCompatibilityReason = "integrity" | "legacy" | "future" | "schema" | "journal";
 
 export class SpaceDatabaseCompatibilityError extends Error {
   constructor(
@@ -17,13 +22,6 @@ export class SpaceDatabaseCompatibilityError extends Error {
     this.name = "SpaceDatabaseCompatibilityError";
   }
 }
-
-const CURRENT_REQUIRED_COLUMNS = new Map<string, string[]>(
-  (Object.values(schema) as Table[]).map((table) => [
-    getTableName(table),
-    Object.values(getTableColumns(table)).map((column) => column.name),
-  ]),
-);
 
 function quoteIdentifier(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
@@ -42,21 +40,6 @@ function productTables(sqlite: Database.Database): string[] {
 function tableColumns(sqlite: Database.Database, table: string): Set<string> {
   const rows = sqlite.prepare(`PRAGMA table_info(${quoteIdentifier(table)})`).all() as Array<{ name: string }>;
   return new Set(rows.map((row) => row.name));
-}
-
-function requiredColumns(table: string, version: number): string[] {
-  let required = CURRENT_REQUIRED_COLUMNS.get(table) ?? [];
-  if (version < 3 && table === "agents") required = required.filter((column) => column !== "introduced_at");
-  if (version < 4 && table === "human_channel_states") required = required.filter((column) => column !== "notification_level");
-  if (version < 5 && table === "agents") required = required.filter((column) => column !== "default_response_mode");
-  if (version < 5 && table === "channel_agent_members") {
-    required = required.filter((column) => ![
-      "response_mode_override",
-      "ambient_wake_after_seq",
-      "mention_wake_after_seq",
-    ].includes(column));
-  }
-  return required;
 }
 
 /**
@@ -86,11 +69,15 @@ export function assertCompatibleSpaceDatabase(
 
   const version = Number(sqlite.pragma("user_version", { simple: true }));
   const tables = productTables(sqlite);
-  if (tables.length === 0 && options.allowEmpty) return { version, tables };
-  if (
-    version < MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION
-    || version > SPACE_DATABASE_SCHEMA_VERSION
-  ) {
+  if (version > SPACE_DATABASE_SCHEMA_VERSION) {
+    throw new SpaceDatabaseCompatibilityError(
+      "future",
+      `workspace.db at ${dbPath} uses newer unsupported schema version ${version}`,
+      tables,
+    );
+  }
+  if (tables.length === 0 && options.allowEmpty && version === 0) return { version, tables };
+  if (version < MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION) {
     throw new SpaceDatabaseCompatibilityError(
       "legacy",
       `workspace.db at ${dbPath} uses unsupported schema version ${version}`,
@@ -105,20 +92,60 @@ export function assertCompatibleSpaceDatabase(
     );
   }
 
+  const migrationColumns = tableColumns(sqlite, "__drizzle_migrations");
+  const missingMigrationColumns = ["id", "hash", "created_at"].filter((column) => !migrationColumns.has(column));
+  if (missingMigrationColumns.length) {
+    throw new SpaceDatabaseCompatibilityError(
+      "schema",
+      `workspace.db at ${dbPath} is missing required schema entries: ${missingMigrationColumns.map((column) => `__drizzle_migrations.${column}`).join(", ")}`,
+      tables,
+    );
+  }
+  const actualJournal = sqlite.prepare(`
+    SELECT hash, created_at AS createdAt
+    FROM __drizzle_migrations
+    ORDER BY created_at, id
+  `).all() as Array<{ hash: string; createdAt: number }>;
+  const expectedJournal = WORKSPACE_MIGRATION_HISTORY
+    .filter((entry) => entry.version <= version)
+    .map((entry) => ({ hash: entry.hash, createdAt: entry.createdAt }));
+  const journalIsPrefix = actualJournal.length <= expectedJournal.length
+    && actualJournal.every((entry, index) => JSON.stringify(entry) === JSON.stringify(expectedJournal[index]));
+  if (!journalIsPrefix || (options.requireCurrentVersion && actualJournal.length !== expectedJournal.length)) {
+    throw new SpaceDatabaseCompatibilityError(
+      "journal",
+      `workspace.db at ${dbPath} has a migration journal that does not match schema version ${version}`,
+      tables,
+    );
+  }
+
+  const migrationCount = actualJournal.length;
   const missing: string[] = [];
-  for (const [table] of CURRENT_REQUIRED_COLUMNS) {
+  for (const [table, requiredColumns] of requiredSpaceSchema(version, migrationCount)) {
     const actual = tableColumns(sqlite, table);
     if (actual.size === 0) {
       missing.push(`${table} (table)`);
       continue;
     }
-    for (const column of requiredColumns(table, version)) {
+    for (const column of requiredColumns) {
       if (!actual.has(column)) missing.push(`${table}.${column}`);
     }
   }
-  const migrationColumns = tableColumns(sqlite, "__drizzle_migrations");
-  for (const column of ["id", "hash", "created_at"]) {
-    if (!migrationColumns.has(column)) missing.push(`__drizzle_migrations.${column}`);
+  const actualIndexes = new Set((sqlite.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'index'
+  `).all() as Array<{ name: string }>).map((row) => row.name));
+  for (const index of requiredSpaceIndexes(version, migrationCount)) {
+    if (!actualIndexes.has(index)) missing.push(`${index} (index)`);
+  }
+  for (const expected of requiredSpaceForeignKeys(version, migrationCount)) {
+    const actual = sqlite.prepare(`PRAGMA foreign_key_list(${quoteIdentifier(expected.table)})`).all() as Array<{
+      table: string;
+      from: string;
+      on_delete: string;
+    }>;
+    if (!actual.some((row) => row.table === expected.targetTable && row.from === expected.from && row.on_delete === expected.onDelete)) {
+      missing.push(`${expected.table}.${expected.from} (foreign key ${expected.onDelete})`);
+    }
   }
   if (missing.length > 0) {
     throw new SpaceDatabaseCompatibilityError(

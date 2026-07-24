@@ -8,6 +8,7 @@ const chatSrc = fs.readFileSync(new URL("../web/src/views/Chat.tsx", import.meta
 const itemSrc = fs.readFileSync(new URL("../web/src/views/chat-message/ChatMessageItem.tsx", import.meta.url), "utf8");
 const css = fs.readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
 const messageCss = fs.readFileSync(new URL("../web/src/views/chat-message/chatMessage.css", import.meta.url), "utf8");
+const shellCss = fs.readFileSync(new URL("../web/src/shell/shell.css", import.meta.url), "utf8");
 const zh = fs.readFileSync(new URL("../web/src/locales/zh.json", import.meta.url), "utf8");
 
 function ruleBodyFrom(source: string, selector: string): string {
@@ -32,34 +33,35 @@ test("messages use the shared semantic presentation without repeated agent descr
   assert.doesNotMatch(chatSrc, /activityDetail\?\.trim\(\)|dmAgent\.activityDetail/);
 });
 
-test("the shared item owns avatar, header, bubble, and hover toolbar structure", () => {
+test("the shared item owns avatar, header, bubble, footer time, and hover toolbar structure", () => {
   assert.match(itemSrc, /<article[\s\S]*?className=\{classes\}/);
   assert.match(itemSrc, /className="chat-message__avatar"/);
   assert.match(itemSrc, /className="chat-message__content"/);
   assert.match(itemSrc, /className="chat-message__header"/);
   assert.match(itemSrc, /className="chat-message__bubble-wrap"/);
   assert.match(itemSrc, /className="chat-message__bubble"/);
+  assert.match(itemSrc, /className="chat-message__footer-timestamp ts"/);
   assert.match(itemSrc, /chat-message__toolbar-slot/);
   assert.match(itemSrc, /chat-message__bubble[\s\S]*chat-message__toolbar-slot/);
 
   const row = messageRuleBody(".chat-message");
   assert.match(row, /grid-template-columns\s*:\s*var\(--chat-message-avatar\) minmax\(0,1fr\)/);
   assert.match(row, /max-width\s*:\s*var\(--chat-stream-max\)/);
-  assert.match(row, /margin\s*:\s*0 auto 20px/);
+  assert.match(row, /margin\s*:\s*0 auto 26px/);
 
   const bubble = messageRuleBody(".chat-message__bubble");
   assert.match(bubble, /width\s*:\s*fit-content/);
-  assert.match(bubble, /padding\s*:\s*8px 14px/);
+  assert.match(bubble, /padding\s*:\s*16px 18px/);
   assert.match(bubble, /border-radius\s*:\s*var\(--chat-message-radius\)/);
 });
 
 test("message density tokens match the accepted design", () => {
   assert.match(messageCss, /--chat-stream-max:1040px/);
-  assert.match(messageCss, /--chat-message-avatar:32px/);
-  assert.match(messageCss, /--chat-message-font-size:14\.5px/);
-  assert.match(messageCss, /--chat-message-line-height:1\.55/);
-  assert.match(messageCss, /--chat-message-agent-bg:#f6f6f4/i);
-  assert.match(messageCss, /--chat-message-human-bg:#eff4fb/i);
+  assert.match(messageCss, /--chat-message-avatar:36px/);
+  assert.match(messageCss, /--chat-message-font-size:var\(--font-size-base\)/);
+  assert.match(messageCss, /--chat-message-line-height:var\(--line-height-reading\)/);
+  assert.match(messageCss, /--chat-message-agent-bg:#f7f8fa/i);
+  assert.match(messageCss, /--chat-message-human-bg:#e7f0fe/i);
   assert.match(messageCss, /--chat-composer-reserve:88px/);
 
   const avatar = messageRuleBody(".chat-message .msg-av");
@@ -69,29 +71,38 @@ test("message density tokens match the accepted design", () => {
   assert.match(avatar, /line-height\s*:\s*0/);
 });
 
-test("message header keeps bold identity and timestamp on one compact line", () => {
+test("agent identity remains compact while Human messages move to the right without a repeated header", () => {
   const header = messageRuleBody(".chat-message__header");
   assert.match(header, /align-items\s*:\s*baseline/);
   assert.match(header, /gap\s*:\s*6px/);
   assert.match(header, /letter-spacing\s*:\s*0/);
-  assert.match(header, /margin-bottom\s*:\s*4px/);
+  assert.match(header, /min-height\s*:\s*18px/);
+  assert.match(header, /margin-bottom\s*:\s*0/);
   const sender = messageRuleBody(".chat-message__header .who");
-  assert.match(sender, /font-size\s*:\s*14\.5px/);
-  assert.match(sender, /font-weight\s*:\s*700/);
-  assert.match(sender, /line-height\s*:\s*20px/);
+  assert.match(sender, /font-size\s*:\s*var\(--font-size-base\)/);
+  assert.match(sender, /font-weight\s*:\s*400/);
+  assert.match(messageRuleBody(".chat-message .chat-message__header button.agent-mention-name"), /font-weight\s*:\s*400/);
+  assert.match(sender, /line-height\s*:\s*18px/);
   assert.doesNotMatch(messageRuleBody(".chat-message button.msg-av,.chat-message button.who"), /font\s*:/);
   assert.match(ruleBody(".agent-list-item>.grow"), /font-weight\s*:\s*600/);
-  const timestamp = messageRuleBody(".chat-message__timestamp");
-  assert.match(timestamp, /font-size\s*:\s*11px/);
+  const timestamp = messageRuleBody(".chat-message__footer-timestamp");
+  assert.match(timestamp, /margin-top\s*:\s*6px/);
+  assert.match(timestamp, /padding-left\s*:\s*8px/);
+  assert.match(timestamp, /font-size\s*:\s*12px/);
   assert.match(timestamp, /font-weight\s*:\s*400/);
   assert.match(timestamp, /line-height\s*:\s*16px/);
   assert.match(timestamp, /opacity\s*:\s*0/);
-  assert.match(messageCss, /\.chat-message:hover \.chat-message__timestamp,\.chat-message:focus-within \.chat-message__timestamp\{opacity:1\}/);
+  assert.match(messageCss, /\.chat-message:hover \.chat-message__footer-timestamp,\.chat-message:focus-within \.chat-message__footer-timestamp\{opacity:1\}/);
+  assert.match(chatSrc, /footerTimestamp=\{m\.senderType === "agent" \? fmtMessageTime\(m\.createdAt\) : null\}/);
+  assert.doesNotMatch(chatSrc, /fmtMessageTimestamp/);
+  assert.match(chatSrc, /header=\{continuation \|\| isDm \? null : <MessageHeader sender=\{sender\} \/\>\}/);
+  assert.match(messageCss, /\.chat-message--human \.chat-message__avatar\{[^}]*grid-column:2[^}]*justify-self:end/s);
+  assert.match(messageCss, /\.chat-message--human \.chat-message__header\{display:none\}/);
 });
 
 test("chat chrome is compact while non-chat page headings keep their existing typeface", () => {
   assert.match(ruleBody(".head h1"), /font-family\s*:\s*var\(--serif\)/);
-  assert.match(ruleBody(".thread-head"), /font-family\s*:\s*var\(--serif\)/);
+  assert.match(ruleBody(".thread-head"), /font-family\s*:\s*var\(--sans\)/);
   const chatHead = ruleBody(".chat-head");
   assert.match(chatHead, /height\s*:\s*52px/);
   assert.match(chatHead, /padding\s*:\s*0 14px/);
@@ -109,7 +120,7 @@ test("chat chrome is compact while non-chat page headings keep their existing ty
 
 test("agent DM header uses the peer avatar, plain name, and localized lifecycle label", () => {
   assert.match(chatSrc, /import \{ agentStatusLabel \} from "\.\.\/agentStatus\.ts"/);
-  assert.match(chatSrc, /className=\{isDm \? "chat-head__dm-title" : undefined\}/);
+  assert.match(chatSrc, /className=\{isDm \? "chat-head__dm-title" : "chat-head__channel-title"\}/);
   assert.match(chatSrc, /<Avatar seed=\{dmAgent\.name\} url=\{avFor\(dmAgent\.avatarUrl\)\} size=\{24\} \/>/);
   assert.match(chatSrc, /agentStatusLabel\(t, agentLiveState\(dmAgent\)\)/);
   assert.doesNotMatch(chatSrc, /isDm \? "@ " \+/);
@@ -176,11 +187,20 @@ test("message toolbar exposes reaction, topic, copy, and more from the bubble", 
   assert.match(toolbarSlot, /position\s*:\s*absolute/);
   assert.match(toolbarSlot, /opacity\s*:\s*0/);
   assert.doesNotMatch(toolbarSlot, /visibility\s*:\s*hidden/, "hidden visibility would remove toolbar buttons from keyboard navigation");
-  assert.match(itemSrc, /rightBoundary - bubbleRect\.right >= toolbarSlot\.getBoundingClientRect\(\)\.width \+ 8 \? "side" : "above"/);
+  assert.match(itemSrc, /const sideSpace = isHuman[\s\S]*?\? bubbleRect\.left - leftBoundary[\s\S]*?: rightBoundary - bubbleRect\.right/);
+  assert.match(itemSrc, /sideSpace >= toolbarWidth \+ 8 \? "side" : "above"/);
+  assert.match(messageCss, /\.chat-message--human \.chat-message__toolbar-slot--side\{right:calc\(100% \+ 8px\);left:auto\}/);
   assert.match(messageCss, /\.chat-message__bubble-wrap:hover>\.chat-message__toolbar-slot/);
   const button = messageRuleBody(".chat-message__toolbar button");
   assert.match(button, /width\s*:\s*30px/);
   assert.match(button, /height\s*:\s*30px/);
+  const toolbar = messageRuleBody(".chat-message__toolbar");
+  assert.match(toolbar, /border\s*:\s*1px solid #f0f0f0/);
+  assert.match(toolbar, /border-radius\s*:\s*12px/);
+  assert.match(toolbar, /background\s*:\s*#fff/);
+  assert.match(toolbar, /box-shadow\s*:\s*0 8px 24px rgba\(15,23,42,.12\)/);
+  assert.match(css, /\.ctx-menu\{[^}]*background:#fff[^}]*border:1px solid #f0f0f0[^}]*border-radius:12px[^}]*box-shadow:0 8px 24px rgba\(15,23,42,.12\)/);
+  assert.match(css, /\.ctx-item:hover\{background:#f5f5f5\}/);
 });
 
 test("reaction add moves into the toolbar without creating empty message meta", () => {
@@ -201,7 +221,9 @@ test("composer, scroll reserve, and date divider align with the message stream",
   assert.match(css, /\*::-webkit-scrollbar\{width:10px;height:10px\}/);
   const dateDivider = ruleBody(".date-divider");
   assert.match(dateDivider, /max-width\s*:\s*var\(--chat-stream-max\)/);
-  assert.match(dateDivider, /margin\s*:\s*10px auto/);
+  assert.match(dateDivider, /margin\s*:\s*18px auto 24px/);
+  assert.match(ruleBody(".date-divider::before"), /content\s*:\s*none/);
+  assert.match(ruleBody(".date-divider-label"), /border-radius\s*:\s*7px/);
   const composer = ruleBody(".composer");
   assert.match(composer, /padding\s*:\s*4px var\(--chat-stream-gutter,20px\) 14px/);
   assert.match(composer, /border-top\s*:\s*0/);
@@ -229,7 +251,23 @@ test("system task events share the centered message rail", () => {
 });
 
 test("hidden message toolbars do not widen the chat scroll surface", () => {
-  assert.match(itemSrc, /useState<"side" \| "above">\("above"\)/);
+  assert.match(itemSrc, /useState<"side" \| "above">\("side"\)/);
+  assert.match(messageCss, /\.chat-message__toolbar-slot\{[^}]*position:absolute[^}]*opacity:0/s);
+});
+
+test("thread panel starts below the conversation header and shares message edge alignment", () => {
+  assert.match(shellCss, /\.shell-chat-surface > \.thread-panel \{[\s\S]*?height: calc\(100% - 52px\);[\s\S]*?margin-top: 52px;/);
+  assert.match(shellCss, /\.shell-chat-surface > \.thread-panel::before \{[\s\S]*?height: 52px;[\s\S]*?border-bottom: 1px solid var\(--shell-border\)/);
+  assert.match(chatSrc, /thread && !threadOnly \? "content-col--with-thread" : ""/);
+  assert.match(chatSrc, /"--chat-thread-occupied-width": `\$\{threadConstraints\.width \+ 10\}px`/);
+  assert.match(shellCss, /\.shell-chat-surface > main\.content-col--with-thread \{[\s\S]*?overflow: visible;/);
+  assert.match(shellCss, /\.shell-chat-surface > main\.content-col--with-thread > \.chat-head \{[\s\S]*?width: calc\(100% \+ var\(--chat-thread-occupied-width\)\);/);
+  assert.match(css, /\.thread-head\{[^}]*min-height:44px[^}]*flex:0 0 44px[^}]*padding:0 12px[^}]*font-size:16px[^}]*font-weight:600/);
+  assert.match(css, /\.tp-link,\.tp-close\{[^}]*width:28px[^}]*height:28px[^}]*padding:0/);
+  assert.match(css, /\.thread-parent\{margin-bottom:6px\}/);
+  assert.doesNotMatch(css, /\.thread-parent\{[^}]*background/);
+  assert.match(messageCss, /\.thread-panel \.chat-message--agent \.chat-message__content\{max-width:none\}/);
+  assert.match(messageCss, /\.thread-panel \.chat-message--agent \.chat-message__bubble-wrap,[\s\S]*?\.thread-panel \.chat-message--agent \.chat-message__bubble\{width:100%\}/);
 });
 
 test("new messages still expand from below and honor reduced motion", () => {

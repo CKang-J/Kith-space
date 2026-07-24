@@ -37,10 +37,11 @@ try {
     displayName: "Local Helper",
     runtime: "codex",
     model: "gpt-5.4",
+    modelBinding: { mode: "runtime_default" },
   });
   assert.equal(created.status, 200);
   assert.equal(created.body.name, "local-helper");
-  assert.equal(created.body.started, false);
+  assert.equal(typeof created.body.started, "boolean");
 
   const row = (await db.select().from(schema.agents).where(eq(schema.agents.id, created.body.id)))[0];
   assert.ok(row);

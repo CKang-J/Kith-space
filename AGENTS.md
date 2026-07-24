@@ -12,12 +12,17 @@ Kith-space 是一个**桌面优先、单人使用的个人 AgentOS**：一个 Hu
 
 - `docs/progress.md` — **当前进度与续接指南**：做到哪、下一步、leader 调度与验收约定、易丢失的关键技术事实。**新会话/新模型接手先读这个。**
 - `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md` — **当前产品路线总规格**：单 Human、本机 agent、Desktop/Web 边界、删除范围与 A1-A6 验收。
-- `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md` — **当前 Home/Space root 补充规格**：Home 总控 Space、用户文件夹、runtime cwd、记忆归属与跨 Space 委派；H1-H4 已完成并等待用户验收，H5 尚未开始。
-- `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md` — **Agent 频道响应模式规格**：Space 默认、频道覆盖、唤醒/响应指令矩阵、任务指派与 UI；已实现并等待用户验收。
-- `docs/superpowers/specs/2026-07-15-chat-message-ui-density-design.md` — **聊天消息流密度与交互重构规格**：消息气泡、字体与间距、工具交互、表现层组件边界、实施切片和量化验收；代码与自动化验证已完成，等待用户手动视觉验收。
-- `docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md` — **Chat 壳层与侧栏模块导航规格**：ChatOnly 纵向模块入口、模块打开态 Dock、三组会话抽屉、中心 Chat 卡片保护、画布式会话导航与案例展示退役；代码与自动化验证已完成，等待用户手动视觉验收。
+- `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md` — **当前 Home/Space root 补充规格**：Home 总控 Space、用户文件夹、runtime cwd、记忆归属与跨 Space 委派；H1-H4 已完成并通过本轮用户验收，H5 尚未开始。
+- `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md` — **Agent 频道响应模式规格**：Space 默认、频道覆盖、唤醒/响应指令矩阵、任务指派与 UI；已实现并通过本轮用户验收。
+- `docs/superpowers/specs/2026-07-15-chat-message-ui-density-design.md` — **聊天消息流密度与交互重构规格**：消息气泡、字体与间距、工具交互、表现层组件边界、实施切片和量化验收；代码、自动化验证与用户手动视觉验收均已完成。
+- `docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md` — **Chat 壳层与侧栏模块导航规格**：ChatOnly 纵向模块入口、模块打开态 Dock、三组会话抽屉、中心 Chat 卡片保护、画布式会话导航与案例展示退役；代码、自动化验证与用户手动视觉验收均已完成。
+- `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md` — **P-A9 桌面模块化单体架构收敛规格**：保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，按深 Module、窄 Interface、可替换 Seam 和性能基线渐进拆分；P-A9.0–P-A9.7 已完成并提交，真实存量数据暴露的 Runtime admission 队列饥饿与错误状态传播也已完成根因修复。
+- `docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md` — **P-A10 Agent Harness v2 规格**：per-surface session generation、durable delivery/logical turn/attempt、Context Envelope、server-owned thread reply、broker-backed MCP/CLI Gateway、revisioned episodic memory、restricted advisor、disclosure/suppression、continuity recall、checklist/snapshot/compaction telemetry与分阶段验收；P-A10.0–P-A10.7已完成。
+- `docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md` — **系统级可替换 Memory Advisor Provider 规格**：把结构化记忆提炼从聊天 runtime 解耦；新安装默认使用内置、精确锁版的 Pi SDK Provider，Claude Code 可切换，并把执行 Provider、Advisor Model Profile、Pi CLI 全局配置安全导入、能力门禁和 revisioned consent 分层；切片0–4已实现。
+- `docs/superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md` — **模型供应商、运行器与记忆设置重构规格**：已实现；以Kith配置为事实源，CLI配置只读导入、启动时注入，统一模型供应商/模型配置/运行器边界，把Pi提升为第四个正式v2 runtime，并重构Memory Advisor与Agent记忆页。
+- `docs/kith-space/agent-harness-v2-mechanisms.md` — **P-A10 机制全景导读**：以架构图、时序图和状态机系统解释会话、投递/turn、Context Envelope、话题路由、结构化记忆、MCP/CLI Gateway、消息落 UI、恢复与安全边界；理解“这些机制如何共同工作”优先读这里。
 - `docs/vision.md` — 北极星：完整理念 + **超越 MVP 的长远愿景**。理解"为什么"从这里开始。
-- `docs/decisions.md` — 全部决策（28 条）+ 推理 + 权衡 + **被推翻/修正的决策**演化脉络。理解"凭什么这样定"看这里。
+- `docs/decisions.md` — 决策 1–32 已实现；同时记录推理、权衡和**被推翻/修正的决策**演化脉络。理解"凭什么这样定"看这里。
 - `docs/roadmap.md` — 产品能力分期：当前 A1-A6 与其后的本机能力路线，并区分延后能力和永久非目标。
 - `docs/glossary.md` — 术语正典，防口径漂移。术语拿不准查这里。
 - `docs/kith-space/` — 5 份专项设计文档：
@@ -61,14 +66,50 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 ## 开发约定
 
-- 技术栈：TypeScript / Node（Core Service + 安装级唯一 Local Runtime Worker；目录/命令仍暂用 server/daemon）、Electron 43.1.0 + electron-builder 26.15.3（正式 Desktop 宿主与 Windows 打包）、React + Vite（共享 UI）、Drizzle ORM。
+当前数据版本：workspace schema v10增加Agent模型绑定、跨安装确认快照和runtime epoch；app.db v6增加供应商连接、模型配置、runtime profile不可变revision、三态默认绑定和CLI脱敏导入快照。下方较早的v9/v5描述仅是本轮实现前的历史基线。
+
+- 技术栈：TypeScript / Node（Core Service + 安装级唯一 Local Runtime Worker；目录/命令仍暂用 server/daemon）、Electron 43.1.0 + electron-builder 26.15.3（正式 Desktop 宿主与 Windows 打包）、React + Vite + Tailwind CSS v4 + shadcn/ui（共享 UI）、Drizzle ORM。
 - 包管理：**pnpm 11.13.1**（由根目录 `packageManager` 固定；workspace 仅根目录 + `web/`，`pnpm-lock.yaml`）。安装 `pnpm install`。注意 pnpm 的传参约定：脚本参数**直接跟在后面、不加 `--`**——用 `pnpm test --unit` / `pnpm test --integration`，**不要**写 `pnpm test -- --integration`。公共 daemon 包与 npm/OIDC 发布 workflow 已在 A6 删除；仓库不再维护公共 npm 发行路线。
-- 数据层：**SQLite**。每 Space 一个 `<folder>/.kith/workspace.db`；中央 `app.db` 保存唯一 Human、稳定 Home 身份、Space registry、Web 模式、访问 Token 哈希/版本、浏览器会话与 Desktop 关闭/自启动设置。A2.2b 已落地单一 19 表 baseline；当前 workspace schema v5 在不增加表的前提下加入 Agent 默认响应模式、顶层频道覆盖与非追溯 wake watermark。app data 默认 `~/.kith-space`，默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`；`KITH_SPACE_HOME` 只覆盖 app data，`KITH_SPACE_SPACES_DIR` 独立覆盖开发/测试默认 Space 容器。P-A7 H2 已把 Claude Code、Codex、opencode 的 cwd 切到所属 Space root，把 Agent Memory 放入 `<space>/.kith/agents/<agentId>`，把 adapter 临时状态留在 app data runtime 目录；Agents 详情的“记忆”文件浏览器只读取当前 agentMemoryDir。Copilot/Kimi/Cursor 仍为 experimental adapter 并暂用 runtime state cwd。H3 已补默认创建、已有文件夹接入、稳定 ID 复用、失联状态与重新定位；普通 API 不会隐式重建失联 Space。H4 已以稳定 homeSpaceId 区分 Home，在 Home Dock 提供真实 registry 驱动的 Spaces 模块，并让普通冷启动进入 Home；普通 Space 不接受 `module=spaces`。旧 schema 不自动迁移或删除。详见 `architecture-proposal.md §5`、Home/Space root 补充规格与 P-A8 响应模式规格。
-- 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。测试 runner 会同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向随机临时 profile，零 Postgres/Redis 即可全绿；当前验收单测基线为 640/640，旧 `publicNavContract` 失败已随失效的 public landing 路线删除。改动配套跑测试再提交。
+- 数据层：**SQLite**。每 Space 一个 `<folder>/.kith/workspace.db`；中央 `app.db` 保存唯一 Human、稳定 Home 身份、Space registry、Web 模式、访问 Token 哈希/版本、浏览器会话、Desktop设置、Human-only user-global episodic memory、安装级Advisor Provider控制面，以及模型供应商、模型配置和runtime profile。当前workspace schema v10在v9逐Agent Advisor consent/job/run审计基础上增加Agent模型绑定、跨安装确认快照和session runtime epoch；app.db当前为v6，在v5 Advisor Provider控制面上增加连接/模型/runtime不可变revision、三态默认绑定、probe和CLI脱敏导入快照。`agents.session_id`仍只作互斥legacy rollback来源。app data 默认 `~/.kith-space`，默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`；`KITH_SPACE_HOME` 只覆盖 app data，`KITH_SPACE_SPACES_DIR` 独立覆盖开发/测试默认 Space 容器。P-A7 H2 已把 Claude Code、Codex、opencode、Pi 的 cwd 切到所属 Space root，把 Agent Memory 放入 `<space>/.kith/agents/<agentId>`，把 adapter 临时状态和Pi generation留在app data runtime目录；Agents 详情的“记忆”文件浏览器只读取当前 agentMemoryDir。Copilot/Kimi/Cursor 仍为 experimental adapter并暂用runtime state cwd。H3/H4的Space root与Home边界不变。v2–v9合法workspace前缀与app.db v1–v5会按immutable manifest/journal迁移到当前版本；更旧legacy或future schema明确拒绝。
+- 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。测试 runner 会同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向随机临时 profile，零 Postgres/Redis 即可全绿；当前验收单测基线为916通过、11个平台条件skip、0失败，旧 `publicNavContract` 失败已随失效的 public landing 路线删除。改动配套跑测试再提交。
 - 启动与发行：推荐 `pnpm install` → `pnpm run desktop:dev`。全新数据目录由 Desktop 首次初始化界面收集 Human 名称（必填）、邮箱和描述（选填），并创建 `Home`，不再要求预先执行 `seed`；`pnpm run seed` 只保留为手动分进程调试或 fixture 辅助。Desktop 统一启动 Core Service、唯一 Local Runtime Worker、开发期 Vite 与 Electron；每次进程组启动/重启生成相互独立的 Desktop/Worker 临时凭据，普通用户和渲染器都不接触它们。`desktop:build` 只构建 Electron main/preload；`desktop:bundle` 生成 Web + Core/Worker/agent CLI 生产 bundle；`desktop:pack` 生成 Windows unpacked 目录；`desktop:dist` 生成 x64、per-user、assisted NSIS 安装器，输出在 `dist/desktop/`。当前安装器是可复现的本地/CI **未签名**产物，公开分发前必须配置 Windows 代码签名证书；尚未完成真实 NSIS 安装/卸载验收。`server`、`daemon`、`web`、`browser-access:dev` 和 `dev:e2e:up` 继续作为分进程调试入口；只有这类手动调试才从可选本地 `.env` 或进程环境注入独立内部凭据。日常命令以 `docs/dev-commands.md` 为准，低频参数以 `docs/dev-debugging.md` 为准。
 - Git/PR：采用轻量 GitHub Flow，只保留长期分支 `main`；从最新 `main` 创建短分支，通过 PR 和 CI 后 Squash 合入。提交使用中文 Conventional Commits，必要时用中文要点说明原因、边界和验证结果。完整流程见 `CONTRIBUTING.md`。
 - 提交权限：只在用户明确要求时创建提交、推送或 PR；先分支，不直推 `main`。
 - 安全：外接 runtime 的高权限是追踪中的技术债。LAN 浏览器 v1 使用 HTTP + 访问 Token且仅限受信任私网；邮箱/浏览器等不可信内容模块上线前，必须先完成 HTTPS 与审批/沙箱权限升级（见 `decisions.md` 决策 8/17/21）。
+
+## 前端开发规范与规则
+
+### 技术栈规范
+
+- 前端框架使用 React + TypeScript，构建工具使用 Vite。
+- 新增 UI 与新增样式统一使用 Tailwind CSS v4；除主题变量、Tailwind/shadcn 基础层及必须维护的存量样式外，不新增全局 CSS、局部 CSS 或 CSS Modules。
+- 基础 UI 组件优先使用 shadcn/ui，并从 `@/components/ui/*` 导入；先检查已有组件或用 shadcn CLI 添加，不手写已有的复杂交互组件。
+- 存量 CSS 按触达范围渐进迁移，不做一次性全量重写。对已有页面做结构性 UI 修改时，在范围可控的前提下迁移被修改组件；纯缺陷修复可最小修改原样式，避免为了迁移扩大改动面。
+
+### 组件架构与导入规范
+
+- 界面、交互逻辑、请求、工具和类型保持清晰边界；组件 Props 必须定义明确的 TypeScript 类型。
+- Button、Card、Dialog、Dropdown Menu、Tabs、表单控件等基础元素优先复用 shadcn/ui；弹窗、菜单、标签页等复杂交互不得重复手写状态机。
+- 动态或条件类名统一使用 `@/lib/utils` 的 `cn()`，不手写模板字符串拼接。
+- 使用 `@/*` 路径别名导入 `web/src/*`，避免新增深层相对路径。
+
+### 样式与布局标准
+
+- 新写布局、间距、颜色、排版以及 hover/focus/disabled 等状态必须通过 Tailwind 原子类表达。
+- 禁止内联 `style={{ ... }}`；仅鼠标实时坐标、测量结果、Canvas 偏移等无法预先枚举的运行时数值允许例外，并应附简短说明。
+- 使用 `sm:`、`md:`、`lg:` 等响应式前缀；颜色优先使用 `bg-background`、`text-foreground`、`bg-muted` 等 shadcn 语义 Token，不散落原始颜色值。暗色主题通过语义 Token 适配，仅在语义 Token 无法表达时使用 `dark:`。
+- 间距优先使用 `flex/grid + gap-*`，不使用 `space-x-*` / `space-y-*`；宽高相同使用 `size-*`。
+- shadcn 组件优先使用既有 variant 和 size；业务层 `className` 主要负责布局，不覆盖组件内部颜色与排版。
+
+### 前端代码质量检查
+
+生成或重构 React 前端代码时，至少确认：
+
+1. 组件职责单一、拆分适度，没有把界面、请求和复杂状态继续堆入大型组件。
+2. 已优先复用 shadcn/ui，Dialog/Sheet/Drawer 具备可访问标题，表单、菜单、Tabs 等遵循组件组合约束。
+3. Props 与状态类型明确，`cn()`、语义 Token、响应式和键盘/焦点状态使用正确。
+4. 未新增无必要的 CSS 文件、CSS Modules、内联样式或重复实现的基础交互组件。
+5. `pnpm run typecheck` 与 `pnpm run web:build` 通过；涉及行为时补充并运行相应测试。
 
 ## AI 协作与工具
 
@@ -95,41 +136,15 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 
 ## 当前进展
 
-**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-15：A2-A6 原定代码切片、P-A7 H1-H4、P4 会话/频道管理增量、P-A8 Agent 频道响应模式与 Human 频道 `@all`、聊天消息密度及 Chat 壳层侧栏导航均已完成代码与自动化验证，当前停在用户验收；H5 与 Runtime 契约 v2 均未开始。做到哪、下一步与关键发行边界全部见 `docs/progress.md`。
+**进度以 `docs/progress.md` 为权威来源**（本段不重复，避免漂移）。截至 2026-07-23：A2-A6、P-A7 H1-H4、P4/P-A8、本轮聊天与壳层 UI、P-A9.0–P-A9.7及P-A10.0–P-A10.7均已完成；支持runtime的新Agent已通过durable delivery/turn、server-owned thread、Context Envelope、完整Gateway、revisioned episodic recall、advisor和snapshot实际使用v2，既有Agent可显式互斥cutover。系统级可替换Memory Advisor Provider切片0–4也已实现：fresh默认内置Pi SDK、Claude Code可切换、模型Profile独立、Pi CLI配置显式安全导入，Claude/Codex/opencode聊天Agent可在逐Agent同意后共享系统Provider。H5、P-A11、P-A12与P-S1继续独立实施。做到哪、下一步与关键发行边界全部见 `docs/progress.md`。
 
 <!-- CODEGRAPH_START -->
-
 ## CodeGraph
 
-This project has a CodeGraph MCP server (`codegraph_*` tools) configured. CodeGraph is a tree-sitter-parsed knowledge graph of every symbol, edge, and file. Reads are sub-millisecond and return structural information grep cannot.
+In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
 
-### When to prefer codegraph over native search
+- **MCP tool** (when available): `codegraph_explore` answers most code questions in one call — the relevant symbols' verbatim source plus the call paths between them, including dynamic-dispatch hops grep can't follow. Name a file or symbol in the query to read its current line-numbered source. If it's listed but deferred, load it by name via tool search.
+- **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
 
-Use codegraph for **structural** questions — what calls what, what would break, where is X defined, what is X's signature. Use native grep/read only for **literal text** queries (string contents, comments, log messages) or after you already have a specific file open.
-
-| Question                                                  | Tool                                                         |
-| --------------------------------------------------------- | ------------------------------------------------------------ |
-| "Where is X defined?" / "Find symbol named X"             | `codegraph_search`                                           |
-| "What calls function Y?"                                  | `codegraph_callers`                                          |
-| "What does Y call?"                                       | `codegraph_callees`                                          |
-| "How does X reach/become Y? / trace the flow from X to Y" | `codegraph_trace` (one call = the whole path, incl. callback/React/JSX dynamic hops) |
-| "What would break if I changed Z?"                        | `codegraph_impact`                                           |
-| "Show me Y's signature / source / docstring"              | `codegraph_node`                                             |
-| "Give me focused context for a task/area"                 | `codegraph_context`                                          |
-| "See several related symbols' source at once"             | `codegraph_explore`                                          |
-| "What files exist under path/"                            | `codegraph_files`                                            |
-| "Is the index healthy?"                                   | `codegraph_status`                                           |
-
-### Rules of thumb
-
-- **Answer directly — don't delegate exploration.** For "how does X work" / architecture questions, answer with 2-3 codegraph calls: `codegraph_context` first, then ONE `codegraph_explore` for the source of the symbols it surfaces. For a specific **flow** ("how does X reach Y") start with `codegraph_trace` from→to — one call returns the whole path with dynamic hops bridged — then ONE `codegraph_explore` for the bodies; don't rebuild the path with `codegraph_search` + `codegraph_callers`. Codegraph IS the pre-built index, so spawning a separate file-reading sub-task/agent — or running a grep + read loop — repeats work codegraph already did and costs more for the same answer.
-- **Trust codegraph results.** They come from a full AST parse. Do NOT re-verify them with grep — that's slower, less accurate, and wastes context.
-- **Don't grep first** when looking up a symbol by name. `codegraph_search` is faster and returns kind + location + signature in one call.
-- **Don't chain `codegraph_search` + `codegraph_node`** when you just want context — `codegraph_context` is one call.
-- **Don't loop `codegraph_node` over many symbols** — one `codegraph_explore` call returns several symbols' source grouped in a single capped call, while each separate node/Read call re-reads the whole context and costs far more.
-- **Index lag — check the staleness banner, don't guess a wait.** When a codegraph response starts with "⚠️ Some files referenced below were edited since the last index sync…", the listed files are pending re-index — Read those specific files for accurate content. Files NOT in that banner are fresh and codegraph is authoritative for them. `codegraph_status` also lists pending files under "Pending sync".
-
-### If `.codegraph/` doesn't exist
-
-The MCP server returns "not initialized." Ask the user: *"I notice this project doesn't have CodeGraph initialized. Want me to run `codegraph init -i` to build the index?"*
+If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
 <!-- CODEGRAPH_END -->

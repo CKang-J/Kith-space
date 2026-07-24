@@ -55,6 +55,12 @@ export function isDesktopTrustedRequest(req: Pick<IncomingMessage, "headers" | "
   return constantTimeEqual(supplied, requiredCredential(DESKTOP_TOKEN_ENV));
 }
 
+export function isWorkerTrustedRequest(req: Pick<IncomingMessage, "headers" | "socket">): boolean {
+  if (!isLoopbackAddress(req.socket.remoteAddress)) return false;
+  const supplied = req.headers[WORKER_TOKEN_HEADER];
+  return typeof supplied === "string" && constantTimeEqual(supplied, requiredCredential(WORKER_TOKEN_ENV));
+}
+
 /** Credential used exclusively by the installation-local Worker control plane. */
 export function workerBootstrapToken(): string {
   return requiredCredential(WORKER_TOKEN_ENV);

@@ -12,9 +12,10 @@ export interface PromptCtx {
   os: string;
   workspace: string;
   memory: MemoryLayerPaths;
+  capabilityMode?: "mcp_with_cli_fallback" | "mcp_only" | "cli_only";
 }
 
-function commandGuide(os: string): { cli: string; environment: string; inputHint: string; sendExample: string } {
+export function commandGuide(os: string): { cli: string; environment: string; inputHint: string; sendExample: string } {
   if (/^win32(?:\s|$)/.test(os)) {
     return {
       cli: "kith-space.cmd",
@@ -44,6 +45,44 @@ function commandGuide(os: string): { cli: string; environment: string; inputHint
       "```",
     ].join("\n"),
   };
+}
+
+export function buildHarnessV2SystemPrompt(c: PromptCtx): string {
+  const guide = commandGuide(c.os);
+  const cli = guide.cli;
+  const capabilityIntro = c.capabilityMode === "mcp_only"
+    ? "The injected `kith-core` MCP server is the product API for this session; the CLI fallback is unavailable."
+    : c.capabilityMode === "cli_only"
+      ? `The controlled \`${cli}\` commands are the product API for this session; MCP is unavailable.`
+      : `The preferred product API is the injected \`kith-core\` MCP server; the controlled \`${cli}\` commands are an equivalent fallback.`;
+  const contextCheck = c.capabilityMode === "mcp_only"
+    ? "Call MCP `session.context_check` once."
+    : c.capabilityMode === "cli_only"
+      ? `Run \`${cli} turn context\` once.`
+      : `Call MCP \`session.context_check\` once (or run \`${cli} turn context\` if MCP is unavailable).`;
+  return `You are "${c.displayName}", @${c.name}, an AI agent in Kith-space Space ${c.spaceId}.
+
+## Authoritative runtime context
+- Agent ID: ${c.agentId}
+- Space ID: ${c.spaceId}
+- OS: ${c.os}
+- Workspace: ${c.workspace}
+- Command environment: ${guide.environment}
+
+## Harness v2 turn protocol
+Kith-space owns the current conversation surface, input obligations, output target, idempotency, and finalization. ${capabilityIntro} For every turn:
+1. ${contextCheck} It returns stable input IDs with required/optional directives and the server-owned target.
+2. Handle every required input. One synthesized reply may cover multiple inputs.
+3. Commit with MCP \`turn.reply\`, or pipe UTF-8 body to \`${cli} turn reply --input <comma-separated-input-ids>\`. Never provide a channel/thread target; the server owns it.
+4. Optional inputs may instead be explicitly settled with MCP \`turn.cede\` or \`${cli} turn cede --input <ids> --reason <reason>\`.
+5. Do not cede required inputs. Do not treat stdout or assistant text as a delivered reply.
+
+The stable broker handle is powerless outside the active attempt. If a command reports capability_inactive, capability_expired, stale_context, or idempotency_conflict, stop and let the harness retry; do not fall back to legacy \`message check/send\`.
+
+Use \`conversation.read/search\`, \`memory.recall/get\`, \`turn.get/progress\`, \`session.checklist_*\`, \`session.schedule_wakeup\`, and bounded \`task.list/get/create/claim/update/assign/unclaim/report/deliver\` tools through MCP when needed; their CLI aliases call the same Core module and operation ledger. Episodic memory tools are read-only and already apply source access plus output-surface disclosure projection. A stale draft must first call \`session.context_check(refresh=true)\` and be revised. Use native runtime tools for work in the shared Space cwd. It is not an OS security sandbox. No generic arbitrary-write Gateway exists.
+
+For non-trivial work, read memory indexes in order: user ${c.memory.user.indexFile}, Space ${c.memory.space.indexFile}, Agent ${c.memory.agent.indexFile}. Keep durable notes concise and do not copy credentials into messages or memory.
+${c.description ? `\n## Role\n${c.description}` : ""}`;
 }
 
 export function buildSystemPrompt(c: PromptCtx): string {

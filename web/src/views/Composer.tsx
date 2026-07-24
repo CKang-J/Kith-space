@@ -15,6 +15,7 @@ import {
   matchesChannelAllMentionQuery,
 } from "./composerChannelAllMention.ts";
 import { insertAgentMention } from "./composerMention.ts";
+import { messageContextSnapshot } from "../messageContextSnapshot.ts";
 
 // Shared message composer for channels, DMs, and threads. Owns text, attachment upload
 // (button / paste / drag-drop, with per-file progress), @mention autocomplete, and send.
@@ -37,10 +38,11 @@ interface ComposerProps {
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer({ channelId, placeholder, allowAsTask = false, allowChannelAllMention = false, validateChannelTaskMentions = true, dmAgent, className }, ref) {
   const { t } = useTranslation();
-  const { api, visibleAgents: agents, uploadOne, attachmentUrl } = useStore();
+  const { api, spaceId, visibleAgents: agents, uploadOne, attachmentUrl } = useStore();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
   const [text, setText] = useState("");
   const [asTask, setAsTask] = useState(false);
+  const [memoryExcluded, setMemoryExcluded] = useState(false);
   const [atQuery, setAtQuery] = useState<string | null>(null); // @ mention autocomplete: null = hidden
   const [atSel, setAtSel] = useState(0); // highlighted candidate index for ↑/↓ keyboard nav
   const [pendingAtts, setPendingAtts] = useState<PendingAttachment[]>([]); // uploaded attachments queued to send with the next message
@@ -121,9 +123,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     sendingRef.current = true;
     setSending(true);
     try {
-      const result = await api("POST", "/api/messages", { channelId, content: v, asTask: asT, attachmentIds: ids });
+      const result = await api("POST", "/api/messages", {
+        channelId,
+        content: v,
+        asTask: asT,
+        attachmentIds: ids,
+        contextSnapshot: messageContextSnapshot(spaceId, channelId, className === "thread-composer"),
+        memoryPolicy: memoryExcluded ? "exclude" : "eligible",
+      });
       if (result?.error) throw new Error(String(result.error));
-      setText(""); setAtQuery(null); setAsTask(false); setPendingAtts([]);
+      setText(""); setAtQuery(null); setAsTask(false); setMemoryExcluded(false); setPendingAtts([]);
     } catch (error) {
       setTaskMentionError(error instanceof Error ? error.message : String(error));
       inputRef.current?.focus();
@@ -225,10 +234,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <ComposerActions
               allowTask={allowAsTask}
               taskActive={asTask}
+              memoryExcluded={memoryExcluded}
               uploadDisabled={uploading || sending}
               taskDisabled={sending}
+              memoryDisabled={sending}
               onAddFiles={() => fileRef.current?.click()}
               onTaskChange={changeTaskMode}
+              onMemoryExcludedChange={setMemoryExcluded}
             />
           </div>
           <div className="cb-right">

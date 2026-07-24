@@ -1,0 +1,1 @@
+CREATE INDEX `dispatch_wakes_status_created_idx` ON `dispatch_wakes` (`status`,`created_at`);

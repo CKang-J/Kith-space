@@ -8,6 +8,7 @@ import {
   isWorkerLeaseLatest,
   registerWorker,
   requestWorker,
+  requestWorkerForLease,
   resolveWorkerRequest,
   sendToWorker,
   sendToWorkerForLease,
@@ -59,8 +60,8 @@ test("send, request correlation, and ready snapshot share the current worker", a
   assert.deepEqual(workerRuntimes(), ["claude", "codex"]);
   assert.deepEqual(workerRunningAgents(), ["a1", "a2"]);
 
-  assert.equal(sendToWorker({ type: "agent:stop", agentId: "a1" }), true);
-  assert.deepEqual(JSON.parse(sent[0]!), { type: "agent:stop", agentId: "a1" });
+  assert.equal(sendToWorker({ type: "agent:profile", agentId: "a1" }), true);
+  assert.deepEqual(JSON.parse(sent[0]!), { type: "agent:profile", agentId: "a1" });
 
   const response = requestWorker({ type: "probe-models", runtime: "codex" });
   const request = JSON.parse(sent[1]!);
@@ -70,4 +71,19 @@ test("send, request correlation, and ready snapshot share the current worker", a
 
   unregisterWorker(lease);
   assert.equal(sendToWorker({ type: "ping" }), false);
+});
+
+test("a correlated provider request stays on one Worker lease and is never sent to its replacement", async () => {
+  const first = fakeWorker();
+  const firstLease = registerWorker(first.worker);
+  const pending = requestWorkerForLease(firstLease, { type: "advisor:prepare" });
+  const sent = JSON.parse(first.sent[0]!);
+  assert.equal(sent.expectedGeneration, firstLease.generation);
+  const second = fakeWorker();
+  const secondLease = registerWorker(second.worker);
+  assert.deepEqual(await pending, { error: "local worker replaced" });
+  assert.deepEqual(second.sent, []);
+  assert.deepEqual(await requestWorkerForLease(firstLease, { type: "advisor:complete", credential: "secret" }), { error: "local worker lease changed" });
+  assert.deepEqual(second.sent, []);
+  unregisterWorker(secondLease);
 });

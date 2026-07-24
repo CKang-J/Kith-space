@@ -21,3 +21,22 @@ process.stdout.write(bytes.subarray(0, 1), () => {
   assert.equal(exitCode, 0);
   assert.equal(output, "中文测试");
 });
+
+test("runtime process boundary can preserve raw protocol bytes for strict decoders", async () => {
+  const child = spawnRuntimeProcess(
+    process.execPath,
+    ["-e", `process.stdout.write(Buffer.from([0x7b, 0xff, 0x7d]));`],
+    { stdio: ["ignore", "pipe", "pipe"] },
+    { rawBytes: true },
+  );
+  const chunks: Buffer[] = [];
+  child.stdout?.on("data", (chunk) => { chunks.push(chunk); });
+
+  const exitCode = await new Promise<number | null>((resolve, reject) => {
+    child.on("error", reject);
+    child.on("exit", resolve);
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(Buffer.concat(chunks), Buffer.from([0x7b, 0xff, 0x7d]));
+});

@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
@@ -6,7 +6,18 @@ import electronPath from "electron";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 try { process.loadEnvFile?.(path.join(root, ".env")); } catch { /* optional developer environment */ }
 
-const child = spawn(electronPath, [root], {
+const viteCli = path.join(root, "web", "node_modules", "vite", "bin", "vite.js");
+const webDirectory = path.join(root, "web");
+const webBuild = spawnSync(process.execPath, [viteCli, "build"], {
+  cwd: webDirectory,
+  env: process.env,
+  stdio: "inherit",
+  windowsHide: false,
+});
+if (webBuild.error) throw webBuild.error;
+if (webBuild.status !== 0) process.exit(webBuild.status ?? 1);
+
+const child = spawn(electronPath, [root, ...process.argv.slice(2)], {
   cwd: root,
   env: {
     ...process.env,
@@ -14,7 +25,7 @@ const child = spawn(electronPath, [root], {
     KITH_SPACE_REPO_ROOT: root,
     KITH_SPACE_NODE_BINARY: process.execPath,
     KITH_SPACE_TSX_CLI: fileURLToPath(import.meta.resolve("tsx/cli")),
-    KITH_SPACE_VITE_CLI: path.join(root, "web", "node_modules", "vite", "bin", "vite.js"),
+    KITH_SPACE_VITE_CLI: viteCli,
   },
   stdio: ["inherit", "inherit", "inherit", "ipc"],
   windowsHide: false,

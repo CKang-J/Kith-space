@@ -84,7 +84,7 @@ test("SQLite adapter persists budget, same-channel context, and task/space emerg
   assert.deepEqual(root, { chainId: taskId, dispatchDepth: 0, taskMessageId: taskId });
   await state.ensureChain({ ...root, rootMessageId: taskId, channelId });
 
-  const first = await state.reserveWake({
+  const first = await state.getOrReserveWake({
     chainId: root.chainId,
     dispatchDepth: root.dispatchDepth,
     taskMessageId: taskId,
@@ -107,15 +107,15 @@ test("SQLite adapter persists budget, same-channel context, and task/space emerg
   assert.equal((await state.taskStatus(taskId)).wakeCount, 1);
 
   await state.stopTask(taskId, "human stop");
-  const taskStopped = await state.reserveWake({ ...delegated, messageId: randomUUID(), targetAgentId: randomUUID() });
+  const taskStopped = await state.getOrReserveWake({ ...delegated, messageId: randomUUID(), targetAgentId: randomUUID() });
   assert.equal(taskStopped.allowed ? null : taskStopped.code, "TASK_STOPPED");
   await state.resumeTask(taskId);
-  const resumed = await state.reserveWake({ ...delegated, messageId: randomUUID(), targetAgentId: randomUUID() });
+  const resumed = await state.getOrReserveWake({ ...delegated, messageId: randomUUID(), targetAgentId: randomUUID() });
   assert.equal(resumed.allowed, true);
   if (resumed.allowed) await state.releaseWake(resumed.reservationId);
 
   await state.stopSpace("space stop");
-  const spaceStopped = await state.reserveWake({ ...delegated, messageId: randomUUID(), targetAgentId: randomUUID() });
+  const spaceStopped = await state.getOrReserveWake({ ...delegated, messageId: randomUUID(), targetAgentId: randomUUID() });
   assert.equal(spaceStopped.allowed ? null : spaceStopped.code, "SPACE_STOPPED");
   assert.equal((await state.spaceStatus()).stopped, true);
   await state.resumeSpace();

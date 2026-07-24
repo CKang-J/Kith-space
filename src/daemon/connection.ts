@@ -34,10 +34,19 @@ export class Connection {
     private onMsg: (m: any) => void,
     private onOpen: () => void,
     private mkWs: (url: string, options: WsConnectOptions) => WsLike = (u, options) => new WebSocket(u, options),
+    private onDisconnect: () => void | Promise<void> = () => {},
   ) {}
 
   connect(): void { this.should = true; this.doConnect(); }
-  send(m: unknown): void { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(m)); }
+  send(m: unknown): boolean {
+    if (this.ws?.readyState !== WebSocket.OPEN) return false;
+    try {
+      this.ws.send(JSON.stringify(m));
+      return true;
+    } catch {
+      return false;
+    }
+  }
   close(): void {
     this.should = false;
     if (this.timer) clearTimeout(this.timer);
@@ -67,6 +76,7 @@ export class Connection {
     });
     this.ws.on("close", (code: number, reason: any) => {
       if (this.watchdog) { clearTimeout(this.watchdog); this.watchdog = null; }
+      const afterCleanup = () => {
       if (code === WORKER_REPLACED_CODE) {
         // Another installation-local Worker is now authoritative. Retrying from this superseded
         // process would evict it and make both processes alternate forever, so stop automatically.
@@ -90,6 +100,18 @@ export class Connection {
         this.log.warn("disconnected", { code });
       }
       this.scheduleReconnect();
+      };
+      try {
+        const cleanup = this.onDisconnect();
+        if (cleanup && typeof (cleanup as Promise<void>).then === "function") {
+          void cleanup.catch((error) => {
+            this.log.error("disconnect cleanup failed", { detail: String(error) });
+          }).then(afterCleanup);
+        } else afterCleanup();
+      } catch (error) {
+        this.log.error("disconnect cleanup failed", { detail: String(error) });
+        afterCleanup();
+      }
     });
     this.ws.on("error", (e: any) => this.log.error("ws error", { detail: String(e?.message ?? e) }));
   }

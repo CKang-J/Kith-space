@@ -3,12 +3,10 @@ import { useLocation, useParams, useNavigate, useSearchParams } from "react-rout
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useStore, type Msg, type Att } from "../store.tsx";
-import { fmtMessageTime, fmtMessageTimestamp, isSameLocalDay, fmtDateDivider } from "../format";
-import { PAGE_SIZE, appendWithCap, nextScrollState } from "../lib/msgPaging";
-import { AGENT_REPLY_PREVIEW_TYPE, AGENT_REPLY_STREAM_TICK_MS, absorbPersistedAgentMessagePreview, applyAgentReplyPreview, dropAgentReplyPreviewForThreadReply, dropAgentReplyPreviewsForMessage, hasStreamingAgentReplyPreview, renderKeyForMessage, tickAgentReplyPreviews, type AgentReplyEvent, type AgentReplyPreviewMsg } from "../lib/agentReplyPreview";
+import { fmtMessageTime, isSameLocalDay, fmtDateDivider } from "../format";
+import { AGENT_REPLY_PREVIEW_TYPE, renderKeyForMessage, type AgentReplyPreviewMsg } from "../lib/agentReplyPreview";
 import { MessageContent } from "../messageRender.tsx";
-import { nextThreadMeta, type ThreadMeta } from "../threadUnread";
-import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Link2, Clipboard, Bookmark, CheckSquare, Circle, Play, Eye, Ban, ArrowDown, Bell, BellOff, Archive, MessagesSquare, ListTodo, UsersRound, PanelsTopLeft } from "lucide-react";
+import { Smile, X, ExternalLink, CheckCircle2, MessageCircle, MoreHorizontal, Link2, Clipboard, Bookmark, CheckSquare, Circle, Play, Eye, Ban, ArrowDown, Bell, BellOff, Archive, MessagesSquare, ListTodo, PanelsTopLeft, Hash } from "lucide-react";
 // Task badge per message row: icon changes with task status; color tokens from DESIGN.md (see .task-pill.st-* styles)
 const TASK_ICON: Record<string, typeof Circle> = { todo: Circle, in_progress: Play, in_review: Eye, done: CheckCircle2, closed: Ban };
 import { Avatar, resolveAvatar } from "../Avatar.tsx";
@@ -36,29 +34,18 @@ import { HumanMessageCard } from "./chat-message/HumanMessageCard.tsx";
 import { MessageTopicPreview } from "./chat-message/MessageTopicPreview.tsx";
 import { shouldGroupMessage } from "./chat-message/messageGrouping.ts";
 import { surfaceForSender } from "./chat-message/messagePresentation.ts";
-import { fetchThreadMetadata } from "./chat-message/threadPreviewApi.ts";
 import { buildMessageImageGallery, isSingleImageMessage } from "./chat-message/messageImageGallery.ts";
+import { TurnDetailsButton } from "./chat-message/TurnDetailsButton.tsx";
 import type { LightboxImage } from "../Lightbox.tsx";
+import { useConversationApi } from "../features/conversation/data/conversationApi.ts";
+import { useTaskApi } from "../features/conversation/data/taskApi.ts";
+import { useConversationMessages } from "../features/conversation/model/useConversationMessages.ts";
+import { useConversationViewport } from "../features/conversation/model/useConversationViewport.ts";
+import { useConversationThreads, useThreadPanelModel } from "../features/conversation/model/useConversationThreads.ts";
+
+export { animateBackToBottom, BACK_TO_BOTTOM_SCROLL_MS, keepPinnedToBottomDuringEnter, MESSAGE_ENTER_PIN_MS } from "../features/conversation/model/useConversationViewport.ts";
 
 const fmtSize = (n?: number) => (!n ? "" : n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB");
-export const BACK_TO_BOTTOM_SCROLL_MS = 800;
-export const MESSAGE_ENTER_PIN_MS = 1000;
-export const backToBottomEase = (t: number) => 1 - Math.pow(1 - t, 3);
-
-export function animateBackToBottom(el: Pick<HTMLDivElement, "scrollTop" | "scrollHeight">, done?: () => void) {
-  const start = el.scrollTop;
-  const target = el.scrollHeight;
-  const delta = target - start;
-  if (!delta) { done?.(); return; }
-  const startTime = performance.now();
-  const step = (now: number) => {
-    const t = Math.min(1, (now - startTime) / BACK_TO_BOTTOM_SCROLL_MS);
-    el.scrollTop = start + delta * backToBottomEase(t);
-    if (t < 1) requestAnimationFrame(step);
-    else { el.scrollTop = target; done?.(); }
-  };
-  requestAnimationFrame(step);
-}
 
 function AgentReplyPreviewBody({ m }: { m: Msg }) {
   const { t } = useTranslation();
@@ -70,17 +57,6 @@ function AgentReplyPreviewBody({ m }: { m: Msg }) {
       {preview.streamError ? t("chat.agentReplyError") : done ? t("chat.agentThinkingDone") : t("chat.agentThinking")}
     </div>
   );
-}
-export function keepPinnedToBottomDuringEnter(el: Pick<HTMLDivElement, "scrollTop" | "scrollHeight">, shouldContinue: () => boolean, durationMs = MESSAGE_ENTER_PIN_MS) {
-  const startTime = performance.now();
-  const pin = () => { el.scrollTop = el.scrollHeight; };
-  pin();
-  const step = (now: number) => {
-    if (!shouldContinue()) return;
-    pin();
-    if (now - startTime < durationMs) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
 }
 
 // Message and Composer attachments share the same responsive card. Images open the common viewer;
@@ -196,15 +172,15 @@ function ActionCardMsg({
         surface="action"
         className="action-card-msg"
         avatar={agent && m.senderId
-          ? <button type="button" className="msg-av clickable" aria-label={t("chat.openAgentCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => onOpenAgentCard(m.senderId!, event.currentTarget)}><Avatar seed={m.senderName} url={resolveAvatar(agent.avatarUrl, attachmentUrl)} size={32} />{live !== "offline" ? <span className={`av-status ${live}`} /> : null}</button>
-          : <span className="msg-av"><Avatar seed={m.senderName} url={resolveAvatar(agent?.avatarUrl, attachmentUrl)} size={32} /></span>}
+          ? <button type="button" className="msg-av clickable" aria-label={t("chat.openAgentCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => onOpenAgentCard(m.senderId!, event.currentTarget)}><Avatar seed={m.senderName} url={resolveAvatar(agent.avatarUrl, attachmentUrl)} size={36} />{live !== "offline" ? <span className={`av-status ${live}`} /> : null}</button>
+          : <span className="msg-av"><Avatar seed={m.senderName} url={resolveAvatar(agent?.avatarUrl, attachmentUrl)} size={36} /></span>}
         header={<MessageHeader
           sender={agent
             ? <AgentMentionName displayName={m.senderName} mentionName={agent.name} disabled={readOnly} onMention={onMentionAgent} />
             : <span className="who">{m.senderName}</span>}
           badge={<span className="member-badge">{t("chat.proposed")}</span>}
-          timestamp={fmtMessageTimestamp(m.createdAt)}
         />}
+        footerTimestamp={fmtMessageTime(m.createdAt)}
       >
         <div className="action-card">
           <div className="ac-title">{title}</div>
@@ -269,7 +245,9 @@ export function Chat({
   onNavigateConversation,
 }: ChatProps) {
   const { t } = useTranslation();
-  const { api, reload, channels, archivedChannels, dms, unread, agents, slug, me, onEvent, subscribeChannel, markRead, attachmentUrl, react, openThread, openAgentDM, savedIds, saveMsg, unsaveMsg, agentPanelReq, clearAgentPanelReq } = useStore();
+  const { reload, channels, archivedChannels, dms, unread, agents, slug, me, attachmentUrl, react, openAgentDM, savedIds, saveMsg, unsaveMsg, agentPanelReq, clearAgentPanelReq } = useStore();
+  const conversationApi = useConversationApi();
+  const taskApi = useTaskApi();
   const toast = useToast();
   const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
   const senderAvatar = (m: Msg) => avFor(m.senderType === "agent" ? agents.find((agent) => agent.id === m.senderId)?.avatarUrl : undefined);
@@ -286,24 +264,11 @@ export function Chat({
   const [agentCard, setAgentCard] = useState<{ id: string; anchor: AgentMessageCardAnchor; trigger: HTMLElement } | null>(null);
   const [humanCard, setHumanCard] = useState<{ name: string; avatarUrl: string | null; anchor: AgentMessageCardAnchor; trigger: HTMLElement } | null>(null);
   const [ctxMenu, setCtxMenu] = useState<{ m: Msg; x: number; y: number } | null>(null); // right-clicking a message opens the context action menu
-  const [msgs, setMsgs] = useState<Msg[]>([]);
-  const messageImageGallery = useMemo(() => buildMessageImageGallery(msgs, attachmentUrl), [attachmentUrl, msgs]);
-  const [loaded, setLoaded] = useState(false); // first fetch for the current channel done — gates the empty-channel state so it never flashes mid-load
-  const [loadError, setLoadError] = useState(false); // first fetch failed — exits the skeleton into a retryable error state
   const [sub, setSub] = useState("");
-  const [showMembers, setShowMembers] = useState(false);
-  const [thread, setThread] = useState<{ channelId: string; parent: Msg; followed: boolean } | null>(null); // currently open thread panel
   const [threadWidth, setThreadWidth] = useState<number | null>(null);
   const [chatSurfaceWidth, setChatSurfaceWidth] = useState(() => typeof window === "undefined" ? 1000 : window.innerWidth);
   const chatMainRef = useRef<HTMLElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
-  const [threadMeta, setThreadMeta] = useState<Record<string, ThreadMeta>>({}); // parent message id → thread metadata and latest reply previews
-  const [unreadThreads, setUnreadThreads] = useState<{ threadChannelId: string; parentMessageId: string; parentChannelId: string; unreadCount: number }[]>([]); // unread that lives in this channel's threads (invisible in the main timeline) → "jump to unread thread" bar
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const atBottomRef = useRef(true); // tracks whether the scroll position is at the bottom; new messages auto-scroll only when already at the bottom, preserving history browsing
-  const forceBottomPinRef = useRef(false); // own sends + agent previews should return the viewport to the live tail even if overlay height made atBottom stale
-  const [showJump, setShowJump] = useState(false); // when not at the bottom, show the "Back to bottom" jump button
-  const showJumpRef = useRef(false);
   useLayoutEffect(() => {
     if (threadOnly) return;
     const surface = chatMainRef.current?.parentElement;
@@ -318,28 +283,38 @@ export function Chat({
     chatSurfaceWidth,
     threadWidth ?? defaultThreadPaneWidth(chatSurfaceWidth),
   );
-  const scrollingToBottomRef = useRef(false); // suppress jump-button flicker while the 0.8s smooth scroll is in progress
-  const [hasMore, setHasMore] = useState(false); // older messages remain before the loaded window → drives scroll-to-top "load more"
-  const loadingOlderRef = useRef(false); // de-dupes concurrent "load older" fetches while one is in flight
-  const prependRestoreRef = useRef<number | null>(null); // scrollHeight captured before a prepend; restored after so the viewport doesn't jump
-  const trimmedRef = useRef(false); // a live-tail trim dropped the oldest in-memory messages → mark hasMore so they stay re-fetchable
-  // Message enter animation tracking: id → stagger index (0–7) for messages that arrived via socket (true new).
-  // Historical loads (initial fetch, loadOlder) never touch this map, so they never get the enter class.
-  const newMsgOrderRef = useRef(new Map<string, number>());
-  const burstCountRef = useRef(0); // how many messages have arrived in the current burst window
-  const burstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // resets burstCount after 600ms silence
   const cur = [...channels, ...archivedChannels, ...dms].find((c) => c.id === channelId) || channels.find((c) => c.name === "all") || channels[0];
   const isArchived = !!cur && archivedChannels.some((channel) => channel.id === cur.id);
   const conversationReadOnly = isArchived;
   const [restoringArchived, setRestoringArchived] = useState(false);
   const messageChannels = [...channels, ...archivedChannels];
+  const [sp, setSp] = useSearchParams();
+  const msgParam = sp.get("msg");
+  const messageModel = useConversationMessages(cur?.id, agents, me?.id);
+  const { messages: msgs, loaded: messagesLoaded, loadError, hasMore, reload: loadCurrentMessages } = messageModel;
+  const messageImageGallery = useMemo(() => buildMessageImageGallery(msgs, attachmentUrl), [attachmentUrl, msgs]);
+  const threadModel = useConversationThreads({
+    channel: cur,
+    isArchived,
+    unreadCount: unread[cur?.id ?? ""] ?? 0,
+    currentUserId: me?.id,
+    messages: msgs,
+    initialPage: messageModel.initialPage,
+    olderPage: messageModel.olderPage,
+    hasMore,
+    loadingOlderRef: messageModel.loadingOlderRef,
+    loadOlder: messageModel.loadOlder,
+  });
+  const { thread, threadMeta, unreadThreads, startThread, closeThread, openUnreadThread, setThreadFollowed } = threadModel;
+  const loaded = messagesLoaded && threadModel.initialMetadataLoaded;
+  const { scrollRef, showJump, onScroll, toBottom } = useConversationViewport(cur?.id, msgs, msgParam, messageModel);
+  const newMsgOrderRef = messageModel.newMessageOrderRef;
 
   const restoreArchivedChannel = async () => {
     if (!cur || !isArchived || restoringArchived) return;
     setRestoringArchived(true);
     try {
-      const result = await api("POST", `/api/channels/${encodeURIComponent(cur.id)}/unarchive`);
-      if (result?.error) throw new Error(String(result.error));
+      await conversationApi.unarchiveChannel(cur.id);
       await reload();
       toast.info(t("channelSettings.restoreSuccess"));
     } catch {
@@ -348,18 +323,13 @@ export function Chat({
       setRestoringArchived(false);
     }
   };
-  const curIdRef = useRef<string | undefined>(undefined);
-  curIdRef.current = cur?.id; // latest channel id for async guards: a loadOlder that resolves after a channel switch must drop its stale-channel result (no cross-channel prepend / hasMore clobber)
   const isDm = !!dms.find((d) => d.id === cur?.id);
   const dmPeer = dms.find((d) => d.id === cur?.id);
   const dmAgent = dmPeer?.peerType === "agent" ? agents.find((a) => a.id === dmPeer.peerId) : undefined; // DM peer agent → used for the live status indicator in the header
   const responseModeChannelId = !isDm && cur?.type !== "thread" ? cur?.id : thread?.parent.channelId;
   const responseModeReadOnly = conversationReadOnly;
   const channelResponseModes = useChannelAgentResponseModes(responseModeChannelId, !!responseModeChannelId && !isDm);
-  const [sp, setSp] = useSearchParams();
-  const msgParam = sp.get("msg"); // when present, scroll to and highlight the specified message id
-  const threadParam = sp.get("thread"); // auto-open a thread panel (from inbox, in-message thread link, or cross-page link); value is the parent message id (full or 8-char short) or channelId:shortid
-  const threadMsgParam = sp.get("threadMsg"); // optional reply target inside the opened topic
+  const threadMsgParam = threadModel.threadMessageId;
   const openAgentProfile = (agent: string, agentTab?: string) => nav(workspaceLocationForModule(
     routeLocation.pathname,
     routeLocation.search,
@@ -398,66 +368,10 @@ export function Chat({
 
   useEffect(() => { setAgentCard(null); setHumanCard(null); }, [cur?.id]);
 
-  // Channel-scoped state (loaded messages + load gate + has-more) belongs to one channel. When the
-  // channel changes, reset it *synchronously during render* (React's "adjust state when a prop changes"
-  // pattern) rather than in the effect below — effects run after paint, so resetting there leaves one
-  // painted frame (and the whole skeleton phase) showing the previous channel's messages. Resetting here
-  // makes the new channel paint its skeleton immediately, never the prior channel's stale list.
-  const [shownChannelId, setShownChannelId] = useState(cur?.id);
-  if (cur?.id !== shownChannelId) {
-    setShownChannelId(cur?.id);
-    setMsgs([]);
-    setLoaded(false);
-    setLoadError(false);
-    setHasMore(false);
-  }
-
   useEffect(() => {
     if (!routeChannelId && !channelIdOverride && cur) navigateConversation(`/s/${slug}/channel/${cur.id}`, { replace: true });
   }, [routeChannelId, channelIdOverride, cur, slug, routeLocation.pathname, routeLocation.search, nav]);
-  const loadCurrentMessages = async () => {
-    if (!cur) return;
-    const chId = cur.id;
-    setLoaded(false);
-    setLoadError(false);
-    try {
-      const d = await api("GET", `/api/messages/channel/${chId}?limit=${PAGE_SIZE}`);
-      if (curIdRef.current !== chId) return;
-      const ms: Msg[] = d.messages || [];
-      setMsgs(ms);
-      setHasMore(!!d.hasMore);
-      markRead(chId);
-      const ids = ms.map((m) => m.id);
-      if (ids.length) {
-        try { setThreadMeta(await fetchThreadMetadata(api, chId, ids)); }
-        catch { setThreadMeta({}); }
-      } else setThreadMeta({});
-    } catch {
-      if (curIdRef.current !== chId) return;
-      setMsgs([]);
-      setThreadMeta({});
-      setHasMore(false);
-      setLoadError(true);
-    } finally {
-      if (curIdRef.current === chId) setLoaded(true);
-    }
-  };
-  useEffect(() => { if (!cur) return; setThread(null); setThreadWidth(null); loadingOlderRef.current = false; prependRestoreRef.current = null; subscribeChannel(cur.id); void loadCurrentMessages(); }, [cur?.id]);
-  // Surface unread that lives in this channel's threads (folded away, invisible in the main timeline → "滑不到").
-  // Re-runs when the channel's badge changes: entry, a new thread reply bumping it, or opening a thread clearing it.
-  useEffect(() => {
-    if (!cur || isArchived || cur.type === "dm" || cur.type === "thread") { setUnreadThreads([]); return; }
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await api("GET", "/api/channels/threads/followed");
-        if (cancelled) return;
-        setUnreadThreads((r?.threads || []).filter((th: any) => th.parentChannelId === cur.id && th.unreadCount > 0 && th.parentMessageId)
-          .map((th: any) => ({ threadChannelId: th.threadChannelId, parentMessageId: th.parentMessageId, parentChannelId: th.parentChannelId, unreadCount: th.unreadCount })));
-      } catch { if (!cancelled) setUnreadThreads([]); }
-    })();
-    return () => { cancelled = true; };
-  }, [cur?.id, isArchived, unread[cur?.id ?? ""]]);
+  useEffect(() => { setThreadWidth(null); }, [cur?.id, thread?.channelId]);
   // LiveAgentBar opens the canonical Agents module on its Activity tab and consumes the request once.
   useEffect(() => {
     if (!agentPanelReq) return;
@@ -465,136 +379,10 @@ export function Chat({
     clearAgentPanelReq();
     // eslint-disable-next-line
   }, [agentPanelReq]);
-  useEffect(() => onEvent((e) => {
-    if (e.type === "message" && e.channelId === cur?.id) { if (e.message.senderType === "human" && e.message.senderId === me?.id) forceBottomPinRef.current = true; setMsgs((m) => { const preview = absorbPersistedAgentMessagePreview(m, e.message); if (preview.consumed) { forceBottomPinRef.current = true; newMsgOrderRef.current.delete(e.message.id); return preview.messages; } const idx = Math.min(burstCountRef.current, 7); newMsgOrderRef.current.set(e.message.id, idx); burstCountRef.current += 1; if (burstTimerRef.current) clearTimeout(burstTimerRef.current); burstTimerRef.current = setTimeout(() => { burstCountRef.current = 0; burstTimerRef.current = null; }, 600); const { next, trimmed } = appendWithCap(dropAgentReplyPreviewsForMessage(m, e.message), e.message, atBottomRef.current && !loadingOlderRef.current); if (trimmed) trimmedRef.current = true; return next; }); markRead(cur.id); } // don't trim mid-pagination: a trim's setHasMore(true) would race the in-flight loadOlder's setHasMore — suppressing it closes the window (the next message trims instead)
-    else if (e.type === "message:updated" && e.message) setMsgs((m) => m.map((x) => (x.id === e.message.id ? { ...x, ...e.message } : x))); // sync reactions and task fields
-    else if (e.type === "agent:deleted" && e.id) {
-      setMsgs((current) => current.map((message) => message.senderId === e.id ? { ...message, senderDeleted: true } : message));
-      setThread((current) => {
-        if (!current || current.parent.senderId !== e.id) return current;
-        return { ...current, parent: { ...current.parent, senderDeleted: true } };
-      });
-      setThreadMeta((current) => Object.fromEntries(Object.entries(current).map(([messageId, meta]) => [messageId, {
-        ...meta,
-        previews: meta.previews?.map((preview) => preview.senderId === e.id ? { ...preview, senderDeleted: true } : preview),
-      }])));
-    }
-    else if (e.type === "agent:reply" && e.channelId === cur?.id) { forceBottomPinRef.current = true; setMsgs((m) => applyAgentReplyPreview(m, e as AgentReplyEvent, agents.find((a) => a.id === e.agentId))); }
-    else if (e.type === "thread:updated" && e.parentMessageId) {
-      setMsgs((m) => dropAgentReplyPreviewForThreadReply(m, {
-        parentMessageId: e.parentMessageId,
-        senderId: e.senderId,
-        senderType: e.senderType,
-        replyCount: e.replyCount,
-      }));
-      setThreadMeta((tm) => ({ // live reply count update; unreadCount is approximated from the replyCount delta (the authoritative value is corrected on channel switch via GET)
-        ...tm,
-        [e.parentMessageId]: nextThreadMeta(tm[e.parentMessageId], { threadChannelId: e.threadChannelId, replyCount: e.replyCount, senderId: e.senderId }, me?.id),
-      }));
-      const chId = cur?.id;
-      if (chId) void fetchThreadMetadata(api, chId, [e.parentMessageId]).then((fresh) => {
-        if (curIdRef.current !== chId || !fresh[e.parentMessageId]) return;
-        setThreadMeta((current) => ({ ...current, [e.parentMessageId]: fresh[e.parentMessageId]! }));
-      }).catch(() => {});
-    }
-  }), [cur?.id, agents, me?.id]);
-  const streamingPreviewActive = hasStreamingAgentReplyPreview(msgs);
-  useEffect(() => {
-    if (!streamingPreviewActive) return;
-    const timer = window.setInterval(() => {
-      setMsgs((m) => {
-        const tick = tickAgentReplyPreviews(m);
-        if (tick.changed) forceBottomPinRef.current = true;
-        return tick.changed ? tick.messages : m;
-      });
-    }, AGENT_REPLY_STREAM_TICK_MS);
-    return () => window.clearInterval(timer);
-  }, [streamingPreviewActive]);
-  useEffect(() => { const el = scrollRef.current; if (!el || msgParam) return; const force = forceBottomPinRef.current; if (force) { forceBottomPinRef.current = false; atBottomRef.current = true; setJumpVisible(false); } if (force || atBottomRef.current) keepPinnedToBottomDuringEnter(el, () => !msgParam && (force || atBottomRef.current)); }, [msgs, msgParam]); // auto-scroll when already pinned; own sends and agent previews force the live tail so users do not drag the scrollbar manually
-  // Keep the viewport anchored across an older-page prepend: restore scrollTop before paint. Runs before the auto-scroll effect above, which is a no-op here anyway (a prepend only happens while scrolled up, so atBottomRef is false).
-  useLayoutEffect(() => { const el = scrollRef.current; if (el && prependRestoreRef.current != null) { el.scrollTop = el.scrollHeight - prependRestoreRef.current; prependRestoreRef.current = null; } }, [msgs]);
-  useEffect(() => { if (trimmedRef.current) { trimmedRef.current = false; setHasMore(true); } }, [msgs]); // a live-tail trim opened a gap at the top → older messages stay re-fetchable
-  const setJumpVisible = (visible: boolean) => { showJumpRef.current = visible; setShowJump(visible); };
-  useEffect(() => { atBottomRef.current = true; setJumpVisible(false); newMsgOrderRef.current.clear(); burstCountRef.current = 0; }, [cur?.id]); // reset bottom-pin state + new-msg enter animation tracking on channel switch
-  const toBottom = () => {
-    const el = scrollRef.current;
-    if (!el) { atBottomRef.current = true; setJumpVisible(false); return; }
-    scrollingToBottomRef.current = true;
-    setJumpVisible(false);
-    animateBackToBottom(el, () => { scrollingToBottomRef.current = false; atBottomRef.current = true; setJumpVisible(false); });
-  };
-  // Fetch the previous (older) page via the `before` keyset cursor and prepend it; guarded so concurrent scroll events can't fire duplicate loads.
-  const loadOlder = async () => {
-    if (!cur || loadingOlderRef.current || !hasMore || !msgs.length) return;
-    const chId = cur.id; // pin the channel this fetch belongs to
-    loadingOlderRef.current = true;
-    try {
-      const d = await api("GET", `/api/messages/channel/${chId}?limit=${PAGE_SIZE}&before=${msgs[0]!.seq}`);
-      if (curIdRef.current !== chId) return; // channel switched mid-fetch → drop the stale result (finally still clears the in-flight flag)
-      const older: Msg[] = d.messages || [];
-      if (older.length) {
-        const el = scrollRef.current;
-        prependRestoreRef.current = el ? el.scrollHeight : null;
-        setMsgs((m) => [...older, ...m]);
-        try {
-          const olderThreadMeta = await fetchThreadMetadata(api, chId, older.map((message) => message.id));
-          if (curIdRef.current === chId) setThreadMeta((current) => ({ ...olderThreadMeta, ...current }));
-        } catch { /* message history remains usable when optional thread previews fail */ }
-      } // capture height right before prepend; layout effect restores after
-      setHasMore(!!d.hasMore);
-    } catch { /* transient — the next scroll-to-top retries */ } finally { loadingOlderRef.current = false; }
-  };
-  const onScroll = () => { const el = scrollRef.current; if (!el) return; if (el.scrollTop < 80 && hasMore && !loadingOlderRef.current) void loadOlder(); const st = nextScrollState(el, showJumpRef.current); atBottomRef.current = st.atBottom; if (!scrollingToBottomRef.current && st.changed) setJumpVisible(st.showJump); };
-  // highlightedMsgRef guards the flash to once per target. The deps below include `msgs`, so without it every
-  // incoming live message (msgs changes) would re-run this while ?msg= is still in the URL and re-flash the
-  // inbox-clicked message on each new message. Re-armed on channel switch so re-opening the same target flashes again.
-  const highlightedMsgRef = useRef<string | null>(null);
-  useEffect(() => { highlightedMsgRef.current = null; }, [cur?.id]);
-  useEffect(() => { // scroll to and highlight the target message for ~2s when msgParam is set (once per target)
-    if (!msgParam) return;
-    if (highlightedMsgRef.current === msgParam) return; // already flashed this target — ignore msgs/live-update re-runs
-    const el = document.getElementById("m-" + msgParam);
-    if (el) { highlightedMsgRef.current = msgParam; el.scrollIntoView({ block: "center" }); el.classList.add("msg-hl"); setTimeout(() => el.classList.remove("msg-hl"), 2200); } // no cleanup-cancel: the removal must outlive re-renders, else a re-render cancels the timer and the highlight sticks
-    else if (hasMore && !loadingOlderRef.current) void loadOlder(); // target outside the loaded window → page older history (re-runs on each prepend via the msgs dep) until it appears or the channel start is reached
-  }, [msgParam, msgs, hasMore]);
-  useEffect(() => { // ?thread= opens or switches the topic panel after finding its parent message (full id or 8-char short id) in the loaded list
-    if (!threadParam || !msgs.length) return;
-    const short = threadParam.includes(":") ? threadParam.split(":").pop()! : threadParam;
-    if (thread && (thread.parent.id === threadParam || thread.parent.id.startsWith(short))) return;
-    const m = msgs.find((x) => x.id === threadParam || x.id.startsWith(short));
-    if (m) startThread(m);
-    else if (hasMore && !loadingOlderRef.current) void loadOlder(); // parent outside the loaded window → page older history until it appears or the channel start is reached
-    // eslint-disable-next-line
-  }, [threadParam, msgs, hasMore, threadMeta, conversationReadOnly]);
-
-  const startThread = async (m: Msg) => { if (!cur) return; const meta = threadMeta[m.id]; if (conversationReadOnly && !meta?.threadChannelId) return; const tid = meta?.threadChannelId || await openThread(cur.id, m.id); if (tid) { const followed = meta?.followed ?? true; setThreadWidth(null); setThread({ channelId: tid, parent: m, followed }); setThreadMeta((tm) => (tm[m.id] ? { ...tm, [m.id]: { ...tm[m.id]!, unreadCount: 0 } } : tm)); markRead(tid); } }; // read-only conversations can open existing topics but never create a new one
-  const closeThread = () => {
-    setThread(null);
-    setThreadWidth(null);
-    if (!sp.has("thread")) return;
-    const next = new URLSearchParams(sp);
-    next.delete("thread");
-    next.delete("threadMsg");
-    setSp(next, { replace: true });
-  };
-  // "Jump to unread thread" bar: open a thread whose parent message may not be in the loaded page — fetch the parent
-  // by id (it isn't on screen to pass through startThread), open the panel, mark it read, and drop it from the bar.
-  const openUnreadThread = async (item: { threadChannelId: string; parentMessageId: string }) => {
-    if (!cur) return;
-    try {
-      const parent = (await api("GET", `/api/messages/${item.parentMessageId}`))?.message as Msg | undefined;
-      if (!parent) return;
-      setThreadWidth(null);
-      setThread({ channelId: item.threadChannelId, parent, followed: true });
-      setThreadMeta((tm) => (tm[parent.id] ? { ...tm, [parent.id]: { ...tm[parent.id]!, unreadCount: 0 } } : tm));
-      markRead(item.threadChannelId);
-      setUnreadThreads((list) => list.filter((th) => th.threadChannelId !== item.threadChannelId));
-    } catch { /* parent fetch failed (deleted / no access) — leave the bar untouched */ }
-  };
   // Returns the display name of the task assignee, used by the task pill
   const taskAssignee = (m: Msg) => { if (!m.taskAssigneeId) return ""; const a = agents.find((x) => x.id === m.taskAssigneeId); if (a) return " @" + (a.displayName || a.name); return m.taskAssigneeId === me?.id ? " @" + me.name : ""; };
   // Handles task status change / claim from the task badge; socket message:updated event refreshes the message automatically
-  const doTask = async (m: Msg, action: string, body?: unknown) => { try { await api("PATCH", `/api/tasks/${m.id}/${action}`, body); } catch { /* will self-correct on next reload */ } };
+  const doTask = async (m: Msg, action: string, body?: unknown) => { try { await taskApi.updateMessageTask(m.id, action, body); } catch { /* will self-correct on next reload */ } };
   const copyMarkdown = (content: string) => { navigator.clipboard?.writeText(content).catch(() => {}); };
   const agentLiveState = (a?: (typeof agents)[number]) => {
     if (!a) return "offline";
@@ -612,7 +400,7 @@ export function Chat({
       const num = Number(args[0]);
       const local = msgs.find((x) => x.taskNumber === num);
       if (local && cur) return navigateConversation(`/s/${slug}/channel/${cur.id}?msg=${local.id}`);
-      try { const r = await api("GET", "/api/tasks/space"); const tk = (r?.tasks ?? r ?? []).find((x: any) => x.taskNumber === num); if (tk) navigateConversation(`/s/${slug}/channel/${tk.channelId}?msg=${tk.id}`); } catch { /* */ }
+      try { const task = await taskApi.findTaskByNumber(num); if (task) navigateConversation(`/s/${slug}/channel/${task.channelId}?msg=${task.id}`); } catch { /* */ }
     }
   };
 
@@ -672,11 +460,6 @@ export function Chat({
       <button type="button" className="chat-head-icon-btn" title={t("nav.tasks")} aria-label={t("nav.tasks")} onClick={openCurrentTasks}>
         <ListTodo size={17} />
       </button>
-      {!isDm ? (
-        <button type="button" className="chat-head-icon-btn" title={t("chat.channelMembers")} aria-label={t("chat.channelMembers")} onClick={() => setShowMembers(true)}>
-          <UsersRound size={17} />
-        </button>
-      ) : null}
       {renderAggregateControl()}
       {!isDm && onOpenChannelSettings ? (
         <button type="button" className="chat-head-icon-btn" title={t("chat.channelSettings")} aria-label={t("chat.channelSettings")} onClick={(event) => onOpenChannelSettings(cur.id, event.currentTarget)}>
@@ -690,14 +473,24 @@ export function Chat({
   return (
     <>
       {!embedded && <ChatSidebar />}
-      {!thread || !threadOnly ? <main ref={chatMainRef} className={"content-col" + (isArchived ? " archived-readonly" : "")}>
+      {!thread || !threadOnly ? <main
+        ref={chatMainRef}
+        className={[
+          "content-col",
+          thread && !threadOnly ? "content-col--with-thread" : "",
+          isArchived ? "archived-readonly" : "",
+        ].filter(Boolean).join(" ")}
+        style={thread && !threadOnly
+          ? { "--chat-thread-occupied-width": `${threadConstraints.width + 10}px` } as CSSProperties
+          : undefined}
+      >
         <div className="head chat-head">
           <div className="chat-head__rail">
             {renderConversationListControl()}
-            <h1 className={isDm ? "chat-head__dm-title" : undefined}>
+            <h1 className={isDm ? "chat-head__dm-title" : "chat-head__channel-title"}>
               {isDm
                 ? <>{dmAgent ? <Avatar seed={dmAgent.name} url={avFor(dmAgent.avatarUrl)} size={24} /> : null}{cur?.name || ""}</>
-                : "# " + (cur?.name || "…")}
+                : <><Hash size={18} className="channel-row-icon" aria-hidden="true" />{cur?.name || "…"}</>}
             </h1>
             {dmAgent
               ? <span className="head-status"><span className={"dot " + agentLiveState(dmAgent)} aria-hidden="true" />{agentStatusLabel(t, agentLiveState(dmAgent))}</span>
@@ -760,12 +553,12 @@ export function Chat({
                 const isNewMsg = staggerIdx !== undefined;
                 const shouldEnter = isNewMsg || !!agentReplyPreview;
                 const avatar = deletedAgent
-                  ? <span className="msg-av"><Avatar seed={m.senderName} size={32} /></span>
+                  ? <span className="msg-av"><Avatar seed={m.senderName} size={36} /></span>
                   : ag
-                  ? <button type="button" className="msg-av clickable" aria-label={t("chat.openAgentCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => openMessageAgentCard(m.senderId!, event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />{agLive !== "offline" && <span className={"av-status " + agLive} />}</button>
+                  ? <button type="button" className="msg-av clickable" aria-label={t("chat.openAgentCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => openMessageAgentCard(m.senderId!, event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} />{agLive !== "offline" && <span className={"av-status " + agLive} />}</button>
                   : m.senderId
-                    ? <button type="button" className="msg-av clickable" aria-label={t("chat.openHumanCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => openMessageHumanCard(m.senderName, senderAvatar(m), event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></button>
-                    : <span className="msg-av"><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></span>;
+                    ? <button type="button" className="msg-av clickable" aria-label={t("chat.openHumanCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => openMessageHumanCard(m.senderName, senderAvatar(m), event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></button>
+                    : <span className="msg-av"><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></span>;
                 const sender = deletedAgent
                   ? <DeletedAgentName displayName={m.senderName} />
                   : ag
@@ -781,18 +574,25 @@ export function Chat({
                     surface={messageTone}
                     className={[
                       shouldEnter ? "msg-enter" : "",
+                      isDm ? "chat-message--direct" : "",
                       continuation ? "chat-message--continuation" : "",
                       hasContinuation ? "chat-message--has-continuation" : "",
                     ].filter(Boolean).join(" ")}
                     style={isNewMsg ? { "--msg-delay": `${staggerIdx * 60}ms` } as CSSProperties : undefined}
                     onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ m, x: e.clientX, y: e.clientY }); }}
                     avatar={continuation ? null : avatar}
-                    continuationTimestamp={continuation ? fmtMessageTime(m.createdAt) : null}
-                    header={continuation ? null : <MessageHeader
-                      sender={sender}
-                      timestamp={fmtMessageTimestamp(m.createdAt)}
-                    />}
+                    continuationTimestamp={m.senderType === "agent" ? null : continuation ? fmtMessageTime(m.createdAt) : null}
+                    header={continuation || isDm ? null : <MessageHeader sender={sender} />}
+                    footerTimestamp={m.senderType === "agent" ? fmtMessageTime(m.createdAt) : null}
+                    afterBubble={tm?.replyCount ? <MessageTopicPreview
+                      meta={tm}
+                      onOpen={() => startThread(m)}
+                      avatarUrlFor={(reply) => reply.senderType === "agent"
+                        ? avFor(agents.find((agent) => agent.id === reply.senderId)?.avatarUrl)
+                        : undefined}
+                    /> : null}
                     toolbar={<MessageToolbar>
+                      {m.producedByTurnId ? <TurnDetailsButton turnId={m.producedByTurnId} /> : null}
                       {!conversationReadOnly ? <ReactionToolbarButton onReact={(emoji) => react(m.id, emoji, false)} /> : null}
                       {!conversationReadOnly || tm?.threadChannelId ? <button title={t("chat.openThread")} aria-label={t("chat.openThread")} onClick={() => startThread(m)}><MessageCircle size={15} /></button> : null}
                       <button title={t("chat.copyMarkdown")} aria-label={t("chat.copyMarkdown")} onClick={() => copyMarkdown(m.content)}><Clipboard size={15} /></button>
@@ -825,13 +625,6 @@ export function Chat({
                         })()}
                         {m.reactions?.length ? <Reactions m={m} mine={me?.id ?? ""} readOnly={conversationReadOnly} onReact={(emoji, remove) => react(m.id, emoji, remove)} /> : null}
                       </div> : null}
-                    {tm?.replyCount ? <MessageTopicPreview
-                      meta={tm}
-                      onOpen={() => startThread(m)}
-                      avatarUrlFor={(reply) => reply.senderType === "agent"
-                        ? avFor(agents.find((agent) => agent.id === reply.senderId)?.avatarUrl)
-                        : undefined}
-                    /> : null}
                   </ChatMessageItem>
                 </Fragment>
                 );
@@ -872,19 +665,8 @@ export function Chat({
               readOnly={conversationReadOnly}
               headerLeading={threadOnly ? renderConversationListControl() : undefined}
               headerActions={threadOnly ? renderConversationActions() : undefined}
-              onFollowChange={(followed) => {
-                setThread((current) => current ? { ...current, followed } : current);
-                setThreadMeta((current) => ({
-                  ...current,
-                  [thread.parent.id]: {
-                    threadChannelId: thread.channelId,
-                    replyCount: current[thread.parent.id]?.replyCount ?? 0,
-                    unreadCount: current[thread.parent.id]?.unreadCount,
-                    followed,
-                  },
-                }));
-              }}
-              onClose={closeThread}
+              onFollowChange={setThreadFollowed}
+              onClose={() => { setThreadWidth(null); closeThread(); }}
               onOpenAgent={openAgentProfile}
               onOpenAgentCard={openMessageAgentCard}
               onOpenHumanCard={openMessageHumanCard}
@@ -893,7 +675,6 @@ export function Chat({
             />
           </>
         : !embedded && <aside className="traj-col"><LiveTrace conversationId={cur?.id} /></aside>}
-      {showMembers && cur && <ChannelMembersModal channelId={cur.id} channelName={cur.name} readOnly={conversationReadOnly} onClose={() => setShowMembers(false)} />}
       {ctxMenu && (() => {
         const m = ctxMenu.m;
         const close = () => setCtxMenu(null);
@@ -910,7 +691,7 @@ export function Chat({
             onReact={(emoji) => react(m.id, emoji, false)}
             onOpenThread={!conversationReadOnly || threadMeta[m.id]?.threadChannelId ? () => startThread(m) : undefined}
             onToggleSave={() => { savedIds.has(m.id) ? unsaveMsg(m.id) : saveMsg(m.id); }}
-            onConvertTask={() => { void api("POST", "/api/tasks/convert-message", { messageId: m.id }); }}
+            onConvertTask={() => { void taskApi.convertMessage(m.id); }}
           />
         );
       })()}
@@ -947,7 +728,8 @@ export function Chat({
 // Thread panel: right-side overlay showing the parent message, its replies, and a reply composer.
 function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = false, style, headerLeading, headerActions, onClose, onFollowChange, onOpenAgent, onOpenAgentCard, onOpenHumanCard, allowChannelAllMention, focusMessageId }: { channelId: string; parent: Msg; followed: boolean; readOnly?: boolean; solo?: boolean; style?: CSSProperties; headerLeading?: ReactNode; headerActions?: ReactNode; onClose: () => void; onFollowChange: (followed: boolean) => void; onOpenAgent: (id: string) => void; onOpenAgentCard: (agentId: string, trigger: HTMLElement) => void; onOpenHumanCard: (name: string, avatarUrl: string | null, trigger: HTMLElement) => void; allowChannelAllMention: boolean; focusMessageId?: string | null }) {
   const { t } = useTranslation();
-  const { api, onEvent, subscribeChannel, attachmentUrl, me, react, agents, channels, archivedChannels, slug, savedIds, saveMsg, unsaveMsg } = useStore();
+  const { attachmentUrl, me, react, agents, channels, archivedChannels, slug, savedIds, saveMsg, unsaveMsg } = useStore();
+  const taskApi = useTaskApi();
   const senderAvatar = (m: Msg) => resolveAvatar(m.senderType === "agent" ? agents.find((agent) => agent.id === m.senderId)?.avatarUrl : undefined, attachmentUrl);
   const nav = useNavigate();
   const routeLocation = useLocation();
@@ -966,70 +748,14 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
     if (type === "human") return trigger ? onOpenHumanCard(me?.name || "Human", null, trigger) : openHumanSettings();
     if (type === "channel") return navigateConversation(`/s/${slug}/channel/${args[0]}`);
     if (type === "thread") return navigateConversation(`/s/${slug}/channel/${args[0]}?thread=${args[0]}:${args[1]}`);
-    if (type === "task") { try { const r = await api("GET", "/api/tasks/space"); const tk = (r?.tasks ?? r ?? []).find((x: any) => x.taskNumber === Number(args[0])); if (tk) navigateConversation(`/s/${slug}/channel/${tk.channelId}?msg=${tk.id}`); } catch { /* */ } }
+    if (type === "task") { try { const task = await taskApi.findTaskByNumber(Number(args[0])); if (task) navigateConversation(`/s/${slug}/channel/${task.channelId}?msg=${task.id}`); } catch { /* */ } }
   };
-  const [msgs, setMsgs] = useState<Msg[]>([]);
+  const panelModel = useThreadPanelModel(channelId, agents, focusMessageId);
+  const { messages: msgs, scrollRef, followPending } = panelModel;
   const threadImageGallery = useMemo(() => buildMessageImageGallery([parent, ...msgs], attachmentUrl), [attachmentUrl, msgs, parent]);
-  const [followPending, setFollowPending] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ m: Msg; x: number; y: number } | null>(null);
   const composerRef = useRef<ComposerHandle>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const highlightedReplyRef = useRef<string | null>(null);
-  useEffect(() => {
-    let active = true;
-    setMsgs([]);
-    subscribeChannel(channelId);
-    void (async () => {
-      const d = await api("GET", `/api/messages/channel/${channelId}?limit=200`);
-      if (active) setMsgs(d.messages || []);
-    })();
-    return () => { active = false; };
-  }, [channelId]); // join the thread room so replies arrive live (openThread/startThread do not make the socket a room member on their own)
-  useEffect(() => onEvent((e) => {
-    if (e.type === "message" && e.channelId === channelId) setMsgs((m) => {
-      const preview = absorbPersistedAgentMessagePreview(m, e.message);
-      if (preview.consumed) return preview.messages;
-      return [...dropAgentReplyPreviewsForMessage(m, e.message), e.message];
-    });
-    else if (e.type === "message:updated" && e.message?.channelId === channelId) setMsgs((m) => m.map((x) => (x.id === e.message.id ? { ...x, ...e.message } : x)));
-    else if (e.type === "agent:deleted" && e.id) setMsgs((current) => current.map((message) => message.senderId === e.id
-      ? { ...message, senderDeleted: true }
-      : message));
-    else if (e.type === "agent:reply" && e.channelId === channelId) setMsgs((m) => applyAgentReplyPreview(m, e as AgentReplyEvent, agents.find((a) => a.id === e.agentId)));
-  }), [channelId, agents]);
-  const streamingPreviewActive = hasStreamingAgentReplyPreview(msgs);
-  useEffect(() => {
-    if (!streamingPreviewActive) return;
-    const timer = window.setInterval(() => {
-      setMsgs((m) => {
-        const tick = tickAgentReplyPreviews(m);
-        return tick.changed ? tick.messages : m;
-      });
-    }, AGENT_REPLY_STREAM_TICK_MS);
-    return () => window.clearInterval(timer);
-  }, [streamingPreviewActive]);
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [msgs]);
-  useEffect(() => { highlightedReplyRef.current = null; }, [channelId]);
-  useEffect(() => {
-    if (!focusMessageId || highlightedReplyRef.current === focusMessageId) return;
-    const element = document.getElementById(`m-${focusMessageId}`);
-    if (!element) return;
-    highlightedReplyRef.current = focusMessageId;
-    element.scrollIntoView({ block: "center" });
-    element.classList.add("msg-hl");
-    window.setTimeout(() => element.classList.remove("msg-hl"), 2200);
-  }, [focusMessageId, msgs]);
-  const toggleFollow = async () => {
-    if (followPending) return;
-    const next = !followed;
-    setFollowPending(true);
-    try {
-      await api("POST", `/api/channels/threads/${next ? "follow" : "unfollow"}`, { threadChannelId: channelId });
-      onFollowChange(next);
-    } finally {
-      setFollowPending(false);
-    }
-  };
+  const toggleFollow = () => panelModel.toggleFollow(followed, onFollowChange);
   const row = (m: Msg, dateDivider?: ReactNode, continuation = false, hasContinuation = false) => {
     if (m.senderType === "system") return <Fragment key={m.id}>{dateDivider}<div className="msg-sys" id={"m-" + m.id}>{m.content}</div></Fragment>; // system messages render as a banner with no avatar
     const ag = m.senderType === "agent" && m.senderId ? agents.find((a) => a.id === m.senderId) : undefined;
@@ -1052,13 +778,13 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
         ].filter(Boolean).join(" ")}
         onContextMenu={(event) => { event.preventDefault(); setCtxMenu({ m, x: event.clientX, y: event.clientY }); }}
         avatar={continuation ? null : deletedAgent
-          ? <span className="msg-av"><Avatar seed={m.senderName} size={32} /></span>
+          ? <span className="msg-av"><Avatar seed={m.senderName} size={36} /></span>
           : ag
-          ? <button type="button" className="msg-av clickable" aria-label={t("chat.openAgentCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => onOpenAgentCard(m.senderId!, event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} />{live !== "offline" && <span className={"av-status " + live} />}</button>
+          ? <button type="button" className="msg-av clickable" aria-label={t("chat.openAgentCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => onOpenAgentCard(m.senderId!, event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} />{live !== "offline" && <span className={"av-status " + live} />}</button>
           : m.senderId
-            ? <button type="button" className="msg-av clickable" aria-label={t("chat.openHumanCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => onOpenHumanCard(m.senderName, senderAvatar(m), event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></button>
-            : <span className="msg-av"><Avatar seed={m.senderName} url={senderAvatar(m)} size={32} /></span>}
-        continuationTimestamp={continuation ? fmtMessageTime(m.createdAt) : null}
+            ? <button type="button" className="msg-av clickable" aria-label={t("chat.openHumanCard", { name: m.senderName })} aria-haspopup="dialog" onClick={(event) => onOpenHumanCard(m.senderName, senderAvatar(m), event.currentTarget)}><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></button>
+            : <span className="msg-av"><Avatar seed={m.senderName} url={senderAvatar(m)} size={36} /></span>}
+        continuationTimestamp={m.senderType === "agent" ? null : continuation ? fmtMessageTime(m.createdAt) : null}
         header={continuation ? null : <MessageHeader
           sender={deletedAgent
             ? <DeletedAgentName displayName={m.senderName} />
@@ -1067,9 +793,10 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
             : m.senderId
               ? <span className="who">{m.senderName}</span>
               : <span className="who">{m.senderName}</span>}
-          timestamp={fmtMessageTimestamp(m.createdAt)}
         />}
+        footerTimestamp={m.senderType === "agent" ? fmtMessageTime(m.createdAt) : null}
         toolbar={<MessageToolbar>
+          {m.producedByTurnId ? <TurnDetailsButton turnId={m.producedByTurnId} /> : null}
           {!readOnly ? <ReactionToolbarButton onReact={(emoji) => react(m.id, emoji, false)} /> : null}
           <button title={t("chat.copyMarkdown")} aria-label={t("chat.copyMarkdown")} onClick={() => { navigator.clipboard?.writeText(m.content).catch(() => {}); }}><Clipboard size={15} /></button>
           <button title={t("chat.more")} aria-label={t("chat.more")} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setCtxMenu({ m, x: rect.right - 212, y: rect.bottom + 4 }); }}><MoreHorizontal size={15} /></button>
@@ -1087,7 +814,7 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
   return (
     <aside className={`thread-panel${solo ? " thread-panel--solo" : ""}`} style={style}>
       <div className="thread-head">{headerLeading}<span className="grow">{t("chat.thread")}</span>{headerActions}
-        {!readOnly ? <button className="tp-link" title={t("chat.markDone")} onClick={async () => { await api("POST", "/api/channels/threads/done", { threadChannelId: channelId }); onClose(); }}><CheckCircle2 size={14} /></button> : null}
+        {!readOnly ? <button className="tp-link" title={t("chat.markDone")} onClick={() => { void panelModel.markDone(onClose); }}><CheckCircle2 size={14} /></button> : null}
         {!readOnly ? <button className="tp-link" title={followed ? t("chat.unfollowThread") : t("chat.followThread")} aria-label={followed ? t("chat.unfollowThread") : t("chat.followThread")} aria-pressed={followed} disabled={followPending} onClick={toggleFollow}>{followed ? <Bell size={14} /> : <BellOff size={14} />}</button> : null}
         <button className="tp-link" onClick={() => navigateConversation(`/s/${slug}/channel/${parent.channelId}?msg=${parent.id}`)} title={t("chat.viewInChannel")}><ExternalLink size={14} /></button>
         <button className="tp-close" onClick={onClose} title={t("chat.close")}><X size={15} /></button></div>
@@ -1118,28 +845,13 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
         onClose={() => setCtxMenu(null)}
         onReact={(emoji) => react(ctxMenu.m.id, emoji, false)}
         onToggleSave={() => { savedIds.has(ctxMenu.m.id) ? unsaveMsg(ctxMenu.m.id) : saveMsg(ctxMenu.m.id); }}
-        onConvertTask={() => { void api("POST", "/api/tasks/convert-message", { messageId: ctxMenu.m.id }); }}
+        onConvertTask={() => { void taskApi.convertMessage(ctxMenu.m.id); }}
       /> : null}
     </aside>
   );
 }
+/* Removed direct channel-member modal; member management lives in channel settings.
 
-// Channel agent membership: the Human has implicit Space access and is not a channel member row.
-function ChannelMembersModal({ channelId, channelName, readOnly = false, onClose }: { channelId: string; channelName: string; readOnly?: boolean; onClose: () => void }) {
-  const { t } = useTranslation();
-  useEscClose(onClose);
-  const { api, visibleAgents: agents, attachmentUrl } = useStore();
-  const avFor = (u?: string | null) => resolveAvatar(u, attachmentUrl);
-  const [members, setMembers] = useState<any[]>([]);
-  const load = async () => { const data = await api("GET", `/api/channels/${channelId}/members`); setMembers(data?.agents || []); };
-  useEffect(() => { load(); }, [channelId]);
-  const inCh = new Set(members.map((agent) => agent.id));
-  const addable = agents.filter((a) => !inCh.has(a.id));
-  const add = async (agentId: string) => { await api("POST", `/api/channels/${channelId}/members`, { agentId }); load(); };
-  const remove = async (agentId: string) => { await api("DELETE", `/api/channels/${channelId}/members`, { agentId }); load(); };
-  return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3># {channelName} · {t("chat.membersCount", { count: members.length })}</h3>
         <div className="sec">{t("common.agents")} <span className="cnt">{members.length}</span></div>
         {members.map((a) => (
@@ -1156,3 +868,4 @@ function ChannelMembersModal({ channelId, channelName, readOnly = false, onClose
     </div>
   );
 }
+*/

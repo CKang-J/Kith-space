@@ -1,6 +1,6 @@
 # Home 总控 Space、Space 根目录与跨 Space 编排设计
 
-状态：已确认设计；H1-H4 已完成并等待用户验收，H5 为后续能力且尚未开始。
+状态：已确认设计；H1-H4 已完成并通过 2026-07-18 本轮用户验收，H5 为后续能力且尚未开始。
 确认日期：2026-07-12。
 适用范围：A1-A6 用户验收后的前置修复；完成前不进入 Runtime 契约 v2。
 
@@ -267,6 +267,10 @@ idempotency key
 实现说明：`GET /api/spaces` 以稳定 homeSpaceId 返回 `isHome`，`POST /api/spaces/:id/open` 只在注册 root 可用时更新最近打开时间。前端普通冷启动选择 ready Home，显式 ready Space 深链接仍优先。Home Dock 注册 `spaces`，卡片目录过滤 Home 自身并提供搜索、刷新、默认创建、已有文件夹接入、失联重连和同窗进入；普通 Space 收到 `module=spaces` 时规范化回 Chat。顶部 SpaceSwitcher 只保留快速切换、失联恢复和进入 Home Spaces 的入口。实现未增加 H5 跨 Space 聚合、写操作或伪摘要。
 
 验证：typecheck、502/502 单测、完整集成测试、Web build（2571 modules）与 Desktop build 通过；单轮轻量复核发现的刷新入口遗漏已修复。实际 Desktop/Web 交互与视觉由用户在 H1-H4 验收中确认。
+
+### 2026-07-18 增量：Spaces 批量移除
+
+Home Spaces 增加批量管理模式：仅普通 Space 卡片可选，确认后逐个调用现有注册表移除接口；不会删除本地目录或数据，Home 始终不可选。批次中失败的项目保留选中状态，供用户修复后重试；这不是 H5 跨 Space 编排能力。
 
 ### H5 跨 Space 编排
 
