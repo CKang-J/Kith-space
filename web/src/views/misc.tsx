@@ -14,6 +14,7 @@ import { workspaceLocationForConversation, workspaceLocationForModule } from "..
 import { MemoryAdvisorSettings } from "./advisor-provider/MemoryAdvisorSettings.tsx";
 import { ModelProviderSettings } from "./model-settings/ModelProviderSettings.tsx";
 import { RuntimeSettings } from "./model-settings/RuntimeSettings.tsx";
+import { AppearanceSettings } from "./appearance-settings/AppearanceSettings.tsx";
 
 interface TasksProps {
   channelIdOverride?: string | null;
@@ -242,6 +243,7 @@ export function Search() {
 // SETTINGS labels are i18n keys; call t(label) at render time
 const SETTINGS: [string, string][] = [
   ["human", "misc.settingsNavHuman"],
+  ["appearance", "misc.settingsNavAppearance"],
   ["space", "misc.settingsNavSpace"],
   ["models", "misc.settingsNavModels"],
   ["runtimes", "misc.settingsNavRuntimes"],
@@ -281,8 +283,10 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
         <div className="scroll">
           {cur === "human"
             ? <HumanSettings api={api} />
-            : cur === "space"
-              ? <SpaceSettings api={api} spaceId={spaceId} />
+            : cur === "appearance"
+              ? <AppearanceSettings api={api} />
+              : cur === "space"
+                ? <SpaceSettings api={api} spaceId={spaceId} />
               : cur === "models"
                 ? <ModelProviderSettings api={api} />
               : cur === "runtimes"

@@ -206,6 +206,15 @@ test("settings locations preserve model and runtime control-plane resources", ()
   }
 });
 
+test("settings locations preserve the appearance resource", () => {
+  const target = workspaceLocationForModule(
+    "/s/home/channel/all",
+    "?module=settings&settings=human",
+    { moduleId: "settings", settings: "appearance" },
+  );
+  assert.equal(new URL(target, "http://kith-space.local").searchParams.get("settings"), "appearance");
+});
+
 test("module resources are decoded only for their owning module", () => {
   const search = "?taskScope=channel-1&agent=agent-1&settings=desktop";
 

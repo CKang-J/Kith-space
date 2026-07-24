@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const css = fs.readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+const spacesCss = fs.readFileSync(new URL("../web/src/spaces/SpacesModule.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 const messageRenderSrc = fs.readFileSync(new URL("../web/src/messageRender.tsx", import.meta.url), "utf8");
 const membersSrc = fs.readFileSync(new URL("../web/src/views/Members.tsx", import.meta.url), "utf8");
 const filesMemorySrc = fs.readFileSync(new URL("../web/src/views/agent-memory/FilesMemoryView.tsx", import.meta.url), "utf8");
@@ -33,16 +34,30 @@ function assertDecl(selector: string, prop: string, value: string): void {
 
 test("font tokens only reference loaded or system fonts", () => {
   assert.doesNotMatch(indexHtml, /fonts\.googleapis|fonts\.gstatic/);
-  assert.match(css, /--sans:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;--serif:var\(--sans\);--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace/);
+  for (const font of ["sora", "inter", "geist", "jetbrains-mono", "fira-code", "geist-mono"]) {
+    assert.match(css, new RegExp(`@import "@fontsource-variable/${font}/wght\\.css"`));
+  }
+  assert.match(css, /--font-interface:'Sora Variable','PingFang SC','Microsoft YaHei',sans-serif/);
+  assert.match(css, /:root\[data-interface-font="jetbrains_mono"\]\{--font-interface:'JetBrains Mono Variable'/);
+  assert.match(css, /--font-content:var\(--font-interface\)/);
+  assert.match(css, /--font-code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace/);
+  assert.match(css, /--sans:var\(--font-interface\);--serif:var\(--font-interface\);--mono:var\(--font-code\)/);
+  assert.match(css, /--font-mono:var\(--mono\)/);
   assert.match(css, /--font-size-xs:11px;--font-size-sm:12px;--font-size-base:14px;--font-size-lg:16px;--font-size-title:20px/);
   assert.match(css, /--line-height-body:1\.5;--line-height-reading:1\.68/);
   assert.match(css, /--md-text-size:var\(--font-size-base\);--md-line-height:var\(--line-height-reading\);--md-paragraph-gap:\.75em/);
-  assert.doesNotMatch(css, /--font-display|--font-body|--font-code|--text-heading|--text-body/);
+  assert.doesNotMatch(css, /--font-display|--font-body|--text-heading|--text-body/);
   assertDecl("body", "font-family", "var\\(--sans\\)");
   assertDecl("body", "font-size", "var\\(--font-size-base\\)");
-  assertDecl(".md h1", "font-family", "var\\(--serif\\)");
+  assertDecl(".md", "font-family", "var\\(--font-content\\)");
+  assertDecl(".md h1", "font-family", "var\\(--font-content\\)");
+  assertDecl(".ws-md", "font-family", "var\\(--font-content\\)");
   assertDecl(".md code", "font-family", "var\\(--mono\\)");
   assertDecl(".md strong", "color", "var\\(--ink\\)");
+  for (const selector of [".act .act-t", ".act .act-x.mono", ".ws-row", ".ws-path", ".ws-content", ".ws-root", ".perm-key"]) {
+    assertDecl(selector, "font-family", "var\\(--mono\\)");
+  }
+  assert.match(spacesCss, /\.host-directory-picker__path,\s*\.host-directory-picker__selected\s*\{[^}]*font-family:\s*var\(--mono\)/);
 });
 
 test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", () => {
@@ -50,6 +65,13 @@ test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", 
   assertDecl(".md a", "color", "var\\(--link-blue\\)");
   assert.match(css, /\.md\{[^}]*font-size:var\(--md-text-size\)[^}]*line-height:var\(--md-line-height\)/);
   assertDecl(".md p + p", "margin-top", "var\\(--md-paragraph-gap\\)");
+  assertDecl(".chat-message .md", "--md-line-height", "var\\(--line-height-body\\)");
+  assertDecl(".chat-message .md", "--md-paragraph-gap", "\\.25em");
+  assertDecl(".chat-message .md ul", "margin", "\\.25em 0");
+  assertDecl(".chat-message .md ol", "margin", "\\.25em 0");
+  assertDecl(".chat-message .md li", "margin", "\\.1em 0");
+  assertDecl(".chat-message .md strong", "color", "inherit");
+  assertDecl(".chat-message .md b", "color", "inherit");
   assertDecl(".color-token", "display", "inline");
   assertDecl(".color-token", "vertical-align", "baseline");
   assertDecl(".color-token", "white-space", "nowrap");

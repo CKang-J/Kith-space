@@ -33,7 +33,25 @@ function withAppDatabase(run: (sqlite: Database.Database, dbPath: string) => voi
 const LEGACY_V3_CHECKSUM = "3188d1283621a7b042594c340ace87b42195cef97b689ffb5c0f78535b9b7eba";
 const LEGACY_V5_CHECKSUM = "935bab99c7fa6ecb6b79e0eabba2ee4e074f12f62551998c9d58daf05c6a2d0b";
 
+function removeV8AppearanceSettings(sqlite: Database.Database): void {
+  sqlite.exec(`
+    DROP TABLE appearance_settings;
+    DELETE FROM app_migration_journal WHERE version >= 8;
+  `);
+}
+
+function removeV7AppearanceFonts(sqlite: Database.Database): void {
+  removeV8AppearanceSettings(sqlite);
+  sqlite.exec(`
+    ALTER TABLE installation_state DROP COLUMN code_font;
+    ALTER TABLE installation_state DROP COLUMN content_font;
+    ALTER TABLE installation_state DROP COLUMN interface_font;
+    DELETE FROM app_migration_journal WHERE version >= 7;
+  `);
+}
+
 function removeV6ControlPlane(sqlite: Database.Database): void {
+  removeV7AppearanceFonts(sqlite);
   sqlite.pragma("foreign_keys = OFF");
   sqlite.exec(`
     DROP TABLE cli_config_import_snapshots;
@@ -126,6 +144,8 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       { version: 4, name: "user-global-memory-foreign-keys", checksumLength: 64 },
       { version: 5, name: "advisor-provider-control-plane", checksumLength: 64 },
       { version: 6, name: "model-runtime-control-plane", checksumLength: 64 },
+      { version: 7, name: "appearance-font-settings", checksumLength: 64 },
+      { version: 8, name: "appearance-font-groups", checksumLength: 64 },
     ]);
     assert.match(String(sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get()), /^[0-9a-f]{64}$/);
     for (const table of [
@@ -148,6 +168,7 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       "runtime_profile_revisions",
       "runtime_probe_cache",
       "cli_config_import_snapshots",
+      "appearance_settings",
     ]) assert.ok(tableNames(sqlite).includes(table), `missing ${table}`);
     assert.deepEqual((sqlite.prepare("PRAGMA index_info(user_memory_mutations_key_uniq)").all() as Array<{ name: string }>).map((row) => row.name), [
       "actor_json", "idempotency_key",
@@ -167,6 +188,25 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       SELECT runtime_configuration_epoch
       FROM installation_state WHERE singleton_key = 1
     `).pluck().get(), 1);
+    assert.deepEqual(sqlite.prepare(`
+      SELECT interface_font, content_font, code_font
+      FROM appearance_settings WHERE singleton_key = 1
+    `).get(), {
+      interface_font: "sora",
+      content_font: "follow_interface",
+      code_font: "system_monospace",
+    });
+    assert.throws(() => sqlite.prepare(`
+      UPDATE appearance_settings SET interface_font = 'unknown'
+      WHERE singleton_key = 1
+    `).run(), /CHECK constraint/i);
+    sqlite.prepare(`
+      UPDATE appearance_settings SET interface_font = 'jetbrains_mono'
+      WHERE singleton_key = 1
+    `).run();
+    assert.equal(sqlite.prepare(`
+      SELECT interface_font FROM appearance_settings WHERE singleton_key = 1
+    `).pluck().get(), "jetbrains_mono");
     assert.deepEqual(sqlite.prepare(`
       SELECT runtime_id, default_binding_mode, default_model_configuration_id, default_model_configuration_revision
       FROM runtime_profiles ORDER BY runtime_id
@@ -190,6 +230,31 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
           default_model_configuration_revision = 1
       WHERE runtime_id = 'claude'
     `).run(), /CHECK constraint/i);
+  });
+});
+
+test("version 7 app.db carries existing appearance settings into the grouped font schema", () => {
+  withAppDatabase((sqlite, dbPath) => {
+    migrateAppDatabase(sqlite, dbPath);
+    removeV8AppearanceSettings(sqlite);
+    sqlite.prepare(`
+      UPDATE installation_state
+      SET interface_font = 'geist', content_font = 'inter', code_font = 'fira_code'
+      WHERE singleton_key = 1
+    `).run();
+    sqlite.pragma("user_version = 7");
+
+    migrateAppDatabase(sqlite, dbPath);
+
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 8);
+    assert.deepEqual(sqlite.prepare(`
+      SELECT interface_font, content_font, code_font
+      FROM appearance_settings WHERE singleton_key = 1
+    `).get(), {
+      interface_font: "geist",
+      content_font: "inter",
+      code_font: "fira_code",
+    });
   });
 });
 

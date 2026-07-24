@@ -22,8 +22,9 @@ export default defineConfig({
     port: Number(process.env.VITE_PORT ?? 5273),
     strictPort: true,
     proxy: {
-      "/api": { target: API, changeOrigin: true, agent: coreProxyAgent },
-      "/socket.io": { target: API, ws: true, changeOrigin: true },
+      // Preserve the browser-visible Host so Core can compare it with Origin for browser-session CSRF checks.
+      "/api": { target: API, changeOrigin: false, agent: coreProxyAgent },
+      "/socket.io": { target: API, ws: true, changeOrigin: false },
     },
   },
   build: {

@@ -40,6 +40,7 @@ import { handleMemoryAdvisor } from "./memoryAdvisor.js";
 import { handleDisclosureGrants } from "./disclosureGrants.js";
 import { handleAdvisorProvider } from "./advisorProvider.js";
 import { handleModelSettings } from "./modelSettings.js";
+import { handleAppearanceSettings } from "./appearanceSettings.js";
 
 export async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, method: string): Promise<boolean> {
   const p = url.pathname;
@@ -66,6 +67,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (await handleHostDirectories(humanCtx)) return true;
   if (await handleLocalRuntimeHumanScope(humanCtx)) return true;
   if (await handleSpacesHumanScope(humanCtx)) return true;
+  if (await handleAppearanceSettings(humanCtx)) return true;
   if (await handleAdvisorProvider(humanCtx)) return true;
   if (await handleModelSettings(humanCtx)) return true;
 

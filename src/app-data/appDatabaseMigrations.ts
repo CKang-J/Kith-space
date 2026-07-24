@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 
-export const APP_DATABASE_SCHEMA_VERSION = 6;
+export const APP_DATABASE_SCHEMA_VERSION = 8;
 
 export type AppDatabaseCompatibilityReason = "integrity" | "future" | "schema";
 
@@ -709,6 +709,49 @@ APP_SCHEMA_V6.set("advisor_model_profile_revisions", [
   "source_model_configuration_id", "source_model_configuration_revision",
 ]);
 
+const APP_V7_APPEARANCE_FONT_SETTINGS_SQL = `
+  ALTER TABLE installation_state
+    ADD COLUMN interface_font TEXT NOT NULL DEFAULT 'sora'
+      CHECK (interface_font IN ('sora', 'system_ui', 'inter', 'geist'));
+  ALTER TABLE installation_state
+    ADD COLUMN content_font TEXT NOT NULL DEFAULT 'follow_interface'
+      CHECK (content_font IN ('follow_interface', 'system_ui', 'sora', 'inter', 'geist'));
+  ALTER TABLE installation_state
+    ADD COLUMN code_font TEXT NOT NULL DEFAULT 'system_monospace'
+      CHECK (code_font IN ('system_monospace', 'jetbrains_mono', 'fira_code', 'geist_mono'));
+`;
+
+const APP_SCHEMA_V7 = new Map(APP_SCHEMA_V6);
+APP_SCHEMA_V7.set("installation_state", [
+  ...APP_SCHEMA_V6.get("installation_state")!,
+  "interface_font", "content_font", "code_font",
+]);
+
+const APP_V8_APPEARANCE_FONT_GROUPS_SQL = `
+  CREATE TABLE appearance_settings (
+    singleton_key INTEGER PRIMARY KEY NOT NULL CHECK (singleton_key = 1),
+    interface_font TEXT NOT NULL DEFAULT 'sora'
+      CHECK (interface_font IN (
+        'sora', 'system_ui', 'inter', 'geist',
+        'system_monospace', 'jetbrains_mono', 'fira_code', 'geist_mono'
+      )),
+    content_font TEXT NOT NULL DEFAULT 'follow_interface'
+      CHECK (content_font IN ('follow_interface', 'system_ui', 'sora', 'inter', 'geist')),
+    code_font TEXT NOT NULL DEFAULT 'system_monospace'
+      CHECK (code_font IN ('system_monospace', 'jetbrains_mono', 'fira_code', 'geist_mono'))
+  );
+
+  INSERT INTO appearance_settings (singleton_key, interface_font, content_font, code_font)
+  SELECT singleton_key, interface_font, content_font, code_font
+  FROM installation_state
+  WHERE singleton_key = 1;
+`;
+
+const APP_SCHEMA_V8 = new Map(APP_SCHEMA_V7);
+APP_SCHEMA_V8.set("appearance_settings", [
+  "singleton_key", "interface_font", "content_font", "code_font",
+]);
+
 function baselineChecksum(): string {
   return createHash("sha256").update(APP_BASELINE_SQL).digest("hex");
 }
@@ -770,7 +813,7 @@ function assertIntegrity(sqlite: Database.Database, dbPath: string): void {
 
 function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_DATABASE_SCHEMA_VERSION): void {
   const missing: string[] = [];
-  const expectedSchema = version >= 6 ? APP_SCHEMA_V6 : version >= 5 ? APP_SCHEMA_V5 : version >= 4 ? APP_SCHEMA_V4 : version >= 3 ? APP_SCHEMA_V3 : version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
+  const expectedSchema = version >= 8 ? APP_SCHEMA_V8 : version >= 7 ? APP_SCHEMA_V7 : version >= 6 ? APP_SCHEMA_V6 : version >= 5 ? APP_SCHEMA_V5 : version >= 4 ? APP_SCHEMA_V4 : version >= 3 ? APP_SCHEMA_V3 : version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
   for (const [table, requiredColumns] of expectedSchema) {
     const actual = tableColumns(sqlite, table);
     if (actual.size === 0) {
@@ -910,6 +953,63 @@ function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_D
       if (!row) missing.push(`runtime_profiles.${runtimeId}`);
     }
   }
+  if (version >= 7) {
+    const installationStateSql = String(sqlite.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'installation_state'",
+    ).pluck().get() ?? "").replaceAll(/\s+/g, " ").toLowerCase();
+    for (const fragment of [
+      "check (interface_font in ('sora', 'system_ui', 'inter', 'geist'))",
+      "check (content_font in ('follow_interface', 'system_ui', 'sora', 'inter', 'geist'))",
+      "check (code_font in ('system_monospace', 'jetbrains_mono', 'fira_code', 'geist_mono'))",
+    ]) if (!installationStateSql.includes(fragment)) missing.push(`installation_state (${fragment})`);
+    const row = sqlite.prepare(`
+      SELECT interface_font, content_font, code_font
+      FROM installation_state WHERE singleton_key = 1
+    `).get() as {
+      interface_font: string;
+      content_font: string;
+      code_font: string;
+    } | undefined;
+    if (!row) {
+      missing.push("installation_state.appearance_fonts (singleton)");
+    } else if (
+      !["sora", "system_ui", "inter", "geist"].includes(row.interface_font)
+      || !["follow_interface", "system_ui", "sora", "inter", "geist"].includes(row.content_font)
+      || !["system_monospace", "jetbrains_mono", "fira_code", "geist_mono"].includes(row.code_font)
+    ) {
+      missing.push("installation_state.appearance_fonts (value)");
+    }
+  }
+  if (version >= 8) {
+    const appearanceSettingsSql = String(sqlite.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'appearance_settings'",
+    ).pluck().get() ?? "").replaceAll(/\s+/g, " ").toLowerCase();
+    for (const fragment of [
+      "'system_monospace', 'jetbrains_mono', 'fira_code', 'geist_mono'",
+      "check (content_font in ('follow_interface', 'system_ui', 'sora', 'inter', 'geist'))",
+      "check (code_font in ('system_monospace', 'jetbrains_mono', 'fira_code', 'geist_mono'))",
+    ]) if (!appearanceSettingsSql.includes(fragment)) missing.push(`appearance_settings (${fragment})`);
+    const row = sqlite.prepare(`
+      SELECT interface_font, content_font, code_font
+      FROM appearance_settings WHERE singleton_key = 1
+    `).get() as {
+      interface_font: string;
+      content_font: string;
+      code_font: string;
+    } | undefined;
+    if (!row) {
+      missing.push("appearance_settings (singleton)");
+    } else if (
+      ![
+        "sora", "system_ui", "inter", "geist",
+        "system_monospace", "jetbrains_mono", "fira_code", "geist_mono",
+      ].includes(row.interface_font)
+      || !["follow_interface", "system_ui", "sora", "inter", "geist"].includes(row.content_font)
+      || !["system_monospace", "jetbrains_mono", "fira_code", "geist_mono"].includes(row.code_font)
+    ) {
+      missing.push("appearance_settings (value)");
+    }
+  }
   if (missing.length > 0) {
     throw new AppDatabaseMigrationError(
       "schema",
@@ -930,6 +1030,8 @@ function expectedJournal(version: number) {
     ...(version >= 4 ? [{ version: 4, name: "user-global-memory-foreign-keys", checksum: migrationChecksum(APP_V4_USER_GLOBAL_MEMORY_FOREIGN_KEYS_SQL) }] : []),
     ...(version >= 5 ? [{ version: 5, name: "advisor-provider-control-plane", checksum: migrationChecksum(APP_V5_ADVISOR_PROVIDER_CONTROL_PLANE_SQL) }] : []),
     ...(version >= 6 ? [{ version: 6, name: "model-runtime-control-plane", checksum: migrationChecksum(APP_V6_MODEL_RUNTIME_CONTROL_PLANE_SQL) }] : []),
+    ...(version >= 7 ? [{ version: 7, name: "appearance-font-settings", checksum: migrationChecksum(APP_V7_APPEARANCE_FONT_SETTINGS_SQL) }] : []),
+    ...(version >= 8 ? [{ version: 8, name: "appearance-font-groups", checksum: migrationChecksum(APP_V8_APPEARANCE_FONT_GROUPS_SQL) }] : []),
   ];
 }
 
@@ -1144,6 +1246,36 @@ export function migrateAppDatabase(sqlite: Database.Database, dbPath: string, op
       `).run(6, "model-runtime-control-plane", migrationChecksum(APP_V6_MODEL_RUNTIME_CONTROL_PLANE_SQL), Date.now());
     });
     applyModelRuntimeControlPlane.immediate();
+    version = 6;
+  }
+  if (version === 6) {
+    assertSchema(sqlite, dbPath, 6);
+    assertJournal(sqlite, dbPath, 6);
+    const applyAppearanceFontSettings = sqlite.transaction(() => {
+      sqlite.exec(APP_V7_APPEARANCE_FONT_SETTINGS_SQL);
+      assertSchema(sqlite, dbPath, 7);
+      sqlite.pragma("user_version = 7");
+      sqlite.prepare(`
+        INSERT INTO app_migration_journal (version, name, checksum, applied_at)
+        VALUES (?, ?, ?, ?)
+      `).run(7, "appearance-font-settings", migrationChecksum(APP_V7_APPEARANCE_FONT_SETTINGS_SQL), Date.now());
+    });
+    applyAppearanceFontSettings.immediate();
+    version = 7;
+  }
+  if (version === 7) {
+    assertSchema(sqlite, dbPath, 7);
+    assertJournal(sqlite, dbPath, 7);
+    const applyAppearanceFontGroups = sqlite.transaction(() => {
+      sqlite.exec(APP_V8_APPEARANCE_FONT_GROUPS_SQL);
+      assertSchema(sqlite, dbPath, 8);
+      sqlite.pragma("user_version = 8");
+      sqlite.prepare(`
+        INSERT INTO app_migration_journal (version, name, checksum, applied_at)
+        VALUES (?, ?, ?, ?)
+      `).run(8, "appearance-font-groups", migrationChecksum(APP_V8_APPEARANCE_FONT_GROUPS_SQL), Date.now());
+    });
+    applyAppearanceFontGroups.immediate();
   }
   assertCompatibleAppDatabase(sqlite, dbPath, { requireCurrentVersion: true });
 }

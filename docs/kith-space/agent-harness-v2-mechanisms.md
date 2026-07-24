@@ -910,7 +910,7 @@ P-A10 基线中，最小 `message + delivery rows` 单事务 20-Agent fan-out me
 
 - workspace schema v9、app.db v5真实迁移通过；
 - `quick_check=ok`，外键违规为 0；
-- 当期完整unit为894通过、11个平台条件skip、0失败；统一模型/runtime控制面落地后的当前回归基线为916通过、11 skip、0失败；
+- 当期完整unit为894通过、11个平台条件skip、0失败；当前回归基线为937通过、11 skip、0失败；
 - 完整 integration、typecheck、production desktop bundle通过；
 - 三 runtime contract targeted suite 22/22；
 - 三轮 Desktop/Web真实验收覆盖全新Space、Claude Agents、公开/私有频道、DM、话题、三响应模式、@all、任务、MCP/CLI、turn详情、记忆生命周期、wake和restart；
