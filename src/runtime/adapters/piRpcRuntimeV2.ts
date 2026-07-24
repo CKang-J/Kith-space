@@ -33,6 +33,8 @@ type ActiveTurn = {
   ordinal: number;
   chain: Promise<void>;
   resolve: (result: RuntimeTurnResult) => void;
+  finished: Promise<void>;
+  resolveFinished: () => void;
   settled: boolean;
   cancelRequested: boolean;
   usage?: NormalizedUsage;
@@ -129,8 +131,13 @@ class PiRpcSession implements RuntimeSessionV2 {
     await this.startup;
     if (this.closed || this.active) throw new Error(this.closed ? "runtime session is closed" : "runtime session already has an active turn");
     let resolve!: (result: RuntimeTurnResult) => void;
+    let resolveFinished!: () => void;
     const result = new Promise<RuntimeTurnResult>((done) => { resolve = done; });
-    this.active = { input, sink, ordinal: 0, chain: Promise.resolve(), resolve, settled: false, cancelRequested: false };
+    const finished = new Promise<void>((done) => { resolveFinished = done; });
+    this.active = {
+      input, sink, ordinal: 0, chain: Promise.resolve(), resolve, finished, resolveFinished,
+      settled: false, cancelRequested: false,
+    };
     this.emit("turn_started", { runtime: "pi", protocol: "rpc", mcpMode: "none", gateway: "cli" });
     try {
       const response = await this.command(
@@ -154,17 +161,17 @@ class PiRpcSession implements RuntimeSessionV2 {
       return;
     }
     const turn = this.active;
-    if (!turn || turn.input.attemptId !== attemptId || turn.settled) return;
+    if (!turn || turn.input.attemptId !== attemptId) return;
+    if (turn.settled) {
+      await turn.finished;
+      return;
+    }
     turn.cancelRequested = true;
-    const settled = new Promise<void>((resolve) => {
-      const check = () => turn.settled ? resolve() : setTimeout(check, 10).unref?.();
-      check();
-    });
     try {
       const response = await this.command("abort", {}, 5_000);
       if (!response.success) throw new Error("Pi rejected abort");
       await Promise.race([
-        settled,
+        turn.finished,
         new Promise<never>((_, reject) => {
           const timer = setTimeout(() => reject(new Error("Pi abort timeout")), 5_000);
           timer.unref?.();
@@ -361,6 +368,7 @@ class PiRpcSession implements RuntimeSessionV2 {
       turn.resolve({ outcome: "failed", engineSessionId: this.engineSessionId, errorCode: "runtime_event_ack_failed" });
     } finally {
       if (this.active === turn) this.active = null;
+      turn.resolveFinished();
     }
   }
 
