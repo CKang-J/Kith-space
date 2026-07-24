@@ -10,6 +10,7 @@ import {
   CodeBlock,
   ColorSwatch,
   GithubAlertBlockquote,
+  MarkdownTable,
   colorValueFromTag,
   markdownSchema,
   markdownUrlTransform,
@@ -123,6 +124,7 @@ export function FilesMemoryView({ agentId }: { agentId: string }) {
                   a: ({ href, children }) => { const color = colorValueFromTag(href); return color ? <ColorSwatch value={color} /> : <a href={href} target="_blank" rel="noreferrer">{children}</a>; },
                   blockquote: ({ node: _node, children, ...props }) => <GithubAlertBlockquote {...props}>{children}</GithubAlertBlockquote>,
                   pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+                  table: ({ children, ...props }) => <MarkdownTable {...props}>{children}</MarkdownTable>,
                 }}>{selected.content || ""}</ReactMarkdown></div>
                 : <pre className="ws-content">{selected.content}</pre>}
             </>}

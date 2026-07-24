@@ -311,6 +311,7 @@ export function WorkspaceFrame() {
                 trace={<div className="conversation-trace conversation-aggregate__scroll"><LiveTrace conversationId={currentChannelId!} showHeading={false} /></div>}
                 settings={settingsInDrawer ? undefined : channelSettings}
                 settingsOpen={!!settingsChannel && !settingsInDrawer}
+                onClose={toggleAggregate}
                 onOpenTopic={(parentMessageId) => updateConversationFocus("thread", parentMessageId)}
                 onJumpToMessage={(messageId) => updateConversationFocus("msg", messageId)}
               />

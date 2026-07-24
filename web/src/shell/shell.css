@@ -240,7 +240,7 @@
   margin: 0;
   color: #1f1f1f;
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: -.2px;
 }
 
@@ -282,7 +282,11 @@
 }
 
 .chat-navigation-sidebar .item > .grow {
-  font-weight: 550;
+  font-weight: 400;
+}
+
+.chat-navigation-sidebar .conversation-row__target > .grow {
+  font-weight: 400;
 }
 
 .chat-navigation-sidebar .chan-row {
@@ -350,12 +354,8 @@
 }
 
 .conversation-row__avatar--saved {
-  background: #f1f1f1;
-  color: #686868;
-}
-
-.chat-navigation-sidebar .agent-list-item > .grow {
-  font-weight: 550;
+  background: transparent;
+  color: #858585;
 }
 
 .chat-navigation-sidebar .conversation-saved-row {
@@ -388,7 +388,7 @@
 
 .chat-navigation-sidebar .item.active,
 .chat-navigation-sidebar .item.active:hover {
-  background: #e7f1ff;
+  background: #f1f6fc;
   color: var(--ink);
 }
 

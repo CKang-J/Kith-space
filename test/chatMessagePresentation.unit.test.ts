@@ -36,15 +36,19 @@ test("main chat, thread replies, action cards, and skeletons reuse ChatMessageIt
 test("message density tokens match the reference-driven split bubble design", () => {
   assert.match(messageCss, /--chat-stream-max:\s*1040px/);
   assert.match(messageCss, /--chat-message-avatar:\s*36px/);
-  assert.match(messageCss, /--chat-message-font-size:\s*14\.5px/);
-  assert.match(messageCss, /--chat-message-line-height:\s*1\.55/);
+  assert.match(messageCss, /--chat-message-font-size:\s*var\(--font-size-base\)/);
+  assert.match(messageCss, /--chat-message-line-height:\s*var\(--line-height-reading\)/);
   assert.match(messageCss, /--chat-message-human-bg:\s*#e7f0fe/i);
-  assert.match(messageCss, /--chat-message-agent-bg:\s*#f5f5f5/i);
+  assert.match(messageCss, /--chat-message-agent-bg:\s*#f7f8fa/i);
   assert.match(messageCss, /grid-template-columns:\s*var\(--chat-message-avatar\) minmax\(0,1fr\)/);
   assert.match(messageCss, /\.chat-message--human\{[\s\S]*?grid-template-columns:minmax\(0,1fr\) var\(--chat-message-avatar\)/);
   assert.match(messageCss, /\.chat-message--human \.chat-message__content\{[\s\S]*?justify-self:end;[\s\S]*?align-items:flex-end/);
   assert.match(messageCss, /\.chat-message--human \.chat-message__header\{display:none\}/);
   assert.match(messageCss, /width:\s*fit-content/);
+  assert.match(messageCss, /\.chat-message__bubble\{[\s\S]*?padding:\s*16px 18px/);
+  assert.match(messageCss, /\.chat-message \.md\{[\s\S]*?--md-paragraph-gap:\.85em/);
+  assert.match(messageCss, /\.chat-message \.md h1\{font-size:18px\}/);
+  assert.match(messageCss, /\.chat-message \.md h2\{font-size:var\(--font-size-lg\)\}/);
   assert.match(messageCss, /margin:\s*0 auto 26px/);
   assert.match(messageCss, /\.chat-message__footer-timestamp\s*\{[\s\S]*?margin-top:\s*6px/);
   assert.match(messageCss, /\.chat-message__bubble-wrap:hover>\.chat-message__toolbar-slot/);

@@ -3,7 +3,7 @@
 // same effect without dangerouslySetInnerHTML (safer, no XSS).
 // Raw HTML in a body is shown as LITERAL TEXT (remarkHtmlAsText), never rendered and never dropped —
 // react-markdown's default would silently swallow it, turning an all-HTML message into an empty bubble.
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { Check, Copy, Info, Lightbulb, MessageSquareWarning, OctagonAlert, TriangleAlert, type LucideIcon } from "lucide-react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -108,6 +108,14 @@ export function CodeBlock({ children }: { children: ReactNode }) {
         </button>
       </div>
       <pre>{children}</pre>
+    </div>
+  );
+}
+
+export function MarkdownTable({ children, ...props }: ComponentPropsWithoutRef<"table">) {
+  return (
+    <div className="md-table-scroll">
+      <table {...props}>{children}</table>
     </div>
   );
 }
@@ -349,6 +357,9 @@ export function MessageContent({ content, mentions, channels, nav }: { content: 
           },
           pre({ children }) {
             return <CodeBlock>{children}</CodeBlock>;
+          },
+          table({ children, ...props }) {
+            return <MarkdownTable {...props}>{children}</MarkdownTable>;
           },
           a({ href, children }) {
             if (typeof href === "string" && href.startsWith("tag:")) {

@@ -142,6 +142,7 @@ test("the shell uses the reference-style flat icon rail, message pane, and chat 
   assert.match(shellCss, /\.shell-chat-conversations\s*\{[\s\S]*?border-right:\s*1px solid var\(--shell-border\);[\s\S]*?background:\s*#fff;[\s\S]*?box-shadow:\s*none/);
   assert.doesNotMatch(shellCss, /shell-chat-workspace--compact|shell-chat-drawer/);
   assert.match(shellCss, /\.shell-conversation-aggregate > \.conversation-aggregate\s*\{[\s\S]*?border-left:\s*0/);
+  assert.match(frame, /<ConversationAggregatePanel[\s\S]*?onClose=\{toggleAggregate\}/);
   assert.match(shellCss, /\.shell-chat-conversations > \.sidebar\s*\{[\s\S]*?background:\s*#fff/);
   assert.match(shellCss, /\.sidebar-module-navigation__item\s*\{[\s\S]*?width:\s*42px;[\s\S]*?height:\s*42px;[\s\S]*?padding:\s*0/);
   assert.match(shellCss, /\.chat-navigation-sidebar \.archived-channel-group,[\s\S]*?border-top:\s*0/);
@@ -151,7 +152,10 @@ test("the shell uses the reference-style flat icon rail, message pane, and chat 
   assert.match(shellCss, /\.chat-navigation-sidebar \.chan-row \.conversation-row__target\s*\{[\s\S]*?align-self:\s*stretch;[\s\S]*?padding:\s*7px 4px 7px 10px/);
   assert.match(shellCss, /\.chat-navigation-sidebar \.chan-row \.pinbtn\s*\{[\s\S]*?width:\s*32px;[\s\S]*?align-self:\s*stretch/);
   assert.match(shellCss, /\.chat-navigation-sidebar \.item:hover:not\(\.active\)\s*\{[\s\S]*?background:\s*#f5f7fa/);
-  assert.match(shellCss, /\.chat-navigation-sidebar \.item\.active,[\s\S]*?\.chat-navigation-sidebar \.item\.active:hover\s*\{[\s\S]*?background:\s*#e7f1ff/);
+  assert.match(shellCss, /\.chat-navigation-sidebar \.item\.active,[\s\S]*?\.chat-navigation-sidebar \.item\.active:hover\s*\{[\s\S]*?background:\s*#f1f6fc/);
+  assert.match(shellCss, /\.chat-navigation-sidebar__header h2\s*\{[^}]*font-weight:\s*400/);
+  assert.match(shellCss, /\.chat-navigation-sidebar \.item > \.grow\s*\{[^}]*font-weight:\s*400/);
+  assert.match(shellCss, /\.chat-navigation-sidebar \.conversation-row__target > \.grow\s*\{[^}]*font-weight:\s*400/);
   assert.match(shellCss, /\.chat-navigation-sidebar__header\s*\{[\s\S]*?height:\s*68px/);
   assert.match(globalCss, /\.seg-pill\{[^}]*background:var\(--ui-muted-bg\)/);
   assert.match(globalCss, /\.seg\{[^}]*background:var\(--ui-muted-bg\)/);

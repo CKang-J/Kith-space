@@ -747,7 +747,8 @@
     "createChannelFailed": "创建频道失败"
   },
   "conversationAggregate": {
-    "title": "会话聚合面板",
+    "title": "聚合面板",
+    "close": "关闭聚合面板",
     "loading": "正在加载…",
     "retry": "重试",
     "agent": "Agent",

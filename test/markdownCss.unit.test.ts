@@ -34,9 +34,12 @@ function assertDecl(selector: string, prop: string, value: string): void {
 test("font tokens only reference loaded or system fonts", () => {
   assert.doesNotMatch(indexHtml, /fonts\.googleapis|fonts\.gstatic/);
   assert.match(css, /--sans:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;--serif:var\(--sans\);--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace/);
-  assert.match(css, /--md-text-size:14\.5px;--md-line-height:1\.68;--md-paragraph-gap:\.75em/);
+  assert.match(css, /--font-size-xs:11px;--font-size-sm:12px;--font-size-base:14px;--font-size-lg:16px;--font-size-title:20px/);
+  assert.match(css, /--line-height-body:1\.5;--line-height-reading:1\.68/);
+  assert.match(css, /--md-text-size:var\(--font-size-base\);--md-line-height:var\(--line-height-reading\);--md-paragraph-gap:\.75em/);
   assert.doesNotMatch(css, /--font-display|--font-body|--font-code|--text-heading|--text-body/);
   assertDecl("body", "font-family", "var\\(--sans\\)");
+  assertDecl("body", "font-size", "var\\(--font-size-base\\)");
   assertDecl(".md h1", "font-family", "var\\(--serif\\)");
   assertDecl(".md code", "font-family", "var\\(--mono\\)");
   assertDecl(".md strong", "color", "var\\(--ink\\)");
@@ -64,10 +67,11 @@ test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", 
   assertDecl(".color-chip", "margin-left", "6px");
   assertDecl(".color-chip", "vertical-align", "-\\.12em");
   assertDecl(".md code", "border-radius", "4px");
-  assertDecl(".md-codeblock", "background", "var\\(--surface-strong\\)");
+  assertDecl(".md-codeblock", "background", "#1e1e1e");
+  assertDecl(".md-codeblock", "color", "#f3f4f6");
   assertDecl(".md pre", "background", "transparent");
   assertDecl(".md pre", "border", "0");
-  assertDecl(".md pre", "padding", "12px 16px");
+  assertDecl(".md pre", "padding", "16px");
   assertDecl(".md-codeblock", "position", "relative");
   assertDecl(".md-codeblock", "margin", "\\.75em 0");
   assertDecl(".md-codeblock", "overflow", "hidden");
@@ -76,9 +80,9 @@ test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", 
   assertDecl(".md-code-lang", "font-family", "var\\(--mono\\)");
   assertDecl(".md-code-lang", "text-transform", "uppercase");
   assertDecl(".md-code-copy", "width", "26px");
-  assertDecl(".md blockquote", "border-left", "4px solid var\\(--hair-strong\\)");
-  assertDecl(".md blockquote", "padding", "8px 18px");
-  assertDecl(".md blockquote", "color", "var\\(--quote-text\\)");
+  assertDecl(".md blockquote", "border-left", "3px solid #e0e0e0");
+  assertDecl(".md blockquote", "padding", "10px 14px");
+  assertDecl(".md blockquote", "color", "#5c5c5c");
   assertDecl(".md blockquote.github-alert", "border-left-color", "var\\(--alert-color\\)");
   assertDecl(".md blockquote.github-alert", "background", "transparent");
   assertDecl(".github-alert-title", "display", "flex");
@@ -91,10 +95,12 @@ test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", 
   assertDecl(".md blockquote.github-alert-warning", "--alert-color", "var\\(--alert-warning\\)");
   assertDecl(".md blockquote.github-alert-caution", "--alert-color", "var\\(--alert-caution\\)");
   assert.match(css, /--alert-note:#92B6FF;--alert-tip:#72bd8f;--alert-important:#a98ad5;--alert-warning:#d9ad2b;--alert-caution:#d67b72/);
+  assertDecl(".md-table-scroll", "overflow-x", "auto");
   assertDecl(".md table", "border-collapse", "collapse");
   assertDecl(".md table", "background", "transparent");
   assertDecl(".md td", "overflow-wrap", "anywhere");
-  assertDecl(".md th", "background", "var\\(--surface-strong\\)");
+  assertDecl(".md th", "background", "#f7f8fa");
+  assertDecl(".md th", "font-weight", "500");
   assertDecl(".md img", "max-width", "min\\(100%,640px\\)");
   assertDecl(".md hr", "border-top", "1px solid var\\(--hair-strong\\)");
   assertDecl(".md h4", "font-size", "var\\(--md-h-rest-size\\)");
@@ -148,12 +154,14 @@ test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", 
 
 test("Workspace Markdown preview keeps parity with chat for rich GFM elements", () => {
   assert.match(messageRenderSrc, /export function CodeBlock/);
+  assert.match(messageRenderSrc, /export function MarkdownTable/);
   assert.match(messageRenderSrc, /function languageFromReact/);
   assert.match(messageRenderSrc, /language-\(\[\^\\s\]\+\)/);
   assert.match(messageRenderSrc, /<span className="md-code-lang">\{lang\}<\/span>/);
   assert.match(messageRenderSrc, /import \{ copyText \} from "\.\/clipboard\.ts"/);
   assert.match(messageRenderSrc, /await copyText\(text\)/);
   assert.match(messageRenderSrc, /pre\(\{ children \}\)\s*\{\s*return <CodeBlock>\{children\}<\/CodeBlock>/);
+  assert.match(messageRenderSrc, /table\(\{ children, \.\.\.props \}\)\s*\{\s*return <MarkdownTable \{\.\.\.props\}>\{children\}<\/MarkdownTable>/);
   assert.match(messageRenderSrc, /export function markdownUrlTransform/);
   assert.match(filesMemorySrc, /from "\.\.\/\.\.\/messageRender\.tsx"/);
   assert.match(messageRenderSrc, /export function remarkHtmlAsText/);
@@ -166,6 +174,7 @@ test("Workspace Markdown preview keeps parity with chat for rich GFM elements", 
   assert.match(filesMemorySrc, /blockquote: \(\{ node: _node, children, \.\.\.props \}\) => <GithubAlertBlockquote \{\.\.\.props\}>\{children\}<\/GithubAlertBlockquote>/);
   assert.match(filesMemorySrc, /ColorSwatch value=\{color\}/);
   assert.match(filesMemorySrc, /pre: \(\{ children \}\) => <CodeBlock>\{children\}<\/CodeBlock>/);
+  assert.match(filesMemorySrc, /table: \(\{ children, \.\.\.props \}\) => <MarkdownTable \{\.\.\.props\}>\{children\}<\/MarkdownTable>/);
   assertDecl(".ws-md a", "color", "var\\(--link-blue\\)");
   assertDecl(".ws-md img", "max-width", "min\\(100%,640px\\)");
   assert.match(css, /\.ws-md\{[^}]*font-size:var\(--md-text-size\)[^}]*line-height:var\(--md-line-height\)/);

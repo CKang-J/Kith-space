@@ -11,6 +11,14 @@
   - `/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-487a16ff-c80f-4f14-97ba-81297da12582.png`
 - 最终截图目录：`/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/kith-message-refinement-20260724/`
 - 最终同画面对照：`/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/kith-message-refinement-20260724/reference-vs-channel-hover-focused.png`
+- 聚合面板参考：用户在浏览器批注中附加的“历史 / Widgets / 话题 / 文件”局部示例图
+- 聚合面板最终截图：`/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/kith-aggregate-panel-20260724/aggregate-panel-final.png`
+- 分段控制器视觉真值：`/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-627dfd72-302e-4a1c-9410-805d7a0a1e6b.png`（704 × 142，@2x；归一化到352 × 71）
+- 分段控制器改造前基线：`/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-8a58e57e-a762-45a7-a315-b3d8278b050d.png`（600 × 128，@2x）
+- 分段控制器最终截图：
+  - `/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/kith-sliding-tabs-20260724/aggregate-shared-final.png`
+  - `/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/kith-sliding-tabs-20260724/channel-response-shared-final.png`
+- 分段控制器同画面对照：`/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/kith-sliding-tabs-20260724/reference-vs-aggregate-1x.png`（左参考、右实现；均按1x高度归一化）
 
 ## 视觉检查
 
@@ -32,6 +40,11 @@
 - [x] 展开话题前后主标题栏横跨同一完整宽度，右侧按钮位置不变，底部分割线连续。
 - [x] 话题标题为16px，工具栏高度为44px，操作按钮为28px。
 - [x] 话题分栏实测 Agent 头像左边距、Agent 气泡右边距、Human 头像右边距均为 10px。
+- [x] 聚合面板新增与主 Chat 同高的 52px 标题栏，标题下分割线与主 Chat 标题栏下边线连续对齐。
+- [x] 聚合面板右侧关闭按钮为 30px 圆形点击面，hover 使用 `#f5f5f5` 圆形表面；关闭后可由原标题栏入口恢复。
+- [x] “轨迹 / 话题 / 文件”控制器下方不再绘制额外横线；公共轨道使用 `#f5f5f5`、40px高度、2px内缩和12px圆角，白色选中底板为36px高度、10px圆角与克制的多层低透明投影。
+- [x] 分段控件文字统一为常规500字重；未选项由偏淡的 `#777` 调整为接近参考图的 `#333`。
+- [x] 参考样式落在公共 `SlidingTabs`，聚合面板、频道响应方式和 Agent 默认响应方式不再维护各自的选中视觉；38px紧凑规格沿用同一配方。
 - [x] 日期分隔为居中灰色胶囊，没有贯穿消息区的横线。
 - [x] Composer 的结构、尺寸、文案和操作区保持原样。
 - [x] 参考图与实现截图已在同一对照图中检查；未发现裁切、溢出、错误边距、异常圆角或错误字体权重。
@@ -42,6 +55,7 @@
 - [x] 其余图标均拥有可访问名称和 hover/focus tooltip。
 - [x] 点击 Tasks 后图标栏保持常驻，消息中栏退出，任务模块正常显示。
 - [x] 点击 Messages 后恢复消息中栏和当前 Chat。
+- [x] 聚合面板关闭、重新展开和三个分段切换均通过真实浏览器交互验证，切换后对应 `aria-selected` 与内容同步更新。
 - [x] 当前入口使用 `aria-current="page"` 表达选中状态。
 - [x] 浏览器控制台无 warning/error。
 
@@ -54,13 +68,20 @@
 - [x] README、术语表与架构文档已同步最新三栏、颜色和间距事实。
 - [x] 本轮初始差异（旧气泡色、32px 头像、私聊重复昵称、顶部完整时间、工具栏/菜单和图标栏边线）均已关闭；复验未发现 P0/P1/P2 视觉问题。
 
+## 分段控制器对照迭代
+
+- [x] 初次对照发现 P2：实现轨道为44px高、4px内缩、15px圆角，选中项为600字重，未选文字为 `#777`，整体比参考图更厚、更重。
+- [x] 初次修正曾只落在聚合面板作用域；用户补充指出频道响应方式等调用点也属于同一公共组件，因此该局部方案记为 P2 一致性问题。
+- [x] 最终修正迁入 `components/SlidingTabs.css`：常规轨道40px、紧凑轨道38px、统一2px内缩、500字重、`#333`未选文字和减弱后的投影；移除聚合面板视觉覆盖。
+- [x] 后续同画面对照未发现可执行的 P0/P1/P2 差异；控件宽度差异来自参考容器与现有300px聚合面板的响应式宽度，不改变三等分比例。
+
 ## 验证
 
 - [x] `pnpm run typecheck`
 - [x] 36 项本轮相关壳层、消息表现和布局单测
-- [x] `pnpm test --unit`：923 passed、11 skipped、0 failed
+- [x] `pnpm test --unit`：924 passed、11 skipped、0 failed
 - [x] `pnpm run web:build`
-- [x] 真实浏览器频道默认态、消息 hover、更多菜单、私聊态和话题分栏态检查
+- [x] 真实浏览器频道默认态、消息 hover、更多菜单、私聊态、话题分栏态和聚合面板展开/关闭/切换检查
 
 ## 有意保留的产品差异
 

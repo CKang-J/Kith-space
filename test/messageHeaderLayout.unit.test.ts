@@ -51,16 +51,16 @@ test("the shared item owns avatar, header, bubble, footer time, and hover toolba
 
   const bubble = messageRuleBody(".chat-message__bubble");
   assert.match(bubble, /width\s*:\s*fit-content/);
-  assert.match(bubble, /padding\s*:\s*10px 15px/);
+  assert.match(bubble, /padding\s*:\s*16px 18px/);
   assert.match(bubble, /border-radius\s*:\s*var\(--chat-message-radius\)/);
 });
 
 test("message density tokens match the accepted design", () => {
   assert.match(messageCss, /--chat-stream-max:1040px/);
   assert.match(messageCss, /--chat-message-avatar:36px/);
-  assert.match(messageCss, /--chat-message-font-size:14\.5px/);
-  assert.match(messageCss, /--chat-message-line-height:1\.55/);
-  assert.match(messageCss, /--chat-message-agent-bg:#f5f5f5/i);
+  assert.match(messageCss, /--chat-message-font-size:var\(--font-size-base\)/);
+  assert.match(messageCss, /--chat-message-line-height:var\(--line-height-reading\)/);
+  assert.match(messageCss, /--chat-message-agent-bg:#f7f8fa/i);
   assert.match(messageCss, /--chat-message-human-bg:#e7f0fe/i);
   assert.match(messageCss, /--chat-composer-reserve:88px/);
 
@@ -79,7 +79,7 @@ test("agent identity remains compact while Human messages move to the right with
   assert.match(header, /min-height\s*:\s*18px/);
   assert.match(header, /margin-bottom\s*:\s*0/);
   const sender = messageRuleBody(".chat-message__header .who");
-  assert.match(sender, /font-size\s*:\s*14\.5px/);
+  assert.match(sender, /font-size\s*:\s*var\(--font-size-base\)/);
   assert.match(sender, /font-weight\s*:\s*400/);
   assert.match(messageRuleBody(".chat-message .chat-message__header button.agent-mention-name"), /font-weight\s*:\s*400/);
   assert.match(sender, /line-height\s*:\s*18px/);
@@ -88,7 +88,7 @@ test("agent identity remains compact while Human messages move to the right with
   const timestamp = messageRuleBody(".chat-message__footer-timestamp");
   assert.match(timestamp, /margin-top\s*:\s*6px/);
   assert.match(timestamp, /padding-left\s*:\s*8px/);
-  assert.match(timestamp, /font-size\s*:\s*11px/);
+  assert.match(timestamp, /font-size\s*:\s*12px/);
   assert.match(timestamp, /font-weight\s*:\s*400/);
   assert.match(timestamp, /line-height\s*:\s*16px/);
   assert.match(timestamp, /opacity\s*:\s*0/);

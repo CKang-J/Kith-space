@@ -747,7 +747,8 @@
     "createChannelFailed": "Failed to create channel"
   },
   "conversationAggregate": {
-    "title": "Conversation panel",
+    "title": "Aggregate panel",
+    "close": "Close panel",
     "loading": "Loading…",
     "retry": "Retry",
     "agent": "Agent",
