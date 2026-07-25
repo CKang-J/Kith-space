@@ -13,7 +13,7 @@
 //     through OPENCODE_CONFIG_CONTENT; user/project AGENTS.md files are never modified.
 import type { ChildProcess } from "node:child_process";
 import type { Runtime, StartOpts, RuntimeCallbacks, RuntimeSession, TrajectoryEntry } from "./runtime.js";
-import { spawnRuntimeProcess } from "./runtimeProcess.js";
+import { spawnRuntimeProcess, terminateRuntimeProcess } from "./runtimeProcess.js";
 import { validateRuntimeModel } from "../local-runtime/runtimeCatalog.js";
 import type { NormalizedUsage } from "../runtime/contract/v2/runtimeContract.js";
 
@@ -234,10 +234,10 @@ class OpencodeRun {
     });
   }
 
-  stop(): void {
+  stop(): Promise<void> {
     this.stopped = true;
     const p = this.proc; this.proc = null;
-    if (p) { try { p.kill("SIGTERM"); } catch { /* */ } }
+    return p ? terminateRuntimeProcess(p, "OpenCode") : Promise.resolve();
   }
 }
 

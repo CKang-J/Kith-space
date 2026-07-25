@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { eq } from "drizzle-orm";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -18,6 +19,7 @@ import { handleTurnGateway } from "./routes.js";
 import "../core.js";
 
 const runFile = promisify(execFile);
+const tsxCli = fileURLToPath(import.meta.resolve("tsx/cli"));
 
 function toolJson(result: Awaited<ReturnType<Client["callTool"]>>): Record<string, unknown> {
   const text = (result.content as Array<{ type: string; text?: string }>).find((item) => item.type === "text")?.text;
@@ -121,7 +123,7 @@ test("real Gateway gives MCP, CLI client and CLI parser the same scoped domain r
       KITH_SPACE_ACTIVATION_FILE: activationFile,
     });
     const transport = new StdioClientTransport({
-      command: path.resolve("node_modules/.bin/tsx"), args: [path.resolve("src/server/mcp/stdio.ts")],
+      command: process.execPath, args: [tsxCli, path.resolve("src/server/mcp/stdio.ts")],
       cwd: process.cwd(), env, stderr: "pipe",
     });
     client = new Client({ name: "gateway-domain-contract", version: "1" });
@@ -136,7 +138,7 @@ test("real Gateway gives MCP, CLI client and CLI parser the same scoped domain r
     assert.deepEqual(mcpWrite, cliWrite);
     assert.equal(db.select().from(schema.sessionChecklistItems).all().length, 1);
 
-    const parsed = await runFile(path.resolve("node_modules/.bin/tsx"), [path.resolve("src/cli/index.ts"), "turn", "context"], {
+    const parsed = await runFile(process.execPath, [tsxCli, path.resolve("src/cli/index.ts"), "turn", "context"], {
       cwd: process.cwd(), env, timeout: 10_000,
     });
     assert.match(parsed.stdout, new RegExp(`Turn ${turnId}`));
@@ -149,8 +151,8 @@ test("real Gateway gives MCP, CLI client and CLI parser the same scoped domain r
     const cliTask = await directClient.request<Record<string, unknown>>("POST", "/agent-gateway/task/create", createCommand);
     const mcpTask = toolJson(await client.callTool({ name: "task.create", arguments: createCommand }));
     assert.deepEqual(mcpTask, cliTask);
-    const claimed = await runFile(path.resolve("node_modules/.bin/tsx"), [
-      path.resolve("src/cli/index.ts"), "task", "claim", "--message-id", String(cliTask.taskId), "--revision", "1",
+    const claimed = await runFile(process.execPath, [
+      tsxCli, path.resolve("src/cli/index.ts"), "task", "claim", "--message-id", String(cliTask.taskId), "--revision", "1",
     ], { cwd: process.cwd(), env, timeout: 10_000 });
     assert.match(claimed.stdout, /Claimed #1 rev=2/);
     const task = await directClient.request<{ task?: { taskStatus?: string } }>("POST", "/agent-gateway/task/get", { taskId: cliTask.taskId });

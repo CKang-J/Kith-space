@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { appDataConnection } from "../app-data/appDatabase.js";
 import type { RuntimeId } from "../local-runtime/runtimeCatalog.js";
+import { unsafePosixFileMetadata } from "../security/posixFileMetadata.js";
 import type { CliImportItemResult } from "./contracts.js";
 import { RuntimeProfileService } from "./runtimeProfileService.js";
 
@@ -24,7 +25,7 @@ function safeRead(target: string): { payload: string; identity: string } | null 
     fd = openSync(target, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
     const before = fstatSync(fd);
     if (!before.isFile() || before.size > 2 * 1024 * 1024
-      || (typeof process.getuid === "function" && before.uid !== process.getuid())) return null;
+      || unsafePosixFileMetadata(before, 0)) return null;
     const payload = readFileSync(fd, "utf8");
     const after = fstatSync(fd);
     if (before.dev !== after.dev || before.ino !== after.ino || before.mtimeMs !== after.mtimeMs || before.size !== after.size) return null;

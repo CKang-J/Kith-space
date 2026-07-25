@@ -137,13 +137,14 @@ export function resolveRuntimeGatewayLaunch(input: {
 }): RuntimeGatewayLaunch {
   const exists = input.exists ?? existsSync;
   const platform = input.platform ?? process.platform;
+  const platformPath = platform === "win32" ? path.win32 : path.posix;
   const execPath = input.execPath ?? process.execPath;
-  const bundledMcp = path.join(input.here, "kith-core-mcp.mjs");
-  const bundledCli = path.join(input.here, "agent-cli.mjs");
-  const repoRoot = path.resolve(input.here, "../../../..");
-  const tsx = path.join(repoRoot, "node_modules", ".bin", platform === "win32" ? "tsx.cmd" : "tsx");
-  const sourceMcp = path.join(repoRoot, "src/server/mcp/stdio.ts");
-  const sourceCli = path.join(repoRoot, "src/cli/index.ts");
+  const bundledMcp = platformPath.join(input.here, "kith-core-mcp.mjs");
+  const bundledCli = platformPath.join(input.here, "agent-cli.mjs");
+  const repoRoot = platformPath.resolve(input.here, "../../../..");
+  const tsx = platformPath.join(repoRoot, "node_modules", ".bin", platform === "win32" ? "tsx.cmd" : "tsx");
+  const sourceMcp = platformPath.join(repoRoot, "src/server/mcp/stdio.ts");
+  const sourceCli = platformPath.join(repoRoot, "src/cli/index.ts");
   const bundled = exists(bundledMcp);
   const source = exists(tsx) && exists(sourceMcp);
   const cliAvailable = exists(bundledCli) || (exists(tsx) && exists(sourceCli));
@@ -163,7 +164,7 @@ export function resolveRuntimeGatewayLaunch(input: {
   const command = bundled ? execPath : tsx;
   const args = [bundled ? bundledMcp : sourceMcp];
   const env = input.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {};
-  const configFile = path.join(input.runtimeStateDir, `kith-core-mcp-${input.sessionId}.json`);
+  const configFile = platformPath.join(input.runtimeStateDir, `kith-core-mcp-${input.sessionId}.json`);
   return {
     capabilityMode,
     cliAvailable,

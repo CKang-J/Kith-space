@@ -45,11 +45,18 @@ test("credential activation is single-use, run/generation/snapshot bound, and ne
   assert.equal(persisted.includes(validHandle), false);
 });
 
-test("credential store refuses group/world-readable secret files", () => {
+test("credential store applies platform file permission semantics", () => {
   const port = new ProviderCredentialPort();
   const stored = port.storeKithSecret("anthropic", "permission-test-secret");
   const file = path.join(kithSpaceHome(), "secrets", "advisor-credentials.json");
   chmodSync(file, 0o644);
-  assert.throws(() => port.identityForStoredRef(stored.credentialRef, "anthropic", "kith_secret"), /provider_auth_required/);
+  if (process.platform === "win32") {
+    assert.equal(
+      port.identityForStoredRef(stored.credentialRef, "anthropic", "kith_secret"),
+      stored.credentialIdentityDigest,
+    );
+  } else {
+    assert.throws(() => port.identityForStoredRef(stored.credentialRef, "anthropic", "kith_secret"), /provider_auth_required/);
+  }
   chmodSync(file, 0o600);
 });

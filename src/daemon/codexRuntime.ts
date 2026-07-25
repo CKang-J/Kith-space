@@ -3,7 +3,7 @@
 // Automatically approves exec/patch/elicitation requests in daemon mode.
 import type { ChildProcess } from "node:child_process";
 import type { Runtime, StartOpts, RuntimeCallbacks, RuntimeSession } from "./runtime.js";
-import { spawnRuntimeProcess } from "./runtimeProcess.js";
+import { spawnRuntimeProcess, terminateRuntimeProcess } from "./runtimeProcess.js";
 
 const MAX = 2000;
 const clip = (s: unknown) => String(s ?? "").slice(0, MAX);
@@ -284,6 +284,9 @@ export const codexRuntime: Runtime = {
     });
     proc.on("exit", (code) => { client.closeAllPending(new Error("codex exited")); reportExit(code); });
 
-    return { deliver: (text) => { queue.push(text); pump(); }, stop: () => { try { proc.kill("SIGTERM"); } catch { /* */ } } };
+    return {
+      deliver: (text) => { queue.push(text); pump(); },
+      stop: () => terminateRuntimeProcess(proc, "Codex"),
+    };
   },
 };

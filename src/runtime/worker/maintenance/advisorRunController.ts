@@ -7,6 +7,7 @@ import { preflightEgress, prepareEgressLease } from "../../../advisor-provider/e
 import { advisorProviderDescriptor } from "../../../advisor-provider/providerRegistry.js";
 import { resolveExecutable, sha256File } from "../../../advisor-provider/providerArtifact.js";
 import type { CompiledAdvisorModelConfig, ProviderExecutionSnapshot, ResolvedEgressPlan } from "../../../advisor-provider/contracts.js";
+import { unsafePosixFileMetadata } from "../../../security/posixFileMetadata.js";
 import type { MaintenanceJsonResult } from "../../contract/maintenanceRuntimePort.js";
 import type { ActivatedAdvisorCredential } from "../../contract/advisorProviderRuntimePort.js";
 import { completeClaudeMaintenanceJson } from "./claudeMaintenanceRuntime.js";
@@ -63,7 +64,7 @@ export class AdvisorRunController {
       try {
         fd = openSync(helper, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
         const before = fstatSync(fd);
-        if (!before.isFile() || (typeof process.getuid === "function" && before.uid !== process.getuid()) || (before.mode & 0o022) !== 0) throw new Error("provider_unavailable");
+        if (!before.isFile() || unsafePosixFileMetadata(before, 0o022)) throw new Error("provider_unavailable");
         const bytes = readFileSync(fd);
         const after = fstatSync(fd);
         if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs

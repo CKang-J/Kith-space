@@ -22,7 +22,7 @@ Kith-space 是一个**桌面优先、单人使用的个人 AgentOS**：一个 Hu
 - `docs/superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md` — **模型供应商、运行器与记忆设置重构规格**：已实现；以Kith配置为事实源，CLI配置只读导入、启动时注入，统一模型供应商/模型配置/运行器边界，把Pi提升为第四个正式v2 runtime，并重构Memory Advisor与Agent记忆页。
 - `docs/kith-space/agent-harness-v2-mechanisms.md` — **P-A10 机制全景导读**：以架构图、时序图和状态机系统解释会话、投递/turn、Context Envelope、话题路由、结构化记忆、MCP/CLI Gateway、消息落 UI、恢复与安全边界；理解“这些机制如何共同工作”优先读这里。
 - `docs/vision.md` — 北极星：完整理念 + **超越 MVP 的长远愿景**。理解"为什么"从这里开始。
-- `docs/decisions.md` — 决策 1–32 已实现；同时记录推理、权衡和**被推翻/修正的决策**演化脉络。理解"凭什么这样定"看这里。
+- `docs/decisions.md` — 决策 1–35 已实现，决策 36 已接受为三端工程基线；同时记录推理、权衡和**被推翻/修正的决策**演化脉络。理解"凭什么这样定"看这里。
 - `docs/roadmap.md` — 产品能力分期：当前 A1-A6 与其后的本机能力路线，并区分延后能力和永久非目标。
 - `docs/glossary.md` — 术语正典，防口径漂移。术语拿不准查这里。
 - `docs/kith-space/` — 5 份专项设计文档：
@@ -31,6 +31,7 @@ Kith-space 是一个**桌面优先、单人使用的个人 AgentOS**：一个 Hu
   - `ui-direction.md` 界面信息架构；`migration-plan.md` 从 open-tag fork 的分阶段工程步骤。
 - `docs/dev-commands.md` — **日常开发命令权威来源**：Desktop/分进程启动、测试与打包。跑起项目先看这里。
 - `docs/dev-debugging.md` — 低频高级调试：内部凭据、浏览器模式、数据库、E2E 联调、护栏与打包细节。
+- `docs/cross-platform-compatibility.md` — **Windows/macOS/Linux 工程兼容基线与缺口清单**：当前证据、严重度、修复顺序和新功能验收模板。
 - `CONTRIBUTING.md` — **轻量贡献流程**：分支、中文提交、验证、PR、Squash 合并，以及使用 AI 开发时的约束。
 - `docs/agent-collaboration-project-exploration.md` — 最初对四个源项目的探索报告（背景参考）。
 
@@ -71,11 +72,23 @@ D:\Projects\multi-agent\           ← Kith-space 开发根目录
 - 技术栈：TypeScript / Node（Core Service + 安装级唯一 Local Runtime Worker；目录/命令仍暂用 server/daemon）、Electron 43.1.0 + electron-builder 26.15.3（正式 Desktop 宿主与 Windows 打包）、React 19.2.8 + Vite 5 + Tailwind CSS v4 + shadcn/ui（共享 UI）、Drizzle ORM。
 - 包管理：**pnpm 11.13.1**（由根目录 `packageManager` 固定；workspace 仅根目录 + `web/`，`pnpm-lock.yaml`）。安装 `pnpm install`。注意 pnpm 的传参约定：脚本参数**直接跟在后面、不加 `--`**——用 `pnpm test --unit` / `pnpm test --integration`，**不要**写 `pnpm test -- --integration`。公共 daemon 包与 npm/OIDC 发布 workflow 已在 A6 删除；仓库不再维护公共 npm 发行路线。
 - 数据层：**SQLite**。每 Space 一个 `<folder>/.kith/workspace.db`；中央 `app.db` 保存唯一 Human、稳定 Home 身份、Space registry、Web 模式、访问 Token 哈希/版本、浏览器会话、Desktop设置、安装级外观设置、Human-only user-global episodic memory、安装级Advisor Provider控制面，以及模型供应商、模型配置和runtime profile。当前workspace schema v10在v9逐Agent Advisor consent/job/run审计基础上增加Agent模型绑定、跨安装确认快照和session runtime epoch；app.db当前为v8，在v6连接/模型/runtime控制面上增加界面、消息与文档、代码三类字体白名单选择，并把可选无衬线/等宽界面字体收口到独立 `appearance_settings` 单例。`agents.session_id`仍只作互斥legacy rollback来源。app data 默认 `~/.kith-space`，默认 Space 容器为 `~/Kith-space`，Home 为 `~/Kith-space/Home`；`KITH_SPACE_HOME` 只覆盖 app data，`KITH_SPACE_SPACES_DIR` 独立覆盖开发/测试默认 Space 容器。P-A7 H2 已把 Claude Code、Codex、opencode、Pi 的 cwd 切到所属 Space root，把 Agent Memory 放入 `<space>/.kith/agents/<agentId>`，把 adapter 临时状态和Pi generation留在app data runtime目录；Agents 详情的“记忆”文件浏览器只读取当前 agentMemoryDir。Copilot/Kimi/Cursor 仍为 experimental adapter并暂用runtime state cwd。H3/H4的Space root与Home边界不变。v2–v9合法workspace前缀与app.db v1–v7会按immutable manifest/journal迁移到当前版本；workspace migration SQL固定为LF，兼容层只额外接受历史Windows CRLF checkout产生的逐文件精确hash，未知journal仍拒绝；更旧legacy或future schema明确拒绝。
-- 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。测试 runner 会同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向随机临时 profile，零 Postgres/Redis 即可全绿；当前验收单测基线为937通过、11个平台条件skip、0失败，旧 `publicNavContract` 失败已随失效的 public landing 路线删除。改动配套跑测试再提交。
-- 启动与发行：推荐 `pnpm install` → `pnpm run desktop:dev`。全新数据目录由 Desktop 首次初始化界面收集 Human 名称（必填）、邮箱和描述（选填），并创建 `Home`，不再要求预先执行 `seed`；`pnpm run seed` 只保留为手动分进程调试或 fixture 辅助。Desktop 统一启动 Core Service、唯一 Local Runtime Worker、开发期 Vite 与 Electron；每次进程组启动/重启生成相互独立的 Desktop/Worker 临时凭据，普通用户和渲染器都不接触它们。`desktop:build` 只构建 Electron main/preload；`desktop:bundle` 生成 Web + Core/Worker/agent CLI 生产 bundle；`desktop:pack` 生成 Windows unpacked 目录；`desktop:dist` 生成 x64、per-user、assisted NSIS 安装器，输出在 `dist/desktop/`。当前安装器是可复现的本地/CI **未签名**产物，公开分发前必须配置 Windows 代码签名证书；尚未完成真实 NSIS 安装/卸载验收。`server`、`daemon`、`web`、`browser-access:dev` 和 `dev:e2e:up` 继续作为分进程调试入口；只有这类手动调试才从可选本地 `.env` 或进程环境注入独立内部凭据。日常命令以 `docs/dev-commands.md` 为准，低频参数以 `docs/dev-debugging.md` 为准。
-- Git/PR：采用轻量 GitHub Flow，只保留长期分支 `main`；从最新 `main` 创建短分支，通过 PR 和 CI 后 Squash 合入。提交使用中文 Conventional Commits，必要时用中文要点说明原因、边界和验证结果。完整流程见 `CONTRIBUTING.md`。
+- 测试：内置 `node:test`（`src/**/*.test.ts`、`test/**`）。`pnpm test --unit` 跑单测、`pnpm test --integration` 跑集成、`pnpm run typecheck` 类型检查。测试 runner 会同时把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向随机临时 profile。文本型契约测试不得依赖 checkout 的 CRLF/LF，读取后应先转成 canonical LF 再验证语义。2026-07-25 三端兼容收口后的本机 Windows 结果以当前分支验证记录为准；远端 Ubuntu/Windows/macOS 矩阵仍以实际 CI 结果为准，不能在未运行前表述为三端全绿。改动须配套运行相关测试并如实记录未通过项。
+- 启动与发行：推荐 `pnpm install` → `pnpm run desktop:dev`。全新数据目录由 Desktop 首次初始化界面收集 Human 名称（必填）、邮箱和描述（选填），并创建 `Home`，不再要求预先执行 `seed`；`pnpm run seed` 只保留为手动分进程调试或 fixture 辅助。Desktop 统一启动 Core Service、唯一 Local Runtime Worker、开发期 Vite 与 Electron；每次进程组启动/重启生成相互独立的 Desktop/Worker 临时凭据，普通用户和渲染器都不接触它们。`desktop:build` 只构建 Electron main/preload；`desktop:bundle` 生成 Web + Core/Worker/agent CLI 生产 bundle；`desktop:pack` 在隔离staging中重建native dependency并生成Windows unpacked目录，不改写开发树ABI；`desktop:dist` 生成x64、per-user、assisted NSIS安装器，输出在`dist/desktop/`。常规CI在Ubuntu、Windows、macOS执行typecheck、unit、integration和bundle，但当前正式安装器仍是Windows未签名产物；公开分发前必须配置Windows代码签名证书并完成真实安装/卸载验收。`server`、`daemon`、`web`、`browser-access:dev` 和 `dev:e2e:up` 继续作为分进程调试入口；`stop`、worktree与E2E入口均为跨shell Node脚本，手动分进程模式仍只从可选本地`.env`或进程环境注入独立内部凭据。日常命令以`docs/dev-commands.md`为准，低频参数以`docs/dev-debugging.md`为准。
+- Git/PR：采用轻量 GitHub Flow，只保留长期分支 `main`；从最新 `main` 创建短分支，通过 PR Squash 合入。当前频繁开发阶段不为 `pull_request` 自动触发完整三端 CI，提交者须在 PR 中如实记录本地验证；完整矩阵在推送到 `main` 后自动执行，也可按需手动触发。提交使用中文 Conventional Commits，必要时用中文要点说明原因、边界和验证结果。完整流程见 `CONTRIBUTING.md`。
 - 提交权限：只在用户明确要求时创建提交、推送或 PR；先分支，不直推 `main`。
 - 安全：外接 runtime 的高权限是追踪中的技术债。LAN 浏览器 v1 使用 HTTP + 访问 Token且仅限受信任私网；邮箱/浏览器等不可信内容模块上线前，必须先完成 HTTPS 与审批/沙箱权限升级（见 `decisions.md` 决策 8/17/21）。
+
+## 跨平台兼容规则（强制）
+
+当前正式发行仍是 Windows x64 v1，macOS/Linux 属于 planned；这不等于共享代码可以继续只按 Windows 设计。所有新增或修改的功能都必须评估 Windows、macOS、Linux，并遵守：
+
+- 共享逻辑使用 `node:path`、`node:os`、URL 和平台无关 API；不得写死盘符、`/tmp`、路径分隔符、文件名大小写或某一 shell。确实需要 PowerShell、Bash、`taskkill` 等能力时，放在窄平台 Adapter 中并有明确 capability/unsupported 结果。
+- runtime/CLI 启动统一经过可解析 Windows `.cmd`/PATHEXT 的无 shell-injection Port；进程退出语义必须覆盖普通退出、取消、超时、崩溃和后代进程回收，不能把 Unix signal 或 process group 语义直接套到 Windows。
+- 文件权限按平台事实建模：macOS/Linux 使用 uid、mode、symlink 与 executable bit；Windows 使用 owner/DACL、junction/reparse point 和共享锁语义。不得用 Node 在 Windows 合成的 POSIX mode 作为安全判断，也不得因为 Windows 无 mode 就跳过其他完整性校验。
+- 磁盘格式和可移植数据必须固定 canonical bytes/encoding；换行、Unicode、大小写、保留名、长路径、原子 rename、文件占用和 SQLite/native module 行为都要纳入设计。含凭据、prompt、turn 或其他敏感内容的临时文件必须在成功、失败、取消、超时和崩溃恢复路径统一清理。
+- Electron 与 native dependency 必须显式声明 OS、arch、ABI、图标、托盘、登录启动、签名/公证和安装/升级/卸载边界；不同平台实现放在同一 Interface 后的 Adapter，不在业务模块散落条件分支。
+- 测试优先写平台无关行为契约，再补 Windows/macOS/Linux 平台测试。`skip` 只能表示透明的未覆盖缺口，不能算通过；改动触及平台边界时，至少运行当前宿主定向测试，并在 PR 中说明其他两端由 CI、真实 smoke 还是待办清单覆盖。
+- 文档命令优先给平台无关写法；shell 专属步骤同时提供 PowerShell 与 POSIX 版本，或明确标注支持平台和依赖。新增已知缺口同步登记到 `docs/cross-platform-compatibility.md`。
 
 ## 前端开发规范与规则
 

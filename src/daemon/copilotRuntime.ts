@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Runtime, StartOpts, RuntimeCallbacks, RuntimeSession, TrajectoryEntry } from "./runtime.js";
-import { spawnRuntimeProcess } from "./runtimeProcess.js";
+import { spawnRuntimeProcess, terminateRuntimeProcess } from "./runtimeProcess.js";
 
 const MAX = 2000;
 const clip = (s: unknown) => String(s ?? "").slice(0, MAX);
@@ -166,10 +166,10 @@ class CopilotRun {
     });
   }
 
-  stop(): void {
+  stop(): Promise<void> {
     this.stopped = true;
     const p = this.proc; this.proc = null;
-    if (p) { try { p.kill("SIGTERM"); } catch { /* */ } }
+    return p ? terminateRuntimeProcess(p, "Copilot") : Promise.resolve();
   }
 }
 

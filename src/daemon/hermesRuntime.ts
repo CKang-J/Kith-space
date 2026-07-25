@@ -9,7 +9,7 @@ import { readFile, unlink } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import type { Runtime, StartOpts, RuntimeCallbacks, RuntimeSession } from "./runtime.js";
-import { spawnRuntimeProcess } from "./runtimeProcess.js";
+import { spawnRuntimeProcess, terminateRuntimeProcess } from "./runtimeProcess.js";
 
 const MAX = 4000;
 const clip = (s: unknown) => String(s ?? "").slice(0, MAX);
@@ -151,6 +151,7 @@ class HermesRun {
   private turnBusy = false;
   private stopped = false;
   private proc: ChildProcess | null = null;
+  private turnFile: string | null = null;
   private everSucceeded = false;
   private readonly env: NodeJS.ProcessEnv;
   private readonly profile: string;
@@ -186,6 +187,7 @@ class HermesRun {
     const prompt = buildHermesPrompt(message, this.opts);
     const args = buildHermesArgs(prompt, this.sessionId);
     const turnFile = path.join(this.opts.runtimeStateDir ?? tmpdir(), `hermes-turn-${Date.now()}-${Math.random().toString(36).slice(2)}.jsonl`);
+    this.turnFile = turnFile;
     const proc = spawnRuntimeProcess("hermes", args, { cwd: this.opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: { ...this.env, KITH_SPACE_TURN_FILE: turnFile } });
     this.proc = proc;
     let stdout = "";
@@ -201,9 +203,10 @@ class HermesRun {
       errLen += t.length;
       while (errLen > 16_384 && errTail.length > 1) errLen -= errTail.shift()!.length;
     });
-    proc.on("error", (e) => {
+    proc.on("error", async (e) => {
       this.proc = null;
       this.turnBusy = false;
+      await this.removeTurnFile(turnFile);
       if (this.stopped) return;
       this.cb.log.error("hermes spawn failed", { detail: String((e as any)?.message ?? e) });
       this.cb.onActivity("offline", "hermes not found");
@@ -212,41 +215,48 @@ class HermesRun {
     });
     proc.on("exit", async (code) => {
       this.proc = null;
-      if (this.stopped) return;
-      const out = stdout.trim();
-      const tail = errTail.join("").trim();
-      if (code === 0) {
-        this.everSucceeded = true;
-        const nextSessionId = parseHermesSessionId(tail);
-        if (nextSessionId && nextSessionId !== this.sessionId) {
-          this.sessionId = nextSessionId;
-          this.cb.onSession(nextSessionId);
+      try {
+        if (this.stopped) return;
+        const out = stdout.trim();
+        const tail = errTail.join("").trim();
+        if (code === 0) {
+          this.everSucceeded = true;
+          const nextSessionId = parseHermesSessionId(tail);
+          if (nextSessionId && nextSessionId !== this.sessionId) {
+            this.sessionId = nextSessionId;
+            this.cb.onSession(nextSessionId);
+          }
+          const bridged = await this.bridgeFinalResponse(turnFile, out);
+          await this.removeTurnFile(turnFile);
+          if (out) this.cb.onTrajectory([{ kind: "text", text: clip(out) }]);
+          if (bridged !== false) this.cb.onActivity("online", "");
+          this.turnBusy = false;
+          this.pump();
+          return;
         }
-        const bridged = await this.bridgeFinalResponse(turnFile, out);
-        if (out) this.cb.onTrajectory([{ kind: "text", text: clip(out) }]);
-        if (bridged !== false) this.cb.onActivity("online", "");
+        if (this.sessionId && isMissingHermesSession(tail)) {
+          await this.removeTurnFile(turnFile);
+          this.cb.log.warn("hermes resume session missing; retrying fresh", { sessionId: this.sessionId });
+          this.sessionId = null;
+          this.cb.onSession(null);
+          this.queue.unshift(message);
+          this.turnBusy = false;
+          this.pump();
+          return;
+        }
+        const last = tail.split("\n").filter(Boolean).pop() || `hermes exited ${code ?? "signal"}`;
+        await this.removeTurnFile(turnFile);
+        this.cb.onTrajectory([{ kind: "text", text: "[hermes error] " + clip(tail || last).slice(0, 800) }]);
+        this.cb.onActivity("error", last.slice(0, 200));
         this.turnBusy = false;
+        if (!this.everSucceeded) {
+          this.cb.onExit(code ?? 1);
+          return;
+        }
         this.pump();
-        return;
+      } finally {
+        await this.removeTurnFile(turnFile);
       }
-      if (this.sessionId && isMissingHermesSession(tail)) {
-        this.cb.log.warn("hermes resume session missing; retrying fresh", { sessionId: this.sessionId });
-        this.sessionId = null;
-        this.cb.onSession(null);
-        this.queue.unshift(message);
-        this.turnBusy = false;
-        this.pump();
-        return;
-      }
-      const last = tail.split("\n").filter(Boolean).pop() || `hermes exited ${code ?? "signal"}`;
-      this.cb.onTrajectory([{ kind: "text", text: "[hermes error] " + clip(tail || last).slice(0, 800) }]);
-      this.cb.onActivity("error", last.slice(0, 200));
-      this.turnBusy = false;
-      if (!this.everSucceeded) {
-        this.cb.onExit(code ?? 1);
-        return;
-      }
-      this.pump();
     });
   }
 
@@ -254,7 +264,6 @@ class HermesRun {
     let state: TurnState = { sent: false, held: false, engaged: false, target: null };
     try { state = parseHermesTurnEvents(await readFile(turnFile, "utf8")); }
     catch { /* no CLI side-channel events recorded */ }
-    finally { try { await unlink(turnFile); } catch { /* best-effort cleanup */ } }
     const decision = hermesBridgeDecision(stdout, state);
     if (!decision.ok) {
       if (stdout.trim() && decision.reason !== "already-sent") {
@@ -291,13 +300,23 @@ class HermesRun {
     }
   }
 
-  stop(): void {
+  private async removeTurnFile(turnFile: string): Promise<void> {
+    if (this.turnFile === turnFile) this.turnFile = null;
+    try { await unlink(turnFile); } catch { /* best-effort cleanup */ }
+  }
+
+  async stop(): Promise<void> {
     this.stopped = true;
     const p = this.proc;
+    const turnFile = this.turnFile;
     this.proc = null;
     if (p) {
-      try { p.kill("SIGTERM"); } catch { /* */ }
-    }
+      try {
+        await terminateRuntimeProcess(p, "Hermes");
+      } finally {
+        if (turnFile) await this.removeTurnFile(turnFile);
+      }
+    } else if (turnFile) await this.removeTurnFile(turnFile);
   }
 }
 

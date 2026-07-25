@@ -95,7 +95,7 @@ export async function completeClaudeMaintenanceJson(input: {
     let stdout = "";
     let stderr = "";
     let settled = false;
-    const terminate = () => input.credential !== undefined ? terminateProviderProcessTree(child) : Promise.resolve().then(() => { try { child.kill("SIGTERM"); } catch {} });
+    const terminate = () => terminateProviderProcessTree(child);
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;

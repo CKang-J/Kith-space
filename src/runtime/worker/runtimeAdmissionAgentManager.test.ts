@@ -23,8 +23,8 @@ test("fake Runtime sessions obey install capacity and release on exit/stop/shutd
     isRunning(agentId) { return manager.running().includes(agentId); },
     async start(command) { await manager.start(command.agentId, command.config as AgentConfig, command.reason); return manager.running().includes(command.agentId); },
     deliver(command) { manager.deliver(command.agentId, command.from, command.target, command.mentioned, command); },
-    stop(agentId) { manager.stop(agentId); },
-    sleep(agentId) { manager.sleep(agentId); },
+    stop(agentId) { return manager.stop(agentId); },
+    sleep(agentId) { return manager.sleep(agentId); },
     reset(agentId, command) { return manager.reset({ agentId, spaceId: command.spaceId, workspaceRoot: command.workspaceRoot }, { clearAgentMemory: command.clearAgentMemory }); },
     stopAllAndWait() { return manager.stopAllAndWait(); },
   }, { capacity: 2, maxQueue: 8 });
@@ -91,7 +91,7 @@ test("fake Runtime sessions obey install capacity and release on exit/stop/shutd
     await controller.shutdown();
     assert.equal(harness.snapshot().activeSessions, 0);
   } finally {
-    manager.stopAll();
+    await manager.stopAll();
     rmSync(root, { recursive: true, force: true });
   }
 });
@@ -121,7 +121,7 @@ test("AgentManager reports a completed runtime turn as an idle session", async (
     harness.activity("fake-session-1", "online");
     assert.deepEqual(idleAgents, ["agent-idle"]);
   } finally {
-    manager.stopAll();
+    await manager.stopAll();
     rmSync(root, { recursive: true, force: true });
   }
 });
@@ -161,7 +161,7 @@ test("AgentManager counts a delivery batch as one runtime turn before reporting 
     harness.activity("fake-session-1", "online");
     assert.deepEqual(idleAgents, ["agent-batch"]);
   } finally {
-    manager.stopAll();
+    await manager.stopAll();
     rmSync(root, { recursive: true, force: true });
   }
 });
@@ -199,7 +199,7 @@ test("AgentManager settles one terminal signal per batch and releases a failed f
     harness.activity("fake-session-1", "error", "follow-up failed");
     assert.deepEqual(idleAgents, ["agent-error"]);
   } finally {
-    manager.stopAll();
+    await manager.stopAll();
     rmSync(root, { recursive: true, force: true });
   }
 });

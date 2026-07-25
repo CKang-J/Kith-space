@@ -36,7 +36,7 @@ export interface StartOpts {
 
 export interface RuntimeSession {
   deliver(text: string): void;     // deliver a new message / wake up → drives one turn (claude=stdin write; codex=turn/start)
-  stop(): void;
+  stop(): void | Promise<void>;
 }
 
 export interface Runtime {

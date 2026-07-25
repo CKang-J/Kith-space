@@ -1,19 +1,23 @@
 name: CI
 
-# Keep the Personal AgentOS code, tests, and production Desktop bundles healthy on every push / PR.
+# During active development, run the full matrix after changes reach main or when requested manually.
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v6
 
@@ -45,4 +49,5 @@ jobs:
         run: pnpm run desktop:bundle
 
       - name: Audit production dependencies
+        if: runner.os == 'Linux'
         run: pnpm audit --prod --audit-level=high

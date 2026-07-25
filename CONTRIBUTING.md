@@ -38,6 +38,8 @@ git switch -c feat/short-description
 - 新增前端 UI 使用 Tailwind CSS v4 与 shadcn/ui，优先复用 `web/src/components/ui/`，并遵循 `AGENTS.md` 的前端开发规范；存量 CSS 只按触达范围渐进迁移。
 - 提交前查看 `git status`、`git diff --stat` 和 `git diff`，确认没有密钥、本机路径、生成物或无关文件。
 - 代码改动至少运行 `pnpm run typecheck` 和相关测试；完整测试命令见 `docs/dev-commands.md`。
+- 开发共享功能时必须检查 Windows、macOS、Linux 的路径、权限、进程、shell、native module 和 Electron 差异；详细规则与当前缺口见 `docs/cross-platform-compatibility.md`。
+- 平台相关 PR 要列出三端验证结果。未在某端运行时写明原因和对应 CI/待办；平台条件 `skip` 不得表述为该端已通过。
 - 只改文档时不要求本地运行完整代码测试，但仍需检查链接、命令和差异；PR 中如实注明未运行的检查。
 - 命令、架构、产品决策、界面信息架构或阶段状态发生变化时，同一个 PR 更新对应权威文档。
 
@@ -66,7 +68,7 @@ chore(deps): 更新 Electron 依赖
 
 - PR 标题使用与提交信息相同的格式，并概括整个改动。
 - 按 PR 模板填写目标、变更、测试证据、文档同步和未验证内容。
-- CI 的 `verify` 必须通过；当前单人维护阶段不强制人工审批。
+- 当前频繁开发阶段，PR 更新不自动触发完整三端 CI；提交者必须在 PR 中如实记录本地验证。`verify` 会在改动合入 `main` 后自动执行，也可在 GitHub Actions 中按需手动触发；当前单人维护阶段不强制人工审批。
 - 合并前重点检查：改动是否只围绕目标、是否包含敏感信息、测试是否覆盖关键路径、文档是否与代码一致。
 - 使用 **Squash and merge** 合入 `main`，合并后删除远端分支。
 

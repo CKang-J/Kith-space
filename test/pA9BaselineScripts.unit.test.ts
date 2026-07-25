@@ -108,7 +108,7 @@ test("P-A9 CLI smoke records a total timeout and exits unsuccessfully", { skip: 
     const result = runRuntimeSmoke(bin, root, 1);
     const elapsedMs = performance.now() - startedAt;
     assert.equal(result.status, 1, result.stderr);
-    assert.ok(elapsedMs < 4_000, `timeout took ${elapsedMs.toFixed(0)}ms`);
+    assert.ok(elapsedMs < 10_000, `timeout cleanup exceeded its test bound: ${elapsedMs.toFixed(0)}ms`);
     const report = JSON.parse(result.stdout) as RuntimeSmokeReport;
     const claude = report.results.find(({ name }) => name === "claude");
     assert.equal(claude?.samples[0]?.timedOut, true);

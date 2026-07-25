@@ -3,7 +3,7 @@
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Runtime, StartOpts, RuntimeCallbacks, RuntimeSession, TrajectoryEntry } from "./runtime.js";
-import { spawnRuntimeProcess } from "./runtimeProcess.js";
+import { spawnRuntimeProcess, terminateRuntimeProcess } from "./runtimeProcess.js";
 
 const MAX = 2000;
 const clip = (s: unknown) => String(s ?? "").slice(0, MAX);
@@ -139,6 +139,6 @@ export const claudeRuntime: Runtime = {
       }
     }
 
-    return { deliver: (text) => writeUser(text), stop: () => { try { proc.kill("SIGTERM"); } catch { /* */ } } };
+    return { deliver: (text) => writeUser(text), stop: () => terminateRuntimeProcess(proc, "Claude") };
   },
 };

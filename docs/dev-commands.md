@@ -9,10 +9,12 @@ pnpm test --unit
 pnpm run browser-access:dev local --port 7777 --rotate-token
 ```
 
+当前正式打包与实机验收只覆盖 Windows x64；macOS/Linux 尚未进入发行范围。源码与共享命令仍须遵守 [`Windows/macOS/Linux 兼容性基线`](./cross-platform-compatibility.md)。下文以 PowerShell 为主；不含环境变量赋值的 `pnpm` 命令可在 PowerShell、cmd、bash、zsh 中直接运行。`stop`、`wt:*`、`dev:e2e:*` 已统一为 Node 入口，平台进程操作封装在窄适配器中，不再要求 Bash 或 `pkill`。
+
 ## 1. 首次准备
 
 ```powershell
-cd D:\Projects\multi-agent
+cd <仓库目录>
 pnpm install
 ```
 

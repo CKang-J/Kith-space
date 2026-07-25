@@ -47,7 +47,7 @@ test("deliver received during async start becomes the single wake turn", async (
     assert.match(initialPrompt, /new Kith-space delivery/);
     assert.doesNotMatch(initialPrompt, /one-time introduction/);
     assert.equal(delivered.length, 0);
-    mgr.stopAll();
+    await mgr.stopAll();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -77,7 +77,7 @@ test("explicit wake start handles the delivery instead of introducing the agent"
     assert.match(initialPrompt, /new Kith-space delivery/);
     assert.doesNotMatch(initialPrompt, /one-time introduction/);
     assert.equal(introductionToken, undefined);
-    mgr.stopAll();
+    await mgr.stopAll();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -111,17 +111,17 @@ test("new agent stays introduction-pending until the Human DM is persisted", asy
     assert.match(prompts[0]!, /dm:@you/);
     assert.equal(introductionTokens[0], "intro-token");
     callbacks!.onActivity("online", "");
-    mgr.stop("agent-intro");
+    await mgr.stop("agent-intro");
 
     await mgr.start("agent-intro", config, "manual");
     assert.match(prompts[1]!, /one-time introduction/);
-    mgr.stop("agent-intro");
+    await mgr.stop("agent-intro");
 
     await mgr.start("agent-intro", { ...config, introduced: true }, "manual");
     assert.match(prompts[2]!, /If nothing requires action, remain silent/);
     assert.doesNotMatch(prompts[2]!, /one-time introduction/);
     assert.equal(introductionTokens[2], undefined);
-    mgr.stopAll();
+    await mgr.stopAll();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -158,7 +158,7 @@ test("one-shot runtime start with pending delivery uses wake nudge without a sec
     assert.match(initialPrompt ?? "", /host-native Kith-space CLI/);
     assert.match(initialPrompt ?? "", /responseDirective/);
     assert.equal(delivered.length, 0);
-    mgr.stopAll();
+    await mgr.stopAll();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -193,7 +193,7 @@ test("optional delivery wakes without publishing a fake reply preview", async ()
     assert.equal(delivered.length, 1);
     assert.match(delivered[0]!, /directive=optional/);
     assert.equal(events.some((event) => event.type === "agent:reply"), false);
-    mgr.stopAll();
+    await mgr.stopAll();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -236,7 +236,7 @@ test("a required item promotes a mixed delivery batch and starts one reply previ
     const previews = events.filter((event) => event.type === "agent:reply" && event.op === "start");
     assert.equal(previews.length, 1);
     assert.equal(previews[0]?.streamId, "required-stream");
-    mgr.stopAll();
+    await mgr.stopAll();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -266,7 +266,7 @@ test("concurrent starts for the same agent are idempotent", async () => {
     ]);
 
     assert.equal(startCount, 1);
-    mgr.stopAll();
+    await mgr.stopAll();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -280,8 +280,10 @@ test("Desktop shutdown waits until every runtime reports exit", async () => {
     start(_opts: StartOpts, cb: RuntimeCallbacks) {
       return {
         deliver: () => {},
-        stop: () => {
-          setTimeout(() => { stopped = true; cb.onExit(0); }, 5);
+        stop: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          stopped = true;
+          cb.onExit(0);
         },
       };
     },
@@ -401,7 +403,7 @@ test("a start received immediately after reset waits for runtime state removal",
     await Promise.all([resetting, restarting]);
     assert.equal(removals, 1);
     assert.deepEqual(events, ["runtime-start", "remove-start", "remove-done", "runtime-start"]);
-    mgr.stopAll();
+    await mgr.stopAll();
   } finally {
     releaseRemoval?.();
     rmSync(root, { recursive: true, force: true });
@@ -450,7 +452,7 @@ test("experimental runtimes that write cwd-level AGENTS.md stay in runtime state
       const mgr = new AgentManager(() => {}, { runtimeStateRoot, binDir: root, runtimeResolver: () => runtime });
       await mgr.start(agentId, { ...baseConfig(agentId, workspaceRoot), runtime: runtimeName });
       assert.equal(cwd, path.join(runtimeStateRoot, "space-1", agentId));
-      mgr.stopAll();
+      await mgr.stopAll();
     }
   } finally {
     rmSync(root, { recursive: true, force: true });

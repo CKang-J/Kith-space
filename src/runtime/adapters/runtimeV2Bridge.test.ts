@@ -110,6 +110,32 @@ test("v2 bridge cancellation terminates the process-backed attempt explicitly", 
   }, { async emit() {} }), /closed/);
 });
 
+test("v2 bridge settles cancellation even when runtime cleanup fails", async () => {
+  const runtime: Runtime = {
+    name: "claude",
+    start() {
+      return {
+        deliver() {},
+        async stop() { throw new Error("cleanup failed"); },
+      };
+    },
+  };
+  const session = await bridgeRuntimeV2(runtime).openSession(openOptions());
+  const events: RuntimeEventEnvelope[] = [];
+  const result = session.runTurn({
+    turnId: "turn-cleanup-failure",
+    attemptId: "attempt-cleanup-failure",
+    context: "wait",
+    capabilityActivationId: "activation-cleanup-failure",
+    deadlineAt: Date.now() + 10_000,
+  }, { async emit(event) { events.push(event); } });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  await assert.rejects(session.cancel("attempt-cleanup-failure"), /cleanup failed/);
+  assert.equal((await result).outcome, "cancelled");
+  assert.equal(events.at(-1)?.kind, "turn_failed");
+});
+
 test("v2 bridge fails before starting the runtime when turn-start acknowledgement is rejected", async () => {
   let starts = 0;
   const runtime: Runtime = {

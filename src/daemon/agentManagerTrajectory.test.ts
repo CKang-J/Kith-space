@@ -52,7 +52,7 @@ test("manager sends trajectory and terminal activity with the same delivery scop
     assert.deepEqual({ scope: terminal.scope, channelId: terminal.channelId, streamId: terminal.streamId }, {
       scope: "scoped", channelId: "channel-a", streamId: "stream-a",
     });
-    manager.stopAll();
+    await manager.stopAll();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -87,7 +87,7 @@ test("manager marks one debounced turn across different targets as ambiguous", a
     const trajectory = [...sent].reverse().find((message) => message.type === "agent:trajectory");
     assert.equal(trajectory.scope, "ambiguous");
     assert.equal(trajectory.channelId, undefined);
-    manager.stopAll();
+    await manager.stopAll();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -134,7 +134,7 @@ test("a synchronous delivery failure does not leak its scope into the next turn"
     assert.deepEqual({ scope: trajectory.scope, channelId: trajectory.channelId, streamId: trajectory.streamId }, {
       scope: "scoped", channelId: "channel-b", streamId: "stream-b",
     });
-    manager.stopAll();
+    await manager.stopAll();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

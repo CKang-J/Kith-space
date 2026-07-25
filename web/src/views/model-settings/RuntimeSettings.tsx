@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { getDesktopBridge } from "../../desktopBridge.ts";
+import { copyText } from "../../clipboard.ts";
 import "./modelSettings.css";
 
 type Api = (method: string, path: string, body?: unknown) => Promise<any>;
@@ -190,10 +191,9 @@ export function RuntimeSettings({ api }: { api: Api }) {
   };
 
   const copyLoginCommand = async (command: string) => {
-    try {
-      await navigator.clipboard.writeText(command);
+    if (await copyText(command)) {
       setNotice(`已复制：${command}`);
-    } catch {
+    } else {
       setError("无法访问剪贴板，请手动复制登录命令。");
     }
   };

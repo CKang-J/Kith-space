@@ -59,7 +59,7 @@ test("current pre-start delivery queue retains exactly the newest ten distinguis
         streamId: `kept-${trackedIndex}`,
       });
     } finally {
-      manager.stopAll();
+      await manager.stopAll();
       rmSync(root, { recursive: true, force: true });
     }
   }
@@ -97,8 +97,8 @@ test("AgentManager's admitted-start safety buffer uses the admission queue TTL",
     assert.ok(expiredSent.some((message) => message.type === "agent:trajectory" && message.scope === "unscoped"));
     assert.equal(expiredSent.some((message) => message.type === "agent:reply" && message.op === "start"), false);
   } finally {
-    retained.stopAll();
-    expired.stopAll();
+    await retained.stopAll();
+    await expired.stopAll();
     rmSync(retainedRoot, { recursive: true, force: true });
     rmSync(expiredRoot, { recursive: true, force: true });
   }
@@ -122,7 +122,7 @@ test("current pre-start delivery queue expires after its configured TTL", async 
     assert.match(prompt, /If nothing requires action, remain silent/);
     assert.doesNotMatch(prompt, /new Kith-space delivery/);
   } finally {
-    manager.stopAll();
+    await manager.stopAll();
     rmSync(root, { recursive: true, force: true });
   }
 });

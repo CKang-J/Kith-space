@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { managedRuntimeExecutable, withManagedRuntimePath } from "./runtimeSetupCatalog.js";
-import { RuntimeSetupService } from "./runtimeSetupService.js";
+import { runRuntimeSetupCommand, RuntimeSetupService } from "./runtimeSetupService.js";
 
 function withTemporaryHome(run: (root: string) => Promise<void> | void) {
   const previous = process.env.KITH_SPACE_HOME;
@@ -16,6 +17,60 @@ function withTemporaryHome(run: (root: string) => Promise<void> | void) {
     rmSync(root, { recursive: true, force: true });
   });
 }
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function forceKillFixture(pid: number): void {
+  if (!processExists(pid)) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+    return;
+  }
+  try { process.kill(pid, "SIGKILL"); } catch { /* fixture already exited */ }
+}
+
+test("runtime command timeout waits until the command and its descendants exit", { timeout: 5_000 }, () => withTemporaryHome(async (root) => {
+  const pidFile = path.join(root, "runtime-command-pids.json");
+  const childScript = path.join(root, "runtime-command-child.mjs");
+  const parentScript = path.join(root, "runtime-command-parent.mjs");
+  writeFileSync(childScript, "setInterval(() => {}, 1000);\n");
+  writeFileSync(parentScript, [
+    "import { spawn } from 'node:child_process';",
+    "import { writeFileSync } from 'node:fs';",
+    "const child = spawn(process.execPath, [process.argv[3]], { stdio: 'ignore' });",
+    "writeFileSync(process.argv[2], JSON.stringify({ parent: process.pid, child: child.pid }));",
+    "process.on('SIGTERM', () => {});",
+    "setInterval(() => {}, 1000);",
+  ].join("\n"));
+
+  const resultPromise = runRuntimeSetupCommand(
+    process.execPath,
+    [parentScript, pidFile, childScript],
+    { timeoutMs: 100 },
+  );
+  const readyDeadline = Date.now() + 2_000;
+  while (!existsSync(pidFile) && Date.now() < readyDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(existsSync(pidFile), true);
+  const fixture = JSON.parse(readFileSync(pidFile, "utf8")) as { parent: number; child: number };
+  try {
+    const result = await resultPromise;
+    assert.match(result.error?.message ?? "", /timed out/);
+    assert.equal(processExists(fixture.parent), false);
+    assert.equal(processExists(fixture.child), false);
+  } finally {
+    forceKillFixture(fixture.parent);
+    forceKillFixture(fixture.child);
+  }
+}));
 
 test("managed runtime path entries take precedence without deleting the user's PATH", () => withTemporaryHome(() => {
   const source = ["/usr/local/bin", "/usr/bin"].join(path.delimiter);

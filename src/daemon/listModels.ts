@@ -10,11 +10,10 @@
 //
 // The parse functions are pure (unit-tested against fixtures captured from multica's discovery
 // research) and mirror multica's server/pkg/agent/models.go field-for-field.
-import type { ChildProcess } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { spawnRuntimeProcess } from "./runtimeProcess.js";
+import { runCommand } from "../processes/runCommand.js";
 
 export interface ThinkingLevel { value: string; label: string; description?: string }
 export interface ModelThinking { levels: ThinkingLevel[]; default?: string }
@@ -240,24 +239,19 @@ const OUT_CAP = 256 * 1024; // bound memory if a CLI floods stdout
 // Run a runtime's list command and capture stdout/stderr. Uses the daemon's own env (so the CLI sees
 // the same login/config the agent runs use) minus NODE_OPTIONS — a proxy flag there makes some
 // bundled CLIs refuse to start (same gotcha the opencode/cursor/pi runtimes guard against).
-function runList(bin: string, args: string[], timeoutMs: number = LIST_TIMEOUT_MS): Promise<{ stdout: string; stderr: string; code: number | null }> {
-  return new Promise((resolve) => {
-    const env = { ...process.env };
-    delete env.NODE_OPTIONS;
-    let proc: ChildProcess;
-    try {
-      proc = spawnRuntimeProcess(bin, args, { stdio: ["ignore", "pipe", "pipe"], env });
-    } catch (e) {
-      return resolve({ stdout: "", stderr: String((e as any)?.message ?? e), code: 1 });
-    }
-    let stdout = "";
-    let stderr = "";
-    proc.stdout?.on("data", (c: Buffer) => { if (stdout.length < OUT_CAP) stdout += c.toString(); });
-    proc.stderr?.on("data", (c: Buffer) => { if (stderr.length < OUT_CAP) stderr += c.toString(); });
-    const timer = setTimeout(() => { try { proc.kill("SIGKILL"); } catch { /* */ } }, timeoutMs);
-    proc.on("error", (e) => { clearTimeout(timer); resolve({ stdout, stderr: stderr || String((e as any)?.message ?? e), code: 1 }); });
-    proc.on("exit", (code) => { clearTimeout(timer); resolve({ stdout, stderr, code }); });
-  });
+export async function runRuntimeModelCommand(
+  bin: string,
+  args: string[],
+  timeoutMs: number = LIST_TIMEOUT_MS,
+): Promise<{ stdout: string; stderr: string; code: number | null }> {
+  const env = { ...process.env };
+  delete env.NODE_OPTIONS;
+  const result = await runCommand(bin, args, { env, timeoutMs, maxOutputBytes: OUT_CAP });
+  return {
+    stdout: result.stdout,
+    stderr: result.stderr || result.error?.message || "",
+    code: result.error && result.status === null ? 1 : result.status,
+  };
 }
 
 // Probe the live model list for a runtime on this machine. Returns null for runtimes we can't probe
@@ -269,23 +263,23 @@ export async function listModels(runtime: string): Promise<DiscoveredModel[] | n
       // Two attempts share the server's probe budget: verbose first, then a quick non-verbose retry.
       // 5s + 2s stays under runtimeModels' 8s WS-RPC timeout so the server never waits on a probe it
       // already gave up on (the retry hits a now-warm CLI, so 2s suffices).
-      let r = await runList("opencode", ["models", "--verbose"], 5_000);
+      let r = await runRuntimeModelCommand("opencode", ["models", "--verbose"], 5_000);
       let models = parseOpencodeModels(r.stdout);
-      if (!models.length) { r = await runList("opencode", ["models"], 2_000); models = parseOpencodeModels(r.stdout); }
+      if (!models.length) { r = await runRuntimeModelCommand("opencode", ["models"], 2_000); models = parseOpencodeModels(r.stdout); }
       return models.length ? models : null;
     }
     case "cursor": {
-      const r = await runList("cursor-agent", ["--list-models"]);
+      const r = await runRuntimeModelCommand("cursor-agent", ["--list-models"]);
       const models = parseCursorModels(r.stdout);
       return models.length ? models : null;
     }
     case "pi": {
-      const r = await runList("pi", ["--list-models"]);
+      const r = await runRuntimeModelCommand("pi", ["--list-models"]);
       const models = parsePiModels(r.stdout || r.stderr); // older pi writes the list to stderr
       return models.length ? models : null;
     }
     case "claude": {
-      const r = await runList("claude", ["--help"]);
+      const r = await runRuntimeModelCommand("claude", ["--help"]);
       const superset = parseClaudeEffortLevels(r.stdout || r.stderr);
       if (!superset.length) return null; // no effort info → static fallback (no thinking)
       return CLAUDE_MODELS.map((m) => {
@@ -294,7 +288,7 @@ export async function listModels(runtime: string): Promise<DiscoveredModel[] | n
       });
     }
     case "codex": {
-      const r = await runList("codex", ["debug", "models"]);
+      const r = await runRuntimeModelCommand("codex", ["debug", "models"]);
       const models = parseCodexModels(r.stdout);
       return models.length ? models : null;
     }

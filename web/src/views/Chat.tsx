@@ -42,6 +42,7 @@ import { useTaskApi } from "../features/conversation/data/taskApi.ts";
 import { useConversationMessages } from "../features/conversation/model/useConversationMessages.ts";
 import { useConversationViewport } from "../features/conversation/model/useConversationViewport.ts";
 import { useConversationThreads, useThreadPanelModel } from "../features/conversation/model/useConversationThreads.ts";
+import { copyText } from "../clipboard.ts";
 
 export { animateBackToBottom, BACK_TO_BOTTOM_SCROLL_MS, keepPinnedToBottomDuringEnter, MESSAGE_ENTER_PIN_MS } from "../features/conversation/model/useConversationViewport.ts";
 
@@ -120,13 +121,18 @@ function MessageContextMenu({
   onConvertTask?: () => void;
 }) {
   const { t } = useTranslation();
-  const copy = (text: string) => { navigator.clipboard?.writeText(text).catch(() => {}); onClose(); };
+  const toast = useToast();
+  const copy = async (text: string) => {
+    const copied = await copyText(text);
+    copied ? toast.info(t("clipboard.copied")) : toast.error(t("clipboard.copyFailed"));
+    onClose();
+  };
   return (
     <div className="ctx-backdrop" onClick={onClose} onContextMenu={(event) => { event.preventDefault(); onClose(); }}>
       <div className="ctx-menu" style={{ left: Math.min(x, window.innerWidth - 230), top: Math.min(y, window.innerHeight - 320) }} onClick={(event) => event.stopPropagation()}>
         {!readOnly ? <div className="ctx-rx">{QUICK_EMOJIS.slice(0, 6).map((emoji) => <button key={emoji} title={emoji} onClick={() => { onReact(emoji); onClose(); }}>{emoji}</button>)}</div> : null}
-        <button className="ctx-item" onClick={() => copy(m.content)}><Clipboard size={14} /> {t("chat.copyMarkdown")}</button>
-        <button className="ctx-item" onClick={() => copy(link)}><Link2 size={14} /> {t("chat.copyLink")}</button>
+        <button className="ctx-item" onClick={() => { void copy(m.content); }}><Clipboard size={14} /> {t("chat.copyMarkdown")}</button>
+        <button className="ctx-item" onClick={() => { void copy(link); }}><Link2 size={14} /> {t("chat.copyLink")}</button>
         {onOpenThread ? <button className="ctx-item" onClick={() => { onOpenThread(); onClose(); }}><MessageCircle size={14} /> {t("chat.openThread")}</button> : null}
         {!readOnly ? <button className="ctx-item" onClick={() => { onToggleSave(); onClose(); }}><Bookmark size={14} fill={saved ? "currentColor" : "none"} /> {saved ? t("chat.unsave") : t("chat.saveMessage")}</button> : null}
         {!readOnly && onConvertTask ? <button className="ctx-item" onClick={() => { onClose(); onConvertTask(); }}><CheckSquare size={14} /> {t("chat.convertToTask")}</button> : null}
@@ -397,7 +403,10 @@ export function Chat({
   const taskAssignee = (m: Msg) => { if (!m.taskAssigneeId) return ""; const a = agents.find((x) => x.id === m.taskAssigneeId); if (a) return " @" + (a.displayName || a.name); return m.taskAssigneeId === me?.id ? " @" + me.name : ""; };
   // Handles task status change / claim from the task badge; socket message:updated event refreshes the message automatically
   const doTask = async (m: Msg, action: string, body?: unknown) => { try { await taskApi.updateMessageTask(m.id, action, body); } catch { /* will self-correct on next reload */ } };
-  const copyMarkdown = (content: string) => { navigator.clipboard?.writeText(content).catch(() => {}); };
+  const copyMarkdown = async (content: string) => {
+    const copied = await copyText(content);
+    copied ? toast.info(t("clipboard.copied")) : toast.error(t("clipboard.copyFailed"));
+  };
   const agentLiveState = (a?: (typeof agents)[number]) => {
     if (!a) return "offline";
     const activity = a.activity && a.activity !== "offline" ? a.activity : "";
@@ -608,7 +617,7 @@ export function Chat({
                       {m.producedByTurnId ? <TurnDetailsButton turnId={m.producedByTurnId} /> : null}
                       {!conversationReadOnly ? <ReactionToolbarButton onReact={(emoji) => react(m.id, emoji, false)} /> : null}
                       {!conversationReadOnly || tm?.threadChannelId ? <button title={t("chat.openThread")} aria-label={t("chat.openThread")} onClick={() => startThread(m)}><MessageCircle size={15} /></button> : null}
-                      <button title={t("chat.copyMarkdown")} aria-label={t("chat.copyMarkdown")} onClick={() => copyMarkdown(m.content)}><Clipboard size={15} /></button>
+                      <button title={t("chat.copyMarkdown")} aria-label={t("chat.copyMarkdown")} onClick={() => { void copyMarkdown(m.content); }}><Clipboard size={15} /></button>
                       <button title={t("chat.more")} aria-label={t("chat.more")} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setCtxMenu({ m, x: r.right - 212, y: r.bottom + 4 }); }}><MoreHorizontal size={15} /></button>
                     </MessageToolbar>}
                   >
@@ -742,6 +751,7 @@ export function Chat({
 function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = false, style, headerLeading, headerActions, onClose, onFollowChange, onOpenAgent, onOpenAgentCard, onOpenHumanCard, allowChannelAllMention, focusMessageId }: { channelId: string; parent: Msg; followed: boolean; readOnly?: boolean; solo?: boolean; style?: CSSProperties; headerLeading?: ReactNode; headerActions?: ReactNode; onClose: () => void; onFollowChange: (followed: boolean) => void; onOpenAgent: (id: string) => void; onOpenAgentCard: (agentId: string, trigger: HTMLElement) => void; onOpenHumanCard: (name: string, avatarUrl: string | null, trigger: HTMLElement) => void; allowChannelAllMention: boolean; focusMessageId?: string | null }) {
   const { t } = useTranslation();
   const { attachmentUrl, me, react, agents, channels, archivedChannels, slug, savedIds, saveMsg, unsaveMsg } = useStore();
+  const toast = useToast();
   const taskApi = useTaskApi();
   const senderAvatar = (m: Msg) => resolveAvatar(m.senderType === "agent" ? agents.find((agent) => agent.id === m.senderId)?.avatarUrl : undefined, attachmentUrl);
   const nav = useNavigate();
@@ -769,6 +779,10 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
   const [ctxMenu, setCtxMenu] = useState<{ m: Msg; x: number; y: number } | null>(null);
   const composerRef = useRef<ComposerHandle>(null);
   const toggleFollow = () => panelModel.toggleFollow(followed, onFollowChange);
+  const copyMarkdown = async (content: string) => {
+    const copied = await copyText(content);
+    copied ? toast.info(t("clipboard.copied")) : toast.error(t("clipboard.copyFailed"));
+  };
   const row = (m: Msg, dateDivider?: ReactNode, continuation = false, hasContinuation = false) => {
     if (m.senderType === "system") return <Fragment key={m.id}>{dateDivider}<div className="msg-sys" id={"m-" + m.id}>{m.content}</div></Fragment>; // system messages render as a banner with no avatar
     const ag = m.senderType === "agent" && m.senderId ? agents.find((a) => a.id === m.senderId) : undefined;
@@ -810,7 +824,7 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
         toolbar={<MessageToolbar>
           {m.producedByTurnId ? <TurnDetailsButton turnId={m.producedByTurnId} /> : null}
           {!readOnly ? <ReactionToolbarButton onReact={(emoji) => react(m.id, emoji, false)} /> : null}
-          <button title={t("chat.copyMarkdown")} aria-label={t("chat.copyMarkdown")} onClick={() => { navigator.clipboard?.writeText(m.content).catch(() => {}); }}><Clipboard size={15} /></button>
+          <button title={t("chat.copyMarkdown")} aria-label={t("chat.copyMarkdown")} onClick={() => { void copyMarkdown(m.content); }}><Clipboard size={15} /></button>
           <button title={t("chat.more")} aria-label={t("chat.more")} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setCtxMenu({ m, x: rect.right - 212, y: rect.bottom + 4 }); }}><MoreHorizontal size={15} /></button>
         </MessageToolbar>}
       >

@@ -561,6 +561,18 @@
 
 ---
 
+## 决策 36：当前发行保持 Windows-first，共享工程按 Windows/macOS/Linux 三端设计
+
+**状态**：Accepted（2026-07-25；工程规则已生效，三端发行与完整门禁尚未完成）。
+
+**结论**：当前正式产品发行范围仍是 Windows x64 v1，macOS/Linux 继续属于 planned；但所有新增或修改的共享代码必须同时评估 Windows、macOS、Linux。路径、文件权限、进程树、shell/可执行文件、临时文件、native ABI、Electron 集成和测试不能默认继承当前开发宿主的语义。平台差异必须位于窄 Interface 后的 Adapter；领域、数据和共享 UI 不散落平台命令或假设。
+
+**推理与权衡**：等到开始 macOS/Linux 打包时再补兼容，会让 Windows-only 假设持续进入共享模块，最终形成高成本回填；现在立即宣称三端已支持又与真实发行、CI 和实机证据冲突。因此采用“发行范围与工程基线分离”：产品状态诚实保持 Windows-first，新增工程决策从现在起不继续制造跨平台债，并用活审计清单记录尚未完成的部分。
+
+**验证边界**：平台无关行为先由共享契约测试覆盖；涉及宿主语义的改动再由 Windows/macOS/Linux runner 或真实 smoke 覆盖。条件 `skip` 只代表透明缺口，不算目标平台通过。某平台暂未验证时必须在能力探测、UI/错误、PR 验证说明和 `docs/cross-platform-compatibility.md` 中显式记录，不得静默降级。当前审计已确认三端 CI、Windows 进程树/测试门禁、macOS/Linux packaging 与 platform integration 等缺口，处理顺序以该文档为准。
+
+---
+
 ## 被推翻/修正的决策
 
 这一节专门记录会话中演化过的决策。保留它们，是因为"为什么没走另一条路"往往比结论本身更能帮未来的读者理解项目的形状。

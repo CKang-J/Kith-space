@@ -2,23 +2,16 @@ import { mkdir, rename, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import crossSpawn from "cross-spawn";
 import { resolveExecutable } from "../advisor-provider/providerArtifact.js";
 import { RuntimeProfileService } from "../model-control/runtimeProfileService.js";
 import { managedRuntimesDir } from "../paths.js";
+import { runCommand, type CommandResult } from "../processes/runCommand.js";
 import {
   managedRuntimeExecutable,
   managedRuntimePrefix,
   runtimeSetupDefinition,
   type SetupRuntimeId,
 } from "./runtimeSetupCatalog.js";
-
-type CommandResult = {
-  status: number | null;
-  stdout: string;
-  stderr: string;
-  error?: Error;
-};
 
 type CommandRunner = (
   command: string,
@@ -28,55 +21,11 @@ type CommandRunner = (
 
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 
-const defaultRunner: CommandRunner = (command, args, options = {}) => new Promise((resolve) => {
-  const child = crossSpawn(command, [...args], {
-    detached: process.platform !== "win32",
-    env: options.env ?? process.env,
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
-  });
-  let stdout = "";
-  let stderr = "";
-  let error: Error | undefined;
-  let settled = false;
-  let killTimer: NodeJS.Timeout | undefined;
-  const append = (current: string, chunk: Buffer | string) => {
-    if (Buffer.byteLength(current) >= MAX_OUTPUT_BYTES) return current;
-    return `${current}${String(chunk)}`.slice(0, MAX_OUTPUT_BYTES);
-  };
-  const finish = (status: number | null) => {
-    if (settled) return;
-    settled = true;
-    clearTimeout(timeout);
-    if (killTimer) clearTimeout(killTimer);
-    resolve({ status, stdout, stderr, ...(error ? { error } : {}) });
-  };
-  const stop = (signal: NodeJS.Signals) => {
-    try {
-      if (process.platform !== "win32" && child.pid) process.kill(-child.pid, signal);
-      else child.kill(signal);
-    } catch {
-      // The process may have exited between the timeout and signal.
-    }
-  };
-  child.stdout?.on("data", (chunk) => { stdout = append(stdout, chunk); });
-  child.stderr?.on("data", (chunk) => { stderr = append(stderr, chunk); });
-  child.once("error", (cause) => {
-    error = cause;
-    finish(null);
-  });
-  const timeout = setTimeout(() => {
-    error = new Error(`command timed out after ${options.timeoutMs ?? 10_000}ms`);
-    stop("SIGTERM");
-    killTimer = setTimeout(() => {
-      stop("SIGKILL");
-      finish(null);
-    }, 1_000);
-    killTimer.unref?.();
-  }, options.timeoutMs ?? 10_000);
-  timeout.unref?.();
-  child.once("close", finish);
-});
+export const runRuntimeSetupCommand: CommandRunner = (command, args, options = {}) => runCommand(
+  command,
+  args,
+  { ...options, maxOutputBytes: MAX_OUTPUT_BYTES },
+);
 
 const setupSnapshotCache = new Map<string, {
   promise: Promise<RuntimeSetupSnapshot>;
@@ -174,7 +123,7 @@ export interface RuntimeSetupSnapshot {
 
 export class RuntimeSetupService {
   constructor(
-    private readonly runner: CommandRunner = defaultRunner,
+    private readonly runner: CommandRunner = runRuntimeSetupCommand,
     private readonly profiles = new RuntimeProfileService(),
   ) {}
 

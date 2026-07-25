@@ -106,7 +106,7 @@ MVP 的范围划分见 roadmap.md 和 mvp-spec.md，本文不展开“做什么�
 
 **控制复杂度，逐层解锁。** 有些能力有明确的工程坑或前置条件，硬提前只会拖垮整体质量：邮箱涉及 OAuth / IMAP，画布对流畅度敏感；而 HTTP 局域网入口与拥有本机工具权限的 agent 组合后，安全边界必须特别清楚。v1 只允许用户显式开启受信任局域网访问，并要求访问 Token；HTTPS 与更细的 runtime 权限是邮箱、浏览器等高风险模块上线前的硬前置。
 
-需要区分“当前地基、延后能力”和“永久边界”：Home、Spaces 目录、用户选择 Space 文件夹以及 Space root cwd 属于当前地基；跨 Space Inbox/Tasks 等聚合、跨 Space agent 写编排、邮箱、日历、画布、macOS/Linux 支持属于延后；多真人、多 agent 主机、公网托管、云同步和独立 Web 发行属于明确非目标。架构不再为后者保留休眠机制。
+需要区分“当前地基、延后能力”和“永久边界”：Home、Spaces 目录、用户选择 Space 文件夹以及 Space root cwd 属于当前地基；跨 Space Inbox/Tasks 等聚合、跨 Space agent 写编排、邮箱、日历、画布、macOS/Linux **发行与实机验收**属于延后；多真人、多 agent 主机、公网托管、云同步和独立 Web 发行属于明确非目标。延后 macOS/Linux 发行不允许新增共享代码继续只按单一宿主设计，三端工程基线与当前缺口见 `docs/cross-platform-compatibility.md`。架构不再为永久非目标保留休眠机制。
 
 ## 非目标与反模式
 

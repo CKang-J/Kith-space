@@ -7,6 +7,18 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { codexCompactionEvent, codexRuntime } from "./codexRuntime.js";
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId: NodeJS.Timeout | undefined;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+    }),
+  ]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
+
 test("Codex maps the generated app-server contextCompaction item without inventing a summary", () => {
   assert.deepEqual(codexCompactionEvent("item/started", { item: { id: "compact-1", type: "contextCompaction" } }), {
     phase: "started", metadata: { protocol: "item/started", itemId: "compact-1" },
@@ -23,7 +35,8 @@ test("Codex maps the generated app-server contextCompaction item without inventi
 test("missing codex binary reports offline instead of crashing daemon", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "kith-space-codex-missing-"));
   const events: { activity: string; detail?: string }[] = [];
-  let exitCode: number | null | undefined;
+  let resolveExit!: (code: number | null) => void;
+  const exited = new Promise<number | null>((resolve) => { resolveExit = resolve; });
 
   try {
     const session = codexRuntime.start({
@@ -35,17 +48,17 @@ test("missing codex binary reports offline instead of crashing daemon", async ()
       onSession: () => {},
       onActivity: (activity, detail) => events.push({ activity, detail }),
       onTrajectory: () => {},
-      onExit: (code) => { exitCode = code; },
+      onExit: resolveExit,
       log: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } as any,
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    session.stop();
+    const exitCode = await withTimeout(exited, 2_000, "missing codex exit timeout");
+    await session.stop();
+    assert.equal(exitCode, 1);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 
-  assert.equal(exitCode, 1);
   assert.ok(
     events.some((e) => e.activity === "offline" && /codex not found/.test(e.detail ?? "")),
     "expected a visible offline activity for missing codex",
@@ -72,10 +85,7 @@ test("Codex launches an npm cmd shim on Windows", { skip: process.platform !== "
       log: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } as any,
     }));
 
-    const exitCode = await Promise.race([
-      exited,
-      new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("codex shim did not exit")), 1_000)),
-    ]);
+    const exitCode = await withTimeout(exited, 1_000, "codex shim did not exit");
     assert.equal(exitCode, 0);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -139,14 +149,8 @@ process.stdin.on("data", (chunk) => {
       log: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } as any,
     });
 
-    const text = await Promise.race([
-      received,
-      new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("Codex UTF-8 fixture timed out")), 1_000)),
-    ]);
-    await Promise.race([
-      exited,
-      new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("Codex UTF-8 fixture did not exit")), 1_000)),
-    ]);
+    const text = await withTimeout(received, 1_000, "Codex UTF-8 fixture timed out");
+    await withTimeout(exited, 1_000, "Codex UTF-8 fixture did not exit");
     session.stop();
     assert.equal(text, "中文测试");
   } finally {
