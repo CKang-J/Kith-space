@@ -4,4 +4,7 @@
 *.sh text eol=lf
 *.bash text eol=lf
 
-# Keep other line endings as-is (Node/TS/JSON/MD tolerate CRLF); only scripts are load-bearing.
+# Drizzle journals the migration file bytes, so line endings are part of the immutable hash.
+drizzle/*.sql text eol=lf
+
+# Keep other line endings as-is; Node/TS/JSON/MD tolerate CRLF.

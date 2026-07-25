@@ -108,9 +108,15 @@ export function assertCompatibleSpaceDatabase(
   `).all() as Array<{ hash: string; createdAt: number }>;
   const expectedJournal = WORKSPACE_MIGRATION_HISTORY
     .filter((entry) => entry.version <= version)
-    .map((entry) => ({ hash: entry.hash, createdAt: entry.createdAt }));
+    .map((entry) => ({
+      hashes: [entry.hash, ...(entry.compatibleHashes ?? [])],
+      createdAt: entry.createdAt,
+    }));
   const journalIsPrefix = actualJournal.length <= expectedJournal.length
-    && actualJournal.every((entry, index) => JSON.stringify(entry) === JSON.stringify(expectedJournal[index]));
+    && actualJournal.every((entry, index) => {
+      const expected = expectedJournal[index];
+      return expected?.createdAt === entry.createdAt && expected.hashes.includes(entry.hash);
+    });
   if (!journalIsPrefix || (options.requireCurrentVersion && actualJournal.length !== expectedJournal.length)) {
     throw new SpaceDatabaseCompatibilityError(
       "journal",

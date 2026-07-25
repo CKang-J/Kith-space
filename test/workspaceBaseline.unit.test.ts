@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import { and, eq } from "drizzle-orm";
 import {
@@ -33,6 +33,18 @@ function tables(sqlite: Database.Database): string[] {
 function columns(sqlite: Database.Database, table: string): string[] {
   return (sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((row) => row.name);
 }
+
+test("workspace migration history pins canonical LF and known Windows CRLF byte hashes", () => {
+  const digest = (value: string) => createHash("sha256").update(value).digest("hex");
+  for (const entry of WORKSPACE_MIGRATION_HISTORY) {
+    const sql = readFileSync(new URL(`../drizzle/${entry.tag}.sql`, import.meta.url), "utf8")
+      .replaceAll("\r\n", "\n");
+    assert.equal(entry.hash, digest(sql), `${entry.tag} canonical hash must use LF bytes`);
+    for (const compatibleHash of entry.compatibleHashes ?? []) {
+      assert.equal(compatibleHash, digest(sql.replaceAll("\n", "\r\n")), `${entry.tag} compatible hash must use CRLF bytes`);
+    }
+  }
+});
 
 test("fresh Space database uses the Personal AgentOS baseline and seeds its Space plus #all", () => {
   const spaceId = randomUUID();
@@ -451,6 +463,31 @@ test("workspace migration journal rejects both missing and unexpected entries", 
       closeSpaceDb(spaceId);
       unregisterSpace(spaceId);
     }
+  }
+});
+
+test("workspace migration journal accepts the known Windows CRLF migration hashes", () => {
+  const spaceId = randomUUID();
+  const rootPath = path.join(kithSpaceHome(), "workspace-crlf-journal-test", spaceId);
+  const dbPath = workspaceDbFile(rootPath);
+  registerSpace({ id: spaceId, name: "CRLF journal", slug: `crlf-journal-${spaceId}`, rootPath });
+
+  dbForSpace(spaceId);
+  closeSpaceDb(spaceId);
+
+  const migrationEntry = WORKSPACE_MIGRATION_HISTORY[0]!;
+  const crlfHash = migrationEntry.compatibleHashes?.[0];
+  assert.ok(crlfHash, "fixture migration must declare its CRLF hash");
+  const sqlite = new Database(dbPath);
+  sqlite.prepare("UPDATE __drizzle_migrations SET hash = ? WHERE created_at = ?")
+    .run(crlfHash, migrationEntry.createdAt);
+  sqlite.close();
+
+  try {
+    assert.doesNotThrow(() => dbForSpace(spaceId));
+  } finally {
+    closeSpaceDb(spaceId);
+    unregisterSpace(spaceId);
   }
 });
 
