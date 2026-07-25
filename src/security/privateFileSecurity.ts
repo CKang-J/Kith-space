@@ -53,7 +53,6 @@ function replaceWindowsPrivateAcl(target: string, kind: "file" | "directory", ow
   const script = [
     "$sid = [System.Security.Principal.SecurityIdentifier]::new($env:KITH_PRIVATE_OWNER_SID)",
     "$acl = Get-Acl -LiteralPath $env:KITH_PRIVATE_PATH",
-    "$acl.SetOwner($sid)",
     "$acl.SetAccessRuleProtection($true, $false)",
     "foreach ($existingRule in @($acl.Access)) { [void]$acl.RemoveAccessRuleSpecific($existingRule) }",
     `$inheritance = ${inheritance}`,
@@ -70,7 +69,10 @@ function replaceWindowsPrivateAcl(target: string, kind: "file" | "directory", ow
     },
     windowsHide: true,
   });
-  if (result.error || result.status !== 0) throw new Error("unable to replace the Windows private path ACL");
+  if (result.error || result.status !== 0) {
+    const detail = String(result.stderr).trim();
+    throw new Error(`unable to replace the Windows private path ACL${detail ? `: ${detail}` : ""}`);
+  }
 }
 
 export function assertPrivatePathSecurity(target: string): void {
@@ -105,6 +107,15 @@ export function protectPrivatePath(target: string, kind: "file" | "directory"): 
   const ownerSid = currentWindowsSid();
   const ctimeMs = metadata.ctimeMs;
   if (verifiedWindowsCtimes.get(target) === ctimeMs) return;
+  if (inspectWindowsAcl(target).ownerSid !== ownerSid) {
+    const ownerResult = spawnSync("icacls.exe", [target, "/setowner", `*${ownerSid}`], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    if (ownerResult.error || ownerResult.status !== 0) {
+      throw new Error("unable to set the Windows private path owner");
+    }
+  }
   replaceWindowsPrivateAcl(target, kind, ownerSid);
   verifiedWindowsCtimes.delete(target);
   assertPrivatePathSecurity(target);
