@@ -1,6 +1,7 @@
 import { constants, closeSync, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { unsafePosixFileMetadata } from "../security/posixFileMetadata.js";
 
 export interface VerifiedConfigFile {
   path: string;
@@ -28,8 +29,9 @@ export class VerifiedConfigFileReader {
     const fd = openSync(target, constants.O_RDONLY | noFollow);
     try {
       const before = fstatSync(fd);
-      if (!before.isFile() || before.size > this.maxBytes || (before.mode & 0o022) !== 0) throw new Error("config_file_untrusted: type, size, or permissions");
-      if (typeof process.getuid === "function" && before.uid !== process.getuid()) throw new Error("config_file_untrusted: owner mismatch");
+      if (!before.isFile() || before.size > this.maxBytes || unsafePosixFileMetadata(before, 0o022)) {
+        throw new Error("config_file_untrusted: type, size, or permissions");
+      }
       const buffer = readFileSync(fd);
       const after = fstatSync(fd);
       if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs || buffer.length !== after.size) {
