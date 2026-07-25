@@ -56,7 +56,7 @@ pnpm install
 pnpm run desktop:dev        # 构建 Electron main/preload，并启动 Core + Worker + Vite + Electron
 ```
 
-Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。日常启动见 [`docs/dev-commands.md`](./docs/dev-commands.md)，Web 模式、访问 Token 与低频联调见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。测试：`pnpm test --unit` / `pnpm test --integration`；当前完整单测为 937 通过、11 个平台条件 skip、0 失败。
+Desktop 每次启动或重启进程组都会生成相互独立的 Desktop/Worker 临时凭据，渲染器不可读取；Core 端口以 `app.db` 为准，并在 ready 后才启动 Worker 与 Vite。`pnpm run seed` 仅保留为手动分进程调试或测试 fixture 辅助；手动分起的 `server`、`daemon` 和 `web` 命令继续保留给调试，此时才需要开发者自行提供内部凭据。日常启动见 [`docs/dev-commands.md`](./docs/dev-commands.md)，Web 模式、访问 Token 与低频联调见 [`docs/dev-debugging.md`](./docs/dev-debugging.md)。测试：`pnpm test --unit` / `pnpm test --integration`；最近一次已接受的完整门禁基线为937通过、11个平台条件skip、0失败，2026-07-25 Windows兼容审计实跑为947通过、0 skip、6失败，当前缺口见 [`跨平台兼容性基线`](./docs/cross-platform-compatibility.md)。
 
 Windows 构建分为四层：
 
@@ -68,6 +68,8 @@ pnpm run desktop:dist        # x64、per-user、assisted NSIS 安装器
 ```
 
 当前生成的是可复现的本地/CI **未签名**安装器，不等于已公开发布。公开分发前仍需 Windows 代码签名证书；真实 NSIS 安装/卸载流程尚未执行验收。
+
+当前发行范围仍是 Windows x64；macOS/Linux 尚未完成打包与实机验收。共享代码的新开发已经采用 Windows/macOS/Linux 三端工程兼容规则，现有缺口、证据和处理顺序见 [`跨平台兼容性基线与审计清单`](./docs/cross-platform-compatibility.md)。
 
 ## 文档
 
@@ -81,6 +83,7 @@ pnpm run desktop:dist        # x64、per-user、assisted NSIS 安装器
 - 内置Pi默认Advisor、Claude切换、独立模型设置与Pi CLI安全导入：[`2026-07-22-system-memory-advisor-provider-design.md`](./docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md)
 - 日常开发命令（启动/测试/打包）：[`docs/dev-commands.md`](./docs/dev-commands.md)
 - 高级开发与调试（Token/Web/数据库/E2E）：[`docs/dev-debugging.md`](./docs/dev-debugging.md)
+- Windows/macOS/Linux 工程规则与已知缺口：[`docs/cross-platform-compatibility.md`](./docs/cross-platform-compatibility.md)
 - 理念与长远愿景：[`docs/vision.md`](./docs/vision.md)
 - 全部设计决策与推理：[`docs/decisions.md`](./docs/decisions.md)
 - 能力路线图（MVP 与之后）：[`docs/roadmap.md`](./docs/roadmap.md)

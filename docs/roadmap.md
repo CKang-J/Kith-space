@@ -180,7 +180,7 @@ P-A10.3已实现Context Envelope、MessageContextSnapshot、server-owned direct-
 
 ### 4.6 平台扩展
 
-Windows v1 稳定后支持 macOS 和 Linux。系统托盘、自启动、文件选择和进程管理优先使用跨平台 Electron/Node API。
+Windows v1 稳定后再交付 macOS 和 Linux 发行包与实机验收；在此之前，所有新增共享代码已经按三端工程基线设计，不能继续引入 Windows-only 假设。系统托盘、自启动、文件选择和进程管理优先使用跨平台 Electron/Node API，确有平台差异时经窄 Adapter 隔离；已知缺口和处理顺序见 `docs/cross-platform-compatibility.md`。
 
 ## 5. 贯穿各阶段的原则
 

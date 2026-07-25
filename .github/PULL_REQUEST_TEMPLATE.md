@@ -49,6 +49,8 @@ Check the applicable items. The source of truth is `AGENTS.md` and `docs/progres
 - [ ] `pnpm test --unit`
 - [ ] `pnpm test --integration`
 - [ ] `pnpm run desktop:bundle`
+- [ ] Windows / macOS / Linux 的影响与验证结果已分别说明；未运行的平台已写明 CI、真实 smoke 或待办清单
+- [ ] 平台条件 `skip` 只记为未覆盖缺口，没有表述成该平台已通过
 - [ ] Relevant real-run, browser, or packaged smoke evidence is included above
 - [ ] Anything not verified is listed below
 
