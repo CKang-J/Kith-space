@@ -13,14 +13,17 @@ const apiRoutes = fs.readFileSync(new URL("../src/server/routes-api/index.ts", i
 test("Settings exposes a dedicated Appearance page backed by shadcn fields and selects", () => {
   assert.match(settingsView, /\["appearance", "misc\.settingsNavAppearance"\]/);
   assert.match(settingsView, /cur === "appearance"[\s\S]*?<AppearanceSettings api=\{api\}/);
+  assert.match(settingsView, /data-slot="settings-sidebar-title"/);
   assert.match(appearanceView, /from "@\/components\/ui\/field"/);
   assert.match(appearanceView, /from "@\/components\/ui\/select"/);
   assert.match(appearanceView, /interfaceFont/);
   assert.match(appearanceView, /contentFont/);
   assert.match(appearanceView, /codeFont/);
+  assert.match(appearanceView, /uiFontSize/);
+  assert.match(appearanceView, /appearance-ui-font-size/);
   assert.match(appearanceView, /INTERFACE_MONOSPACE_OPTIONS/);
   assert.match(appearanceView, /<SelectSeparator \/>/);
-  assert.match(appearanceView, /<section className="rounded-xl border border-border bg-card p-5 text-card-foreground">/);
+  assert.match(appearanceView, /<section className="rounded-2xl border border-border\/80 bg-card p-6 text-card-foreground">/);
   assert.match(appearanceView, /<FieldSet className="m-0 border-0 p-0">/);
 });
 

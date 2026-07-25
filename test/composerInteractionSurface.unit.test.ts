@@ -80,6 +80,11 @@ test("task assignment shares the compact row and only the remaining safe text wi
   assert.match(composer, /const expanded = textNeedsExpansion \|\| pendingAtts\.length > 0;/);
   assert.doesNotMatch(composer, /const expanded =[^;]*\|\| asTask/);
   assert.match(composer, /expanded \? "is-expanded" : "is-compact"/);
+  assert.match(composer, /expanded \? " composer--expanded" : ""/);
+  const composerSurface = ruleBody(".composer");
+  assert.match(composerSurface, /--composer-opaque-start\s*:\s*50%/);
+  assert.match(composerSurface, /linear-gradient\(to bottom,transparent 0 var\(--composer-opaque-start\),var\(--surface\) var\(--composer-opaque-start\) 100%\)/);
+  assert.match(ruleBody(".composer.composer--expanded"), /--composer-opaque-start\s*:\s*24px/);
   assert.match(expansion, /querySelector<HTMLElement>\("\.cb-left"\)/);
   assert.match(expansion, /querySelector<HTMLElement>\("\.cb-right"\)/);
   assert.match(ruleBody(".composer-box.is-compact"), /min-height\s*:\s*48px/);
@@ -88,7 +93,7 @@ test("task assignment shares the compact row and only the remaining safe text wi
   assert.match(ruleBody(".composer-box.is-compact .composer-bar"), /display\s*:\s*contents/);
   assert.match(ruleBody(".composer-box.is-expanded"), /min-height\s*:\s*94px/);
   assert.match(ruleBody(".composer-box.is-expanded"), /border-radius\s*:\s*20px 20px 24px 24px/);
-  assert.match(ruleBody(".composer-box.is-expanded .composer-bar"), /margin\s*:\s*8px -4px -2px/);
+  assert.match(ruleBody(".composer-box.is-expanded .composer-bar"), /margin\s*:\s*-2px -4px -2px/);
 });
 
 test("composer add and send controls use the circular reference treatment", () => {
@@ -105,6 +110,13 @@ test("composer add and send controls use the circular reference treatment", () =
   assert.match(ruleBody(".send-btn"), /height\s*:\s*32px/);
   assert.match(ruleBody(".send-btn"), /border-radius\s*:\s*9999px/);
   assert.match(ruleBody(".send-btn svg"), /stroke-width\s*:\s*2\.2/);
+});
+
+test("the composer surround follows the input shape before becoming opaque", () => {
+  const composerSurface = ruleBody(".composer");
+  assert.match(composerSurface, /--composer-opaque-start\s*:\s*50%/);
+  assert.match(composerSurface, /background\s*:\s*linear-gradient\(to bottom,transparent 0 var\(--composer-opaque-start\),var\(--surface\) var\(--composer-opaque-start\) 100%\)/);
+  assert.match(ruleBody(".composer.composer--expanded"), /--composer-opaque-start\s*:\s*24px/);
 });
 
 test("add menu is portaled and positioned against the whole composer box", () => {

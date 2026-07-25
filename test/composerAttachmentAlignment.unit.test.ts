@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { measureVerticalScrollbar } from "../web/src/views/composer/useComposerReserve.ts";
 
 const css = fs.readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
 const composer = fs.readFileSync(new URL("../web/src/views/Composer.tsx", import.meta.url), "utf8");
@@ -50,10 +51,19 @@ test("pending attachments render inside the centered composer surface", () => {
 
   assert.match(composer, /ref=\{composerRootRef\}/);
   assert.match(reserve, /new ResizeObserver\(update\)/);
+  assert.match(reserve, /host\?\.matches\("main\.content-col, aside\.thread-panel"\)/);
   assert.match(reserve, /--chat-composer-reserve/);
+  assert.match(reserve, /--chat-scrollbar-width/);
+  assert.match(reserve, /observer\.observe\(scroll\)/);
   assert.match(reserve, /composer\.getBoundingClientRect\(\)\.height \+ MESSAGE_GAP/);
   assert.match(reserve, /scroll\.scrollTop = scroll\.scrollHeight/);
 
-  const threadComposer = ruleBody(".thread-composer");
-  assert.match(threadComposer, /padding\s*:\s*14px 18px 18px/);
+  assert.doesNotMatch(css, /\.thread-composer\s*\{/);
+  assert.match(composer, /className=\{"composer" \+ \(expanded \? " composer--expanded" : ""\) \+ \(className \? " " \+ className : ""\)\}/);
+});
+
+test("message rails use the scrollbar width actually consumed by each panel", () => {
+  assert.equal(measureVerticalScrollbar({ offsetWidth: 413, clientWidth: 413 } as HTMLElement), 0);
+  assert.equal(measureVerticalScrollbar({ offsetWidth: 413, clientWidth: 403 } as HTMLElement), 10);
+  assert.equal(measureVerticalScrollbar({ offsetWidth: 403, clientWidth: 413 } as HTMLElement), 0);
 });

@@ -26,7 +26,7 @@
 }
 .chat-message--has-continuation{margin-bottom:6px}
 .chat-message__avatar{position:relative;width:var(--chat-message-avatar);min-width:0;align-self:start}
-.chat-message__continuation-timestamp{position:absolute;top:4px;right:0;width:32px;color:var(--chat-message-meta);font-size:9.5px;line-height:16px;text-align:center;opacity:0}
+.chat-message__continuation-timestamp{position:absolute;top:4px;right:0;width:32px;color:var(--chat-message-meta);font-size:var(--font-size-meta)!important;line-height:16px;text-align:center;opacity:0}
 .chat-message:hover .chat-message__continuation-timestamp,.chat-message:focus-within .chat-message__continuation-timestamp{opacity:1}
 .chat-message__content{min-width:0}
 .chat-message--agent .chat-message__content{max-width:78%}
@@ -71,8 +71,8 @@
 }
 .chat-message--human .chat-message__header{display:none}
 .chat-message__header .deleted-agent-name{display:inline-flex;align-items:baseline;gap:6px}
-.deleted-agent-name__badge{color:var(--muted-soft);font-size:10.5px;font-weight:500;line-height:16px}
-.message-topic-preview__deleted{flex:none;color:var(--muted);font-size:10px;font-weight:500}
+.deleted-agent-name__badge{color:var(--muted-soft);font-size:var(--font-size-meta)!important;font-weight:400;line-height:16px}
+.message-topic-preview__deleted{flex:none;color:var(--muted);font-size:var(--font-size-meta)!important;font-weight:400}
 .chat-message .chat-message__header button.agent-mention-name{
   position:relative;
   display:inline-grid;
@@ -106,7 +106,7 @@
   margin-top:6px;
   margin-left:0;
   color:#999;
-  font-size:12px;
+  font-size:var(--font-size-meta)!important;
   font-weight:400;
   line-height:16px;
   opacity:0;
@@ -137,8 +137,8 @@
 .chat-message .md{max-width:100%;font-size:var(--chat-message-font-size);line-height:var(--chat-message-line-height);letter-spacing:0;--md-paragraph-gap:.85em}
 .chat-message .md ul,.chat-message .md ol{margin:.65em 0;padding-left:0}
 .chat-message .md li{margin:.3em 0;padding-left:22px}
-.chat-message .md h1,.chat-message .md h2,.chat-message .md h3,.chat-message .md h4,.chat-message .md h5,.chat-message .md h6{color:#1f2329;font-weight:600;line-height:1.4}
-.chat-message .md h1{font-size:18px}.chat-message .md h2{font-size:var(--font-size-lg)}.chat-message .md h3{font-size:15px}.chat-message .md h4,.chat-message .md h5,.chat-message .md h6{font-size:var(--font-size-base);color:#4b5563}
+.chat-message .md h1,.chat-message .md h2,.chat-message .md h3,.chat-message .md h4,.chat-message .md h5,.chat-message .md h6{font-size:var(--font-size-title);font-weight:var(--font-weight-strong);color:#1f2329;line-height:1.4}
+.chat-message .md h4,.chat-message .md h5,.chat-message .md h6{color:#4b5563}
 .chat-message .msg-atts,.chat-message .msg-meta,.chat-message .msg-rx{max-width:100%}
 .chat-message .msg-av{position:relative;display:inline-flex;width:var(--chat-message-avatar);margin:0;border-radius:8px;line-height:0;align-self:start;justify-self:start}
 .chat-message button.msg-av,.chat-message button.who{padding:0;border:0;background:transparent}
@@ -264,7 +264,7 @@
 .message-topic-preview__reply-avatar{display:inline-flex;width:16px;height:16px;overflow:hidden;border-radius:5px}
 .message-topic-preview__reply strong{max-width:132px;overflow:hidden;color:var(--chat-message-text);font-weight:550;text-overflow:ellipsis;white-space:nowrap}
 .message-topic-preview__reply-text{min-width:0;overflow:hidden;color:var(--chat-message-text);text-overflow:ellipsis;white-space:nowrap}
-.message-topic-preview__footer{display:flex;min-width:0;align-items:center;gap:6px;color:#999;font-size:12px;line-height:17px}
+.message-topic-preview__footer{display:flex;min-width:0;align-items:center;gap:6px;color:#999;font-size:var(--font-size-meta)!important;line-height:17px}
 .message-topic-preview__action{display:flex;flex:none;align-items:center;gap:4px}
 .message-topic-preview__count{flex:none}
 .message-topic-preview__latest{min-width:0;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -272,6 +272,7 @@
 
 .thread-panel .chat-message{max-width:none}
 .thread-panel .chat-message--agent .chat-message__content{max-width:none}
+.thread-panel .chat-message--human .chat-message__content{max-width:none}
 .thread-panel .chat-message--agent .chat-message__bubble-wrap,
 .thread-panel .chat-message--agent .chat-message__bubble{width:100%}
 

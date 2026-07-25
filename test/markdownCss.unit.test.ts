@@ -43,17 +43,24 @@ test("font tokens only reference loaded or system fonts", () => {
   assert.match(css, /--font-code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace/);
   assert.match(css, /--sans:var\(--font-interface\);--serif:var\(--font-interface\);--mono:var\(--font-code\)/);
   assert.match(css, /--font-mono:var\(--mono\)/);
-  assert.match(css, /--font-size-xs:11px;--font-size-sm:12px;--font-size-base:14px;--font-size-lg:16px;--font-size-title:20px/);
+  assert.match(css, /--ui-font-size:14px;--font-size-base:var\(--ui-font-size\);--font-size-title:calc\(var\(--ui-font-size\) \+ 2px\);--font-size-meta:max\(12px,calc\(var\(--ui-font-size\) - 2px\)\);--font-weight-strong:600/);
+  assert.match(css, /:root\[data-ui-font-size="16"\]\{--ui-font-size:16px\}/);
   assert.match(css, /--line-height-body:1\.5;--line-height-reading:1\.68/);
   assert.match(css, /--md-text-size:var\(--font-size-base\);--md-line-height:var\(--line-height-reading\);--md-paragraph-gap:\.75em/);
   assert.doesNotMatch(css, /--font-display|--font-body|--text-heading|--text-body/);
   assertDecl("body", "font-family", "var\\(--sans\\)");
   assertDecl("body", "font-size", "var\\(--font-size-base\\)");
+  assertDecl('body [data-slot="field-legend"]', "font-size", "var\\(--font-size-title\\)!important");
+  assertDecl('body [data-slot="field-description"]', "font-size", "var\\(--font-size-meta\\)!important");
+  assertDecl(".sb-title", "font-size", "var\\(--font-size-title\\)!important");
+  assertDecl(".hint", "font-size", "var\\(--font-size-meta\\)!important");
+  assertDecl('body [data-slot="settings-sidebar-title"]', "font-size", "var\\(--font-size-title\\)!important");
   assertDecl(".md", "font-family", "var\\(--font-content\\)");
   assertDecl(".md h1", "font-family", "var\\(--font-content\\)");
   assertDecl(".ws-md", "font-family", "var\\(--font-content\\)");
   assertDecl(".md code", "font-family", "var\\(--mono\\)");
   assertDecl(".md strong", "color", "var\\(--ink\\)");
+  assertDecl(".md strong", "font-weight", "var\\(--font-weight-strong\\)");
   for (const selector of [".act .act-t", ".act .act-x.mono", ".ws-row", ".ws-path", ".ws-content", ".ws-root", ".perm-key"]) {
     assertDecl(selector, "font-family", "var\\(--mono\\)");
   }
@@ -79,7 +86,7 @@ test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", 
   assertDecl(".ws-md", "--inline-code-size", "\\.88em");
   for (const selector of [".md code", ".md .color-token-text", ".ws-md code", ".ws-md .color-token-text"]) {
     assertDecl(selector, "font-family", "var\\(--mono\\)");
-    assertDecl(selector, "font-size", "var\\(--inline-code-size\\)");
+    assertDecl(selector, "font-size", selector.startsWith(".md") ? "1em" : "var\\(--inline-code-size\\)");
     assertDecl(selector, "line-height", "inherit");
     assertDecl(selector, "padding", "1px 5px");
   }
@@ -122,13 +129,13 @@ test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", 
   assertDecl(".md table", "background", "transparent");
   assertDecl(".md td", "overflow-wrap", "anywhere");
   assertDecl(".md th", "background", "#f7f8fa");
-  assertDecl(".md th", "font-weight", "500");
+  assertDecl(".md th", "font-weight", "400");
   assertDecl(".md img", "max-width", "min\\(100%,640px\\)");
   assertDecl(".md hr", "border-top", "1px solid var\\(--hair-strong\\)");
-  assertDecl(".md h4", "font-size", "var\\(--md-h-rest-size\\)");
-  assertDecl(".md h1", "font-size", "var\\(--md-h1-size\\)");
-  assertDecl(".md h2", "font-size", "var\\(--md-h2-size\\)");
-  assertDecl(".md h3", "font-size", "var\\(--md-h3-size\\)");
+  assertDecl(".md h4", "font-size", "var\\(--font-size-title\\)");
+  assertDecl(".md h1", "font-size", "var\\(--font-size-title\\)");
+  assertDecl(".md h2", "font-size", "var\\(--font-size-title\\)");
+  assertDecl(".md h3", "font-size", "var\\(--font-size-title\\)");
   assertDecl(".md h4", "color", "var\\(--muted\\)");
   assertDecl(".md > h1:first-child", "margin-top", "\\.45em");
   assertDecl(".md kbd", "font-family", "var\\(--mono\\)");

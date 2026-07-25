@@ -186,7 +186,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   };
 
   return (
-    <div ref={composerRootRef} className={"composer" + (className ? " " + className : "")}>
+    <div ref={composerRootRef} className={"composer" + (expanded ? " composer--expanded" : "") + (className ? " " + className : "")}>
       {atQuery !== null && cands.length > 0 && (
         <div className="mention-menu">
           {cands.map((c, i) => (

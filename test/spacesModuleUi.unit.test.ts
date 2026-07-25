@@ -113,6 +113,8 @@ test("Spaces module keeps the card grid responsive inside the existing module pa
   assert.match(css, /\.spaces-module__grid\s*\{[^}]*display:\s*grid/s);
   assert.match(css, /grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(/);
   assert.match(css, /\.spaces-module__card\s*\{[^}]*border-radius:/s);
+  assert.match(css, /\.spaces-module__name\s*\{[^}]*font-size:\s*var\(--font-size-title\)\s*!important/s);
+  assert.match(css, /\.spaces-module__path,[\s\S]*?font-size:\s*var\(--font-size-meta\)\s*!important/s);
 });
 
 test("Spaces search uses the shared pill geometry without feature CSS overrides", () => {

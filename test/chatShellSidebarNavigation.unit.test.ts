@@ -89,11 +89,20 @@ test("settings opens as a modal instead of a module workspace", () => {
   assert.match(settingsDialog, /<Settings sectionOverride=/);
   assert.match(settingsDialog, /querySelector\("\.settings-modal-backdrop"\)/);
   assert.match(settingsDialog, /event\.key !== "Tab"/);
+  assert.match(settingsDialog, /max-w-\[960px\]/);
+  assert.doesNotMatch(settingsDialog, /max-w-\[1180px\]/);
   assert.match(frame, /toggleAttribute\("inert", settingsOpen\)/);
   assert.match(frame, /navigateLayout\(INITIAL_WORKSPACE_LAYOUT, \{ replace: true \}\)/);
-  assert.match(settingsView, /moduleId: "settings", settings: k \}\), \{ replace: true \}/);
+  assert.match(settingsView, /moduleId: "settings", settings: key/);
+  assert.match(settingsView, /aria-current=\{cur === key \? "page" : undefined\}/);
+  assert.match(settingsView, /data-slot="settings-content"/);
+  assert.match(settingsView, /data-slot="settings-page-header"/);
+  assert.match(settingsView, /data-slot="settings-page-content"/);
+  assert.match(settingsView, /cur === "human" \|\| cur === "space"[\s\S]*?"max-w-\[520px\]"/);
+  assert.match(settingsView, /cur === "appearance"[\s\S]*?"max-w-3xl"/);
+  assert.equal((settingsView.match(/className=\{cn\("mx-auto w-full", pageColumnClass\)\}/g) ?? []).length, 2);
   assert.match(modelSettingsCss, /\.model-settings \.settings-switch\s*\{[^}]*display:\s*inline-flex;[^}]*margin:\s*0;[^}]*text-transform:\s*none/s);
-  assert.match(shellCss, /@media \(max-width: 640px\)[\s\S]*?\.shell-settings-dialog__content\s*\{[^}]*flex-direction:\s*column/);
+  assert.match(settingsDialog, /flex-col sm:flex-row/);
   assert.doesNotMatch(moduleWorkspace, /moduleId === "settings"|<Settings/);
 });
 
@@ -105,6 +114,9 @@ test("the middle message pane owns only grouped conversation navigation", () => 
   assert.match(sidebar, /<LiveAgentBar/);
   assert.doesNotMatch(sidebar, /ConversationDrawerSidebar|conversation-drawer-sidebar/);
   assert.doesNotMatch(chatWorkspace, /compact|drawerOpen|ConversationDrawerSidebar/);
+  assert.match(shellCss, /\.chat-navigation-sidebar \.sec\s*\{[^}]*font-size:\s*var\(--font-size-meta\)\s*!important/s);
+  assert.match(shellCss, /\.chat-navigation-sidebar \.chat-navigation-sidebar__scroll\s*\{[^}]*padding:\s*8px 12px 18px/s);
+  assert.match(shellCss, /\.chat-navigation-sidebar \.conversation-saved-row \+ \.sec\s*\{[^}]*margin-top:\s*10px/s);
   assert.doesNotMatch(conversations, /showcase|Showcase|LiveAgentBar|SidebarModuleNavigation/);
   assert.match(conversations, /t\("common\.channels"\)/);
   assert.match(conversations, /t\("common\.directMessages"\)/);
@@ -179,7 +191,7 @@ test("the shell uses the reference-style flat icon rail, message pane, and chat 
 test("Chat keeps the approved content gutter and primary-card floor", () => {
   const fullWorkspace = shellCss.match(/\.shell-chat-workspace--full\s*\{([^}]*)\}/)?.[1] ?? "";
   const fullChatCard = shellCss.match(/\.shell-chat-workspace--full > \.shell-chat-main-card\s*\{([^}]*)\}/)?.[1] ?? "";
-  assert.match(fullWorkspace, /--chat-stream-gutter:\s*10px/);
+  assert.match(fullWorkspace, /--chat-stream-gutter:\s*16px/);
   assert.match(fullChatCard, /min-width:\s*340px/);
   assert.match(shellCss, /\.chat-thread-divider\s*\{[\s\S]*?width:\s*10px;[\s\S]*?flex:\s*0 0 10px/);
 });

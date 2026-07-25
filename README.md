@@ -15,7 +15,7 @@
 
 本轮 UI 实现、自动化验证与用户手动验收已结束。P-A9 桌面模块化单体架构收敛已完成 P-A9.0–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审，并已提交；继续保留 Electron/Core/Worker 拓扑与 TypeScript 主栈。真实存量数据随后暴露的 Runtime admission 队列饥饿、queued 假工作态与失败 wake 残留回复占位也已完成根因修复。
 
-基于 Helio Desktop 的本机实测，P-A10 Agent Harness v2 的P-A10.0–P-A10.7已完成代码、迁移、文档、自动化与全新Desktop/Web真实验收。当前具备Claude Code、Codex、OpenCode、Pi四家Runtime v2、per-surface session、durable delivery/turn、可审计Context Envelope、broker-backed MCP/CLI Gateway、revisioned episodic memory、restricted advisor、snapshot与compaction telemetry。workspace schema v10与app.db v8承载安装级模型供应商/模型配置/运行器控制面、三态默认绑定、Agent跨安装确认快照、runtime epoch屏障和三类全局字体设置。
+基于 Helio Desktop 的本机实测，P-A10 Agent Harness v2 的P-A10.0–P-A10.7已完成代码、迁移、文档、自动化与全新Desktop/Web真实验收。当前具备Claude Code、Codex、OpenCode、Pi四家Runtime v2、per-surface session、durable delivery/turn、可审计Context Envelope、broker-backed MCP/CLI Gateway、revisioned episodic memory、restricted advisor、snapshot与compaction telemetry。workspace schema v10与app.db v9承载安装级模型供应商/模型配置/运行器控制面、三态默认绑定、Agent跨安装确认快照、runtime epoch屏障和三类全局字体设置及 UI 字号。
 
 自动记忆提炼现已与聊天runtime解耦：新安装默认使用产品内置、精确锁版的Pi SDK Provider，Claude Code可显式切换；Provider与结构化记忆模型供应商/模型/凭据来源/数据目的地分别版本化，并支持Human显式、安全地导入本机Pi CLI全局模型配置。默认选择不等于默认外发，模型设置、能力探测与per-Agent consent未完成时保持setup；Claude Code、Codex、opencode聊天Agent在授权后可共用同一系统Provider。完整边界见[`系统级可替换Memory Advisor Provider方案`](./docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md)。
 
@@ -29,7 +29,7 @@ Kith 意为"你熟识信任的一圈自己人"——正是这些懂你（有记�
 
 共享前端当前使用 React 19.2.8 + TypeScript + Vite 5；自 2026-07-24 起，新增 UI 统一使用 Tailwind CSS v4 与 shadcn/ui，存量 CSS 按触达组件渐进迁移，不做一次性视觉重写。首批迁移已覆盖通用搜索、Space 新建/卡片菜单、Space 重命名和频道删除确认。开发约束见 [`AGENTS.md`](./AGENTS.md)，组件命令见 [`docs/dev-commands.md`](./docs/dev-commands.md)。
 
-Settings 已新增“外观”分区，可分别选择界面、消息与文档、代码三类字体；选择写入安装级 app.db 并即时应用。默认保持 Sora Variable + 中文系统回退，消息与文档跟随界面，代码使用系统等宽字体；另内置 Inter、Geist、JetBrains Mono、Fira Code 与 Geist Mono，不依赖网络字体。
+Settings 已新增“外观”分区，可分别选择界面、消息与文档、代码三类字体及 UI 字号；选择写入安装级 app.db 并即时应用。默认保持 Sora Variable + 中文系统回退、界面和消息正文 14px、标题 16px，消息与文档跟随界面，代码使用系统等宽字体；另内置 Inter、Geist、JetBrains Mono、Fira Code 与 Geist Mono，不依赖网络字体。
 
 当前最高优先级是 2026-07-11 锁定的本机化转向：正式产品只有 Electron Desktop，一个 Human、一个本机 Local Runtime Worker、多个本地 Space；浏览器入口是 Desktop 可选开放的本机/LAN 附属能力。多真人、多机器、服务器部署、云同步、Docker、账户登录和独立 Web 发行路线已经取消。完整规格见 [`个人 AgentOS 本机化路线设计`](./docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md)。
 
@@ -43,7 +43,7 @@ Chat 壳层已按最新参考图收敛为三栏结构：最左侧常驻纯图标
 
 P-A9 采用 Desktop 监督的模块化单体：保留 Core 作为 Desktop、授权浏览器和 Agent CLI 的本机权威，保留 Worker 隔离外部 runtime；`src/server/` 收窄为组合根与 Transport Adapter，业务按深 Module 与窄 Interface 收敛。P-A9.0 已冻结生产写入/Agent 端点/Worker transport 当前事实，P-A9.1a–P-A9.7 的实现与最终门禁已完成；当前 Core total 口径已切到 `admission ack`，P-A9.0 total 只止于 socket enqueue。持久 wake `get-or-reserve`、`RuntimeWorkerPort` admission ack、`capacity=4`、`queue=128`、`ttl=120s` 与 1/5/10/20 Agent Core、100/500/1000 消息 Chat 基线/回归都已落地；AgentManager 按实际消息合并批次使用既有 activity 终态判断空闲，完成会话仅在无排队压力时保温，有其他 Agent 等待时立即让出容量，同时保护尚未完成的批次不被误休眠。P-A9.6 的 20-Agent SQL 已从 260 降到 151 且 Core/Runtime/UI 绝对 SLO 通过。完整方案见 [`桌面模块化单体架构收敛设计`](./docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md)，冻结数据见 [`P-A9 性能基线`](./docs/performance/p-a9-baseline.md)。
 
-全局字体尺度现统一为 `11 / 12 / 14 / 16 / 20px` 五档，正文基准为 `14px`，常用正文、聊天 Markdown 与输入控件从统一 Token 取值；更小字号只用于元数据，更大字号只用于标题层级。该规则覆盖上文仍记录为历史实现过程的旧消息字号。
+全局 UI 和消息正文字号默认统一为 `14px`，标题为 `16px`，并在外观设置中提供 `12–16px` 的安装级字号选项；标题始终为当前正文字号 `+2px`，时间、状态、路径、数量和说明等辅助信息为 `max(12px, 正文字号 - 2px)`。非消息 UI 使用常规字重，消息 Markdown 的标题和粗体统一为 `600`。该规则覆盖上文仍记录为历史实现过程的旧消息字号。
 
 ## Desktop 开发启动
 

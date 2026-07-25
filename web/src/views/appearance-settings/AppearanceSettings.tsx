@@ -8,6 +8,7 @@ import {
   type CodeFont,
   type ContentFont,
   type InterfaceFont,
+  type UiFontSize,
 } from "@/appearanceFonts";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,6 +60,7 @@ const CODE_OPTIONS: Array<{ value: CodeFont; label: string }> = [
   { value: "fira_code", label: "Fira Code" },
   { value: "geist_mono", label: "Geist Mono" },
 ];
+const UI_FONT_SIZE_OPTIONS: UiFontSize[] = [12, 13, 14, 15, 16];
 
 export function AppearanceSettings({ api }: { api: ApiRequest }) {
   const { t } = useTranslation();
@@ -118,12 +120,35 @@ export function AppearanceSettings({ api }: { api: ApiRequest }) {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 pb-10">
-      <section className="rounded-xl border border-border bg-card p-5 text-card-foreground">
+    <div className="mr-auto flex w-full max-w-3xl flex-col gap-8 pb-10">
+      <section className="rounded-2xl border border-border/80 bg-card p-6 text-card-foreground">
         <FieldSet className="m-0 border-0 p-0">
           <FieldLegend>{t("misc.appearanceTypographyTitle")}</FieldLegend>
           <FieldDescription>{t("misc.appearanceTypographyDesc")}</FieldDescription>
           <FieldGroup>
+            <Field orientation="responsive">
+              <div className="flex min-w-0 flex-col gap-1">
+                <FieldLabel htmlFor="appearance-ui-font-size">{t("misc.appearanceUiFontSize")}</FieldLabel>
+                <FieldDescription>{t("misc.appearanceUiFontSizeDesc")}</FieldDescription>
+              </div>
+              <Select
+                value={String(settings.uiFontSize)}
+                disabled={busy}
+                onValueChange={(value) => update("uiFontSize", Number(value) as UiFontSize)}
+              >
+                <SelectTrigger id="appearance-ui-font-size" className="w-full @md/field-group:w-64">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {UI_FONT_SIZE_OPTIONS.map((size) => (
+                      <SelectItem key={size} value={String(size)}>{t("misc.appearanceUiFontSizeOption", { size })}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+
             <Field orientation="responsive">
               <div className="flex min-w-0 flex-col gap-1">
                 <FieldLabel htmlFor="appearance-interface-font">{t("misc.appearanceInterfaceFont")}</FieldLabel>
@@ -208,9 +233,9 @@ export function AppearanceSettings({ api }: { api: ApiRequest }) {
         </FieldSet>
       </section>
 
-      <section className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 text-card-foreground">
+      <section className="flex flex-col gap-4 rounded-2xl border border-border/80 bg-card p-6 text-card-foreground">
         <div>
-          <h2 className="m-0 text-base font-medium">{t("misc.appearancePreviewTitle")}</h2>
+          <h2 className="m-0 text-base font-normal">{t("misc.appearancePreviewTitle")}</h2>
           <p className="mt-1 mb-0 text-sm text-muted-foreground">{t("misc.appearancePreviewDesc")}</p>
         </div>
         <div className="rounded-lg bg-muted p-4">
@@ -227,6 +252,7 @@ export function AppearanceSettings({ api }: { api: ApiRequest }) {
               settings.interfaceFont === DEFAULT_APPEARANCE_SETTINGS.interfaceFont
               && settings.contentFont === DEFAULT_APPEARANCE_SETTINGS.contentFont
               && settings.codeFont === DEFAULT_APPEARANCE_SETTINGS.codeFont
+              && settings.uiFontSize === DEFAULT_APPEARANCE_SETTINGS.uiFontSize
             )}
             onClick={() => void save(DEFAULT_APPEARANCE_SETTINGS)}
           >

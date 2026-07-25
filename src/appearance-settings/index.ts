@@ -6,4 +6,5 @@ export {
   type CodeFont,
   type ContentFont,
   type InterfaceFont,
+  type UiFontSize,
 } from "./appearanceSettingsService.js";

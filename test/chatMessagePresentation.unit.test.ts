@@ -47,12 +47,17 @@ test("message density tokens match the reference-driven split bubble design", ()
   assert.match(messageCss, /width:\s*fit-content/);
   assert.match(messageCss, /\.chat-message__bubble\{[\s\S]*?padding:\s*16px 18px/);
   assert.match(messageCss, /\.chat-message \.md\{[\s\S]*?--md-paragraph-gap:\.85em/);
-  assert.match(messageCss, /\.chat-message \.md h1\{font-size:18px\}/);
-  assert.match(messageCss, /\.chat-message \.md h2\{font-size:var\(--font-size-lg\)\}/);
+  assert.match(messageCss, /\.chat-message \.md h1,[\s\S]*?font-size:var\(--font-size-title\)[\s\S]*?font-weight:var\(--font-weight-strong\)/);
   assert.match(messageCss, /margin:\s*0 auto 26px/);
   assert.match(messageCss, /\.chat-message__footer-timestamp\s*\{[\s\S]*?margin-top:\s*6px/);
   assert.match(messageCss, /\.chat-message__bubble-wrap:hover>\.chat-message__toolbar-slot/);
   assert.match(messageCss, /\.chat-message__bubble-wrap:focus-within>\.chat-message__toolbar-slot/);
+});
+
+test("message timestamps and preview metadata use the shared auxiliary type scale", () => {
+  assert.match(messageCss, /\.chat-message__continuation-timestamp\{[^}]*font-size:var\(--font-size-meta\)!important/);
+  assert.match(messageCss, /\.chat-message__footer-timestamp\{[^}]*font-size:var\(--font-size-meta\)!important/);
+  assert.match(messageCss, /\.message-topic-preview__footer\{[^}]*font-size:var\(--font-size-meta\)!important/);
 });
 
 test("legacy full-card width penalty and repeated agent description are removed", () => {
@@ -67,10 +72,13 @@ test("chat title, scroll reserve, and composer align to the shared stream", () =
   assert.match(globalCss, /\.chat-head\{[^}]*padding:\s*0 14px/);
   assert.match(globalCss, /\.chat-head__rail\{[^}]*max-width:\s*none[^}]*margin:\s*0/);
   assert.doesNotMatch(globalCss, /\.chat-head::after/);
-  assert.match(globalCss, /main\.content-col > \.scroll\{[^}]*padding-bottom:\s*var\(--chat-composer-reserve\)[^}]*scrollbar-gutter:\s*stable both-edges[^}]*overflow-x:\s*hidden/);
-  assert.match(globalCss, /--scrollbar-gutter:10px/);
+  assert.match(globalCss, /main\.content-col > \.scroll,[\s\S]*?\.thread-panel > \.scroll\{[^}]*padding-right:\s*max\(0px,calc\(var\(--chat-stream-gutter,20px\) - var\(--chat-scrollbar-width,0px\)\)\)[^}]*padding-bottom:\s*var\(--chat-composer-reserve\)[^}]*scrollbar-gutter:\s*stable[^}]*overflow-x:\s*hidden/);
+  assert.doesNotMatch(globalCss, /--scrollbar-gutter:10px/);
   assert.match(globalCss, /\.date-divider\{[^}]*max-width:\s*var\(--chat-stream-max\)[^}]*margin:\s*18px auto 24px/);
   assert.match(globalCss, /\.composer-box\{[^}]*max-width:\s*var\(--chat-stream-max\)[^}]*margin:\s*0 auto/);
+  assert.match(chatSrc, /className="jump-bottom" type="button" aria-label=\{t\("chat\.backToBottom"\)\} title=\{t\("chat\.backToBottom"\)\}/);
+  assert.doesNotMatch(chatSrc, /<ArrowDown size=\{14\} \/> \{t\("chat\.backToBottom"\)\}/);
+  assert.match(globalCss, /\.jump-bottom\{[^}]*overflow:hidden[^}]*padding:0[^}]*\}/);
 });
 
 test("topic replies render as a separate reference-style card and preserve relative recency", () => {

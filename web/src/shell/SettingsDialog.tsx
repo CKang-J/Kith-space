@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import { Settings } from "../views/misc.tsx";
 
 interface SettingsDialogProps {
@@ -48,25 +49,31 @@ export function SettingsDialog({ section, onClose }: SettingsDialogProps) {
   }, [close]);
 
   return (
-    <div className="modal-bg shell-settings-dialog-bg" onMouseDown={close}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] p-5 backdrop-blur-[3px] sm:p-7 lg:p-12"
+      onMouseDown={close}
+    >
       <section
         ref={dialogRef}
-        className="modal shell-settings-dialog"
+        className="relative flex h-[calc(100vh-2.5rem)] w-[calc(100vw-2.5rem)] max-h-[790px] max-w-[960px] overflow-hidden rounded-[32px] border border-border bg-background p-0 shadow-2xl sm:h-[calc(100vh-3.5rem)]"
         role="dialog"
         aria-modal="true"
-        aria-label={t("nav.settings")}
+        aria-labelledby="settings-dialog-title"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <button
+        <h2 id="settings-dialog-title" className="sr-only">{t("nav.settings")}</h2>
+        <Button
           ref={closeButtonRef}
-          className="shell-settings-dialog__close"
+          className="absolute top-5 right-6 z-10 rounded-full bg-transparent"
           type="button"
+          variant="ghost"
+          size="icon-lg"
           aria-label={t("confirm.cancel")}
           onClick={close}
         >
-          <X size={18} aria-hidden="true" />
-        </button>
-        <div className="shell-settings-dialog__content">
+          <X aria-hidden="true" />
+        </Button>
+        <div className="flex min-h-0 w-full flex-col sm:flex-row">
           <Settings sectionOverride={section ?? "human"} />
         </div>
       </section>

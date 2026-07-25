@@ -40,6 +40,13 @@ function removeV8AppearanceSettings(sqlite: Database.Database): void {
   `);
 }
 
+function removeV9AppearanceUiFontSize(sqlite: Database.Database): void {
+  sqlite.exec(`
+    ALTER TABLE appearance_settings DROP COLUMN ui_font_size;
+    DELETE FROM app_migration_journal WHERE version >= 9;
+  `);
+}
+
 function removeV7AppearanceFonts(sqlite: Database.Database): void {
   removeV8AppearanceSettings(sqlite);
   sqlite.exec(`
@@ -146,6 +153,7 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       { version: 6, name: "model-runtime-control-plane", checksumLength: 64 },
       { version: 7, name: "appearance-font-settings", checksumLength: 64 },
       { version: 8, name: "appearance-font-groups", checksumLength: 64 },
+      { version: 9, name: "appearance-ui-font-size", checksumLength: 64 },
     ]);
     assert.match(String(sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get()), /^[0-9a-f]{64}$/);
     for (const table of [
@@ -189,12 +197,13 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       FROM installation_state WHERE singleton_key = 1
     `).pluck().get(), 1);
     assert.deepEqual(sqlite.prepare(`
-      SELECT interface_font, content_font, code_font
+      SELECT interface_font, content_font, code_font, ui_font_size
       FROM appearance_settings WHERE singleton_key = 1
     `).get(), {
       interface_font: "sora",
       content_font: "follow_interface",
       code_font: "system_monospace",
+      ui_font_size: 14,
     });
     assert.throws(() => sqlite.prepare(`
       UPDATE appearance_settings SET interface_font = 'unknown'
@@ -207,6 +216,10 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
     assert.equal(sqlite.prepare(`
       SELECT interface_font FROM appearance_settings WHERE singleton_key = 1
     `).pluck().get(), "jetbrains_mono");
+    assert.throws(() => sqlite.prepare(`
+      UPDATE appearance_settings SET ui_font_size = 11
+      WHERE singleton_key = 1
+    `).run(), /CHECK constraint/i);
     assert.deepEqual(sqlite.prepare(`
       SELECT runtime_id, default_binding_mode, default_model_configuration_id, default_model_configuration_revision
       FROM runtime_profiles ORDER BY runtime_id
@@ -233,7 +246,7 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
   });
 });
 
-test("version 7 app.db carries existing appearance settings into the grouped font schema", () => {
+test("version 7 app.db carries existing appearance settings into the current typography schema", () => {
   withAppDatabase((sqlite, dbPath) => {
     migrateAppDatabase(sqlite, dbPath);
     removeV8AppearanceSettings(sqlite);
@@ -246,15 +259,31 @@ test("version 7 app.db carries existing appearance settings into the grouped fon
 
     migrateAppDatabase(sqlite, dbPath);
 
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 8);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 9);
     assert.deepEqual(sqlite.prepare(`
-      SELECT interface_font, content_font, code_font
+      SELECT interface_font, content_font, code_font, ui_font_size
       FROM appearance_settings WHERE singleton_key = 1
     `).get(), {
       interface_font: "geist",
       content_font: "inter",
       code_font: "fira_code",
+      ui_font_size: 14,
     });
+  });
+});
+
+test("version 8 app.db receives the default UI font size", () => {
+  withAppDatabase((sqlite, dbPath) => {
+    migrateAppDatabase(sqlite, dbPath);
+    removeV9AppearanceUiFontSize(sqlite);
+    sqlite.pragma("user_version = 8");
+
+    migrateAppDatabase(sqlite, dbPath);
+
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 9);
+    assert.equal(sqlite.prepare(`
+      SELECT ui_font_size FROM appearance_settings WHERE singleton_key = 1
+    `).pluck().get(), 14);
   });
 });
 

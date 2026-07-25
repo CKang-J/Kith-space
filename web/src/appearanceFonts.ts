@@ -4,26 +4,31 @@ export const INTERFACE_FONT_IDS = [
 ] as const;
 export const CONTENT_FONT_IDS = ["follow_interface", "system_ui", "sora", "inter", "geist"] as const;
 export const CODE_FONT_IDS = ["system_monospace", "jetbrains_mono", "fira_code", "geist_mono"] as const;
+export const UI_FONT_SIZES = [12, 13, 14, 15, 16] as const;
 
 export type InterfaceFont = (typeof INTERFACE_FONT_IDS)[number];
 export type ContentFont = (typeof CONTENT_FONT_IDS)[number];
 export type CodeFont = (typeof CODE_FONT_IDS)[number];
+export type UiFontSize = (typeof UI_FONT_SIZES)[number];
 
 export interface AppearanceSettings {
   interfaceFont: InterfaceFont;
   contentFont: ContentFont;
   codeFont: CodeFont;
+  uiFontSize: UiFontSize;
 }
 
 export const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   interfaceFont: "sora",
   contentFont: "follow_interface",
   codeFont: "system_monospace",
+  uiFontSize: 14,
 };
 
 const interfaceFonts = new Set<string>(INTERFACE_FONT_IDS);
 const contentFonts = new Set<string>(CONTENT_FONT_IDS);
 const codeFonts = new Set<string>(CODE_FONT_IDS);
+const uiFontSizes = new Set<number>(UI_FONT_SIZES);
 
 export function isAppearanceSettings(value: unknown): value is AppearanceSettings {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -33,13 +38,16 @@ export function isAppearanceSettings(value: unknown): value is AppearanceSetting
     && typeof candidate.contentFont === "string"
     && contentFonts.has(candidate.contentFont)
     && typeof candidate.codeFont === "string"
-    && codeFonts.has(candidate.codeFont);
+    && codeFonts.has(candidate.codeFont)
+    && typeof candidate.uiFontSize === "number"
+    && uiFontSizes.has(candidate.uiFontSize);
 }
 
 type AppearanceDataset = {
   interfaceFont?: string;
   contentFont?: string;
   codeFont?: string;
+  uiFontSize?: string;
 };
 
 export function applyAppearanceFonts(
@@ -54,4 +62,7 @@ export function applyAppearanceFonts(
 
   if (settings.codeFont === DEFAULT_APPEARANCE_SETTINGS.codeFont) delete root.dataset.codeFont;
   else root.dataset.codeFont = settings.codeFont;
+
+  if (settings.uiFontSize === DEFAULT_APPEARANCE_SETTINGS.uiFontSize) delete root.dataset.uiFontSize;
+  else root.dataset.uiFontSize = String(settings.uiFontSize);
 }

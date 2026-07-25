@@ -118,7 +118,7 @@
   border-radius: 999px;
   background: var(--canvas-soft);
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--font-size-meta) !important;
 }
 
 .spaces-module__dialog-backdrop {
@@ -198,7 +198,7 @@
 .host-directory-picker__roots button {
   flex: 0 0 auto;
   padding: 5px 7px;
-  font-size: 11px;
+  font-size: var(--font-size-meta) !important;
 }
 
 .host-directory-picker__path,
@@ -208,7 +208,7 @@
   white-space: nowrap;
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--font-size-meta) !important;
 }
 
 .host-directory-picker__list {
@@ -348,8 +348,8 @@
   overflow: hidden;
   color: var(--ink);
   font-family: var(--serif);
-  font-size: 21px;
-  font-weight: 500;
+  font-size: var(--font-size-title) !important;
+  font-weight: 400;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -363,7 +363,7 @@
   gap: 2px;
   overflow: hidden;
   color: var(--body);
-  font-size: 11px;
+  font-size: var(--font-size-meta) !important;
   line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -396,7 +396,7 @@
 .spaces-module__path > span {
   color: var(--muted-soft);
   font-family: var(--sans);
-  font-size: 10px;
+  font-size: var(--font-size-meta) !important;
   letter-spacing: .4px;
   text-transform: uppercase;
 }
@@ -405,7 +405,7 @@
   margin-top: 8px;
   overflow: hidden;
   color: var(--error);
-  font-size: 11px;
+  font-size: var(--font-size-meta) !important;
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -652,7 +652,7 @@ export function Chat({
                 );
               })}
             </div>
-            {showJump && <button className="jump-bottom" onClick={toBottom}><ArrowDown size={14} /> {t("chat.backToBottom")}</button>}
+            {showJump && <button className="jump-bottom" type="button" aria-label={t("chat.backToBottom")} title={t("chat.backToBottom")} onClick={toBottom}><ArrowDown aria-hidden="true" /></button>}
             {isArchived
               ? null
               : <Composer

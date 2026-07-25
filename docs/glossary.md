@@ -351,7 +351,7 @@
 : Desktop 信任凭据和 Local Runtime Worker 控制凭据的统称。两者彼此独立，也不与浏览器 Access Token 或 agent session token 复用。Desktop 每次启动/重启受管进程组都会重新生成；只有手动分进程开发才临时使用 `KITH_SPACE_DESKTOP_TOKEN` 和 `KITH_SPACE_WORKER_TOKEN` 注入。
 
 **每工作区独立 SQLite 文件**
-: 每个 Space 把自己的元数据、消息、任务、频道、Agent、membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 schema v10在v9上增加Agent模型绑定、跨安装确认快照和runtime epoch；v2–v9合法journal前缀均可原地续迁。`agents.session_id`只作legacy rollback来源；`user_global`结构化记忆不进入任一workspace，由当前app.db v8独立持有。
+: 每个 Space 把自己的元数据、消息、任务、频道、Agent、membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 schema v10在v9上增加Agent模型绑定、跨安装确认快照和runtime epoch；v2–v9合法journal前缀均可原地续迁。`agents.session_id`只作legacy rollback来源；`user_global`结构化记忆不进入任一workspace，由当前app.db v9独立持有。
 
 **`.kith/`**
 : Space root 下承载其可移植状态的目录：`workspace.db`（Space 元数据、agent 阵容、频道、消息和任务）、`memory/`（Space Memory）、`agents/<agentId>/`（Agent Memory）和 `uploads/`（附件对象）。runtime prompt、日志和宿主临时状态不放在这里。
