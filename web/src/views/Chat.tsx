@@ -45,6 +45,8 @@ import { useConversationThreads, useThreadPanelModel } from "../features/convers
 
 export { animateBackToBottom, BACK_TO_BOTTOM_SCROLL_MS, keepPinnedToBottomDuringEnter, MESSAGE_ENTER_PIN_MS } from "../features/conversation/model/useConversationViewport.ts";
 
+const CHAT_SURFACE_WIDTH_SETTLE_MS = 80;
+
 const fmtSize = (n?: number) => (!n ? "" : n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB");
 
 function AgentReplyPreviewBody({ m }: { m: Msg }) {
@@ -269,16 +271,6 @@ export function Chat({
   const [chatSurfaceWidth, setChatSurfaceWidth] = useState(() => typeof window === "undefined" ? 1000 : window.innerWidth);
   const chatMainRef = useRef<HTMLElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
-  useLayoutEffect(() => {
-    if (threadOnly) return;
-    const surface = chatMainRef.current?.parentElement;
-    if (!surface) return;
-    const updateWidth = () => setChatSurfaceWidth(surface.clientWidth);
-    updateWidth();
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(surface);
-    return () => observer.disconnect();
-  }, [threadOnly]);
   const threadConstraints = threadPaneConstraints(
     chatSurfaceWidth,
     threadWidth ?? defaultThreadPaneWidth(chatSurfaceWidth),
@@ -306,6 +298,28 @@ export function Chat({
     loadOlder: messageModel.loadOlder,
   });
   const { thread, threadMeta, unreadThreads, startThread, closeThread, openUnreadThread, setThreadFollowed } = threadModel;
+  useLayoutEffect(() => {
+    // Only the thread pane consumes this width. Waiting for resize motion to settle
+    // keeps the message timeline out of side-panel animation frames.
+    if (threadOnly || !thread) return;
+    const surface = chatMainRef.current?.parentElement;
+    if (!surface) return;
+    let settleTimer: number | null = null;
+    const updateWidth = () => {
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        setChatSurfaceWidth(surface.clientWidth);
+        settleTimer = null;
+      }, CHAT_SURFACE_WIDTH_SETTLE_MS);
+    };
+    setChatSurfaceWidth(surface.clientWidth);
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(surface);
+    return () => {
+      observer.disconnect();
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+    };
+  }, [threadOnly, thread?.channelId]);
   const loaded = messagesLoaded && threadModel.initialMetadataLoaded;
   const { scrollRef, showJump, onScroll, toBottom } = useConversationViewport(cur?.id, msgs, msgParam, messageModel);
   const newMsgOrderRef = messageModel.newMessageOrderRef;

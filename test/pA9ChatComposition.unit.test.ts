@@ -32,6 +32,12 @@ test("message, viewport, and thread models keep their responsibilities behind se
   assert.match(threadsSource, /openUnreadThread/);
 });
 
+test("chat surface measurement stays out of side-panel animation frames", () => {
+  assert.match(chatSource, /if \(threadOnly \|\| !thread\) return/);
+  assert.match(chatSource, /window\.clearTimeout\(settleTimer\)/);
+  assert.match(chatSource, /CHAT_SURFACE_WIDTH_SETTLE_MS/);
+});
+
 test("conversation and task adapters expose semantic requests", async () => {
   const calls: Array<[string, string, unknown]> = [];
   const request = async (method: string, path: string, body?: unknown) => {
