@@ -63,7 +63,7 @@
 - Vite alias 使用 URL/path API；测试 runner 使用临时 profile，不依赖固定 `/tmp`。
 - 凭据、CLI 配置和 Pi helper 已统一使用平台文件元数据策略：macOS/Linux 保留 uid/mode fail-closed，Windows 不再误用 Node 合成的 POSIX mode。
 
-这些是静态审计和当前 Windows 证据，不等于 macOS/Linux 已完成产品验收。Windows 私密凭据文件现在还会通过 `src/security/privateFileSecurity.ts` 先只读确认 owner，仅在不符时走独立 owner 修正；DACL 写入保留现有安全描述符外壳，不把未变化的 owner/group/SACL 标记为待写，再禁用继承、清空 access rule并确定性写入当前 owner 唯一 Allow 规则。最终验证 owner 必须是当前用户且仅当前用户拥有 Allow ACE，避免依赖 `icacls /remove:g` 在不同宿主上的保留行为、全新描述符丢失宿主元数据，以及非提升runner因无必要重写owner而失败；POSIX 继续按 owner/mode fail closed。文本型契约测试读取磁盘文件时先统一 CRLF/LF，再验证与换行无关的语义，避免 checkout 策略改变测试结果。
+这些是静态审计和当前 Windows 证据，不等于 macOS/Linux 已完成产品验收。Windows 私密凭据文件现在还会通过 `src/security/privateFileSecurity.ts` 先只读确认 owner，仅在不符时走独立 owner 修正；DACL 直接调用 .NET `File/Directory.GetAccessControl` 与 `SetAccessControl`，不依赖 `Microsoft.PowerShell.Security` 模块自动加载，且只载入/写回 Access section，不把未变化的 owner/group/SACL 标记为待写，再禁用继承、清空 access rule并确定性写入当前 owner 唯一 Allow 规则。最终验证 owner 必须是当前用户且仅当前用户拥有 Allow ACE，避免 `icacls /remove:g` 的宿主差异、全新描述符丢失元数据、非提升runner无必要重写owner，以及并发PowerShell进程的模块自动加载竞态；POSIX 继续按 owner/mode fail closed。文本型契约测试读取磁盘文件时先统一 CRLF/LF，再验证与换行无关的语义，避免 checkout 策略改变测试结果。
 
 ## 4. 后续处理顺序
 

@@ -25,10 +25,11 @@ function currentWindowsSid(): string {
 
 function inspectWindowsAcl(target: string): WindowsAclSummary {
   const script = [
-    "$acl = Get-Acl -LiteralPath $env:KITH_PRIVATE_PATH",
     "$sidType = [System.Security.Principal.SecurityIdentifier]",
+    "$sections = [System.Security.AccessControl.AccessControlSections]::Owner -bor [System.Security.AccessControl.AccessControlSections]::Access",
+    "$acl = if ([System.IO.Directory]::Exists($env:KITH_PRIVATE_PATH)) { [System.IO.Directory]::GetAccessControl($env:KITH_PRIVATE_PATH, $sections) } else { [System.IO.File]::GetAccessControl($env:KITH_PRIVATE_PATH, $sections) }",
     "$acl.GetOwner($sidType).Value",
-    "$acl.Access | Where-Object { $_.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Allow } | ForEach-Object { $_.IdentityReference.Translate($sidType).Value }",
+    "foreach ($rule in $acl.GetAccessRules($true, $true, $sidType)) { if ($rule.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Allow) { $rule.IdentityReference.Value } }",
   ].join("; ");
   const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
     encoding: "utf8",
@@ -52,13 +53,18 @@ function replaceWindowsPrivateAcl(target: string, kind: "file" | "directory", ow
     : "[System.Security.AccessControl.InheritanceFlags]::None";
   const script = [
     "$sid = [System.Security.Principal.SecurityIdentifier]::new($env:KITH_PRIVATE_OWNER_SID)",
-    "$acl = Get-Acl -LiteralPath $env:KITH_PRIVATE_PATH",
+    "$sections = [System.Security.AccessControl.AccessControlSections]::Access",
+    `$acl = ${kind === "directory"
+      ? "[System.IO.Directory]::GetAccessControl($env:KITH_PRIVATE_PATH, $sections)"
+      : "[System.IO.File]::GetAccessControl($env:KITH_PRIVATE_PATH, $sections)"}`,
     "$acl.SetAccessRuleProtection($true, $false)",
-    "foreach ($existingRule in @($acl.Access)) { [void]$acl.RemoveAccessRuleSpecific($existingRule) }",
+    "foreach ($existingRule in @($acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]))) { [void]$acl.RemoveAccessRuleSpecific($existingRule) }",
     `$inheritance = ${inheritance}`,
     "$rule = [System.Security.AccessControl.FileSystemAccessRule]::new($sid, [System.Security.AccessControl.FileSystemRights]::FullControl, $inheritance, [System.Security.AccessControl.PropagationFlags]::None, [System.Security.AccessControl.AccessControlType]::Allow)",
     "[void]$acl.AddAccessRule($rule)",
-    "Set-Acl -LiteralPath $env:KITH_PRIVATE_PATH -AclObject $acl",
+    kind === "directory"
+      ? "[System.IO.Directory]::SetAccessControl($env:KITH_PRIVATE_PATH, $acl)"
+      : "[System.IO.File]::SetAccessControl($env:KITH_PRIVATE_PATH, $acl)",
   ].join("; ");
   const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
     encoding: "utf8",
