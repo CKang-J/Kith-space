@@ -63,7 +63,7 @@
 - Vite alias 使用 URL/path API；测试 runner 使用临时 profile，不依赖固定 `/tmp`。
 - 凭据、CLI 配置和 Pi helper 已统一使用平台文件元数据策略：macOS/Linux 保留 uid/mode fail-closed，Windows 不再误用 Node 合成的 POSIX mode。
 
-这些是静态审计和当前 Windows 证据，不等于 macOS/Linux 已完成产品验收。Windows 私密凭据文件现在还会通过 `src/security/privateFileSecurity.ts` 主动收紧并验证 owner/DACL：owner 必须是当前用户，Allow ACE 只接受当前用户以及 Windows 特权主体 LocalSystem、BUILTIN\Administrators，普通用户和组仍 fail closed；POSIX 继续按 owner/mode fail closed。文本型契约测试读取磁盘文件时先统一 CRLF/LF，再验证与换行无关的语义，避免 checkout 策略改变测试结果。
+这些是静态审计和当前 Windows 证据，不等于 macOS/Linux 已完成产品验收。Windows 私密凭据文件现在还会通过 `src/security/privateFileSecurity.ts` 从空 DACL 确定性重建 owner/Allow 规则，并验证 owner 必须是当前用户且仅当前用户拥有 Allow ACE，避免依赖 `icacls /remove:g` 在不同宿主上的保留行为；POSIX 继续按 owner/mode fail closed。文本型契约测试读取磁盘文件时先统一 CRLF/LF，再验证与换行无关的语义，避免 checkout 策略改变测试结果。
 
 ## 4. 后续处理顺序
 

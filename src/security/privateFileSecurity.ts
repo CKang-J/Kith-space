@@ -7,11 +7,6 @@ export type WindowsAclSummary = Readonly<{
   allowSids: readonly string[];
 }>;
 
-const WINDOWS_TRUSTED_PRIVATE_SIDS = new Set([
-  "S-1-5-18", // LocalSystem
-  "S-1-5-32-544", // BUILTIN\Administrators
-]);
-
 let cachedWindowsSid: string | null = null;
 const verifiedWindowsCtimes = new Map<string, number>();
 
@@ -45,12 +40,39 @@ function inspectWindowsAcl(target: string): WindowsAclSummary {
   return { ownerSid, allowSids };
 }
 
-export function windowsAclIsPrivate(summary: WindowsAclSummary, expectedOwnerSid: string): boolean {
+export function windowsAclAllowsOnlyOwner(summary: WindowsAclSummary, expectedOwnerSid: string): boolean {
   return summary.ownerSid === expectedOwnerSid
     && summary.allowSids.length > 0
-    && summary.allowSids.every((sid) => (
-      sid === expectedOwnerSid || WINDOWS_TRUSTED_PRIVATE_SIDS.has(sid)
-    ));
+    && summary.allowSids.every((sid) => sid === expectedOwnerSid);
+}
+
+function replaceWindowsPrivateAcl(target: string, kind: "file" | "directory", ownerSid: string): void {
+  const aclType = kind === "directory"
+    ? "[System.Security.AccessControl.DirectorySecurity]::new()"
+    : "[System.Security.AccessControl.FileSecurity]::new()";
+  const inheritance = kind === "directory"
+    ? "([System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit)"
+    : "[System.Security.AccessControl.InheritanceFlags]::None";
+  const script = [
+    "$sid = [System.Security.Principal.SecurityIdentifier]::new($env:KITH_PRIVATE_OWNER_SID)",
+    `$acl = ${aclType}`,
+    "$acl.SetOwner($sid)",
+    "$acl.SetAccessRuleProtection($true, $false)",
+    `$inheritance = ${inheritance}`,
+    "$rule = [System.Security.AccessControl.FileSystemAccessRule]::new($sid, [System.Security.AccessControl.FileSystemRights]::FullControl, $inheritance, [System.Security.AccessControl.PropagationFlags]::None, [System.Security.AccessControl.AccessControlType]::Allow)",
+    "[void]$acl.AddAccessRule($rule)",
+    "Set-Acl -LiteralPath $env:KITH_PRIVATE_PATH -AclObject $acl",
+  ].join("; ");
+  const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      KITH_PRIVATE_OWNER_SID: ownerSid,
+      KITH_PRIVATE_PATH: target,
+    },
+    windowsHide: true,
+  });
+  if (result.error || result.status !== 0) throw new Error("unable to replace the Windows private path ACL");
 }
 
 export function assertPrivatePathSecurity(target: string): void {
@@ -60,8 +82,8 @@ export function assertPrivatePathSecurity(target: string): void {
     const ctimeMs = metadata.ctimeMs;
     if (verifiedWindowsCtimes.get(target) === ctimeMs) return;
     const ownerSid = currentWindowsSid();
-    if (!windowsAclIsPrivate(inspectWindowsAcl(target), ownerSid)) {
-      throw new Error("private path ACL grants access outside trusted Windows identities");
+    if (!windowsAclAllowsOnlyOwner(inspectWindowsAcl(target), ownerSid)) {
+      throw new Error("private path ACL grants access outside the current Windows identity");
     }
     verifiedWindowsCtimes.set(target, ctimeMs);
     return;
@@ -85,35 +107,7 @@ export function protectPrivatePath(target: string, kind: "file" | "directory"): 
   const ownerSid = currentWindowsSid();
   const ctimeMs = metadata.ctimeMs;
   if (verifiedWindowsCtimes.get(target) === ctimeMs) return;
-  const ownerResult = spawnSync("icacls.exe", [target, "/setowner", `*${ownerSid}`], {
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  if (ownerResult.error || ownerResult.status !== 0) throw new Error("unable to set the Windows private path owner");
-  const inheritanceResult = spawnSync("icacls.exe", [target, "/inheritance:r"], {
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  if (inheritanceResult.error || inheritanceResult.status !== 0) {
-    throw new Error("unable to disable Windows private path ACL inheritance");
-  }
-  const otherAllowSids = [...new Set(inspectWindowsAcl(target).allowSids)]
-    .filter((sid) => sid !== ownerSid && !WINDOWS_TRUSTED_PRIVATE_SIDS.has(sid));
-  for (const sid of otherAllowSids) {
-    const removeResult = spawnSync("icacls.exe", [target, "/remove:g", `*${sid}`], {
-      encoding: "utf8",
-      windowsHide: true,
-    });
-    if (removeResult.error || removeResult.status !== 0) {
-      throw new Error("unable to remove an external Windows private path ACL grant");
-    }
-  }
-  const permission = kind === "directory" ? `(OI)(CI)(F)` : `(F)`;
-  const grantResult = spawnSync("icacls.exe", [target, "/grant:r", `*${ownerSid}:${permission}`], {
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  if (grantResult.error || grantResult.status !== 0) throw new Error("unable to protect the Windows private path ACL");
+  replaceWindowsPrivateAcl(target, kind, ownerSid);
   verifiedWindowsCtimes.delete(target);
   assertPrivatePathSecurity(target);
 }
