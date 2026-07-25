@@ -122,18 +122,16 @@ test("chat chrome is compact while non-chat page headings keep their existing ty
   assert.doesNotMatch(css, /\.chat-head::after\s*\{/);
 });
 
-test("agent DM header uses the peer avatar, plain name, and localized lifecycle label", () => {
+test("agent DM header uses a regular-weight plain name without an avatar and keeps the localized lifecycle label", () => {
   assert.match(chatSrc, /import \{ agentStatusLabel \} from "\.\.\/agentStatus\.ts"/);
   assert.match(chatSrc, /className=\{isDm \? "chat-head__dm-title" : "chat-head__channel-title"\}/);
-  assert.match(chatSrc, /<Avatar seed=\{dmAgent\.name\} url=\{avFor\(dmAgent\.avatarUrl\)\} size=\{24\} \/>/);
+  assert.doesNotMatch(chatSrc, /<Avatar seed=\{dmAgent\.name\} url=\{avFor\(dmAgent\.avatarUrl\)\} size=\{24\} \/>/);
   assert.match(chatSrc, /agentStatusLabel\(t, agentLiveState\(dmAgent\)\)/);
   assert.doesNotMatch(chatSrc, /isDm \? "@ " \+/);
   const dmTitle = ruleBody(".chat-head__rail>.chat-head__dm-title");
-  assert.match(dmTitle, /display\s*:\s*flex/);
-  assert.match(dmTitle, /align-items\s*:\s*center/);
-  assert.match(dmTitle, /gap\s*:\s*7px/);
   assert.match(dmTitle, /font-size\s*:\s*16px/);
-  assert.match(dmTitle, /font-weight\s*:\s*700/);
+  assert.match(dmTitle, /font-weight\s*:\s*400/);
+  assert.doesNotMatch(css, /\.chat-head__dm-title \.av-img\{/);
   assert.match(css, /\.head-status\{[^}]*font-size\s*:\s*12px[^}]*font-weight\s*:\s*400/);
   const statusDot = ruleBody(".head-status .dot");
   assert.match(statusDot, /width\s*:\s*5px/);

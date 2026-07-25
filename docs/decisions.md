@@ -543,7 +543,21 @@
 
 **推理与权衡**：Tailwind 把新增样式约束收口到组件附近，shadcn/ui 提供可维护、可审查且保留源码所有权的基础组件，能减少重复弹窗、菜单、表单和状态逻辑。代价是迁移期存在两套样式表达；通过“新增强制、存量渐进”和语义 Token 隔离控制复杂度，而不是扩大改动面换取名义上的统一。
 
-**实施事实**：共享 UI 使用 React 19.2.8 + TypeScript + Vite 5；React 19 升级保持 `createRoot`/StrictMode 和现有 SPA 架构，不捆绑 Router/Vite 大版本或新 API 重构。Vite 已接入 `@tailwindcss/vite`；`web/components.json` 使用 Radix/Nova、Lucide 与 CSS variables；`@/*` 映射到 `web/src/*`；`web/src/lib/utils.ts` 提供 `cn()`。`web/src/styles.css` 是唯一 Tailwind/shadcn 主题入口；迁移期只导入 Tailwind theme/utilities、不启用全局 Preflight，基础边框/焦点规则只作用于 `data-slot` 组件，同时保留既有系统字体，并将 shadcn 的 `muted` 底层变量与存量 `--muted` 文本色隔离，避免初始化改变现有 UI。首批迁移已覆盖通用搜索、Space 新建菜单、Space 卡片按钮/右键菜单、Space 重命名和频道删除确认；使用 Input Group、Dropdown Menu、Context Menu、Dialog、Alert Dialog、Field、Input 与 Button 替换自建交互，同时删除对应旧 CSS、portal、全局监听和坐标状态。搜索框保留参考图视觉，聚焦时不出现黑框；Radix 独立进入 `ui-vendor` 构建分块。
+**实施事实**：共享 UI 使用 React 19.2.8 + TypeScript + Vite 5；React 19 升级保持 `createRoot`/StrictMode 和现有 SPA 架构，不捆绑 Router/Vite 大版本或新 API 重构。Vite 已接入 `@tailwindcss/vite`；`web/components.json` 使用 Radix/Nova、Lucide 与 CSS variables；`@/*` 映射到 `web/src/*`；`web/src/lib/utils.ts` 提供 `cn()`。`web/src/styles.css` 是唯一 Tailwind/shadcn 主题入口；迁移期只导入 Tailwind theme/utilities、不启用全局 Preflight，基础边框/焦点规则只作用于 `data-slot` 组件，并将 shadcn 的 `muted` 底层变量与存量 `--muted` 文本色隔离。2026-07-25 后全局无衬线字体栈改为内置 Sora Variable 覆盖英文、数字和拉丁标点，中文回退到系统 `PingFang SC` / `Microsoft YaHei`，代码与路径保留系统等宽字体。首批迁移已覆盖通用搜索、Space 新建菜单、Space 卡片按钮/右键菜单、Space 重命名和频道删除确认；使用 Input Group、Dropdown Menu、Context Menu、Dialog、Alert Dialog、Field、Input 与 Button 替换自建交互，同时删除对应旧 CSS、portal、全局监听和坐标状态。搜索框保留参考图视觉，聚焦时不出现黑框；Radix 独立进入 `ui-vendor` 构建分块。
+
+---
+
+## 决策 35：全局字体设置采用三个安装级作用域和内置白名单
+
+**状态**：Implemented（2026-07-25）。
+
+**结论**：Settings 新增“外观”分区，字体只分为三个用户可理解且职责稳定的作用域：界面、消息与文档、代码。默认组合保持当前视觉：界面使用 Sora Variable 并对中文回退系统字体，消息与文档跟随界面，代码使用系统等宽字体。界面字体按无衬线与等宽分组，可选 System UI、Sora、Inter、Geist、System Monospace、JetBrains Mono、Fira Code、Geist Mono；消息与文档提供跟随界面及四种无衬线字体；代码提供四种等宽字体。除系统栈外的候选全部随应用打包，不依赖网络。
+
+**持久化与运行边界**：设置属于安装而非 Space。app.db v7 初始把三个受 CHECK 约束的稳定 ID 写入 `installation_state`，v8 将其迁入职责更窄的 `appearance_settings` 单例，并把界面字体白名单扩展为无衬线与等宽两组。独立 `AppearanceSettingsService` 承担请求字段和白名单校验，gate-1 Human API 负责读取与部分更新；前端只把已验证 ID 映射到根节点语义字体 Token。消息与文档作用域覆盖聊天 Markdown 和 Workspace Markdown，代码作用域继续通过统一 `--mono` Token 覆盖代码块、行内代码、路径和技术标识。选择即时应用；保存失败回滚；刷新或重启后重新从 app.db 恢复。Web 开发代理保留浏览器可见 Host，以满足 Core 的 Origin/CSRF 与 WebSocket 同源门禁，不通过放宽服务端策略解决代理差异。
+
+**推理与权衡**：只提供一个“界面字体”无法让重阅读内容和代码保持各自可读性；按标题、正文、数字、路径等继续细分会让设置和 CSS 依赖迅速膨胀，且用户难以预测影响范围。三个作用域是最小稳定边界。第一版不接受任意本机字体名或上传字体，因为 Desktop 与可选浏览器入口的字体可用性不同，任意字符串也会使持久设置不可复现；未来若支持自定义字体，必须另行设计文件导入、许可证提示、校验、存储和跨入口降级。
+
+**实施事实**：当前迁移位于 `src/app-data/appDatabaseMigrations.ts:730`；领域校验位于 `src/appearance-settings/appearanceSettingsService.ts:33`；Human API 位于 `src/server/routes-api/appearanceSettings.ts:11`；页面位于 `web/src/views/appearance-settings/AppearanceSettings.tsx:63`；运行时字体映射位于 `web/src/appearanceFonts.ts:45`。
 
 ---
 

@@ -1030,7 +1030,7 @@ raw stdout、stderr、HTTP request/response、SDK exception object和Provider原
 - fresh app.db默认`provider_v1 + pi_sdk + setup_required`，既有app.db保持`legacy_runtime`；显式切换经过`migrating`，边界变化取消旧job、提升epoch并使consent失效，启动按持久目标恢复，Human可显式回滚legacy。
 - 生产helper的ESM bundle注入`createRequire`兼容Undici的Node builtin加载，并在每次`desktop:build`/`desktop:bundle`执行无网络启动烟测；Pi system instruction携带完整`memory_advisor_v1` JSON schema，非法JSON或schema输出稳定归类为`provider_invalid_output`。
 - egress预检继续拒绝literal/private/loopback/link-local/metadata目的地；HTTPS主机名经本机透明代理解析到RFC 2544 `198.18/15`时允许保留为TLS仍验证原主机名的固定transport地址，literal RFC 2544 endpoint仍拒绝。Pi CLI明确请求不存在或过期的auth provider时在导入阶段拒绝，不创建虚假CredentialRef。
-- Desktop/Web真实验收已覆盖既有安装`legacy_runtime`显式cutover、全新Space/两个Claude Agent、公开/私密频道/DM/话题、active/proposed/evidence/revision、跨surface recall、Files Memory、模型revision切换、consent失效/重授权/撤权、Run审计和重启恢复；本机无显式Anthropic凭据时Claude Provider切换按兼容矩阵在0 evidence阶段拒绝。终审补充关闭了通用WS明文凭据、Core重连遗留helper、probe未纳管、Agent/Space/来源频道撤权迟停、Pi auth虚假可用、helper输入预算冲突、Worker并发prepare与artifact泄漏、pre-release v5约束指纹不足。当期完整unit为894通过、11 skip、0失败；统一模型/runtime控制面落地后的当前回归基线为916通过、11 skip、0失败，并继续通过完整integration、typecheck、production bundle与desktop build。
+- Desktop/Web真实验收已覆盖既有安装`legacy_runtime`显式cutover、全新Space/两个Claude Agent、公开/私密频道/DM/话题、active/proposed/evidence/revision、跨surface recall、Files Memory、模型revision切换、consent失效/重授权/撤权、Run审计和重启恢复；本机无显式Anthropic凭据时Claude Provider切换按兼容矩阵在0 evidence阶段拒绝。终审补充关闭了通用WS明文凭据、Core重连遗留helper、probe未纳管、Agent/Space/来源频道撤权迟停、Pi auth虚假可用、helper输入预算冲突、Worker并发prepare与artifact泄漏、pre-release v5约束指纹不足。当期完整unit为894通过、11 skip、0失败；当前回归基线为937通过、11 skip、0失败，并继续通过完整integration、typecheck、production bundle与desktop build。
 
 ---
 

@@ -26,5 +26,6 @@ test("P-A9 browser probe has a syntax-valid repeatable measurement interface", (
 test("Vite reuses its Core proxy connection during repeated browser rounds", () => {
   const source = readFileSync(path.resolve(import.meta.dirname, "../web/vite.config.ts"), "utf8");
   assert.match(source, /new Agent\(\{ keepAlive: true \}\)/);
-  assert.match(source, /"\/api": \{ target: API, changeOrigin: true, agent: coreProxyAgent \}/);
+  assert.match(source, /"\/api": \{ target: API, changeOrigin: false, agent: coreProxyAgent \}/);
+  assert.match(source, /"\/socket\.io": \{ target: API, ws: true, changeOrigin: false \}/);
 });

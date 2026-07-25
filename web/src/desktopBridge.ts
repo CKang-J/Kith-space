@@ -69,6 +69,7 @@ export function getDesktopBridge(host?: DesktopBridgeHost): KithDesktopBridge | 
 }
 
 export function resolveSettingsSection(requested: string | undefined, desktopAvailable: boolean) {
+  if (requested === "appearance") return "appearance";
   if (requested === "space") return "space";
   if (requested === "models") return "models";
   if (requested === "runtimes") return "runtimes";

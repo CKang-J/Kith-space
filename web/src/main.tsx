@@ -12,6 +12,7 @@ import { homeRoute } from "./routing.ts";
 import { parseWorkspaceRoute, SPACE_ROUTE_PATTERN } from "./shell/workspaceRoute.ts";
 import { readySpace, routeSpaceAvailability } from "./spaces/spaceAvailability.ts";
 import { SpaceRecovery } from "./spaces/SpaceRecovery.tsx";
+import { AppearanceFontSync } from "./AppearanceFontSync.tsx";
 import "./i18n";
 import "./styles.css";
 import "./components/SlidingTabs.css";
@@ -70,6 +71,7 @@ function WorkspaceRoute() {
 function ProductRoot() {
   return (
     <StoreProvider>
+      <AppearanceFontSync />
       <ConfirmProvider>
       <ToastProvider>
       <BrowserRouter>

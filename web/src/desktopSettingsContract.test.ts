@@ -49,9 +49,12 @@ test("Human settings and empty states use Personal AgentOS terminology", () => {
   const zh = JSON.parse(source("./locales/zh.json"));
 
   assert.match(settings, /\["human", "misc\.settingsNavHuman"\]/);
+  assert.match(settings, /\["appearance", "misc\.settingsNavAppearance"\]/);
   assert.match(taskBoard, /t\("tasks\.emptySpace"\)/);
   assert.equal(en.misc.settingsNavHuman, "Human Profile");
   assert.equal(zh.misc.settingsNavHuman, "Human 资料");
+  assert.equal(en.misc.settingsNavAppearance, "Appearance");
+  assert.equal(zh.misc.settingsNavAppearance, "外观");
   assert.equal(en.tasks.emptyServer, undefined);
   assert.equal(zh.tasks.emptyServer, undefined);
   assert.equal(en.chat.loadFailedBody, "Kith-space could not reach its local service. Make sure the Desktop app is running, then retry.");

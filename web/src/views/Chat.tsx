@@ -489,7 +489,7 @@ export function Chat({
             {renderConversationListControl()}
             <h1 className={isDm ? "chat-head__dm-title" : "chat-head__channel-title"}>
               {isDm
-                ? <>{dmAgent ? <Avatar seed={dmAgent.name} url={avFor(dmAgent.avatarUrl)} size={24} /> : null}{cur?.name || ""}</>
+                ? (cur?.name || "")
                 : <><Hash size={18} className="channel-row-icon" aria-hidden="true" />{cur?.name || "…"}</>}
             </h1>
             {dmAgent

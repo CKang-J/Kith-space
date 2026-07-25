@@ -1,4 +1,10 @@
 @layer theme, base, components, utilities;
+@import "@fontsource-variable/sora/wght.css";
+@import "@fontsource-variable/inter/wght.css";
+@import "@fontsource-variable/geist/wght.css";
+@import "@fontsource-variable/jetbrains-mono/wght.css";
+@import "@fontsource-variable/fira-code/wght.css";
+@import "@fontsource-variable/geist-mono/wght.css";
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "tw-animate-css";
@@ -21,7 +27,10 @@
   --on-ink:#fff;--mention:#fdf2d6;--scrim:rgba(12,10,9,.4);
   /* Shadow scale (elevation depth): black at varying opacity, centralized as tokens to prevent scattering (same sidecar approach); used for box-shadow on overlays/cards/menus */
   --shadow-1:rgba(0,0,0,.05);--shadow-2:rgba(0,0,0,.1);--shadow-3:rgba(0,0,0,.12);--shadow-4:rgba(0,0,0,.16);--shadow-5:rgba(0,0,0,.25);--shadow-6:rgba(0,0,0,.3);--shadow-7:rgba(0,0,0,.45);
-  --sans:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;--serif:var(--sans);--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --font-interface:'Sora Variable','PingFang SC','Microsoft YaHei',sans-serif;
+  --font-content:var(--font-interface);
+  --font-code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:var(--font-interface);--serif:var(--font-interface);--mono:var(--font-code);
   /* Global type scale: 14px is the product body baseline; smaller values are reserved for metadata and larger values for hierarchy. */
   --font-size-xs:11px;--font-size-sm:12px;--font-size-base:14px;--font-size-lg:16px;--font-size-title:20px;
   --line-height-body:1.5;--line-height-reading:1.68;
@@ -76,6 +85,20 @@
   --sidebar-border:oklch(0.922 0 0);
   --sidebar-ring:oklch(0.708 0 0);
 }
+:root[data-interface-font="system_ui"]{--font-interface:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}
+:root[data-interface-font="inter"]{--font-interface:'Inter Variable','PingFang SC','Microsoft YaHei',sans-serif}
+:root[data-interface-font="geist"]{--font-interface:'Geist Variable','PingFang SC','Microsoft YaHei',sans-serif}
+:root[data-interface-font="system_monospace"]{--font-interface:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+:root[data-interface-font="jetbrains_mono"]{--font-interface:'JetBrains Mono Variable',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+:root[data-interface-font="fira_code"]{--font-interface:'Fira Code Variable',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+:root[data-interface-font="geist_mono"]{--font-interface:'Geist Mono Variable',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+:root[data-content-font="system_ui"]{--font-content:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}
+:root[data-content-font="sora"]{--font-content:'Sora Variable','PingFang SC','Microsoft YaHei',sans-serif}
+:root[data-content-font="inter"]{--font-content:'Inter Variable','PingFang SC','Microsoft YaHei',sans-serif}
+:root[data-content-font="geist"]{--font-content:'Geist Variable','PingFang SC','Microsoft YaHei',sans-serif}
+:root[data-code-font="jetbrains_mono"]{--font-code:'JetBrains Mono Variable',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+:root[data-code-font="fira_code"]{--font-code:'Fira Code Variable',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+:root[data-code-font="geist_mono"]{--font-code:'Geist Mono Variable',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 *{box-sizing:border-box}
 /* Global scrollbar treatment: keep every scrollable surface quiet until it is actively used. */
 *{scrollbar-width:thin;scrollbar-color:transparent transparent}
@@ -288,8 +311,7 @@ main.content-col{display:flex;flex-direction:column;height:100vh;background:var(
 .chat-head__rail>h1{flex-shrink:0;font-family:var(--sans);font-size:20px;font-weight:600;line-height:1.2;letter-spacing:-.2px}
 .chat-head__rail>.chat-head__channel-title{display:flex;align-items:center;gap:4px;font-weight:400}
 .chat-head__channel-title .channel-row-icon{flex:none;color:var(--muted-soft)}
-.chat-head__rail>.chat-head__dm-title{display:flex;align-items:center;gap:7px;font-size:16px;font-weight:700;letter-spacing:-.1px}
-.chat-head__dm-title .av-img{border-radius:50%}
+.chat-head__rail>.chat-head__dm-title{font-size:16px;font-weight:400;letter-spacing:-.1px}
 .chat-head__rail>small,.chat-head__rail>.head-status{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chat-head-actions{display:flex;flex:none;align-items:center;gap:3px;margin-left:auto}
 .chat-head-icon-btn{display:inline-flex;width:30px;height:30px;flex:none;align-self:center;align-items:center;justify-content:center;padding:0;border:0;border-radius:9px;background:transparent;color:var(--muted);cursor:pointer}
@@ -320,14 +342,17 @@ main.content-col > .scroll.is-scrolling::-webkit-scrollbar-thumb{background:rgba
    line breaks in code blocks. */
 .mbody{white-space:pre-wrap;color:var(--body);overflow-wrap:anywhere}
 /* Message body markdown (MessageContent .md): react-markdown+remark-breaks already structures line breaks, explicit white-space:normal overrides pre-wrap inherited from .mbody — otherwise consecutive blank lines/paragraphs are double-preserved and inflate height (diagnosed: .md inherits pre-wrap + p default 16px margin → 3 paragraphs = 176px). Paragraph/list spacing tightened for compact body; code blocks retain their own line breaks */
-.md{white-space:normal;font-size:var(--md-text-size);line-height:var(--md-line-height);max-width:min(100%,var(--read-measure));margin-left:0;margin-right:auto;--inline-code-size:.9em}
+.md{white-space:normal;font-family:var(--font-content);font-size:var(--md-text-size);line-height:var(--md-line-height);max-width:min(100%,var(--read-measure));margin-left:0;margin-right:auto;--inline-code-size:.9em}
 .md > :first-child{margin-top:0}.md > h1:first-child,.md > h2:first-child,.md > h3:first-child{margin-top:.45em}.md > :last-child{margin-bottom:0}
 .md p{margin:0}.md p + p{margin-top:var(--md-paragraph-gap)}
 .md ul,.md ol{margin:.65em 0;padding-left:1.1em}.md li{margin:.18em 0;position:relative;padding-left:1.38em}
-.md h1,.md h2,.md h3,.md h4,.md h5,.md h6{font-family:var(--serif);color:var(--ink);font-weight:600;line-height:1.28;margin:1.1em 0 .45em}
+.md h1,.md h2,.md h3,.md h4,.md h5,.md h6{font-family:var(--font-content);color:var(--ink);font-weight:600;line-height:1.28;margin:1.1em 0 .45em}
 .md h1{font-size:var(--md-h1-size);margin-top:1.35em}.md h2{font-size:var(--md-h2-size)}.md h3{font-size:var(--md-h3-size)}.md h4,.md h5,.md h6{font-size:var(--md-h-rest-size);color:var(--muted)}
 .md > h1:first-child{margin-top:.45em}
 .md strong,.md b{font-weight:700;color:var(--ink)}
+.chat-message .md{--md-line-height:var(--line-height-body);--md-paragraph-gap:.25em}
+.chat-message .md ul,.chat-message .md ol{margin:.25em 0}.chat-message .md li{margin:.1em 0}
+.chat-message .md strong,.chat-message .md b{color:inherit}
 .md a{color:var(--link-blue);text-decoration:none;text-underline-offset:2px}.md a:hover{text-decoration:underline}
 .md code,.md .color-token-text{font-family:var(--mono);font-size:var(--inline-code-size);font-weight:400;line-height:inherit;background:rgba(0,0,0,.05);color:#7d3f4c;border-radius:4px;padding:1px 5px}
 .md pre{white-space:pre-wrap;background:transparent;border:0;border-radius:0;padding:16px;overflow:auto;margin:0;color:inherit}
@@ -526,10 +551,10 @@ main.content-col > .composer{position:absolute;left:var(--scrollbar-gutter);righ
 .actlog{display:flex;flex-direction:column;gap:2px}
 .act{display:flex;align-items:baseline;gap:10px;padding:5px 6px;border-radius:6px;font-size:14px;line-height:1.5}
 .act:hover{background:var(--surface-strong)}
-.act .act-t{flex:none;width:64px;font-size:11px;color:var(--muted-soft);font-family:ui-monospace,monospace}
+.act .act-t{flex:none;width:64px;font-size:11px;color:var(--muted-soft);font-family:var(--mono)}
 .act .act-tool{flex:none;color:var(--muted);font-weight:600}
 .act .act-x{flex:1;min-width:0;color:var(--body);overflow-wrap:anywhere}
-.act .act-x.muted{color:var(--muted)} .act .act-x.mono{font-family:ui-monospace,monospace;font-size:13px;color:var(--muted)}
+.act .act-x.muted{color:var(--muted)} .act .act-x.mono{font-family:var(--mono);font-size:13px;color:var(--muted)}
 .chtabs{display:flex;gap:2px;margin-left:10px}
 .chtabs button{background:none;border:0;padding:4px 11px;font-size:13px;color:var(--muted);cursor:pointer;border-radius:8px}
 .chtabs button:hover{background:var(--surface-strong)}
@@ -539,16 +564,16 @@ main.content-col > .composer{position:absolute;left:var(--scrollbar-gutter);righ
 .ptabs button.on{color:var(--ink);border-bottom-color:var(--ink)}
 .ws{flex:1;display:flex;min-height:0;overflow:hidden}
 .ws-tree{width:280px;flex:none;overflow:auto;box-shadow:1px 0 0 var(--hair);padding:10px 8px}
-.ws-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:6px;cursor:pointer;font-size:14px;color:var(--body);font-family:var(--mono,ui-monospace,monospace)}
+.ws-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:6px;cursor:pointer;font-size:14px;color:var(--body);font-family:var(--mono)}
 .ws-row:hover{background:var(--surface-strong)}.ws-row.active{background:var(--surface-strong);color:var(--ink)}
 .ws-row .ws-size{font-size:11px;color:var(--muted-soft);flex:none}
 .ws-view{flex:1;overflow:auto;padding:18px 22px;min-width:0}
-.ws-path{font-size:12px;color:var(--muted);margin-bottom:10px;font-family:ui-monospace,monospace;display:flex;align-items:center;gap:10px}
-.ws-content{margin:0;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,monospace;font-size:13px;line-height:1.6;color:var(--ink)}
+.ws-path{font-size:12px;color:var(--muted);margin-bottom:10px;font-family:var(--mono);display:flex;align-items:center;gap:10px}
+.ws-content{margin:0;white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:13px;line-height:1.6;color:var(--ink)}
 .ws-row .ws-mem{font-weight:700;color:var(--ink)}
 /* Workspace root path bar + copy (font-mono path + Copy path) + folder collapse caret */
 .ws-rootbar{display:flex;align-items:center;gap:6px;padding:0 2px 8px;margin-bottom:6px;border-bottom:1px solid var(--hair)}
-.ws-root{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-family:ui-monospace,monospace;color:var(--muted-soft)}
+.ws-root{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-family:var(--mono);color:var(--muted-soft)}
 .ws-copy{flex:none;border:0;background:transparent;color:var(--muted);cursor:pointer;padding:3px;border-radius:6px;display:flex;align-items:center}
 .ws-copy:hover{background:var(--surface-strong);color:var(--ink)}
 .ws-caret{color:var(--muted-soft);transition:transform var(--dur-fast) var(--ease-quint)}
@@ -558,8 +583,8 @@ main.content-col > .composer{position:absolute;left:var(--scrollbar-gutter);righ
 .ws-toggle button{border:none;background:var(--surface);color:var(--muted);font-size:11px;font-weight:600;padding:2px 10px;cursor:pointer;font-family:var(--sans)}
 .ws-toggle button.on{background:var(--ink);color:var(--on-ink)}
 /* Workspace .md rendering (reuses editorial typography, file viewer: no @ mention links) */
-.ws-md{font-size:var(--md-text-size);line-height:var(--md-line-height);color:var(--body);max-width:760px;--inline-code-size:.88em}
-.ws-md h1,.ws-md h2,.ws-md h3,.ws-md h4,.ws-md h5,.ws-md h6{font-family:var(--serif);color:var(--ink);font-weight:600;line-height:1.28;margin:1.1em 0 .45em}
+.ws-md{font-family:var(--font-content);font-size:var(--md-text-size);line-height:var(--md-line-height);color:var(--body);max-width:760px;--inline-code-size:.88em}
+.ws-md h1,.ws-md h2,.ws-md h3,.ws-md h4,.ws-md h5,.ws-md h6{font-family:var(--font-content);color:var(--ink);font-weight:600;line-height:1.28;margin:1.1em 0 .45em}
 .ws-md h1{font-size:var(--md-h1-size);margin-top:1.35em}.ws-md h2{font-size:var(--md-h2-size)}.ws-md h3{font-size:var(--md-h3-size)}.ws-md h4,.ws-md h5,.ws-md h6{font-size:var(--md-h-rest-size);color:var(--muted)}
 .ws-md p{margin:0}.ws-md p + p{margin-top:var(--md-paragraph-gap)}.ws-md ul,.ws-md ol{margin:.65em 0;padding-left:1.05em}.ws-md li{margin:.18em 0;position:relative;padding-left:1.36em}
 .ws-md code,.ws-md .color-token-text{font-family:var(--mono);font-size:var(--inline-code-size);line-height:inherit;background:var(--surface-strong);border-radius:4px;padding:1px 5px}
@@ -890,7 +915,7 @@ aside.traj-col h2{position:relative;font-size:12px;font-weight:600;letter-spacin
 .perm-row:hover{background:var(--surface-strong)}
 .perm-row input[type=checkbox]{width:16px;height:16px;flex:none;margin-top:2px;accent-color:var(--ink-2);cursor:pointer}
 .perm-row .who{font-size:15px}
-.perm-key{font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);background:var(--surface-strong);padding:1px 5px;border-radius:4px;margin-left:6px}
+.perm-key{font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--surface-strong);padding:1px 5px;border-radius:4px;margin-left:6px}
 .skill-row{cursor:default}
 .skill-row .who{font-size:15px}
 .skill-desc{margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.5}
@@ -1159,6 +1184,7 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
 @theme inline {
   --font-heading:var(--sans);
   --font-sans:var(--sans);
+  --font-mono:var(--mono);
   --color-sidebar-ring:var(--sidebar-ring);
   --color-sidebar-border:var(--sidebar-border);
   --color-sidebar-accent-foreground:var(--sidebar-accent-foreground);
