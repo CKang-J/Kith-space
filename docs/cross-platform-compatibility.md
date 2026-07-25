@@ -67,7 +67,7 @@
 
 ## 4. 后续处理顺序
 
-1. **观察三端 CI 首轮结果**：处理 Windows/macOS/Linux runner 暴露的真实差异，不用平台 skip 掩盖。
+1. **维护三端 CI 证据**：完整矩阵在 `main` 更新后自动执行，也可按需手动触发；当前频繁开发阶段不为每次 PR 更新自动运行。平台相关 PR 须如实记录本地与远端验证边界，不用平台 skip 掩盖。
 2. **补齐平台专项 smoke**：CP-11/CP-13/CP-18；分别验证 managed/system runtime、POSIX wrapper/PATH/cleanup 与 Windows PATHEXT。
 3. **补齐文档与 Desktop 资源**：CP-12/CP-14；增加 PowerShell/POSIX 对照及平台图标、登录启动实机证据。
 4. **平台发行独立切片**：先完成 Windows 签名/安装生命周期，再分别设计 macOS 和 Linux packaging，不把三平台塞进一个条件分支文件。

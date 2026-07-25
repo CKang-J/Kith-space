@@ -1,11 +1,10 @@
 name: CI
 
-# Keep the Personal AgentOS code, tests, and production Desktop bundles healthy on every push / PR.
+# During active development, run the full matrix after changes reach main or when requested manually.
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
