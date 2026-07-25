@@ -17,8 +17,8 @@ export interface RuntimeAdmissionBackend {
   isRunning(agentId: string): boolean;
   start(command: StartCommand): Promise<boolean>;
   deliver(command: WakeDeliveryCommand): void;
-  stop(agentId: string): void;
-  sleep(agentId: string): void;
+  stop(agentId: string): Promise<void>;
+  sleep(agentId: string): Promise<void>;
   reset(agentId: string, command: ResetCommand): Promise<void>;
   stopAllAndWait(): Promise<void>;
 }
@@ -101,8 +101,8 @@ export class RuntimeAdmissionController {
     if (command.source === "lifecycle") {
       this.cancelQueuedForAgent(command.agentId, command.type === "agent:reset" ? "replaced by reset" : "cancelled by lifecycle command");
       try {
-        if (command.type === "agent:stop") this.backend.stop(command.agentId);
-        else if (command.type === "agent:sleep") this.backend.sleep(command.agentId);
+        if (command.type === "agent:stop") await this.backend.stop(command.agentId);
+        else if (command.type === "agent:sleep") await this.backend.sleep(command.agentId);
         else if (command.type === "agent:reset") await this.backend.reset(command.agentId, command);
         this.sessionEnded(command.agentId);
         return this.remember(key, fingerprint, this.result(command, "admitted"));
@@ -235,15 +235,18 @@ export class RuntimeAdmissionController {
       if (agentId) this.idleSessions.delete(agentId);
       return false;
     }
-    try {
-      this.backend.sleep(agentId);
+    const operation = this.backend.sleep(agentId).then(() => {
       this.sessionEnded(agentId);
-      return true;
-    } catch (error) {
+    }).catch((error) => {
       this.idleSessions.delete(agentId);
       this.log.warn("idle runtime session did not yield capacity", { agentId, detail: errorMessage(error) });
-      return false;
-    }
+    });
+    this.inFlight.add(operation);
+    void operation.finally(() => {
+      this.inFlight.delete(operation);
+      this.schedulePump();
+    });
+    return true;
   }
 
   private pump(): void {

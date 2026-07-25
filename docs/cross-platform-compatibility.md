@@ -4,6 +4,16 @@
 
 本文是跨平台工程规则和已知缺口的事实清单。它不改变当前发行范围：**正式发行目前仍只有 Windows x64 v1，macOS / Linux 仍是 planned**。但从现在起，所有新增或修改的共享代码都必须同时评估 Windows、macOS、Linux；不能因为暂时只发布 Windows，就把新的平台假设继续写进领域、runtime、数据或共享 UI。
 
+## 实施状态（2026-07-25）
+
+本轮已完成以下共享边界，下面第 2 节的表格保留为审计时证据，便于追溯原始问题：
+
+- **已完成代码修复**：CP-04、CP-05、CP-06、CP-07、CP-08、CP-09、CP-10、CP-15、CP-16、CP-17。
+- **已建立持续门禁但仍待远端结果**：CP-01 已把 typecheck、unit、integration、`desktop:bundle` 扩展到 Ubuntu、Windows、macOS 矩阵；本机只验证了 Windows，必须以远端三端 job 全绿作为最终证据。
+- **仍是显式后续项**：CP-02、CP-03、CP-11、CP-12、CP-13、CP-14、CP-18。macOS/Linux 打包、图标、签名/公证、安装生命周期、真实 runtime smoke 与 POSIX 专项 smoke 尚未完成，不能表述为正式支持。
+
+已完成实现包括：可等待的跨平台进程树终止器与统一命令超时边界；Node 版 `stop`、worktree、E2E 脚本；隔离 staging 中的 Electron native rebuild；共享剪贴板降级；Windows owner/DACL 主动收紧与验证；Hermes 临时 turn 文件全终态清理。Windows 本机已验证定向回归、类型检查和 `desktop:pack`，且打包前后开发树 `better_sqlite3.node` 摘要一致。
+
 ## 1. 口径
 
 ### 1.1 分类
@@ -53,15 +63,14 @@
 - Vite alias 使用 URL/path API；测试 runner 使用临时 profile，不依赖固定 `/tmp`。
 - 凭据、CLI 配置和 Pi helper 已统一使用平台文件元数据策略：macOS/Linux 保留 uid/mode fail-closed，Windows 不再误用 Node 合成的 POSIX mode。
 
-这些是静态审计和当前 Windows 证据，不等于 macOS/Linux 已完成产品验收。
+这些是静态审计和当前 Windows 证据，不等于 macOS/Linux 已完成产品验收。Windows 私密凭据文件现在还会通过 `src/security/privateFileSecurity.ts` 主动收紧并验证 owner/DACL；POSIX 继续按 owner/mode fail closed。
 
 ## 4. 后续处理顺序
 
-1. **先恢复 Windows 开发门禁和生命周期安全**：修 CP-04/CP-05/CP-15，并把 5 个平台相关 unit 失败全部转绿。
-2. **建立三端 CI 可见性**：CP-01；至少 typecheck、unit、integration、bundle 在 Windows/macOS/Linux 同时运行。
-3. **收口共享开发入口**：CP-06/CP-13/CP-14；共享命令用 Node，平台脚本只作窄 Adapter。
-4. **修运行时生命周期、临时文件与安全对等**：CP-07/CP-10/CP-11/CP-16/CP-17/CP-18。
-5. **平台发行独立切片**：先完成 Windows 签名/安装生命周期，再分别设计 macOS 和 Linux packaging，不把三平台塞进一个条件分支文件。
+1. **观察三端 CI 首轮结果**：处理 Windows/macOS/Linux runner 暴露的真实差异，不用平台 skip 掩盖。
+2. **补齐平台专项 smoke**：CP-11/CP-13/CP-18；分别验证 managed/system runtime、POSIX wrapper/PATH/cleanup 与 Windows PATHEXT。
+3. **补齐文档与 Desktop 资源**：CP-12/CP-14；增加 PowerShell/POSIX 对照及平台图标、登录启动实机证据。
+4. **平台发行独立切片**：先完成 Windows 签名/安装生命周期，再分别设计 macOS 和 Linux packaging，不把三平台塞进一个条件分支文件。
 
 ## 5. 新功能验收模板
 

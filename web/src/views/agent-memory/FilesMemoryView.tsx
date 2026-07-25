@@ -6,6 +6,8 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { useTranslation } from "react-i18next";
 import { useStore } from "../../store.tsx";
+import { copyText } from "../../clipboard.ts";
+import { useToast } from "../../toast.tsx";
 import {
   CodeBlock,
   ColorSwatch,
@@ -30,6 +32,7 @@ interface AgentMemoryFile {
 export function FilesMemoryView({ agentId }: { agentId: string }) {
   const { t } = useTranslation();
   const { api } = useStore();
+  const toast = useToast();
   const apiRef = useRef(api);
   apiRef.current = api;
   const [files, setFiles] = useState<AgentMemoryFile[]>([]);
@@ -70,10 +73,14 @@ export function FilesMemoryView({ agentId }: { agentId: string }) {
     next.has(path) ? next.delete(path) : next.add(path);
     return next;
   });
-  const copyRoot = () => navigator.clipboard?.writeText(root).then(() => {
+  const copyRoot = async () => {
+    if (!await copyText(root)) {
+      toast.error(t("clipboard.copyFailed"));
+      return;
+    }
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1_500);
-  });
+  };
   const visible = files.filter((file) => {
     const parts = file.path.split("/");
     if (!showHidden && parts.some((segment) => segment.startsWith("."))) return false;

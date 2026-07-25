@@ -34,14 +34,20 @@ test("repository exposes Desktop bundle and Windows installer commands only", ()
   assert.equal(packageJson.devDependencies?.["@electron/rebuild"], "4.2.0");
 });
 
-test("Desktop packaging force-rebuilds native modules for Electron before restoring Node", () => {
+test("Desktop packaging rebuilds native modules in an isolated staging project", () => {
   const script = readFileSync(rootFile("scripts/package-desktop.mjs"), "utf8");
   assert.match(script, /\["exec", "electron-builder", "--dir", "--win", "--x64"\]/);
   assert.match(script, /\["exec", "electron-builder", "--win", "nsis", "--x64"\]/);
+  assert.match(script, /mkdtempSync/);
+  assert.match(script, /"--projectDir"/);
+  assert.match(script, /"web\/public\/favicon\.ico"/);
+  assert.match(script, /"--package-import-method=copy"/);
+  assert.doesNotMatch(script, /"install",\s*"--prod"/);
   assert.match(script, /electron-rebuild/);
+  assert.match(script, /\], stagingRoot\);\s*\n\s*status = rebuildStatus/);
   assert.match(script, /"--which-module",\s*\n\s*"better-sqlite3"/);
   assert.match(script, /"--force"/);
-  assert.match(script, /run\(\["rebuild", "better-sqlite3"\]\)/);
+  assert.doesNotMatch(script, /run\(\["rebuild", "better-sqlite3"\]\)/);
 });
 
 test("retired server, Docker, public Worker, and docs deployment assets are absent", () => {

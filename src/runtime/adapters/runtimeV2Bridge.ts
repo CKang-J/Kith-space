@@ -62,9 +62,16 @@ class BridgedRuntimeSession implements RuntimeSessionV2 {
       resolve,
       settled: false,
       deadlineTimer: setTimeout(() => {
-        this.runtimeSession?.stop();
-        this.cannotResumeAfterCancel = true;
-        void this.finish("failed", "runtime_deadline_exceeded");
+        void (async () => {
+          const stopError = await this.stopRuntime();
+          this.cannotResumeAfterCancel = true;
+          await this.finish("failed", "runtime_deadline_exceeded");
+          if (stopError) {
+            createLogger(`runtime:v2:${this.runtime.name}`).warn("runtime stop failed after deadline", {
+              detail: stopError instanceof Error ? stopError.message : String(stopError),
+            });
+          }
+        })();
       }, delay),
     };
     turn.deadlineTimer.unref?.();
@@ -105,9 +112,10 @@ class BridgedRuntimeSession implements RuntimeSessionV2 {
 
   async cancel(attemptId: string): Promise<void> {
     if (!this.active || this.active.input.attemptId !== attemptId) return;
-    this.runtimeSession?.stop();
+    const stopError = await this.stopRuntime();
     this.cannotResumeAfterCancel = true;
     await this.finish("cancelled");
+    if (stopError) throw stopError;
   }
 
   async snapshot(): Promise<AdapterSnapshot> {
@@ -124,9 +132,19 @@ class BridgedRuntimeSession implements RuntimeSessionV2 {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
-    this.runtimeSession?.stop();
+    const stopError = await this.stopRuntime();
     this.runtimeSession = null;
     if (this.active) await this.finish("cancelled");
+    if (stopError) throw stopError;
+  }
+
+  private async stopRuntime(): Promise<unknown | null> {
+    try {
+      await this.runtimeSession?.stop();
+      return null;
+    } catch (error) {
+      return error;
+    }
   }
 
   private callbacks(): RuntimeCallbacks {

@@ -156,7 +156,10 @@ class PiRpcSession implements RuntimeSessionV2 {
     try {
       await timeout(this.startup, COMMAND_TIMEOUT_MS, "Pi startup");
     } catch {
-      this.process?.kill("SIGTERM");
+      const process = this.process;
+      this.process = null;
+      this.closed = true;
+      if (process) await terminateProviderProcessTree(process);
       if (this.active) await this.finish("cancelled", "pi_startup_abort");
       return;
     }

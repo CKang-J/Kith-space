@@ -19,8 +19,8 @@ function backendHarness(): RuntimeAdmissionBackend & {
     isRunning: (agentId) => runningAgents.has(agentId),
     async start(command) { runningAgents.add(command.agentId); events.push(`start:${command.agentId}`); return true; },
     deliver(command) { events.push(`deliver:${command.agentId}:${command.msgShort}`); },
-    stop(agentId) { runningAgents.delete(agentId); events.push(`stop:${agentId}`); },
-    sleep(agentId) { runningAgents.delete(agentId); events.push(`sleep:${agentId}`); },
+    async stop(agentId) { runningAgents.delete(agentId); events.push(`stop:${agentId}`); },
+    async sleep(agentId) { runningAgents.delete(agentId); events.push(`sleep:${agentId}`); },
     async reset(agentId) { runningAgents.delete(agentId); events.push(`reset:${agentId}`); },
     async stopAllAndWait() { for (const id of runningAgents) events.push(`shutdown:${id}`); runningAgents.clear(); },
   };

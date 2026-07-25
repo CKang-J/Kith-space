@@ -1,4 +1,8 @@
 {
+  "clipboard": {
+    "copied": "Copied",
+    "copyFailed": "Could not copy to the clipboard."
+  },
   "nav": {
     "spaces": "Spaces",
     "search": "Search",

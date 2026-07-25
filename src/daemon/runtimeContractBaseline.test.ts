@@ -78,7 +78,7 @@ process.stdin.on("data", (chunk) => {
       });
     });
     await Promise.race([completed, new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("Claude contract fixture timed out")), 2_000))]);
-    session!.stop();
+    await session!.stop();
 
     const invocations = readFileSync(logFile, "utf8").trim().split("\n").map((line) => JSON.parse(line));
     assert.equal(invocations.length, 1);
@@ -147,7 +147,7 @@ process.stdin.on("data", (chunk) => {
       completed,
       new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("Codex contract fixture timed out")), 2_000)),
     ]);
-    session!.stop();
+    await session!.stop();
 
     const invocations = readFileSync(logFile, "utf8").trim().split("\n").map((line) => JSON.parse(line));
     assert.equal(invocations.length, 1, "both turns must use the same app-server process");
@@ -204,7 +204,7 @@ send({ type: "step_finish", sessionID: "ses_contract", part: { type: "step-finis
       completed,
       new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("OpenCode contract fixture timed out")), 2_000)),
     ]);
-    session!.stop();
+    await session!.stop();
 
     const invocations = readFileSync(logFile, "utf8").trim().split("\n").map((line) => JSON.parse(line));
     assert.equal(invocations.length, 2, "each turn must spawn a new opencode process");

@@ -99,8 +99,8 @@ admissions = new RuntimeAdmissionController({
       responseReason: command.responseReason,
     });
   },
-  stop(agentId) { mgr.stop(agentId); },
-  sleep(agentId) { mgr.sleep(agentId); },
+  stop(agentId) { return mgr.stop(agentId); },
+  sleep(agentId) { return mgr.sleep(agentId); },
   async reset(agentId, command) {
     await mgr.reset({ agentId, spaceId: command.spaceId, workspaceRoot: command.workspaceRoot }, { clearAgentMemory: command.clearAgentMemory });
   },

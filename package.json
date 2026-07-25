@@ -39,7 +39,7 @@
     "server": "tsx watch src/server/index.ts",
     "start": "tsx src/server/index.ts",
     "web:build": "pnpm --dir web run build",
-    "stop": "pkill -f 'src/server/index.ts'; pkill -f 'src/daemon/index.ts'; pkill -f 'bin/vite'; true",
+    "stop": "node scripts/stop-dev.mjs",
     "daemon": "tsx src/daemon/index.ts",
     "cli": "tsx src/cli/index.ts",
     "browser-access:dev": "tsx src/dev/browserAccess.ts",
@@ -49,10 +49,10 @@
     "desktop:dist": "node scripts/package-desktop.mjs --nsis",
     "desktop:dev": "pnpm run desktop:build && node scripts/desktop-dev.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web/tsconfig.json",
-    "wt:add": "bash scripts/wt-add.sh",
-    "wt:rm": "bash scripts/wt-rm.sh",
-    "dev:e2e:up": "bash scripts/dev-e2e-up.sh",
-    "dev:e2e:down": "bash scripts/dev-e2e-down.sh"
+    "wt:add": "node scripts/wt-add.mjs",
+    "wt:rm": "node scripts/wt-rm.mjs",
+    "dev:e2e:up": "node scripts/dev-e2e-up.mjs",
+    "dev:e2e:down": "node scripts/dev-e2e-down.mjs"
   },
   "build": {
     "appId": "space.kith.desktop",

@@ -54,8 +54,8 @@ try {
         isRunning(agentId) { return manager.running().includes(agentId); },
         async start(command) { await manager.start(command.agentId, command.config as any, command.reason); return manager.running().includes(command.agentId); },
         deliver(command) { manager.deliver(command.agentId, command.from, command.target, command.mentioned, command); },
-        stop(agentId) { manager.stop(agentId); },
-        sleep(agentId) { manager.sleep(agentId); },
+        stop(agentId) { return manager.stop(agentId); },
+        sleep(agentId) { return manager.sleep(agentId); },
         reset(agentId, command) { return manager.reset({ agentId, spaceId: command.spaceId, workspaceRoot: command.workspaceRoot }, { clearAgentMemory: command.clearAgentMemory }); },
         stopAllAndWait() { return manager.stopAllAndWait(); },
       }, { capacity: 4, maxQueue: 128 });

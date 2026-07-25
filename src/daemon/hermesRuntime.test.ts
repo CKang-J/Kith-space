@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { buildHermesArgs, buildHermesPrompt, hermesBridgeDecision, hermesProfile, hermesProfileHome, hermesRuntimeEnv, parseHermesSessionId, parseHermesTurnEvents, postHermesBridgeMessage } from "./hermesRuntime.js";
+import { buildHermesArgs, buildHermesPrompt, hermesBridgeDecision, hermesProfile, hermesProfileHome, hermesRuntime, hermesRuntimeEnv, parseHermesSessionId, parseHermesTurnEvents, postHermesBridgeMessage } from "./hermesRuntime.js";
 import { discoverHermesProfilesFromRoots } from "./listModels.js";
 
 test("Hermes profile comes from runtimeConfig first, then model, then default", () => {
@@ -92,6 +92,46 @@ test("Hermes runtime resolves profiles from HERMES_PROFILE_DIR as well as ~/.her
     assert.equal(env.HERMES_HOME, path.join(customProfiles, "custom-helper"));
     assert.equal(env.HERMES_PROFILE, "custom-helper");
   } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Hermes removes the turn side-channel file when the CLI fails", { timeout: 5_000 }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "kith-space-hermes-turn-cleanup-"));
+  const command = path.join(root, process.platform === "win32" ? "hermes.cmd" : "hermes");
+  const previousPath = process.env.PATH;
+  try {
+    writeFileSync(command, process.platform === "win32"
+      ? "@echo off\r\n> \"%KITH_SPACE_TURN_FILE%\" echo {\"type\":\"check\",\"target\":\"dm:@User\",\"count\":1}\r\nexit /b 1\r\n"
+      : "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"check\",\"target\":\"dm:@User\",\"count\":1}' > \"$KITH_SPACE_TURN_FILE\"\nexit 1\n");
+    if (process.platform !== "win32") chmodSync(command, 0o755);
+    process.env.PATH = `${root}${path.delimiter}${previousPath ?? ""}`;
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Hermes fixture did not exit")), 3_000);
+      hermesRuntime.start({
+        cwd: root,
+        runtimeStateDir: root,
+        systemPrompt: "test",
+        env: { ...process.env },
+        initialPrompt: "fail",
+      }, {
+        onSession() {},
+        onActivity() {},
+        onTrajectory() {},
+        onExit() {
+          clearTimeout(timer);
+          resolve();
+        },
+        log: {
+          debug() {}, info() {}, warn() {}, error() {},
+          child() { return this; },
+        },
+      });
+    });
+    assert.deepEqual(readdirSync(root).filter((name) => name.startsWith("hermes-turn-")), []);
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
     rmSync(root, { recursive: true, force: true });
   }
 });

@@ -1,4 +1,8 @@
 {
+  "clipboard": {
+    "copied": "已复制",
+    "copyFailed": "复制失败，请重试。"
+  },
   "nav": {
     "spaces": "空间",
     "search": "搜索",

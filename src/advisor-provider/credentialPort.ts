@@ -4,6 +4,7 @@ import path from "node:path";
 import { getContentHmacKey } from "../app-data/appDatabase.js";
 import { kithSpaceHome } from "../paths.js";
 import { unsafePosixFileMetadata } from "../security/posixFileMetadata.js";
+import { protectPrivatePath } from "../security/privateFileSecurity.js";
 import { AdvisorProviderError, type AdvisorCredentialSourceKind } from "./contracts.js";
 import { PiCliConfigImporter } from "./piCliConfigImporter.js";
 import { advisorCredentialEnvAllowed } from "./credentialEnvPolicy.js";
@@ -171,6 +172,10 @@ export class ProviderCredentialPort {
   private readFile(): SecretFile {
     let fd: number | undefined;
     try {
+      if (process.platform === "win32") {
+        protectPrivatePath(path.dirname(secretPath()), "directory");
+        protectPrivatePath(secretPath(), "file");
+      }
       fd = openSync(secretPath(), constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
       const before = fstatSync(fd);
       if (!before.isFile() || before.size > 2 * 1024 * 1024 || unsafePosixFileMetadata(before, 0o077)) {
@@ -192,9 +197,11 @@ export class ProviderCredentialPort {
   private writeFile(file: SecretFile): void {
     const target = secretPath();
     mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
+    protectPrivatePath(path.dirname(target), "directory");
     const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
     writeFileSync(temporary, JSON.stringify(file), { mode: 0o600, flag: "wx" });
     renameSync(temporary, target);
+    protectPrivatePath(target, "file");
   }
 
   private decrypt(ref: string, stored: StoredSecret): string {

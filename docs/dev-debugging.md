@@ -90,7 +90,7 @@ Runtime stdout/stderr 与 `kith-space` CLI stdin 都使用有状态 UTF-8 解码
 
 ## 5. 一键 E2E 联调栈
 
-`dev:e2e` 是内部联调工具，不是日常启动方式。它需要 Bash、已配置的 `.env`，以及已安装并登录的 `claude` CLI。
+`dev:e2e` 是内部联调工具，不是日常启动方式。它使用 Node 入口，可从 PowerShell、cmd、bash 或 zsh 调用；仍需要 Node 22、已配置的 `.env`，以及已安装并登录的 `claude` CLI。
 
 ```powershell
 pnpm run dev:e2e:up
@@ -114,7 +114,7 @@ pnpm run desktop:pack    # dist/desktop/win-unpacked
 pnpm run desktop:dist    # x64、per-user、assisted NSIS 安装器
 ```
 
-`desktop:pack` 和 `desktop:dist` 会先为 Electron x64 强制重建 `better-sqlite3`，打包结束或失败后再恢复本地 Node ABI。安装器当前未签名，公开分发前必须配置 Windows 代码签名证书。A6 的具体构建与 smoke 验收记录以 [`progress.md`](./progress.md) 为准。
+`desktop:pack` 和 `desktop:dist` 会创建一次性 staging project，以锁文件和 `--package-import-method=copy` 安装完整构建依赖，再只在 staging 中为 Electron x64 重建 `better-sqlite3`；electron-builder 仍只把 production dependency 打入产品。构建 CLI 也从 staging 自身解析，因此开发工作区的 `node_modules` 与 pnpm store 都不会被重建改写。staging 无论成功或失败都会清理，依赖安装使用 `--prefer-offline` 复用本机缓存但允许补齐缺失包。安装器当前未签名，workflow 显式关闭证书自动发现；公开分发前必须配置 Windows 代码签名证书。A6 的具体构建与 smoke 验收记录以 [`progress.md`](./progress.md) 为准。
 
 ## 8. P-A9 Chat 浏览器基线与回归
 
@@ -174,6 +174,6 @@ v2 runtime子进程只看到stable `KITH_SPACE_BROKER_HANDLE`、loopback endpoin
 
 - 开发态helper默认位于`desktop/dist/runtime/pi-advisor-helper.mjs`；packaged Desktop从resources runtime解析，并用`process.execPath`配合`ELECTRON_RUN_AS_NODE=1`启动。`KITH_SPACE_PI_ADVISOR_HELPER`只用于测试/开发显式覆盖，不应写入用户配置。
 - 每run创建独立临时HOME/cwd并只传allowlist env和一个显式凭据值；不得为了排障恢复完整`process.env`、系统profile、ADC、IMDS、代理变量或用户HOME。Claude Provider同样使用绝对可执行路径、artifact digest、临时HOME与显式凭据。
-- 模型供应商密钥由CredentialPort加密保存在`$KITH_SPACE_HOME/secrets/advisor-credentials.json`。macOS/Linux会拒绝非当前用户或不符合调用方权限掩码的凭据、CLI配置和helper文件；Windows使用用户profile/app data继承的NTFS ACL，不检查Node合成的POSIX `mode`。若Windows在选择已保存模型、导入Pi CLI配置或测试内置Pi时出现`provider_auth_required`、`config_file_untrusted`或`provider_unavailable`，先确认运行的是包含该平台修复的版本，不要通过安装Pi CLI、伪造Pi配置或放宽文件ACL绕过。
+- 模型供应商密钥由CredentialPort加密保存在`$KITH_SPACE_HOME/secrets/advisor-credentials.json`。macOS/Linux会拒绝非当前用户或不符合调用方权限掩码的凭据、CLI配置和helper文件；Windows不检查Node合成的POSIX `mode`，而是主动把secrets目录和凭据文件收紧为当前owner SID的私有DACL，并在读取前验证owner/Allow ACL。已有较宽松ACL会在读取时自动升级；无法收紧或验证时fail closed。若Windows在选择已保存模型、导入Pi CLI配置或测试内置Pi时出现`provider_auth_required`、`config_file_untrusted`或`provider_unavailable`，先确认运行的是包含该平台修复的版本，不要通过安装Pi CLI、伪造Pi配置或放宽文件ACL绕过。
 - Pi CLI导入只在Human点击后读取所选全局目录。Importer不会执行`!command`、复合env、OAuth refresh/login、provider hook、网络刷新或写回；命令/危险env/literal secret/过期OAuth只形成脱敏warning。不要把`auth.json`、凭据、Access Token、activation handle或helper stdin/stdout复制进日志和fixture。
 - Settings诊断页只显示可执行物是否存在、digest是否匹配、隔离策略和脱敏Provider Run；`provider_preflight_destination_mismatch`通常表示DNS分类、allowed origin、proxy或metadata边界不一致，`provider_postflight_destination_mismatch`表示redirect或DNS/egress漂移，均应根因修复而非关闭门禁。
