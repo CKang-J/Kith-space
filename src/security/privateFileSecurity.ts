@@ -47,17 +47,15 @@ export function windowsAclAllowsOnlyOwner(summary: WindowsAclSummary, expectedOw
 }
 
 function replaceWindowsPrivateAcl(target: string, kind: "file" | "directory", ownerSid: string): void {
-  const aclType = kind === "directory"
-    ? "[System.Security.AccessControl.DirectorySecurity]::new()"
-    : "[System.Security.AccessControl.FileSecurity]::new()";
   const inheritance = kind === "directory"
     ? "([System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit)"
     : "[System.Security.AccessControl.InheritanceFlags]::None";
   const script = [
     "$sid = [System.Security.Principal.SecurityIdentifier]::new($env:KITH_PRIVATE_OWNER_SID)",
-    `$acl = ${aclType}`,
+    "$acl = Get-Acl -LiteralPath $env:KITH_PRIVATE_PATH",
     "$acl.SetOwner($sid)",
     "$acl.SetAccessRuleProtection($true, $false)",
+    "foreach ($existingRule in @($acl.Access)) { [void]$acl.RemoveAccessRuleSpecific($existingRule) }",
     `$inheritance = ${inheritance}`,
     "$rule = [System.Security.AccessControl.FileSystemAccessRule]::new($sid, [System.Security.AccessControl.FileSystemRights]::FullControl, $inheritance, [System.Security.AccessControl.PropagationFlags]::None, [System.Security.AccessControl.AccessControlType]::Allow)",
     "[void]$acl.AddAccessRule($rule)",
