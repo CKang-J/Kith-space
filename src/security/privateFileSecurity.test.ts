@@ -7,15 +7,20 @@ import test from "node:test";
 import {
   assertPrivatePathSecurity,
   protectPrivatePath,
-  windowsAclAllowsOnlyOwner,
+  windowsAclIsPrivate,
 } from "./privateFileSecurity.js";
 
-test("Windows private ACL accepts only the current owner SID", () => {
+test("Windows private ACL accepts the owner and trusted operating-system principals", () => {
   const owner = "S-1-5-21-1000";
-  assert.equal(windowsAclAllowsOnlyOwner({ ownerSid: owner, allowSids: [owner] }, owner), true);
-  assert.equal(windowsAclAllowsOnlyOwner({ ownerSid: owner, allowSids: [owner, "S-1-1-0"] }, owner), false);
-  assert.equal(windowsAclAllowsOnlyOwner({ ownerSid: "S-1-5-18", allowSids: [owner] }, owner), false);
-  assert.equal(windowsAclAllowsOnlyOwner({ ownerSid: owner, allowSids: [] }, owner), false);
+  assert.equal(windowsAclIsPrivate({ ownerSid: owner, allowSids: [owner] }, owner), true);
+  assert.equal(windowsAclIsPrivate({
+    ownerSid: owner,
+    allowSids: [owner, "S-1-5-18", "S-1-5-32-544"],
+  }, owner), true);
+  assert.equal(windowsAclIsPrivate({ ownerSid: owner, allowSids: [owner, "S-1-1-0"] }, owner), false);
+  assert.equal(windowsAclIsPrivate({ ownerSid: owner, allowSids: [owner, "S-1-5-11"] }, owner), false);
+  assert.equal(windowsAclIsPrivate({ ownerSid: "S-1-5-18", allowSids: [owner] }, owner), false);
+  assert.equal(windowsAclIsPrivate({ ownerSid: owner, allowSids: [] }, owner), false);
 });
 
 test("Windows private ACL hardening removes an explicit external grant", {

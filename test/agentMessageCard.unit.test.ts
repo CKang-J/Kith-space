@@ -11,7 +11,10 @@ const defaultModeCardSrc = fs.readFileSync(new URL("../web/src/views/agent-respo
 const aggregateSrc = fs.readFileSync(new URL("../web/src/views/conversation-aggregate/ConversationAggregatePanel.tsx", import.meta.url), "utf8");
 const aggregateCss = fs.readFileSync(new URL("../web/src/views/conversation-aggregate/conversationAggregate.css", import.meta.url), "utf8");
 const slidingControlSrc = fs.readFileSync(new URL("../web/src/components/SlidingTabs.tsx", import.meta.url), "utf8");
-const slidingControlCss = fs.readFileSync(new URL("../web/src/components/SlidingTabs.css", import.meta.url), "utf8");
+const slidingControlCss = fs.readFileSync(
+  new URL("../web/src/components/SlidingTabs.css", import.meta.url),
+  "utf8",
+).replace(/\r\n/g, "\n");
 const messageCss = fs.readFileSync(new URL("../web/src/views/chat-message/chatMessage.css", import.meta.url), "utf8");
 const responseHookSrc = fs.readFileSync(new URL("../web/src/views/agent-response-mode/useChannelAgentResponseModes.ts", import.meta.url), "utf8");
 const zh = JSON.parse(fs.readFileSync(new URL("../web/src/locales/zh.json", import.meta.url), "utf8"));

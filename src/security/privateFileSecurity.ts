@@ -7,6 +7,11 @@ export type WindowsAclSummary = Readonly<{
   allowSids: readonly string[];
 }>;
 
+const WINDOWS_TRUSTED_PRIVATE_SIDS = new Set([
+  "S-1-5-18", // LocalSystem
+  "S-1-5-32-544", // BUILTIN\Administrators
+]);
+
 let cachedWindowsSid: string | null = null;
 const verifiedWindowsCtimes = new Map<string, number>();
 
@@ -40,10 +45,12 @@ function inspectWindowsAcl(target: string): WindowsAclSummary {
   return { ownerSid, allowSids };
 }
 
-export function windowsAclAllowsOnlyOwner(summary: WindowsAclSummary, expectedOwnerSid: string): boolean {
+export function windowsAclIsPrivate(summary: WindowsAclSummary, expectedOwnerSid: string): boolean {
   return summary.ownerSid === expectedOwnerSid
     && summary.allowSids.length > 0
-    && summary.allowSids.every((sid) => sid === expectedOwnerSid);
+    && summary.allowSids.every((sid) => (
+      sid === expectedOwnerSid || WINDOWS_TRUSTED_PRIVATE_SIDS.has(sid)
+    ));
 }
 
 export function assertPrivatePathSecurity(target: string): void {
@@ -53,8 +60,8 @@ export function assertPrivatePathSecurity(target: string): void {
     const ctimeMs = metadata.ctimeMs;
     if (verifiedWindowsCtimes.get(target) === ctimeMs) return;
     const ownerSid = currentWindowsSid();
-    if (!windowsAclAllowsOnlyOwner(inspectWindowsAcl(target), ownerSid)) {
-      throw new Error("private path ACL grants access outside the current Windows identity");
+    if (!windowsAclIsPrivate(inspectWindowsAcl(target), ownerSid)) {
+      throw new Error("private path ACL grants access outside trusted Windows identities");
     }
     verifiedWindowsCtimes.set(target, ctimeMs);
     return;
@@ -91,7 +98,7 @@ export function protectPrivatePath(target: string, kind: "file" | "directory"): 
     throw new Error("unable to disable Windows private path ACL inheritance");
   }
   const otherAllowSids = [...new Set(inspectWindowsAcl(target).allowSids)]
-    .filter((sid) => sid !== ownerSid);
+    .filter((sid) => sid !== ownerSid && !WINDOWS_TRUSTED_PRIVATE_SIDS.has(sid));
   for (const sid of otherAllowSids) {
     const removeResult = spawnSync("icacls.exe", [target, "/remove:g", `*${sid}`], {
       encoding: "utf8",
