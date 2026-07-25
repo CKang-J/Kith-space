@@ -2,7 +2,9 @@
 
 本文件是当前进度的权威来源。新会话先读本文件和 `AGENTS.md`，再按文档地图进入专项资料。
 
-最后更新：2026-07-24。
+最后更新：2026-07-25。
+
+- **Windows workspace migration journal 换行符兼容已根治**：Drizzle 以迁移 SQL 原始字节计算 journal hash，而既有 Windows checkout 会把 LF 改写为 CRLF，导致同一迁移在 schema v10 完成后被严格兼容门误判为 journal 不一致，Desktop 因全部已注册 Space 不可打开而进入重连页。`drizzle/*.sql` 现由 `.gitattributes` 固定为 LF；`WORKSPACE_MIGRATION_HISTORY` 保留 canonical LF hash，并只对白名单中的逐文件 CRLF hash提供精确兼容，时间戳、顺序、长度、完整 schema/index/FK 与 SQLite integrity 校验保持不变，未知/缺失 journal 继续拒绝。Windows 定向回归14/14通过，现有4个真实 schema v10 Space 均通过且 Core 在7777 ready时无 migration journal 告警。
 
 - **统一模型供应商、运行器与记忆设置重构已完成实现与真实验收，并完成第二轮用户可读性重构**：app.db v6新增供应商连接、模型配置、runtime profile、probe与CLI脱敏导入快照的稳定对象/不可变revision；workspace.db v10新增runtime default/pinned Agent绑定、跨安装确认快照和session epoch。Claude Code、Codex、OpenCode、Pi四家窄compiler使用child-only env或Kith临时配置且不写CLI全局文件；聊天凭据activation单次兑换，配置epoch变化使旧session fail-closed。Pi 0.81.1以外部CLI RPC进入正式v2矩阵。运行器使用左侧列表/右侧任务面板，安装、版本、CLI账号和默认模型分开呈现；模型页进一步收敛为单列“来源”总览，新增和编辑复用同一弹窗并在其中直接维护模型。弹窗保存已收敛为服务端聚合命令和单一app.db事务，供应商revision、模型增删改与epoch要么共同提交、要么全部回滚；删除占用检查覆盖runtime、Advisor和所有Space的pinned Agent，disabled来源不会继续执行或重新进入选择器。本机同源loopback Web可与Desktop一样管理供应商、模型和API Key；跨端口localhost与LAN Web不能提交密钥，已配密钥的供应商改变执行身份/目的地时必须重新输入Key。Desktop可把四家锁版CLI安装到`<appData>/managed-runtimes`，删除只影响Kith-owned副本；用户PATH、系统CLI和全局配置保持不变，Web对运行器安装和CLI读取仍只读。“记忆 Advisor”改为“自动整理记忆”，技术细节收进“运行记录与故障排查”。真实浏览器验收已确认模型来源总览和自动整理记忆页面在1092×863视口无重叠；原有全新Space、Pi/OpenCode Agent、公开/私密/DM/话题、跨surface结构化记忆、Advisor授权与runtime epoch验收继续有效。
 

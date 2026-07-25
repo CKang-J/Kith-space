@@ -9,21 +9,23 @@ export interface WorkspaceMigrationHistoryEntry {
   tag: string;
   createdAt: number;
   hash: string;
+  /** Exact CRLF byte hashes written by Drizzle before migration SQL was pinned to LF. */
+  compatibleHashes?: readonly string[];
 }
 
 export const WORKSPACE_MIGRATION_HISTORY: readonly WorkspaceMigrationHistoryEntry[] = [
-  { version: 2, tag: "0000_personal_agent_os", createdAt: 1783764218492, hash: "621b4c50671d63338c7402838ce1fc3bdd403a448c42702a34218be818e77d62" },
-  { version: 3, tag: "0001_agent_introduction", createdAt: 1783850095957, hash: "9d8c9e0685cc3dd27a88c98c465280ce9006759a05432483ac41f4640326f7ec" },
-  { version: 4, tag: "0002_channel_notification_level", createdAt: 1783997806829, hash: "1772f58417d30a1d6ccbc697355a689332aa5b5d6ef744d49192393b8b874b92" },
-  { version: 5, tag: "0003_agent_response_modes", createdAt: 1784024369419, hash: "e68d1bc76c3f3ab071fb460c130ddaba7f0adab64396e96deb4d9cccc192432e" },
-  { version: 6, tag: "0004_agent_harness_sessions", createdAt: 1784457381025, hash: "9e9ffe6cd2fa1dd5953170e58f12eeacb84a98c21e4ec2bbaedb6479fab8ae1f" },
-  { version: 6, tag: "0005_agent_durable_turns", createdAt: 1784458418697, hash: "25ec3ae6d1c99b89fbeacb6a69228ca9bf910974d78ab2b18512fea3e833a656" },
+  { version: 2, tag: "0000_personal_agent_os", createdAt: 1783764218492, hash: "621b4c50671d63338c7402838ce1fc3bdd403a448c42702a34218be818e77d62", compatibleHashes: ["d311665a54ff7396b659dcd9805b7d4e7d6c73545f7951a3bbb3bca3f4a5c937"] },
+  { version: 3, tag: "0001_agent_introduction", createdAt: 1783850095957, hash: "9d8c9e0685cc3dd27a88c98c465280ce9006759a05432483ac41f4640326f7ec", compatibleHashes: ["7b751c3028afa2715884c4eec3efb977614a715f218388a60494799a924cbc4d"] },
+  { version: 4, tag: "0002_channel_notification_level", createdAt: 1783997806829, hash: "1772f58417d30a1d6ccbc697355a689332aa5b5d6ef744d49192393b8b874b92", compatibleHashes: ["08222899faf2b9fc12600b219b575ae43f7c5f823e0f9221c47e4a56115dc487"] },
+  { version: 5, tag: "0003_agent_response_modes", createdAt: 1784024369419, hash: "e68d1bc76c3f3ab071fb460c130ddaba7f0adab64396e96deb4d9cccc192432e", compatibleHashes: ["afc9ee091096b6b2b5aaf177d77f6afe71614343932a5baf13cc3fd4aaff9af8"] },
+  { version: 6, tag: "0004_agent_harness_sessions", createdAt: 1784457381025, hash: "9e9ffe6cd2fa1dd5953170e58f12eeacb84a98c21e4ec2bbaedb6479fab8ae1f", compatibleHashes: ["137580a7f46f7182e3fd4d293b745b745ffe24c2aa47aabfc63837e60caab21b"] },
+  { version: 6, tag: "0005_agent_durable_turns", createdAt: 1784458418697, hash: "25ec3ae6d1c99b89fbeacb6a69228ca9bf910974d78ab2b18512fea3e833a656", compatibleHashes: ["8e336beadda7e104323ef974f7bc7b548bf240482b3c2df166d256aa46ddfc29"] },
   { version: 6, tag: "0006_legacy_dispatch_recovery", createdAt: 1784467852894, hash: "e0f08a473e9e545d5d278fd75f02c0ce4bc3dc7b2858de0652a852cefa14f979" },
-  { version: 6, tag: "0007_temporary_attachment_lifecycle", createdAt: 1784472700000, hash: "d8b340abb27d9ce11dd473272ca6ab086d9d10d30f7cbbdb8684ff5f24c9c887" },
-  { version: 7, tag: "0008_episodic_memory_core", createdAt: 1784474300000, hash: "224fda4ad7f22265faea852d49250993286ab350543af1bb6e81a63ebdeafe77" },
-  { version: 8, tag: "0009_memory_advisor", createdAt: 1784480000000, hash: "992d6faf3cd9679622f8e3da8fb8e1f03c84b312c77e88ab22544d9b50b1af83" },
-  { version: 9, tag: "0010_system_advisor_provider", createdAt: 1784800000000, hash: "e4635933ceafa8a77ed1d2a6855978c0f3b26cb6abff156809d31d3e7e161ca9" },
-  { version: 10, tag: "0011_model_runtime_bindings", createdAt: 1784880000000, hash: "f769bdff845cb983bcad5e29bf7ae1c11613494bf3899a425eada499d14d169f" },
+  { version: 6, tag: "0007_temporary_attachment_lifecycle", createdAt: 1784472700000, hash: "d8b340abb27d9ce11dd473272ca6ab086d9d10d30f7cbbdb8684ff5f24c9c887", compatibleHashes: ["c3238b962f6c10405035fc0a67c9036a2a11b16e8e79435e96a9c856a75fc953"] },
+  { version: 7, tag: "0008_episodic_memory_core", createdAt: 1784474300000, hash: "224fda4ad7f22265faea852d49250993286ab350543af1bb6e81a63ebdeafe77", compatibleHashes: ["f425056cfd0380af362a41fab9aa9da95b7beeb8c8b31635cd82aab9942c3489"] },
+  { version: 8, tag: "0009_memory_advisor", createdAt: 1784480000000, hash: "992d6faf3cd9679622f8e3da8fb8e1f03c84b312c77e88ab22544d9b50b1af83", compatibleHashes: ["b7d21d3bc4888df5d65476f858564708ab450fa16452456d086b4138c8116aa3"] },
+  { version: 9, tag: "0010_system_advisor_provider", createdAt: 1784800000000, hash: "e4635933ceafa8a77ed1d2a6855978c0f3b26cb6abff156809d31d3e7e161ca9", compatibleHashes: ["e735d1da4fc86a39540aba45e828dde0357f2727ce2cb2bc8124389c04179ab0"] },
+  { version: 10, tag: "0011_model_runtime_bindings", createdAt: 1784880000000, hash: "f769bdff845cb983bcad5e29bf7ae1c11613494bf3899a425eada499d14d169f", compatibleHashes: ["ae25a562a20e771338abb2797e8027b0b99354f9aebf40e09b8dd4513fba78fd"] },
 ];
 
 /** Immutable v2 baseline. Later schema entries are layered on explicitly below. */
