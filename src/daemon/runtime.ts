@@ -7,8 +7,11 @@ import type { McpBootstrapDescriptor } from "../runtime/contract/v2/runtimeContr
 export interface TrajectoryEntry {
   kind: "thinking" | "text" | "tool" | "status";
   text?: string;
+  eventKind?: "tool_started" | "tool_completed" | "tool_failed";
   toolName?: string;
+  toolCallId?: string;
   toolInput?: string;
+  toolOutput?: string;
 }
 
 export interface RuntimeCallbacks {

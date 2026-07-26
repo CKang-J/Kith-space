@@ -409,7 +409,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 agentId: p.agentId,
                 name: p.name,
                 streamId: p.streamId,
+                kind: x.kind === "thinking" ? "thinking" : x.kind === "tool" || x.toolName ? "tool" : "text",
+                eventKind: x.eventKind,
+                createdAt: x.createdAt,
                 tool: !!x.toolName,
+                toolName: x.toolName,
+                toolCallId: x.toolCallId,
+                toolInput: x.toolInput,
+                toolOutput: x.toolOutput,
+                toolState: x.toolState,
                 text: x.text || (x.toolName ? `${x.toolName}${x.toolInput ? " — " + x.toolInput : ""}` : "") || x.detail || "",
               })),
             ));
@@ -419,15 +427,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setAgents((as) => as.map((a) => (a.id === p.agentId ? { ...a, status: p.status ?? a.status, activity: p.activity ?? a.activity, activityDetail: p.detail ?? a.activityDetail } : a))); // real-time status dot + activity text used by header and sidebar
           // A terminal activity closes only the matching scoped turn. Unscoped/ambiguous status
           // updates still feed the Agent activity page but never create a conversation marker.
+          const retryBoundary = p.eventKind === "activity" && p.detail === "retry";
           if (p.scope === "scoped" && typeof p.conversationId === "string" && p.conversationId
-            && p.activity && p.activity !== "working" && p.activity !== "thinking") {
+            && (retryBoundary || (p.activity && p.activity !== "working" && p.activity !== "thinking"))) {
             setTrajByConversation((prev) => appendConversationBoundary(prev, p.conversationId, {
               agentId: p.agentId,
               name: p.name,
               streamId: p.streamId,
             }));
           }
-          dispatch({ type: "agent", id: p.agentId, name: p.name, activity: p.activity, status: p.status, detail: p.detail, scope: p.scope, channelId: p.channelId, conversationId: p.conversationId, streamId: p.streamId });
+          dispatch({ type: "agent", id: p.agentId, name: p.name, activity: p.activity, status: p.status, detail: p.detail, eventKind: p.eventKind, scope: p.scope, channelId: p.channelId, conversationId: p.conversationId, streamId: p.streamId });
         }
       });
       sock.on("agent:reply", (p: any) => dispatch({ type: "agent:reply", ...p }));

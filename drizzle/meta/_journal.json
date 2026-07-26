@@ -85,6 +85,13 @@
       "when": 1784880000000,
       "tag": "0011_model_runtime_bindings",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1785060000000,
+      "tag": "0012_agent_activity_surface_scope",
+      "breakpoints": true
     }
   ]
 }

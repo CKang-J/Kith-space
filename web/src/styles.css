@@ -9,6 +9,8 @@
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "tw-shimmer";
+@import "@assistant-ui/react-markdown/styles/dot.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -510,7 +512,8 @@ main.content-col > .composer,.thread-panel > .composer{position:absolute;left:0;
 .file-acts{display:flex;gap:4px;flex:none}
 .file-acts button,.file-acts a{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid var(--hair-strong);border-radius:8px;background:var(--surface);color:var(--muted);cursor:pointer;text-decoration:none}
 .file-acts button:hover,.file-acts a:hover{color:var(--ink);background:var(--surface-strong)}
-.msg-sys{box-sizing:border-box;width:100%;max-width:var(--chat-stream-max);margin:0 auto;text-align:center;font-size:var(--font-size-meta)!important;color:var(--muted);padding:6px 12px;line-height:1.4}
+.msg-sys,.msg-sys *{font-size:var(--font-size-meta)!important}
+.msg-sys{box-sizing:border-box;width:100%;max-width:var(--chat-stream-max);margin:0 auto;text-align:center;color:var(--muted);padding:6px 12px;line-height:1.4}
 .msg-sys>.md{margin:0 auto;text-align:center}
 .chat-message.msg-hl .chat-message__bubble{background:var(--g-peach);box-shadow:inset 0 0 0 1px rgba(185,119,14,.28);transition:background .4s,box-shadow .4s}
 .card{border:1px solid var(--hair);border-radius:16px;background:var(--surface);padding:18px;margin-bottom:14px}
@@ -840,7 +843,7 @@ body [data-slot="settings-sidebar-title"]{font-size:var(--font-size-title)!impor
 .msg-meta:empty{display:none}
 /* Message row task badge: pill shape + status-based color (colors use DESIGN.md tokens, consistent with TaskBoard status colors) */
 .task-pill-wrap{position:relative;display:inline-flex} /* task badge status menu anchor (click badge = change status) */
-.task-pill{display:inline-flex;align-items:center;gap:4px;background:transparent;color:var(--muted);border:1px solid var(--hair-strong);border-radius:9999px;padding:1px 9px;font-size:11px;font-weight:600;cursor:pointer}
+.task-pill{display:inline-flex;align-items:center;gap:4px;background:transparent;color:var(--muted);border:1px solid var(--hair-strong);border-radius:9999px;padding:1px 9px;font-size:var(--font-size-meta)!important;font-weight:400;cursor:pointer}
 .task-pill:hover{background:var(--surface-strong)}
 .task-pill.is-readonly{cursor:default}
 .task-pill.is-readonly:hover{background:transparent}
@@ -1217,6 +1220,22 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
   --radius-2xl:calc(var(--radius) * 1.8);
   --radius-3xl:calc(var(--radius) * 2.2);
   --radius-4xl:calc(var(--radius) * 2.6);
+  @keyframes collapsible-down {
+  from {
+    height:0;
+    }
+  to {
+    height:var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
+    }
+  }
+  @keyframes collapsible-up {
+  from {
+    height:var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
+    }
+  to {
+    height:0;
+    }
+  }
 }
 
 .dark {
@@ -1258,3 +1277,7 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
     @apply border-border outline-ring/50;
   }
 }
+
+@custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
+
+@custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));

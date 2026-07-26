@@ -184,7 +184,12 @@ class BridgedRuntimeSession implements RuntimeSessionV2 {
     for (const entry of entries) {
       if (entry.kind === "thinking") this.emit("thinking_summary", { text: entry.text ?? "" });
       else if (entry.kind === "text") this.emit("text_preview", { text: entry.text ?? "" });
-      else if (entry.kind === "tool") this.emit("tool_started", { toolName: entry.toolName ?? "tool", toolInput: entry.toolInput ?? "" });
+      else if (entry.kind === "tool") this.emit(entry.eventKind ?? "tool_started", {
+        toolName: entry.toolName ?? "tool",
+        toolCallId: entry.toolCallId ?? "",
+        toolInput: entry.toolInput ?? "",
+        toolOutput: entry.toolOutput ?? "",
+      });
       else this.emit("activity", { text: entry.text ?? "" });
     }
   }

@@ -150,3 +150,58 @@ test("v2 bridge fails before starting the runtime when turn-start acknowledgemen
   assert.equal(starts, 0);
   assert.equal(result.errorCode, "runtime_event_ack_failed");
 });
+
+test("v2 bridge preserves correlated tool lifecycle details", async () => {
+  const runtime: Runtime = {
+    name: "claude",
+    start(_options, callbacks) {
+      queueMicrotask(() => {
+        callbacks.onTrajectory([
+          {
+            kind: "tool",
+            eventKind: "tool_started",
+            toolCallId: "tool-1",
+            toolName: "Bash",
+            toolInput: "{\"command\":\"printf ok\"}",
+          },
+          {
+            kind: "tool",
+            eventKind: "tool_completed",
+            toolCallId: "tool-1",
+            toolName: "Bash",
+            toolOutput: "ok",
+          },
+        ]);
+        callbacks.onActivity("online");
+      });
+      return { deliver() {}, stop() {} };
+    },
+  };
+  const session = await bridgeRuntimeV2(runtime).openSession(openOptions());
+  const events: RuntimeEventEnvelope[] = [];
+  const result = await session.runTurn({
+    turnId: "turn-tools",
+    attemptId: "attempt-tools",
+    context: "run",
+    capabilityActivationId: "activation-tools",
+    deadlineAt: Date.now() + 1_000,
+  }, { async emit(event) { events.push(event); } });
+
+  assert.equal(result.outcome, "completed");
+  const tools = events.filter((event) => event.kind.startsWith("tool_"));
+  assert.deepEqual(tools.map((event) => event.kind), ["tool_started", "tool_completed"]);
+  assert.deepEqual(tools.map((event) => event.payload), [
+    {
+      toolName: "Bash",
+      toolCallId: "tool-1",
+      toolInput: "{\"command\":\"printf ok\"}",
+      toolOutput: "",
+    },
+    {
+      toolName: "Bash",
+      toolCallId: "tool-1",
+      toolInput: "",
+      toolOutput: "ok",
+    },
+  ]);
+});

@@ -112,7 +112,7 @@ async function onWorker(ws: WebSocket, key: string): Promise<void> {
         if (!isWorkerLeaseCurrent(lease)) return;
         for (const e of msg.entries ?? []) {
           if (!isWorkerLeaseCurrent(lease)) return;
-          await logActivity(located.spaceId, msg.agentId, e);
+          await logActivity(located.spaceId, msg.agentId, { ...e, ...trajectoryScope });
           if (!isWorkerLeaseCurrent(lease)) return;
         }
       }
@@ -352,6 +352,17 @@ function runtimeTurnResult(value: unknown): RuntimeTurnResult {
   return RuntimeTurnResultSchema.parse(value);
 }
 
+function trajectoryDetail(value: unknown, limit = 16_000): string {
+  if (value === undefined || value === null) return "";
+  let text: string;
+  try {
+    text = typeof value === "string" ? value : JSON.stringify(value);
+  } catch {
+    text = String(value);
+  }
+  return text.length > limit ? `${text.slice(0, limit)}\n…` : text;
+}
+
 async function projectTurnEvent(
   spaceId: string,
   db: ReturnType<typeof dbForSpace>,
@@ -361,17 +372,36 @@ async function projectTurnEvent(
   const session = turn ? db.select().from(schema.runtimeSessions).where(eq(schema.runtimeSessions.id, turn.runtimeSessionId)).get() : null;
   const agent = turn ? db.select().from(schema.agents).where(eq(schema.agents.id, turn.agentId)).get() : null;
   if (!turn || !session || !agent) return;
-  const scope = { scope: "scoped", channelId: session.surfaceId, conversationId: session.surfaceId, streamId: turn.id };
+  // A v2 turn may execute on a server-owned thread surface even when the Human is
+  // looking at its parent channel. Use the same normalization as legacy runtimes
+  // so both runtimes feed the parent conversation's aggregate trace consistently.
+  const scope = await resolveTrajectoryScope(db, {
+    scope: "scoped",
+    channelId: session.surfaceId,
+    streamId: turn.id,
+  });
   const text = typeof event.payload.text === "string" ? event.payload.text : "";
   const toolName = typeof event.payload.toolName === "string" ? event.payload.toolName : "";
-  const toolInput = typeof event.payload.toolInput === "string" ? event.payload.toolInput : "";
+  const toolCallId = typeof event.payload.toolCallId === "string" ? event.payload.toolCallId : "";
+  const toolInput = trajectoryDetail(event.payload.toolInput);
+  const toolOutput = trajectoryDetail(event.payload.toolOutput);
+  const eventDetail = trajectoryDetail(event.payload.detail || text || event.kind, 200);
   const activity = event.kind === "thinking_summary" ? "thinking" : "working";
   if (event.kind === "compaction_completed") {
     new SessionCompactionMarkerService(spaceId, db).recordPersistedEvent(event);
   }
   if (event.kind === "turn_started" || event.kind === "thinking_summary" || event.kind === "tool_started" || event.kind === "activity") {
     db.update(schema.agents).set({ status: "active", activity }).where(eq(schema.agents.id, agent.id)).run();
-    await publish(spaceId, { type: "agent", id: agent.id, name: agent.name, status: "active", activity, detail: text.slice(0, 200), ...scope });
+    await publish(spaceId, {
+      type: "agent",
+      id: agent.id,
+      name: agent.name,
+      status: "active",
+      activity,
+      detail: eventDetail,
+      eventKind: event.kind,
+      ...scope,
+    });
   }
   if (event.kind === "thinking_summary" || event.kind === "text_preview" || event.kind === "tool_started" || event.kind === "tool_completed" || event.kind === "tool_failed") {
     await publish(spaceId, {
@@ -380,8 +410,20 @@ async function projectTurnEvent(
       name: agent.name,
       entries: [{
         kind: toolName ? "tool" : event.kind === "thinking_summary" ? "thinking" : "text",
-        text: text.slice(0, 2_000),
-        ...(toolName ? { toolName, toolInput: toolInput.slice(0, 1_000) } : {}),
+        text: text.slice(0, 16_000),
+        eventKind: event.kind,
+        createdAt: event.createdAt,
+        ...(toolName ? {
+          toolName,
+          toolCallId,
+          toolInput,
+          toolOutput,
+          toolState: event.kind === "tool_failed"
+            ? "output-error"
+            : event.kind === "tool_completed"
+              ? "output-available"
+              : "input-available",
+        } : {}),
       }],
       ...scope,
     });
@@ -394,11 +436,16 @@ async function projectTurnEvent(
     }
   }
   await logActivity(spaceId, agent.id, {
-    kind: toolName ? "tool" : event.kind,
+    kind: event.kind,
     activity,
-    detail: event.kind,
-    ...(toolName ? { toolName, toolInput: toolInput.slice(0, 500) } : {}),
-    ...(event.kind === "thinking_summary" ? { text: text.slice(0, 200) } : {}),
+    detail: toolCallId || event.kind,
+    ...(toolName ? { toolName, toolInput } : {}),
+    ...((event.kind === "thinking_summary" || event.kind === "text_preview")
+      ? { text: text.slice(0, 16_000) }
+      : toolOutput
+        ? { text: toolOutput }
+        : {}),
+    ...scope,
   });
 }
 
@@ -416,12 +463,25 @@ async function projectTurnTerminal(
   const activity = completed ? "online" : "error";
   const detail = completed ? "" : result.outcome === "completed" ? "required input unresolved; retry scheduled" : result.errorCode ?? `runtime ${result.outcome}`;
   db.update(schema.agents).set({ status: "active", activity }).where(eq(schema.agents.id, agent.id)).run();
-  const scope = { scope: "scoped", channelId: session.surfaceId, conversationId: session.surfaceId, streamId: turn.id };
-  await publish(spaceId, { type: "agent", id: agent.id, name: agent.name, status: "active", activity, detail, ...scope });
+  const scope = await resolveTrajectoryScope(db, {
+    scope: "scoped",
+    channelId: session.surfaceId,
+    streamId: turn.id,
+  });
+  await publish(spaceId, {
+    type: "agent",
+    id: agent.id,
+    name: agent.name,
+    status: "active",
+    activity,
+    detail,
+    eventKind: "status",
+    ...scope,
+  });
   if (turn.effectiveDirective === "required") {
     await publish(spaceId, { type: "agent:reply", agentId: agent.id, channelId: session.surfaceId, streamId: turn.id, name: agent.displayName || agent.name, op: completed ? "done" : "error", text: detail });
   }
-  await logActivity(spaceId, agent.id, { kind: "status", activity, detail, attemptId });
+  await logActivity(spaceId, agent.id, { kind: "status", activity, detail, attemptId, ...scope });
 }
 
 function errorMessage(error: unknown): string {
@@ -445,7 +505,12 @@ async function onAgentUpdate(msg: any, lease: WorkerLease): Promise<void> {
   if (agent) await publish(located.spaceId, { type: "agent", id: agent.id, name: agent.name, status: agent.status, activity: agent.activity, detail: msg.detail ?? "", ...trajectoryScope });
   if (!isWorkerLeaseCurrent(lease)) return;
   if (msg.type === "agent:activity") {
-    await logActivity(located.spaceId, msg.agentId, { kind: "status", activity: msg.activity, detail: msg.detail });
+    await logActivity(located.spaceId, msg.agentId, {
+      kind: "status",
+      activity: msg.activity,
+      detail: msg.detail,
+      ...trajectoryScope,
+    });
   }
 }
 
@@ -463,14 +528,38 @@ export async function pruneAgentActivityLog(spaceId: string, agentId: string): P
   await db.delete(schema.agentActivityLog).where(and(eq(schema.agentActivityLog.agentId, agentId), notInArray(schema.agentActivityLog.id, keep)));
 }
 
+interface ActivityLogInput {
+  kind?: string;
+  eventKind?: string;
+  activity?: string | null;
+  detail?: string | null;
+  text?: string | null;
+  toolName?: string | null;
+  toolInput?: string | null;
+  toolOutput?: string | null;
+  toolCallId?: string | null;
+  attemptId?: string | null;
+  channelId?: string;
+  conversationId?: string;
+  streamId?: string;
+}
+
 // Persist activity to the DB (daemon-pushed status/trajectory entries → agent_activity_log, feeds the activity facet history + timeline)
-export async function logActivity(spaceId: string, agentId: string, e: any): Promise<void> {
+export async function logActivity(spaceId: string, agentId: string, e: ActivityLogInput): Promise<void> {
   const db = dbForSpace(spaceId);
-  const kind = e.kind === "tool" ? "tool_start" : (e.kind || (e.toolName ? "tool_start" : "text"));
+  const kind = e.kind === "tool"
+    ? (e.eventKind ?? "tool_started")
+    : (e.kind || (e.toolName ? "tool_started" : "text"));
   try {
     await db.insert(schema.agentActivityLog).values({
-      spaceId, agentId, ts: Date.now(), kind,
-      activity: e.activity ?? null, detail: e.detail ?? null, text: e.text ?? null,
+      spaceId, agentId,
+      channelId: e.channelId ?? null,
+      conversationId: e.conversationId ?? null,
+      streamId: e.streamId ?? null,
+      ts: Date.now(), kind,
+      activity: e.activity ?? null,
+      detail: e.toolCallId ?? e.detail ?? null,
+      text: e.toolOutput ?? e.text ?? null,
       toolName: e.toolName ?? null, toolInput: e.toolInput ?? null,
     });
     await pruneAgentActivityLog(spaceId, agentId); // keep the table bounded per agent (newest ACTIVITY_LOG_CAP)

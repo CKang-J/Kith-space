@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { MessageCircle, X, Wrench } from "lucide-react";
+import { useEffect, useState } from "react";
+import { MessageCircle, X } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useStore } from "../store.tsx";
@@ -17,6 +17,8 @@ import { AgentDefaultResponseModeCard } from "./agent-response-mode/AgentDefault
 import { normalizeAgentResponseMode } from "./agent-response-mode/responseModeModel.ts";
 import { AgentMemoryPanel } from "./agent-memory/AgentMemoryPanel.tsx";
 import { AgentModelBindingEditor } from "./model-settings/AgentModelBindingEditor.tsx";
+import { AgentActivityTimeline } from "../features/trajectory/AgentActivityTimeline.tsx";
+import type { TrajSource } from "../trajBuffer.ts";
 
 // Unified agent status label: fine-grained activity (working/thinking/online) takes priority;
 // offline/absent falls back to lifecycle status (active/sleeping/inactive).
@@ -191,7 +193,7 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
         ))}
       </div>
       {tab === "workspace" ? <AgentMemoryPanel agentId={id} />
-        : tab === "activity" ? <ActivityTab id={id} name={a.name} />
+        : tab === "activity" ? <ActivityTab activity={live} id={id} name={a.name} />
         : tab === "permissions" ? <PermissionsTab id={id} />
         : tab === "integrations" ? <AppsTab id={id} />
         : tab === "dms" ? <DmsTab id={id} name={a.name} />
@@ -331,30 +333,31 @@ function RemindersTab({ id, name }: { id: string; name: string }) {
 }
 
 // Activity timeline (GET /api/agents/:id/activity-log for history + live-appended via agent:activity/trajectory events)
-function ActivityTab({ id, name }: { id: string; name: string }) {
-  const { t } = useTranslation();
-  const { api, onEvent } = useStore();
-  const [items, setItems] = useState<any[]>([]);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { (async () => { const d = await api("GET", `/api/agents/${id}/activity-log?limit=120`); setItems(Array.isArray(d) ? d : []); })(); }, [id]);
-  useEffect(() => onEvent((e) => {
-    if (e.type === "agent" && e.id === id && e.activity) setItems((x) => [...x, { timestamp: Date.now(), entry: { kind: "status", activity: e.activity, detail: e.detail } }]);
-    else if (e.type === "trajectory" && e.agentId === id) setItems((x) => [...x, ...(e.entries || []).map((en: any) => ({ timestamp: Date.now(), entry: { kind: en.kind === "tool" ? "tool_start" : (en.kind || (en.toolName ? "tool_start" : "text")), text: en.text, toolName: en.toolName, toolInput: en.toolInput, activity: en.activity, detail: en.detail } }))]);
-  }), [id]);
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [items]);
-  const time = (ts: number) => { try { return new Date(ts).toLocaleTimeString(undefined, { hour12: false }); } catch { return ""; } };
-  const entryOf = (e: any) => ({ ...e, kind: e.kind === "tool" ? "tool_start" : e.kind });
-  const visible = (e: any) => !(e.kind === "status" && !e.activity && !e.detail) && !(e.kind === "tool_start" && e.toolName === "agentMessage" && !e.text);
+function ActivityTab({ activity, id, name }: { activity?: string; id: string; name: string }) {
+  const { slug } = useStore();
+  const nav = useNavigate();
+  const location = useLocation();
+  const openSource = (source: TrajSource) => {
+    if (source.unavailable) return;
+    const target = source.kind === "thread" && source.conversationId && source.parentMessageId
+      ? `/s/${slug}/channel/${source.conversationId}?thread=${source.parentMessageId}`
+      : source.channelId
+        ? `/s/${slug}/channel/${source.channelId}`
+        : null;
+    if (!target) return;
+    const discussionSearch = workspaceSearchForShellState(location.search, {
+      activeModule: "agents",
+      chatVisible: true,
+    });
+    nav(mergeWorkspaceSearch(target, discussionSearch));
+  };
   return (
-    <div className="scroll" ref={scrollRef}>
-      {items.length === 0 ? <div className="empty">{t("members.activityEmpty", { name })}</div>
-        : <div className="actlog">{items.filter((it) => visible(entryOf(it.entry))).map((it, i) => {
-          const e = entryOf(it.entry); const t2 = time(it.timestamp);
-          if (e.kind === "tool_start") return <div className="act" key={i}><span className="act-t">{t2}</span><span className="act-tool"><Wrench size={11} /> {e.toolName}</span><span className="act-x mono">{e.toolInput}</span></div>;
-          if (e.kind === "text") return <div className="act" key={i}><span className="act-t">{t2}</span><span className="act-x">{e.text}</span></div>;
-          return <div className="act" key={i}><span className="act-t">{t2}</span><span className={"dot " + (e.activity || "")} /><span className="act-x muted">{agentStatusLabel(t, e.activity)}{e.detail ? " · " + e.detail : ""}</span></div>;
-        })}</div>}
-    </div>
+    <AgentActivityTimeline
+      activity={activity}
+      id={id}
+      name={name}
+      onOpenSource={openSource}
+    />
   );
 }
 

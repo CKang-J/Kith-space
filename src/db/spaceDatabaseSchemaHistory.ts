@@ -1,7 +1,7 @@
 import { getTableColumns, getTableName, type Table } from "drizzle-orm";
 import * as schema from "./schema.js";
 
-export const SPACE_DATABASE_SCHEMA_VERSION = 10;
+export const SPACE_DATABASE_SCHEMA_VERSION = 11;
 export const MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION = 2;
 
 export interface WorkspaceMigrationHistoryEntry {
@@ -26,6 +26,7 @@ export const WORKSPACE_MIGRATION_HISTORY: readonly WorkspaceMigrationHistoryEntr
   { version: 8, tag: "0009_memory_advisor", createdAt: 1784480000000, hash: "992d6faf3cd9679622f8e3da8fb8e1f03c84b312c77e88ab22544d9b50b1af83", compatibleHashes: ["b7d21d3bc4888df5d65476f858564708ab450fa16452456d086b4138c8116aa3"] },
   { version: 9, tag: "0010_system_advisor_provider", createdAt: 1784800000000, hash: "e4635933ceafa8a77ed1d2a6855978c0f3b26cb6abff156809d31d3e7e161ca9", compatibleHashes: ["e735d1da4fc86a39540aba45e828dde0357f2727ce2cb2bc8124389c04179ab0"] },
   { version: 10, tag: "0011_model_runtime_bindings", createdAt: 1784880000000, hash: "f769bdff845cb983bcad5e29bf7ae1c11613494bf3899a425eada499d14d169f", compatibleHashes: ["ae25a562a20e771338abb2797e8027b0b99354f9aebf40e09b8dd4513fba78fd"] },
+  { version: 11, tag: "0012_agent_activity_surface_scope", createdAt: 1785060000000, hash: "334d5e31313898b80ed518f5f696ee5f3b2d65e88f97e29e449a6de582a37c04" },
 ];
 
 /** Immutable v2 baseline. Later schema entries are layered on explicitly below. */
@@ -200,6 +201,11 @@ const ADDITIONS_BY_MIGRATION = new Map<string, Array<[string, string]>>([
     ["agents", "model_binding_state"],
     ["agents", "runtime_restart_required"],
     ["runtime_sessions", "runtime_configuration_epoch"],
+  ]],
+  ["0012_agent_activity_surface_scope", [
+    ["agent_activity_log", "channel_id"],
+    ["agent_activity_log", "conversation_id"],
+    ["agent_activity_log", "stream_id"],
   ]],
 ]);
 

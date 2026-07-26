@@ -98,11 +98,50 @@ test("groupTraj keeps tool calls as their own pill, resuming text as a new sub-i
     { name: "codex2", text: "确认没有别人 claim" },
   ]);
   assert.equal(groups.length, 1);
-  assert.deepEqual(groups[0]!.items, [
-    { kind: "text", text: "先读一下消息" },
-    { kind: "tool", text: "kith-space message check" },
-    { kind: "text", text: "确认没有别人 claim" },
+  assert.equal(groups[0]!.items[0]?.kind, "text");
+  assert.equal(groups[0]!.items[1]?.kind, "tool");
+  assert.equal(groups[0]!.items[1]?.text, "kith-space message check");
+  assert.equal(groups[0]!.items[2]?.kind, "text");
+});
+
+test("groupTraj keeps reasoning separate and merges correlated tool completion into its start row", () => {
+  const groups = groupTraj([
+    { name: "Pi", text: "先检查", kind: "thinking", streamId: "turn-1" },
+    {
+      name: "Pi",
+      text: "",
+      kind: "tool",
+      eventKind: "tool_started",
+      streamId: "turn-1",
+      toolName: "bash",
+      toolCallId: "call-1",
+      toolInput: "{\"command\":\"pwd\"}",
+      toolState: "input-available",
+    },
+    {
+      name: "Pi",
+      text: "",
+      kind: "tool",
+      eventKind: "tool_completed",
+      streamId: "turn-1",
+      toolName: "bash",
+      toolCallId: "call-1",
+      toolOutput: "/tmp/project",
+      toolState: "output-available",
+    },
   ]);
+
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0]!.items[0], { kind: "thinking", text: "先检查" });
+  assert.equal(groups[0]!.items.length, 2);
+  const tool = groups[0]!.items[1]!;
+  assert.equal(tool.kind, "tool");
+  if (tool.kind === "tool") {
+    assert.equal(tool.toolCallId, "call-1");
+    assert.equal(tool.toolInput, "{\"command\":\"pwd\"}");
+    assert.equal(tool.toolOutput, "/tmp/project");
+    assert.equal(tool.toolState, "output-available");
+  }
 });
 
 test("groupTraj starts a new group when a different agent's fragments interleave", () => {

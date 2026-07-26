@@ -37,12 +37,23 @@ type ActiveTurn = {
   resolveFinished: () => void;
   settled: boolean;
   cancelRequested: boolean;
+  messageStreamedText: string;
   usage?: NormalizedUsage;
   terminalError?: string;
 };
 
 const COMMAND_TIMEOUT_MS = 10_000;
 const MAX_JSONL_BUFFER = 1024 * 1024;
+const MAX_TOOL_DETAIL_CHARS = 16_000;
+
+function serializeToolDetail(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  if (!text) return "";
+  return text.length > MAX_TOOL_DETAIL_CHARS
+    ? `${text.slice(0, MAX_TOOL_DETAIL_CHARS)}\n…`
+    : text;
+}
 
 function validOpaqueSessionId(value: unknown): value is string {
   return typeof value === "string"
@@ -72,6 +83,14 @@ function usageFromMessage(message: any): NormalizedUsage | undefined {
   if (Number.isFinite(usage.cost?.total)) value.costUsd = Math.max(0, usage.cost.total);
   if (typeof message.model === "string" && message.model) value.model = message.model;
   return Object.keys(value).length > 1 ? value : undefined;
+}
+
+function assistantText(message: any): string {
+  if (!Array.isArray(message?.content)) return "";
+  return message.content
+    .filter((block: any) => block?.type === "text" && typeof block.text === "string")
+    .map((block: any) => block.text)
+    .join("");
 }
 
 function configFingerprint(options: OpenRuntimeSessionOptions): string {
@@ -136,7 +155,7 @@ class PiRpcSession implements RuntimeSessionV2 {
     const finished = new Promise<void>((done) => { resolveFinished = done; });
     this.active = {
       input, sink, ordinal: 0, chain: Promise.resolve(), resolve, finished, resolveFinished,
-      settled: false, cancelRequested: false,
+      settled: false, cancelRequested: false, messageStreamedText: "",
     };
     this.emit("turn_started", { runtime: "pi", protocol: "rpc", mcpMode: "none", gateway: "cli" });
     try {
@@ -311,23 +330,42 @@ class PiRpcSession implements RuntimeSessionV2 {
     if (!this.active) return;
     if (event?.type === "agent_start") this.emit("activity", { activity: "working", detail: "agent_start" });
     else if (event?.type === "message_update") {
+      const updateType = event.assistantMessageEvent?.type;
       const delta = event.assistantMessageEvent?.delta;
-      if (typeof delta === "string" && delta) this.emit(
-        event.assistantMessageEvent?.type === "thinking_delta" ? "thinking_summary" : "text_preview",
-        { text: delta },
-      );
+      if (typeof delta === "string" && delta && (updateType === "thinking_delta" || updateType === "text_delta")) {
+        if (updateType === "text_delta") this.active.messageStreamedText += delta;
+        this.emit(updateType === "thinking_delta" ? "thinking_summary" : "text_preview", { text: delta });
+      }
     } else if (event?.type === "message_end" && event.message?.role === "assistant") {
       const usage = usageFromMessage(event.message);
       if (usage) { this.active.usage = usage; this.emit("usage", usage); }
+      const finalText = assistantText(event.message);
+      if (finalText.startsWith(this.active.messageStreamedText)
+        && finalText.length > this.active.messageStreamedText.length) {
+        const missingSuffix = finalText.slice(this.active.messageStreamedText.length);
+        this.emit("text_preview", { text: missingSuffix });
+      }
+      // Pi emits one message_end for each assistant message around tool execution. The
+      // next message and any retry must start a new comparison window.
+      this.active.messageStreamedText = "";
       if (event.message.stopReason === "error") this.active.terminalError = "pi_model_error";
     } else if (event?.type === "tool_execution_start") {
-      this.emit("tool_started", { toolName: event.toolName ?? event.toolCall?.name ?? "tool" });
+      this.emit("tool_started", {
+        toolCallId: typeof event.toolCallId === "string" ? event.toolCallId : "",
+        toolName: event.toolName ?? event.toolCall?.name ?? "tool",
+        toolInput: serializeToolDetail(event.args ?? event.toolCall?.arguments),
+      });
     } else if (event?.type === "tool_execution_end") {
-      this.emit(event.isError ? "tool_failed" : "tool_completed", { toolName: event.toolName ?? "tool" });
+      this.emit(event.isError ? "tool_failed" : "tool_completed", {
+        toolCallId: typeof event.toolCallId === "string" ? event.toolCallId : "",
+        toolName: event.toolName ?? "tool",
+        toolOutput: serializeToolDetail(event.result),
+      });
     } else if (event?.type === "compaction_start") this.emit("compaction_started", {});
     else if (event?.type === "compaction_end") this.emit("compaction_completed", {});
     else if (event?.type === "auto_retry_start") {
       this.active.terminalError = undefined;
+      this.active.messageStreamedText = "";
       this.emit("activity", { activity: "working", detail: "retry" });
     } else if (event?.type === "agent_settled") {
       void this.finish(

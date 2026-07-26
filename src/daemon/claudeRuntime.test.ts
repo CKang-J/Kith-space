@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { buildClaudeArgs, claudePromptFile } from "./claudeRuntime.js";
+import { createClaudeTrajectoryState, parseClaudeTrajectoryEvent } from "./claudeTrajectory.js";
 
 const BASE = (promptFlag: string[] = ["--append-system-prompt", "SP"]) =>
   buildClaudeArgs({ promptFileFlag: promptFlag });
@@ -79,4 +80,57 @@ test("spawn errors are handled so a missing claude CLI does not crash the daemon
   assert.match(src, /cb\.log\.error\("claude spawn failed"/, "spawn failures should be logged for operators");
   assert.match(src, /cb\.onActivity\("offline", "claude not found"\)/, "missing claude CLI should surface as offline activity");
   assert.match(src, /finish\(1\)/, "spawn failure should terminate only this runtime session");
+});
+
+test("Claude trajectory preserves complete thinking and correlates tool input with output", () => {
+  const state = createClaudeTrajectoryState();
+  assert.deepEqual(parseClaudeTrajectoryEvent({
+    type: "assistant",
+    message: { content: [
+      { type: "thinking", thinking: "I should inspect the current state before changing it." },
+      { type: "tool_use", id: "tool-1", name: "Bash", input: { command: "printf 'TRACE_OK\\n'" } },
+    ] },
+  }, state), [
+    { kind: "thinking", text: "I should inspect the current state before changing it." },
+    {
+      kind: "tool",
+      eventKind: "tool_started",
+      toolCallId: "tool-1",
+      toolName: "Bash",
+      toolInput: "{\n  \"command\": \"printf 'TRACE_OK\\\\n'\"\n}",
+    },
+  ]);
+
+  assert.deepEqual(parseClaudeTrajectoryEvent({
+    type: "user",
+    message: { content: [
+      { type: "tool_result", tool_use_id: "tool-1", content: [{ type: "text", text: "TRACE_OK\n" }] },
+    ] },
+  }, state), [{
+    kind: "tool",
+    eventKind: "tool_completed",
+    toolCallId: "tool-1",
+    toolName: "Bash",
+    toolOutput: "TRACE_OK\n",
+  }]);
+});
+
+test("Claude trajectory retains failed tool output", () => {
+  const state = createClaudeTrajectoryState();
+  parseClaudeTrajectoryEvent({
+    type: "assistant",
+    message: { content: [{ type: "tool_use", id: "tool-fail", name: "Read", input: { file_path: "/missing" } }] },
+  }, state);
+  assert.deepEqual(parseClaudeTrajectoryEvent({
+    type: "user",
+    message: { content: [
+      { type: "tool_result", tool_use_id: "tool-fail", is_error: true, content: "File does not exist" },
+    ] },
+  }, state), [{
+    kind: "tool",
+    eventKind: "tool_failed",
+    toolCallId: "tool-fail",
+    toolName: "Read",
+    toolOutput: "File does not exist",
+  }]);
 });

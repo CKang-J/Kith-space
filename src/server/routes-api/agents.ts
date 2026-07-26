@@ -37,6 +37,7 @@ import {
 } from "../../agents/legacyDataPlaneDrain.js";
 import { AdvisorProviderSettingsService } from "../../advisor-provider/advisorProviderSettingsService.js";
 import { AgentModelBindingService } from "../../model-control/agentModelBindingService.js";
+import { loadAgentActivitySources } from "../agentActivityPresentation.js";
 
 export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   const { req, res, url, method, p, humanId, spaceId } = ctx;
@@ -316,7 +317,20 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
   if (alog && method === "GET") {
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 200);
     const rows = await db.select().from(schema.agentActivityLog).where(and(eq(schema.agentActivityLog.agentId, alog[1]!), eq(schema.agentActivityLog.spaceId, spaceId))).orderBy(desc(schema.agentActivityLog.ts)).limit(limit); // spaceId scope: never leak another Space's agent activity by raw agentId
-    return (sendJson(res, 200, rows.reverse().map((r) => ({ timestamp: r.ts, entry: { kind: r.kind === "tool" ? "tool_start" : r.kind, activity: r.activity, detail: r.detail, text: r.text, toolName: r.toolName, toolInput: r.toolInput } }))), true);
+    const sources = await loadAgentActivitySources(db, rows);
+    return (sendJson(res, 200, rows.reverse().map((r) => ({
+      timestamp: r.ts,
+      streamId: r.streamId ?? undefined,
+      source: sources.get(r.id) ?? null,
+      entry: {
+        kind: r.kind === "tool" ? "tool_start" : r.kind,
+        activity: r.activity,
+        detail: r.detail,
+        text: r.text,
+        toolName: r.toolName,
+        toolInput: r.toolInput,
+      },
+    }))), true);
   }
   // ── Agent Permissions (scopes) ── GET to read / PUT to replace entirely. Default mode = grant all.
   const ascope = /^\/api\/agents\/([^/]+)\/scopes$/.exec(p);

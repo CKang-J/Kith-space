@@ -13,7 +13,9 @@ import path from "node:path";
 import type { Runtime, StartOpts, RuntimeCallbacks, RuntimeSession, TrajectoryEntry } from "./runtime.js";
 import { spawnRuntimeProcess, terminateRuntimeProcess } from "./runtimeProcess.js";
 
-const MAX = 2000;
+// Keep legacy Pi turns aligned with the v2 trajectory payload budget. The old 2k cap
+// silently cut otherwise valid assistant replies before they reached persistence/UI.
+const MAX = 16_000;
 const clip = (s: unknown) => String(s ?? "").slice(0, MAX);
 
 function summarizeToolArgs(args: any): string {

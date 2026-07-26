@@ -54,10 +54,16 @@ test("message density tokens match the reference-driven split bubble design", ()
   assert.match(messageCss, /\.chat-message__bubble-wrap:focus-within>\.chat-message__toolbar-slot/);
 });
 
-test("message timestamps and preview metadata use the shared auxiliary type scale", () => {
+test("message metadata and system events use the shared auxiliary type scale", () => {
   assert.match(messageCss, /\.chat-message__continuation-timestamp\{[^}]*font-size:var\(--font-size-meta\)!important/);
   assert.match(messageCss, /\.chat-message__footer-timestamp\{[^}]*font-size:var\(--font-size-meta\)!important/);
   assert.match(messageCss, /\.message-topic-preview__footer\{[^}]*font-size:var\(--font-size-meta\)!important/);
+  assert.match(messageCss, /\.message-topic-preview__reply\{[^}]*font-size:var\(--font-size-meta\)!important/);
+  assert.match(messageCss, /\.message-topic-preview__reply \*\{font-size:var\(--font-size-meta\)!important\}/);
+  assert.match(messageCss, /\.message-topic-preview__reply strong\{[^}]*color:var\(--chat-message-text\)[^}]*font-weight:400/);
+  assert.match(messageCss, /\.message-topic-preview__reply-text\{[^}]*color:var\(--muted-soft\)/);
+  assert.match(globalCss, /\.msg-sys,\.msg-sys \*\{font-size:var\(--font-size-meta\)!important\}/);
+  assert.match(globalCss, /\.task-pill\{[^}]*font-size:var\(--font-size-meta\)!important[^}]*font-weight:400/);
 });
 
 test("legacy full-card width penalty and repeated agent description are removed", () => {

@@ -551,7 +551,7 @@
     "claim": "认领",
     "replyCount": "{{count}} 条回复",
     "latestReply": "最新 {{time}}",
-    "replyInThread": "在话题中回复",
+    "replyInThread": "回复话题",
     "backToBottom": "回到底部",
     "agentSleeping": "@{{name}} 正在休眠,发消息会唤醒 ta 接手。",
     "agentSleepingComposerPlaceholder": "@{{name}} 正在休眠，发消息会唤醒 ta 接手。",
@@ -943,6 +943,30 @@
         }
       }
     }
+  },
+  "trajectory": {
+    "completed": "已完成",
+    "collapseText": "收起正文",
+    "error": "错误",
+    "expandText": "展开正文",
+    "failed": "失败",
+    "parameters": "参数",
+    "result": "结果",
+    "running": "运行中",
+    "thinking": "正在思考…",
+    "thought": "思考过程",
+    "shell": "Shell",
+    "channel": "频道",
+    "dm": "私信",
+    "dmSource": "与 {{name}} 的私信",
+    "sourceUnknown": "来源渠道",
+    "sourceUnavailable": "渠道不可用",
+    "sourceUnrecorded": "未记录渠道",
+    "thread": "话题",
+    "threadSource": "# {{channel}} · {{topic}}",
+    "toolCalls": "{{count}} 次工具调用",
+    "toolFailed": "工具调用失败",
+    "usedTool": "已调用工具"
   },
   "common": {
     "agents": "Agents",

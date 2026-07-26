@@ -944,6 +944,30 @@
       }
     }
   },
+  "trajectory": {
+    "completed": "Completed",
+    "collapseText": "Collapse text",
+    "error": "Error",
+    "expandText": "Expand text",
+    "failed": "Failed",
+    "parameters": "Parameters",
+    "result": "Result",
+    "running": "Running",
+    "thinking": "Thinking…",
+    "thought": "Reasoning",
+    "shell": "Shell",
+    "channel": "Channel",
+    "dm": "Direct message",
+    "dmSource": "Direct message with {{name}}",
+    "sourceUnknown": "Conversation source",
+    "sourceUnavailable": "Conversation unavailable",
+    "sourceUnrecorded": "Conversation not recorded",
+    "thread": "Thread",
+    "threadSource": "# {{channel}} · {{topic}}",
+    "toolCalls": "{{count}} tool calls",
+    "toolFailed": "Tool call failed",
+    "usedTool": "Used tool"
+  },
   "common": {
     "agents": "Agents",
     "channels": "Channels",

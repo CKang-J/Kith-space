@@ -367,7 +367,7 @@
 
 **推理与权衡**：原实时轨迹栏展示所有会话事件，会把并行 agent 工作误导为当前会话上下文；文件和 thread 索引又散落在 Chat Tab，模块打开后入口与布局规则不一致。一个会话级聚合面板把“当前会话的辅助索引”放在稳定位置，同时保留 Module 一次一个、话题正文仍在 Chat、Tasks 仍是模块的既有边界。代价是三栏需要明确最小宽度和降级顺序，因此聚合面板优先于会话列表、低于主要工作面与 Module；宽度不足时临时收至 `0`，不退化为覆盖 Module 的抽屉。
 
-**实施边界**：聚合面板不是通用停靠系统，不可拖拽改宽，不持久化到 URL；轨迹仍是本次前端会话内每会话 300 条的有界缓冲，不新增历史表。话题列表用独立 thread summaries 查询，文件搜索只覆盖本次加载的当前会话 100 条附件。完整规格见 `docs/superpowers/specs/2026-07-14-chat-aggregate-panel-design.md`。
+**实施边界**：聚合面板不是通用停靠系统，不可拖拽改宽，不持久化到 URL；轨迹仍是本次前端会话内每会话 300 条的有界缓冲，不新增历史表。普通话题和P-A10 v2 required turn的server-owned thread都必须在Core归一到父会话，逐条事件与terminal状态不得直接使用thread surface作为聚合`conversationId`。话题列表用独立 thread summaries 查询，文件搜索只覆盖本次加载的当前会话 100 条附件。完整规格见 `docs/superpowers/specs/2026-07-14-chat-aggregate-panel-design.md`。
 
 ---
 
@@ -517,7 +517,7 @@
 
 **安全边界**：普通授权浏览器可管理供应商/模型和选择已有绑定；新增或更换长期密钥额外要求Desktop私有信任，或请求peer、Host与Origin三者全部为loopback且Origin/Host同源（含端口）。本机`localhost:7777`因此可获得与Desktop一致的供应商体验，但跨端口localhost页面与LAN HTTP不承载新密钥。任何已保存密钥的供应商只要backend、API协议、endpoint、network class或allowed egress发生变化，都必须重新输入密钥，禁止旧credential ref静默跟随新的执行身份或目的地。读取本机CLI文件、显示一次性secret与导出诊断仍仅Desktop。聊天 runtime 新增独立 `RuntimeCredentialActivationPort`：Core 只发送强绑定、无密钥 descriptor，Worker 通过Worker-only本机控制通道单次兑换，明文只进入当前Worker内存与child env，并在失败、取消、关闭、超时或lease变化时撤销；不得复用Advisor activation，也不得进入workspace.db、普通控制消息、日志或UI。完整规格见 `docs/superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`。
 
-**实施事实**：app.db v6与workspace.db v10迁移、稳定对象/不可变revision、三态runtime default、Agent绑定快照、runtime epoch、四家compiler registry、独立聊天activation、Pi RPC v2、脱敏presenter和Settings三页已落地。Pi使用本机0.81.1外部CLI，fixture覆盖strict LF/UTF-8半帧、correlated response、usage、abort、compaction与`agent_settled`；MCP保持unsupported并通过CLI Gateway。CLI导入只读固定用户级文件、拒绝symlink/超限/动态资源，默认从不写回。
+**实施事实**：app.db v6与workspace.db v10迁移、稳定对象/不可变revision、三态runtime default、Agent绑定快照、runtime epoch、四家compiler registry、独立聊天activation、Pi RPC v2、脱敏presenter和Settings三页已落地。Pi使用本机0.81.1外部CLI，fixture覆盖strict LF/UTF-8半帧、correlated response、usage、abort、compaction与`agent_settled`；正文增量在Worker合并窗口内拼接，最终消息只补严格缺失尾部，未完成的`toolcall_delta`不再误入正文，工具开始/结束通过`toolCallId`关联并保存有界输入输出。MCP保持unsupported并通过CLI Gateway。CLI导入只读固定用户级文件、拒绝symlink/超限/动态资源，默认从不写回。
 
 ---
 
@@ -578,6 +578,18 @@
 **推理与权衡**：等到开始 macOS/Linux 打包时再补兼容，会让 Windows-only 假设持续进入共享模块，最终形成高成本回填；现在立即宣称三端已支持又与真实发行、CI 和实机证据冲突。因此采用“发行范围与工程基线分离”：产品状态诚实保持 Windows-first，新增工程决策从现在起不继续制造跨平台债，并用活审计清单记录尚未完成的部分。
 
 **验证边界**：平台无关行为先由共享契约测试覆盖；涉及宿主语义的改动再由 Windows/macOS/Linux runner 或真实 smoke 覆盖。条件 `skip` 只代表透明缺口，不算目标平台通过。某平台暂未验证时必须在能力探测、UI/错误、PR 验证说明和 `docs/cross-platform-compatibility.md` 中显式记录，不得静默降级。当前审计已确认三端 CI、Windows 进程树/测试门禁、macOS/Linux packaging 与 platform integration 等缺口，处理顺序以该文档为准。
+
+---
+
+## 决策 37：Agent 活动历史持久保留来源渠道，聚合轨迹不重复显示
+
+**状态**：Implemented（2026-07-26）。
+
+**结论**：Agents详情的“活动”页是单个Agent跨频道、私信和话题的历史视图，每个turn必须显示来源并允许打开原会话；会话聚合面板已经由当前base conversation限定，不重复显示来源。来源身份以持久`channelId / conversationId / streamId`为事实，不按名称或当前列表反推；服务端在读取历史时批量解析频道名称、Human-Agent私信对端和话题父消息摘要。
+
+**降级边界**：workspace schema v11之前的历史没有稳定来源字段，显示“未记录渠道”；来源频道、私信或父话题已不可访问时显示“渠道不可用”并禁止跳转。实时活动在历史请求返回前使用同一Socket scope展示；缺少话题父消息ID时只能导航到父会话，待持久历史提供精确深链。无作用域或ambiguous事件仍可进入Agent活动流，但不能伪装成某个渠道。
+
+**推理与权衡**：把来源只保存在前端会造成刷新丢失，把展示名写入活动行会随重命名陈旧，也无法安全区分删除与同名；稳定ID加读取时批量解析能复用现有ACL和当前名称，代价是一轮受限批量查询及一次兼容迁移。聚合面板重复来源只会制造噪声，因此同一时间线组件按surface职责选择是否渲染来源。
 
 ---
 
