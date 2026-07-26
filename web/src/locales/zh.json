@@ -560,6 +560,25 @@
     "agentThinking": "正在思考...",
     "agentThinkingDone": "思考完成。",
     "agentReplyError": "Agent 回复失败。",
+    "conversationActivity": {
+      "preparing": "正在准备…",
+      "thinking": "正在思考…",
+      "searching": "正在搜索网络…",
+      "executing": "正在执行操作…",
+      "reading": "正在查看资料…",
+      "writing": "正在处理文件…",
+      "updating": "正在更新任务…",
+      "replying": "正在组织回复…",
+      "waiting": "等待你的确认",
+      "retrying": "遇到问题，正在重试…",
+      "working": "正在处理…",
+      "using_tool": "正在使用 {{tool}}…",
+      "completed": "已完成",
+      "error": "遇到问题",
+      "tool": "工具",
+      "more": "还有 {{count}} 个 Agent 正在工作",
+      "view": "查看 {{name}} 的活动"
+    },
     "humanKind": "Human",
     "mentionEveryone": "所有人",
     "mentionEveryoneDescription": "提醒本频道所有 Agent",
@@ -737,14 +756,6 @@
   "confirm": {
     "confirm": "确认",
     "cancel": "取消"
-  },
-  "liveBar": {
-    "idle": "暂无 agent 在运行",
-    "working": "运行中",
-    "thinking": "思考中",
-    "viewActivity": "查看 {{name}} 的活动",
-    "moreActive": "另有 {{count}} 个 agent 在运行",
-    "activeTitle": "运行中的 agent"
   },
   "sidebar": {
     "pinChannel": "置顶",

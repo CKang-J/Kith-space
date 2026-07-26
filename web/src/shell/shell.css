@@ -388,11 +388,6 @@
   border-top: 0;
 }
 
-.chat-navigation-sidebar .live-bar {
-  border-top: 1px solid var(--shell-border);
-  background: #fff;
-}
-
 .chat-navigation-sidebar .chan-row + .chan-row {
   margin-top: 4px;
 }

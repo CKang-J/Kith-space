@@ -16,6 +16,7 @@ import {
 } from "./composerChannelAllMention.ts";
 import { insertAgentMention } from "./composerMention.ts";
 import { messageContextSnapshot } from "../messageContextSnapshot.ts";
+import { ConversationActivityStatus } from "./ConversationActivityStatus.tsx";
 
 // Shared message composer for channels, DMs, and threads. Owns text, attachment upload
 // (button / paste / drag-drop, with per-file progress), @mention autocomplete, and send.
@@ -207,6 +208,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       )}
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={onPickFiles} />
       {taskMentionError ? <div className="composer-validation-error" role="alert">{taskMentionError}</div> : null}
+      <ConversationActivityStatus channelId={channelId} />
       <div ref={boxRef} className={`composer-box ${expanded ? "is-expanded" : "is-compact"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
         <ComposerAttachments
           attachments={pendingAtts}

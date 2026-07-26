@@ -392,7 +392,7 @@ export function Chat({
     if (!routeChannelId && !channelIdOverride && cur) navigateConversation(`/s/${slug}/channel/${cur.id}`, { replace: true });
   }, [routeChannelId, channelIdOverride, cur, slug, routeLocation.pathname, routeLocation.search, nav]);
   useEffect(() => { setThreadWidth(null); }, [cur?.id, thread?.channelId]);
-  // LiveAgentBar opens the canonical Agents module on its Activity tab and consumes the request once.
+  // The current-conversation activity summary opens the canonical Agents module on its Activity tab.
   useEffect(() => {
     if (!agentPanelReq) return;
     openAgentProfile(agentPanelReq, "activity");

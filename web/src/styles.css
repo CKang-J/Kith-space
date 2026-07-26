@@ -218,8 +218,8 @@ body [data-slot="field-description"]{font-size:var(--font-size-meta)!important}
 .dot.working,.dot.thinking{background:var(--status-orange)}
 .dot.offline,.dot.inactive{background:var(--muted-soft)}
 .dot.error{background:var(--status-red)}
-.dot.working:not(.live-bar__pip){position:relative}
-.dot.working:not(.live-bar__pip)::after{content:"";position:absolute;inset:0;border-radius:50%;background-color:inherit;animation:lb-ping 1.9s cubic-bezier(0,0,.2,1) infinite}
+.dot.working{position:relative}
+.dot.working::after{content:"";position:absolute;inset:0;border-radius:50%;background-color:inherit;animation:lb-ping 1.9s cubic-bezier(0,0,.2,1) infinite}
 .av{width:20px;height:20px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--ink)}
 .av.agent{background:radial-gradient(circle at 30% 28%,var(--g-mint),var(--g-lav) 70%,var(--g-sky))}
 .av.human{background:var(--surface-strong);color:var(--muted)}
@@ -393,6 +393,7 @@ main.content-col > .scroll.is-scrolling::-webkit-scrollbar-thumb{background:rgba
 .color-token{display:inline;white-space:nowrap;vertical-align:baseline}.color-token-text{color:var(--ink-2)}.color-chip{box-sizing:border-box;display:inline-block;width:.95em;height:.95em;margin-left:6px;border-radius:4px;border:1px solid var(--hair-strong);vertical-align:-.12em}
 .mention{color:var(--ink);font-weight:var(--font-weight-strong);background:var(--mention);border-radius:4px;padding:0 3px}
 .composer{--composer-menu-edge:var(--chat-stream-gutter,20px);--composer-opaque-start:50%;position:relative;z-index:10;padding:4px var(--chat-stream-gutter,20px) 14px;border-top:0;background:linear-gradient(to bottom,transparent 0 var(--composer-opaque-start),var(--surface) var(--composer-opaque-start) 100%)}
+.composer:has(>[data-testid="conversation-activity-status"]){background:linear-gradient(to bottom,transparent 0,var(--surface) 28px,var(--surface) 100%)}
 .composer.composer--expanded{--composer-opaque-start:24px}
 main.content-col > .composer,.thread-panel > .composer{position:absolute;left:0;right:var(--chat-scrollbar-width,0px);bottom:0;padding-right:max(0px,calc(var(--chat-stream-gutter,20px) - var(--chat-scrollbar-width,0px)))}
 .conversation-readonly{display:flex;align-items:center;gap:8px;padding:14px 28px 18px;border-top:1px solid var(--hair);font-size:13px;color:var(--muted);font-style:italic}
@@ -1073,33 +1074,8 @@ aside.traj-col.profile-mode .scroll{flex:1;min-height:0;overflow:auto;margin:0 -
 .mbody .ref-task{background:var(--task-mention)}
 .mbody .ref-task:hover{background:var(--task-mention-strong)}
 
-/* ── Live agent activity bar: pinned to sidebar bottom, workspace-wide "who's doing something now" pulse (LiveAgentBar.tsx). Editorial skin: hairline divider, calm canvas, reuses .dot colors ── */
-.live-bar{position:relative;flex:none;display:flex;align-items:center;gap:6px;padding:7px 8px;min-height:50px;border-top:1px solid var(--hair);background:var(--canvas-soft)}
-.live-bar--idle{padding-left:14px}
-.live-bar--idle .dot{width:7px;height:7px;background:var(--muted-soft)}
-.live-bar__idle{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.live-bar__main{flex:1;min-width:0;display:flex;align-items:center;gap:9px;border:0;background:transparent;cursor:pointer;padding:4px 6px;border-radius:8px;text-align:left;font:inherit;color:var(--body)}
-.live-bar__main:hover{background:var(--surface-strong)}
-.live-bar__main:focus-visible{outline:2px solid var(--g-sky);outline-offset:1px}
-.live-bar__ava{position:relative;flex:none;line-height:0}
-.live-bar__pip{position:absolute;right:-2px;bottom:-2px;width:9px;height:9px;border-radius:50%;border:1.5px solid var(--canvas-soft);box-sizing:content-box}
-.live-bar__pip::after{content:"";position:absolute;inset:0;border-radius:50%;background-color:inherit;animation:lb-ping 1.9s cubic-bezier(0,0,.2,1) infinite}
-.live-bar__text{display:flex;flex-direction:column;min-width:0;gap:1px}
-.live-bar__name{font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.live-bar__detail{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.live-bar__more{flex:none;border:1px solid var(--hair-strong);background:var(--surface);color:var(--muted);border-radius:9999px;font-size:11px;font-weight:600;line-height:1.4;padding:2px 8px;cursor:pointer}
-.live-bar__more:hover{background:var(--surface-strong);color:var(--ink)}
-.live-bar__more:focus-visible{outline:2px solid var(--g-sky);outline-offset:1px}
-.live-bar__backdrop{position:fixed;inset:0;z-index:40}
-.live-bar__pop{position:absolute;left:8px;right:8px;bottom:calc(100% + 6px);z-index:41;background:var(--canvas);border:1px solid var(--hair-strong);border-radius:8px;box-shadow:0 8px 28px var(--shadow-3);padding:6px;max-height:280px;overflow:auto}
-.live-bar__pop-title{font-size:10px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);padding:4px 8px 6px}
-.live-bar__pop-item{display:flex;align-items:center;gap:9px;width:100%;border:0;background:transparent;cursor:pointer;padding:7px 8px;border-radius:8px;text-align:left;font:inherit;color:var(--body)}
-.live-bar__pop-item:hover{background:var(--surface-strong)}
-.live-bar__pop-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
-.live-bar__pop-name{font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.live-bar__pop-detail{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @keyframes lb-ping{0%{transform:scale(1);opacity:.55}70%,100%{transform:scale(2.4);opacity:0}}
-@media (prefers-reduced-motion:reduce){.live-bar__pip::after,.dot.working:not(.live-bar__pip)::after,.av-status.working::after{animation:none;opacity:0}}
+@media (prefers-reduced-motion:reduce){.dot.working::after,.av-status.working::after{animation:none;opacity:0}}
 
 /* ── Message enter animation: new socket-pushed messages expand upward from below.
    The max-height/margin expansion lets the new row occupy space gradually, so older

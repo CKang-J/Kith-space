@@ -12,6 +12,7 @@ const spaceSwitcher = read("../web/src/SpaceSwitcher.tsx");
 const quickSwitcher = read("../web/src/QuickSwitcher.tsx");
 const messageSearchResultRow = read("../web/src/quick-switcher/MessageSearchResultRow.tsx");
 const sidebar = read("../web/src/views/ChatSidebar.tsx");
+const composer = read("../web/src/views/Composer.tsx");
 const conversations = read("../web/src/views/ConversationListContent.tsx");
 const archivedChannels = read("../web/src/views/ArchivedChannelGroup.tsx");
 const route = read("../web/src/shell/workspaceRoute.ts");
@@ -111,7 +112,8 @@ test("the middle message pane owns only grouped conversation navigation", () => 
   assert.match(sidebar, /chat-navigation-sidebar__header/);
   assert.match(sidebar, /t\("nav\.messages"\)/);
   assert.match(sidebar, /<ConversationListContent/);
-  assert.match(sidebar, /<LiveAgentBar/);
+  assert.doesNotMatch(sidebar, /LiveAgentBar|live-agent-bar|live-bar/);
+  assert.match(composer, /<ConversationActivityStatus channelId=\{channelId\} \/>/);
   assert.doesNotMatch(sidebar, /ConversationDrawerSidebar|conversation-drawer-sidebar/);
   assert.doesNotMatch(chatWorkspace, /compact|drawerOpen|ConversationDrawerSidebar/);
   assert.match(shellCss, /\.chat-navigation-sidebar \.sec\s*\{[^}]*font-size:\s*var\(--font-size-meta\)\s*!important/s);
@@ -169,7 +171,7 @@ test("the shell uses the reference-style flat icon rail, message pane, and chat 
   assert.match(shellCss, /\.shell-chat-conversations > \.sidebar\s*\{[\s\S]*?background:\s*#fff/);
   assert.match(shellCss, /\.sidebar-module-navigation__item\s*\{[\s\S]*?width:\s*42px;[\s\S]*?height:\s*42px;[\s\S]*?padding:\s*0/);
   assert.match(shellCss, /\.chat-navigation-sidebar \.archived-channel-group,[\s\S]*?border-top:\s*0/);
-  assert.match(shellCss, /\.chat-navigation-sidebar \.live-bar\s*\{[\s\S]*?border-top:\s*1px solid var\(--shell-border\);[\s\S]*?background:\s*#fff/);
+  assert.doesNotMatch(shellCss, /\.chat-navigation-sidebar \.live-bar/);
   assert.match(shellCss, /\.chat-navigation-sidebar \.chan-row \+ \.chan-row\s*\{[\s\S]*?margin-top:\s*4px/);
   assert.match(shellCss, /\.chat-navigation-sidebar \.chan-row\s*\{[\s\S]*?gap:\s*0;[\s\S]*?padding:\s*0/);
   assert.match(shellCss, /\.chat-navigation-sidebar \.chan-row \.conversation-row__target\s*\{[\s\S]*?align-self:\s*stretch;[\s\S]*?padding:\s*7px 4px 7px 10px/);

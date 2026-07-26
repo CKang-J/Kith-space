@@ -7,7 +7,7 @@ const navigationSources = [
   "../QuickSwitcher.tsx",
   "../views/Chat.tsx",
   "../views/ChatSidebar.tsx",
-  "../views/LiveAgentBar.tsx",
+  "../views/ConversationActivityStatus.tsx",
   "../views/Members.tsx",
   "../views/misc.tsx",
   "../TaskBoard.tsx",
@@ -25,7 +25,6 @@ test("workspace UI does not generate legacy module entity paths", () => {
 test("conversation navigation consumers preserve the active module query", () => {
   const directConversationNavigationSources = [
     "../views/Chat.tsx",
-    "../views/LiveAgentBar.tsx",
     "../views/misc.tsx",
     "../TaskBoard.tsx",
   ];

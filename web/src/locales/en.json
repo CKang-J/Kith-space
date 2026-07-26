@@ -560,6 +560,25 @@
     "agentThinking": "Thinking...",
     "agentThinkingDone": "Thinking complete.",
     "agentReplyError": "Agent reply failed.",
+    "conversationActivity": {
+      "preparing": "Preparing…",
+      "thinking": "Thinking…",
+      "searching": "Searching the web…",
+      "executing": "Running an operation…",
+      "reading": "Reviewing information…",
+      "writing": "Working with files…",
+      "updating": "Updating the task…",
+      "replying": "Preparing a reply…",
+      "waiting": "Waiting for your confirmation",
+      "retrying": "Retrying after a problem…",
+      "working": "Working…",
+      "using_tool": "Using {{tool}}…",
+      "completed": "Completed",
+      "error": "Encountered a problem",
+      "tool": "a tool",
+      "more": "{{count}} more Agents are working",
+      "view": "View {{name}}'s activity"
+    },
     "humanKind": "Human",
     "mentionEveryone": "Everyone",
     "mentionEveryoneDescription": "Notify every Agent in this channel",
@@ -737,14 +756,6 @@
   "confirm": {
     "confirm": "Confirm",
     "cancel": "Cancel"
-  },
-  "liveBar": {
-    "idle": "No agents running",
-    "working": "Working",
-    "thinking": "Thinking",
-    "viewActivity": "View {{name}}'s activity",
-    "moreActive": "{{count}} more running",
-    "activeTitle": "Active agents"
   },
   "sidebar": {
     "pinChannel": "Pin",

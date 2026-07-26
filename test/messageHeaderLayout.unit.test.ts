@@ -148,7 +148,7 @@ test("avatar and generic status dots use the quiet sleeping gray while keeping a
   assert.match(css, /\.av-status\.working,\.av-status\.thinking\{background:var\(--status-orange\)\}/);
   assert.match(ruleBody(".av-status.working::after"), /animation\s*:\s*lb-ping/);
   assert.doesNotMatch(css, /\.av-status\.thinking::after|\.av-status\.sleeping::after/);
-  assert.match(ruleBody(".dot.working:not(.live-bar__pip)::after"), /animation\s*:\s*lb-ping/);
+  assert.match(ruleBody(".dot.working::after"), /animation\s*:\s*lb-ping/);
   assert.doesNotMatch(css, /\.dot\.thinking::after/);
 });
 
