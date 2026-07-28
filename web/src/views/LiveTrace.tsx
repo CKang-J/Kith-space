@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { TrajectoryTimeline } from "../features/trajectory/TrajectoryTimeline.tsx";
 import {
   conversationActivityRowsToTrajectory,
+  selectAggregateTrajectory,
   type ConversationActivityLogRow,
 } from "../features/trajectory/trajectoryActivityModel.ts";
 import { useStore } from "../store.tsx";
@@ -42,7 +43,10 @@ export function LiveTrace({ conversationId, showHeading = true }: { conversation
     return () => { active = false; };
   }, [conversationId]);
 
-  const traj = useMemo(() => mergeTrajectoryHistory(history, live), [history, live]);
+  const traj = useMemo(
+    () => selectAggregateTrajectory(mergeTrajectoryHistory(history, live)),
+    [history, live],
+  );
   const trajGroups = useMemo(() => groupTraj(traj), [traj]);
 
   return (

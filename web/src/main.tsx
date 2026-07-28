@@ -13,11 +13,15 @@ import { parseWorkspaceRoute, SPACE_ROUTE_PATTERN } from "./shell/workspaceRoute
 import { readySpace, routeSpaceAvailability } from "./spaces/spaceAvailability.ts";
 import { SpaceRecovery } from "./spaces/SpaceRecovery.tsx";
 import { AppearanceFontSync } from "./AppearanceFontSync.tsx";
+import { getDesktopBridge } from "./desktopBridge.ts";
 import "./i18n";
 import "./styles.css";
 import "./components/SlidingTabs.css";
 import "./views/chat-message/chatMessage.css";
 import "./scrollbar";
+
+const desktopPlatform = getDesktopBridge()?.platform;
+if (desktopPlatform) document.documentElement.dataset.kithDesktopPlatform = desktopPlatform;
 
 // Home waits for the HttpOnly Cookie session bootstrap. Anonymous browser clients see the Access
 // Token gate; authenticated clients go straight to their Space without flashing the gate.

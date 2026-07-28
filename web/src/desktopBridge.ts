@@ -1,5 +1,6 @@
 export type DesktopCloseBehavior = "tray" | "quit";
 export type BrowserAccessMode = "off" | "local" | "lan";
+export type DesktopPlatform = "darwin" | "linux" | "win32";
 
 export interface DesktopLifecycleSettings {
   closeBehavior: DesktopCloseBehavior;
@@ -28,6 +29,7 @@ export interface DesktopBrowserAccessResult extends DesktopSettingsSnapshot {
 }
 
 export interface KithDesktopBridge {
+  readonly platform?: DesktopPlatform;
   pickSpaceDirectory(): Promise<string | null>;
   revealSpaceDirectory(rootPath: string): Promise<string>;
   getSettings(): Promise<DesktopSettingsSnapshot>;

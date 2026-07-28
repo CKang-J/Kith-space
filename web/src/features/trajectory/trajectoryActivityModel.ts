@@ -38,6 +38,24 @@ export function conversationActivityRowsToTrajectory(
   return rowsToTrajectory(rows, (row) => ({ agentId: row.agentId, name: row.name }));
 }
 
+const IMPORTANT_AGGREGATE_STATUS = /fail|error|cancel|approval|waiting|retry/i;
+
+/**
+ * The conversation aggregate is a readable account of what an Agent did, not
+ * a runtime protocol log. Keep exceptional states actionable while leaving
+ * routine lifecycle telemetry available on the Agent activity page.
+ */
+export function selectAggregateTrajectory(items: TrajItem[]): TrajItem[] {
+  return items.filter((item) => {
+    if (item.kind !== "status") return true;
+    return IMPORTANT_AGGREGATE_STATUS.test([
+      item.eventKind,
+      item.activity,
+      item.detail,
+    ].filter(Boolean).join(" "));
+  });
+}
+
 function rowsToTrajectory<Row extends AgentActivityLogRow>(
   rows: Row[],
   identityFor: (row: Row) => { agentId: string; name: string },

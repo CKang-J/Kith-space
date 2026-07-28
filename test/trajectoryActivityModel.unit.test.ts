@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   activityRowsToTrajectory,
   conversationActivityRowsToTrajectory,
+  selectAggregateTrajectory,
 } from "../web/src/features/trajectory/trajectoryActivityModel.ts";
 import { groupTraj, mergeTrajectoryHistory } from "../web/src/trajBuffer.ts";
 
@@ -145,5 +146,44 @@ test("persisted and live trajectory overlap is rendered only once", () => {
   assert.deepEqual(
     mergeTrajectoryHistory(persisted, live).map((item) => item.text),
     ["先分析", "再回答"],
+  );
+});
+
+test("conversation aggregate hides routine lifecycle telemetry but keeps failures", () => {
+  const items = conversationActivityRowsToTrajectory([
+    {
+      agentId: "agent",
+      name: "Pi",
+      timestamp: 10,
+      entry: { kind: "turn_started", activity: "working" },
+    },
+    {
+      agentId: "agent",
+      name: "Pi",
+      timestamp: 20,
+      entry: { kind: "usage", activity: "working" },
+    },
+    {
+      agentId: "agent",
+      name: "Pi",
+      timestamp: 30,
+      entry: { kind: "thinking_summary", text: "正在分析" },
+    },
+    {
+      agentId: "agent",
+      name: "Pi",
+      timestamp: 40,
+      entry: { kind: "turn_failed", activity: "error", detail: "runtime failed" },
+    },
+  ]);
+
+  assert.deepEqual(
+    selectAggregateTrajectory(items).map((item) => item.eventKind),
+    ["thinking_summary", "turn_failed"],
+  );
+  assert.equal(
+    items.filter((item) => item.kind === "status").length,
+    3,
+    "the shared activity history must retain every status for the Agent activity page",
   );
 });

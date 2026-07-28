@@ -16,6 +16,37 @@
   color: var(--ink-2);
 }
 
+html[data-kith-desktop-platform="darwin"] body::before {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 1000;
+  height: 18px;
+  content: "";
+  -webkit-app-region: drag;
+}
+
+html[data-kith-desktop-platform="darwin"] .shell-workspace-frame {
+  padding-top: 8px;
+  background: linear-gradient(to right, #f5f5f5 0 68px, var(--shell-bg) 68px);
+}
+
+html[data-kith-desktop-platform="darwin"] :is(
+  .chat-navigation-sidebar__header,
+  .chat-head,
+  .conversation-aggregate__topbar
+) {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+html[data-kith-desktop-platform="darwin"] :is(
+  .chat-navigation-sidebar__header,
+  .chat-head,
+  .conversation-aggregate__topbar
+) :is(button, a, input, textarea, select, [role="button"], [contenteditable="true"]) {
+  -webkit-app-region: no-drag;
+}
+
 .workspace-navigation-rail {
   position: relative;
   z-index: 45;
@@ -29,6 +60,10 @@
   border-right: 0;
   background: #f5f5f5;
   overflow: visible;
+}
+
+html[data-kith-desktop-platform="darwin"] .workspace-navigation-rail {
+  padding-top: 52px;
 }
 
 .workspace-navigation-rail__space {
