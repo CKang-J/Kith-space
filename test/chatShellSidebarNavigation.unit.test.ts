@@ -8,6 +8,8 @@ const frame = read("../web/src/shell/WorkspaceFrame.tsx");
 const chatWorkspace = read("../web/src/shell/ChatWorkspace.tsx");
 const moduleNavigation = read("../web/src/shell/SidebarModuleNavigation.tsx");
 const navigationRail = read("../web/src/shell/WorkspaceNavigationRail.tsx");
+const workspaceTabs = read("../web/src/shell/WorkspaceTabs.tsx");
+const sidebarComponent = read("../web/src/components/ui/sidebar.tsx");
 const spaceSwitcher = read("../web/src/SpaceSwitcher.tsx");
 const quickSwitcher = read("../web/src/QuickSwitcher.tsx");
 const messageSearchResultRow = read("../web/src/quick-switcher/MessageSearchResultRow.tsx");
@@ -21,21 +23,28 @@ const globalCss = read("../web/src/styles.css");
 const messageCss = read("../web/src/views/chat-message/chatMessage.css");
 const modelSettingsCss = read("../web/src/views/model-settings/modelSettings.css");
 const settingsView = read("../web/src/views/misc.tsx");
+const sidebarPreview = read("../web/src/shell/useSidebarEdgePreview.ts");
 
-test("ChatOnly uses a persistent icon rail with a dedicated Messages entry and hover tooltips", () => {
-  assert.match(moduleNavigation, /sidebarModulesForSpace\(isHome\)/);
-  assert.match(moduleNavigation, /MessageCircleMore/);
-  assert.match(moduleNavigation, /activeModule === null/);
-  assert.match(moduleNavigation, /data-tooltip=\{t\("nav\.messages"\)\}/);
-  assert.doesNotMatch(moduleNavigation, /sidebar-module-navigation__label/);
+test("ChatOnly uses the persistent shadcn Sidebar with modules and conversations", () => {
+  assert.match(navigationRail, /<Sidebar[\s\S]*?collapsible="offcanvas"/);
+  assert.match(navigationRail, /<SidebarHeader/);
+  assert.match(navigationRail, /<SidebarContent>/);
+  assert.match(navigationRail, /<SidebarFooter>/);
+  assert.match(navigationRail, /<SidebarRail \/>/);
+  assert.match(navigationRail, /<ConversationListContent/);
+  assert.doesNotMatch(navigationRail, /tooltip=/);
+  assert.match(sidebarComponent, /return <SidebarMenuButtonWithTooltip button=\{button\} tooltip=\{tooltip\} \/>/);
+  assert.match(navigationRail, /activeModule === module\.id/);
   assert.match(frame, /<WorkspaceNavigationRail/);
   assert.match(navigationRail, /<SpaceSwitcher/);
-  assert.match(navigationRail, /WORKSPACE_NAVIGATION_RAIL_WIDTH = 68/);
+  assert.match(frame, /<SidebarProvider/);
+  assert.match(frame, /<SidebarInset/);
   assert.doesNotMatch(frame, /<WorkspaceTopBar|shell-topbar/);
   assert.match(shellCss, /\.shell-workspace-canvas\s*\{[^}]*padding:\s*0/);
   assert.match(shellCss, /--shell-gap:\s*0/);
-  assert.match(shellCss, /\.workspace-navigation-rail\s*\{[\s\S]*?flex:\s*0 0 68px;[\s\S]*?border-right:\s*1px solid var\(--shell-border\)/);
-  assert.match(shellCss, /\.sidebar-module-navigation__item::after\s*\{[\s\S]*?content:\s*attr\(data-tooltip\)/);
+  assert.match(shellCss, /\.shell-sidebar-provider\s*\{[^}]*--sidebar-width:\s*260px/);
+  assert.match(shellCss, /\.workspace-sidebar__header\s*\{[\s\S]*?border-bottom:\s*1px solid var\(--sidebar-border\)/);
+  assert.match(shellCss, /\.workspace-sidebar__conversations\s*\{[^}]*min-height:\s*0/);
 });
 
 test("Space switcher uses a white menu, neutral hover, and suppresses its rail tooltip while open", () => {
@@ -52,7 +61,8 @@ test("Ctrl+K and the rail Search icon open the categorized global search", () =>
   assert.match(moduleNavigation, /<Search size=\{21\}/);
   assert.match(frame, /event\.key\.toLowerCase\(\) !== "k"/);
   assert.match(frame, /<QuickSwitcher onClose=/);
-  assert.match(frame, /onSearch=\{\(\) => setQuickSwitcherOpen\(true\)\}/);
+  assert.match(frame, /const openQuickSwitcher = useCallback\(\(\) => setQuickSwitcherOpen\(true\), \[\]\)/);
+  assert.match(frame, /onSearch=\{openQuickSwitcher\}/);
   assert.match(quickSwitcher, /\/api\/messages\/search\?q=/);
   assert.match(quickSwitcher, /sectionChannelMessages/);
   assert.match(quickSwitcher, /sectionTopicMessages/);
@@ -73,12 +83,64 @@ test("Ctrl+K and the rail Search icon open the categorized global search", () =>
   assert.match(globalCss, /\.qs-message-result__match\{[^}]*color:#0675f7/);
 });
 
-test("the icon rail remains mounted when a module replaces Chat", () => {
+test("the Sidebar remains mounted while Chat and a module share the workspace", () => {
   assert.doesNotMatch(frame, /WorkspaceDock|shell-dock-zone|toggleChatPane/);
-  assert.match(frame, /<WorkspaceNavigationRail[\s\S]*?\{chatVisible \? \(/);
-  assert.match(frame, /contentModuleId \? \([\s\S]*?<ModuleWorkspace/);
-  assert.match(moduleNavigation, /aria-current=\{active \? "page" : undefined\}/);
+  assert.match(frame, /const chatVisible = true/);
+  assert.match(frame, /<WorkspaceNavigationRail/);
+  assert.match(frame, /<ChatWorkspace/);
+  assert.match(frame, /activeTab && contentModuleId \? \([\s\S]*?<WorkspaceTabs[\s\S]*?<ModuleWorkspace/);
+  assert.match(workspaceTabs, /<Tabs[\s\S]*?<TabsList[\s\S]*?<TabsTrigger/);
+  assert.match(workspaceTabs, /<Popover[\s\S]*?<Plus \/>/);
   assert.doesNotMatch(frame, /contentModuleId \? \([\s\S]*?<ChatSidebar/);
+});
+
+test("collapsed Sidebar previews from the window edge and workspaces auto-collapse it once", () => {
+  assert.match(frame, /useSidebarEdgePreview\(\{[\s\S]*?collapsed: !sidebarOpen,[\s\S]*?disabled: sidebarTransitioning/);
+  assert.match(frame, /retainPreview: retainSidebarPreview/);
+  assert.match(frame, /data-sidebar-preview=\{sidebarPreviewState\}/);
+  assert.match(frame, /!sidebarOpen && !sidebarTransitioning/);
+  assert.match(frame, /className="shell-sidebar-edge-trigger fixed inset-y-0 left-0 z-40"/);
+  assert.match(shellCss, /\.shell-sidebar-provider[\s\S]*?\[data-slot="sidebar"\]\[data-collapsible="offcanvas"\][\s\S]*?\[data-slot="sidebar-rail"\]\s*\{[\s\S]*?display:\s*none;[\s\S]*?pointer-events:\s*none;[\s\S]*?cursor:\s*default/);
+  assert.match(frame, /activeWorkspaceKey = activeTab \? `\$\{workspaceStorageId\}:\$\{activeTab\.id\}` : null/);
+  assert.match(frame, /const collapseSidebar = useCallback\(\(\) => updateSidebarOpen\(false\)/);
+  assert.match(frame, /useAutoCollapseSidebarForWorkspace\([\s\S]*?activeWorkspaceKey,[\s\S]*?collapseSidebar/);
+  assert.match(navigationRail, /onPointerEnter=\{onPreviewEnter\}/);
+  assert.match(navigationRail, /onPointerLeave=\{onPreviewLeave\}/);
+  assert.match(navigationRail, /onTransitionEnd=\{onPreviewTransitionEnd\}/);
+  assert.match(sidebarPreview, /SIDEBAR_PREVIEW_INTENT_DELAY_MS = 85/);
+  assert.match(sidebarPreview, /SIDEBAR_PREVIEW_CLOSE_DELAY_MS = 180/);
+  assert.match(sidebarPreview, /SIDEBAR_PREVIEW_CLOSE_FALLBACK_MS = 240/);
+  assert.match(sidebarPreview, /"closed" \| "intent" \| "opening" \| "open" \| "closing"/);
+  assert.match(sidebarPreview, /const retainPreview[\s\S]*?previewStateRef\.current === "closed"[\s\S]*?previewStateRef\.current === "closing"/);
+  assert.match(sidebarPreview, /if \(current === "closing"\) return/);
+  assert.match(sidebarPreview, /completePreviewOpenAfterPaint[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?requestAnimationFrame\(\(\) =>/);
+  assert.match(sidebarPreview, /updatePreviewState\("closing"\)/);
+  assert.match(sidebarPreview, /event\.key !== "Escape"/);
+  assert.match(sidebarPreview, /event\.propertyName !== "transform"/);
+  assert.match(shellCss, /width:\s*calc\(var\(--sidebar-width\) \+ 16px\)/);
+  assert.match(shellCss, /@media \(min-width: 48rem\) and \(hover: hover\) and \(pointer: fine\)/);
+  assert.match(frame, /SIDEBAR_LAYOUT_MOTION_MS = 420/);
+  assert.match(frame, /data-sidebar-transitioning=\{sidebarTransitioning \? "true" : undefined\}/);
+  assert.match(frame, /const CHAT_ONLY_PANE_STYLE: CSSProperties = \{[\s\S]*?width: "auto"[\s\S]*?flexBasis: 0[\s\S]*?flexGrow: 1[\s\S]*?flexShrink: 1/);
+  assert.match(frame, /const chatPaneStyle = activeTab \? undefined : CHAT_ONLY_PANE_STYLE/);
+  assert.match(frame, /style=\{chatPaneStyle\}/);
+  assert.match(frame, /WORKSPACE_WIDTH_SETTLE_MS = 80/);
+  assert.match(frame, /const observer = new ResizeObserver\(scheduleWidthUpdate\)/);
+  assert.match(chatWorkspace, /export const ChatWorkspace = memo\(function ChatWorkspace/);
+  assert.match(navigationRail, /export const WorkspaceNavigationRail = memo\(function WorkspaceNavigationRail/);
+  assert.match(frame, /onNavigateConversation=\{navigateConversation\}/);
+  assert.match(frame, /onModuleSelect=\{selectSidebarModule\}/);
+  assert.match(shellCss, /--shell-sidebar-motion-duration:\s*420ms;[\s\S]*?--shell-sidebar-motion-easing:\s*cubic-bezier\(\.25, \.8, \.25, 1\)/);
+  assert.match(shellCss, /> \[data-slot="sidebar"\]\[data-side="left"\]\s*\{[^}]*width:\s*var\(--sidebar-width\);[^}]*flex:\s*0 0 var\(--sidebar-width\);[^}]*overflow:\s*visible;[^}]*transition:\s*width var\(--shell-sidebar-motion-duration\) var\(--shell-sidebar-motion-easing\),[\s\S]*?flex-basis var\(--shell-sidebar-motion-duration\) var\(--shell-sidebar-motion-easing\)/);
+  assert.match(shellCss, /> \[data-slot="sidebar"\]\[data-side="left"\]\[data-collapsible="offcanvas"\]\s*\{[^}]*width:\s*0;[^}]*flex-basis:\s*0/);
+  assert.match(shellCss, /\[data-slot="sidebar-gap"\]\s*\{[^}]*display:\s*none/);
+  assert.match(shellCss, /\[data-slot="sidebar-container"\]\s*\{[^}]*position:\s*absolute;[^}]*right:\s*0;[^}]*left:\s*auto;[^}]*transform:\s*none;[^}]*transition:\s*none/);
+  assert.match(shellCss, /\.shell-sidebar-provider:not\(\[data-sidebar-transitioning="true"\]\):is\([\s\S]*?\[data-sidebar-preview="opening"\],[\s\S]*?\[data-sidebar-preview="open"\],[\s\S]*?\[data-sidebar-preview="closing"\][\s\S]*?\)[\s\S]*?\[data-slot="sidebar-container"\]\s*\{[\s\S]*?z-index:\s*50;[\s\S]*?border-radius:\s*0 16px 16px 0;[\s\S]*?box-shadow:[\s\S]*?opacity:\s*1;[\s\S]*?transition-property:\s*transform, opacity;[\s\S]*?transition-duration:\s*230ms;[\s\S]*?cubic-bezier\(\.16, 1, \.3, 1\);[\s\S]*?will-change:\s*transform, opacity/);
+  assert.match(shellCss, /\.shell-sidebar-provider:not\(\[data-sidebar-transitioning="true"\]\)\[data-sidebar-preview="open"\][\s\S]*?\[data-slot="sidebar-container"\]\s*\{[^}]*transform:\s*translate3d\(0, 0, 0\)/);
+  assert.match(shellCss, /\.shell-sidebar-provider:not\(\[data-sidebar-transitioning="true"\]\)\[data-sidebar-preview="closing"\][\s\S]*?\[data-slot="sidebar-container"\]\s*\{[\s\S]*?opacity:\s*0;[\s\S]*?pointer-events:\s*none;[\s\S]*?transition-duration:\s*120ms;[\s\S]*?cubic-bezier\(\.2, \.8, \.2, 1\)/);
+  assert.doesNotMatch(shellCss, /\[data-sidebar-preview="closing"\][\s\S]*?\[data-slot="sidebar-inner"\]\s*\{[^}]*opacity:\s*0/);
+  assert.match(shellCss, /\.shell-sidebar-provider\[data-sidebar-transitioning="true"\][\s\S]*?:is\([\s\S]*?\.shell-chat-workspace,[\s\S]*?\.shell-module-workspace[\s\S]*?\)\s*\{[^}]*transition:\s*none/);
+  assert.match(shellCss, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.shell-sidebar-provider > \[data-slot="sidebar"\]\[data-side="left"\],[\s\S]*?transition:\s*none/);
 });
 
 test("settings opens as a modal instead of a module workspace", () => {
@@ -153,41 +215,76 @@ test("channel rows use an icon instead of a text hash", () => {
   assert.doesNotMatch(archivedChannels, /# \{channel\.name\}/);
 });
 
-test("the shell uses the reference-style flat icon rail, message pane, and chat canvas", () => {
-  assert.match(globalCss, /--ui-canvas-bg:#eeeeee/);
-  assert.match(globalCss, /--ui-muted-bg:#ececec/);
-  assert.match(globalCss, /--canvas:var\(--ui-canvas-bg\)/);
-  assert.match(globalCss, /--surface-strong:var\(--ui-muted-bg\)/);
-  assert.match(shellCss, /--shell-bg:\s*#ffffff/);
+test("the shell uses semantic theme tokens, a full Sidebar, and tabbed workspace", () => {
+  assert.match(globalCss, /--ui-canvas-bg:var\(--background\)/);
+  assert.match(globalCss, /--ui-muted-bg:var\(--muted\)/);
+  assert.match(globalCss, /--secondary:#f2f3f3/);
+  assert.match(globalCss, /--canvas:var\(--background\)/);
+  assert.match(globalCss, /--surface-strong:var\(--muted\)/);
+  assert.match(globalCss, /--sidebar:#fafafa/);
+  assert.match(globalCss, /--sidebar-accent:#f5f5f5/);
+  assert.match(
+    globalCss,
+    /\.dark\s*\{[\s\S]*?--background:#0a0a0a[\s\S]*?--card:#181818[\s\S]*?--sidebar:#171717[\s\S]*?--sidebar-accent:#343434/,
+  );
+  assert.match(shellCss, /--shell-bg:\s*var\(--background\)/);
   assert.match(shellCss, /\.shell-work-panel\s*\{[\s\S]*?border-radius:\s*var\(--shell-radius\)/);
   assert.match(shellCss, /--shell-panel-shadow:\s*none/);
   assert.match(shellCss, /\.shell-work-panel\s*\{[\s\S]*?border:\s*0;[\s\S]*?box-shadow:\s*var\(--shell-panel-shadow\)/);
-  assert.match(shellCss, /\.shell-chat-workspace--full > \.shell-chat-conversations\s*\{[\s\S]*?margin-right:\s*0/);
-  assert.match(shellCss, /\.shell-chat-conversations\s*\{[\s\S]*?border-right:\s*1px solid var\(--shell-border\);[\s\S]*?background:\s*#fff;[\s\S]*?box-shadow:\s*none/);
-  assert.doesNotMatch(shellCss, /shell-chat-workspace--compact|shell-chat-drawer/);
-  assert.doesNotMatch(shellCss, /\.shell-conversation-aggregate > \.conversation-aggregate\s*\{[\s\S]*?border-left:\s*0/);
-  assert.match(shellCss, /\.shell-aggregate-gap::before\s*\{[\s\S]*?top:\s*51px;[\s\S]*?border-bottom:\s*1px solid var\(--shell-border\)/);
+  assert.match(shellCss, /\.workspace-sidebar__conversations \.item:hover:not\(\.active\)\s*\{[^}]*background:\s*var\(--sidebar-accent\)/);
+  assert.match(shellCss, /\.shell-chat-workspace\s*\{[\s\S]*?border-right:\s*1px solid var\(--shell-border\)/);
+  assert.match(shellCss, /\.shell-tab-workspace\s*\{[^}]*background:\s*var\(--card\)/);
+  assert.match(shellCss, /\.shell-workspace-tabs\s*\{[^}]*background:\s*var\(--card\)/);
+  assert.doesNotMatch(shellCss, /\.shell-workspace-tabs\s*\{[^}]*border-bottom:/);
+  assert.match(shellCss, /\.shell-workspace-tab\s*\{[^}]*height:\s*28px/);
+  assert.match(shellCss, /\.shell-workspace-tab:hover,\s*\.shell-workspace-tab:has\(\[data-state="active"\]\)\s*\{[^}]*background:\s*var\(--muted\)/);
+  assert.match(shellCss, /\.shell-workspace-tab__trigger\s*\{[^}]*padding-right:\s*0;[^}]*padding-left:\s*8px/);
+  assert.match(shellCss, /\.shell-workspace-tab__close\s*\{[^}]*margin-right:\s*2px;[^}]*opacity:\s*0;[^}]*visibility:\s*hidden;[^}]*pointer-events:\s*none/);
+  assert.match(shellCss, /\.shell-workspace-tab:hover \.shell-workspace-tab__close,[\s\S]*?\.shell-workspace-tab:has\(\[data-state="active"\]\) \.shell-workspace-tab__close\s*\{[^}]*opacity:\s*1;[^}]*visibility:\s*visible;[^}]*pointer-events:\s*auto/);
+  assert.match(shellCss, /\.shell-workspace-tab \.shell-workspace-tab__close:hover\s*\{[^}]*background:\s*color-mix\(in oklch,\s*var\(--muted\) 92%,\s*var\(--foreground\)\)/);
+  assert.match(shellCss, /\.shell-workspace-tab__content\s*\{[\s\S]*?overflow:\s*hidden;[\s\S]*?background:\s*var\(--card\)/);
   assert.match(frame, /<ConversationAggregatePanel[\s\S]*?onClose=\{toggleAggregate\}/);
-  assert.match(shellCss, /\.shell-chat-conversations > \.sidebar\s*\{[\s\S]*?background:\s*#fff/);
-  assert.match(shellCss, /\.sidebar-module-navigation__item\s*\{[\s\S]*?width:\s*42px;[\s\S]*?height:\s*42px;[\s\S]*?padding:\s*0/);
-  assert.match(shellCss, /\.chat-navigation-sidebar \.archived-channel-group,[\s\S]*?border-top:\s*0/);
-  assert.doesNotMatch(shellCss, /\.chat-navigation-sidebar \.live-bar/);
-  assert.match(shellCss, /\.chat-navigation-sidebar \.chan-row \+ \.chan-row\s*\{[\s\S]*?margin-top:\s*4px/);
-  assert.match(shellCss, /\.chat-navigation-sidebar \.chan-row\s*\{[\s\S]*?gap:\s*0;[\s\S]*?padding:\s*0/);
-  assert.match(shellCss, /\.chat-navigation-sidebar \.chan-row \.conversation-row__target\s*\{[\s\S]*?align-self:\s*stretch;[\s\S]*?padding:\s*7px 4px 7px 10px/);
-  assert.match(shellCss, /\.chat-navigation-sidebar \.chan-row \.pinbtn\s*\{[\s\S]*?width:\s*32px;[\s\S]*?align-self:\s*stretch/);
-  assert.match(shellCss, /\.chat-navigation-sidebar \.item:hover:not\(\.active\)\s*\{[\s\S]*?background:\s*#f5f7fa/);
-  assert.match(shellCss, /\.chat-navigation-sidebar \.item\.active,[\s\S]*?\.chat-navigation-sidebar \.item\.active:hover\s*\{[\s\S]*?background:\s*#f1f6fc/);
-  assert.match(shellCss, /\.chat-navigation-sidebar__header h2\s*\{[^}]*font-weight:\s*400/);
-  assert.match(shellCss, /\.chat-navigation-sidebar \.item > \.grow\s*\{[^}]*font-weight:\s*400/);
-  assert.match(shellCss, /\.chat-navigation-sidebar \.conversation-row__target > \.grow\s*\{[^}]*font-weight:\s*400/);
-  assert.match(shellCss, /\.chat-navigation-sidebar__header\s*\{[\s\S]*?height:\s*68px/);
+  assert.match(frame, /<WorkspaceTabs[\s\S]*?<ModuleWorkspace/);
   assert.match(globalCss, /\.seg-pill\{[^}]*background:var\(--ui-muted-bg\)/);
   assert.match(globalCss, /\.seg\{[^}]*background:var\(--ui-muted-bg\)/);
   assert.match(globalCss, /\.seg button\.on\{background:var\(--surface\)/);
   assert.match(globalCss, /\.sb-title\{[^}]*font-family:var\(--sans\)/);
   assert.match(messageCss, /\.chat-message\{[\s\S]*?margin:0 auto 26px/);
   assert.match(globalCss, /\.composer-box\{[^}]*margin:0 auto/);
+});
+
+test("macOS integrates the native drag region into the interactive workspace headers", () => {
+  assert.doesNotMatch(shellCss, /body::before\s*\{[^}]*-webkit-app-region:\s*drag/);
+  assert.match(
+    shellCss,
+    /html\[data-kith-desktop-platform="darwin"\]\s*:is\([\s\S]*?\.workspace-sidebar__header,[\s\S]*?\.chat-head,[\s\S]*?\.conversation-aggregate__topbar,[\s\S]*?\.shell-workspace-tabs[\s\S]*?\)\s*\{[^}]*-webkit-app-region:\s*drag/,
+  );
+  assert.match(shellCss, /\[role="tablist"\][\s\S]*?\{\s*-webkit-app-region:\s*no-drag/);
+  assert.match(
+    shellCss,
+    /html\[data-kith-desktop-platform="darwin"\]\s+\.shell-sidebar-trigger\s*\{[^}]*position:\s*fixed;[^}]*left:\s*88px;[^}]*z-index:\s*60;[^}]*width:\s*26px;[^}]*height:\s*26px;[^}]*pointer-events:\s*auto;[^}]*-webkit-app-region:\s*no-drag/,
+  );
+  assert.doesNotMatch(shellCss, /\.peer\[data-state="collapsed"\][^{]*\.shell-sidebar-trigger\s*\{/);
+  assert.match(
+    shellCss,
+    /\.shell-chat-main-card\s+\.chat-head__rail\s*\{[^}]*padding-left:\s*38px/,
+  );
+  assert.match(
+    shellCss,
+    /html\[data-kith-desktop-platform="darwin"\]\s+\.shell-chat-main-card\s+\.chat-head__rail\s*\{[^}]*padding-left:\s*0;[^}]*transition:\s*padding-left var\(--shell-sidebar-motion-duration\) var\(--shell-sidebar-motion-easing\)/,
+  );
+  assert.match(
+    shellCss,
+    /\.peer\[data-state="collapsed"\]\s*~\s*\.shell-workspace-inset\s+\.shell-chat-main-card\s+\.chat-head__rail\s*\{[^}]*padding-left:\s*112px/,
+  );
+  assert.match(
+    shellCss,
+    /\.peer\[data-state="collapsed"\]\s*~\s*\.shell-workspace-inset\s+\.shell-chat-main-card\s+\.chat-head::before\s*\{[^}]*width:\s*120px;[^}]*pointer-events:\s*none;[^}]*-webkit-app-region:\s*no-drag/,
+  );
+  assert.match(sidebarComponent, /state === "expanded" \? PanelLeftCloseIcon : PanelLeftOpenIcon/);
+  assert.match(shellCss, /\.shell-workspace-tabs\s+:is\(button,\s*\[role="tab"\]\)\s*>\s*svg\s*\{[^}]*width:\s*14px;[^}]*height:\s*14px/);
+  assert.match(globalCss, /\.chat-head-icon-btn>svg\{width:14px;height:14px\}/);
+  assert.match(globalCss, /\.chat-head__channel-title \.channel-row-icon\{width:14px;height:14px/);
 });
 
 test("Chat keeps the approved content gutter and primary-card floor", () => {

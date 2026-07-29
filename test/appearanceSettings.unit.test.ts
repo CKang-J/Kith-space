@@ -35,6 +35,7 @@ test("appearance settings preserve the current typography combination by default
     contentFont: "follow_interface",
     codeFont: "system_monospace",
     uiFontSize: 14,
+    colorMode: "system",
   });
 });
 
@@ -46,24 +47,28 @@ test("appearance settings update one scope without resetting the others", () => 
     contentFont: "follow_interface",
     codeFont: "system_monospace",
     uiFontSize: 14,
+    colorMode: "system",
   });
   assert.deepEqual(settings.updateSettings({ contentFont: "geist", codeFont: "jetbrains_mono", uiFontSize: 16 }), {
     interfaceFont: "inter",
     contentFont: "geist",
     codeFont: "jetbrains_mono",
     uiFontSize: 16,
+    colorMode: "system",
   });
   assert.deepEqual(new AppearanceSettingsService().getSettings(), {
     interfaceFont: "inter",
     contentFont: "geist",
     codeFont: "jetbrains_mono",
     uiFontSize: 16,
+    colorMode: "system",
   });
   assert.deepEqual(settings.updateSettings({ interfaceFont: "fira_code" }), {
     interfaceFont: "fira_code",
     contentFont: "geist",
     codeFont: "jetbrains_mono",
     uiFontSize: 16,
+    colorMode: "system",
   });
 });
 
@@ -78,6 +83,7 @@ test("appearance settings reject malformed, unknown, and unsupported values", ()
     { codeFont: "sora" },
     { uiFontSize: 11 },
     { uiFontSize: "14" },
+    { colorMode: "sepia" },
     { interfaceFont: "sora", extra: true },
   ];
 
@@ -92,5 +98,6 @@ test("appearance settings reject malformed, unknown, and unsupported values", ()
     contentFont: "follow_interface",
     codeFont: "system_monospace",
     uiFontSize: 14,
+    colorMode: "system",
   });
 });

@@ -171,7 +171,7 @@ export function SpaceCardMenu({ spaceName, ...actions }: SpaceCardMenuProps) {
             type="button"
             variant="ghost"
             size="icon"
-            className="size-[30px] rounded-lg bg-transparent text-[var(--muted)] hover:bg-[var(--canvas-soft)] hover:text-[var(--ink)] data-[state=open]:bg-[var(--canvas-soft)] data-[state=open]:text-[var(--ink)]"
+            className="size-[30px] rounded-lg bg-transparent text-[var(--legacy-muted)] hover:bg-[var(--canvas-soft)] hover:text-[var(--ink)] data-[state=open]:bg-[var(--canvas-soft)] data-[state=open]:text-[var(--ink)]"
             aria-label={t("spacesModule.menuLabel", { name: spaceName })}
             title={t("spacesModule.menuLabel", { name: spaceName })}
           >

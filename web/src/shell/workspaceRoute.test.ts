@@ -60,11 +60,11 @@ test("retired Showcase paths keep valid module state for client normalization", 
   assert.equal(retired.isChatRoute, false);
   assert.deepEqual(workspaceLayoutFromRoute(retired, "?module=tasks&taskScope=channel-1&chat=0"), {
     activeModule: "tasks",
-    chatVisible: false,
+    chatVisible: true,
   });
   assert.equal(
-    workspaceSearchForShellState("?module=tasks&taskScope=channel-1&chat=0", { activeModule: "tasks", chatVisible: false }),
-    "?module=tasks&chat=0&taskScope=channel-1",
+    workspaceSearchForShellState("?module=tasks&taskScope=channel-1&chat=0", { activeModule: "tasks", chatVisible: true }),
+    "?module=tasks&taskScope=channel-1",
   );
 });
 
@@ -73,11 +73,11 @@ test("URL derives one canonical presentation for each module", () => {
 
   assert.deepEqual(workspaceLayoutFromRoute(channel, "?module=tasks"), {
     activeModule: "tasks",
-    chatVisible: false,
+    chatVisible: true,
   });
   assert.deepEqual(workspaceLayoutFromRoute(channel, "?module=tasks&chat=0"), {
     activeModule: "tasks",
-    chatVisible: false,
+    chatVisible: true,
   });
   assert.deepEqual(workspaceLayoutFromRoute(channel, "?chat=0"), {
     activeModule: null,
@@ -85,7 +85,7 @@ test("URL derives one canonical presentation for each module", () => {
   });
   assert.deepEqual(workspaceLayoutFromRoute(channel, "?module=spaces"), {
     activeModule: "spaces",
-    chatVisible: false,
+    chatVisible: true,
   });
 });
 
@@ -97,7 +97,7 @@ test("module state is accepted only from the query contract", () => {
   });
   assert.deepEqual(workspaceLayoutFromRoute(tasks, "?module=tasks&chat=0"), {
     activeModule: "tasks",
-    chatVisible: false,
+    chatVisible: true,
   });
 });
 
@@ -116,8 +116,8 @@ test("layout search preserves non-layout conversation state and canonicalizes mo
   });
 
   assert.equal(new URLSearchParams(moduleSearch).get("module"), "agents");
-  assert.equal(new URLSearchParams(moduleSearch).get("chat"), "0");
-  assert.equal(new URLSearchParams(moduleOnlySearch).get("chat"), "0");
+  assert.equal(new URLSearchParams(moduleSearch).has("chat"), false);
+  assert.equal(new URLSearchParams(moduleOnlySearch).has("chat"), false);
   assert.equal(new URLSearchParams(chatSearch).get("thread"), "thread-1");
   assert.equal(new URLSearchParams(chatSearch).has("module"), false);
 });
@@ -131,7 +131,7 @@ test("switching modules removes resource state owned by other modules", () => {
 
   assert.equal(agentsParams.get("module"), "agents");
   assert.equal(agentsParams.get("agent"), "agent-old");
-  assert.equal(agentsParams.get("chat"), "0");
+  assert.equal(agentsParams.has("chat"), false);
   assert.equal(agentsParams.has("taskScope"), false);
   assert.equal(agentsParams.has("settings"), false);
 
@@ -142,7 +142,7 @@ test("switching modules removes resource state owned by other modules", () => {
   assert.equal(chatParams.has("agent"), false);
 });
 
-test("module locations preserve the Chat pathname and use the canonical module posture", () => {
+test("module locations preserve the Chat pathname and keep Chat visible", () => {
   const target = workspaceLocationForModule(
     "/s/space/channel/channel-1",
     "?module=tasks&taskScope=channel-2&chat=0&thread=thread-1",
@@ -153,12 +153,12 @@ test("module locations preserve the Chat pathname and use the canonical module p
   assert.equal(url.pathname, "/s/space/channel/channel-1");
   assert.equal(url.searchParams.get("module"), "agents");
   assert.equal(url.searchParams.get("agent"), "agent-1");
-  assert.equal(url.searchParams.get("chat"), "0");
+  assert.equal(url.searchParams.has("chat"), false);
   assert.equal(url.searchParams.get("thread"), "thread-1");
   assert.equal(url.searchParams.has("taskScope"), false);
 });
 
-test("opening content replaces Chat while settings opens over Chat", () => {
+test("opening content keeps Chat visible while settings opens over it", () => {
   const tasksTarget = workspaceLocationForModule(
     "/s/space/channel/channel-1",
     "?msg=message-1",
@@ -174,7 +174,7 @@ test("opening content replaces Chat while settings opens over Chat", () => {
 
   assert.equal(tasksUrl.searchParams.get("module"), "tasks");
   assert.equal(tasksUrl.searchParams.get("taskScope"), "space");
-  assert.equal(tasksUrl.searchParams.get("chat"), "0");
+  assert.equal(tasksUrl.searchParams.has("chat"), false);
   assert.equal(settingsUrl.searchParams.get("settings"), "human");
   assert.equal(settingsUrl.searchParams.has("taskScope"), false);
 });
@@ -245,7 +245,7 @@ test("conversation changes keep shell state but discard old message focus", () =
   assert.equal(params.get("module"), "agents");
   assert.equal(params.get("agent"), "agent-1");
   assert.equal(params.get("agentTab"), "activity");
-  assert.equal(params.get("chat"), "0");
+  assert.equal(params.has("chat"), false);
   assert.equal(params.has("thread"), false);
   assert.equal(params.has("msg"), false);
 });
@@ -262,6 +262,6 @@ test("conversation locations keep the active module resource and replace message
   assert.equal(url.searchParams.get("msg"), "message-2");
   assert.equal(url.searchParams.get("module"), "tasks");
   assert.equal(url.searchParams.get("taskScope"), "channel-1");
-  assert.equal(url.searchParams.get("chat"), "0");
+  assert.equal(url.searchParams.has("chat"), false);
   assert.equal(url.searchParams.has("thread"), false);
 });

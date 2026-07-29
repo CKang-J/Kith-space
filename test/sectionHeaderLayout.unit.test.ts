@@ -52,12 +52,12 @@ test("content-pane empty states centre their message instead of pinning it top-l
   assertDecl(paneEmpty, "justify-content", "center");
 });
 
-test("inline empty-state body text clears WCAG AA (uses --muted, not the sub-AA --muted-soft)", () => {
+test("inline empty-state body text clears WCAG AA (uses --legacy-muted, not the sub-AA --muted-soft)", () => {
   // --muted-soft (#a8a29e) is the design's tertiary/disabled tier (~2.4:1 on the off-white canvas) — fine
   // for metadata, but it fails AA when carrying readable content. Empty-state messages are content.
   for (const sel of [".empty", ".sel-empty", ".msg-sys"]) {
     const body = ruleBody(sel);
-    assertDecl(body, "color", "var\\(--muted\\)");
+    assertDecl(body, "color", "var\\(--legacy-muted\\)");
     assert.doesNotMatch(body, /var\(--muted-soft\)/, `${sel} carries readable text and must not use --muted-soft`);
   }
 });

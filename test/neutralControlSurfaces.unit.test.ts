@@ -20,6 +20,6 @@ test("file filters and the shared search pill use their approved neutral surface
 });
 
 test("conversation aggregate panel keeps a visible neutral divider on its left edge", () => {
-  assert.match(aggregateCss, /\.conversation-aggregate\s*\{[^}]*border-left:\s*1px solid #e5e5e5/s);
+  assert.match(aggregateCss, /\.conversation-aggregate\s*\{[^}]*border-left:\s*1px solid var\(--border\)/s);
   assert.doesNotMatch(shellCss, /\.shell-conversation-aggregate > \.conversation-aggregate\s*\{[^}]*border-left:\s*0/s);
 });

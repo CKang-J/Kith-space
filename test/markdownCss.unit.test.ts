@@ -136,7 +136,7 @@ test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", 
   assertDecl(".md h1", "font-size", "var\\(--font-size-title\\)");
   assertDecl(".md h2", "font-size", "var\\(--font-size-title\\)");
   assertDecl(".md h3", "font-size", "var\\(--font-size-title\\)");
-  assertDecl(".md h4", "color", "var\\(--muted\\)");
+  assertDecl(".md h4", "color", "var\\(--legacy-muted\\)");
   assertDecl(".md > h1:first-child", "margin-top", "\\.45em");
   assertDecl(".md kbd", "font-family", "var\\(--mono\\)");
   assertDecl(".md mark", "background", "var\\(--mention\\)");
@@ -221,7 +221,7 @@ test("Workspace Markdown preview keeps parity with chat for rich GFM elements", 
   assertDecl(".ws-md h1", "font-size", "var\\(--md-h1-size\\)");
   assertDecl(".ws-md h2", "font-size", "var\\(--md-h2-size\\)");
   assertDecl(".ws-md h3", "font-size", "var\\(--md-h3-size\\)");
-  assertDecl(".ws-md h4", "color", "var\\(--muted\\)");
+  assertDecl(".ws-md h4", "color", "var\\(--legacy-muted\\)");
   assertDecl(".ws-md kbd", "font-family", "var\\(--mono\\)");
   assertDecl(".ws-md mark", "background", "var\\(--mention\\)");
   assertDecl(".ws-md ul", "padding-left", "1\\.05em");

@@ -40,7 +40,15 @@ function removeV8AppearanceSettings(sqlite: Database.Database): void {
   `);
 }
 
+function removeV10AppearanceColorMode(sqlite: Database.Database): void {
+  sqlite.exec(`
+    ALTER TABLE appearance_settings DROP COLUMN color_mode;
+    DELETE FROM app_migration_journal WHERE version >= 10;
+  `);
+}
+
 function removeV9AppearanceUiFontSize(sqlite: Database.Database): void {
+  removeV10AppearanceColorMode(sqlite);
   sqlite.exec(`
     ALTER TABLE appearance_settings DROP COLUMN ui_font_size;
     DELETE FROM app_migration_journal WHERE version >= 9;
@@ -154,6 +162,7 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       { version: 7, name: "appearance-font-settings", checksumLength: 64 },
       { version: 8, name: "appearance-font-groups", checksumLength: 64 },
       { version: 9, name: "appearance-ui-font-size", checksumLength: 64 },
+      { version: 10, name: "appearance-color-mode", checksumLength: 64 },
     ]);
     assert.match(String(sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get()), /^[0-9a-f]{64}$/);
     for (const table of [
@@ -197,13 +206,14 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       FROM installation_state WHERE singleton_key = 1
     `).pluck().get(), 1);
     assert.deepEqual(sqlite.prepare(`
-      SELECT interface_font, content_font, code_font, ui_font_size
+      SELECT interface_font, content_font, code_font, ui_font_size, color_mode
       FROM appearance_settings WHERE singleton_key = 1
     `).get(), {
       interface_font: "sora",
       content_font: "follow_interface",
       code_font: "system_monospace",
       ui_font_size: 14,
+      color_mode: "system",
     });
     assert.throws(() => sqlite.prepare(`
       UPDATE appearance_settings SET interface_font = 'unknown'
@@ -218,6 +228,10 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
     `).pluck().get(), "jetbrains_mono");
     assert.throws(() => sqlite.prepare(`
       UPDATE appearance_settings SET ui_font_size = 11
+      WHERE singleton_key = 1
+    `).run(), /CHECK constraint/i);
+    assert.throws(() => sqlite.prepare(`
+      UPDATE appearance_settings SET color_mode = 'sepia'
       WHERE singleton_key = 1
     `).run(), /CHECK constraint/i);
     assert.deepEqual(sqlite.prepare(`
@@ -259,15 +273,16 @@ test("version 7 app.db carries existing appearance settings into the current typ
 
     migrateAppDatabase(sqlite, dbPath);
 
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 9);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 10);
     assert.deepEqual(sqlite.prepare(`
-      SELECT interface_font, content_font, code_font, ui_font_size
+      SELECT interface_font, content_font, code_font, ui_font_size, color_mode
       FROM appearance_settings WHERE singleton_key = 1
     `).get(), {
       interface_font: "geist",
       content_font: "inter",
       code_font: "fira_code",
       ui_font_size: 14,
+      color_mode: "system",
     });
   });
 });
@@ -280,10 +295,28 @@ test("version 8 app.db receives the default UI font size", () => {
 
     migrateAppDatabase(sqlite, dbPath);
 
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 9);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 10);
+    assert.deepEqual(sqlite.prepare(`
+      SELECT ui_font_size, color_mode FROM appearance_settings WHERE singleton_key = 1
+    `).get(), {
+      ui_font_size: 14,
+      color_mode: "system",
+    });
+  });
+});
+
+test("version 9 app.db receives the default system color mode", () => {
+  withAppDatabase((sqlite, dbPath) => {
+    migrateAppDatabase(sqlite, dbPath);
+    removeV10AppearanceColorMode(sqlite);
+    sqlite.pragma("user_version = 9");
+
+    migrateAppDatabase(sqlite, dbPath);
+
+    assert.equal(sqlite.pragma("user_version", { simple: true }), 10);
     assert.equal(sqlite.prepare(`
-      SELECT ui_font_size FROM appearance_settings WHERE singleton_key = 1
-    `).pluck().get(), 14);
+      SELECT color_mode FROM appearance_settings WHERE singleton_key = 1
+    `).pluck().get(), "system");
   });
 });
 

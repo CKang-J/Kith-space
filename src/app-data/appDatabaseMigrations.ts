@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 
-export const APP_DATABASE_SCHEMA_VERSION = 9;
+export const APP_DATABASE_SCHEMA_VERSION = 10;
 
 export type AppDatabaseCompatibilityReason = "integrity" | "future" | "schema";
 
@@ -763,6 +763,17 @@ APP_SCHEMA_V9.set("appearance_settings", [
   ...APP_SCHEMA_V8.get("appearance_settings")!, "ui_font_size",
 ]);
 
+const APP_V10_APPEARANCE_COLOR_MODE_SQL = `
+  ALTER TABLE appearance_settings
+  ADD COLUMN color_mode TEXT NOT NULL DEFAULT 'system'
+    CHECK (color_mode IN ('light', 'dark', 'system'));
+`;
+
+const APP_SCHEMA_V10 = new Map(APP_SCHEMA_V9);
+APP_SCHEMA_V10.set("appearance_settings", [
+  ...APP_SCHEMA_V9.get("appearance_settings")!, "color_mode",
+]);
+
 function baselineChecksum(): string {
   return createHash("sha256").update(APP_BASELINE_SQL).digest("hex");
 }
@@ -824,7 +835,7 @@ function assertIntegrity(sqlite: Database.Database, dbPath: string): void {
 
 function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_DATABASE_SCHEMA_VERSION): void {
   const missing: string[] = [];
-  const expectedSchema = version >= 9 ? APP_SCHEMA_V9 : version >= 8 ? APP_SCHEMA_V8 : version >= 7 ? APP_SCHEMA_V7 : version >= 6 ? APP_SCHEMA_V6 : version >= 5 ? APP_SCHEMA_V5 : version >= 4 ? APP_SCHEMA_V4 : version >= 3 ? APP_SCHEMA_V3 : version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
+  const expectedSchema = version >= 10 ? APP_SCHEMA_V10 : version >= 9 ? APP_SCHEMA_V9 : version >= 8 ? APP_SCHEMA_V8 : version >= 7 ? APP_SCHEMA_V7 : version >= 6 ? APP_SCHEMA_V6 : version >= 5 ? APP_SCHEMA_V5 : version >= 4 ? APP_SCHEMA_V4 : version >= 3 ? APP_SCHEMA_V3 : version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
   for (const [table, requiredColumns] of expectedSchema) {
     const actual = tableColumns(sqlite, table);
     if (actual.size === 0) {
@@ -1000,15 +1011,17 @@ function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_D
       "check (content_font in ('follow_interface', 'system_ui', 'sora', 'inter', 'geist'))",
       "check (code_font in ('system_monospace', 'jetbrains_mono', 'fira_code', 'geist_mono'))",
       ...(version >= 9 ? ["check (ui_font_size in (12, 13, 14, 15, 16))"] : []),
+      ...(version >= 10 ? ["check (color_mode in ('light', 'dark', 'system'))"] : []),
     ]) if (!appearanceSettingsSql.includes(fragment)) missing.push(`appearance_settings (${fragment})`);
     const row = sqlite.prepare(`
-      SELECT interface_font, content_font, code_font${version >= 9 ? ", ui_font_size" : ""}
+      SELECT interface_font, content_font, code_font${version >= 9 ? ", ui_font_size" : ""}${version >= 10 ? ", color_mode" : ""}
       FROM appearance_settings WHERE singleton_key = 1
     `).get() as {
       interface_font: string;
       content_font: string;
       code_font: string;
       ui_font_size?: number;
+      color_mode?: string;
     } | undefined;
     if (!row) {
       missing.push("appearance_settings (singleton)");
@@ -1020,6 +1033,7 @@ function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_D
       || !["follow_interface", "system_ui", "sora", "inter", "geist"].includes(row.content_font)
       || !["system_monospace", "jetbrains_mono", "fira_code", "geist_mono"].includes(row.code_font)
       || (version >= 9 && ![12, 13, 14, 15, 16].includes(row.ui_font_size ?? Number.NaN))
+      || (version >= 10 && !["light", "dark", "system"].includes(row.color_mode ?? ""))
     ) {
       missing.push("appearance_settings (value)");
     }
@@ -1047,6 +1061,7 @@ function expectedJournal(version: number) {
     ...(version >= 7 ? [{ version: 7, name: "appearance-font-settings", checksum: migrationChecksum(APP_V7_APPEARANCE_FONT_SETTINGS_SQL) }] : []),
     ...(version >= 8 ? [{ version: 8, name: "appearance-font-groups", checksum: migrationChecksum(APP_V8_APPEARANCE_FONT_GROUPS_SQL) }] : []),
     ...(version >= 9 ? [{ version: 9, name: "appearance-ui-font-size", checksum: migrationChecksum(APP_V9_APPEARANCE_UI_FONT_SIZE_SQL) }] : []),
+    ...(version >= 10 ? [{ version: 10, name: "appearance-color-mode", checksum: migrationChecksum(APP_V10_APPEARANCE_COLOR_MODE_SQL) }] : []),
   ];
 }
 
@@ -1306,6 +1321,21 @@ export function migrateAppDatabase(sqlite: Database.Database, dbPath: string, op
       `).run(9, "appearance-ui-font-size", migrationChecksum(APP_V9_APPEARANCE_UI_FONT_SIZE_SQL), Date.now());
     });
     applyAppearanceUiFontSize.immediate();
+    version = 9;
+  }
+  if (version === 9) {
+    assertSchema(sqlite, dbPath, 9);
+    assertJournal(sqlite, dbPath, 9);
+    const applyAppearanceColorMode = sqlite.transaction(() => {
+      sqlite.exec(APP_V10_APPEARANCE_COLOR_MODE_SQL);
+      assertSchema(sqlite, dbPath, 10);
+      sqlite.pragma("user_version = 10");
+      sqlite.prepare(`
+        INSERT INTO app_migration_journal (version, name, checksum, applied_at)
+        VALUES (?, ?, ?, ?)
+      `).run(10, "appearance-color-mode", migrationChecksum(APP_V10_APPEARANCE_COLOR_MODE_SQL), Date.now());
+    });
+    applyAppearanceColorMode.immediate();
   }
   assertCompatibleAppDatabase(sqlite, dbPath, { requireCurrentVersion: true });
 }

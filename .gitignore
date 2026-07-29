@@ -19,6 +19,7 @@ _vendor/
 
 # screenshots / browser-verification captures — local only
 .shots/
+artifacts/
 
 # SQLite runtime data — workspace/registry databases are user data, never in the repo.
 # (drizzle/ migrations ARE tracked — they are the schema source of truth.)

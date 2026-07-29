@@ -1,7 +1,6 @@
-import { useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { memo, useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { useLocation } from "react-router-dom";
 import { Chat } from "../views/Chat.tsx";
-import { ChatSidebar } from "../views/ChatSidebar.tsx";
 import { Saved } from "../views/misc.tsx";
 
 interface ChatWorkspaceProps {
@@ -59,7 +58,7 @@ function ChatSurface({
   );
 }
 
-export function ChatWorkspace({
+export const ChatWorkspace = memo(function ChatWorkspace({
   channelId,
   aggregateOpen,
   aggregateAvailable,
@@ -84,13 +83,10 @@ export function ChatWorkspace({
 
   return (
     <section
-      className="shell-chat-workspace shell-chat-workspace--full"
+      className="shell-chat-workspace"
       style={style}
       aria-label="Chat 工作区"
     >
-      <div className="shell-work-panel shell-chat-conversations" aria-label="会话列表">
-        <ChatSidebar channelIdOverride={channelId ?? undefined} onNavigate={onNavigateConversation} />
-      </div>
       <section className="shell-work-panel shell-primary-workspace-card shell-chat-main-card" aria-label="当前会话">
         <div className="shell-chat-surface">
           <ChatSurface
@@ -124,4 +120,4 @@ export function ChatWorkspace({
       </div>
     </section>
   );
-}
+});

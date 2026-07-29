@@ -92,8 +92,11 @@ test("the frontend exposes only the local product shell", () => {
   assert.doesNotMatch(frame, /legacyHref/);
   assert.doesNotMatch(navigationRail, /legacyHref|MoreHorizontal|<a\b/);
   assert.doesNotMatch(navigationRail, /QuickSwitcher|shell-topbar__tools/);
-  assert.match(navigationRail, /<SpaceSwitcher[\s\S]*?<SidebarModuleNavigation/);
+  assert.match(navigationRail, /<Sidebar collapsible="offcanvas"[\s\S]*?<SpaceSwitcher/);
+  assert.match(navigationRail, /<ConversationListContent/);
+  assert.match(frame, /<SidebarProvider/);
   assert.match(frame, /<WorkspaceNavigationRail/);
+  assert.match(frame, /<WorkspaceTabs/);
   assert.doesNotMatch(frame, /<WorkspaceTopBar|shell-topbar/);
   assert.match(frame, /<QuickSwitcher onClose=/);
   assert.equal(webPackage.scripts.build, "vite build");

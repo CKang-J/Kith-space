@@ -58,6 +58,8 @@ try {
     interfaceFont: "sora",
     contentFont: "follow_interface",
     codeFont: "system_monospace",
+    uiFontSize: 14,
+    colorMode: "system",
   });
 
   const csrf = "appearance-settings-csrf";
@@ -94,6 +96,8 @@ try {
     interfaceFont: "geist",
     contentFont: "follow_interface",
     codeFont: "jetbrains_mono",
+    uiFontSize: 14,
+    colorMode: "system",
   });
 
   const persisted = await api({

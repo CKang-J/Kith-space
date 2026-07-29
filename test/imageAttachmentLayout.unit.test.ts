@@ -36,7 +36,7 @@ test("message attachments reuse the responsive Composer card without overflowing
   assert.match(chatSrc, /return <AttachmentCard filename=\{a\.filename\}/);
   assert.match(attachmentCardSrc, /className="attachment-card__preview"/);
   assert.match(aggregateSrc, /<AttachmentTypeIcon filename=\{file\.filename\} mimeType=\{file\.mimeType\}/);
-  assert.match(aggregateCss, /\.conversation-file:hover,[\s\S]*?background:\s*#f7f7f7/);
+  assert.match(aggregateCss, /\.conversation-file:hover,[\s\S]*?background:\s*var\(--muted\)/);
 });
 
 test("lightbox exposes visible and keyboard zoom controls with a focus loop", () => {

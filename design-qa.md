@@ -93,6 +93,103 @@ final result: passed
 
 ---
 
+# 工作区标签栏视觉 QA
+
+## Scope and evidence
+
+- Source visual truth: `/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-b568a647-85d4-485b-9f0f-699734ad5340.png`
+- Implementation screenshot: `/tmp/kith-workspace-tabs-final.png`
+- Hover screenshot: `/tmp/kith-workspace-tabs-hover.png`
+- Dark-theme screenshot: `/tmp/kith-workspace-tabs-dark.png`
+- Focused comparison: `/tmp/kith-tabs-comparison.png`
+- Route: `http://127.0.0.1:5273/s/home/channel/5f46398c-0859-4c8b-8f06-b64bae635562?module=inbox`
+- Viewport: `1280 × 720 CSS px`，`devicePixelRatio = 2`
+- Source dimensions: `2320 × 230 px`，按 @2x 归一化为 `1160 × 115 CSS px`
+- Implementation dimensions: 浏览器截图 `1280 × 720 px`；聚焦比较区域 `500 × 60 px`
+- State: Inbox 当前标签；Spaces 未选中标签分别验证默认与强制 hover 状态。
+
+## Full-view and focused comparison
+
+- 标签栏、标签内容区和模块内容区统一使用 `var(--card)`；亮色与暗色实测背景色完全一致。
+- 标签栏不再绘制底部分割线，模块画布从顶栏到内容保持连续平面。
+- 未激活标签默认透明；当前标签与 hover 标签使用 `var(--muted)` 的完整圆角底板。
+- 标签高度、图标、文字、关闭按钮和新增按钮密度与参考方向一致；保留 Kith-space 既有模块图标与真实标签文案。
+- 聚焦对照足以覆盖本次改动的全部视觉范围，因此不需要额外的全页逐像素比较。
+
+## Required fidelity surfaces
+
+- Fonts and typography: 沿用项目统一界面字体、14px 标签文字和中等字重；截断与关闭按钮间距正常。
+- Spacing and layout rhythm: 52px 顶栏内使用 34px 标签和 4px 间距；圆角标签不再与内容边缘拼接。
+- Colors and tokens: 只使用 `--card`、`--muted` 与现有前景色 Token；亮暗主题均通过。
+- Image and icon fidelity: 没有新增图片资产；继续使用项目现有模块图标库，不使用临时字符或自绘图形。
+- Copy and content: 保留 Spaces、Inbox 等真实模块名称；参考图中的产品专有文案不复制。
+
+## Interaction and runtime verification
+
+- 通过新增按钮打开 Inbox，URL 与活动标签同步切换。
+- 两个标签同时存在时，未激活、hover、激活和关闭按钮布局均无跳动、裁切或重叠。
+- 页面有完整业务内容，无空白页或框架错误覆盖层。
+- 控制台无应用错误；仅有既有 React Router v7 future-flag 提示。
+- `pnpm exec tsx --test test/chatShellSidebarNavigation.unit.test.ts`：13/13 passed。
+- `pnpm run typecheck`：passed。
+- `pnpm run web:build`：passed；仅既有 bundle-size warning。
+- `git diff --check`：passed。
+
+## Comparison history
+
+- 初次对照没有发现 P0/P1/P2 差异。
+- 截图中新增按钮曾保留键盘焦点环；这是正确的可访问性状态，不修改组件行为，最终中性截图通过主动移除临时焦点完成同状态比较。
+- 最终无待处理 P0/P1/P2；没有需要继续阻断交付的视觉差异。
+
+final result: passed
+
+---
+
+# Sidebar 抽屉位移与透明度协同 QA
+
+| Before | After | Why |
+| --- | --- | --- |
+| 抽屉只做位移，整块面板视觉重量始终不变 | 容器位移与内部内容透明度协同变化 | 降低大面积面板横移的机械感，同时不让透明度参与持久布局切换 |
+| 展开与收回只有单一时间轴 | 展开210ms位移/140ms淡入，收回150ms位移/100ms淡出 | 透明度先于位置稳定，让进入更轻；退场更短，让界面更快回到工作状态 |
+| 合成提示没有跟随预览生命周期 | 仅在 `opening`、`open` 与 `closing` 阶段分别声明容器 `transform` 和内容 `opacity` 的 `will-change` | 提前建立合成层，同时避免常驻占用 |
+
+- 透明度和位移均使用自定义 ease-out 曲线，快速反向移动时由 CSS transition 从当前位置连续接管。
+- 仍以较长的 `transform` 过渡结束事件清理覆盖层，淡出提前结束不会导致退场层级提前撤销。
+- `prefers-reduced-motion` 下继续移除 Sidebar 过渡。
+- 暗色主题收起态与展开态均已通过本地截图验收（截图不纳入仓库）。侧栏与 Chat、Composer、工作区标签和 Inbox 的接缝均无错位、透底或层级穿透。
+- 浏览器计算样式确认悬浮抽屉容器只过渡 `transform`，透明度只作用于内部内容层；持久展开/收起不再淡出 Sidebar 内容。
+- `pnpm exec tsx --test test/chatShellSidebarNavigation.unit.test.ts test/desktopWindowAppearance.unit.test.ts` — 15/15 passed
+- `pnpm run typecheck` — passed
+- `pnpm run web:build` — passed；仅既有 bundle-size warning
+- `git diff --check` — passed
+
+final result: passed
+
+---
+
+# Sidebar 按钮布局动效与黑边回归 QA
+
+| Before | After | Why |
+| --- | --- | --- |
+| Sidebar 占位宽度与固定容器 `transform` 同时运动 | 与聚合面板同构，只在 Sidebar 外层过渡 `width + flex-basis`；内部容器无独立动画 | 消除布局线程与合成线程两条时间轴，Sidebar 右边缘与 Chat 左边缘由同一个值驱动 |
+| 持久切换复用抽屉透明度 | 持久切换不改变透明度，只有悬浮抽屉内容淡入淡出 | 避免布局尚未闭合时露出暗色底板 |
+| ChatOnly 宽度依赖 `ResizeObserver` 每帧回写 | ChatOnly 使用稳定 Flex 实时分配剩余宽度 | 消除异步测量慢一帧导致的右侧黑边与聚合面板越界 |
+| 父布局变化时 Chat/模块继续执行自己的宽度过渡 | Sidebar 布局运动期间关闭子面板二次宽度插值 | 避免嵌套过渡持续追赶父容器 |
+| 点击收起后鼠标仍停在 Sidebar 上，会误启动210ms边缘预览 | 只有最左侧热区能启动预览；Sidebar 本体只能维持已打开的预览，持久切换期间两者同时禁用 | 防止预览时序覆盖420ms持久布局时序，根除桌面真实指针路径下的黑条与跳变 |
+
+- 暗色主题中分别采样持久展开和收起中间帧进行本地验收（截图不纳入仓库）；并使用 macOS Electron 真实鼠标点击复测按钮路径。
+- 展开中间帧：Sidebar右边缘、占位右边缘和Chat左边缘均为251.69px；Chat右边缘与聚合间隔起点保持849px，聚合面板固定在859–1159px。
+- 收起中间帧：三条左侧边缘均为约4.32px；Chat仍填满至849px，聚合面板继续固定在859–1159px。
+- 计算样式确认 Sidebar 与聚合面板均为 `width, flex-basis / 0.42s / cubic-bezier(0.25, 0.8, 0.25, 1)`；Sidebar 内部容器为 `transition: none`。
+- 边缘预览状态机通过 `disabled: sidebarTransitioning` 与持久布局互斥；CSS 同时以 `:not([data-sidebar-transitioning="true"])` 作为防御性约束，即使残留预览状态也不能改写持久动画时长。
+- 真实指针复测中，展开中间帧的占位右缘/Chat左缘为234.164px，Sidebar容器右缘为234.165px；收起尾帧三者分别为2.141px/2.141px/2.142px，同时 `data-sidebar-preview` 始终为 `closed`。
+- 两个方向均未出现黑边、面板越界、输入框穿层或控制台错误；最终收起态与 macOS Electron 展开稳定帧均已通过本地截图验收（截图不纳入仓库）。
+- 与聚合面板同构后的展开、收起稳定帧均已通过本地截图验收（截图不纳入仓库）。
+
+final result: passed
+
+---
+
 # 设置页重构视觉 QA（历史记录）
 
 日期：2026-07-23
@@ -151,6 +248,40 @@ final result: passed
 
 ---
 
+# Sidebar 边缘悬浮抽屉与工作区自动收起 QA
+
+## Scope and evidence
+
+- Codex 侧栏悬浮抽屉参考：`/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-cbe8d2c9-42a6-40a6-9282-9de5bad951cb.png`
+- macOS Electron 收起态：`/tmp/kith-sidebar-edge-closed-desktop-clean.png`
+- macOS Electron 边缘悬浮态：`/tmp/kith-sidebar-edge-preview-desktop-3.png`
+- Web 自动收起验证地址：`http://127.0.0.1:5273/s/home/channel?module=inbox`
+
+## Findings and fixes
+
+1. Sidebar 的持久展开状态与临时预览状态已分离。最左侧8px热区只临时拉回现有 shadcn off-canvas Sidebar，不复制导航 DOM，也不改写本地保存的展开/收起偏好。
+2. 临时抽屉覆盖在 Chat 与右侧工作区上方，不挤压底层布局；使用侧栏语义 Token、右侧圆角、细边框和阴影，在当前暗色主题下与 sidebar-10 层级一致。
+3. 鼠标离开热区和抽屉后延迟120ms关闭，避免从热区进入抽屉时产生闪退；`Escape` 可立即关闭。
+4. 打开或切换新的右侧工作区标签时自动收起 Sidebar 一次。相同工作区保持活动期间，用户手动展开不会被 effect 再次强制收起。
+
+## Interaction verification
+
+- Web：手动展开 Sidebar 后点击 Tasks 标签，Sidebar 自动收起；随后点击 `Expand Sidebar` 可以再次正常展开。
+- macOS Electron：从工作区把真实鼠标轨迹移动到窗口最左侧，抽屉覆盖出现；鼠标移回工作区后抽屉关闭，底层 Inbox、Chat 和标签栏没有位移。
+- 暗色主题截图确认抽屉背景、选中行、边框、圆角、阴影和文字对比正常；未发现白色残留面板、裁切或 z-index 穿透。
+- 浏览器和 Electron 控制台无应用错误；仅保留既有 React Router v7 future-flag 提示。
+
+## Automated verification
+
+- `pnpm exec tsx --test test/chatShellSidebarNavigation.unit.test.ts test/desktopWindowAppearance.unit.test.ts` — 15/15 passed
+- `pnpm run typecheck` — passed
+- `pnpm run web:build` — passed；仅既有 bundle-size warning
+- `git diff --check` — passed
+
+final result: passed
+
+---
+
 # 通用搜索框与首批 shadcn/ui 迁移视觉 QA
 
 - Source: `/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-3007fc60-7388-420f-b24f-ebe0a86233f3.png`
@@ -183,5 +314,254 @@ final result: passed
 1. 参考图 vs 初次实际渲染：发现图标偏深、聚焦态存在黑色阴影。
 2. 调整语义色与 focus-visible 阴影后复验：图标与占位文字同为 `rgb(168, 162, 158)`，输入与外层聚焦线框全部消失。
 3. 最终同尺寸局部对比及完整页面检查：通过。
+
+final result: passed
+
+---
+
+# Phase 1 Design QA
+
+## Scope
+
+- Theme token foundation with `light`, `dark`, and `system` modes
+- Sidebar-10 shell and Chat/workspace seam
+- Per-Space module tabs for Tasks, Inbox, Agents, and later modules
+- Dark-theme coverage for Chat, module workspaces, menus, and Human messages
+
+## References and evidence
+
+- User layout sketch: `/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-1088f2de-28d7-4b97-a891-3fd6372ce7e5.png`
+- Official reference: <https://ui.shadcn.com/blocks/sidebar#sidebar-10>
+- Official reference、草图对照、最终暗色工作区、Sidebar-10 暗色壳层与 Human 消息前后对照均已通过本地截图验收（截图不纳入仓库）。
+
+The workspace was checked at 1159 × 863 and the corrected dark contrast was rechecked at 1280 × 720, with the Sidebar expanded, Tasks and Inbox open as tabs, Inbox active, and Dark selected explicitly.
+
+## Visual findings and fixes
+
+1. The Sidebar rail inherited native button styling and produced a visible raised seam against Chat. The rail now resets native appearance and uses the semantic Sidebar border/background contract.
+2. The dark shell now matches the supplied Sidebar-10 reference's visible surface hierarchy:
+   - Light Sidebar `#fafafa`, active/accent `#f5f5f5`
+   - Dark canvas `#0a0a0a`, Sidebar `#171717`, cards `#181818`, active/accent `#343434`
+3. Module workspaces and the conversation aggregate contained light-only surfaces. They now use semantic background, foreground, muted, popover, and border tokens.
+4. Human messages were nearly white in Dark mode. Dedicated semantic Human-message tokens now produce a dark navy bubble with readable light text and a blue mention accent.
+5. Native Button, Select, Tabs, toolbar, and context-menu appearance/focus states were normalized so the shadcn components remain visually consistent.
+6. The tab strip and Chat header had a 48/52px alignment mismatch. Both now share a 52px shell header height.
+7. The final full view has no horizontal overflow, Vite error overlay, or React error overlay.
+
+## Interaction verification
+
+- Opening an already-open module focuses its existing tab instead of duplicating it.
+- Closing the active tab selects the adjacent tab.
+- Closing all module tabs returns to Chat-only without removing the Sidebar.
+- Module tabs and Sidebar collapsed state persist per Space across reload.
+- Tasks, Inbox, and Agents render inside the right-hand tab workspace while Chat remains visible.
+- Settings remains a modal and does not become a workspace tab.
+- Light, Dark, and System modes apply immediately and persist; System follows the OS preference.
+- Sidebar navigation, tab switching/closing, Settings, and theme selection were exercised in the in-app browser.
+
+## Automated verification
+
+- `pnpm run typecheck` — passed
+- `pnpm run web:build` — passed; existing bundle-size warning only
+- `pnpm exec tsx --test test/chatShellSidebarNavigation.unit.test.ts` — 11/11 passed
+- Full unit suite — 987 passed, 0 failed, 12 skipped
+- Full integration suite — passed
+- `pnpm exec tsx --test test/chatMessagePresentation.unit.test.ts test/messageHeaderLayout.unit.test.ts` — 27/27 passed
+
+final result: passed
+
+---
+
+# macOS Desktop 顶栏与拖拽区域视觉 QA
+
+## Scope
+
+- 将独立的顶部拖拽细条并入现有侧栏、Chat 和工作区标签顶栏
+- 保留 macOS 原生 `hiddenInset` 红黄绿窗口控制器
+- 确保 Sidebar 展开/收起时标题、开关和原生控制器互不遮挡
+- 确保工作区标签、关闭按钮和其他顶栏控件保持可点击
+
+## References and evidence
+
+- Codex 侧栏收起参考：`/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-cc430b0a-c70d-463b-a832-99daf1948cbf.png`
+- Codex 侧栏展开参考：`/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-b912b597-5ef7-4bd0-91ad-9c496db59658.png`
+- 修复前项目截图：`/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-d1122ee1-33fd-444d-b354-0c9b74711b2a.png`
+- 最终侧栏收起态：`/tmp/kith-titlebar-collapsed-final.png`
+- 最终侧栏展开态：`/tmp/kith-titlebar-expanded-final.png`
+- 收起态顶栏对比：`/tmp/kith-titlebar-collapsed-comparison.png`
+- 展开态顶栏对比：`/tmp/kith-titlebar-expanded-comparison.png`
+
+最终截图来自 macOS Electron Desktop，窗口内容区域为 `1229 × 768 px`，Light 主题，Inbox 模块已打开为工作区标签。
+
+## Findings and fixes
+
+1. 修复前存在一个固定在窗口顶部、`z-index: 1000` 的18px透明拖拽伪元素。它覆盖工作区标签栏顶部并截获点击，同时与下面的8px壳层留白组合成割裂的视觉细条。
+2. 删除独立伪元素和壳层顶部留白，改由侧栏标题、Chat 标题、聚合面板标题和工作区标签栏共同承担连续拖拽区域。
+3. 顶栏内的按钮、链接、输入控件、`role="button"` 和标签列表统一设为 `no-drag`，避免拖拽命中区吞掉交互。
+4. 侧栏展开时，侧栏标题在原生窗口控制器下方开始；侧栏收起时，28px紧凑开关移动到红绿灯右侧，Chat 标题同步增加左侧安全距离。
+5. 参考图与实现图的组合对比确认：顶部不再出现独立分割带；展开与收起状态都形成连续、同层的顶栏；紧凑开关、频道标题和工作区标签没有重叠或裁切。
+
+## Interaction verification
+
+- 在真实 Electron 中收起并重新展开 Sidebar，布局和内容均保持正常。
+- 从侧栏打开 Tasks 后生成“任务”工作区标签，URL 切换到 `module=tasks&taskScope=space`。
+- 点击“收件箱”标签后正常切回 `module=inbox`，证明标签不再被拖拽层拦截。
+- 对 Chat 顶栏的非交互区域执行窗口拖拽，操作完成后 Electron 窗口和当前 Inbox 页面继续正常响应。
+- 相关契约测试覆盖“无独立拖拽伪元素”“标签列表保持 no-drag”“收起态原生控制器安全距离”。
+
+## Automated verification
+
+- `pnpm exec tsx --test test/chatShellSidebarNavigation.unit.test.ts test/desktopWindowAppearance.unit.test.ts` — 14/14 passed
+- `pnpm run typecheck` — passed
+- `pnpm run web:build` — passed
+- `git diff --check` — passed
+
+final result: passed
+
+---
+
+# macOS Desktop 顶栏控件精调视觉 QA
+
+## Scope
+
+- 将原生红黄绿窗口控制器略微向下、向内调整
+- Sidebar 开关在展开与收起时保持同一窗口坐标
+- 使用不同的展开、收起图标，并统一顶栏图标尺寸
+
+## References and evidence
+
+- Codex 侧栏收起参考：`/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-a8429920-2af9-409e-b2ce-c80e79ea643b.png`（`1476 × 308 px`）
+- Codex 侧栏展开参考：`/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-e6674a90-6ff6-4844-9da6-7177a8b87b9f.png`（`1770 × 446 px`）
+- 最终侧栏收起态：`/tmp/kith-titlebar-refined-collapsed.png`
+- 最终侧栏展开态：`/tmp/kith-titlebar-refined-expanded.png`
+- 收起态对比：`/tmp/kith-titlebar-refined-collapsed-comparison.png`
+- 展开态对比：`/tmp/kith-titlebar-refined-expanded-comparison.png`
+
+参考图按50%缩放归一化后与实现对比；实现截图来自 macOS Electron Desktop，内容区域为 `1229 × 768 px`，Light 主题，Inbox 为活动工作区标签，Tasks 同时处于已打开状态。
+
+## Findings and fixes
+
+1. 原生窗口控制器此前完全使用 `hiddenInset` 默认位置，与参考图相比仍偏上、偏外。Desktop 窗口配置现将其固定到 `{ x: 16, y: 16 }`，在保留原生交互的同时获得一致的顶部和左侧边距。
+2. Sidebar 开关此前随展开状态改变位置，且两个状态共用同一图标。开关现固定在同一窗口坐标，展开态使用收起图标，收起态使用展开图标。
+3. 顶栏图标原先混用14px、17px和18px。Sidebar、频道、工作区标签和顶栏操作图标现统一为14px，开关点击区域保持26px。
+4. 参考 Codex 的窗口层级和留白，但不复制其返回、前进和新建任务等 Kith-space 当前不具备的产品操作。
+5. 收起与展开对比图确认：窗口控制器与开关垂直对齐，开关没有横向跳动，频道标题和工作区标签没有重叠、裁切或错位。
+
+## Interaction verification
+
+- 在真实 Electron 中连续收起、展开 Sidebar，按钮位置稳定且图标随状态正确切换。
+- 点击 Tasks 与 Inbox 工作区标签均能正常切换，标签没有被拖拽区域拦截。
+- 从顶栏非交互区域拖动窗口后，Electron 窗口与当前 Inbox 页面继续正常响应。
+- 浏览器预览中未发现应用错误；控制台仅保留既有 React Router v7 future-flag 提示。
+
+## Automated verification
+
+- `pnpm exec tsx --test test/chatShellSidebarNavigation.unit.test.ts test/desktopWindowAppearance.unit.test.ts` — 14/14 passed
+- `pnpm run typecheck` — passed
+- `pnpm run web:build` — passed
+- `git diff --check` — passed
+
+final result: passed
+
+---
+
+# Sidebar 切换按钮命中区回归 QA
+
+## Scope and evidence
+
+- 用户提供的 Web 重叠截图：`/var/folders/z0/fh9q8wnx7v5_19vvzjwddp400000gn/T/codex-clipboard-e56fca1d-d816-46ab-8a32-35c6980fd906.png`
+- Web 展开态：`/tmp/kith-sidebar-toggle-web-expanded.png`
+- Web 收起态：`/tmp/kith-sidebar-toggle-web-collapsed.png`
+- macOS Electron 重新展开态：`/tmp/kith-sidebar-toggle-desktop-expanded.png`
+
+## Findings and fixes
+
+1. Web 会话标题此前没有为绝对定位的 Sidebar 开关预留空间，开关与14px频道图标发生重叠。标题现预留38px前导空间；展开与收起状态下，开关和频道图标的可见间隔均为14px。
+2. macOS 开关从 `left: 98px` 左移至 `left: 88px`，展开与收起状态保持同一窗口坐标。
+3. 收起态开关覆盖在原生拖拽标题区域上，仅给按钮设置 `no-drag` 仍可能被拖拽命中吞掉。会话标题左侧现增加120px的专用 `no-drag` 区域，同时按钮使用独立点击层和显式 `pointer-events: auto`。
+
+## Interaction verification
+
+- Web：展开 Sidebar → 收起 → 点击 `Expand Sidebar` → 成功重新展开；两个状态均无标题图标重叠。
+- macOS Electron：收起 Sidebar 后使用鼠标坐标点击可见按钮，按钮获得焦点并变为 `Collapse Sidebar`，证明真实命中路径已恢复。
+- 页面无空白或框架错误覆盖层；控制台仅有既有 React Router v7 future-flag 提示。
+
+## Automated verification
+
+- `pnpm exec tsx --test test/chatShellSidebarNavigation.unit.test.ts test/desktopWindowAppearance.unit.test.ts` — 14/14 passed
+- `pnpm run typecheck` — passed
+- `pnpm run web:build` — passed；仅既有 bundle-size warning
+- `git diff --check` — passed
+
+final result: passed
+
+---
+
+# Sidebar 抽屉退场层级回归 QA
+
+## Root cause and fix
+
+- 原实现从 `open` 直接切到 `closed`，抽屉的 `z-index: 50` 会在 shadcn 200ms 位移动画开始时立即撤销；仍在屏幕内的退场尾段因此回落到默认 `z-index: 10`，被聊天 Composer 覆盖。
+- 预览状态现改为 `open → closing → closed`。`closing` 阶段继续保留 `z-index: 50`、边框、圆角和阴影，仅让 off-canvas 位移执行；200ms 退场完成后才清理覆盖层。
+- 鼠标在退场阶段重新进入抽屉会取消清理计时并恢复 `open`，避免快速往返时出现闪烁或穿层。
+
+## Verification
+
+- 契约测试明确要求 `open` 与 `closing` 两个状态共用 `z-index: 50`，只有 `open` 保持 `left: 0`。
+- `pnpm exec tsx --test test/chatShellSidebarNavigation.unit.test.ts test/desktopWindowAppearance.unit.test.ts` — 15/15 passed
+- `pnpm run typecheck` — passed
+- `pnpm run web:build` — passed；仅既有 bundle-size warning
+- `git diff --check` — passed
+
+final result: passed
+
+---
+
+# Sidebar 收起态边缘光标回归 QA
+
+- 根因：shadcn `SidebarRail` 在 off-canvas 收起后仍停留在窗口左缘，并保留约4px的 resize 光标命中范围。
+- 修复：仅在 `data-collapsible="offcanvas"` 收起态隐藏 Rail，并禁用其 pointer events；展开态 Rail 与顶部 Sidebar 开关不受影响。
+- 浏览器实际命中验证：左侧3px命中 `.shell-sidebar-edge-trigger`，计算光标为 `auto`；Rail 为 `display: none / pointer-events: none / cursor: default`。
+- `pnpm exec tsx --test test/chatShellSidebarNavigation.unit.test.ts test/desktopWindowAppearance.unit.test.ts` — 15/15 passed
+- `pnpm run web:build` — passed；仅既有 bundle-size warning
+- `git diff --check` — passed
+
+final result: passed
+
+---
+
+# Sidebar 抽屉退场动效优化 QA
+
+| Before | After | Why |
+| --- | --- | --- |
+| 通过 `left` 执行200ms线性位移 | 通过 `translate3d` 执行GPU合成位移 | 避免布局与绘制开销，降低复杂聊天页面上的掉帧风险 |
+| 展开与收回使用相同速度 | 展开200ms drawer曲线，收回140ms强ease-out曲线 | 高频退场更利落，同时保留空间连续性 |
+| 固定定时器直接结束退场 | `transitionend` 作为主完成信号，320ms仅作异常兜底 | 不再比浏览器实际动画早一帧清理并造成跳变 |
+
+- 快速重新进入时 CSS transition 从当前位置反向，不重启动画。
+- `prefers-reduced-motion` 下移除 Sidebar 位移动画。
+- `pnpm exec tsx --test test/chatShellSidebarNavigation.unit.test.ts test/desktopWindowAppearance.unit.test.ts` — 15/15 passed
+- `pnpm run typecheck` — passed
+- `pnpm run web:build` — passed；仅既有 bundle-size warning
+- `git diff --check` — passed
+
+final result: passed
+
+---
+
+# 工作区标签 28px 紧凑规格 QA
+
+- Source visual truth: 用户在 `收件箱` 标签上的浏览器批注，以及调整前截图 `/tmp/kith-workspace-tabs-final.png`。
+- Implementation screenshot: `/tmp/kith-workspace-tabs-28px.png`。
+- Focused before/after comparison: `/tmp/kith-tabs-28px-comparison.png`。
+- Viewport: `1280 × 720 CSS px`，`devicePixelRatio = 2`；浏览器截图为 `1280 × 720 px`。
+- State: 空间与收件箱两个标签同时打开，收件箱为当前标签。
+- 实测标签与新增按钮高度均为 `28px`；标签触发区左内边距 `8px`、右内边距 `0`，关闭按钮右外边距 `2px`，形成约 `8px` 的右侧视觉留白。
+- 字体、图标和文案继续使用既有组件；没有新增或替换图片资产。
+- 当前态、未选态、标签切换和新增按钮均无裁切、错位或点击区退化；空间与收件箱双向切换后 URL 正确同步。
+- 页面无空白或框架错误覆盖层；控制台无应用错误，仅有既有 React Router v7 future-flag 提示。
+- `pnpm exec tsx --test test/chatShellSidebarNavigation.unit.test.ts`：13/13 passed。
+- `pnpm run typecheck`、`pnpm run web:build` 与 `git diff --check`：passed；构建仅有既有 bundle-size warning。
+- 同画面对照未发现待处理 P0/P1/P2；最终尺寸与用户指定的新增按钮高度一致。
 
 final result: passed

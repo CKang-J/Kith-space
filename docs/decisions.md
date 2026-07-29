@@ -553,11 +553,11 @@
 
 **结论**：Settings 新增“外观”分区，字体只分为三个用户可理解且职责稳定的作用域：界面、消息与文档、代码。默认组合保持当前视觉：界面使用 Sora Variable 并对中文回退系统字体，消息与文档跟随界面，代码使用系统等宽字体。界面字体按无衬线与等宽分组，可选 System UI、Sora、Inter、Geist、System Monospace、JetBrains Mono、Fira Code、Geist Mono；消息与文档提供跟随界面及四种无衬线字体；代码提供四种等宽字体。除系统栈外的候选全部随应用打包，不依赖网络。
 
-**持久化与运行边界**：设置属于安装而非 Space。app.db v7 初始把三个受 CHECK 约束的稳定 ID 写入 `installation_state`，v8 将其迁入职责更窄的 `appearance_settings` 单例，并把界面字体白名单扩展为无衬线与等宽两组；v9 再在同一单例增加受 CHECK 约束的 `12–16px` UI字号。独立 `AppearanceSettingsService` 承担请求字段和白名单校验，gate-1 Human API 负责读取与部分更新；前端只把已验证值映射到根节点语义字体与字号 Token。消息与文档作用域覆盖聊天 Markdown 和 Workspace Markdown，代码作用域继续通过统一 `--mono` Token 覆盖代码块、行内代码、路径和技术标识。选择即时应用；保存失败回滚；刷新或重启后重新从 app.db 恢复。Web 开发代理保留浏览器可见 Host，以满足 Core 的 Origin/CSRF 与 WebSocket 同源门禁，不通过放宽服务端策略解决代理差异。
+**持久化与运行边界**：设置属于安装而非 Space。app.db v7 初始把三个受 CHECK 约束的稳定 ID 写入 `installation_state`，v8 将其迁入职责更窄的 `appearance_settings` 单例，并把界面字体白名单扩展为无衬线与等宽两组；v9 再在同一单例增加受 CHECK 约束的 `12–16px` UI字号，v10 增加全局 `light` / `dark` / `system` 颜色模式。独立 `AppearanceSettingsService` 承担请求字段和白名单校验，gate-1 Human API 负责读取与部分更新；前端只把已验证值映射到根节点语义字体、字号与颜色 Token。颜色模式会在 HTML 首次绘制前从本机缓存恢复，再由 app.db 的设置校准，避免 Vite SPA 首屏出现不必要的主题跳变。消息与文档作用域覆盖聊天 Markdown 和 Workspace Markdown，代码作用域继续通过统一 `--mono` Token 覆盖代码块、行内代码、路径和技术标识。选择即时应用；保存失败回滚；刷新或重启后重新从 app.db 恢复。Web 开发代理保留浏览器可见 Host，以满足 Core 的 Origin/CSRF 与 WebSocket 同源门禁，不通过放宽服务端策略解决代理差异。
 
 **推理与权衡**：只提供一个“界面字体”无法让重阅读内容和代码保持各自可读性；按标题、正文、数字、路径等继续细分会让设置和 CSS 依赖迅速膨胀，且用户难以预测影响范围。三个作用域是最小稳定边界。第一版不接受任意本机字体名或上传字体，因为 Desktop 与可选浏览器入口的字体可用性不同，任意字符串也会使持久设置不可复现；未来若支持自定义字体，必须另行设计文件导入、许可证提示、校验、存储和跨入口降级。
 
-**实施事实**：当前迁移位于 `src/app-data/appDatabaseMigrations.ts`；领域校验位于 `src/appearance-settings/appearanceSettingsService.ts`；Human API 位于 `src/server/routes-api/appearanceSettings.ts:11`；页面位于 `web/src/views/appearance-settings/AppearanceSettings.tsx`；运行时字体与字号映射位于 `web/src/appearanceFonts.ts`。
+**实施事实**：当前迁移位于 `src/app-data/appDatabaseMigrations.ts`；领域校验位于 `src/appearance-settings/appearanceSettingsService.ts`；Human API 位于 `src/server/routes-api/appearanceSettings.ts:11`；页面位于 `web/src/views/appearance-settings/AppearanceSettings.tsx`；运行时字体、字号与颜色模式映射位于 `web/src/appearanceFonts.ts`，首屏颜色模式恢复位于 `web/index.html`。
 
 ## 决策 36：统一 UI 与消息正文的可调字号及字重
 

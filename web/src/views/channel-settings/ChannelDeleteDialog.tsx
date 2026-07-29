@@ -56,7 +56,7 @@ export function ChannelDeleteDialog({
           <AlertDialogTitle className="mb-2 text-[18px] leading-normal text-[var(--ink)]">
             {t("channelSettings.deleteConfirmTitle", { name: channelName })}
           </AlertDialogTitle>
-          <AlertDialogDescription className="mb-4 text-[13px] leading-[1.55] text-[var(--muted)]">
+          <AlertDialogDescription className="mb-4 text-[13px] leading-[1.55] text-[var(--legacy-muted)]">
             {t("channelSettings.deleteConfirmDescription")}
           </AlertDialogDescription>
         </AlertDialogHeader>

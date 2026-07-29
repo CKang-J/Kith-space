@@ -35,14 +35,12 @@ test("conversation navigation consumers preserve the active module query", () =>
   }
 
   const frame = fs.readFileSync(new URL("./WorkspaceFrame.tsx", import.meta.url), "utf8");
-  assert.match(frame, /workspaceSearchForShellState\(location\.search, layoutState\)/);
+  assert.match(frame, /workspaceSearchForShellState\(location\.search, activeTabLayout\)/);
 });
 
-test("opening a content module closes the aggregate panel", () => {
+test("opening a content tab closes the aggregate panel", () => {
   const frame = fs.readFileSync(new URL("./WorkspaceFrame.tsx", import.meta.url), "utf8");
 
-  assert.match(
-    frame,
-    /next\.activeModule !== null && next\.activeModule !== "settings"\) setAggregateOpen\(false\);/,
-  );
+  assert.match(frame, /commitWorkspaceTabs\(\(state\) => openWorkspaceTab\(state, tab\)\)/);
+  assert.match(frame, /setAggregateOpen\(false\);/);
 });

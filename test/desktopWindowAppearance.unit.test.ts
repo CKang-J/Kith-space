@@ -3,7 +3,10 @@ import test from "node:test";
 import { desktopWindowAppearance } from "../src/desktop/windowAppearance.ts";
 
 test("macOS keeps an inset native drag boundary and traffic-light safe area", () => {
-  assert.deepEqual(desktopWindowAppearance("darwin"), { titleBarStyle: "hiddenInset" });
+  assert.deepEqual(desktopWindowAppearance("darwin"), {
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: { x: 16, y: 16 },
+  });
 });
 
 test("Windows and Linux keep their platform title bars", () => {

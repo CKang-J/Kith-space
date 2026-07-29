@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties, type FocusEventHandler, type MouseEventHandler, type PointerEventHandler, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEventHandler, type MouseEventHandler, type PointerEventHandler, type ReactNode } from "react";
 import type { ChatMessageSurface, ChatMessageTone } from "./messagePresentation.ts";
 
 interface ChatMessageItemProps {
@@ -35,7 +35,8 @@ export function ChatMessageItem({
   const bubbleWrapRef = useRef<HTMLDivElement>(null);
   const toolbarSlotRef = useRef<HTMLDivElement>(null);
   const isHuman = (tone ?? surface) === "human";
-  const [toolbarPlacement, setToolbarPlacement] = useState<"side" | "above">("side");
+  const [toolbarPlacement, setToolbarPlacement] = useState<"side" | "above" | "below">("below");
+  const [toolbarActive, setToolbarActive] = useState(false);
   const classes = [
     "chat-message",
     `chat-message--${surface}`,
@@ -44,7 +45,7 @@ export function ChatMessageItem({
     className,
   ].filter(Boolean).join(" ");
 
-  const updateToolbarPlacement = () => {
+  const updateToolbarPlacement = useCallback(() => {
     const bubbleWrap = bubbleWrapRef.current;
     const toolbarSlot = toolbarSlotRef.current;
     if (!bubbleWrap || !toolbarSlot) return;
@@ -52,16 +53,59 @@ export function ChatMessageItem({
     const scrollRect = bubbleWrap.closest<HTMLElement>(".scroll")?.getBoundingClientRect();
     const leftBoundary = Math.max(0, scrollRect?.left ?? 0);
     const rightBoundary = Math.min(window.innerWidth, scrollRect?.right ?? window.innerWidth);
-    const toolbarWidth = toolbarSlot.getBoundingClientRect().width;
+    const toolbarRect = toolbarSlot.getBoundingClientRect();
     const sideSpace = isHuman
       ? bubbleRect.left - leftBoundary
       : rightBoundary - bubbleRect.right;
-    const next = sideSpace >= toolbarWidth + 8 ? "side" : "above";
+    const topBoundary = Math.max(0, scrollRect?.top ?? 0);
+    const bottomBoundary = Math.min(window.innerHeight, scrollRect?.bottom ?? window.innerHeight);
+    const topSpace = bubbleRect.top - topBoundary;
+    const bottomSpace = bottomBoundary - bubbleRect.bottom;
+    const toolbarGap = 6;
+    const next = sideSpace >= toolbarRect.width + 8
+      ? "side"
+      : topSpace >= toolbarRect.height + toolbarGap
+        ? "above"
+        : bottomSpace >= toolbarRect.height + toolbarGap
+          ? "below"
+          : topSpace >= bottomSpace ? "above" : "below";
     setToolbarPlacement((current) => current === next ? current : next);
-  };
+  }, [isHuman]);
 
-  const handleBubblePointerEnter: PointerEventHandler<HTMLDivElement> = () => updateToolbarPlacement();
-  const handleBubbleFocus: FocusEventHandler<HTMLDivElement> = () => updateToolbarPlacement();
+  useLayoutEffect(() => {
+    if (!toolbarActive) return;
+    const bubbleWrap = bubbleWrapRef.current;
+    const toolbarSlot = toolbarSlotRef.current;
+    if (!bubbleWrap || !toolbarSlot) return;
+    const scroll = bubbleWrap.closest<HTMLElement>(".scroll");
+    let frame = 0;
+    const schedulePlacementUpdate = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(updateToolbarPlacement);
+    };
+    const observer = new ResizeObserver(schedulePlacementUpdate);
+    observer.observe(bubbleWrap);
+    observer.observe(toolbarSlot);
+    if (scroll) {
+      observer.observe(scroll);
+      scroll.addEventListener("scroll", schedulePlacementUpdate, { passive: true });
+    }
+    window.addEventListener("resize", schedulePlacementUpdate);
+    updateToolbarPlacement();
+    return () => {
+      observer.disconnect();
+      if (scroll) scroll.removeEventListener("scroll", schedulePlacementUpdate);
+      window.removeEventListener("resize", schedulePlacementUpdate);
+      window.cancelAnimationFrame(frame);
+    };
+  }, [toolbarActive, updateToolbarPlacement]);
+
+  const handleBubblePointerEnter: PointerEventHandler<HTMLDivElement> = () => setToolbarActive(true);
+  const handleBubblePointerLeave: PointerEventHandler<HTMLDivElement> = () => setToolbarActive(false);
+  const handleBubbleFocus: FocusEventHandler<HTMLDivElement> = () => setToolbarActive(true);
+  const handleBubbleBlur: FocusEventHandler<HTMLDivElement> = (event) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setToolbarActive(false);
+  };
 
   return (
     <article id={id} className={classes} style={style} onContextMenu={onContextMenu}>
@@ -71,7 +115,14 @@ export function ChatMessageItem({
       </div>
       <div className="chat-message__content">
         {header ? <div className="chat-message__header">{header}</div> : null}
-        <div ref={bubbleWrapRef} className="chat-message__bubble-wrap" onPointerEnter={handleBubblePointerEnter} onFocusCapture={handleBubbleFocus}>
+        <div
+          ref={bubbleWrapRef}
+          className="chat-message__bubble-wrap"
+          onPointerEnter={handleBubblePointerEnter}
+          onPointerLeave={handleBubblePointerLeave}
+          onFocusCapture={handleBubbleFocus}
+          onBlurCapture={handleBubbleBlur}
+        >
           <div className="chat-message__bubble">{children}</div>
           {toolbar ? <div ref={toolbarSlotRef} className={`chat-message__toolbar-slot chat-message__toolbar-slot--${toolbarPlacement}`}>{toolbar}</div> : null}
         </div>

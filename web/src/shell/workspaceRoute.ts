@@ -88,7 +88,7 @@ export function workspaceLayoutFromRoute(route: WorkspaceRouteMatch, search: str
   if (moduleId === null) return INITIAL_WORKSPACE_LAYOUT;
   return {
     activeModule: moduleId,
-    chatVisible: moduleId === "settings",
+    chatVisible: true,
   };
 }
 
@@ -104,7 +104,6 @@ export function workspaceSearchForLayout(search: string, state: WorkspaceLayoutS
   });
   if (state.activeModule !== null) {
     params.set("module", state.activeModule);
-    if (state.activeModule !== "settings") params.set("chat", "0");
   }
   const encoded = params.toString();
   return encoded ? `?${encoded}` : "";
@@ -148,7 +147,7 @@ export function workspaceLocationForModule(
 ) {
   const nextSearch = workspaceSearchForLayout(search, {
     activeModule: target.moduleId,
-    chatVisible: options.chatVisible ?? target.moduleId === "settings",
+    chatVisible: options.chatVisible ?? true,
   });
   const params = new URLSearchParams(nextSearch);
 

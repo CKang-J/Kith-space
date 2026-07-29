@@ -3,8 +3,10 @@ import { useTranslation } from "react-i18next";
 import {
   DEFAULT_APPEARANCE_SETTINGS,
   applyAppearanceFonts,
+  applyAppearanceColorMode,
   isAppearanceSettings,
   type AppearanceSettings as AppearanceSettingsValue,
+  type ColorMode,
   type CodeFont,
   type ContentFont,
   type InterfaceFont,
@@ -61,6 +63,11 @@ const CODE_OPTIONS: Array<{ value: CodeFont; label: string }> = [
   { value: "geist_mono", label: "Geist Mono" },
 ];
 const UI_FONT_SIZE_OPTIONS: UiFontSize[] = [12, 13, 14, 15, 16];
+const COLOR_MODE_OPTIONS: Array<{ value: ColorMode; label: string }> = [
+  { value: "light", label: "misc.appearanceColorModeLight" },
+  { value: "dark", label: "misc.appearanceColorModeDark" },
+  { value: "system", label: "misc.appearanceColorModeSystem" },
+];
 
 export function AppearanceSettings({ api }: { api: ApiRequest }) {
   const { t } = useTranslation();
@@ -80,6 +87,7 @@ export function AppearanceSettings({ api }: { api: ApiRequest }) {
         }
         setSettings(result);
         applyAppearanceFonts(result);
+        applyAppearanceColorMode(result);
       })
       .catch(() => {
         if (active) setLoadError(t("misc.appearanceLoadError"));
@@ -94,14 +102,17 @@ export function AppearanceSettings({ api }: { api: ApiRequest }) {
     setSettings(next);
     setLoadError("");
     applyAppearanceFonts(next);
+    applyAppearanceColorMode(next);
     try {
       const result = await api("PATCH", "/api/settings/appearance", next);
       if (!isAppearanceSettings(result)) throw new Error("invalid appearance settings response");
       setSettings(result);
       applyAppearanceFonts(result);
+      applyAppearanceColorMode(result);
     } catch {
       setSettings(previous);
       applyAppearanceFonts(previous);
+      applyAppearanceColorMode(previous);
       toast.error(t("misc.appearanceSaveError"));
     } finally {
       setBusy(false);
@@ -121,6 +132,37 @@ export function AppearanceSettings({ api }: { api: ApiRequest }) {
 
   return (
     <div className="mr-auto flex w-full max-w-3xl flex-col gap-8 pb-10">
+      <section className="rounded-2xl border border-border/80 bg-card p-6 text-card-foreground">
+        <FieldSet className="m-0 border-0 p-0">
+          <FieldLegend>{t("misc.appearanceColorModeTitle")}</FieldLegend>
+          <FieldDescription>{t("misc.appearanceColorModeDesc")}</FieldDescription>
+          <FieldGroup>
+            <Field orientation="responsive">
+              <div className="flex min-w-0 flex-col gap-1">
+                <FieldLabel htmlFor="appearance-color-mode">{t("misc.appearanceColorMode")}</FieldLabel>
+                <FieldDescription>{t("misc.appearanceColorModeHelp")}</FieldDescription>
+              </div>
+              <Select
+                value={settings.colorMode}
+                disabled={busy}
+                onValueChange={(value) => update("colorMode", value as ColorMode)}
+              >
+                <SelectTrigger id="appearance-color-mode" className="w-full @md/field-group:w-64">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {COLOR_MODE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{t(option.label)}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          </FieldGroup>
+        </FieldSet>
+      </section>
+
       <section className="rounded-2xl border border-border/80 bg-card p-6 text-card-foreground">
         <FieldSet className="m-0 border-0 p-0">
           <FieldLegend>{t("misc.appearanceTypographyTitle")}</FieldLegend>
@@ -253,6 +295,7 @@ export function AppearanceSettings({ api }: { api: ApiRequest }) {
               && settings.contentFont === DEFAULT_APPEARANCE_SETTINGS.contentFont
               && settings.codeFont === DEFAULT_APPEARANCE_SETTINGS.codeFont
               && settings.uiFontSize === DEFAULT_APPEARANCE_SETTINGS.uiFontSize
+              && settings.colorMode === DEFAULT_APPEARANCE_SETTINGS.colorMode
             )}
             onClick={() => void save(DEFAULT_APPEARANCE_SETTINGS)}
           >

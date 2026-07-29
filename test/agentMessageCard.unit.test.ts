@@ -94,7 +94,7 @@ test("shared sliding control owns the card and aggregate panel selection visuals
   assert.match(track, /--sliding-tabs-gutter\s*:\s*4px/);
   assert.match(track, /min-height\s*:\s*40px/);
   assert.match(track, /border-radius\s*:\s*12px/);
-  assert.match(track, /background\s*:\s*#f5f5f5/);
+  assert.match(track, /background\s*:\s*var\(--muted\)/);
   const indicator = ruleBody(".sliding-tabs__indicator", slidingControlCss);
   assert.match(indicator, /border-radius\s*:\s*10px/);
   assert.match(indicator, /0 1px 2px rgb\(0 0 0 \/ 5%\)/);
@@ -105,9 +105,9 @@ test("shared sliding control owns the card and aggregate panel selection visuals
   assert.match(ruleBody(".sliding-tabs--compact", slidingControlCss), /min-height\s*:\s*38px/);
   assert.match(ruleBody(".sliding-tabs--compact .sliding-tabs__tab", slidingControlCss), /min-height\s*:\s*34px/);
   const action = ruleBody(".agent-message-card__actions>button");
-  assert.match(action, /background\s*:\s*#f7f7f7/);
+  assert.match(action, /background\s*:\s*var\(--muted\)/);
   const actionHover = ruleBody(".agent-message-card__actions>button:hover:not(:disabled)");
-  assert.match(actionHover, /background\s*:\s*#f0f0f0/);
+  assert.match(actionHover, /background\s*:\s*var\(--accent\)/);
 });
 
 test("aggregate panel uses a title bar, circular close action, and reference-style tabs", () => {
@@ -115,7 +115,7 @@ test("aggregate panel uses a title bar, circular close action, and reference-sty
   assert.match(aggregateSrc, /className="conversation-aggregate__close"/);
   assert.match(aggregateSrc, /className="conversation-aggregate__tabs"/);
   assert.match(ruleBody(".conversation-aggregate__topbar", aggregateCss), /height\s*:\s*52px/);
-  assert.match(ruleBody(".conversation-aggregate__topbar", aggregateCss), /border-bottom\s*:\s*1px solid #f0f0f0/);
+  assert.match(ruleBody(".conversation-aggregate__topbar", aggregateCss), /border-bottom\s*:\s*1px solid var\(--border\)/);
   assert.match(ruleBody(".conversation-aggregate__topbar h2", aggregateCss), /font-weight\s*:\s*400/);
   assert.doesNotMatch(ruleBody(".conversation-aggregate__header", aggregateCss), /border-bottom/);
   assert.match(ruleBody(".conversation-aggregate__close", aggregateCss), /border-radius\s*:\s*50%/);

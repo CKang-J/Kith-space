@@ -36,11 +36,11 @@ test("initial layout is ChatOnly", () => {
   assert.equal(deriveWorkspaceMode(INITIAL_WORKSPACE_LAYOUT), "chat-only");
 });
 
-test("selecting a content module replaces Chat", () => {
+test("selecting a content module opens a split workspace beside Chat", () => {
   const state = selectWorkspaceModule(INITIAL_WORKSPACE_LAYOUT, "tasks");
 
-  assert.deepEqual(state, { activeModule: "tasks", chatVisible: false });
-  assert.equal(deriveWorkspaceMode(state), "module-only");
+  assert.deepEqual(state, { activeModule: "tasks", chatVisible: true });
+  assert.equal(deriveWorkspaceMode(state), "split");
 });
 
 test("selecting the active module closes it and returns to ChatOnly", () => {
@@ -51,17 +51,17 @@ test("selecting the active module closes it and returns to ChatOnly", () => {
   assert.deepEqual(selectWorkspaceModule(moduleOnly, "tasks"), INITIAL_WORKSPACE_LAYOUT);
 });
 
-test("switching content modules keeps Chat replaced", () => {
+test("switching content modules keeps Chat visible", () => {
   const split = openRouteModule("tasks", { chatVisible: true });
   const moduleOnly = openRouteModule("tasks", { chatVisible: false });
 
   assert.deepEqual(selectWorkspaceModule(split, "inbox"), {
     activeModule: "inbox",
-    chatVisible: false,
+    chatVisible: true,
   });
   assert.deepEqual(selectWorkspaceModule(moduleOnly, "agents"), {
     activeModule: "agents",
-    chatVisible: false,
+    chatVisible: true,
   });
 });
 
@@ -71,11 +71,11 @@ test("settings keeps Chat visible because it is presented as a modal", () => {
   assert.equal(deriveWorkspaceMode(state), "chat-only");
 });
 
-test("route initialization explicitly chooses Chat visibility", () => {
+test("route initialization keeps Chat visible for every module", () => {
   const sidebarModule: SidebarModuleId = "settings";
   const settings = openRouteModule(sidebarModule, { chatVisible: true });
   const moduleOnly = openRouteModule("search", { chatVisible: false });
 
   assert.equal(deriveWorkspaceMode(settings), "chat-only");
-  assert.equal(deriveWorkspaceMode(moduleOnly), "module-only");
+  assert.equal(deriveWorkspaceMode(moduleOnly), "split");
 });

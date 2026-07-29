@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useConfirm } from "../ConfirmModal.tsx";
 import { QuickSwitcher } from "../QuickSwitcher.tsx";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "../components/ui/sidebar.tsx";
+import { TooltipProvider } from "../components/ui/tooltip.tsx";
 import { useStore } from "../store.tsx";
 import { ChannelSettingsPanel } from "../views/channel-settings/index.ts";
 import { ConversationAggregatePanel } from "../views/conversation-aggregate/ConversationAggregatePanel.tsx";
@@ -10,10 +16,9 @@ import { LiveTrace } from "../views/LiveTrace.tsx";
 import { ChatWorkspace } from "./ChatWorkspace.tsx";
 import { ModuleWorkspace } from "./ModuleWorkspace.tsx";
 import { SettingsDialog } from "./SettingsDialog.tsx";
-import {
-  WORKSPACE_NAVIGATION_RAIL_WIDTH,
-  WorkspaceNavigationRail,
-} from "./WorkspaceNavigationRail.tsx";
+import { WorkspaceNavigationRail } from "./WorkspaceNavigationRail.tsx";
+import { WorkspaceSplitPane } from "./WorkspaceSplitPane.tsx";
+import { WorkspaceTabs } from "./WorkspaceTabs.tsx";
 import {
   shellActions,
   storedChatLocation,
@@ -21,16 +26,55 @@ import {
 import { aggregatePaneConstraints } from "./paneConstraints.ts";
 import {
   INITIAL_WORKSPACE_LAYOUT,
-  deriveWorkspaceMode,
-  selectWorkspaceModule,
   workspaceLayoutForSpace,
   type ContentModuleId,
   type SidebarModuleId,
   type WorkspaceLayoutState,
   type WorkspaceModuleId,
 } from "./workspaceLayout.ts";
-import { parseWorkspaceRoute, workspaceLayoutFromRoute, workspaceLocationForModule, workspaceModuleResourceFromSearch, workspaceSearchForLayout, workspaceSearchForShellState } from "./workspaceRoute.ts";
+import {
+  parseWorkspaceRoute,
+  workspaceLayoutFromRoute,
+  workspaceLocationForModule,
+  workspaceModuleResourceFromSearch,
+  workspaceSearchForLayout,
+  workspaceSearchForShellState,
+  type WorkspaceModuleTarget,
+} from "./workspaceRoute.ts";
+import {
+  EMPTY_WORKSPACE_TAB_STATE,
+  activeWorkspaceTab,
+  closeWorkspaceTab,
+  createWorkspaceTab,
+  openWorkspaceTab,
+  persistWorkspaceTabState,
+  restoreWorkspaceTabState,
+  type WorkspaceTab,
+  type WorkspaceTabState,
+} from "./workspaceTabs.ts";
+import {
+  useAutoCollapseSidebarForWorkspace,
+  useSidebarEdgePreview,
+} from "./useSidebarEdgePreview.ts";
 import { useChannelSettingsScene } from "./useChannelSettingsScene.ts";
+
+const SIDEBAR_OPEN_STORAGE_KEY = "kith-space.sidebar.open";
+const SIDEBAR_LAYOUT_MOTION_MS = 420;
+const WORKSPACE_WIDTH_SETTLE_MS = 80;
+const CHAT_ONLY_PANE_STYLE: CSSProperties = {
+  width: "auto",
+  flexBasis: 0,
+  flexGrow: 1,
+  flexShrink: 1,
+};
+
+const localStorageOrNull = () => typeof window === "undefined" ? null : window.localStorage;
+
+const targetForTab = (tab: WorkspaceTab): WorkspaceModuleTarget => {
+  if (tab.moduleId === "tasks") return { moduleId: "tasks", taskScope: tab.resourceId };
+  if (tab.moduleId === "agents") return { moduleId: "agents", agent: tab.resourceId };
+  return { moduleId: tab.moduleId };
+};
 
 export function WorkspaceFrame() {
   const { t } = useTranslation();
@@ -42,10 +86,60 @@ export function WorkspaceFrame() {
   const aggregatePanelRef = useRef<HTMLElement>(null);
   const aggregateToggleRef = useRef<HTMLButtonElement>(null);
   const aggregateMotionTimerRef = useRef<number | null>(null);
+  const sidebarMotionTimerRef = useRef<number | null>(null);
+  const workspaceStorageId = spaceId || slug;
+  const restoredWorkspaceTabs = useMemo(
+    () => restoreWorkspaceTabState(localStorageOrNull(), workspaceStorageId),
+    [workspaceStorageId],
+  );
+  const [tabsBySpace, setTabsBySpace] = useState<Record<string, WorkspaceTabState>>({});
+  const workspaceTabState = tabsBySpace[workspaceStorageId] ?? restoredWorkspaceTabs;
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem(SIDEBAR_OPEN_STORAGE_KEY) !== "false";
+  });
   const [workspaceWidth, setWorkspaceWidth] = useState(() => typeof window === "undefined" ? 1280 : window.innerWidth);
   const [aggregateOpen, setAggregateOpen] = useState(true);
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [aggregateTransitioning, setAggregateTransitioning] = useState(false);
+  const [sidebarTransitioning, setSidebarTransitioning] = useState(false);
+  const commitWorkspaceTabs = useCallback((
+    update: (state: WorkspaceTabState) => WorkspaceTabState,
+  ) => {
+    setTabsBySpace((current) => {
+      const state = current[workspaceStorageId]
+        ?? restoreWorkspaceTabState(localStorageOrNull(), workspaceStorageId);
+      const next = update(state);
+      persistWorkspaceTabState(localStorageOrNull(), workspaceStorageId, next);
+      return { ...current, [workspaceStorageId]: next };
+    });
+  }, [workspaceStorageId]);
+  const beginSidebarMotion = useCallback(() => {
+    setSidebarTransitioning(true);
+    if (sidebarMotionTimerRef.current !== null) window.clearTimeout(sidebarMotionTimerRef.current);
+    sidebarMotionTimerRef.current = window.setTimeout(() => {
+      setSidebarTransitioning(false);
+      sidebarMotionTimerRef.current = null;
+    }, SIDEBAR_LAYOUT_MOTION_MS);
+  }, []);
+  const updateSidebarOpen = useCallback((open: boolean) => {
+    if (open === sidebarOpen) return;
+    beginSidebarMotion();
+    setSidebarOpen(open);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SIDEBAR_OPEN_STORAGE_KEY, String(open));
+    }
+  }, [beginSidebarMotion, sidebarOpen]);
+  const {
+    previewState: sidebarPreviewState,
+    openPreview: openSidebarPreview,
+    retainPreview: retainSidebarPreview,
+    schedulePreviewClose: scheduleSidebarPreviewClose,
+    handlePreviewTransitionEnd: handleSidebarPreviewTransitionEnd,
+  } = useSidebarEdgePreview({
+    collapsed: !sidebarOpen,
+    disabled: sidebarTransitioning,
+  });
   const beginAggregateMotion = useCallback(() => {
     setAggregateTransitioning(true);
     if (aggregateMotionTimerRef.current !== null) window.clearTimeout(aggregateMotionTimerRef.current);
@@ -60,10 +154,37 @@ export function WorkspaceFrame() {
   const layoutState = workspaceLayoutForSpace(requestedLayoutState, isHome);
   const { activeModule } = layoutState;
   const settingsOpen = activeModule === "settings";
-  const contentModuleId = activeModule && activeModule !== "settings"
+  const routeContentModuleId = activeModule && activeModule !== "settings"
     ? activeModule as ContentModuleId
     : null;
-  const chatVisible = contentModuleId === null;
+  const routeResourceId = routeContentModuleId
+    ? workspaceModuleResourceFromSearch(location.search, routeContentModuleId)
+    : null;
+  const workspaceTabTitle = useCallback((moduleId: ContentModuleId, resourceId: string | null) => {
+    if (moduleId === "agents" && resourceId) {
+      const agent = visibleAgents.find((candidate) => candidate.id === resourceId);
+      return agent ? (agent.displayName || agent.name) : null;
+    }
+    if (moduleId === "tasks" && resourceId && resourceId !== "space") {
+      const channel = [...channels, ...archivedChannels].find((candidate) => candidate.id === resourceId);
+      return channel ? `${channel.name} · ${t("nav.tasks")}` : null;
+    }
+    return null;
+  }, [archivedChannels, channels, t, visibleAgents]);
+  const routeTab = routeContentModuleId
+    ? createWorkspaceTab({
+      moduleId: routeContentModuleId,
+      resourceId: routeResourceId,
+      title: workspaceTabTitle(routeContentModuleId, routeResourceId),
+    })
+    : null;
+  const visibleWorkspaceTabState = routeTab
+    ? openWorkspaceTab(workspaceTabState, routeTab)
+    : workspaceTabState;
+  const activeTab = activeWorkspaceTab(visibleWorkspaceTabState);
+  const contentModuleId = activeTab?.moduleId ?? null;
+  const activeWorkspaceKey = activeTab ? `${workspaceStorageId}:${activeTab.id}` : null;
+  const chatVisible = true;
   const routeChannelId = route.isChannelRoute ? route.resourceId : null;
   const confirmSettingsDiscard = useCallback(() => confirm({
     title: t("channelSettings.discardTitle"),
@@ -89,24 +210,50 @@ export function WorkspaceFrame() {
     requestExit: requestSettingsExit,
     beforeAggregateToggle,
   } = settingsScene;
+  const collapseSidebar = useCallback(() => updateSidebarOpen(false), [updateSidebarOpen]);
+
+  useAutoCollapseSidebarForWorkspace(
+    activeWorkspaceKey,
+    collapseSidebar,
+  );
 
   useEffect(() => {
     const node = workspaceRef.current;
     if (!node) return;
+    let settleTimer: number | null = null;
     const updateWidth = () => {
       const styles = window.getComputedStyle(node);
       const horizontalPadding = Number.parseFloat(styles.paddingLeft) + Number.parseFloat(styles.paddingRight);
       setWorkspaceWidth(Math.max(0, node.clientWidth - horizontalPadding));
     };
+    const scheduleWidthUpdate = () => {
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        updateWidth();
+        settleTimer = null;
+      }, WORKSPACE_WIDTH_SETTLE_MS);
+    };
     updateWidth();
-    const observer = new ResizeObserver(updateWidth);
+    const observer = new ResizeObserver(scheduleWidthUpdate);
     observer.observe(node);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+    };
   }, []);
 
   useEffect(() => {
     setAggregateOpen(true);
   }, [spaceId]);
+
+  useEffect(() => {
+    if (!routeTab) return;
+    commitWorkspaceTabs((state) => openWorkspaceTab(state, {
+      moduleId: routeTab.moduleId,
+      resourceId: routeTab.resourceId,
+      title: routeTab.title,
+    }));
+  }, [commitWorkspaceTabs, routeTab?.id, routeTab?.title]);
 
   useEffect(() => {
     const openQuickSwitcher = (event: KeyboardEvent) => {
@@ -120,6 +267,7 @@ export function WorkspaceFrame() {
 
   useEffect(() => () => {
     if (aggregateMotionTimerRef.current !== null) window.clearTimeout(aggregateMotionTimerRef.current);
+    if (sidebarMotionTimerRef.current !== null) window.clearTimeout(sidebarMotionTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -151,26 +299,46 @@ export function WorkspaceFrame() {
   const retiredShowcaseRoute = /\/showcase\/?$/.test(location.pathname);
   const layoutPathname = route.isChatRoute ? location.pathname : rememberedChatPathname;
   const layoutBaseSearch = route.isChatRoute ? location.search : rememberedChatSearch;
-  const layoutSearch = workspaceSearchForShellState(location.search, layoutState);
+  const activeTabLayout: WorkspaceLayoutState = activeTab
+    ? { activeModule: activeTab.moduleId, chatVisible: true }
+    : INITIAL_WORKSPACE_LAYOUT;
+  const layoutSearch = workspaceSearchForShellState(location.search, activeTabLayout);
   const aggregateEligible = route.isChannelRoute && currentChannelId !== null;
-  const mode = deriveWorkspaceMode(layoutState);
-  const contentWorkspaceWidth = Math.max(0, workspaceWidth - WORKSPACE_NAVIGATION_RAIL_WIDTH);
+  const mode = activeTab ? "split" : "chat-only";
+  const contentWorkspaceWidth = workspaceWidth;
   const aggregateConstraints = aggregatePaneConstraints(contentWorkspaceWidth);
-  const aggregateAvailable = aggregateEligible && chatVisible && aggregateConstraints.canShow;
+  const aggregateAvailable = aggregateEligible && !activeTab && aggregateConstraints.canShow;
   const aggregateVisible = aggregateAvailable && aggregateOpen;
   const aggregateWidth = aggregateVisible ? aggregateConstraints.width : 0;
   const aggregateGap = aggregateVisible ? 10 : 0;
-  const chatWidth = Math.max(0, contentWorkspaceWidth - aggregateWidth - aggregateGap);
   const paneStyle = (width: number): CSSProperties => ({
     width,
     flexBasis: width,
     flexGrow: 0,
     flexShrink: 0,
   });
+  const chatPaneStyle = activeTab ? undefined : CHAT_ONLY_PANE_STYLE;
   const unreadCount = Object.values(unread).reduce((total, count) => total + count, 0);
   const settingsChannel = settingsChannelId
     ? [...channels, ...archivedChannels].find((channel) => channel.id === settingsChannelId) ?? null
     : null;
+
+  useEffect(() => {
+    if (settingsOpen || routeContentModuleId || !activeTab) return;
+    navigate(workspaceLocationForModule(
+      layoutPathname,
+      layoutBaseSearch,
+      targetForTab(activeTab),
+      { chatVisible: true },
+    ), { replace: true });
+  }, [
+    activeTab?.id,
+    layoutBaseSearch,
+    layoutPathname,
+    navigate,
+    routeContentModuleId,
+    settingsOpen,
+  ]);
 
   useEffect(() => {
     if (route.isChatRoute) return;
@@ -182,31 +350,75 @@ export function WorkspaceFrame() {
     navigate(`${normalizationPathname}${workspaceSearchForShellState(location.search, normalizationLayout)}`, { replace: true });
   }, [activeModule, fallbackChatPathname, fallbackConversationId, location.search, navigate, rememberedChatPathname, retiredShowcaseRoute, route.isChatRoute]);
 
-  const navigateLayout = (next: WorkspaceLayoutState, options: { replace?: boolean } = {}) => {
+  const navigateLayout = useCallback((next: WorkspaceLayoutState, options: { replace?: boolean } = {}) => {
     navigate(`${layoutPathname}${workspaceSearchForLayout(layoutBaseSearch, next)}`, options);
-  };
+  }, [layoutBaseSearch, layoutPathname, navigate]);
 
-  const selectModule = async (moduleId: WorkspaceModuleId) => {
-    const next = selectWorkspaceModule(layoutState, moduleId);
-    if (!(await requestSettingsExit(next.activeModule !== null && next.activeModule !== "settings"))) return;
-    if (next.activeModule !== null && next.activeModule !== "settings") setAggregateOpen(false);
-    navigateLayout(next);
-  };
-
-  const selectChat = async () => {
-    if (!(await requestSettingsExit(false))) return;
-    navigateLayout(INITIAL_WORKSPACE_LAYOUT);
-  };
-
-  const openConversationTasks = async (conversationId: string) => {
-    if (!(await requestSettingsExit(true))) return;
-    setAggregateOpen(false);
+  const navigateToTab = useCallback((tab: WorkspaceTab, options: { replace?: boolean } = {}) => {
     navigate(workspaceLocationForModule(
       layoutPathname,
       layoutBaseSearch,
-      { moduleId: "tasks", taskScope: conversationId },
-      { chatVisible: false },
-    ));
+      targetForTab(tab),
+      { chatVisible: true },
+    ), options);
+  }, [layoutBaseSearch, layoutPathname, navigate]);
+
+  const selectModule = useCallback(async (moduleId: WorkspaceModuleId) => {
+    if (moduleId === "settings") {
+      navigate(workspaceLocationForModule(
+        layoutPathname,
+        layoutBaseSearch,
+        { moduleId: "settings", settings: "human" },
+        { chatVisible: true },
+      ));
+      return;
+    }
+    if (!(await requestSettingsExit(true))) return;
+    const contentModule = moduleId as ContentModuleId;
+    const resourceId = contentModule === "tasks" ? "space" : null;
+    const tab = createWorkspaceTab({
+      moduleId: contentModule,
+      resourceId,
+      title: workspaceTabTitle(contentModule, resourceId),
+    });
+    setAggregateOpen(false);
+    commitWorkspaceTabs((state) => openWorkspaceTab(state, tab));
+    navigateToTab(tab);
+  }, [
+    commitWorkspaceTabs,
+    layoutBaseSearch,
+    layoutPathname,
+    navigate,
+    navigateToTab,
+    requestSettingsExit,
+    workspaceTabTitle,
+  ]);
+
+  const openConversationTasks = useCallback(async (conversationId: string) => {
+    if (!(await requestSettingsExit(true))) return;
+    const tab = createWorkspaceTab({
+      moduleId: "tasks",
+      resourceId: conversationId,
+      title: workspaceTabTitle("tasks", conversationId),
+    });
+    setAggregateOpen(false);
+    commitWorkspaceTabs((state) => openWorkspaceTab(state, tab));
+    navigateToTab(tab);
+  }, [commitWorkspaceTabs, navigateToTab, requestSettingsExit, workspaceTabTitle]);
+
+  const activateTab = (tab: WorkspaceTab) => {
+    commitWorkspaceTabs((state) => openWorkspaceTab(state, tab));
+    navigateToTab(tab);
+  };
+
+  const closeTab = (tabId: string) => {
+    const next = closeWorkspaceTab(visibleWorkspaceTabState, tabId);
+    const closedActiveTab = visibleWorkspaceTabState.activeTabId === tabId;
+    commitWorkspaceTabs(() => next);
+    if (!closedActiveTab) return;
+    const nextTab = activeWorkspaceTab(next);
+    if (nextTab) navigateToTab(nextTab);
+    else navigateLayout(INITIAL_WORKSPACE_LAYOUT);
   };
 
   const leaveLifecycleChannel = () => {
@@ -215,19 +427,26 @@ export function WorkspaceFrame() {
     navigate(`/s/${slug}/channel${all ? `/${all.id}` : ""}`);
   };
 
-  const requestConversationNavigation = async (target: string) => {
+  const requestConversationNavigation = useCallback(async (target: string) => {
     const destination = new URL(target, window.location.origin);
     const targetRoute = parseWorkspaceRoute(destination.pathname);
     const changesConversation = !targetRoute.isChannelRoute || targetRoute.resourceId !== routeChannelId;
     if (!(await requestSettingsExit(changesConversation))) return;
     navigate(target);
-  };
+  }, [navigate, requestSettingsExit, routeChannelId]);
 
-  const toggleAggregate = async () => {
+  const toggleAggregate = useCallback(async () => {
     if (!(await beforeAggregateToggle())) return;
     beginAggregateMotion();
     setAggregateOpen((open) => !open);
-  };
+  }, [beforeAggregateToggle, beginAggregateMotion]);
+  const navigateConversation = useCallback((target: string) => {
+    void requestConversationNavigation(target);
+  }, [requestConversationNavigation]);
+  const openQuickSwitcher = useCallback(() => setQuickSwitcherOpen(true), []);
+  const selectSidebarModule = useCallback((moduleId: SidebarModuleId) => {
+    void selectModule(moduleId);
+  }, [selectModule]);
 
   const updateConversationFocus = (key: "thread" | "msg", value: string) => {
     const params = new URLSearchParams(location.search);
@@ -262,75 +481,118 @@ export function WorkspaceFrame() {
       onDirtyChange={setSettingsDirty}
     />
   ) : null;
+  const chatWorkspace = (
+    <ChatWorkspace
+      channelId={currentChannelId}
+      aggregateOpen={aggregateOpen}
+      aggregateAvailable={aggregateAvailable}
+      aggregateToggleRef={aggregateToggleRef}
+      onToggleAggregate={toggleAggregate}
+      onOpenTasks={openConversationTasks}
+      onOpenChannelSettings={openChannelSettings}
+      onNavigateConversation={navigateConversation}
+      settingsDrawer={settingsInDrawer ? channelSettings : undefined}
+      settingsDrawerOpen={settingsInDrawer && aggregateOpen}
+      style={chatPaneStyle}
+    />
+  );
+  const tabWorkspace = activeTab && contentModuleId ? (
+    <WorkspaceTabs
+      activeTabId={activeTab.id}
+      isHome={isHome}
+      tabs={visibleWorkspaceTabState.tabs}
+      onActivate={activateTab}
+      onClose={closeTab}
+      onOpenModule={(moduleId) => void selectModule(moduleId)}
+    >
+      <ModuleWorkspace moduleId={contentModuleId} />
+    </WorkspaceTabs>
+  ) : null;
 
   return (
-    <main
-      className="shell-workspace-frame"
-      data-layout-mode={mode}
-      data-aggregate-transitioning={aggregateTransitioning ? "true" : undefined}
-      data-visual-mode={mode}
-    >
-      <div ref={workspaceRef} className="shell-workspace-canvas">
+    <TooltipProvider>
+      <SidebarProvider
+        open={sidebarOpen}
+        onOpenChange={updateSidebarOpen}
+        className="shell-sidebar-provider"
+        data-sidebar-preview={sidebarPreviewState}
+        data-sidebar-transitioning={sidebarTransitioning ? "true" : undefined}
+      >
+        {!sidebarOpen && !sidebarTransitioning ? (
+          <div
+            aria-hidden="true"
+            className="shell-sidebar-edge-trigger fixed inset-y-0 left-0 z-40"
+            onPointerEnter={openSidebarPreview}
+            onPointerLeave={scheduleSidebarPreviewClose}
+          />
+        ) : null}
         <WorkspaceNavigationRail
-          activeModule={activeModule}
+          activeModule={settingsOpen ? "settings" : activeTab?.moduleId ?? null}
+          channelId={currentChannelId}
           isHome={isHome}
           layoutSearch={layoutSearch}
           unreadCount={unreadCount}
-          onChatSelect={() => void selectChat()}
-          onSearch={() => setQuickSwitcherOpen(true)}
-          onModuleSelect={(moduleId: SidebarModuleId) => void selectModule(moduleId)}
+          onPreviewEnter={retainSidebarPreview}
+          onPreviewLeave={scheduleSidebarPreviewClose}
+          onPreviewTransitionEnd={handleSidebarPreviewTransitionEnd}
+          onNavigateConversation={navigateConversation}
+          onSearch={openQuickSwitcher}
+          onModuleSelect={selectSidebarModule}
         />
-        {chatVisible ? (
-          <ChatWorkspace
-            channelId={currentChannelId}
-            aggregateOpen={aggregateOpen}
-            aggregateAvailable={aggregateAvailable}
-            aggregateToggleRef={aggregateToggleRef}
-            onToggleAggregate={toggleAggregate}
-            onOpenTasks={openConversationTasks}
-            onOpenChannelSettings={openChannelSettings}
-            onNavigateConversation={(target) => void requestConversationNavigation(target)}
-            settingsDrawer={settingsInDrawer ? channelSettings : undefined}
-            settingsDrawerOpen={settingsInDrawer && aggregateOpen}
-            style={paneStyle(chatWidth)}
-          />
-        ) : null}
-        {aggregateEligible && chatVisible ? (
-          <>
-            <div className="shell-aggregate-gap" style={paneStyle(aggregateGap)} aria-hidden="true" />
-            <aside
-              ref={aggregatePanelRef}
-              className="shell-work-panel shell-conversation-aggregate"
-              style={paneStyle(aggregateWidth)}
-              aria-label="当前会话聚合面板"
-              aria-hidden={!aggregateVisible}
-            >
-              <ConversationAggregatePanel
-                key={spaceId}
-                conversationId={currentChannelId!}
-                trace={<div className="conversation-trace conversation-aggregate__scroll"><LiveTrace conversationId={currentChannelId!} showHeading={false} /></div>}
-                settings={settingsInDrawer ? undefined : channelSettings}
-                settingsOpen={!!settingsChannel && !settingsInDrawer}
-                onClose={toggleAggregate}
-                onOpenTopic={(parentMessageId) => updateConversationFocus("thread", parentMessageId)}
-                onJumpToMessage={(messageId) => updateConversationFocus("msg", messageId)}
-              />
-            </aside>
-          </>
-        ) : null}
-        {contentModuleId ? (
-          <ModuleWorkspace
-            moduleId={contentModuleId}
-          />
-        ) : null}
-      </div>
-      {settingsOpen ? (
-        <SettingsDialog
-          section={workspaceModuleResourceFromSearch(location.search, "settings")}
-          onClose={() => navigateLayout(INITIAL_WORKSPACE_LAYOUT, { replace: true })}
-        />
-      ) : null}
-      {quickSwitcherOpen ? <QuickSwitcher onClose={() => setQuickSwitcherOpen(false)} /> : null}
-    </main>
+        <SidebarInset className="shell-workspace-inset">
+        <section
+          className="shell-workspace-frame"
+          data-layout-mode={mode}
+          data-aggregate-transitioning={aggregateTransitioning ? "true" : undefined}
+          data-visual-mode={mode}
+        >
+          <div ref={workspaceRef} className="shell-workspace-canvas">
+            <SidebarTrigger className="shell-sidebar-trigger" />
+            {tabWorkspace ? (
+              <WorkspaceSplitPane chat={chatWorkspace} workspace={tabWorkspace} />
+            ) : (
+              <>
+                {chatWorkspace}
+                {aggregateEligible ? (
+                  <>
+                    <div className="shell-aggregate-gap" style={paneStyle(aggregateGap)} aria-hidden="true" />
+                    <aside
+                      ref={aggregatePanelRef}
+                      className="shell-work-panel shell-conversation-aggregate"
+                      style={paneStyle(aggregateWidth)}
+                      aria-label="当前会话聚合面板"
+                      aria-hidden={!aggregateVisible}
+                    >
+                      <ConversationAggregatePanel
+                        key={spaceId}
+                        conversationId={currentChannelId!}
+                        trace={<div className="conversation-trace conversation-aggregate__scroll"><LiveTrace conversationId={currentChannelId!} showHeading={false} /></div>}
+                        settings={settingsInDrawer ? undefined : channelSettings}
+                        settingsOpen={!!settingsChannel && !settingsInDrawer}
+                        onClose={toggleAggregate}
+                        onOpenTopic={(parentMessageId) => updateConversationFocus("thread", parentMessageId)}
+                        onJumpToMessage={(messageId) => updateConversationFocus("msg", messageId)}
+                      />
+                    </aside>
+                  </>
+                ) : null}
+              </>
+            )}
+          </div>
+          {settingsOpen ? (
+            <SettingsDialog
+              section={workspaceModuleResourceFromSearch(location.search, "settings")}
+              onClose={() => {
+                const tab = activeWorkspaceTab(workspaceTabState);
+                if (tab) navigateToTab(tab, { replace: true });
+                else navigateLayout(INITIAL_WORKSPACE_LAYOUT, { replace: true });
+              }}
+            />
+          ) : null}
+          {quickSwitcherOpen ? <QuickSwitcher onClose={() => setQuickSwitcherOpen(false)} /> : null}
+        </section>
+        </SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }

@@ -50,7 +50,7 @@
 .personal-setup-form header > p:last-child {
   max-width: 440px;
   margin: 10px 0 22px;
-  color: var(--muted);
+  color: var(--legacy-muted);
   font-size: 14px;
   line-height: 1.6;
 }
@@ -67,7 +67,7 @@
 
 .personal-setup-eyebrow {
   margin: 0 0 7px;
-  color: var(--muted);
+  color: var(--legacy-muted);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .1em;
@@ -94,7 +94,7 @@
 }
 
 .personal-setup-field > span small {
-  color: var(--muted);
+  color: var(--legacy-muted);
   font-size: 12px;
   font-weight: 400;
 }
@@ -138,7 +138,7 @@
   position: absolute;
   right: 9px;
   bottom: 7px;
-  color: var(--muted);
+  color: var(--legacy-muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
@@ -187,7 +187,7 @@
 
 .personal-setup-footnote {
   margin: -2px 0 0;
-  color: var(--muted);
+  color: var(--legacy-muted);
   font-size: 12px;
   line-height: 1.5;
   text-align: center;
