@@ -96,6 +96,7 @@ test("shared sliding control owns the card and aggregate panel selection visuals
   assert.match(track, /border-radius\s*:\s*12px/);
   assert.match(track, /background\s*:\s*var\(--muted\)/);
   const indicator = ruleBody(".sliding-tabs__indicator", slidingControlCss);
+  assert.match(indicator, /background\s*:\s*#ffffff/);
   assert.match(indicator, /border-radius\s*:\s*10px/);
   assert.match(indicator, /0 1px 2px rgb\(0 0 0 \/ 5%\)/);
   assert.match(indicator, /0 3px 8px rgb\(0 0 0 \/ 6%\)/);

@@ -39,6 +39,16 @@ html[data-kith-desktop-platform="darwin"] :is(
   -webkit-app-region: no-drag;
 }
 
+/* The transient sidebar is a pointer-driven surface. A macOS drag region here
+   would intermittently steal hover events from its header while the panel moves. */
+html[data-kith-desktop-platform="darwin"] .shell-sidebar-provider:is(
+  [data-sidebar-preview="opening"],
+  [data-sidebar-preview="open"],
+  [data-sidebar-preview="closing"]
+) .workspace-sidebar__header {
+  -webkit-app-region: no-drag;
+}
+
 .workspace-navigation-rail {
   position: relative;
   z-index: 45;
@@ -93,13 +103,9 @@ html[data-kith-desktop-platform="darwin"] .workspace-navigation-rail {
   transform: translate(0, -50%);
 }
 
-.workspace-navigation-rail__space:has(.sw-wrap[data-menu-open="true"])::after {
+.workspace-navigation-rail__space:has([data-slot="dropdown-menu-trigger"][data-state="open"])::after {
   opacity: 0;
   transform: translate(4px, -50%);
-}
-
-.workspace-navigation-rail .sw-wrap {
-  position: relative;
 }
 
 .workspace-navigation-rail .brand {
@@ -134,12 +140,6 @@ html[data-kith-desktop-platform="darwin"] .workspace-navigation-rail {
   width: 8px;
   height: 8px;
   border: 2px solid #f6f6f6;
-}
-
-.workspace-navigation-rail .sw-pop {
-  top: 0;
-  left: 50px;
-  width: 320px;
 }
 
 .shell-workspace-canvas {
@@ -218,6 +218,7 @@ html[data-kith-desktop-platform="darwin"] .workspace-navigation-rail {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  border-left: 1px solid var(--shell-border);
   transition: width var(--shell-side-pane-motion-duration) var(--shell-side-pane-motion-easing),
     flex-basis var(--shell-side-pane-motion-duration) var(--shell-side-pane-motion-easing);
   will-change: width, flex-basis;
@@ -863,10 +864,6 @@ html[data-kith-desktop-platform="darwin"] .workspace-navigation-rail {
   padding: 2px;
 }
 
-.workspace-sidebar__space .sw-wrap {
-  flex: none;
-}
-
 .workspace-sidebar__space .brand {
   position: relative;
   display: inline-flex;
@@ -897,11 +894,6 @@ html[data-kith-desktop-platform="darwin"] .workspace-navigation-rail {
   width: 8px;
   height: 8px;
   border: 2px solid var(--sidebar);
-}
-
-.workspace-sidebar__space .sw-pop {
-  top: 0;
-  left: 44px;
 }
 
 .workspace-sidebar__conversations {

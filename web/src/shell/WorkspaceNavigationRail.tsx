@@ -1,5 +1,5 @@
 import { MessageCircleMore, Search } from "lucide-react";
-import { memo, type TransitionEventHandler } from "react";
+import { memo, useRef, type TransitionEventHandler } from "react";
 import { useTranslation } from "react-i18next";
 import { SpaceSwitcher } from "../SpaceSwitcher.tsx";
 import {
@@ -55,13 +55,32 @@ export const WorkspaceNavigationRail = memo(function WorkspaceNavigationRail({
   const primaryModules = sidebarModulesForSpace(isHome).filter((module) => module.id !== "settings");
   const settingsModule = sidebarModulesForSpace(isHome).find((module) => module.id === "settings");
   const SettingsIcon = settingsModule?.Icon;
+  const pointerInsideSidebarRef = useRef(false);
+  const spaceMenuOpenRef = useRef(false);
+
+  const handlePreviewEnter = () => {
+    pointerInsideSidebarRef.current = true;
+    onPreviewEnter();
+  };
+  const handlePreviewLeave = () => {
+    pointerInsideSidebarRef.current = false;
+    if (!spaceMenuOpenRef.current) onPreviewLeave();
+  };
+  const handleSpaceMenuOpenChange = (open: boolean) => {
+    spaceMenuOpenRef.current = open;
+    if (open) {
+      onPreviewEnter();
+      return;
+    }
+    if (!pointerInsideSidebarRef.current) onPreviewLeave();
+  };
 
   return (
     <Sidebar
       collapsible="offcanvas"
       className="border-r-0"
-      onPointerEnter={onPreviewEnter}
-      onPointerLeave={onPreviewLeave}
+      onPointerEnter={handlePreviewEnter}
+      onPointerLeave={handlePreviewLeave}
       onTransitionEnd={onPreviewTransitionEnd}
     >
       <SidebarHeader className="workspace-sidebar__header">
@@ -71,6 +90,7 @@ export const WorkspaceNavigationRail = memo(function WorkspaceNavigationRail({
               const remembered = storedChatLocation(nextSlug)?.path;
               return remembered ?? `/s/${nextSlug}/channel`;
             }}
+            onMenuOpenChange={handleSpaceMenuOpenChange}
           />
           <div className="min-w-0">
             <div className="truncate font-medium text-sidebar-foreground">

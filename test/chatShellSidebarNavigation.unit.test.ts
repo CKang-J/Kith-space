@@ -55,6 +55,7 @@ test("aggregate panel touches Chat with one divider and becomes a drawer below i
   assert.match(frame, /aria-hidden=\{!aggregateVisible\}/);
   assert.doesNotMatch(frame, /shell-aggregate-gap/);
   assert.doesNotMatch(shellCss, /shell-aggregate-gap/);
+  assert.match(shellCss, /\.shell-conversation-aggregate\s*\{[^}]*border-left:\s*1px solid var\(--shell-border\)/);
   assert.match(chatWorkspace, /className="shell-chat-aggregate-layer"/);
   assert.match(chatWorkspace, /aria-label="聚合面板"/);
   assert.match(chatWorkspace, /aggregateLayerRef\.current\?\.toggleAttribute\("inert", !aggregateDrawerOpen\)/);
@@ -62,13 +63,24 @@ test("aggregate panel touches Chat with one divider and becomes a drawer below i
   assert.match(shellCss, /\.shell-chat-aggregate-layer\[data-open="true"\] \.shell-chat-aggregate-drawer\s*\{[^}]*width:\s*min\(340px,\s*92%\)/);
 });
 
-test("Space switcher uses a white menu, neutral hover, and suppresses its rail tooltip while open", () => {
-  assert.match(spaceSwitcher, /data-menu-open=\{open \|\| undefined\}/);
-  assert.match(spaceSwitcher, /aria-expanded=\{open\}/);
+test("Space switcher uses a shadcn menu with themed layering and locks an edge preview while open", () => {
+  assert.match(spaceSwitcher, /<DropdownMenu open=\{open\} onOpenChange=\{handleOpenChange\}>/);
+  assert.match(spaceSwitcher, /<DropdownMenuTrigger asChild>/);
+  assert.match(spaceSwitcher, /<DropdownMenuContent[\s\S]*?side="right"[\s\S]*?className="w-80 min-w-80 max-w-\[calc\(100vw-1rem\)\] p-1.5"/);
+  assert.match(spaceSwitcher, /<DropdownMenuLabel>/);
+  assert.match(spaceSwitcher, /<DropdownMenuGroup>/);
+  assert.match(spaceSwitcher, /<DropdownMenuSeparator \/>/);
+  assert.match(spaceSwitcher, /bg-accent font-medium text-accent-foreground focus:bg-accent/);
+  assert.match(spaceSwitcher, /onMenuOpenChange\?\.\(true\)/);
+  assert.match(spaceSwitcher, /onMenuOpenChange\?\.\(false\)/);
   assert.doesNotMatch(spaceSwitcher, /className="brand"[^>]*title=/);
-  assert.match(globalCss, /\.sw-pop\{[^}]*background:#fff/);
-  assert.match(globalCss, /\.sw-item:hover\{background:#f5f5f5\}/);
-  assert.match(shellCss, /\.workspace-navigation-rail__space:has\(\.sw-wrap\[data-menu-open="true"\]\)::after\s*\{[^}]*opacity:\s*0/s);
+  assert.doesNotMatch(spaceSwitcher, /sw-pop|sw-backdrop|sw-item/);
+  assert.match(navigationRail, /const spaceMenuOpenRef = useRef\(false\)/);
+  assert.match(navigationRail, /const handlePreviewLeave[\s\S]*?!spaceMenuOpenRef\.current\) onPreviewLeave\(\)/);
+  assert.match(navigationRail, /const handleSpaceMenuOpenChange[\s\S]*?spaceMenuOpenRef\.current = open[\s\S]*?if \(open\) \{[\s\S]*?onPreviewEnter\(\)/);
+  assert.match(navigationRail, /onMenuOpenChange=\{handleSpaceMenuOpenChange\}/);
+  assert.match(shellCss, /\.workspace-navigation-rail__space:has\(\[data-slot="dropdown-menu-trigger"\]\[data-state="open"\]\)::after\s*\{[^}]*opacity:\s*0/s);
+  assert.match(shellCss, /html\[data-kith-desktop-platform="darwin"\] \.shell-sidebar-provider:is\([\s\S]*?\[data-sidebar-preview="opening"\],[\s\S]*?\[data-sidebar-preview="open"\],[\s\S]*?\[data-sidebar-preview="closing"\][\s\S]*?\) \.workspace-sidebar__header\s*\{[\s\S]*?-webkit-app-region:\s*no-drag/);
 });
 
 test("Ctrl+K and the rail Search icon open the categorized global search", () => {
@@ -130,8 +142,8 @@ test("collapsed Sidebar previews from the window edge and workspaces auto-collap
   assert.match(frame, /activeWorkspaceKey = activeTab \? `\$\{workspaceStorageId\}:\$\{activeTab\.id\}` : null/);
   assert.match(frame, /const collapseSidebar = useCallback\(\(\) => updateSidebarOpen\(false\)/);
   assert.match(frame, /useAutoCollapseSidebarForWorkspace\([\s\S]*?activeWorkspaceKey,[\s\S]*?collapseSidebar/);
-  assert.match(navigationRail, /onPointerEnter=\{onPreviewEnter\}/);
-  assert.match(navigationRail, /onPointerLeave=\{onPreviewLeave\}/);
+  assert.match(navigationRail, /onPointerEnter=\{handlePreviewEnter\}/);
+  assert.match(navigationRail, /onPointerLeave=\{handlePreviewLeave\}/);
   assert.match(navigationRail, /onTransitionEnd=\{onPreviewTransitionEnd\}/);
   assert.match(sidebarPreview, /SIDEBAR_PREVIEW_INTENT_DELAY_MS = 85/);
   assert.match(sidebarPreview, /SIDEBAR_PREVIEW_CLOSE_DELAY_MS = 260/);
