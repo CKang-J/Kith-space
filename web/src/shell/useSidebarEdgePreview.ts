@@ -7,7 +7,7 @@ import {
 } from "react";
 
 const SIDEBAR_PREVIEW_INTENT_DELAY_MS = 85;
-const SIDEBAR_PREVIEW_CLOSE_DELAY_MS = 180;
+const SIDEBAR_PREVIEW_CLOSE_DELAY_MS = 260;
 const SIDEBAR_PREVIEW_CLOSE_FALLBACK_MS = 240;
 
 type SidebarPreviewState = "closed" | "intent" | "opening" | "open" | "closing";
@@ -110,9 +110,12 @@ export function useSidebarEdgePreview({
   const openPreview = useCallback(() => {
     if (!collapsed || disabled) return;
     const current = previewStateRef.current;
-    if (current === "closing") return;
     cancelScheduledClose();
     cancelCloseTransition();
+    if (current === "closing") {
+      updatePreviewState("open");
+      return;
+    }
     if (current === "closed") {
       updatePreviewState("intent");
       intentTimerRef.current = window.setTimeout(() => {
@@ -138,15 +141,16 @@ export function useSidebarEdgePreview({
       !collapsed
       || disabled
       || previewStateRef.current === "closed"
-      || previewStateRef.current === "closing"
     ) return;
     cancelScheduledClose();
     cancelCloseTransition();
+    if (previewStateRef.current === "closing") updatePreviewState("open");
   }, [
     cancelCloseTransition,
     cancelScheduledClose,
     collapsed,
     disabled,
+    updatePreviewState,
   ]);
 
   const schedulePreviewClose = useCallback(() => {

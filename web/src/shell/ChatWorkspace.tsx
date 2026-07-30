@@ -12,6 +12,8 @@ interface ChatWorkspaceProps {
   onOpenTasks(conversationId: string): void;
   onOpenChannelSettings(channelId: string, trigger?: HTMLButtonElement): void;
   onNavigateConversation(target: string): void;
+  aggregateDrawer?: ReactNode;
+  aggregateDrawerOpen?: boolean;
   settingsDrawer?: ReactNode;
   settingsDrawerOpen?: boolean;
   style?: CSSProperties;
@@ -67,13 +69,19 @@ export const ChatWorkspace = memo(function ChatWorkspace({
   onOpenTasks,
   onOpenChannelSettings,
   onNavigateConversation,
+  aggregateDrawer,
+  aggregateDrawerOpen = false,
   settingsDrawer,
   settingsDrawerOpen = false,
   style,
 }: ChatWorkspaceProps) {
   const { pathname } = useLocation();
+  const aggregateLayerRef = useRef<HTMLDivElement>(null);
   const settingsLayerRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    aggregateLayerRef.current?.toggleAttribute("inert", !aggregateDrawerOpen);
+  }, [aggregateDrawerOpen]);
   useEffect(() => {
     settingsLayerRef.current?.toggleAttribute("inert", !settingsDrawerOpen);
   }, [settingsDrawerOpen]);
@@ -102,6 +110,22 @@ export const ChatWorkspace = memo(function ChatWorkspace({
           />
         </div>
       </section>
+      <div
+        ref={aggregateLayerRef}
+        className="shell-chat-aggregate-layer"
+        data-open={aggregateDrawerOpen ? "true" : undefined}
+        aria-hidden={!aggregateDrawerOpen}
+      >
+        <aside
+          className="shell-chat-aggregate-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="聚合面板"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <div className="shell-chat-aggregate-drawer__content">{aggregateDrawer}</div>
+        </aside>
+      </div>
       <div
         ref={settingsLayerRef}
         className="shell-chat-settings-layer"

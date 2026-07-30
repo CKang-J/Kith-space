@@ -47,6 +47,21 @@ test("ChatOnly uses the persistent shadcn Sidebar with modules and conversations
   assert.match(shellCss, /\.workspace-sidebar__conversations\s*\{[^}]*min-height:\s*0/);
 });
 
+test("aggregate panel touches Chat with one divider and becomes a drawer below its inline width", () => {
+  assert.match(frame, /const aggregateInlineAvailable = aggregateAvailable && aggregateConstraints\.canShow/);
+  assert.match(frame, /const aggregateDrawerOpen = aggregateAvailable && !aggregateInlineAvailable && aggregateOpen && !settingsDrawerOpen/);
+  assert.match(frame, /aggregateDrawer=\{aggregateAvailable && !aggregateInlineAvailable \? aggregatePanel : undefined\}/);
+  assert.match(frame, /\{aggregateInlineAvailable \? \(\s*<aside[\s\S]*?shell-conversation-aggregate/);
+  assert.match(frame, /aria-hidden=\{!aggregateVisible\}/);
+  assert.doesNotMatch(frame, /shell-aggregate-gap/);
+  assert.doesNotMatch(shellCss, /shell-aggregate-gap/);
+  assert.match(chatWorkspace, /className="shell-chat-aggregate-layer"/);
+  assert.match(chatWorkspace, /aria-label="聚合面板"/);
+  assert.match(chatWorkspace, /aggregateLayerRef\.current\?\.toggleAttribute\("inert", !aggregateDrawerOpen\)/);
+  assert.match(shellCss, /\.shell-chat-aggregate-layer\s*\{\s*z-index:\s*33/);
+  assert.match(shellCss, /\.shell-chat-aggregate-layer\[data-open="true"\] \.shell-chat-aggregate-drawer\s*\{[^}]*width:\s*min\(340px,\s*92%\)/);
+});
+
 test("Space switcher uses a white menu, neutral hover, and suppresses its rail tooltip while open", () => {
   assert.match(spaceSwitcher, /data-menu-open=\{open \|\| undefined\}/);
   assert.match(spaceSwitcher, /aria-expanded=\{open\}/);
@@ -83,6 +98,17 @@ test("Ctrl+K and the rail Search icon open the categorized global search", () =>
   assert.match(globalCss, /\.qs-message-result__match\{[^}]*color:#0675f7/);
 });
 
+test("Cmd/Ctrl+B toggles the Sidebar without taking over editable controls", () => {
+  const shortcut = fs.readFileSync(new URL("../web/src/shell/sidebarKeyboardShortcut.ts", import.meta.url), "utf8");
+  assert.match(frame, /import \{ isSidebarToggleShortcut \} from "\.\/sidebarKeyboardShortcut\.ts"/);
+  assert.match(frame, /const toggleSidebarFromShortcut = \(event: KeyboardEvent\) => \{[\s\S]*?isSidebarToggleShortcut\(event\)[\s\S]*?event\.preventDefault\(\)[\s\S]*?updateSidebarOpen\(!sidebarOpen\)/);
+  assert.match(frame, /window\.addEventListener\("keydown", toggleSidebarFromShortcut\)/);
+  assert.match(shortcut, /event\.key\.toLowerCase\(\) === "b"/);
+  assert.match(shortcut, /event\.metaKey \|\| event\.ctrlKey/);
+  assert.match(shortcut, /!event\.isComposing[\s\S]*?!event\.repeat[\s\S]*?!event\.altKey[\s\S]*?!event\.shiftKey/);
+  assert.match(shortcut, /input, textarea, select, \[contenteditable\], \[role=/);
+});
+
 test("the Sidebar remains mounted while Chat and a module share the workspace", () => {
   assert.doesNotMatch(frame, /WorkspaceDock|shell-dock-zone|toggleChatPane/);
   assert.match(frame, /const chatVisible = true/);
@@ -108,16 +134,17 @@ test("collapsed Sidebar previews from the window edge and workspaces auto-collap
   assert.match(navigationRail, /onPointerLeave=\{onPreviewLeave\}/);
   assert.match(navigationRail, /onTransitionEnd=\{onPreviewTransitionEnd\}/);
   assert.match(sidebarPreview, /SIDEBAR_PREVIEW_INTENT_DELAY_MS = 85/);
-  assert.match(sidebarPreview, /SIDEBAR_PREVIEW_CLOSE_DELAY_MS = 180/);
+  assert.match(sidebarPreview, /SIDEBAR_PREVIEW_CLOSE_DELAY_MS = 260/);
   assert.match(sidebarPreview, /SIDEBAR_PREVIEW_CLOSE_FALLBACK_MS = 240/);
   assert.match(sidebarPreview, /"closed" \| "intent" \| "opening" \| "open" \| "closing"/);
-  assert.match(sidebarPreview, /const retainPreview[\s\S]*?previewStateRef\.current === "closed"[\s\S]*?previewStateRef\.current === "closing"/);
-  assert.match(sidebarPreview, /if \(current === "closing"\) return/);
+  assert.match(sidebarPreview, /const retainPreview[\s\S]*?previewStateRef\.current === "closed"[\s\S]*?if \(previewStateRef\.current === "closing"\) updatePreviewState\("open"\)/);
+  assert.match(sidebarPreview, /if \(current === "closing"\) \{[\s\S]*?updatePreviewState\("open"\);[\s\S]*?return/);
   assert.match(sidebarPreview, /completePreviewOpenAfterPaint[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?requestAnimationFrame\(\(\) =>/);
   assert.match(sidebarPreview, /updatePreviewState\("closing"\)/);
   assert.match(sidebarPreview, /event\.key !== "Escape"/);
   assert.match(sidebarPreview, /event\.propertyName !== "transform"/);
-  assert.match(shellCss, /width:\s*calc\(var\(--sidebar-width\) \+ 16px\)/);
+  assert.match(shellCss, /width:\s*calc\(var\(--sidebar-width\) \+ 24px\)/);
+  assert.match(shellCss, /\.shell-sidebar-provider:is\([\s\S]*?\[data-sidebar-preview="opening"\],[\s\S]*?\[data-sidebar-preview="open"\],[\s\S]*?\[data-sidebar-preview="closing"\][\s\S]*?\)[\s\S]*?> \.shell-sidebar-edge-trigger/);
   assert.match(shellCss, /@media \(min-width: 48rem\) and \(hover: hover\) and \(pointer: fine\)/);
   assert.match(frame, /SIDEBAR_LAYOUT_MOTION_MS = 420/);
   assert.match(frame, /data-sidebar-transitioning=\{sidebarTransitioning \? "true" : undefined\}/);

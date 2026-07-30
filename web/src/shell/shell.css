@@ -7,6 +7,10 @@
   --shell-gap: 0;
   --shell-side-pane-motion-duration: 420ms;
   --shell-side-pane-motion-easing: cubic-bezier(.25, .8, .25, 1);
+  --shell-workspace-enter-motion-duration: 400ms;
+  --shell-workspace-enter-motion-easing: cubic-bezier(.22, .61, .36, 1);
+  --shell-workspace-exit-motion-duration: 200ms;
+  --shell-workspace-exit-motion-easing: cubic-bezier(.2, .8, .3, 1);
   display: flex;
   height: 100vh;
   min-height: 0;
@@ -210,7 +214,6 @@ html[data-kith-desktop-platform="darwin"] .workspace-navigation-rail {
   grid-column: 5;
 }
 
-.shell-aggregate-gap,
 .shell-conversation-aggregate {
   min-width: 0;
   min-height: 0;
@@ -218,20 +221,6 @@ html[data-kith-desktop-platform="darwin"] .workspace-navigation-rail {
   transition: width var(--shell-side-pane-motion-duration) var(--shell-side-pane-motion-easing),
     flex-basis var(--shell-side-pane-motion-duration) var(--shell-side-pane-motion-easing);
   will-change: width, flex-basis;
-}
-
-.shell-aggregate-gap {
-  position: relative;
-}
-
-.shell-aggregate-gap::before {
-  position: absolute;
-  top: 51px;
-  right: 0;
-  left: 0;
-  border-bottom: 1px solid var(--shell-border);
-  content: "";
-  pointer-events: none;
 }
 
 .shell-conversation-aggregate > * {
@@ -619,22 +608,27 @@ html[data-kith-desktop-platform="darwin"] .workspace-navigation-rail {
   text-transform: uppercase;
 }
 
-.shell-chat-settings-layer {
+.shell-chat-settings-layer,
+.shell-chat-aggregate-layer {
   position: absolute;
   inset: 0;
-  z-index: 34;
   display: flex;
   justify-content: flex-end;
   overflow: hidden;
   pointer-events: none;
 }
 
-.shell-chat-settings-layer[data-open="true"] {
+.shell-chat-aggregate-layer { z-index: 33; }
+.shell-chat-settings-layer { z-index: 34; }
+
+.shell-chat-settings-layer[data-open="true"],
+.shell-chat-aggregate-layer[data-open="true"] {
   background: rgba(12, 10, 9, .10);
   pointer-events: auto;
 }
 
-.shell-chat-settings-drawer {
+.shell-chat-settings-drawer,
+.shell-chat-aggregate-drawer {
   width: 0;
   height: 100%;
   overflow: hidden;
@@ -645,12 +639,14 @@ html[data-kith-desktop-platform="darwin"] .workspace-navigation-rail {
   will-change: width;
 }
 
-.shell-chat-settings-layer[data-open="true"] .shell-chat-settings-drawer {
+.shell-chat-settings-layer[data-open="true"] .shell-chat-settings-drawer,
+.shell-chat-aggregate-layer[data-open="true"] .shell-chat-aggregate-drawer {
   width: min(340px, 92%);
   border-left-width: 1px;
 }
 
-.shell-chat-settings-drawer__content {
+.shell-chat-settings-drawer__content,
+.shell-chat-aggregate-drawer__content {
   width: min(340px, 92vw);
   min-width: min(340px, 92vw);
   height: 100%;
@@ -737,10 +733,11 @@ html[data-kith-desktop-platform="darwin"] .workspace-navigation-rail {
 
 .shell-sidebar-provider:is(
   [data-sidebar-preview="opening"],
-  [data-sidebar-preview="open"]
+  [data-sidebar-preview="open"],
+  [data-sidebar-preview="closing"]
 )
   > .shell-sidebar-edge-trigger {
-  width: calc(var(--sidebar-width) + 16px);
+  width: calc(var(--sidebar-width) + 24px);
 }
 
 .shell-sidebar-provider
@@ -1003,6 +1000,40 @@ html[data-kith-desktop-platform="darwin"] .workspace-navigation-rail {
   flex: 0 0 clamp(340px, 34%, 440px);
 }
 
+.shell-workspace-split-pane > [data-panel] {
+  transition: flex-grow var(--shell-workspace-exit-motion-duration) var(--shell-workspace-exit-motion-easing);
+}
+
+.shell-workspace-split-pane[data-workspace-open="true"] > [data-panel] {
+  transition-duration: var(--shell-workspace-enter-motion-duration);
+  transition-timing-function: var(--shell-workspace-enter-motion-easing);
+}
+
+.shell-workspace-split-handle {
+  transition: width var(--shell-workspace-exit-motion-duration) var(--shell-workspace-exit-motion-easing),
+    opacity var(--shell-workspace-exit-motion-duration) var(--shell-workspace-exit-motion-easing),
+    background-color 150ms ease;
+}
+
+.shell-workspace-split-pane[data-workspace-open="true"] .shell-workspace-split-handle {
+  transition: width var(--shell-workspace-enter-motion-duration) var(--shell-workspace-enter-motion-easing),
+    opacity var(--shell-workspace-enter-motion-duration) var(--shell-workspace-enter-motion-easing),
+    background-color 150ms ease;
+}
+
+.shell-workspace-split-pane[data-workspace-resizing="true"] > [data-panel],
+.shell-workspace-split-pane[data-workspace-resizing="true"] .shell-workspace-split-handle {
+  transition: none;
+}
+
+.shell-workspace-split-pane:not([data-workspace-open="true"]) > [data-panel]:first-child {
+  flex: 1 1 0 !important;
+}
+
+.shell-workspace-split-pane:not([data-workspace-open="true"]) > [data-panel]:last-child {
+  flex: 0 1 0 !important;
+}
+
 .shell-chat-main-card {
   width: 100%;
   min-width: 0;
@@ -1203,8 +1234,8 @@ html[data-kith-desktop-platform="darwin"] .peer[data-state="collapsed"] ~ .shell
   .shell-module-workspace,
   .shell-chat-conversations,
   .shell-chat-trace,
-  .shell-aggregate-gap,
   .shell-conversation-aggregate,
+  .shell-chat-aggregate-drawer,
   .shell-chat-settings-drawer,
   .chat-thread-divider::after {
     transition: none;

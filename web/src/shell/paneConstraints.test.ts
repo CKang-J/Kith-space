@@ -13,12 +13,12 @@ test("Chat minimum preserves the message pane and the main conversation", () => 
   assert.equal(chatPaneMin(2400), 600);
 });
 
-test("aggregate panel preserves the Chat minimum and one canvas gap", () => {
-  assert.deepEqual(aggregatePaneConstraints(878), {
+test("aggregate panel preserves the Chat minimum without a blank canvas gap", () => {
+  assert.deepEqual(aggregatePaneConstraints(868), {
     width: AGGREGATE_PANE_WIDTH,
     canShow: true,
   });
-  assert.deepEqual(aggregatePaneConstraints(877), {
+  assert.deepEqual(aggregatePaneConstraints(867), {
     width: AGGREGATE_PANE_WIDTH,
     canShow: false,
   });

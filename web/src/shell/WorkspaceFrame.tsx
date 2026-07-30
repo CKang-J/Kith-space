@@ -19,6 +19,7 @@ import { SettingsDialog } from "./SettingsDialog.tsx";
 import { WorkspaceNavigationRail } from "./WorkspaceNavigationRail.tsx";
 import { WorkspaceSplitPane } from "./WorkspaceSplitPane.tsx";
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx";
+import { isSidebarToggleShortcut } from "./sidebarKeyboardShortcut.ts";
 import {
   shellActions,
   storedChatLocation,
@@ -265,6 +266,16 @@ export function WorkspaceFrame() {
     return () => window.removeEventListener("keydown", openQuickSwitcher);
   }, []);
 
+  useEffect(() => {
+    const toggleSidebarFromShortcut = (event: KeyboardEvent) => {
+      if (!isSidebarToggleShortcut(event)) return;
+      event.preventDefault();
+      updateSidebarOpen(!sidebarOpen);
+    };
+    window.addEventListener("keydown", toggleSidebarFromShortcut);
+    return () => window.removeEventListener("keydown", toggleSidebarFromShortcut);
+  }, [sidebarOpen, updateSidebarOpen]);
+
   useEffect(() => () => {
     if (aggregateMotionTimerRef.current !== null) window.clearTimeout(aggregateMotionTimerRef.current);
     if (sidebarMotionTimerRef.current !== null) window.clearTimeout(sidebarMotionTimerRef.current);
@@ -307,10 +318,10 @@ export function WorkspaceFrame() {
   const mode = activeTab ? "split" : "chat-only";
   const contentWorkspaceWidth = workspaceWidth;
   const aggregateConstraints = aggregatePaneConstraints(contentWorkspaceWidth);
-  const aggregateAvailable = aggregateEligible && !activeTab && aggregateConstraints.canShow;
-  const aggregateVisible = aggregateAvailable && aggregateOpen;
+  const aggregateAvailable = aggregateEligible && !activeTab;
+  const aggregateInlineAvailable = aggregateAvailable && aggregateConstraints.canShow;
+  const aggregateVisible = aggregateInlineAvailable && aggregateOpen;
   const aggregateWidth = aggregateVisible ? aggregateConstraints.width : 0;
-  const aggregateGap = aggregateVisible ? 10 : 0;
   const paneStyle = (width: number): CSSProperties => ({
     width,
     flexBasis: width,
@@ -322,6 +333,10 @@ export function WorkspaceFrame() {
   const settingsChannel = settingsChannelId
     ? [...channels, ...archivedChannels].find((channel) => channel.id === settingsChannelId) ?? null
     : null;
+  const settingsInDrawer = !!settingsChannel && !aggregateInlineAvailable;
+  const settingsDrawerOpen = settingsInDrawer && aggregateOpen;
+  const aggregateDrawerOpen = aggregateAvailable && !aggregateInlineAvailable && aggregateOpen && !settingsDrawerOpen;
+  const aggregatePanelOpen = aggregateVisible || aggregateDrawerOpen;
 
   useEffect(() => {
     if (settingsOpen || routeContentModuleId || !activeTab) return;
@@ -460,11 +475,10 @@ export function WorkspaceFrame() {
 
   useEffect(() => {
     aggregatePanelRef.current?.toggleAttribute("inert", !aggregateVisible);
-    if (aggregateVisible || !aggregatePanelRef.current?.contains(document.activeElement)) return;
+    if (aggregatePanelOpen || !aggregatePanelRef.current?.contains(document.activeElement)) return;
     (settingsTriggerRef.current ?? aggregateToggleRef.current)?.focus();
-  }, [aggregateVisible]);
+  }, [aggregatePanelOpen, aggregateVisible, settingsTriggerRef]);
 
-  const settingsInDrawer = !!settingsChannel && !aggregateAvailable;
   const channelSettings = settingsChannel ? (
     <ChannelSettingsPanel
       key={settingsChannel.id}
@@ -481,6 +495,18 @@ export function WorkspaceFrame() {
       onDirtyChange={setSettingsDirty}
     />
   ) : null;
+  const aggregatePanel = aggregateAvailable ? (
+    <ConversationAggregatePanel
+      key={spaceId}
+      conversationId={currentChannelId!}
+      trace={<div className="conversation-trace conversation-aggregate__scroll"><LiveTrace conversationId={currentChannelId!} showHeading={false} /></div>}
+      settings={settingsInDrawer ? undefined : channelSettings}
+      settingsOpen={!!settingsChannel && !settingsInDrawer}
+      onClose={toggleAggregate}
+      onOpenTopic={(parentMessageId) => updateConversationFocus("thread", parentMessageId)}
+      onJumpToMessage={(messageId) => updateConversationFocus("msg", messageId)}
+    />
+  ) : null;
   const chatWorkspace = (
     <ChatWorkspace
       channelId={currentChannelId}
@@ -491,8 +517,10 @@ export function WorkspaceFrame() {
       onOpenTasks={openConversationTasks}
       onOpenChannelSettings={openChannelSettings}
       onNavigateConversation={navigateConversation}
+      aggregateDrawer={aggregateAvailable && !aggregateInlineAvailable ? aggregatePanel : undefined}
+      aggregateDrawerOpen={aggregateDrawerOpen}
       settingsDrawer={settingsInDrawer ? channelSettings : undefined}
-      settingsDrawerOpen={settingsInDrawer && aggregateOpen}
+      settingsDrawerOpen={settingsDrawerOpen}
       style={chatPaneStyle}
     />
   );
@@ -548,14 +576,11 @@ export function WorkspaceFrame() {
         >
           <div ref={workspaceRef} className="shell-workspace-canvas">
             <SidebarTrigger className="shell-sidebar-trigger" />
-            {tabWorkspace ? (
-              <WorkspaceSplitPane chat={chatWorkspace} workspace={tabWorkspace} />
-            ) : (
-              <>
-                {chatWorkspace}
-                {aggregateEligible ? (
-                  <>
-                    <div className="shell-aggregate-gap" style={paneStyle(aggregateGap)} aria-hidden="true" />
+            <WorkspaceSplitPane
+              chat={(
+                <>
+                  {chatWorkspace}
+                  {aggregateInlineAvailable ? (
                     <aside
                       ref={aggregatePanelRef}
                       className="shell-work-panel shell-conversation-aggregate"
@@ -563,21 +588,14 @@ export function WorkspaceFrame() {
                       aria-label="当前会话聚合面板"
                       aria-hidden={!aggregateVisible}
                     >
-                      <ConversationAggregatePanel
-                        key={spaceId}
-                        conversationId={currentChannelId!}
-                        trace={<div className="conversation-trace conversation-aggregate__scroll"><LiveTrace conversationId={currentChannelId!} showHeading={false} /></div>}
-                        settings={settingsInDrawer ? undefined : channelSettings}
-                        settingsOpen={!!settingsChannel && !settingsInDrawer}
-                        onClose={toggleAggregate}
-                        onOpenTopic={(parentMessageId) => updateConversationFocus("thread", parentMessageId)}
-                        onJumpToMessage={(messageId) => updateConversationFocus("msg", messageId)}
-                      />
+                      {aggregatePanel}
                     </aside>
-                  </>
-                ) : null}
-              </>
-            )}
+                  ) : null}
+                </>
+              )}
+              workspace={tabWorkspace}
+              workspaceOpen={!!tabWorkspace}
+            />
           </div>
           {settingsOpen ? (
             <SettingsDialog
