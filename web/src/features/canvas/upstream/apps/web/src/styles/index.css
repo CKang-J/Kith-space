@@ -1,0 +1,684 @@
+@import './fonts.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* fallback before data-theme applies */
+    --surface: #ffffff;
+    --canvas: #F5F5F5;
+    --rail: #f3f3f3;
+    --gen-empty: #e9eaee;
+    --ink: #141414;
+    --muted: #767676;
+    --line: #d9d9d9;
+    --accent: #141414;
+    --accent-soft: #ebebeb;
+    --on-brand: #ffffff;
+    --switch-on: #141414;
+    --home-cta: #3370ff;
+    --font-sans: 'Alibaba PuHuiTi', '阿里巴巴普惠体', 'PingFang SC', 'Microsoft YaHei',
+      'Noto Sans SC', system-ui, sans-serif;
+    /* Hero — clean UI sans (Lovart-style); EN + CJK share one stack */
+    --font-hero: 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+      'Alibaba PuHuiTi', '阿里巴巴普惠体', system-ui, sans-serif;
+    --font-hero-en: 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;
+  }
+
+  html {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    letter-spacing: normal;
+    word-spacing: normal;
+    background: var(--canvas);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  /* Force chrome controls to inherit PuHuiTi (Tailwind/preflight + portaled UI). */
+  button,
+  input,
+  textarea,
+  select,
+  optgroup {
+    font-family: inherit;
+  }
+
+  html[lang='zh-TW'],
+  html[lang='zh-CN'],
+  html[lang='ja'] {
+    letter-spacing: 0;
+  }
+
+  #root {
+    height: 100vh;
+    overflow: hidden;
+    font-family: var(--font-sans);
+  }
+}
+
+/* Outside @layer so it reliably overrides Tailwind `transition` utilities during theme swaps */
+html.rcb-theme-switching,
+html.rcb-theme-switching *,
+html.rcb-theme-switching *::before,
+html.rcb-theme-switching *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+.rcb-canvas-stage {
+  @apply relative flex min-h-full w-full items-start justify-center py-2;
+}
+
+/* Real artboard paper (frames / standalone export). */
+.rcb-canvas-paper {
+  position: relative;
+  background: var(--color-background-default-base);
+  box-shadow:
+    0 1px 0 var(--color-shadow-scrim),
+    0 8px 28px var(--color-shadow-blanket);
+  outline: 1px solid var(--color-border-default-base);
+}
+
+/* Infinite-world draw plane: invisible, no fixed “page” chrome. */
+.rcb-canvas-world {
+  position: relative;
+  overflow: visible;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Only the drawing surface needs an opaque fill.
+   Fabric's .upper-canvas must stay transparent or it hides all content. */
+.rcb-canvas-paper canvas.lower-canvas {
+  display: block;
+  background: #ffffff;
+}
+
+.rcb-canvas-paper canvas.upper-canvas,
+.rcb-canvas-paper canvas.lower-canvas {
+  /* Avoid browser upscaling blur when CSS size and buffer temporarily diverge. */
+  image-rendering: auto;
+}
+
+.rcb-canvas-paper canvas.upper-canvas {
+  background: transparent !important;
+}
+
+.rcb-panel-card {
+  @apply rounded-xl border p-4 shadow-sm;
+  border-color: var(--line);
+  background: var(--surface);
+}
+
+/* Home — solid fill; soft pastel glow lives on `.rcb-home-composer-glow`. */
+.rcb-home-hero-canvas {
+  --home-cta: #3370ff;
+  background-color: #ffffff;
+  background-image: none;
+}
+
+html[data-theme='dark'] .rcb-home-hero-canvas {
+  --home-cta: #5b8cff;
+  background-color: var(--canvas);
+}
+
+/* Soft multi-hue bloom behind the home chat card (MasterGo-style). */
+.rcb-home-composer-glow::before {
+  content: '';
+  position: absolute;
+  inset: -28% -18% -18%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 55% 70% at 18% 55%, rgba(255, 176, 196, 0.45), transparent 70%),
+    radial-gradient(ellipse 50% 65% at 82% 40%, rgba(170, 200, 255, 0.5), transparent 68%),
+    radial-gradient(ellipse 45% 55% at 55% 90%, rgba(255, 210, 160, 0.35), transparent 70%);
+  filter: blur(28px);
+}
+
+html[data-theme='dark'] .rcb-home-composer-glow::before {
+  background:
+    radial-gradient(ellipse 55% 70% at 18% 55%, rgba(255, 120, 160, 0.18), transparent 70%),
+    radial-gradient(ellipse 50% 65% at 82% 40%, rgba(80, 130, 255, 0.22), transparent 68%),
+    radial-gradient(ellipse 45% 55% at 55% 90%, rgba(255, 170, 90, 0.12), transparent 70%);
+}
+
+.rcb-panel-tip {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rcb-form-grid {
+  @apply mb-3 grid grid-cols-2 gap-3;
+}
+
+.rcb-form-grid label,
+.rcb-full-width {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.rcb-form-grid input,
+.rcb-form-grid textarea,
+.rcb-full-width input,
+.rcb-full-width textarea {
+  @apply mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:outline-none;
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.rcb-form-grid input:focus,
+.rcb-form-grid textarea:focus,
+.rcb-full-width input:focus,
+.rcb-full-width textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.rcb-form-grid input[type='number'] {
+  @apply h-9 py-0;
+}
+
+.rcb-checkbox-row {
+  @apply mt-2 flex items-center gap-2 text-sm;
+  color: var(--ink);
+}
+
+.rcb-empty-card {
+  @apply rounded-xl border p-8 text-center text-sm shadow-sm;
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+/**
+ * Soft pastel loading surface (list covers random; artboard uses data-glow=canvas).
+ * Motion = inner bloom drifts (not a horizontal light sweep).
+ * Pair with SoftGlowSurface / data-glow="rose|sky|peach|lilac|mint|canvas".
+ */
+@keyframes soft-glow-drift {
+  0% {
+    transform: translate(-12%, -10%) scale(1);
+  }
+  40% {
+    transform: translate(14%, 6%) scale(1.12);
+  }
+  70% {
+    transform: translate(4%, 16%) scale(1.04);
+  }
+  100% {
+    transform: translate(-8%, 4%) scale(1.08);
+  }
+}
+
+.rcb-soft-glow {
+  position: relative;
+  overflow: hidden;
+  background-color: #f7f8fa;
+}
+
+.rcb-soft-glow::before {
+  content: '';
+  position: absolute;
+  inset: -45%;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(
+      ellipse 42% 48% at 58% 38%,
+      var(--rcb-glow-core, rgba(255, 176, 196, 0.52)),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 38% 42% at 32% 68%,
+      var(--rcb-glow-soft, rgba(170, 200, 255, 0.28)),
+      transparent 72%
+    );
+  background-repeat: no-repeat;
+  animation: soft-glow-drift 7.5s ease-in-out infinite alternate;
+  animation-delay: var(--rcb-glow-delay, 0s);
+  will-change: transform;
+}
+
+/** Opt-in class kept for SoftGlowSurface API; drift is the default motion. */
+.rcb-soft-glow--sweep::before,
+.rcb-soft-glow--drift::before {
+  animation-name: soft-glow-drift;
+}
+
+.rcb-soft-glow > * {
+  position: relative;
+  z-index: 1;
+}
+
+.rcb-soft-glow[data-glow='rose'] {
+  --rcb-glow-core: rgba(255, 176, 196, 0.58);
+  --rcb-glow-soft: rgba(255, 210, 220, 0.26);
+}
+
+.rcb-soft-glow[data-glow='sky'] {
+  --rcb-glow-core: rgba(160, 195, 255, 0.55);
+  --rcb-glow-soft: rgba(200, 220, 255, 0.28);
+}
+
+.rcb-soft-glow[data-glow='peach'] {
+  --rcb-glow-core: rgba(255, 200, 160, 0.52);
+  --rcb-glow-soft: rgba(255, 220, 190, 0.26);
+}
+
+.rcb-soft-glow[data-glow='lilac'] {
+  --rcb-glow-core: rgba(210, 185, 255, 0.5);
+  --rcb-glow-soft: rgba(230, 210, 255, 0.26);
+}
+
+.rcb-soft-glow[data-glow='mint'] {
+  --rcb-glow-core: rgba(170, 225, 205, 0.5);
+  --rcb-glow-soft: rgba(200, 235, 220, 0.26);
+}
+
+/** Fixed node / artboard plate — not random. */
+.rcb-soft-glow[data-glow='canvas'] {
+  background-color: #eef2f7;
+  --rcb-glow-core: rgba(175, 200, 230, 0.5);
+  --rcb-glow-soft: rgba(210, 225, 240, 0.32);
+}
+
+html[data-theme='dark'] .rcb-soft-glow {
+  background-color: #1c1e24;
+  --rcb-glow-core: rgba(255, 140, 180, 0.22);
+  --rcb-glow-soft: rgba(100, 150, 255, 0.18);
+}
+
+html[data-theme='dark'] .rcb-soft-glow[data-glow='rose'] {
+  --rcb-glow-core: rgba(255, 140, 180, 0.28);
+  --rcb-glow-soft: rgba(255, 170, 190, 0.12);
+}
+
+html[data-theme='dark'] .rcb-soft-glow[data-glow='sky'] {
+  --rcb-glow-core: rgba(100, 150, 255, 0.28);
+  --rcb-glow-soft: rgba(130, 170, 255, 0.12);
+}
+
+html[data-theme='dark'] .rcb-soft-glow[data-glow='peach'] {
+  --rcb-glow-core: rgba(255, 160, 100, 0.22);
+  --rcb-glow-soft: rgba(255, 180, 120, 0.1);
+}
+
+html[data-theme='dark'] .rcb-soft-glow[data-glow='lilac'] {
+  --rcb-glow-core: rgba(180, 140, 255, 0.26);
+  --rcb-glow-soft: rgba(200, 170, 255, 0.12);
+}
+
+html[data-theme='dark'] .rcb-soft-glow[data-glow='mint'] {
+  --rcb-glow-core: rgba(100, 200, 170, 0.22);
+  --rcb-glow-soft: rgba(130, 210, 180, 0.1);
+}
+
+html[data-theme='dark'] .rcb-soft-glow[data-glow='canvas'] {
+  background-color: #1a1e26;
+  --rcb-glow-core: rgba(120, 160, 210, 0.26);
+  --rcb-glow-soft: rgba(150, 180, 220, 0.12);
+}
+
+/**
+ * Thin text / chip bones — static fill; soft pulse when inside `.rcb-skeleton-card`.
+ */
+.rcb-skeleton-bone {
+  border-radius: 4px;
+  background-color: #e8eaef;
+  background-image: none;
+}
+
+/** Image process loading plate — soft drifting wash over content underneath. */
+.rcb-image-process-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: transparent;
+}
+
+.rcb-image-process-shimmer::before {
+  content: '';
+  position: absolute;
+  inset: -45%;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse 42% 48% at 58% 38%, rgba(255, 255, 255, 0.22), transparent 70%),
+    radial-gradient(ellipse 38% 42% at 32% 68%, rgba(200, 220, 255, 0.16), transparent 72%);
+  animation: soft-glow-drift 7.5s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/**
+ * Artboard generating plate — fixed soft-glow (canvas) + drifting bloom.
+ * Used in screen-space overlay so zoom does not enlarge the animation.
+ */
+.rcb-artboard-process-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: #eef2f7;
+}
+
+.rcb-artboard-process-shimmer::before {
+  content: '';
+  position: absolute;
+  inset: -45%;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse 42% 48% at 58% 38%, rgba(175, 200, 230, 0.55), transparent 70%),
+    radial-gradient(ellipse 38% 42% at 32% 68%, rgba(210, 225, 240, 0.35), transparent 72%);
+  animation: soft-glow-drift 7.5s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+html[data-theme='dark'] .rcb-artboard-process-shimmer {
+  background-color: #1a1e26;
+}
+
+html[data-theme='dark'] .rcb-artboard-process-shimmer::before {
+  background-image:
+    radial-gradient(ellipse 42% 48% at 58% 38%, rgba(120, 160, 210, 0.28), transparent 70%),
+    radial-gradient(ellipse 38% 42% at 32% 68%, rgba(150, 180, 220, 0.14), transparent 72%);
+}
+
+/** Legacy chat class — prefer SoftGlowSurface; keep drift if still referenced. */
+.rcb-chat-image-gen-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: #f7f8fa;
+}
+
+.rcb-chat-image-gen-shimmer::before {
+  content: '';
+  position: absolute;
+  inset: -45%;
+  pointer-events: none;
+  background-image:
+    radial-gradient(
+      ellipse 42% 48% at 58% 38%,
+      var(--rcb-glow-core, rgba(160, 195, 255, 0.55)),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 38% 42% at 32% 68%,
+      var(--rcb-glow-soft, rgba(200, 220, 255, 0.28)),
+      transparent 72%
+    );
+  animation: soft-glow-drift 7.5s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.rcb-chat-image-gen-shimmer[data-glow='rose'] {
+  --rcb-glow-core: rgba(255, 176, 196, 0.58);
+  --rcb-glow-soft: rgba(255, 210, 220, 0.26);
+}
+
+.rcb-chat-image-gen-shimmer[data-glow='sky'] {
+  --rcb-glow-core: rgba(160, 195, 255, 0.55);
+  --rcb-glow-soft: rgba(200, 220, 255, 0.28);
+}
+
+.rcb-chat-image-gen-shimmer[data-glow='peach'] {
+  --rcb-glow-core: rgba(255, 200, 160, 0.52);
+  --rcb-glow-soft: rgba(255, 220, 190, 0.26);
+}
+
+.rcb-chat-image-gen-shimmer[data-glow='lilac'] {
+  --rcb-glow-core: rgba(210, 185, 255, 0.5);
+  --rcb-glow-soft: rgba(230, 210, 255, 0.26);
+}
+
+.rcb-chat-image-gen-shimmer[data-glow='mint'] {
+  --rcb-glow-core: rgba(170, 225, 205, 0.5);
+  --rcb-glow-soft: rgba(200, 235, 220, 0.26);
+}
+
+/* Plaza publish thank-you */
+@keyframes plaza-thanks-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes rcb-plaza-thanks-ring {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.7);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.55);
+  }
+}
+
+@keyframes plaza-thanks-float {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: translateY(-10px) scale(1.05);
+    opacity: 0.7;
+  }
+}
+
+@keyframes plaza-thanks-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rcb-plaza-thanks-badge {
+  animation: plaza-thanks-pop 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.rcb-plaza-thanks-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid color-mix(in srgb, var(--ink) 35%, transparent);
+  animation: rcb-plaza-thanks-ring 0.9s ease-out 0.12s both;
+}
+
+.rcb-plaza-thanks-copy {
+  animation: plaza-thanks-rise 0.45s ease-out 0.18s both;
+}
+
+.rcb-plaza-thanks-orb {
+  position: absolute;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+  animation: plaza-thanks-float 2.8s ease-in-out infinite;
+}
+
+.rcb-plaza-thanks-orb-a {
+  width: 10px;
+  height: 10px;
+  left: 18%;
+  top: 22%;
+  animation-delay: 0s;
+}
+
+.rcb-plaza-thanks-orb-b {
+  width: 7px;
+  height: 7px;
+  right: 20%;
+  top: 28%;
+  animation-delay: 0.4s;
+}
+
+.rcb-plaza-thanks-orb-c {
+  width: 8px;
+  height: 8px;
+  left: 28%;
+  bottom: 18%;
+  animation-delay: 0.8s;
+}
+
+html[data-theme='dark'] .rcb-skeleton-bone {
+  background-color: #2a2d36;
+  background-image: none;
+}
+
+/**
+ * Card-level title/meta bones — soft opacity pulse (no horizontal bar).
+ */
+@keyframes skeleton-bone-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.rcb-skeleton-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.rcb-skeleton-card::after {
+  display: none;
+}
+
+.rcb-skeleton-card .rcb-skeleton-bone {
+  background-color: #e4e7ee;
+  animation: skeleton-bone-pulse 2.2s ease-in-out infinite;
+}
+
+html[data-theme='dark'] .rcb-skeleton-card .rcb-skeleton-bone {
+  background-color: #2a2d36;
+}
+
+@keyframes rcb-boot-word-shine {
+  0% {
+    background-position: 120% 50%;
+  }
+  100% {
+    background-position: -40% 50%;
+  }
+}
+
+.rcb-boot-wordmark {
+  font-family: Syne, var(--font-sans);
+  font-weight: 700;
+  font-size: clamp(2.25rem, 5.6vw, 3.5rem);
+  letter-spacing: -0.05em;
+  line-height: 1;
+  user-select: none;
+  background-image: linear-gradient(
+    105deg,
+    color-mix(in srgb, var(--ink) 26%, var(--canvas)) 0%,
+    color-mix(in srgb, var(--ink) 26%, var(--canvas)) 40%,
+    var(--ink) 47%,
+    color-mix(in srgb, var(--ink) 42%, #fff) 50%,
+    var(--ink) 53%,
+    color-mix(in srgb, var(--ink) 26%, var(--canvas)) 60%,
+    color-mix(in srgb, var(--ink) 26%, var(--canvas)) 100%
+  );
+  background-size: 240% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: rcb-boot-word-shine 1.85s ease-in-out infinite;
+}
+
+.rcb-boot-wordmark--sm {
+  font-size: 0.95rem;
+  letter-spacing: -0.04em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rcb-boot-wordmark {
+    animation: none;
+    color: var(--ink);
+    -webkit-text-fill-color: var(--ink);
+    background: none;
+  }
+}
+
+/* Global thin scrollbar with track inset */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover {
+  scrollbar-color: #cfcfcf transparent;
+}
+
+html[data-theme='dark'] *:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 12px;
+  margin-inline: 12px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+  background-color: #cfcfcf;
+}
+
+*:hover::-webkit-scrollbar-thumb:hover {
+  background-color: #b5b5b5;
+}
+
+html[data-theme='dark'] *:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.28);
+}
+
+html[data-theme='dark'] *:hover::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.4);
+}
+
+/* Table body: keep scrollbar gutter inside the bordered scrollport */
+.rcb-table-scroll-body {
+  scrollbar-gutter: stable;
+}
+
+.rcb-table-scroll-body::-webkit-scrollbar-track {
+  margin-block: 6px;
+  margin-inline: 2px;
+}

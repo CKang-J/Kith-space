@@ -123,7 +123,8 @@ body{margin:0;font-family:var(--sans);font-size:var(--font-size-base);font-weigh
 button{font-family:inherit}
 /* UI chrome intentionally stays regular and on one scale. Message Markdown restores its
    own document hierarchy below, including 600 emphasis. */
-body *:not(.md):not(.md *){font-size:var(--font-size-base);font-weight:400}
+body *:not(.md):not(.md *):not([data-kith-canvas-root], [data-kith-canvas-root] *):not(body[data-recombyn-native-portal] *){font-size:var(--font-size-base);font-weight:400}
+body[data-recombyn-native-portal]{font-size:16px}
 body :where(h1,h2,h3,h4,h5,h6){font-size:var(--font-size-title)!important;font-weight:400!important}
 body .md :where(h1,h2,h3,h4,h5,h6){font-size:var(--font-size-title)!important;font-weight:var(--font-weight-strong)!important}
 body [data-slot="field-legend"]{font-size:var(--font-size-title)!important;font-weight:400!important}

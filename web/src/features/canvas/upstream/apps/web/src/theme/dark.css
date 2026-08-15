@@ -1,0 +1,61 @@
+/* Dark theme — Figma-like charcoal stack (not near-black) */
+html[data-theme='dark'] {
+  /* Chrome / panels sit above the canvas, matching Figma home + editor.
+     --rail must differ from --surface so inset tracks / size fields read on panels. */
+  --surface: #2c2c2c;
+  --canvas: #1e1e1e;
+  --rail: #242424;
+  --account-rail: #2c2c2c;
+  --account-main: #1e1e1e;
+  --account-card: #2c2c2c;
+  /* Image/video generator empty plate — lifted above canvas. */
+  --gen-empty: #2c2c2c;
+  --ink: #ffffff;
+  --muted: #b3b3b3;
+  --line: #444444;
+  --accent: #ffffff;
+  --accent-soft: #383838;
+  --on-brand: #1e1e1e;
+  /* Switch on-track — elevated gray (not inverted white pill); off stays --line. */
+  --switch-on: #6b6b6b;
+  --preview-overlay: rgba(30, 30, 30, 0.58);
+
+  --slider-active: #ffffff;
+  --slider-inactive: #444444;
+  --slider-thumb-ring: #1e1e1e;
+
+  --color-brand-base: #ffffff;
+  --color-brand-base-hover: #f5f5f5;
+  --color-brand-secondary: #b3b3b3;
+
+  --color-background-default-base: #2c2c2c;
+  --color-background-default-base-hover: #383838;
+  --color-background-default-secondary: #1e1e1e;
+  --color-background-default-secondary-hover: #383838;
+  --color-background-default-tertiary: #555555;
+  --color-background-neutral-tertiary: #383838;
+
+  --color-border-default-base: #444444;
+  --color-border-default-base-hover: #555555;
+  --color-border-default-secondary: #757575;
+
+  --color-text-default-base: #ffffff;
+  --color-text-default-secondary: #b3b3b3;
+  --color-text-default-tertiary: #999999;
+  --color-text-on-button-base: #1e1e1e;
+  --color-text-solid: #1e1e1e;
+
+  --color-icon-base: rgba(255, 255, 255, 0.9);
+  --color-icon-secondary: rgba(255, 255, 255, 0.7);
+  --color-icon-secondary-hover: rgba(255, 255, 255, 0.85);
+
+  --color-background-success-base: #ffffff;
+  --color-background-success-base-hover: #f5f5f5;
+  --color-background-warning-base: #e8b931;
+  --color-background-warning-base-hover: #bf6a02;
+  --color-background-error-base: #c00f0c;
+  --color-background-error-base-hover: #900b09;
+
+  --color-shadow-scrim: rgba(255, 255, 255, 0.04);
+  --color-shadow-blanket: rgba(0, 0, 0, 0.28);
+}

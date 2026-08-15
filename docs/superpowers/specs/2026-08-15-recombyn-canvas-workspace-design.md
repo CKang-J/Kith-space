@@ -1,7 +1,7 @@
 # Recombyn Canvas Workspace 移植与 Agent 联动设计
 
 > 日期：2026-08-15
-> 状态：Accepted / 方案已确认，尚未实现
+> 状态：Accepted / 阶段 1 AgentDock纠偏实现已完成并通过主任务最终复审；阶段 2 未开始
 > Kith 基线：`codex/development@4937690`
 > Recombyn 基线：`follow-upstream@abd8198`
 > 决策：`1A / 2A / 3A / 4A / 5A`
@@ -562,6 +562,8 @@ Canvas 诊断至少记录：canvas/mutation id、可选 job id、actor domain、
 整体开发只按以下 5 个阶段推进。每个阶段交付一个可运行、可审查的产品状态；阶段内部清单只用于控制顺序和验收，不再拆成独立任务线程。上一阶段必须经主任务审查通过，才能开始下一阶段。
 
 ### 阶段 1：移植地基与 UI Island
+
+实现状态（2026-08-15）：阶段 1 AgentDock纠偏实现已完成并通过主任务最终复审。开发态入口 `?__canvas_stage1=1` 不组合 AgentDock、Dock 开关或占位；底栏两个相邻原生按钮可用 `A` / `Shift+A` 创建图片/视频生成器节点，创建、选择、拖动、参数修改、文档投影和开发态版本化浏览器重载可用。当前闭包为320项，318项 materialize，2个品牌二进制排除；审计与物化直接读取固定 `abd8198` Git object，不依赖嵌套仓库当前 checkout。三个 composer scene helper 已迁入带来源声明的窄 Canvas adapter，`runDesignAgent`、`designTools`、`agentMemory`、`service/design`、`service/upload` 与 `utils/request` 已退出闭包。图片、视频和共享媒体生成提交为短小的显式 unavailable 实现，无 Recombyn request/upload/media Job transport 或不可达生成代码；媒体文件只形成本地 data URL。浏览器已验证无 Dock、生成器选中与拖动、参数修改、画布内 data URL 引用、图片/视频 unavailable 提交、双节点刷新恢复、相关 API 资源记录为空且控制台无 error。普通 production build 静态排除 harness，专用构建只验证开发岛。正式 Workspace Tabs、Canvas Library、SQLite/Canvas Core、资产持久化、Selection Snapshot、Gateway 和 Agent 写回未开始，也不得开始。
 
 目标：在不接入正式持久化和 Agent 写回的前提下，让 Recombyn 编辑器以隔离的 feature island 在 Kith 中编译、打开并保持原生观感。
 

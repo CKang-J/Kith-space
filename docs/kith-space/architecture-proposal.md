@@ -1,6 +1,6 @@
 # Kith-space 目标架构
 
-> 本文描述个人 AgentOS 的目标模块边界。A2-A6、Home/Space root 的 H1-H4、P-A8、本轮聊天/壳层 UI、P-A9.0-P-A9.7、P-A10.0–P-A10.7、系统Memory Advisor Provider切片0–4与统一模型/运行器控制面均已完成。当前 workspace schema v11、app.db v10、per-surface SessionModule、四家 v2 runtime、durable delivery/turn、Context Envelope、broker-backed MCP/CLI Gateway、revisioned episodic memory、安装级模型/运行器/Advisor控制面、外观字体、字号与颜色模式设置、带来源归属的Agent活动历史、snapshot与compaction telemetry已落地。H5继续作为独立后续。2026-08-15 接受的 Recombyn Canvas Module 架构尚未实现，见本文第14节与对应规格。完整模型/运行器控制面见`../superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`。
+> 本文描述个人 AgentOS 的目标模块边界。A2-A6、Home/Space root 的 H1-H4、P-A8、本轮聊天/壳层 UI、P-A9.0-P-A9.7、P-A10.0–P-A10.7、系统Memory Advisor Provider切片0–4与统一模型/运行器控制面均已完成。当前 workspace schema v11、app.db v10、per-surface SessionModule、四家 v2 runtime、durable delivery/turn、Context Envelope、broker-backed MCP/CLI Gateway、revisioned episodic memory、安装级模型/运行器/Advisor控制面、外观字体、字号与颜色模式设置、带来源归属的Agent活动历史、snapshot与compaction telemetry已落地。H5继续作为独立后续。Recombyn Canvas Module 的阶段1开发态 UI Island 已完成纠偏实现并通过主任务最终复审，阶段2 Canvas Core与正式宿主接入未开始，见本文第14节与对应规格。完整模型/运行器控制面见`../superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`。
 
 ## 1. 架构原则
 
@@ -410,7 +410,9 @@ app.db v6新增稳定连接、模型配置、runtime profile及其不可变revis
 
 运行器安装由`local-runtime/runtimeSetupCatalog.ts`和`runtimeSetupService.ts`形成独立OS边界：Catalog只允许Claude Code、Codex、OpenCode、Pi四个固定包名/支持版本；Service分别探测可执行文件、版本和账号就绪状态，并只在Desktop trust下安装/删除`<appData>/managed-runtimes/<runtimeId>`。Worker启动时通过`withManagedRuntimePath`把这些bin置于自身PATH前部，因此Kith-owned副本可以优先于系统CLI但不会修改用户PATH。安装/删除按runtime串行，在同父目录完成staging验证后再替换，失败会回滚到原目录；删除先隔离目录并只在当前profile确实指向Kith副本时清空偏好，自定义可执行路径不会被覆盖。安装/删除后提升runtime profile revision/epoch并要求重启Worker；删除不触碰系统安装、CLI账号文件或全局配置。CLI探测与安装通过异步子进程执行，版本和账号探测可并发且不阻塞Core事件循环；同一安装根/PATH下的探测Promise短缓存30秒，强制探测仍受10秒single-flight冷却限制。超时进程先TERM、宽限后KILL并确定性结束请求。HTTP route只编排该Service，不执行任意命令或接受任意包名。
 
-## 14. Recombyn Canvas Module（已接受，尚未实现）
+## 14. Recombyn Canvas Module（阶段 1 纠偏已通过主任务最终复审，阶段 2 未开始）
+
+阶段 1 在 `web/src/features/canvas/` 建立隔离 Renderer feature island：`reference/recombyn@abd8198` 的原生 `EditorPage`、RCB、nodes、chrome、panels 按320项机器闭包逐文件映射，实际 materialize 318项，2个未核清品牌二进制排除。原生 Redux 承担编辑交互投影，独立 in-memory adapter 拥有克隆后的 canonical bytes；样式、字体、token 与 portal 在 Canvas root 内收口。AgentDock、Dock 开关、占位和 resize/让位均不进入组合，只保留 selection-to-chat 窄 host seam；Recombyn request/upload/media Job transport、云/API/钱包、Tauri、Yjs/IndexedDB、Agent runtime 与写回均由闭包裁剪或窄 adapter 禁用。开发入口不注册 `WorkspaceModuleId`，普通 production build 静态排除该入口，也没有 SQLite schema、durable mutation、Gateway 或 Agent 写回；以下内容仍是阶段 2 及其后的目标架构。
 
 Canvas 是新的深 Module，不是 `WorkspaceFrame`、Renderer Redux 或 Agent runtime 的附属状态。其依赖方向固定为：Human REST、MCP、CLI 和 React adapters → Canvas Module → Document/Asset/Event/Export ports。Transport 只处理认证、限额、解析和序列化；业务 mutation、selection snapshot、asset 生命周期、revision、幂等和冲突都位于 `src/canvas/`，不得继续扩大 `src/server/core.ts` 或通用 `CapabilityGateway` 的职责。
 
@@ -418,7 +420,7 @@ Recombyn RCB/editor/nodes/chrome 以 `web/src/features/canvas/upstream/` 的 sou
 
 每个 Space 增加 `canvases`、`canvas_documents`、`canvas_mutations`、`canvas_selection_snapshots`、`canvas_assets`、`canvas_access_grants` 等 Canvas 表，并以通用 Harness 扩展增加 `message_execution_bindings` 与 `turn_output_artifacts`；实现使用 workspace v11 之后的下一个未占用 migration 版本。SceneDocument 先作为不含内联大媒体的 canonical JSON 保存，元素/Frame revision 进入受保护 scene metadata；只有冻结性能证据证明全量文档事务不达标时才增加元素索引。Canvas 资产使用 `<spaceRoot>/.kith/canvas-assets/<storageKey>`，不复用聊天附件的 `.kith/uploads` 生命周期；路径仍由已注册 Space root 解析，调用方不能提交任意绝对路径。资产 GC 的 reachability 必须包含当前 scene 与仍在 undo retention 内的 mutation preimage。
 
-Canvas 通过当前 `WorkspaceTabs` 以 `moduleId=canvas + resourceId=canvasId` 多开，URL 使用 `?module=canvas&canvas=<id>`。每个 Canvas 只有一个隐藏兼容 root；Page 不进入 URL、API、DB 产品对象或 UI。上游导出面板的“Export All Pages/导出全部页面”必须改成无 Page 语义并登记为批准的视觉例外。Recombyn 的 IndexedDB/云 API、AgentDock、Python/LangGraph、Tauri、Yjs 服务和产品壳均不迁入；AssetPanel 只保留视觉骨架并改接 Kith Canvas-local assets，image-to-scene/OCR 和 AI 资产后端延后。
+Canvas 通过当前 `WorkspaceTabs` 以 `moduleId=canvas + resourceId=canvasId` 多开，URL 使用 `?module=canvas&canvas=<id>`。每个 Canvas 只有一个隐藏兼容 root；Page 不进入 URL、API、DB 产品对象或 UI。上游导出面板的“Export All Pages/导出全部页面”必须改成无 Page 语义并登记为批准的视觉例外。Recombyn 的 IndexedDB/云 API、AgentDock runtime、Python/LangGraph、Tauri、Yjs 服务和产品壳均不迁入；正式接入只由 Kith Chat/Harness seam 承担执行边界。AssetPanel 只保留视觉骨架并改接 Kith Canvas-local assets，image-to-scene/OCR 和 AI 资产后端延后。
 
 Human 圈选后由 Core 从 canonical scene 冻结不可变 `CanvasSelectionSnapshot`；普通 `MessageContextSnapshot` 只引用一个 snapshot id，注册式 `ContextObjectSnapshotResolver` 遍历 turn 全部 bound message 的规范 refs 后再冻结。频道可见消息与执行者分离：server-owned `MessageExecutionBinding` 与 snapshot/message/ref/required delivery 在同一 MessagePosting transaction 写入；eligible executor 必须未删除、v2、有当前 surface access 且实时拥有 `message:send`，DM 从对端推导，频道/话题显式选择。其他 active Agent 也不获 optional wake，且不能用伪造正文 mention 改变 surface。`CanvasAccessGrant` 只能从 binding + bound delivery 派生并逐调用重验 canvas/object/action/expiry，Gateway 不信任请求体自报 scope。Agent 通过 `snapshot_get/elements_get/elements_apply/context_bundle_create/asset_import/export` 等少量工具调用同一 Module。mutation 关联既有 `turn_operations`，`TurnReplyCommand.outputRefs` 经 `turn_output_artifacts` 关联已提交 mutation；mutation 成功而 reply 前崩溃时，恢复 attempt 以原 operation key reconcile 后补 reply。
 

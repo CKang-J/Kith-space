@@ -51,6 +51,7 @@
 | CP-16 | 中 | 高概率风险 | Windows / macOS / Linux | 模型发现超时只 kill 直接进程且 Promise 依赖 `exit`（`src/daemon/listModels.ts:243-260`）；Pi v2 启动取消直接 kill（`src/runtime/adapters/piRpcRuntimeV2.ts:155-161`）；Claude maintenance 无显式 credential 时也绕过 tree terminator（`src/runtime/worker/maintenance/claudeMaintenanceRuntime.ts:88-125`）。这些路径可能遗留后代或悬挂。 | 启动、探测、取消、超时统一使用可等待的 runtime process tree 句柄，并有最终强制完成上限。 |
 | CP-17 | 中 | 确认缺陷 | Windows / macOS / Linux | Hermes turn side-channel 临时文件只在成功 bridge 后删除；spawn error、非零退出、missing-session retry 和 stop 不清理（`src/daemon/hermesRuntime.ts:188-257,294-300`），会在系统临时目录永久遗留 turn JSONL。 | 用单一幂等 finalize/finally 覆盖所有终态，随机独占创建临时目录/文件，并增加失败、重试、停止清理测试。 |
 | CP-18 | 低 | 验证缺口 | Windows | `src/advisor-provider/providerArtifact.ts:9-20` 手工解析 PATH/PATHEXT，缺少带引号 PATH 项、命令已含扩展名和自定义 PATHEXT 的平台测试。当前主要调用无扩展命令，尚无产品故障证据。 | 把 Windows executable resolution 固化为定向测试；若发现语义差异，优先复用已有 `cross-spawn`/统一 resolver，不继续扩写散落解析。 |
+| CP-19 | 低 | 验证缺口 | Windows / Linux | Recombyn Canvas 阶段 1 UI Island 的宿主 seam 只使用 React/DOM/Pointer Events、CSS、Redux、OS 临时目录与内存对象；上游 Tauri/Yjs 入口被 unavailable/pass-through adapter 切断且这些包不在 Kith 依赖中。固定截图、触控板 wheel/pointer capture、字体 fallback 与 SVG/GPU/Lottie/FFmpeg worker 栅格目前只在 macOS Chrome 151 验证。 | 阶段 2 前由 Windows/Linux Chromium CI 重放同一 fixture 和 computed-style/快捷键协议；阶段 5 再做三端 Desktop GPU、触控板/鼠标与大画布真实 smoke。 |
 
 ## 3. 已确认的兼容基础
 

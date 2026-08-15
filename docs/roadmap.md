@@ -13,7 +13,7 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 - 公网部署、SaaS、云同步、云数据库和独立 Web 发行。
 - 移动 Web、PWA、push、Docker 部署和公共 server/daemon 包。
 
-Home/Space root、文件夹接入、Space root cwd 和 Agent Memory 可移植性地基已经完成 H1–H4；H5 仍独立后置。当前已接受但尚未实现的产品模块是 Recombyn Canvas Workspace。长期路线还包括跨 Space 聚合/委派成熟化、邮箱、日历、Canvas 后续能力、记忆增强、编排成熟化、HTTPS 与 runtime 权限升级、macOS/Linux 发行。
+Home/Space root、文件夹接入、Space root cwd 和 Agent Memory 可移植性地基已经完成 H1–H4；H5 仍独立后置。Recombyn Canvas Workspace 阶段 1 AgentDock纠偏实现已完成并通过主任务最终复审，阶段 2 正式产品闭环未开始。长期路线还包括跨 Space 聚合/委派成熟化、邮箱、日历、Canvas 后续能力、记忆增强、编排成熟化、HTTPS 与 runtime 权限升级、macOS/Linux 发行。
 
 ## 2. 已完成基础
 
@@ -160,9 +160,9 @@ H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integrati
 
 ### 4.2 生产力模块
 
-任务已是现有模块。2026-08-15 接受的下一项产品模块是 [Recombyn Canvas Workspace](./superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md)，状态为“方案已确认、尚未实现”：
+任务已是现有模块。2026-08-15 接受的下一项产品模块是 [Recombyn Canvas Workspace](./superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md)，当前状态为“阶段 1 AgentDock纠偏已通过主任务最终复审，阶段 2 未开始”：
 
-- 保留 Recombyn RCB 编辑器内部 UI 与原生编辑能力，删除其 AgentDock、云栈、Tauri、Yjs 服务和 Python/LangGraph runtime；
+- 保留 Recombyn RCB 编辑器内部 UI 与原生编辑能力；移除 AgentDock、开关、占位与专用 runtime，只保留 selection-to-chat 窄 seam；底栏图片/视频生成器入口本地持久化，执行明确 unavailable；
 - 直接接入现有 Workspace Tabs，一个 `canvasId` 对应一个独立无限平面，不增加用户 Page；
 - Kith-owned Canvas Core Module 使用 metadata/document/element/Frame/structure revisions、服务端派生影响集、atomic batch、幂等 ledger 和 Space-local assets 作为唯一事实源；
 - 选区冻结为 Canvas Selection Snapshot，经 server-owned execution binding 在真实 Chat surface 只派给一个明确 Agent；

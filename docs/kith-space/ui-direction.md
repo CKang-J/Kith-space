@@ -149,7 +149,7 @@ ChatOnly 由当前会话工作面和可独立收起的辅助面板组成：
 
 ## 5. 模块工作面与作用域
 
-- 当前已实现业务模块包括 Inbox、Tasks、Agents；Home 另有 Spaces；Search 由左侧入口或快捷键打开；Settings 是模态层。Canvas 已接受方案但尚未实现。Computers/Machines 不再是产品模块。
+- 当前已实现业务模块包括 Inbox、Tasks、Agents；Home 另有 Spaces；Search 由左侧入口或快捷键打开；Settings 是模态层。Canvas 阶段 1 AgentDock纠偏已通过主任务最终复审，尚未注册为正式业务模块。Computers/Machines 不再是产品模块。
 - 可同时打开多个业务模块标签，但一次只激活并显示一个右侧模块；切换左侧入口会新增或聚焦对应标签。
 - Inbox、Tasks、Agents 和 Settings 只读取当前 Space 数据；Spaces 只读取 app.db registry 和真实摘要。切换 Space 时 Chat 与普通模块数据源一起切换。
 - Web Store 与路由状态只使用 `SpaceInfo/spaceId/spaces` 和 `/s/:slug`；请求只发送 `x-space-id`，不得在前端保留旧 Server 双命名。
@@ -171,13 +171,15 @@ H4 已复用 H3 领域/API 能力交付本节：Home Spaces 提供卡片网格�
 
 未来可在 Home 增加真正的跨 Space Inbox/Tasks/Calendar 聚合，但它们是后续真实能力，不恢复已移除的薄总览页。
 
-### 5.2 Canvas Workspace（已接受，尚未实现）
+### 5.2 Canvas Workspace（阶段 1 纠偏已通过主任务最终复审，阶段 2 未开始）
+
+阶段 1 已在 `web/src/features/canvas/` 建立开发态 `?__canvas_stage1=1` 原生 UI Island，直接运行固定 Recombyn commit 的 `EditorPage`/RCB/nodes/chrome/panels，并用同一 live 导出 fixture 覆盖 overview、形状、图层、图片工具条、导出、资产、小地图、快捷键、camera、resize、亮暗 token、独立字体与 portal。Stage 1 不组合 AgentDock、Dock 开关或占位；底栏两个相邻原生按钮可用 `A` / `Shift+A` 创建图片与视频生成器节点，节点交互和开发态版本化浏览器重载可用。生成提交明确 unavailable，媒体文件只形成本地 data URL；共享 upload transport 和媒体 Job transport 均不进入可执行路径，composer scene helper 由窄 Canvas adapter 提供，不拉入 Agent runtime。它不出现在模块注册表，不创建正式 tab；下列 Workspace Tabs、Library、Chat 与 Agent 规则仍从阶段 2 起逐步实现。
 
 - 规范 module id 为 `canvas`；实际 Canvas 使用当前会话 pathname 上的 `?module=canvas&canvas=<canvasId>`。`canvasId` 同时是 `WorkspaceTab.resourceId`，同一 Canvas 只聚焦一个 tab，不同 Canvas 可多开。
 - `resourceId = null` 是 Canvas Library，用于新建、打开、重命名和删除当前 Space Canvas；它不是 Canvas Page。每个实际 Canvas 永远是一个独立无限平面，产品不增加 Page 导航或层级。
 - Canvas tab 与 Chat 并排，继续服从现有 split、相邻关闭、URL 活动项、按 Space 标签恢复和侧栏自动收起规则；不新增 Dock、第二套标签栏或全局壳。
 - 实际编辑器直接移植 Recombyn RCB 的画布、节点、工具栏、属性/图层/资产/导出面板视觉结构和交互，不为统一 Kith 视觉而重设计。资产面板改接 Kith Canvas-local asset library；上游“Export All Pages/导出全部页面”等产品文案与动作必须替换为“导出全部画布内容/画板”等无 Page 语义，并登记为批准的 visual golden 例外。Kith 另提供标签宿主、Canvas Library、会话/执行者绑定、冲突/错误提示和导入导出窄桥。
-- Recombyn AgentDock、Home/Auth/Billing/Share/Cloud/Tauri 壳不出现。Canvas 内输入绑定左侧真实私聊、频道或话题；DM 的执行者是对端 Agent，频道/话题必须明确选择一个 Agent。
+- Recombyn Home/Auth/Billing/Share/Cloud/Tauri 与 AgentDock 产品壳不出现。阶段1只保留 selection-to-chat 的窄 host event seam，不接 chat/runtime；阶段2的 Canvas 输入绑定左侧真实私聊、频道或话题，DM 的执行者是对端 Agent，频道/话题必须明确选择一个 Agent。
 - 圈选后“发送到 Chat”创建不可变 Canvas Selection Snapshot；Chat 显示 context chip、选区摘要和“在画布中打开”深链。MVP 不做原生跨栏拖放。
 - Recombyn Tailwind 3 必须独立构建并加 Canvas 作用域，Preflight/`html/body/:root` 不得进入 Kith 全局；Kith 全局选择器显式排除 Canvas root，并给 Canvas 建立 scoped reset 和独立 portal root。合法离线字体集先于 Kith golden 确定，替代字体是显式视觉例外；截图、交互和 computed-style 断言共同验收 UI 保护。
 

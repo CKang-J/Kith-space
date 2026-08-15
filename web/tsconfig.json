@@ -14,7 +14,9 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@recombyn-native/*": ["./src/features/canvas/upstream/apps/web/src/*"],
+      "@recombyn-canvas-plugins/*": ["./src/features/canvas/upstream/plugins/canvas/*"]
     }
   },
   "include": ["src", "vite.config.ts"]

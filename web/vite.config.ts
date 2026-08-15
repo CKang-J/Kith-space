@@ -16,6 +16,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "@recombyn-native": fileURLToPath(new URL("./src/features/canvas/upstream/apps/web/src", import.meta.url)),
+      "@recombyn-canvas-plugins": fileURLToPath(new URL("./src/features/canvas/upstream/plugins/canvas", import.meta.url)),
     },
   },
   server: {

@@ -1,0 +1,18 @@
+{
+  "upstreamExportSha256": "665aac2e159423f8fad9fff06b49ea21fc1e35308d010525d920dde99fe87f42",
+  "checkedInFixtureSha256": "647dedce04fada8a1faa2344d7cb7a19b5d7022e3768c8f9a22d718a4e58a335",
+  "changedJsonPointers": [
+    "/deltaSetLike/vs1VJsKJqD/attrs/src"
+  ],
+  "changeCount": 1,
+  "hashAlgorithm": {
+    "digest": "SHA-256",
+    "encoding": "UTF-8",
+    "valueCanonicalization": "exact JSON string value followed by LF",
+    "documentCanonicalization": "recursively sort object keys, preserve array order, JSON pretty-print with 2 spaces, append LF"
+  },
+  "originalValueSha256": "2b6c890e3ba2ac1c779868d71e5d99adfb0a97b0c7f5b239342f9810e4771c47",
+  "replacementValueSha256": "df263e262b973f5b7dcde7e0bc47bdb575e13a3c28c254ca2bbb72d0b20525dd",
+  "canonicalDocumentWithoutChangedValueSha256": "d964bd7e0852835075bcba82345e4e3768d5020bd7b60293f059b315ad60f9eb",
+  "reason": "The signed online generated-image URL had no auditable redistribution/license conclusion; retain geometry and replace only its src with a local neutral SVG."
+}

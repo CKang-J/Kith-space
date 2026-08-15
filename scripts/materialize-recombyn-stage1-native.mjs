@@ -1,0 +1,740 @@
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+const repoRoot = path.resolve(import.meta.dirname, "..");
+const upstreamRoot = path.join(repoRoot, "reference/recombyn");
+const outputRoot = path.join(repoRoot, "web/src/features/canvas/upstream");
+const auditPath = path.join(repoRoot, "docs/research/recombyn-stage1-upstream-closure-audit.json");
+const expectedCommit = "abd81983716b41c7fc6e2f591c23e6d9bb9c4643";
+
+execFileSync("git", ["-C", upstreamRoot, "cat-file", "-e", `${expectedCommit}^{commit}`]);
+if (!existsSync(auditPath)) throw new Error(`Run the closure audit first: ${auditPath}`);
+const audit = JSON.parse(readFileSync(auditPath, "utf8"));
+if (audit.upstreamCommit !== expectedCommit || !audit.entries.some((entry) => entry.entry === "apps/web/src/pages/EditorPage.tsx")) {
+  throw new Error("Closure audit does not describe the native EditorPage entry");
+}
+
+const sourceExtensions = new Set([".ts", ".tsx", ".mts", ".mjs", ".js", ".jsx"]);
+const repositoryWhitespaceNormalizedSources = new Set([
+  "apps/web/src/components/base/checkbox/Checkbox.tsx",
+  "apps/web/src/components/base/checkbox/CheckboxGroup.tsx",
+  "apps/web/src/components/base/checkbox/CheckboxGroupContext.tsx",
+  "apps/web/src/components/base/colorPicker/AlphaSlider.tsx",
+  "apps/web/src/components/base/colorPicker/HueSlider.tsx",
+  "apps/web/src/components/base/colorPicker/SaturationValueArea.tsx",
+  "apps/web/src/components/base/select/index.tsx",
+  "apps/web/src/components/base/tooltip/TooltipManager.ts",
+  "apps/web/src/components/editor/panels/AgentComposerInput.tsx",
+  "apps/web/src/components/editor/useProjectCloudSync.ts",
+  "apps/web/src/components/rcb/core/spatialIndex.ts",
+  "apps/web/src/components/rcb/selection/SelectionFeature.tsx",
+  "apps/web/src/components/rcb/tools/pencilBrushes.ts",
+]);
+const mapping = [];
+
+function replaceRequired(source, search, replacement, label) {
+  const next = source.replace(search, replacement);
+  if (next === source) throw new Error(`Stage 1 transform did not match: ${label}`);
+  return next;
+}
+
+function readPinnedSource(file) {
+  return execFileSync("git", ["-C", upstreamRoot, "show", `${expectedCommit}:${file}`], {
+    encoding: null,
+    maxBuffer: 32 * 1024 * 1024,
+  });
+}
+
+rmSync(outputRoot, { recursive: true, force: true });
+for (const item of audit.combinedFiles) {
+  const target = path.join(outputRoot, item.path);
+  const sourceBytes = readPinnedSource(item.path);
+  const sourceHash = createHash("sha256").update(sourceBytes).digest("hex");
+  if (sourceHash !== item.sha256) throw new Error(`Source changed since audit: ${item.path}`);
+  if (/apps\/web\/src\/assets\/model\/(dreamina|sync_lipsync)\.png$/.test(item.path)) {
+    mapping.push({
+      source: item.path,
+      sourceSha256: item.sha256,
+      target: null,
+      disposition: "excluded_unverified_brand_asset",
+      changes: ["not copied; license/brand provenance was not established"],
+    });
+    continue;
+  }
+  mkdirSync(path.dirname(target), { recursive: true });
+  const extension = path.extname(item.path);
+  const changes = [];
+  if (sourceExtensions.has(extension)) {
+    changes.push("prepend fixed source/Apache modification notice", "rewrite repository-local import aliases", "add host-project typecheck boundary");
+    const notice = `/*\n * Modified by Kith-space for the Stage 1 native Canvas island.\n * Source: Recombyn ${expectedCommit} / ${item.path}\n * Changes: repository-local aliases, host typecheck boundary, and any file-specific transforms recorded in source-mapping.json.\n * Apache-2.0 and upstream NOTICE apply.\n */\n// @ts-nocheck -- upstream source is bundle-checked; its original monorepo TS project is not portable.\n`;
+    let rewritten = sourceBytes
+      .toString("utf8")
+      .replaceAll("from '@/", "from '@recombyn-native/")
+      .replaceAll('from "@/', 'from "@recombyn-native/')
+      .replaceAll("import('@/", "import('@recombyn-native/")
+      .replaceAll('import("@/', 'import("@recombyn-native/')
+      .replaceAll("from '@canvas-plugins/", "from '@recombyn-canvas-plugins/")
+      .replaceAll('from "@canvas-plugins/', 'from "@recombyn-canvas-plugins/')
+      .replaceAll("import('@canvas-plugins/", "import('@recombyn-canvas-plugins/")
+      .replaceAll('import("@canvas-plugins/', 'import("@recombyn-canvas-plugins/')
+      .replaceAll("from '@recombyn-native/service/design'", "from '@/features/canvas/adapters/recombynStageOneDesign'")
+      .replaceAll("from '@floating-ui/react'", "from '@/features/canvas/adapters/recombynFloatingUi'")
+      .replaceAll("from 'react-dom'", "from '@/features/canvas/adapters/recombynReactDom'")
+      .replace(/import\(['"]@tauri-apps\/[^'"]+['"]\)/g, "import('@/features/canvas/adapters/recombynUnavailablePlatform')");
+    if (sourceBytes.includes("import('@tauri-apps/") || sourceBytes.includes('import("@tauri-apps/')) {
+      changes.push("route Tauri dynamic imports through the Stage 1 unavailable adapter");
+    }
+    if (sourceBytes.includes("from '@floating-ui/react'")) {
+      changes.push("route Floating UI portals through the Stage 1 island portal adapter");
+    }
+    if (sourceBytes.includes("from '@/service/design'")) {
+      changes.push("route Recombyn design runtime through the Stage 1 unavailable adapter");
+    }
+    if (sourceBytes.includes("from 'react-dom'")) {
+      changes.push("route body-targeted React portals through the Stage 1 island portal adapter");
+    }
+    if (sourceBytes.includes("window.document.body.style")) {
+      changes.push("scope transient resize cursor/user-select state to the Stage 1 island root");
+      rewritten = `import { getRecombynIslandRoot } from '@/features/canvas/adapters/recombynFloatingUi';\n${rewritten.replaceAll("window.document.body.style", "getRecombynIslandRoot().style")}`;
+    }
+    if (item.path.endsWith("/components/editor/panels/agent/flyToChat.tsx")) {
+      changes.push("mount selection-to-chat transition chrome inside the Stage 1 island root");
+      rewritten = `import { getRecombynPortalRoot } from '@/features/canvas/adapters/recombynFloatingUi';\n${rewritten.replace("document.body.appendChild(el);", "getRecombynPortalRoot().appendChild(el);")}`;
+    }
+    if (item.path.endsWith("/components/base/colorPanel/pickScreenColor.ts")) {
+      changes.push("mount the screen-color overlay inside the Stage 1 island portal root");
+      rewritten = `import { getRecombynPortalRoot } from '@/features/canvas/adapters/recombynFloatingUi';\n${rewritten.replace("document.body.appendChild(overlay);", "getRecombynPortalRoot().appendChild(overlay);")}`;
+    }
+    if (item.path.endsWith("/components/rcb/selection/shapeBoolean.ts")) {
+      changes.push("normalize polygon-clipping CommonJS interop for Vite");
+      rewritten = rewritten.replace(
+        "import {\n  difference,\n  intersection,\n  union,\n  xor,",
+        "import polygonClipping, {",
+      ).replace("} from 'polygon-clipping';", "} from 'polygon-clipping';\nconst { difference, intersection, union, xor } = polygonClipping;");
+    }
+    if (item.path.endsWith("/components/editor/panels/agent/ModelPickerPanel.tsx")) {
+      changes.push("replace unverified model-brand bitmaps and package SVG marks with neutral host fallback");
+      rewritten = rewritten
+        .replace("import syncLipsync from '@recombyn-native/assets/model/sync_lipsync.png';", "import { neutralModelAsset as syncLipsync } from '@/features/canvas/adapters/recombynBrandAssets';")
+        .replace("import dreamina from '@recombyn-native/assets/model/dreamina.png';", "const dreamina = syncLipsync;")
+        .replace(/import (\w+) from '@lobehub\/icons-static-svg\/icons\/[^']+';/g, "const $1 = syncLipsync;");
+    }
+    if (item.path.endsWith("/components/editor/panels/ExportSelectionPanel.tsx")) {
+      changes.push("disable Stage 1 export side-effect menu items while retaining native menu UI");
+      rewritten = rewritten.replaceAll('role="menuitem"\n                onClick', 'role="menuitem"\n                disabled\n                onClick');
+    }
+    if (item.path.endsWith("/pages/EditorPage.tsx")) {
+      changes.push("remove the Stage 1 AgentDock composition and route selection-to-chat through the host seam");
+      rewritten = replaceRequired(
+        rewritten,
+        /import \{\n  peekHomeAgentBoot,[\s\S]*?\} from '@recombyn-native\/utils\/homeAgentBoot';\n/,
+        "",
+        "EditorPage home-agent boot import",
+      );
+      for (const importLine of [
+        "import { withReturnTo } from '@recombyn-native/utils/authReturnTo';\n",
+        "import type { ComposerContext } from '@recombyn-native/components/editor/panels/AgentComposerInput';\n",
+        "import AgentDock from '@recombyn-native/components/editor/panels/AgentDock';\n",
+        "import type { ComposerInteractionMode } from '@recombyn-native/components/editor/panels/agent/AgentComposerShell';\n",
+      ]) {
+        rewritten = replaceRequired(rewritten, importLine, "", `EditorPage removed import ${importLine.trim()}`);
+      }
+      rewritten = replaceRequired(
+        rewritten,
+        "import { useProjectCloudSync, flushCurrentProjectNow, ProjectRevisionConflictDialog } from '@recombyn-native/components/editor/useProjectCloudSync';",
+        "import { useProjectCloudSync, ProjectRevisionConflictDialog } from '@recombyn-native/components/editor/useProjectCloudSync';",
+        "EditorPage flush import",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "  rcbViewportSceneBounds,\n",
+        "",
+        "EditorPage AgentDock viewport helper import",
+      );
+      rewritten = `import { requestCanvasSelectionToChat } from '@/features/canvas/adapters/recombynSelectionToChat';\n${rewritten}`;
+      rewritten = replaceRequired(
+        rewritten,
+        /function resolveHomeAgentInteractionMode\([\s\S]*?\n}\n\nfunction computeStageBackground/,
+        "function computeStageBackground",
+        "EditorPage home-agent boot helpers",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /\/\*\* Stable identity[\s\S]*?const MOBILE_AGENT_INTERACTION_MODES[^\n]*\n\n/,
+        "",
+        "EditorPage mobile AgentDock modes",
+      );
+      rewritten = rewritten
+        .replace("   * auto-adjust again (no post-reveal re-fit when AgentDock width settles).", "   * auto-adjust again after the native canvas stage settles.")
+        .replace("      // Wait until stage size stops changing (AgentDock flex) while boot still covers.", "      // Wait until the native stage size stops changing while boot still covers.");
+      rewritten = replaceRequired(
+        rewritten,
+        /  const \[agentOpen, setAgentOpen\][\s\S]*?  const \[attachToChat, setAttachToChat\][^\n]*\n/,
+        "  const [inspectOpen, setInspectOpen] = useState(false);\n  const [shareOpen, setShareOpen] = useState(false);\n",
+        "EditorPage AgentDock state",
+      );
+      for (const stateLine of [
+        "  const [tourActive, setTourActive] = useState(false);\n",
+        "  /** Apply sessionStorage home boot at most once per EditorPage lifetime. */\n  const homeAgentBootAppliedRef = useRef(false);\n",
+        "  const authUserId = useSelector((s: any) => s.auth?.user?.id as string | undefined);\n",
+      ]) {
+        rewritten = replaceRequired(rewritten, stateLine, "", `EditorPage removed state ${stateLine.trim()}`);
+      }
+      rewritten = replaceRequired(
+        rewritten,
+        /  \/\*\* Home agent \/ plaza[\s\S]*?\n  }, \[location\.search, location\.pathname, navigate\]\);\n\n/,
+        "",
+        "EditorPage home-agent boot effect",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /  const openAgentPanel[\s\S]*?\n  const goHomeFromEditor/,
+        "  const goHomeFromEditor",
+        "EditorPage AgentDock callbacks",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /  const agentOpenNonce[\s\S]*?\n  const openShareDialog/,
+        "  const openShareDialog",
+        "EditorPage AgentDock store signal and toggles",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /      if \(e\.key\.toLowerCase\(\) === 'c'[\s\S]*?      }\n      if \(e\.key === 'Escape'\) \{\n        setAgentOpen\(false\);/,
+        "      if (e.key === 'Escape') {",
+        "EditorPage AgentDock shortcut",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "  }, [workspaceMode, toggleAgentPanel]);",
+        "  }, []);",
+        "EditorPage shortcut dependencies",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /\n  useEffect\(\(\) => \{\n    if \(!isMobileViewport\) return;\n    if \(agentOpen\)[\s\S]*?\n  }, \[agentOpen, isMobileViewport\]\);\n/,
+        "",
+        "EditorPage mobile AgentDock effect",
+      );
+      rewritten = replaceRequired(rewritten, "              agentOpen={agentOpen}\n", "", "EditorTopChrome agentOpen prop");
+      rewritten = replaceRequired(rewritten, "              onOpenAgent={openAgentPanel}\n", "", "EditorTopChrome Agent button callback");
+      rewritten = replaceRequired(
+        rewritten,
+        /              onOpenAgent=\{\(opts\) => \{[\s\S]*?              }}\n              onAddToChat=\{\(target\) => \{[\s\S]*?              }}\n/,
+        "              onAddToChat={requestCanvasSelectionToChat}\n",
+        "EditorStageWorld selection-to-chat seam",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /          \{workspaceMode === 'dev' \? \([\s\S]*?\n          \)}\n        <\/div>/,
+        "          {workspaceMode === 'dev' && inspectOpen ? (\n            <DevPropertiesPanel onClose={() => setInspectOpen(false)} />\n          ) : null}\n        </div>",
+        "EditorPage AgentDock render",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /\n        \{isMobileViewport && agentOpen \? \([\s\S]*?\n        \) : null}\n/,
+        "",
+        "EditorPage mobile AgentDock backdrop",
+      );
+      rewritten = replaceRequired(rewritten, "            onOpenAgent={openAgentForTour}\n", "", "Editor tour Agent callback");
+      rewritten = replaceRequired(rewritten, "            onActiveChange={setTourActive}\n", "", "Editor tour Agent hold callback");
+    }
+    if (item.path.endsWith("/components/editor/page/EditorTopChrome.tsx")) {
+      changes.push("remove the AgentDock open button from native top chrome");
+      rewritten = replaceRequired(rewritten, "import { TbMessage2Filled } from 'react-icons/tb';\n", "", "EditorTopChrome chat icon import");
+      rewritten = replaceRequired(rewritten, "  agentOpen: boolean;\n", "", "EditorTopChrome agentOpen prop");
+      rewritten = replaceRequired(rewritten, "  onOpenAgent: () => void;\n", "", "EditorTopChrome onOpenAgent prop");
+      rewritten = replaceRequired(rewritten, "  agentOpen,\n", "", "EditorTopChrome agentOpen destructure");
+      rewritten = replaceRequired(rewritten, "  onOpenAgent,\n", "", "EditorTopChrome onOpenAgent destructure");
+      rewritten = replaceRequired(
+        rewritten,
+        /          \{!agentOpen \? \([\s\S]*?\n          \) : null}\n/,
+        "",
+        "EditorTopChrome AgentDock button",
+      );
+    }
+    if (item.path.endsWith("/components/editor/chrome/EditorOnboardingTour.tsx")) {
+      changes.push("remove AgentDock-only onboarding steps and callback");
+      rewritten = replaceRequired(rewritten, "export type TourStepId = 'welcome' | 'tools' | 'agent' | 'image' | 'done';", "export type TourStepId = 'welcome' | 'tools' | 'done';", "Editor tour step type");
+      rewritten = replaceRequired(rewritten, "  /** Open Agent dock when entering this step. */\n  openAgent?: boolean;\n", "", "Editor tour Agent field");
+      rewritten = replaceRequired(
+        rewritten,
+        /  \{\n    id: 'agent',[\s\S]*?\n  },\n  \{\n    id: 'image',[\s\S]*?\n  },\n/,
+        "",
+        "Editor tour Agent steps",
+      );
+      rewritten = replaceRequired(rewritten, "  onOpenAgent: () => void;\n", "", "Editor tour Agent prop");
+      rewritten = replaceRequired(rewritten, "  onOpenAgent,\n", "", "Editor tour Agent destructure");
+      rewritten = replaceRequired(rewritten, "  const onOpenAgentRef = useRef(onOpenAgent);\n  onOpenAgentRef.current = onOpenAgent;\n", "", "Editor tour Agent ref");
+      rewritten = replaceRequired(
+        rewritten,
+        /\n  \/\/ Open Agent only when entering a step that needs it[\s\S]*?\n  }, \[active, step\.id, step\.openAgent\]\);\n/,
+        "",
+        "Editor tour Agent effect",
+      );
+    }
+    if (item.path.endsWith("/components/editor/chrome/EditorToolStrip.tsx")) {
+      changes.push("disable Stage 1 upload side effects and expose adjacent native image/video generator buttons");
+      rewritten = rewritten
+        .replace("  LuType,\n} from 'react-icons/lu';", "  LuType,\n  LuVideo,\n} from 'react-icons/lu';")
+        .replace("tip={L.uploadMedia}\n        active={imageActive}\n        disabled={toolsLocked}", "tip={L.uploadMedia}\n        active={imageActive}\n        disabled")
+        .replace(
+          "{/* 图像生成器 — places a generator node at viewport center.\n          Video / Lottie / Audio generators: context menu 「生成器」 only. */}",
+          "{/* 图片/视频生成器 — adjacent native controls; A / Shift+A. */}",
+        )
+        .replace(
+          "      </ToolBtn>\n\n      {pluginButtons.map",
+          "      </ToolBtn>\n\n      <ToolBtn\n        tip={`${L.videoGenerator} (Shift+A)`}\n        disabled={toolsLocked}\n        onClick={spawnVideoGeneratorAtView}\n      >\n        <ToolIcon>\n          <LuVideo className={TOOL_ICON_CLASS} strokeWidth={STROKE} />\n        </ToolIcon>\n      </ToolBtn>\n\n      {pluginButtons.map",
+        )
+        .replace("tip={L.imageGenerator}\n        disabled={toolsLocked}", "tip={`${L.imageGenerator} (A)`}\n        disabled={toolsLocked}");
+    }
+    if (item.path.endsWith("/components/editor/panels/AgentComposerInput.tsx")) {
+      changes.push("route pure scene-context and local-media helpers through narrow Stage 1 adapters");
+      rewritten = replaceRequired(
+        rewritten,
+        "} from '@recombyn-native/components/editor/panels/agent/runDesignAgent';",
+        "} from '@/features/canvas/adapters/recombynComposerSceneContext';",
+        "AgentComposerInput scene-context adapter",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "import { imageSrcToFile } from '@recombyn-native/utils/uploadImage';",
+        "import { imageSrcToFile } from '@/features/canvas/adapters/recombynLocalMedia';",
+        "AgentComposerInput local media adapter",
+      );
+      rewritten = rewritten.replace(
+        "/** Object storage key from POST /api/v1/uploads — used to delete on remove. */",
+        "/** Legacy attachment identity retained for native chip compatibility; Stage 1 never uploads. */",
+      );
+    }
+    if (item.path.endsWith("/utils/uploadImage.ts")) {
+      changes.push("replace Recombyn upload transport with a local-only data/blob media boundary");
+      rewritten = `type LocalMediaItem = {
+  url: string;
+  key?: string;
+  name?: string;
+  mime?: string;
+  width?: number;
+  height?: number;
+};
+
+const nodeUploadAborts = new Map<string, AbortController>();
+
+export function beginNodeUpload(nodeId: string): AbortSignal {
+  const id = String(nodeId || '').trim();
+  if (!id) return new AbortController().signal;
+  abortNodeUpload(id);
+  const controller = new AbortController();
+  nodeUploadAborts.set(id, controller);
+  return controller.signal;
+}
+
+export function abortNodeUpload(nodeId: string | null | undefined): void {
+  const id = String(nodeId || '').trim();
+  const controller = id ? nodeUploadAborts.get(id) : undefined;
+  if (!controller) return;
+  nodeUploadAborts.delete(id);
+  controller.abort();
+}
+
+export function finishNodeUpload(nodeId: string | null | undefined): void {
+  nodeUploadAborts.delete(String(nodeId || '').trim());
+}
+
+export function isUploadAbortError(error: unknown): boolean {
+  const value = error as { name?: string; code?: string; message?: string } | null;
+  return Boolean(value && (value.name === 'AbortError' || value.code === 'ERR_CANCELED' || /abort|cancel/i.test(String(value.message || ''))));
+}
+
+export function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      if (result) resolve(result);
+      else reject(new Error('empty file preview'));
+    };
+    reader.onerror = () => reject(new Error('failed to read local media'));
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function uploadImageFile(file: File, opts?: { signal?: AbortSignal }): Promise<LocalMediaItem> {
+  if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  const url = await readFileAsDataUrl(file);
+  if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  return { url, name: file.name, mime: file.type };
+}
+
+export async function deleteUploadedFile(_key: string | null | undefined): Promise<void> {}
+
+export async function uploadComposerAttachment(file: File, opts?: { previewDataUrl?: string }): Promise<{
+  uploadKey: string;
+  url: string;
+  imageRef: string;
+  previewDataUrl: string;
+  name: string;
+}> {
+  const previewDataUrl = String(opts?.previewDataUrl || '').trim() || await readFileAsDataUrl(file);
+  return { uploadKey: '', url: previewDataUrl, imageRef: previewDataUrl, previewDataUrl, name: file.name || 'media' };
+}
+
+export function waitForImageReady(src: string, opts?: { signal?: AbortSignal }): Promise<boolean> {
+  if (opts?.signal?.aborted) return Promise.resolve(false);
+  return Promise.resolve(/^data:|^blob:/.test(String(src || '').trim()));
+}
+
+export function isOurStoredImageUrl(_src: string): boolean { return false; }
+export function toDisplayMediaUrl(src: string, _uploadKey?: string | null): string { return String(src || '').trim(); }
+export function resolveUploadObjectKey(_src: string): string | null { return null; }
+
+export async function imageSrcToFile(src: string, filename = 'image.png', opts?: { fallbackMime?: string }): Promise<File> {
+  const value = String(src || '').trim();
+  if (!/^data:|^blob:/.test(value)) throw new Error('Stage 1 accepts local media references only');
+  const response = await fetch(value);
+  if (!response.ok) throw new Error('failed to read local media');
+  const blob = await response.blob();
+  const mime = blob.type || opts?.fallbackMime || 'application/octet-stream';
+  return new File([blob], filename, { type: mime });
+}
+
+export async function uploadImageFromSrc(src: string, filename = 'processed.png', opts?: { signal?: AbortSignal }): Promise<LocalMediaItem> {
+  const file = await imageSrcToFile(src, filename);
+  return uploadImageFile(file, { signal: opts?.signal });
+}
+`;
+    }
+    if (item.path.endsWith("/service/chat.ts")) {
+      changes.push("make image/video job clients explicit unavailable while retaining shared media types");
+      rewritten = replaceRequired(
+        rewritten,
+        "import { request } from '@recombyn-native/utils/request';\n",
+        "",
+        "service/chat removed request transport",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /\/\*\* POST \/api\/v1\/chat\/image\/jobs[\s\S]*?\n}\n\nexport type GenerateVideoInput/,
+        `/** Stage 1 keeps the native type boundary but never calls the Recombyn image job service. */
+export async function generateImage(
+  _data: GenerateImageInput,
+  _opts?: { signal?: AbortSignal },
+): Promise<GenerateImageResult> {
+  throw new Error('Kith Media Job 尚未实现，Stage 1 暂不支持图片生成');
+}
+
+export type GenerateVideoInput`,
+        "service/chat image job client",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /\/\*\* POST \/api\/v1\/chat\/video\/jobs[\s\S]*?\n}\n\nexport type GenerateAudioInput/,
+        `/** Stage 1 keeps the native type boundary but never calls the Recombyn video job service. */
+export async function generateVideo(
+  _data: GenerateVideoInput,
+  _opts?: { signal?: AbortSignal },
+): Promise<GenerateVideoResult> {
+  throw new Error('Kith Media Job 尚未实现，Stage 1 暂不支持视频生成');
+}
+
+export type GenerateAudioInput`,
+        "service/chat video job client",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /\/\*\* POST \/api\/v1\/chat\/audio\/jobs[\s\S]*?\n}\n/,
+        `/** Stage 1 keeps the native type boundary but never calls the Recombyn audio job service. */
+export async function generateAudio(
+  _data: GenerateAudioInput,
+  _opts?: { signal?: AbortSignal },
+): Promise<GenerateAudioResult> {
+  throw new Error('Kith Media Job 尚未实现，Stage 1 暂不支持音频生成');
+}
+`,
+        "service/chat audio job client",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /type MediaJobCreate[\s\S]*?\n}\n\n\/\*\* Stage 1 keeps the native type boundary but never calls the Recombyn image job service\. \*\//,
+        "/** Stage 1 keeps the native type boundary but never calls the Recombyn image job service. */",
+        "service/chat media polling transport",
+      );
+    }
+    if (item.path.endsWith("/components/editor/nodes/ImageNode/ImageQuickEditComposer.tsx")) {
+      changes.push("make Stage 1 image quick-edit explicit unavailable with local-only references and no job client");
+      rewritten = replaceRequired(rewritten, "import { useQuery } from '@tanstack/react-query';\n", "", "ImageQuickEdit query import");
+      rewritten = replaceRequired(
+        rewritten,
+        "import { generateImage, type ChatModelsResponse, type LlmModel } from '@recombyn-native/service/chat';\n",
+        "type LlmModel = { id: string; kind?: string; label?: string; [key: string]: unknown };\n",
+        "ImageQuickEdit job client import",
+      );
+      rewritten = replaceRequired(rewritten, "import { apiQuery, getHttpErrorMessage } from '@recombyn-native/service/client';\n", "", "ImageQuickEdit API import");
+      rewritten = replaceRequired(rewritten, "import { readFileAsDataUrl } from '@recombyn-native/utils/uploadImage';", "import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';", "ImageQuickEdit local media");
+      rewritten = replaceRequired(rewritten, "  const abortRef = useRef<AbortController | null>(null);\n", "", "ImageQuickEdit abort ref");
+      rewritten = replaceRequired(
+        rewritten,
+        /  const modelsCatalogQuery = useQuery\([\s\S]*?\n  }, \[\n    modelsCatalogQuery\.data,[\s\S]*?\n  \]\);\n\n  useEffect\(\(\) => \{\n    return \(\) => \{\n      abortRef\.current\?\.abort\(\);\n    \};\n  }, \[\]\);/,
+        "  useEffect(() => {\n    const localModels = buildImageGeneratorModelList(null);\n    setModels(localModels);\n    setModelsStatus('ready');\n    const nextId = nextQuickEditImageModelId(localModels, modelId, canPickModel);\n    if (nextId) setModelId(nextId);\n    // Stage 1 never requests the Recombyn model catalog.\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);",
+        "ImageQuickEdit local model catalog",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /  const onGenerate = async \(\) => \{[\s\S]*?\n  \};\n\n  const subjectChip/,
+        "  const onGenerate = () => {\n    message.warning(t('editor.tools.stageOneGenerationUnavailable', { defaultValue: 'Kith Media Job 尚未实现，Stage 1 暂不支持生成' }));\n  };\n\n  const subjectChip",
+        "ImageQuickEdit unavailable generation",
+      );
+    }
+    if (item.path.endsWith("/components/editor/nodes/VideoNode/VideoQuickEditComposer.tsx")) {
+      changes.push("make Stage 1 video quick-edit explicit unavailable with local-only references and no job client");
+      rewritten = replaceRequired(rewritten, "import { useQuery } from '@tanstack/react-query';\n", "", "VideoQuickEdit query import");
+      rewritten = replaceRequired(
+        rewritten,
+        "import { generateVideo, type ChatModelsResponse, type LlmModel } from '@recombyn-native/service/chat';\n",
+        "type LlmModel = { id: string; kind?: string; label?: string; [key: string]: unknown };\n",
+        "VideoQuickEdit job client import",
+      );
+      rewritten = replaceRequired(rewritten, "import { apiQuery, getHttpErrorMessage } from '@recombyn-native/service/client';\n", "", "VideoQuickEdit API import");
+      rewritten = replaceRequired(rewritten, "import { readFileAsDataUrl } from '@recombyn-native/utils/uploadImage';", "import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';", "VideoQuickEdit local media");
+      rewritten = replaceRequired(rewritten, "  const abortRef = useRef<AbortController | null>(null);\n", "", "VideoQuickEdit abort ref");
+      rewritten = replaceRequired(
+        rewritten,
+        /  const modelsCatalogQuery = useQuery\([\s\S]*?\n  }, \[\n    modelsCatalogQuery\.data,[\s\S]*?\n  \]\);\n\n  useEffect\(\(\) => \(\) => abortRef\.current\?\.abort\(\), \[\]\);/,
+        "  useEffect(() => {\n    const localModels = buildVideoModelList(null);\n    setModels(localModels);\n    if (localModels.length && !localModels.some((model) => model.id === modelId)) setModelId(localModels[0]!.id);\n    // Stage 1 never requests the Recombyn model catalog.\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);",
+        "VideoQuickEdit local model catalog",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /  const onGenerate = async \(\) => \{[\s\S]*?\n  \};\n\n  if \(!node/,
+        "  const onGenerate = () => {\n    message.warning(t('editor.tools.stageOneGenerationUnavailable', { defaultValue: 'Kith Media Job 尚未实现，Stage 1 暂不支持生成' }));\n  };\n\n  if (!node",
+        "VideoQuickEdit unavailable generation",
+      );
+    }
+    if (item.path.endsWith("/components/editor/nodes/ImageGeneratorNode/ImageGeneratorCard.tsx")) {
+      changes.push("make Stage 1 image generation a short unavailable action with local-only references and no upstream job client");
+      rewritten = replaceRequired(rewritten, "import { useQuery } from '@tanstack/react-query';\n", "", "ImageGeneratorCard query import");
+      rewritten = replaceRequired(
+        rewritten,
+        "import { generateImage, type ChatModelsResponse, type LlmModel } from '@recombyn-native/service/chat';\n",
+        "type LlmModel = { id: string; kind?: string; label?: string; [key: string]: unknown };\n",
+        "ImageGeneratorCard job client import",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "import { apiQuery, getHttpErrorMessage } from '@recombyn-native/service/client';\n",
+        "",
+        "ImageGeneratorCard API query import",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "import { readFileAsDataUrl } from '@recombyn-native/utils/uploadImage';",
+        "import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';",
+        "ImageGeneratorCard local media adapter",
+      );
+      for (const removed of [
+        "  clearImageProcessAttrs\n",
+        "  finishImageGenerator,\n",
+        "  setDocumentFromCanvas,\n",
+        "  const abortRef = useRef<AbortController | null>(null);\n",
+      ]) {
+        rewritten = replaceRequired(rewritten, removed, "", `ImageGeneratorCard remove ${removed.trim()}`);
+      }
+      rewritten = replaceRequired(
+        rewritten,
+        /  const modelsCatalogQuery = useQuery\([\s\S]*?\n  }, \[\n    modelsCatalogQuery\.data,[\s\S]*?\n  \]\);\n\n  useEffect\(\(\) => \{\n    return \(\) => \{\n      abortRef\.current\?\.abort\(\);\n    };\n  }, \[\]\);/,
+        "  useEffect(() => {\n    const unique = buildImageGeneratorModelList(null);\n    setModels(unique);\n    setModelsStatus('ready');\n    const nextId = nextImageModelId(unique, modelId);\n    if (nextId) setModelId(nextId);\n    // Stage 1 model choices are local-only; no Recombyn catalog request.\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);",
+        "ImageGeneratorCard local model catalog",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /  const onGenerate = async \(\) => \{[\s\S]*?\n  };\n\n  const persistGenSettings/,
+        "  const onGenerate = () => {\n    message.warning(\n      t('editor.tools.stageOneGenerationUnavailable', {\n        defaultValue: 'Kith Media Job 尚未实现，Stage 1 暂不支持生成',\n      })\n    );\n  };\n\n  const persistGenSettings",
+        "ImageGeneratorCard unavailable generation",
+      );
+    }
+    if (item.path.endsWith("/components/editor/nodes/VideoGeneratorNode/VideoGeneratorCard.tsx")) {
+      changes.push("make Stage 1 video generation a short unavailable action with local-only references and no upstream job/upload client");
+      rewritten = replaceRequired(rewritten, "import { useQuery } from '@tanstack/react-query';\n", "", "VideoGeneratorCard query import");
+      rewritten = replaceRequired(
+        rewritten,
+        "import { generateVideo, type ChatModelsResponse, type LlmModel } from '@recombyn-native/service/chat';\n",
+        "type LlmModel = { id: string; kind?: string; label?: string; [key: string]: unknown };\n",
+        "VideoGeneratorCard job client import",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "import { apiQuery, getHttpErrorMessage } from '@recombyn-native/service/client';\n",
+        "",
+        "VideoGeneratorCard API query import",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "import { uploadComposerAttachment, readFileAsDataUrl } from '@recombyn-native/utils/uploadImage';",
+        "import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';",
+        "VideoGeneratorCard local media adapter",
+      );
+      for (const removed of [
+        "  clearImageProcessAttrs\n",
+        "  finishVideoGenerator,\n",
+        "  setDocumentFromCanvas,\n",
+        "  const abortRef = useRef<AbortController | null>(null);\n",
+      ]) {
+        rewritten = replaceRequired(rewritten, removed, "", `VideoGeneratorCard remove ${removed.trim()}`);
+      }
+      rewritten = replaceRequired(
+        rewritten,
+        /  const modelsCatalogQuery = useQuery\([\s\S]*?\n  }, \[\n    modelsCatalogQuery\.data,[\s\S]*?\n  \]\);\n\n  useEffect\(\(\) => \{\n    return \(\) => \{\n      abortRef\.current\?\.abort\(\);\n    };\n  }, \[\]\);/,
+        "  useEffect(() => {\n    const unique = buildVideoGeneratorModelList(null);\n    setModels(unique);\n    setModelsStatus('ready');\n    const nextId = nextVideoModelId(unique, modelId);\n    if (nextId) setModelId(nextId);\n    // Stage 1 model choices are local-only; no Recombyn catalog request.\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);",
+        "VideoGeneratorCard local model catalog",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /  const attachRefFiles = async \(files: File\[\]\) => \{[\s\S]*?\n  };\n\n  \/\/ `@` opens the attachment mention panel/,
+        `  const attachRefFiles = async (files: File[]) => {
+    const media = files.filter(
+      (file) => file.type.startsWith('image/') || file.type.startsWith('video/')
+    );
+    if (!media.length) return;
+    const results = await Promise.all(
+      media.map(async (file, index) => {
+        try {
+          const dataUrl = await readFileAsDataUrl(file);
+          let thumbUrl = dataUrl;
+          if (file.type.startsWith('video/')) {
+            try {
+              thumbUrl = await captureVideoPosterFrame(dataUrl);
+            } catch {
+              thumbUrl = dataUrl;
+            }
+          }
+          return {
+            key: \`attach:\${Date.now()}-\${Math.random().toString(36).slice(2, 8)}-\${index}\`,
+            label: file.name || t('editor.tools.videoGenRef'),
+            kind: 'attachment' as const,
+            payload: file.type.startsWith('video/')
+              ? \`[Attached video]\\nname: \${file.name}\\nmime: \${file.type}\`
+              : \`[Attached image]\\nname: \${file.name}\\nmime: \${file.type}\`,
+            dataUrl,
+            thumbUrl,
+            uploadStatus: 'ready' as const,
+          } satisfies ComposerContext;
+        } catch {
+          message.error(t('agent.attachReadFailed', { name: file.name }));
+          return null;
+        }
+      })
+    );
+    const next = results.filter(Boolean) as ComposerContext[];
+    if (next.length) setContexts((previous) => [...previous, ...next]);
+  };
+
+  // \`@\` opens the attachment mention panel`,
+        "VideoGeneratorCard local references",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /  const onGenerate = async \(\) => \{[\s\S]*?\n  };\n\n  const persistGenSettings/,
+        "  const onGenerate = () => {\n    message.warning(\n      t('editor.tools.stageOneGenerationUnavailable', {\n        defaultValue: 'Kith Media Job 尚未实现，Stage 1 暂不支持生成',\n      })\n    );\n  };\n\n  const persistGenSettings",
+        "VideoGeneratorCard unavailable generation",
+      );
+    }
+    if (item.path.endsWith("/components/editor/nodes/ImageNode/ImageRemoveBgMenu.tsx")) {
+      changes.push("accept disabled state for unavailable Stage 1 background-removal action");
+      rewritten = rewritten
+        .replace("function ImageRemoveBgMenu({\n  onPick,\n}: {\n  onPick: (mode: RemoveBgMode) => void;", "function ImageRemoveBgMenu({\n  onPick,\n  disabled = false,\n}: {\n  onPick: (mode: RemoveBgMode) => void;\n  disabled?: boolean;")
+        .replace('type="button"\n        ref={refs.setReference}', 'type="button"\n        disabled={disabled}\n        ref={refs.setReference}')
+        .replace("className={cn(imageToolBtn, open && 'bg-[var(--accent-soft)]')}", "className={cn(imageToolBtn, disabled && 'cursor-not-allowed opacity-50', open && 'bg-[var(--accent-soft)]')}");
+    }
+    if (item.path.endsWith("/components/editor/nodes/ImageNode/ImageToolbarEditTools.tsx")) {
+      changes.push("accept disabled state for unavailable Stage 1 image-processing actions");
+      rewritten = rewritten
+        .replace("type=\"button\"\n      className={cn(imageToolBtn, 'relative', active && 'bg-[var(--accent-soft)]')}", "type=\"button\"\n      disabled={!onClick}\n      className={cn(imageToolBtn, 'relative', !onClick && 'cursor-not-allowed opacity-50', active && 'bg-[var(--accent-soft)]')}")
+        .replace("  downloadSlot,\n}: {", "  downloadSlot,\n  disabled = false,\n}: {")
+        .replace("  downloadSlot?: ReactNode;\n})", "  downloadSlot?: ReactNode;\n  disabled?: boolean;\n})")
+        .replace("onClick={onUpscale}", "onClick={disabled ? undefined : onUpscale}")
+        .replace("<ImageRemoveBgMenu onPick={onRemoveBg} />", "<ImageRemoveBgMenu onPick={onRemoveBg} disabled={disabled} />")
+        .replace("onClick={onEraser}", "onClick={disabled ? undefined : onEraser}")
+        .replace("onClick={onMark}", "onClick={disabled ? undefined : onMark}")
+        .replace("onClick={onReplaceText}", "onClick={disabled ? undefined : onReplaceText}")
+        .replace("onClick={onEditElements}", "onClick={disabled ? undefined : onEditElements}")
+        .replace("onClick={onMultiAngle}", "onClick={disabled ? undefined : onMultiAngle}");
+    }
+    if (item.path.endsWith("/components/rcb/selection/chrome/SelectionContextToolbar.tsx")) {
+      changes.push("disable unavailable Stage 1 image-processing actions while retaining native toolbar structure");
+      rewritten = rewritten
+        .replace("type=\"button\"\n            className={imageToolBtn}", "type=\"button\"\n            disabled\n            className={cn(imageToolBtn, 'cursor-not-allowed opacity-50')}")
+        .replace("          <ImageToolbarEditTools\n", "          <ImageToolbarEditTools\n            disabled\n");
+    }
+    if (repositoryWhitespaceNormalizedSources.has(item.path)) {
+      changes.push("normalize upstream blank-line whitespace and final newline for repository diff checks");
+      rewritten = rewritten.replace(/^[\t ]+$/gm, "").replace(/\n+$/, "\n");
+    }
+    writeFileSync(target, notice + rewritten);
+  } else {
+    writeFileSync(target, sourceBytes);
+  }
+  mapping.push({
+    source: item.path,
+    sourceSha256: item.sha256,
+    target: path.relative(repoRoot, target).split(path.sep).join("/"),
+    disposition: changes.length ? "adapted_source" : "exact_copy",
+    changes,
+  });
+}
+
+const serviceClientTarget = path.join(outputRoot, "apps/web/src/service/client.ts");
+writeFileSync(
+  serviceClientTarget,
+  `/*\n * Modified by Kith-space for the Stage 1 native Canvas island.\n * Source: Recombyn ${expectedCommit} / apps/web/src/service/client.ts\n * Change: cloud/API transport is inverted to the in-memory Stage 1 host seam.\n * Apache-2.0 and upstream NOTICE apply.\n */\nexport * from "@/features/canvas/adapters/recombynStageOneServices";\n`,
+);
+const serviceMapping = mapping.find((item) => item.source === "apps/web/src/service/client.ts");
+if (!serviceMapping) throw new Error("Missing service/client.ts source mapping");
+serviceMapping.disposition = "host_adapter_seam";
+serviceMapping.changes = ["replace cloud/API transport with Stage 1 unavailable/empty-query adapter"];
+writeFileSync(
+  path.join(outputRoot, "apps/web/src/components/editor/projectDraftStore.ts"),
+  `/*\n * Modified by Kith-space for the Stage 1 native Canvas island.\n * Source: Recombyn ${expectedCommit} / apps/web/src/components/editor/projectDraftStore.ts\n * Change: IndexedDB persistence is inverted to the in-memory Stage 1 document/session seam.\n * Apache-2.0 and upstream NOTICE apply.\n */\nexport * from "@/features/canvas/adapters/recombynProjectMemory";\n`,
+);
+const draftMapping = mapping.find((item) => item.source === "apps/web/src/components/editor/projectDraftStore.ts");
+if (!draftMapping) throw new Error("Missing projectDraftStore.ts source mapping");
+draftMapping.disposition = "host_adapter_seam";
+draftMapping.changes = ["replace IndexedDB draft/session persistence with process-memory adapter"];
+
+const seamReplacements = [
+  {
+    source: "apps/web/src/service/wallet.ts",
+    adapter: "@/features/canvas/adapters/recombynStageOneWallet",
+    change: "replace wallet/billing queries and raw fetch with a local unavailable snapshot seam",
+  },
+  {
+    source: "apps/web/src/components/editor/collab/CollabRoomProvider.tsx",
+    adapter: "@/features/canvas/adapters/recombynStageOneCollaboration",
+    change: "replace Yjs/WebSocket/IndexedDB collaboration runtime with a pass-through unavailable seam",
+  },
+];
+for (const seam of seamReplacements) {
+  const target = path.join(outputRoot, seam.source);
+  writeFileSync(
+    target,
+    `/*\n * Modified by Kith-space for the Stage 1 native Canvas island.\n * Source: Recombyn ${expectedCommit} / ${seam.source}\n * Change: ${seam.change}.\n * Apache-2.0 and upstream NOTICE apply.\n */\nexport * from "${seam.adapter}";\n`,
+  );
+  const entry = mapping.find((item) => item.source === seam.source);
+  if (!entry) throw new Error(`Missing ${seam.source} source mapping`);
+  entry.disposition = "host_adapter_seam";
+  entry.changes = [seam.change];
+}
+
+for (const entry of mapping) {
+  if (!entry.target) continue;
+  entry.targetSha256 = createHash("sha256").update(readFileSync(path.join(repoRoot, entry.target))).digest("hex");
+}
+
+writeFileSync(
+  path.join(outputRoot, "source-mapping.json"),
+  `${JSON.stringify({ upstreamCommit: expectedCommit, generatedFrom: path.relative(repoRoot, auditPath), files: mapping }, null, 2)}\n`,
+);
+const copiedCount = mapping.filter((item) => item.target).length;
+const excludedCount = mapping.length - copiedCount;
+process.stdout.write(`Materialized ${copiedCount} native Recombyn files (${excludedCount} excluded) in ${path.relative(repoRoot, outputRoot)}\n`);

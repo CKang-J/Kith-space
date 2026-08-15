@@ -50,6 +50,8 @@ pnpm run browser-access:dev lan --port 7777 --token "a-custom-token-at-least-16-
 
 需要检查Electron渲染DOM时，开发脚本允许把参数转发给Electron：`pnpm run desktop:dev --remote-debugging-port=9222`。只可在本机隔离profile使用并在验收后停止进程；不要给LAN地址开放该端口，也不要从DevTools输出一次性Token。production bundle/pack不会自动启用调试端口。
 
+Recombyn Canvas 阶段 1 harness 只在 Vite 开发环境提供：启动 `pnpm --dir web run dev` 后访问 `http://127.0.0.1:5173/?__canvas_stage1=1`。该查询参数加载原生导出内存 fixture 与隔离 UI Island，不注册正式 Canvas 模块、不访问 Core/SQLite，也不会写回 Agent；production build 静态排除该入口。`pnpm run canvas:stage1:materialize` 对 clean、固定 commit 的上游闭包重放来源/隔离转换，`pnpm run canvas:stage1:build` 在 OS 临时目录验证仅开发岛的完整 bundle，不污染 `web/dist`。该入口仍不是正式产品能力。固定视口、快捷键、computed-style、portal 与性能采集口径见 [`recombyn-stage1-visual-performance-baseline.md`](./research/recombyn-stage1-visual-performance-baseline.md)。
+
 ## 3. 数据库与调试数据
 
 正式 Desktop 首次初始化不需要 `seed`。以下命令只用于手动分进程、测试 fixture 或 schema 调试：
