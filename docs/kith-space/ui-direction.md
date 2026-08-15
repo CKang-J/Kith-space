@@ -96,7 +96,7 @@ Settings   = Chat 保持挂载 + Settings 模态层
 - 桌面宽度使用左侧设置分区导航和右侧内容；小于 640px 时分区导航改为顶部横向滚动列表，内容保持可读。
 - 设置分区切换替换当前 history entry；关闭弹窗同样替换为 Chat URL，浏览器返回不会重新打开刚关闭的设置。
 
-Spaces 只在 Home 出现；Agents 只显示当前 Space 的 agent 队伍；唯一 Human 的资料位于全局 Settings。Calendar、Canvas 等真实能力成熟后插入同一模块注册表；当前不展示无功能的空入口。
+Spaces 只在 Home 出现；Agents 只显示当前 Space 的 agent 队伍；唯一 Human 的资料位于全局 Settings。Canvas 已作为真实能力进入同一模块注册表；Calendar 等未实现能力不展示空入口。
 
 创建 Agent 时，Runtime 选择器读取 Local Runtime Worker 的实际 availability，而不是使用前端硬编码的可用状态。完整 runtime 目录始终展示：已安装项排序在前并标注“已安装”，未安装项排序在后、标注“未安装”且不可选择；默认选中第一个已安装项。OpenCode 模型选择器只展示 `opencode models` 返回并去重后的真实 `provider/model`；探测失败时显示错误、提供重试并禁止创建，不回退到虚假的 `Default`。
 
@@ -149,7 +149,7 @@ ChatOnly 由当前会话工作面和可独立收起的辅助面板组成：
 
 ## 5. 模块工作面与作用域
 
-- 当前已实现业务模块包括 Inbox、Tasks、Agents；Home 另有 Spaces；Search 由左侧入口或快捷键打开；Settings 是模态层。Canvas 阶段 1 AgentDock纠偏已通过主任务最终复审，尚未注册为正式业务模块。Computers/Machines 不再是产品模块。
+- 当前已实现业务模块包括 Inbox、Tasks、Agents、Canvas；Home 另有 Spaces；Search 由左侧入口或快捷键打开；Settings 是模态层。Canvas Library 与实际 Canvas resource tab 已进入正式壳。Computers/Machines 不再是产品模块。
 - 可同时打开多个业务模块标签，但一次只激活并显示一个右侧模块；切换左侧入口会新增或聚焦对应标签。
 - Inbox、Tasks、Agents 和 Settings 只读取当前 Space 数据；Spaces 只读取 app.db registry 和真实摘要。切换 Space 时 Chat 与普通模块数据源一起切换。
 - Web Store 与路由状态只使用 `SpaceInfo/spaceId/spaces` 和 `/s/:slug`；请求只发送 `x-space-id`，不得在前端保留旧 Server 双命名。
@@ -171,16 +171,19 @@ H4 已复用 H3 领域/API 能力交付本节：Home Spaces 提供卡片网格�
 
 未来可在 Home 增加真正的跨 Space Inbox/Tasks/Calendar 聚合，但它们是后续真实能力，不恢复已移除的薄总览页。
 
-### 5.2 Canvas Workspace（阶段 1 纠偏已通过主任务最终复审，阶段 2 未开始）
+### 5.2 Canvas Workspace（阶段 2 Human 本地闭环已实现）
 
-阶段 1 已在 `web/src/features/canvas/` 建立开发态 `?__canvas_stage1=1` 原生 UI Island，直接运行固定 Recombyn commit 的 `EditorPage`/RCB/nodes/chrome/panels，并用同一 live 导出 fixture 覆盖 overview、形状、图层、图片工具条、导出、资产、小地图、快捷键、camera、resize、亮暗 token、独立字体与 portal。Stage 1 不组合 AgentDock、Dock 开关或占位；底栏两个相邻原生按钮可用 `A` / `Shift+A` 创建图片与视频生成器节点，节点交互和开发态版本化浏览器重载可用。生成提交明确 unavailable，媒体文件只形成本地 data URL；共享 upload transport 和媒体 Job transport 均不进入可执行路径，composer scene helper 由窄 Canvas adapter 提供，不拉入 Agent runtime。它不出现在模块注册表，不创建正式 tab；下列 Workspace Tabs、Library、Chat 与 Agent 规则仍从阶段 2 起逐步实现。
+阶段 1 的固定 Recombyn `EditorPage`/RCB/nodes/chrome/panels 与原生观感保持不变。阶段2已从正式左侧 Canvas 入口打开 Canvas Library；新建/受限 JSON 导入后形成独立 resource tab，同一 Canvas 去重，不同 Canvas 可多开并按 Space 隔离恢复。实际 Canvas 继续使用原生工具栏、节点、Frame、选择/变换、结构和导出 UI；嵌入宿主时 editor island 高度严格跟随 workspace surface，不再按 browser viewport 溢出并裁掉底部工具栏。媒体按钮在相同原生位置经可复现 host materializer 恢复，先写入 Canvas-local durable asset，再把受控 resolver URL 提交 Core；AssetPanel 显示同 Canvas 本地资产。上游产品壳的 Home 与账户按钮在正式 Kith Canvas 中移除，标题、导出与分享保留。`⌘/Ctrl+Z`、`⌘⇧Z`/`Ctrl+Y` 由宿主捕获后调用 Core undo/redo。OCR、AI处理和真实图片/视频生成明确 unavailable；没有 AgentDock、第二套画布 UI、Page 或 Chat/Agent联动。
 
 - 规范 module id 为 `canvas`；实际 Canvas 使用当前会话 pathname 上的 `?module=canvas&canvas=<canvasId>`。`canvasId` 同时是 `WorkspaceTab.resourceId`，同一 Canvas 只聚焦一个 tab，不同 Canvas 可多开。
-- `resourceId = null` 是 Canvas Library，用于新建、打开、重命名和删除当前 Space Canvas；它不是 Canvas Page。每个实际 Canvas 永远是一个独立无限平面，产品不增加 Page 导航或层级。
+- `resourceId = null` 是 Canvas Library，用于新建、导入、打开和软删除当前 Space Canvas；它不是 Canvas Page。标题在原生编辑器内修改后经 `metadata.rename` 持久化，并同步 Workspace tab、URL 与 SQLite；删除会关闭对应 tab，活动项退回 Library，重启后仍保持删除态。每个实际 Canvas 永远是一个独立无限平面，产品不增加 Page 导航或层级。
 - Canvas tab 与 Chat 并排，继续服从现有 split、相邻关闭、URL 活动项、按 Space 标签恢复和侧栏自动收起规则；不新增 Dock、第二套标签栏或全局壳。
-- 实际编辑器直接移植 Recombyn RCB 的画布、节点、工具栏、属性/图层/资产/导出面板视觉结构和交互，不为统一 Kith 视觉而重设计。资产面板改接 Kith Canvas-local asset library；上游“Export All Pages/导出全部页面”等产品文案与动作必须替换为“导出全部画布内容/画板”等无 Page 语义，并登记为批准的 visual golden 例外。Kith 另提供标签宿主、Canvas Library、会话/执行者绑定、冲突/错误提示和导入导出窄桥。
-- Recombyn Home/Auth/Billing/Share/Cloud/Tauri 与 AgentDock 产品壳不出现。阶段1只保留 selection-to-chat 的窄 host event seam，不接 chat/runtime；阶段2的 Canvas 输入绑定左侧真实私聊、频道或话题，DM 的执行者是对端 Agent，频道/话题必须明确选择一个 Agent。
-- 圈选后“发送到 Chat”创建不可变 Canvas Selection Snapshot；Chat 显示 context chip、选区摘要和“在画布中打开”深链。MVP 不做原生跨栏拖放。
+- 实际编辑器直接移植 Recombyn RCB 的画布、节点、工具栏、属性/图层/资产/导出面板视觉结构和交互，不为统一 Kith 视觉而重设计。资产面板改接 Kith Canvas-local asset library；上游 JSON 导出按钮经宿主 port 读取 Core canonical scene，等待实际下载结果后再报告成功。Library 的受限 JSON 导入会校验格式、重映射全部外部 ID、归一隐藏 root，并拒绝未重绑定资产和悬空结构；正式 URL/tab/DB 不暴露 Page。上游“Export All Pages/导出全部页面”等产品文案与动作必须替换为“导出全部画布内容/画板”等无 Page 语义，并登记为批准的 visual golden 例外。Kith 另提供标签宿主、Canvas Library、冲突/错误提示和导入导出窄桥；会话/执行者绑定仍属于阶段3。
+- 嵌入态底部原生工具栏以当前可见编辑舞台（排除已展开的资产/图层侧栏，不按浏览器 viewport）为水平居中基准，并随 Workspace split 或内部侧栏 resize 重算。Core snapshot 回投只替换 canonical document；当前节点仍存在时保留 Recombyn renderer 的临时选中态，避免创建后选框闪退。
+- Recombyn floating UI portal 位于 Canvas island 内、React editor mount 外，既继承 Canvas scoped 样式又不被 React 首次提交清除；缩放菜单由按钮单独拥有开关事件，避免 focus 与 wrapper click 双重切换。
+- 正式 Canvas 不读取 Recombyn 自有主题偏好；Kith `<html>.dark` 是解析 light/dark/system 后的唯一事实源，Canvas root 实时同步 `data-theme`，继续复用 Recombyn 原生深浅色 token。
+- Recombyn Home/Auth/Billing/Share/Cloud/Tauri 与 AgentDock 产品壳不出现。阶段1保留的 selection-to-chat 窄 host event seam 在阶段2仍不接 chat/runtime；Canvas 输入绑定、执行者选择和 Agent 写回留给阶段3/4。
+- 圈选后的不可变 Canvas Selection Snapshot、Chat context chip、选区摘要和“在画布中打开”深链属于阶段3目标，阶段2未创建；MVP 不做原生跨栏拖放。
 - Recombyn Tailwind 3 必须独立构建并加 Canvas 作用域，Preflight/`html/body/:root` 不得进入 Kith 全局；Kith 全局选择器显式排除 Canvas root，并给 Canvas 建立 scoped reset 和独立 portal root。合法离线字体集先于 Kith golden 确定，替代字体是显式视觉例外；截图、交互和 computed-style 断言共同验收 UI 保护。
 
 完整边界、MVP 和后续能力见 `../superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md`。
@@ -202,7 +205,7 @@ H4 已复用 H3 领域/API 能力交付本节：Home Spaces 提供卡片网格�
 
 当前生产壳已完成 A5 入口收口与 P-A7 H4：`App` 只渲染 `WorkspaceFrame`；Agents、Human Settings、Desktop Settings 与 Home-only Spaces 已落地，登录/注册/邀请、Computers、Landing、Features、PWA、SSR/prerender、旧 `Layout` 与 `?legacy=1` 均已退出活跃代码。Agent 详情的“记忆”标签与概览路径通过兼容的 workspace-files API 展示并读取当前 Space 的 `<space>/.kith/agents/<agentId>`；`agentTab=workspace` 只作为既有深链兼容值保留，不再表示共享 Space 工作区。普通冷启动进入 stable Home，显式 ready 深链接仍优先；普通 Space 不显示也不能激活 Spaces。
 
-当前 Chat 壳层已按 sidebar-10 方向收敛为单个可折叠常驻侧栏：`WorkspaceNavigationRail` 组合 Space、模块入口与既有会话分组；`ConversationListContent` 继续复用既有会话数据。Spaces、Inbox、Tasks、Agents 通过 `WorkspaceTabs` 在 Chat 右侧以按 Space 持久化的标签集合呈现。`WorkspaceDock` 已删除，Settings 使用独立模态层并复用原设置内容。案例展示继续保持退役。状态以 `docs/progress.md` 为准。
+当前 Chat 壳层已按 sidebar-10 方向收敛为单个可折叠常驻侧栏：`WorkspaceNavigationRail` 组合 Space、模块入口与既有会话分组；`ConversationListContent` 继续复用既有会话数据。Spaces、Inbox、Tasks、Agents、Canvas 通过 `WorkspaceTabs` 在 Chat 右侧以按 Space 持久化的标签集合呈现；Canvas Library 使用无 resourceId 的模块 tab，实际 Canvas 使用稳定 resourceId。`WorkspaceDock` 已删除，Settings 使用独立模态层并复用原设置内容。案例展示继续保持退役。状态以 `docs/progress.md` 为准。
 
 单窗口壳按职责拆在 `web/src/shell/`：
 

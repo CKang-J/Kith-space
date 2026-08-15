@@ -13,11 +13,11 @@ import { HOME_SIDEBAR_MODULES, SIDEBAR_MODULES, WORKSPACE_MODULES } from "./work
 test("ordinary and Home sidebars expose their fixed module sets", () => {
   assert.deepEqual(
     SIDEBAR_MODULES.map((module) => module.id),
-    ["inbox", "tasks", "agents", "settings"],
+    ["inbox", "tasks", "agents", "canvas", "settings"],
   );
   assert.deepEqual(
     HOME_SIDEBAR_MODULES.map((module) => module.id),
-    ["spaces", "inbox", "tasks", "agents", "settings"],
+    ["spaces", "inbox", "tasks", "agents", "canvas", "settings"],
   );
   assert.equal(WORKSPACE_MODULES.find((module) => module.id === "search")?.sidebar, false);
 });

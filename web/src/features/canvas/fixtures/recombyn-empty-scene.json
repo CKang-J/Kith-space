@@ -1,0 +1,21 @@
+{
+  "width": 1920,
+  "height": 1080,
+  "deltaSetLike": {
+    "ROOT": {
+      "id": "ROOT",
+      "key": "entry",
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0,
+      "attrs": {},
+      "children": []
+    }
+  },
+  "x": 0,
+  "y": 0,
+  "backgroundColor": "",
+  "activeFrameId": null,
+  "frames": []
+}

@@ -158,6 +158,20 @@ test("module locations preserve the Chat pathname and keep Chat visible", () => 
   assert.equal(url.searchParams.has("taskScope"), false);
 });
 
+test("Canvas resource URL keeps its id and title while removing other module resources", () => {
+  const target = workspaceLocationForModule(
+    "/s/space/channel/channel-1",
+    "?module=agents&agent=old-agent",
+    { moduleId: "canvas", canvas: "canvas-1", canvasTitle: "Product map" },
+  );
+  const url = new URL(target, "http://kith-space.local");
+  assert.equal(url.searchParams.get("module"), "canvas");
+  assert.equal(url.searchParams.get("canvas"), "canvas-1");
+  assert.equal(url.searchParams.get("canvasTitle"), "Product map");
+  assert.equal(url.searchParams.has("agent"), false);
+  assert.equal(workspaceModuleResourceFromSearch(url.search, "canvas"), "canvas-1");
+});
+
 test("opening content keeps Chat visible while settings opens over it", () => {
   const tasksTarget = workspaceLocationForModule(
     "/s/space/channel/channel-1",

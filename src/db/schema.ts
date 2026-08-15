@@ -796,3 +796,62 @@ export const memoryRecallObservations = sqliteTable("memory_recall_observations"
   pk: primaryKey({ columns: [t.memoryId, t.agentId] }),
   byAgent: index("memory_recall_observations_agent_idx").on(t.agentId, t.recalledAt),
 }));
+
+export const canvasDocuments = sqliteTable("canvas_documents", {
+  id: id("id").primaryKey(),
+  spaceId: text("space_id").notNull().references(() => spaces.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  document: text("document_json", { mode: "json" }).$type<unknown>().notNull(),
+  revision: integer("revision").default(0).notNull(),
+  metadataRevision: integer("metadata_revision").default(0).notNull(),
+  documentRevision: integer("document_revision").default(0).notNull(),
+  elementRevision: integer("element_revision").default(0).notNull(),
+  frameRevision: integer("frame_revision").default(0).notNull(),
+  structureRevision: integer("structure_revision").default(0).notNull(),
+  realtimeSequence: integer("realtime_sequence").default(0).notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+  updatedAt: timestamp("updated_at").default(now).notNull(),
+  deletedAt: timestamp("deleted_at"),
+}, (t) => ({
+  bySpaceUpdated: index("canvas_documents_space_updated_idx").on(t.spaceId, t.updatedAt),
+}));
+
+export const canvasMutations = sqliteTable("canvas_mutations", {
+  id: id("id").primaryKey(),
+  canvasId: text("canvas_id").notNull().references(() => canvasDocuments.id, { onDelete: "cascade" }),
+  operationId: text("operation_id").notNull(),
+  sequence: integer("sequence").notNull(),
+  kind: text("kind").$type<"create" | "edit" | "undo" | "redo" | "delete">().notNull(),
+  sourceMutationId: text("source_mutation_id"),
+  expectedRevision: integer("expected_revision").notNull(),
+  requestHash: text("request_hash").notNull(),
+  operation: text("operation_json", { mode: "json" }).$type<unknown>().notNull(),
+  beforeTitle: text("before_title").notNull(),
+  afterTitle: text("after_title").notNull(),
+  beforeDocument: text("before_document_json", { mode: "json" }).$type<unknown>().notNull(),
+  afterDocument: text("after_document_json", { mode: "json" }).$type<unknown>().notNull(),
+  impact: text("impact_json", { mode: "json" }).$type<unknown>().notNull(),
+  result: text("result_json", { mode: "json" }).$type<unknown>().notNull(),
+  state: text("state").$type<"applied" | "reverted" | "discarded">().default("applied").notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+}, (t) => ({
+  operationUniq: uniqueIndex("canvas_mutations_operation_uniq").on(t.canvasId, t.operationId),
+  sequenceUniq: uniqueIndex("canvas_mutations_sequence_uniq").on(t.canvasId, t.sequence),
+  history: index("canvas_mutations_history_idx").on(t.canvasId, t.kind, t.state, t.sequence),
+}));
+
+export const canvasAssets = sqliteTable("canvas_assets", {
+  id: id("id").primaryKey(),
+  canvasId: text("canvas_id").notNull().references(() => canvasDocuments.id, { onDelete: "cascade" }),
+  storageKey: text("storage_key").notNull(),
+  filename: text("filename").notNull(),
+  mimeType: text("mime_type").notNull(),
+  sha256: text("sha256").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  state: text("state").$type<"staged" | "ready" | "deleting">().default("staged").notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+  deletedAt: timestamp("deleted_at"),
+}, (t) => ({
+  storageUniq: uniqueIndex("canvas_assets_storage_uniq").on(t.canvasId, t.storageKey),
+  byCanvasState: index("canvas_assets_canvas_state_idx").on(t.canvasId, t.state),
+}));

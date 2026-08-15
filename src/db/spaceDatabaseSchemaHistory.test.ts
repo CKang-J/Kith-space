@@ -10,6 +10,7 @@ test("workspace compatibility manifest is selected by the database version", () 
   const v6 = requiredSpaceSchema(6);
   const v7 = requiredSpaceSchema(7);
   const v8 = requiredSpaceSchema(8);
+  const v12 = requiredSpaceSchema(12);
 
   assert.equal(v2.size, 19);
   assert.ok(!v2.get("agents")?.includes("introduced_at"));
@@ -34,11 +35,16 @@ test("workspace compatibility manifest is selected by the database version", () 
   assert.ok(v8.get("runtime_sessions")?.includes("checklist_revision"));
   assert.ok(v8.get("runtime_sessions")?.includes("compaction_revision"));
   assert.ok(v8.get("runtime_sessions")?.includes("context_compaction_revision"));
+  assert.ok(v12.get("canvas_documents")?.includes("revision"));
+  assert.ok(v12.has("canvas_mutations"));
+  assert.ok(v12.has("canvas_assets"));
   assert.deepEqual(requiredSpaceIndexes(5), []);
   assert.ok(requiredSpaceIndexes(6).includes("runtime_sessions_current_uniq"));
   assert.ok(requiredSpaceIndexes(8).includes("memory_advisor_jobs_due_idx"));
+  assert.ok(requiredSpaceIndexes(12).includes("canvas_mutations_operation_uniq"));
   assert.equal(requiredSpaceForeignKeys(6, 5).length, 3, "P-A10.1 prefix keeps only session foreign keys");
   assert.ok(requiredSpaceForeignKeys(6).some((foreignKey) => foreignKey.table === "agent_turn_attempts" && foreignKey.targetTable === "agent_turns"));
   assert.ok(requiredSpaceForeignKeys(6).some((foreignKey) => foreignKey.table === "agent_delivery_items" && foreignKey.from === "target_runtime_session_id" && foreignKey.onDelete === "SET NULL"));
   assert.ok(requiredSpaceForeignKeys(8).some((foreignKey) => foreignKey.table === "memory_advisor_jobs" && foreignKey.from === "source_turn_id" && foreignKey.onDelete === "CASCADE"));
+  assert.ok(requiredSpaceForeignKeys(12).some((foreignKey) => foreignKey.table === "canvas_assets" && foreignKey.targetTable === "canvas_documents" && foreignKey.onDelete === "CASCADE"));
 });

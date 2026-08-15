@@ -41,6 +41,7 @@ import { handleDisclosureGrants } from "./disclosureGrants.js";
 import { handleAdvisorProvider } from "./advisorProvider.js";
 import { handleModelSettings } from "./modelSettings.js";
 import { handleAppearanceSettings } from "./appearanceSettings.js";
+import { handleCanvas, handleCanvasAssetResolver } from "./canvas.js";
 
 export async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, method: string): Promise<boolean> {
   const p = url.pathname;
@@ -70,6 +71,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (await handleAppearanceSettings(humanCtx)) return true;
   if (await handleAdvisorProvider(humanCtx)) return true;
   if (await handleModelSettings(humanCtx)) return true;
+  if (handleCanvasAssetResolver(humanCtx)) return true;
 
   // ---- gate 2: require a registered local Space context ----
   const spaceId = spaceIdHeader(req);
@@ -92,6 +94,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (await handleSpacePreferences(spaceCtx)) return true;
   if (await handleDispatch(spaceCtx)) return true;
   if (await handleTasks(spaceCtx)) return true;
+  if (await handleCanvas(spaceCtx)) return true;
 
   return (sendErr(res, 404, "not found"), true);
 }

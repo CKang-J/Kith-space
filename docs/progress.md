@@ -4,7 +4,7 @@
 
 最后更新：2026-08-15。
 
-- **Recombyn Canvas Workspace 阶段 1 AgentDock纠偏实现已完成并通过主任务最终复审；阶段 2 尚未开始**：开发态 `?__canvas_stage1=1` 不组合 AgentDock、Dock 开关或占位；底栏相邻原生按钮可用 `A` / `Shift+A` 创建图片/视频生成器节点，节点创建、选择、拖动、参数修改、文档投影和开发态版本化浏览器重载可用。当前可重复闭包为320项、materialize 318项、2个品牌二进制排除；审计与物化从固定 `abd8198` Git object 读取，不依赖当前 `reference/recombyn@467b650` checkout。三个 composer scene helper 已进入窄 Canvas adapter，`runDesignAgent`、`designTools`、`agentMemory`、`service/design`、`service/upload` 与 `utils/request` 退出闭包；图片、视频及共享媒体生成提交为短小 unavailable 实现，媒体文件只形成本地 data URL，物化层没有 Recombyn request/upload/media Job transport。定向测试、materialize、`canvas:stage1:build`、typecheck、web build 全绿；浏览器验证无 Dock、生成器选中与拖动、参数修改、画布内引用、图片/视频 unavailable 提交、双节点刷新恢复、相关 API 资源记录为空且无 console error。完整 unit 仍只允许既存 `personalAgentOsContract.test.ts:95` 失败。正式 Workspace Tabs、Canvas Library、SQLite/Canvas Core、durable asset/import/export、Selection Snapshot、Gateway 与 Agent 写回均未开始。
+- **Recombyn Canvas Workspace 阶段 2 已完成并通过主任务最终复核**：正式 `canvas` 模块、Canvas Library、按 Space 隔离的 resource tabs/URL/title、多 Canvas 已进入 Kith 产品壳；workspace schema v12 的 `canvas_documents / canvas_mutations / canvas_assets`、`src/canvas/` Core、Human API 与 per-canvas realtime sequence 是 canonical owner，Renderer Redux 只作交互投影。服务端从 operation 派生 element/Frame/Frame-membership/parent/root/order read/write set，以 base sequence 扫描 ledger；renderer 对既有 Frame 属性使用稳定 Frame ID patch，不相交 Frame 可从同一 base 提交，相交 Frame、增删/重排、membership/order 冲突，scene/revision/ledger/sequence 同事务。资产删除只写 DB tombstone，不在用户可变目录做不可靠的 path unlink；resolver 每次从同一 fd 读取并核验 size + SHA-256，未知 staging 与不可达文件保留给阶段5物理 GC。versioned Scene import 用 document/ROOT/node/Frame allowlist 转换并剥离嵌套 Core 状态，继续重映射全部 ID、归一隐藏 root、拒绝未重绑定资产并经 Core operation 原子提交。`/changes` 对同 Space 已删除 Canvas 返回 tombstone，漏掉 socket 事件的离线客户端重连后幂等关闭 tab、清 URL 并回到 Library；网络失败与跨 Space 404 不视为删除。Stage1 两个 SHA 和 upstream bytes 保持不变。Selection Snapshot、Chat、Gateway/MCP、Agent 写回和真实 AI 生成仍为零；retained 历史/资产 reachability、阶段5物理 GC、Windows/Linux 实机文件语义与约 3.5 MB Canvas chunk 仍未通过，不能表述为性能或跨平台完成。
 
 - **Windows workspace migration journal 换行符兼容已根治**：Drizzle 以迁移 SQL 原始字节计算 journal hash，而既有 Windows checkout 会把 LF 改写为 CRLF，导致同一迁移在 schema v10 完成后被严格兼容门误判为 journal 不一致，Desktop 因全部已注册 Space 不可打开而进入重连页。`drizzle/*.sql` 现由 `.gitattributes` 固定为 LF；`WORKSPACE_MIGRATION_HISTORY` 保留 canonical LF hash，并只对白名单中的逐文件 CRLF hash提供精确兼容，时间戳、顺序、长度、完整 schema/index/FK 与 SQLite integrity 校验保持不变，未知/缺失 journal 继续拒绝。Windows 定向回归14/14通过，现有4个真实 schema v10 Space 均通过且 Core 在7777 ready时无 migration journal 告警。
 - **Windows下Pi/模型文件权限误报已根治并补齐DACL门禁**：CredentialPort、Pi CLI配置读取器、通用CLI脱敏导入和Pi Advisor helper完整性检查统一使用平台文件元数据策略，不再把Windows/Node合成的POSIX `0666` mode误判为认证、配置或artifact异常；Windows凭据目录和文件现在会主动收紧并验证当前owner SID的私有DACL，已有宽松ACL会在首次读取时升级，收紧或验证失败则fail closed。普通文件、大小上限、同一FD前后身份、加密、内容digest和凭据摘要校验继续保留，macOS/Linux的uid与各自权限掩码门禁不变。隔离回归已覆盖真实Windows凭据写入/单次activation、Pi配置导入、helper prepare和现有模型配置绑定；内置Pi无需安装Pi CLI或创建Pi全局配置。
@@ -168,7 +168,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 1. P-A9 与本次 Runtime admission 真实数据回归修复完成后停止本阶段；不自动推送、不合并、不发布，也不做仓库外数据清理。
 2. P-A10.0–P-A10.7 已收口；统一模型/运行器控制面、Pi正式v2 runtime与记忆设置UI必须按`2026-07-23-model-provider-runtime-memory-settings-design.md`作为独立增量实施，不回写成P-A10补丁。P-A11 consolidation、P-A12 skill reconciliation、P-S1安全升级或H5仍按各自独立规格推进；Rust试验和生产力模块继续按各自前置关系推进。
-3. Canvas 开发只按5个整体阶段推进。阶段1 AgentDock纠偏已通过主任务最终复审；下一步应由独立任务启动阶段2 Human本地画布闭环，把原生 island 接入 Workspace Tabs、Canvas Library、SQLite/Canvas Core 与本地资产边界。Agent写回、Selection Snapshot/Chat联动和 MCP SDK v2 升级仍不进入阶段2。
+3. Canvas 阶段2已完成并通过主任务最终复核；本轮提交不进入阶段3。Selection Snapshot/Chat、Agent Gateway/MCP、Agent写回与真实生成仍未开始。
 
 ## 六、验证与工作约定
 
@@ -194,7 +194,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - `docs/superpowers/specs/2026-07-15-chat-message-ui-density-design.md`：聊天消息流密度、气泡层级、消息工具、表现层组件边界、实施切片与量化验收规格；代码、自动化验证与用户手动视觉验收均已完成。
 - `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`：P-A9 进程拓扑、深 Module、窄 Interface、实施切片、性能/Rust 决策门与验收规格。
 - `docs/superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`：已实现的模型供应商/模型配置/运行器控制面、Pi正式v2 runtime、Memory Advisor与Agent记忆页重构规格。
-- `docs/superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md`：阶段 1 AgentDock纠偏已通过主任务最终复审且阶段 2 未开始的 Recombyn Canvas Workspace 规格，含 MVP、5个开发阶段、Agent/Context/Gateway 与后续路线。
+- `docs/superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md`：阶段 1、阶段 2 均已通过主任务最终复核的 Recombyn Canvas Workspace 规格，含 MVP、5个开发阶段、Agent/Context/Gateway 与后续路线。
 - `docs/vision.md`：长期北极星与永久边界。
 - `docs/decisions.md`：锁定决策、推理和被推翻路线。
 - `docs/roadmap.md`：阶段与后续能力顺序。

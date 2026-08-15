@@ -6,6 +6,8 @@ import {
   activeWorkspaceTab,
   closeWorkspaceTab,
   openWorkspaceTab,
+  removeWorkspaceResourceTab,
+  renameWorkspaceResourceTab,
   persistWorkspaceTabState,
   restoreWorkspaceTabState,
   sanitizeWorkspaceTabState,
@@ -45,6 +47,27 @@ test("opening an existing module resource focuses it instead of adding a duplica
   assert.deepEqual(focused.tabs.map((tab) => tab.id), ["tasks:channel-1", "inbox"]);
   assert.equal(focused.activeTabId, "tasks:channel-1");
   assert.equal(activeWorkspaceTab(focused)?.title, "Channel tasks");
+});
+
+test("two Canvas resources are independent and the same Canvas tab is deduplicated", () => {
+  const first = openWorkspaceTab(EMPTY_WORKSPACE_TAB_STATE, { moduleId: "canvas", resourceId: "canvas-a", title: "A" });
+  const second = openWorkspaceTab(first, { moduleId: "canvas", resourceId: "canvas-b", title: "B" });
+  const focused = openWorkspaceTab(second, { moduleId: "canvas", resourceId: "canvas-a", title: "A renamed" });
+  assert.deepEqual(focused.tabs.map((tab) => tab.id), ["canvas:canvas-a", "canvas:canvas-b"]);
+  assert.equal(focused.activeTabId, "canvas:canvas-a");
+  assert.equal(activeWorkspaceTab(focused)?.title, "A renamed");
+});
+
+test("Canvas lifecycle events rename and remove the matching resource tab only", () => {
+  const first = openWorkspaceTab(EMPTY_WORKSPACE_TAB_STATE, { moduleId: "canvas", resourceId: "canvas-a", title: "A" });
+  const second = openWorkspaceTab(first, { moduleId: "canvas", resourceId: "canvas-b", title: "B" });
+  const renamed = renameWorkspaceResourceTab(second, "canvas", "canvas-a", "A durable");
+  assert.deepEqual(renamed.tabs.map((tab) => tab.title), ["A durable", "B"]);
+  assert.equal(renamed.activeTabId, "canvas:canvas-b", "renaming an inactive resource does not focus it");
+  const removed = removeWorkspaceResourceTab(renamed, "canvas", "canvas-b");
+  assert.deepEqual(removed.tabs.map((tab) => tab.id), ["canvas:canvas-a"]);
+  assert.equal(removed.activeTabId, "canvas:canvas-a");
+  assert.deepEqual(removeWorkspaceResourceTab(removed, "canvas", "canvas-b"), removed, "a repeated tombstone is idempotent");
 });
 
 test("closing the active tab focuses the next tab, then the previous tab", () => {

@@ -1,4 +1,4 @@
-import { FolderKanban, Inbox, ListTodo, Search, Settings, Users, type LucideIcon } from "lucide-react";
+import { FolderKanban, Inbox, LayoutDashboard, ListTodo, Search, Settings, Users, type LucideIcon } from "lucide-react";
 import type { SidebarModuleId, WorkspaceModuleId } from "./workspaceLayout.ts";
 
 export interface WorkspaceModuleDefinition {
@@ -13,6 +13,7 @@ export const WORKSPACE_MODULES: readonly WorkspaceModuleDefinition[] = [
   { id: "inbox", labelKey: "nav.inbox", Icon: Inbox, sidebar: true },
   { id: "tasks", labelKey: "nav.tasks", Icon: ListTodo, sidebar: true },
   { id: "agents", labelKey: "nav.agents", Icon: Users, sidebar: true },
+  { id: "canvas", labelKey: "Canvas", Icon: LayoutDashboard, sidebar: true },
   { id: "settings", labelKey: "nav.settings", Icon: Settings, sidebar: true },
   { id: "search", labelKey: "nav.search", Icon: Search, sidebar: false },
 ];

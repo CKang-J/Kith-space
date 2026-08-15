@@ -25,22 +25,25 @@ const MODULE_IDS = new Set<WorkspaceModuleId>([
   "inbox",
   "tasks",
   "agents",
+  "canvas",
   "settings",
   "search",
 ]);
 
-type WorkspaceResourceModuleId = "tasks" | "agents" | "settings";
-type WorkspaceModuleResourceParam = "taskScope" | "agent" | "settings";
+type WorkspaceResourceModuleId = "tasks" | "agents" | "canvas" | "settings";
+type WorkspaceModuleResourceParam = "taskScope" | "agent" | "canvas" | "settings";
 
 const RESOURCE_PARAM_BY_MODULE: Record<WorkspaceResourceModuleId, WorkspaceModuleResourceParam> = {
   tasks: "taskScope",
   agents: "agent",
+  canvas: "canvas",
   settings: "settings",
 };
 
 const RESOURCE_PARAMS_BY_MODULE: Partial<Record<WorkspaceModuleId, readonly string[]>> = {
   tasks: ["taskScope"],
   agents: ["agent", "agentTab"],
+  canvas: ["canvas", "canvasTitle"],
   settings: ["settings"],
 };
 
@@ -50,6 +53,7 @@ export type WorkspaceModuleTarget =
   | { moduleId: "spaces" | "inbox" | "search" }
   | { moduleId: "tasks"; taskScope?: string | null }
   | { moduleId: "agents"; agent?: string | null; agentTab?: string | null }
+  | { moduleId: "canvas"; canvas?: string | null; canvasTitle?: string | null }
   | { moduleId: "settings"; settings?: string | null };
 
 const decodeSegment = (value: string | undefined) => {
@@ -124,7 +128,7 @@ export function workspaceSearchForShellState(search: string, state: WorkspaceLay
 }
 
 export function workspaceModuleResourceFromSearch(search: string, moduleId: WorkspaceModuleId) {
-  if (moduleId !== "tasks" && moduleId !== "agents" && moduleId !== "settings") return null;
+  if (moduleId !== "tasks" && moduleId !== "agents" && moduleId !== "canvas" && moduleId !== "settings") return null;
   return new URLSearchParams(search).get(RESOURCE_PARAM_BY_MODULE[moduleId]);
 }
 
@@ -156,6 +160,9 @@ export function workspaceLocationForModule(
   } else if (target.moduleId === "agents") {
     setOptionalParam(params, "agent", target.agent);
     setOptionalParam(params, "agentTab", target.agentTab);
+  } else if (target.moduleId === "canvas") {
+    setOptionalParam(params, "canvas", target.canvas);
+    setOptionalParam(params, "canvasTitle", target.canvasTitle?.slice(0, 160));
   } else if (target.moduleId === "settings") {
     setOptionalParam(params, "settings", normalizeSettingsResource(target.settings));
   }

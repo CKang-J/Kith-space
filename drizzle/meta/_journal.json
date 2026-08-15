@@ -92,6 +92,13 @@
       "when": 1785060000000,
       "tag": "0012_agent_activity_surface_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1786781746994,
+      "tag": "0013_canvas_core",
+      "breakpoints": true
     }
   ]
 }

@@ -15,20 +15,46 @@ const emptyQueryResult = {
   hasMore: false, page: 1, total: 0, nextCursor: null,
 };
 
+interface RecombynCanvasAssetBridge {
+  queryKey: readonly string[];
+  list(): Promise<unknown[]>;
+  delete(assetId: string): Promise<void>;
+}
+
+let activeCanvasAssetBridge: RecombynCanvasAssetBridge | null = null;
+
+export function configureRecombynCanvasAssetBridge(bridge: RecombynCanvasAssetBridge): () => void {
+  activeCanvasAssetBridge = bridge;
+  return () => { if (activeCanvasAssetBridge === bridge) activeCanvasAssetBridge = null; };
+}
+
+const canvasAssetPage = async (bridge: RecombynCanvasAssetBridge) => {
+  const items = await bridge.list();
+  return { items, hasMore: false, page: 1, total: items.length, nextCursor: null };
+};
+
 function capabilityProxy(path: string): unknown {
   return new Proxy(() => unavailable(path), {
     get(_target, key) {
       const name = `${path}.${String(key)}`;
+      const canvasAssetList = path === "apiQuery.assetsListMyAssets" ? activeCanvasAssetBridge : null;
+      const canvasAssetDelete = path === "apiQuery.assetsDeleteMyAsset" ? activeCanvasAssetBridge : null;
       if (key === "queryOptions") {
+        if (canvasAssetList) return () => ({ queryKey: canvasAssetList.queryKey, queryFn: () => canvasAssetPage(canvasAssetList), retry: false });
         return () => ({ queryKey: ["canvas-stage-one", path], queryFn: async () => emptyQueryResult, retry: false });
       }
       if (key === "infiniteOptions") return (options: Record<string, unknown> = {}) => ({
-        queryKey: ["canvas-stage-one", path], queryFn: async () => emptyQueryResult,
+        queryKey: canvasAssetList?.queryKey ?? ["canvas-stage-one", path], queryFn: canvasAssetList ? () => canvasAssetPage(canvasAssetList) : async () => emptyQueryResult,
         initialPageParam: options.initialPageParam ?? 1, getNextPageParam: () => undefined, retry: false,
       });
       if (key === "queryKey" || key === "mutationKey") return () => ["canvas-stage-one", path];
-      if (key === "key") return () => ["canvas-stage-one", path];
-      if (key === "mutationOptions") return () => ({ mutationFn: () => unavailable(path), retry: false });
+      if (key === "key") return () => canvasAssetList?.queryKey ?? ["canvas-stage-one", path];
+      if (key === "mutationOptions") return () => ({
+        mutationFn: canvasAssetDelete
+          ? (input: { params?: { asset_id?: string } }) => canvasAssetDelete.delete(String(input.params?.asset_id ?? ""))
+          : () => unavailable(path),
+        retry: false,
+      });
       return capabilityProxy(name);
     },
     apply() {

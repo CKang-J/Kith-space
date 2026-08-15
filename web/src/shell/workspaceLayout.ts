@@ -3,6 +3,7 @@ export type WorkspaceModuleId =
   | "inbox"
   | "tasks"
   | "agents"
+  | "canvas"
   | "settings"
   | "search";
 

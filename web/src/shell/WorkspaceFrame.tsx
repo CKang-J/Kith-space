@@ -49,6 +49,8 @@ import {
   createWorkspaceTab,
   openWorkspaceTab,
   persistWorkspaceTabState,
+  removeWorkspaceResourceTab,
+  renameWorkspaceResourceTab,
   restoreWorkspaceTabState,
   type WorkspaceTab,
   type WorkspaceTabState,
@@ -74,6 +76,7 @@ const localStorageOrNull = () => typeof window === "undefined" ? null : window.l
 const targetForTab = (tab: WorkspaceTab): WorkspaceModuleTarget => {
   if (tab.moduleId === "tasks") return { moduleId: "tasks", taskScope: tab.resourceId };
   if (tab.moduleId === "agents") return { moduleId: "agents", agent: tab.resourceId };
+  if (tab.moduleId === "canvas") return { moduleId: "canvas", canvas: tab.resourceId, canvasTitle: tab.title };
   return { moduleId: tab.moduleId };
 };
 
@@ -170,8 +173,11 @@ export function WorkspaceFrame() {
       const channel = [...channels, ...archivedChannels].find((candidate) => candidate.id === resourceId);
       return channel ? `${channel.name} · ${t("nav.tasks")}` : null;
     }
+    if (moduleId === "canvas" && resourceId) {
+      return new URLSearchParams(location.search).get("canvasTitle");
+    }
     return null;
-  }, [archivedChannels, channels, t, visibleAgents]);
+  }, [archivedChannels, channels, location.search, t, visibleAgents]);
   const routeTab = routeContentModuleId
     ? createWorkspaceTab({
       moduleId: routeContentModuleId,
@@ -255,6 +261,33 @@ export function WorkspaceFrame() {
       title: routeTab.title,
     }));
   }, [commitWorkspaceTabs, routeTab?.id, routeTab?.title]);
+
+  useEffect(() => {
+    const renamed = (event: Event) => {
+      const detail = (event as CustomEvent<{ canvasId?: unknown; title?: unknown }>).detail;
+      if (typeof detail?.canvasId !== "string" || typeof detail.title !== "string") return;
+      commitWorkspaceTabs((state) => renameWorkspaceResourceTab(state, "canvas", detail.canvasId as string, detail.title as string));
+      if (routeContentModuleId === "canvas" && routeResourceId === detail.canvasId) {
+        navigate(workspaceLocationForModule(location.pathname, location.search, {
+          moduleId: "canvas", canvas: detail.canvasId, canvasTitle: detail.title,
+        }), { replace: true });
+      }
+    };
+    const deleted = (event: Event) => {
+      const canvasId = (event as CustomEvent<{ canvasId?: unknown }>).detail?.canvasId;
+      if (typeof canvasId !== "string") return;
+      commitWorkspaceTabs((state) => removeWorkspaceResourceTab(state, "canvas", canvasId));
+      if (routeContentModuleId === "canvas" && routeResourceId === canvasId) {
+        navigate(workspaceLocationForModule(location.pathname, location.search, { moduleId: "canvas", canvas: null }), { replace: true });
+      }
+    };
+    window.addEventListener("kith:canvas-renamed", renamed);
+    window.addEventListener("kith:canvas-deleted", deleted);
+    return () => {
+      window.removeEventListener("kith:canvas-renamed", renamed);
+      window.removeEventListener("kith:canvas-deleted", deleted);
+    };
+  }, [commitWorkspaceTabs, location.pathname, location.search, navigate, routeContentModuleId, routeResourceId]);
 
   useEffect(() => {
     const openQuickSwitcher = (event: KeyboardEvent) => {

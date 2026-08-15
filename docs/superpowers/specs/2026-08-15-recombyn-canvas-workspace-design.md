@@ -1,7 +1,7 @@
 # Recombyn Canvas Workspace 移植与 Agent 联动设计
 
 > 日期：2026-08-15
-> 状态：Accepted / 阶段 1 AgentDock纠偏实现已完成并通过主任务最终复审；阶段 2 未开始
+> 状态：Accepted / 阶段 1、阶段 2 均已通过主任务最终复核
 > Kith 基线：`codex/development@4937690`
 > Recombyn 基线：`follow-upstream@abd8198`
 > 决策：`1A / 2A / 3A / 4A / 5A`
@@ -582,6 +582,8 @@ Canvas 诊断至少记录：canvas/mutation id、可选 job id、actor domain、
 
 ### 阶段 2：Human 本地画布完整闭环
 
+实现状态（2026-08-15）：阶段2已完成并通过主任务最终复核。正式 Canvas Library/resource tabs、workspace schema v12、Canvas Core/轻量 ledger/revisions、Human API、realtime recovery、Core undo/redo、Canvas-local assets、SVG/Scene JSON 门禁和原生 upload-first 媒体 seam 已落地；服务端从规范化 operation 派生 element/Frame/Frame-membership/parent/root/order read/write set，以 `expectedRevision` 作为 base sequence cursor 扫描其后 ledger，所有真实 structure 影响共享冲突域；renderer 对既有 Frame 属性使用稳定 Frame ID patch，允许同 base 不相交 Frame 纯属性提交，并拒绝 membership、group/reparent、order 与 Frame 增删/重排之间的交叉 stale 提交；scene/revision/ledger/sequence 同事务。Import 只接受批准的 versioned format/schema，以 document/ROOT/node/Frame allowlist 转换并递归剥离所有保留值内的 Core 状态，重映射全部外部 ID、归一隐藏 root、拒绝未重绑定资产，再经 Core operation 原子创建。Canvas 删除通过 metadata revision/幂等 ledger/sequence 软删除；`/changes` 对同 Space 已删除 Canvas 返回 tombstone，使漏掉在线事件的客户端重连后关闭 tab、清 URL 并返回 Library，普通网络失败与跨 Space 404 不作为删除。资产 resolver 每次从同一已打开 fd 读取并核验数据库 size + SHA-256；由于 Node 没有跨平台 handle-relative unlink，阶段2删除和恢复不物理 unlink 用户可变目录中的资产或未知 staging，物理 GC 留阶段5；若 final 损坏而 staging 完整，恢复写入新的 O_EXCL sibling、fsync 后切换 DB storage key，旧文件保留，双损坏 fail closed。Stage1 audit/mapping SHA 和 `upstream/**` 字节保持不变。Selection Snapshot、Chat、Gateway/MCP、Agent写回和真实 AI 生成仍为零。当前 retained operation/inverse 历史及资产 reachability 仍线性增长，Windows/Linux 文件语义未实机验证，独立 Canvas chunk 约3.5 MB且保留 Vite >500 kB 告警，因此长期存储/资产回收、跨平台与 bundle 性能门禁尚未通过。
+
 目标：即使完全没有 Agent，Canvas 也已经是可长期使用、刷新和 Desktop 重启后不丢数据的本地产品。
 
 交付：
@@ -664,7 +666,7 @@ Canvas 诊断至少记录：canvas/mutation id、可选 job id、actor domain、
 | commit 成功、realtime publish 前崩溃 | 以 lastAppliedSequence replay；缺口超窗拉 full snapshot，不丢 mutation |
 | 恶意 SVG/超限媒体 | 嵌套脚本、事件属性、`javascript:`、外部引用、CSS `url()`、`foreignObject` 及超限样本都被拒绝，且无 DB/文件 orphan |
 | 恶意/畸形 Scene JSON 导入 | Page、raw SVG/URL/data URL、保留 revision、重复/循环 ID、深层结构和跨 Space asset 都被拒绝或安全归一；不能替换 canonical scene |
-| 删除 Canvas 时文件占用 | durable deleting + 后台重试，UI 不谎报物理清理完成 |
+| 删除 Canvas 时文件占用 | 阶段2只提交 durable tombstone 并退出 UI，不物理 unlink 用户可变目录；不可达文件保留到阶段5安全 GC，不能谎报物理清理完成 |
 | URL back/forward 与 Space 切换 | 活动 tab 和资源参数规范恢复，无跨 Space 泄漏 |
 | 无 Page 检查 | UI、URL、API、DB 产品对象中都没有 Page |
 | Page 导出文案检查 | 上游“全部页面”文案/动作已替换为无 Page 语义，并作为批准的 golden 例外记录 |

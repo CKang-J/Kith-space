@@ -1,7 +1,7 @@
 import { getTableColumns, getTableName, type Table } from "drizzle-orm";
 import * as schema from "./schema.js";
 
-export const SPACE_DATABASE_SCHEMA_VERSION = 11;
+export const SPACE_DATABASE_SCHEMA_VERSION = 12;
 export const MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION = 2;
 
 export interface WorkspaceMigrationHistoryEntry {
@@ -27,6 +27,7 @@ export const WORKSPACE_MIGRATION_HISTORY: readonly WorkspaceMigrationHistoryEntr
   { version: 9, tag: "0010_system_advisor_provider", createdAt: 1784800000000, hash: "e4635933ceafa8a77ed1d2a6855978c0f3b26cb6abff156809d31d3e7e161ca9", compatibleHashes: ["e735d1da4fc86a39540aba45e828dde0357f2727ce2cb2bc8124389c04179ab0"] },
   { version: 10, tag: "0011_model_runtime_bindings", createdAt: 1784880000000, hash: "f769bdff845cb983bcad5e29bf7ae1c11613494bf3899a425eada499d14d169f", compatibleHashes: ["ae25a562a20e771338abb2797e8027b0b99354f9aebf40e09b8dd4513fba78fd"] },
   { version: 11, tag: "0012_agent_activity_surface_scope", createdAt: 1785060000000, hash: "334d5e31313898b80ed518f5f696ee5f3b2d65e88f97e29e449a6de582a37c04" },
+  { version: 12, tag: "0013_canvas_core", createdAt: 1786781746994, hash: "9a22b7c6afa44a3af0e3b37fd94320080b86aced974fa1bdc1efa5803f67b9da" },
 ];
 
 /** Immutable v2 baseline. Later schema entries are layered on explicitly below. */
@@ -141,6 +142,22 @@ const TABLES_BY_MIGRATION = new Map<string, Array<[string, string[]]>>([
       "consent_epoch", "installation_identity_digest", "execution_snapshot_digest", "egress_plan_json", "egress_digest",
       "policy_version", "worker_generation", "batch_job_ids_json", "usage_json", "latency_ms", "error_code",
       "created_at", "started_at", "completed_at",
+    ]],
+  ]],
+  ["0013_canvas_core", [
+    ["canvas_documents", [
+      "id", "space_id", "title", "document_json", "revision", "metadata_revision", "document_revision",
+      "element_revision", "frame_revision", "structure_revision", "realtime_sequence",
+      "created_at", "updated_at", "deleted_at",
+    ]],
+    ["canvas_mutations", [
+      "id", "canvas_id", "operation_id", "sequence", "kind", "source_mutation_id",
+      "expected_revision", "request_hash", "operation_json", "before_title", "after_title",
+      "before_document_json", "after_document_json", "impact_json", "result_json", "state", "created_at",
+    ]],
+    ["canvas_assets", [
+      "id", "canvas_id", "storage_key", "filename", "mime_type", "sha256", "size_bytes",
+      "state", "created_at", "deleted_at",
     ]],
   ]],
 ]);
@@ -267,6 +284,11 @@ export function requiredSpaceIndexes(version: number, migrationCount?: number): 
       "advisor_provider_runs_status_idx", "advisor_provider_runs_agent_idx",
     ] : []),
     ...(tags.has("0011_model_runtime_bindings") ? ["agents_model_binding_idx"] : []),
+    ...(tags.has("0013_canvas_core") ? [
+      "canvas_documents_space_updated_idx", "canvas_mutations_operation_uniq",
+      "canvas_mutations_sequence_uniq", "canvas_mutations_history_idx",
+      "canvas_assets_storage_uniq", "canvas_assets_canvas_state_idx",
+    ] : []),
   ];
 }
 
@@ -329,6 +351,11 @@ export function requiredSpaceForeignKeys(version: number, migrationCount?: numbe
     ...(tags.has("0010_system_advisor_provider") ? [
       { table: "advisor_provider_runs", from: "space_id", targetTable: "spaces", onDelete: "CASCADE" },
       { table: "advisor_provider_runs", from: "agent_id", targetTable: "agents", onDelete: "CASCADE" },
+    ] : []),
+    ...(tags.has("0013_canvas_core") ? [
+      { table: "canvas_documents", from: "space_id", targetTable: "spaces", onDelete: "CASCADE" },
+      { table: "canvas_mutations", from: "canvas_id", targetTable: "canvas_documents", onDelete: "CASCADE" },
+      { table: "canvas_assets", from: "canvas_id", targetTable: "canvas_documents", onDelete: "CASCADE" },
     ] : []),
   ];
 }
