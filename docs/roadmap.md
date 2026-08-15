@@ -1,6 +1,6 @@
 # Kith-space 产品路线图
 
-> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式；2026-07-23 将 Chat 壳层收敛为左侧常驻导航与右侧同槽位主卡片切换并退役 Dock；2026-07-18 完成 P-A9 桌面模块化单体架构收敛；2026-07-20 P-A10 Agent Harness v2 的 P-A10.0–P-A10.7 已完成代码、迁移、文档、自动化和Desktop/Web真实验收。完整边界见对应 `docs/superpowers/specs/` 规格，当前工程状态见 `docs/progress.md`。
+> 路线基线：2026-07-11 个人 AgentOS 本机化转向，2026-07-12 补充 Home/Space root 设计；2026-07-14 锁定 Agent 频道响应模式；2026-07-18 完成 P-A9 桌面模块化单体架构收敛；2026-07-20 P-A10 Agent Harness v2 的 P-A10.0–P-A10.7 已完成代码、迁移、文档、自动化和Desktop/Web真实验收；当前 `codex/development` 壳层已经是 Chat 常驻的右侧 Workspace Tabs。2026-08-15 又接受 Recombyn Canvas Workspace MVP 方案。完整边界见对应 `docs/superpowers/specs/` 规格，当前工程状态见 `docs/progress.md`。
 
 ## 1. 产品终点与永久边界
 
@@ -13,7 +13,7 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 - 公网部署、SaaS、云同步、云数据库和独立 Web 发行。
 - 移动 Web、PWA、push、Docker 部署和公共 server/daemon 包。
 
-当前必须补齐的本机地基是 Home 总控 Space、用户可见 Space root、文件夹接入、Space root cwd 和 Agent Memory 可移植性。长期路线还包括跨 Space 聚合/委派成熟化、邮箱、日历、画布、记忆增强、编排成熟化、HTTPS 与 runtime 权限升级、macOS/Linux 发行。
+Home/Space root、文件夹接入、Space root cwd 和 Agent Memory 可移植性地基已经完成 H1–H4；H5 仍独立后置。当前已接受但尚未实现的产品模块是 Recombyn Canvas Workspace。长期路线还包括跨 Space 聚合/委派成熟化、邮箱、日历、Canvas 后续能力、记忆增强、编排成熟化、HTTPS 与 runtime 权限升级、macOS/Linux 发行。
 
 ## 2. 已完成基础
 
@@ -21,10 +21,10 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 - P1：派发深度、唤醒预算与急停护栏。
 - P2：三层记忆与通用角色模板。
 - P3：任务领域与 HTTP 接口。
-- P4：单窗口工作区、模块切换与任务范围侧栏；左侧模块入口常驻，右侧同一主卡片在 Chat 与模块间切换，Settings 使用模态层，Dock 已退役。
+- P4 及后续壳层增量：单窗口工作区、模块切换与任务范围侧栏；当前实现为 Chat 常驻、右侧 Workspace Tabs、Settings 模态层，Dock 已退役。
 - Runtime 调研：Claude Code、Codex、opencode 适配边界与 Runtime 契约 v2 草案。
 
-聊天消息流密度与交互重构、Chat 壳层与侧栏模块导航均已实现。2026-07-23 后的当前壳层使用常驻纵向模块入口、右侧 Chat/模块同槽位主卡片和 Settings 模态层；Dock 与 Split 第二工作面已经退役。中心 Chat 卡片保护、直接使用画布背景且无直线分隔的会话导航、案例展示退役和全局 `Ctrl/Command + K` 消息搜索保持有效。
+聊天消息流密度与交互重构、Chat 壳层、侧栏模块导航和 Workspace Tabs 均已实现。当前壳层使用可折叠常驻侧栏、Chat 基础工作面、右侧可关闭且按 Space 恢复的资源标签和 Settings 模态层；Dock 不恢复。当前 `workspaceTabs.ts` 已按 `moduleId + resourceId` 提供稳定 tab identity，因此 Canvas 只需以 `canvasId` 扩展现有宿主。
 
 ## 3. 当前路线：个人 AgentOS 本机化
 
@@ -160,7 +160,18 @@ H1-H4 验收：代码验证已通过 typecheck、502/502 unit、完整 integrati
 
 ### 4.2 生产力模块
 
-按任务、日历、画布、邮箱顺序扩展 MCP 模块。画布强调 Chat 与可视对象联动；邮箱和浏览器类能力必须等待 HTTPS 与 runtime 权限升级。
+任务已是现有模块。2026-08-15 接受的下一项产品模块是 [Recombyn Canvas Workspace](./superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md)，状态为“方案已确认、尚未实现”：
+
+- 保留 Recombyn RCB 编辑器内部 UI 与原生编辑能力，删除其 AgentDock、云栈、Tauri、Yjs 服务和 Python/LangGraph runtime；
+- 直接接入现有 Workspace Tabs，一个 `canvasId` 对应一个独立无限平面，不增加用户 Page；
+- Kith-owned Canvas Core Module 使用 metadata/document/element/Frame/structure revisions、服务端派生影响集、atomic batch、幂等 ledger 和 Space-local assets 作为唯一事实源；
+- 选区冻结为 Canvas Selection Snapshot，经 server-owned execution binding 在真实 Chat surface 只派给一个明确 Agent；
+- Kith Harness 从 binding + delivery 派生 Canvas grant，并通过现有 MCP/CLI Gateway 回写；Canvas mutation 作为 output artifact 与 server-owned Chat reply 关联留存；
+- MCP `2026-07-28`/SDK v2 迁移不作为首版前置。
+
+首版只按5个整体阶段推进：①移植地基与UI Island；②Human本地画布完整闭环；③Canvas与Chat上下文联动；④单Agent读取与回写闭环；⑤MVP硬化与发行验收。阶段内部检查点不再拆成独立任务，上一阶段经审查通过后才进入下一阶段。便签、链接、任意文件、语义思维导图/流程图、Canvas ↔ Chat 原生拖放、AI 生成 job、多 Agent zone/并发写与 Yjs 真人协作均在 MVP 后独立增加。
+
+日历与邮箱继续作为后续生产力模块；邮箱和浏览器类不可信内容能力必须等待 HTTPS 与 runtime 权限升级。
 
 ### 4.3 记忆与上下文
 

@@ -149,7 +149,7 @@ ChatOnly 由当前会话工作面和可独立收起的辅助面板组成：
 
 ## 5. 模块工作面与作用域
 
-- 当前业务模块包括 Inbox、Tasks、Agents；Home 另有 Spaces；Search 由左侧入口或快捷键打开；Settings 是模态层。Computers/Machines 不再是产品模块。
+- 当前已实现业务模块包括 Inbox、Tasks、Agents；Home 另有 Spaces；Search 由左侧入口或快捷键打开；Settings 是模态层。Canvas 已接受方案但尚未实现。Computers/Machines 不再是产品模块。
 - 可同时打开多个业务模块标签，但一次只激活并显示一个右侧模块；切换左侧入口会新增或聚焦对应标签。
 - Inbox、Tasks、Agents 和 Settings 只读取当前 Space 数据；Spaces 只读取 app.db registry 和真实摘要。切换 Space 时 Chat 与普通模块数据源一起切换。
 - Web Store 与路由状态只使用 `SpaceInfo/spaceId/spaces` 和 `/s/:slug`；请求只发送 `x-space-id`，不得在前端保留旧 Server 双命名。
@@ -171,6 +171,18 @@ H4 已复用 H3 领域/API 能力交付本节：Home Spaces 提供卡片网格�
 
 未来可在 Home 增加真正的跨 Space Inbox/Tasks/Calendar 聚合，但它们是后续真实能力，不恢复已移除的薄总览页。
 
+### 5.2 Canvas Workspace（已接受，尚未实现）
+
+- 规范 module id 为 `canvas`；实际 Canvas 使用当前会话 pathname 上的 `?module=canvas&canvas=<canvasId>`。`canvasId` 同时是 `WorkspaceTab.resourceId`，同一 Canvas 只聚焦一个 tab，不同 Canvas 可多开。
+- `resourceId = null` 是 Canvas Library，用于新建、打开、重命名和删除当前 Space Canvas；它不是 Canvas Page。每个实际 Canvas 永远是一个独立无限平面，产品不增加 Page 导航或层级。
+- Canvas tab 与 Chat 并排，继续服从现有 split、相邻关闭、URL 活动项、按 Space 标签恢复和侧栏自动收起规则；不新增 Dock、第二套标签栏或全局壳。
+- 实际编辑器直接移植 Recombyn RCB 的画布、节点、工具栏、属性/图层/资产/导出面板视觉结构和交互，不为统一 Kith 视觉而重设计。资产面板改接 Kith Canvas-local asset library；上游“Export All Pages/导出全部页面”等产品文案与动作必须替换为“导出全部画布内容/画板”等无 Page 语义，并登记为批准的 visual golden 例外。Kith 另提供标签宿主、Canvas Library、会话/执行者绑定、冲突/错误提示和导入导出窄桥。
+- Recombyn AgentDock、Home/Auth/Billing/Share/Cloud/Tauri 壳不出现。Canvas 内输入绑定左侧真实私聊、频道或话题；DM 的执行者是对端 Agent，频道/话题必须明确选择一个 Agent。
+- 圈选后“发送到 Chat”创建不可变 Canvas Selection Snapshot；Chat 显示 context chip、选区摘要和“在画布中打开”深链。MVP 不做原生跨栏拖放。
+- Recombyn Tailwind 3 必须独立构建并加 Canvas 作用域，Preflight/`html/body/:root` 不得进入 Kith 全局；Kith 全局选择器显式排除 Canvas root，并给 Canvas 建立 scoped reset 和独立 portal root。合法离线字体集先于 Kith golden 确定，替代字体是显式视觉例外；截图、交互和 computed-style 断言共同验收 UI 保护。
+
+完整边界、MVP 和后续能力见 `../superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md`。
+
 ---
 
 ## 6. Chat 与模块联动
@@ -178,6 +190,9 @@ H4 已复用 H3 领域/API 能力交付本节：Home Spaces 提供卡片网格�
 - 业务模块与 Chat 可以并排显示，但模块标签不会暗中改变下一条聊天消息的上下文。
 - 任务、文件、agent 等对象只有通过明确的“在 Chat 中讨论”动作，才会成为 Chat 的 focused item。
 - 每条消息发送时固化结构化 `MessageContextSnapshot`，包含 Space、会话、可见 UI context 和 focused item；UI 与服务端保存 Kith-space 自己的结构，不把特定 runtime 提示格式硬编码进核心模型。
+- Canvas 是显式联动的特例而不是隐式上下文：只有 Human 执行“发送到 Chat/让 Agent 处理”，Core 才冻结 selection snapshot 并把一个规范 ref 绑定消息；仅切换或选中 Canvas 元素不会影响下一条普通 Chat 消息。
+- Canvas 请求在 DM 中绑定对端 Agent，在频道/话题中绑定明确的一个 Agent；消息可见性与实际执行者继续分离，不因 Canvas context 默认唤醒全体。
+- Agent 的 Canvas mutation 与 server-owned Chat reply 分开建模。UI 可在回执中展示 mutation 链接，但不能把画布已变更误当作 Chat turn 已结算。
 
 ---
 

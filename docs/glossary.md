@@ -266,19 +266,43 @@
 ## 界面（单窗口工作区）
 
 **WorkspaceFrame / 单窗口工作区**
-: 当前唯一顶层工作壳。应用直接进入当前 Space，Chat 与一个 Module Pane 在同一窗口中按三态协作；此前“双壳 / 空间总览态 / 空间内部态”术语已废止。
+: 当前唯一顶层工作壳。应用直接进入当前 Space；Chat 是基础工作面，业务资源通过右侧 Workspace Tabs 与其并排；Settings 使用模态层。此前“双壳 / 空间总览态 / 空间内部态”术语已废止。
 
 **ChatOnly**
-: Messages 激活、没有打开业务模块的状态。最左侧纯图标导航栏、消息中栏和当前 Chat 同时可见；宽度允许时可附带当前会话聚合面板。Chat 通过 Messages 图标显式返回，不挂载底部 Dock。
+: 没有打开右侧业务标签的状态。可折叠常驻侧栏与当前 Chat 可见；宽度允许时可附带当前会话聚合面板。不挂载底部 Dock。
 
 **Split**
-: 已退出活跃产品壳的历史状态，曾表示 Chat 与业务模块同时可见。当前业务模块在唯一主工作区原位替换 Chat。
+: 当前存在活动业务标签时的工作姿态：Chat 保持挂载，右侧 Workspace Tabs 显示一个活动模块，并通过中间分割边界调整宽度。
 
 **ModuleOnly**
-: 已退出活跃产品壳的历史名称。当前对应状态直接称“业务模块”，最左侧图标栏常驻，点击 Messages 返回 Chat。
+: 已退出活跃产品壳的历史名称。当前业务模块不替换或卸载 Chat，因此没有 ModuleOnly 状态。
 
 **Module Pane**
-: Spaces、Inbox、Tasks、Agents 等业务模块占用的唯一主工作区。一次只显示一个模块，不再与 Chat 并排；Settings 使用独立模态层。
+: 历史泛称。当前使用“Workspace Tab / 工作区标签”：Spaces、Inbox、Tasks、Agents 以及后续 Canvas 等资源在 Chat 右侧打开，一次显示一个活动标签；Settings 仍使用独立模态层。
+
+**Workspace Tab / 工作区标签**
+: Chat 右侧可关闭、聚焦并按 Space 恢复的业务资源视图。稳定身份由 `moduleId + resourceId` 组成；同一资源重复打开只聚焦既有标签。当前 URL 只表达活动标签，完整标签集合由版本化本地状态保存。
+
+**Canvas / 无限画布**
+: 2026-08-15 已接受、尚未实现的 Kith 生产力模块。内部直接移植 Recombyn RCB 编辑器；每个 `canvasId` 是一张独立无限平面和一个 Workspace resource tab，不增加用户可见 Page。Kith Canvas Core Module 是文档、资产、revision、mutation 和 Agent 工具的唯一 durable truth。
+
+**Canvas Selection Snapshot / 画布选区快照**
+: Human 发送选区时由 Core 从 canonical scene 冻结的不可变上下文，包含 document/元素/Frame revisions、有界文字/几何/样式/资产投影、可选预览与 hash。Chat 消息只引用一个 snapshot id，注册式 Context Object resolver 遍历所有 bound message 的规范 refs 后再把它冻结进 turn；后续画布变化不改写历史快照。
+
+**Canvas Mutation / 画布变更**
+: Human 或 Agent 经同一 Canvas Module 原子提交的一批 durable scene operations。Core 从 operations 派生真实 read/write/root/order/asset set，并校验 metadata/document/element/Frame/structure revisions；Agent 幂等沿用 `(turnId, toolName, key)`，Human 使用全局唯一 client command。mutation ledger 同时是 realtime transactional outbox。Canvas mutation 不等于 Chat turn 已完成。
+
+**Message Execution Binding / 消息执行绑定**
+: Server-owned 的“这条真实 DM/频道/话题消息由哪个 Agent 执行”事实。Executor 必须未删除、v2、有当前 surface access 且实时拥有 `message:send`；Canvas 请求的 snapshot、message/ref、binding 与 executor required delivery 在同一事务写入。它不改变原 surface，不由正文 `@mention` 冒充，也不会给其他 active Agent optional wake。
+
+**Canvas Access Grant / 画布访问授权**
+: 从 Message Execution Binding 与 bound delivery 派生的 durable capability 事实，限定 turn/executor、Canvas、selection/object scope、read/write/create/import/export actions、expiry 与撤销状态。Gateway 每次调用按 Core 派生的真实影响集重验，不能信任请求体自行声明权限。
+
+**Turn Output Artifact / Turn 输出制品**
+: `turn.reply` 除 Chat message 外关联的规范输出对象。Canvas MVP 用 strict `outputRefs` 与 `turn_output_artifacts` 关联已提交 mutation；它不同于只证明输入披露来源的 `sourceRefs`。
+
+**Canvas Agent Zone / Agent 画布区域**
+: MVP 后候选能力：用 Frame/metadata 和 capability reservation 表达某 Agent 的工作范围。它不是 Page、独立 Canvas、Chat session 或新的 Agent runtime。
 
 **Dock**
 : 已退役的底部横向导航。当前工作区只使用常驻纯图标导航栏，不为 Dock 保留空间或状态。
@@ -305,7 +329,7 @@
 : 从频道标题进入、临时占用会话聚合面板的低频管理场景，包含常规、成员和通知三个钻取页以及归档、恢复和永久删除。宽度不足时复用同一组件进入 Chat 右侧抽屉；退出后恢复原聚合内容状态。
 
 **Message Context Snapshot**
-: 消息发送时固化的结构化界面上下文，包含Space、规范route ID、当前模块、打开对象引用与focused item。P-A10.3已由Renderer构造、Core按白名单重写权威spaceId并剥离URL/query/路径/临时字段后持久化；它不采集DOM、截图、剪贴板或未提交表单。
+: 消息发送时固化的结构化界面上下文，包含Space、规范route ID、当前模块、打开对象引用与focused item。P-A10.3已由Renderer构造、Core按白名单重写权威spaceId并剥离URL/query/路径/临时字段后持久化；它不采集DOM、截图、剪贴板或未提交表单。Canvas 选区不会把大量元素直接塞入该对象，只放一个 `canvas_selection_snapshot` 规范引用。
 
 **Context Envelope / 上下文信封**
 : P-A10.3起每个logical turn的可审计上下文manifest，记录delivery items、多source seen watermarks、continuity mode、root、as-of parent snapshot、当前batch、object snapshot、文件记忆引用、capability activation、预算与omission；P-A10.5已加入冻结revision/HMAC/projection、统一score breakdown与evidence refs的episodic recall，主动`memory.recall/get`继续只追加later-query audit。它不等于复制完整prompt，并区分可重建revision、仅hash/tombstone、turn前自动注入与后续主动查询。
@@ -354,7 +378,7 @@
 : 每个 Space 把自己的元数据、消息、任务、频道、Agent、membership 与 Space 内 Human 状态存进 `<folder>/.kith/workspace.db`。当前 schema v10在v9上增加Agent模型绑定、跨安装确认快照和runtime epoch；v2–v9合法journal前缀均可原地续迁。`agents.session_id`只作legacy rollback来源；`user_global`结构化记忆不进入任一workspace，由当前app.db v9独立持有。
 
 **`.kith/`**
-: Space root 下承载其可移植状态的目录：`workspace.db`（Space 元数据、agent 阵容、频道、消息和任务）、`memory/`（Space Memory）、`agents/<agentId>/`（Agent Memory）和 `uploads/`（附件对象）。runtime prompt、日志和宿主临时状态不放在这里。
+: Space root 下承载其可移植状态的目录：`workspace.db`（Space 元数据、agent 阵容、频道、消息和任务）、`memory/`（Space Memory）、`agents/<agentId>/`（Agent Memory）和 `uploads/`（附件对象）。Canvas 实现后另使用独立 `canvas-assets/`，不复用聊天附件生命周期。runtime prompt、日志和宿主临时状态不放在这里。
 
 **app.db**
 : app data root 中的中央 SQLite 库，保存唯一 Human、稳定 homeSpaceId、Desktop/Web 设置、访问 Token 哈希、浏览器会话、Space registry 和最近打开记录；不保存 Space 消息或任务。
