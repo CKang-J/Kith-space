@@ -7,7 +7,11 @@ web/dist/
 *.log
 logs/
 .DS_Store
-.claude/settings.local.json
+
+# AI tool local config — machine/personal, never published
+.claude/
+.cursor/
+.gemini/
 
 # personal / machine-local dev context — never published
 CLAUDE.local.md
