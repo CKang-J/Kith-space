@@ -2,7 +2,9 @@
 
 本文件是当前进度的权威来源。新会话先读本文件和 `AGENTS.md`，再按文档地图进入专项资料。
 
-最后更新：2026-08-15。
+最后更新：2026-08-17。
+
+- **v2 Agent 绑定门禁静默吞掉投递已根治**：创建 Claude Code / Codex / Pi 等 Harness v2 Agent 后，若运行器默认仍是 `unset`，或把默认改成 `unmanaged_cli_native` 时把从未确认过目的地的 follow-default Agent 一律打成 `restart_required`，`HarnessTurnScheduler.bindPending` 会直接跳过 pending delivery，聊天不回复、活动轨迹空白。现在从未确认过的 `runtime_default` Agent 会在运行器默认变为可用时同步为 ready 并写入 fingerprint；已确认过不同 fingerprint 的仍需 Human 再确认。绑定仍阻塞时写入 `agent_activity_log`。`POST /api/agents` 在绑定未 ready 时 409 `model_binding_setup_required`，不再留下僵尸 Agent；绑定或运行器 PATCH 成功后会重新调度 turns。unmanaged Pi 不再把空的 `PI_CODING_AGENT_DIR` 指到 generation 根目录，从而继续使用本机 `~/.pi/agent`。
 
 - **Recombyn Canvas Workspace 阶段 2 已完成并通过主任务最终复核**：正式 `canvas` 模块、Canvas Library、按 Space 隔离的 resource tabs/URL/title、多 Canvas 已进入 Kith 产品壳；workspace schema v12 的 `canvas_documents / canvas_mutations / canvas_assets`、`src/canvas/` Core、Human API 与 per-canvas realtime sequence 是 canonical owner，Renderer Redux 只作交互投影。服务端从 operation 派生 element/Frame/Frame-membership/parent/root/order read/write set，以 base sequence 扫描 ledger；renderer 对既有 Frame 属性使用稳定 Frame ID patch，不相交 Frame 可从同一 base 提交，相交 Frame、增删/重排、membership/order 冲突，scene/revision/ledger/sequence 同事务。资产删除只写 DB tombstone，不在用户可变目录做不可靠的 path unlink；resolver 每次从同一 fd 读取并核验 size + SHA-256，未知 staging 与不可达文件保留给阶段5物理 GC。versioned Scene import 用 document/ROOT/node/Frame allowlist 转换并剥离嵌套 Core 状态，继续重映射全部 ID、归一隐藏 root、拒绝未重绑定资产并经 Core operation 原子提交。`/changes` 对同 Space 已删除 Canvas 返回 tombstone，漏掉 socket 事件的离线客户端重连后幂等关闭 tab、清 URL 并回到 Library；网络失败与跨 Space 404 不视为删除。Stage1 两个 SHA 和 upstream bytes 保持不变。Selection Snapshot、Chat、Gateway/MCP、Agent 写回和真实 AI 生成仍为零；retained 历史/资产 reachability、阶段5物理 GC、Windows/Linux 实机文件语义与约 3.5 MB Canvas chunk 仍未通过，不能表述为性能或跨平台完成。
 

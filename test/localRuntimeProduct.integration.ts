@@ -32,6 +32,26 @@ try {
   const { human, home } = await ensurePersonalApp({ name: "Ada", homeRootPath: path.join(root, "home") });
   const db = dbForSpace(home.id);
 
+  const unsetCreate = await api(home.id, "POST", "/api/agents", {
+    name: "unset-claude",
+    displayName: "Unset Claude",
+    runtime: "claude",
+    modelBinding: { mode: "runtime_default" },
+  });
+  assert.equal(unsetCreate.status, 409);
+  assert.equal(unsetCreate.body.code, "model_binding_setup_required");
+
+  const runtimePatched = await api(home.id, "PATCH", "/api/settings/runtimes/codex", {
+    enabled: true,
+    defaultBinding: {
+      mode: "unmanaged_cli_native",
+      modelConfigurationId: null,
+      modelConfigurationRevision: null,
+    },
+  });
+  assert.equal(runtimePatched.status, 200);
+  assert.equal(runtimePatched.body.defaultBinding.mode, "unmanaged_cli_native");
+
   const created = await api(home.id, "POST", "/api/agents", {
     name: "local-helper",
     displayName: "Local Helper",

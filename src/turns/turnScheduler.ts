@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import type { AgentConfig } from "../daemon/agentManager.js";
 import { dbForSpace, schema } from "../db/index.js";
 import { HarnessError } from "../harness/errors.js";
@@ -22,6 +22,7 @@ import { RuntimeConfigurationActivationService } from "../model-control/runtimeC
 import { runtimeConfigurationEpochGate } from "../runtime/config/runtimeConfigurationEpochGate.js";
 import { appDataConnection } from "../app-data/appDatabase.js";
 import { AgentModelBindingService } from "../model-control/agentModelBindingService.js";
+import { syncRuntimeDefaultAgentBinding } from "../model-control/runtimeConfigurationImpact.js";
 
 const LEASE_MS = Number(process.env.KITH_SPACE_TURN_LEASE_MS ?? 90_000);
 const HEARTBEAT_MS = Math.max(1_000, Math.min(30_000, Math.floor(LEASE_MS / 3)));
@@ -59,6 +60,64 @@ function bindingFingerprintMatches(agent: {
     return false;
   }
 }
+
+type AgentBindingGate = {
+  status: string;
+  modelBindingState: typeof schema.agents.$inferSelect["modelBindingState"];
+  runtimeRestartRequired: boolean;
+  confirmedInstallationIdentityDigest: string | null;
+  runtime: string;
+  modelBindingMode: "runtime_default" | "pinned" | null;
+  modelConfigurationId: string | null;
+  modelConfigurationRevision: number | null;
+  modelBindingFingerprint: string | null;
+};
+
+const AGENT_BINDING_COLUMNS = {
+  status: schema.agents.status,
+  modelBindingState: schema.agents.modelBindingState,
+  runtimeRestartRequired: schema.agents.runtimeRestartRequired,
+  confirmedInstallationIdentityDigest: schema.agents.confirmedInstallationIdentityDigest,
+  runtime: schema.agents.runtime,
+  modelBindingMode: schema.agents.modelBindingMode,
+  modelConfigurationId: schema.agents.modelConfigurationId,
+  modelConfigurationRevision: schema.agents.modelConfigurationRevision,
+  modelBindingFingerprint: schema.agents.modelBindingFingerprint,
+};
+
+function loadAgentBinding(db: ReturnType<typeof dbForSpace>, agentId: string): AgentBindingGate | undefined {
+  return db.select(AGENT_BINDING_COLUMNS).from(schema.agents).where(eq(schema.agents.id, agentId)).get();
+}
+
+function refreshRuntimeDefaultBinding(
+  db: ReturnType<typeof dbForSpace>,
+  agentId: string,
+  agent: AgentBindingGate,
+): AgentBindingGate {
+  if (agent.modelBindingMode !== "runtime_default") return agent;
+  syncRuntimeDefaultAgentBinding(db, {
+    id: agentId,
+    runtime: agent.runtime,
+    modelBindingMode: agent.modelBindingMode,
+    modelBindingFingerprint: agent.modelBindingFingerprint,
+  });
+  return loadAgentBinding(db, agentId) ?? agent;
+}
+
+function bindingGateBlocks(agent: AgentBindingGate): boolean {
+  return agent.modelBindingState !== "ready" || agent.runtimeRestartRequired
+    || agent.confirmedInstallationIdentityDigest !== installationIdentityDigest()
+    || !bindingFingerprintMatches(agent);
+}
+
+function bindingBlockedDetail(state: AgentBindingGate["modelBindingState"]): string {
+  if (state === "setup_required") return "需要先完成运行器默认配置，才会开始回复。";
+  if (state === "restart_required") return "运行器配置已变化，需要在 Agent 详情中重新确认模型绑定。";
+  if (state === "confirmation_required") return "需要确认当前安装的数据目的地，才会开始回复。";
+  return "当前模型绑定尚未就绪，暂时不会回复。";
+}
+
+const BINDING_BLOCKED_ACTIVITY_WINDOW_MS = 60 * 60 * 1000;
 
 export interface HarnessTurnSchedulerOptions {
   runtimeWorker: RuntimeWorkerPort;
@@ -278,26 +337,18 @@ export class HarnessTurnScheduler {
       schema.agentDeliveryItems.targetSurfaceId,
     ).all();
     for (const target of pending) {
-      const agent = db.select({
-        status: schema.agents.status,
-        modelBindingState: schema.agents.modelBindingState,
-        runtimeRestartRequired: schema.agents.runtimeRestartRequired,
-        confirmedInstallationIdentityDigest: schema.agents.confirmedInstallationIdentityDigest,
-        runtime: schema.agents.runtime,
-        modelBindingMode: schema.agents.modelBindingMode,
-        modelConfigurationId: schema.agents.modelConfigurationId,
-        modelConfigurationRevision: schema.agents.modelConfigurationRevision,
-        modelBindingFingerprint: schema.agents.modelBindingFingerprint,
-      }).from(schema.agents).where(eq(schema.agents.id, target.agentId)).get();
-      if (agent?.status !== "active" || agent.modelBindingState !== "ready" || agent.runtimeRestartRequired
-        || agent.confirmedInstallationIdentityDigest !== installationIdentityDigest()
-        || !bindingFingerprintMatches(agent)) {
-        if (agent?.status === "active" && agent.modelBindingState === "ready") {
+      let agent = loadAgentBinding(db, target.agentId);
+      if (agent?.status !== "active") continue;
+      agent = refreshRuntimeDefaultBinding(db, target.agentId, agent);
+      if (agent.status !== "active" || bindingGateBlocks(agent)) {
+        if (agent.status === "active" && agent.modelBindingState === "ready") {
           db.update(schema.agents).set({
             modelBindingState: "confirmation_required",
             runtimeRestartRequired: true,
           }).where(eq(schema.agents.id, target.agentId)).run();
+          agent = { ...agent, modelBindingState: "confirmation_required", runtimeRestartRequired: true };
         }
+        if (agent.status === "active") this.recordBindingBlockedActivity(spaceId, target, agent);
         continue;
       }
       const config = await this.options.agentConfig(spaceId, target.agentId);
@@ -325,6 +376,33 @@ export class HarnessTurnScheduler {
     }
   }
 
+  private recordBindingBlockedActivity(
+    spaceId: string,
+    target: { agentId: string; surfaceKind: string; surfaceId: string },
+    agent: AgentBindingGate,
+  ): void {
+    const db = dbForSpace(spaceId);
+    const detail = bindingBlockedDetail(agent.modelBindingState);
+    const cutoff = this.now() - BINDING_BLOCKED_ACTIVITY_WINDOW_MS;
+    const recent = db.select({ id: schema.agentActivityLog.id }).from(schema.agentActivityLog).where(and(
+      eq(schema.agentActivityLog.agentId, target.agentId),
+      eq(schema.agentActivityLog.detail, detail),
+      gt(schema.agentActivityLog.ts, cutoff),
+    )).get();
+    if (recent) return;
+    db.insert(schema.agentActivityLog).values({
+      spaceId,
+      agentId: target.agentId,
+      channelId: target.surfaceId,
+      conversationId: target.surfaceId,
+      ts: this.now(),
+      kind: "status",
+      activity: "error",
+      detail,
+      text: detail,
+    }).run();
+  }
+
   private async dispatch(spaceId: string, turnId: string, generation: number): Promise<void> {
     const db = dbForSpace(spaceId);
     const turn = db.select().from(schema.agentTurns).where(eq(schema.agentTurns.id, turnId)).get();
@@ -333,21 +411,10 @@ export class HarnessTurnScheduler {
     if (!session || session.retiredAt) return;
     const config = await this.options.agentConfig(spaceId, turn.agentId);
     const runtimeConfigurationEpoch = new RuntimeProfileService().runtimeConfigurationEpoch();
-    const agent = db.select({
-      status: schema.agents.status,
-      modelBindingState: schema.agents.modelBindingState,
-      runtimeRestartRequired: schema.agents.runtimeRestartRequired,
-      confirmedInstallationIdentityDigest: schema.agents.confirmedInstallationIdentityDigest,
-      runtime: schema.agents.runtime,
-      modelBindingMode: schema.agents.modelBindingMode,
-      modelConfigurationId: schema.agents.modelConfigurationId,
-      modelConfigurationRevision: schema.agents.modelConfigurationRevision,
-      modelBindingFingerprint: schema.agents.modelBindingFingerprint,
-    }).from(schema.agents).where(eq(schema.agents.id, turn.agentId)).get();
     const ledger = new TurnLedger(spaceId, db, this.now);
-    if (agent?.status !== "active" || agent.modelBindingState !== "ready" || agent.runtimeRestartRequired
-      || agent.confirmedInstallationIdentityDigest !== installationIdentityDigest()
-      || !bindingFingerprintMatches(agent)) {
+    let agent = loadAgentBinding(db, turn.agentId);
+    if (agent) agent = refreshRuntimeDefaultBinding(db, turn.agentId, agent);
+    if (!agent || agent.status !== "active" || bindingGateBlocks(agent)) {
       if (agent?.status === "active" && agent.modelBindingState === "ready") {
         db.update(schema.agents).set({
           modelBindingState: "confirmation_required",

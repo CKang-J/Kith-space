@@ -357,6 +357,8 @@
     "runtimeDetectionFailed": "无法读取本机 Runtime 安装状态",
     "noRuntimeInstalled": "未检测到已安装的 Runtime",
     "runtimeUnavailable": "请选择一个已安装的 Runtime",
+    "runtimeDefaultUnset": "当前运行器尚未配置默认模型，请先到「设置 → 运行器」完成默认配置，或改为固定 Kith 模型配置。",
+    "modelBindingSetupRequired": "当前运行器默认配置尚未就绪，无法创建会跟随默认配置的 Agent。请先到「设置 → 运行器」完成配置。",
     "modelDetectionFailed": "无法读取模型配置",
     "retryModelDetection": "重试",
     "modelRequired": "请选择一个模型",

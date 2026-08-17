@@ -94,10 +94,18 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     }
     const requestedRuntime = b.runtime || "claude";
     const useV2 = Object.prototype.hasOwnProperty.call(RUNTIME_V2_CAPABILITY_MATRIX, requestedRuntime);
-    if (useV2 && modelBinding === null) {
-      return (sendErr(res, 409, "Harness v2 Agent requires an explicit model binding", {
-        code: "model_binding_required",
-      }), true);
+    if (useV2) {
+      if (modelBinding === null) {
+        return (sendErr(res, 409, "Harness v2 Agent requires an explicit model binding", {
+          code: "model_binding_required",
+        }), true);
+      }
+      if (modelBinding.modelBindingState !== "ready") {
+        return (sendErr(res, 409, "Harness v2 Agent requires a ready model binding before creation", {
+          code: "model_binding_setup_required",
+          modelBindingState: modelBinding.modelBindingState,
+        }), true);
+      }
     }
     const [agent] = await db.insert(schema.agents).values({
       spaceId, name: b.name, displayName: b.displayName || b.name, description,
@@ -215,6 +223,7 @@ export async function handleAgents(ctx: SpaceCtx): Promise<boolean> {
     if (Object.keys(patch).length) {
       await db.update(schema.agents).set(patch).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.spaceId, spaceId)));
     }
+    if (harnessMode === "v2" && patch.modelBindingState === "ready") await scheduleV2Turns(spaceId);
     // Title/role changed → push the current profile to the daemon so it syncs the workspace MEMORY.md.
     if (patch.displayName !== undefined || patch.description !== undefined) {
       const a = (await db.select().from(schema.agents).where(and(eq(schema.agents.id, am[1]!), eq(schema.agents.spaceId, spaceId))))[0];

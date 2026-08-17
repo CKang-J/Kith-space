@@ -357,6 +357,8 @@
     "runtimeDetectionFailed": "Unable to read local runtime availability",
     "noRuntimeInstalled": "No installed runtime was detected",
     "runtimeUnavailable": "Choose an installed runtime",
+    "runtimeDefaultUnset": "This runtime has no default model yet. Finish the default in Settings → Runtimes, or pin a Kith model configuration.",
+    "modelBindingSetupRequired": "This runtime default is not ready, so a follow-default Agent cannot be created. Finish the runtime default in Settings → Runtimes first.",
     "modelDetectionFailed": "Unable to read model configuration",
     "retryModelDetection": "Retry",
     "modelRequired": "Choose a model",

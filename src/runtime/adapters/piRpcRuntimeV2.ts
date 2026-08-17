@@ -257,11 +257,11 @@ class PiRpcSession implements RuntimeSessionV2 {
     if (this.engineSessionId) args.push("--session-id", this.engineSessionId);
     const env: NodeJS.ProcessEnv = {
       ...this.options.env,
-      PI_CODING_AGENT_DIR: this.options.env.PI_CODING_AGENT_DIR ?? this.generationRoot,
       PI_CODING_AGENT_SESSION_DIR: path.join(this.generationRoot, "sessions"),
       PI_OFFLINE: "1",
       PI_TELEMETRY: "0",
     };
+    if (!this.options.env.PI_CODING_AGENT_DIR) delete env.PI_CODING_AGENT_DIR;
     delete env.NODE_OPTIONS;
     const child = this.spawnPi("pi", args, { cwd: this.options.cwd, env, stdio: ["pipe", "pipe", "pipe"] });
     this.process = child;

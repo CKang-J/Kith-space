@@ -326,3 +326,85 @@ test("scheduler serializes Space batches through one installation-level FIFO", a
     closeSpaceDb(second.spaceId); unregisterSpace(second.spaceId);
   }
 });
+
+function connectedWorker(admitted: TurnAdmitCommand[] = []): RuntimeWorkerPort {
+  return {
+    async start() { throw new Error("legacy path"); },
+    async deliver() { throw new Error("legacy path"); },
+    async stop() { throw new Error("legacy path"); },
+    async reset() { throw new Error("legacy path"); },
+    async admitTurn(command) { admitted.push(command); return { status: "admitted", id: command.commandId, generation: 4 }; },
+    activateTurn() { return true; },
+    cancelTurn() { return true; },
+    async closeTurnSessions(command) { return { status: "admitted", id: command.commandId, generation: 4 }; },
+    availability() { return { connected: true, generation: 4 }; },
+  };
+}
+
+test("scheduler heals an unconfirmed follow-default Agent after the runtime default becomes ready", async () => {
+  const f = setup();
+  f.db.update(schema.agents).set({
+    modelBindingState: "restart_required",
+    runtimeRestartRequired: true,
+    modelBindingFingerprint: null,
+    modelBindingLabelSnapshot: "未配置",
+  }).where(eq(schema.agents.id, f.agentId)).run();
+  const admitted: TurnAdmitCommand[] = [];
+  const scheduler = new HarnessTurnScheduler({
+    runtimeWorker: connectedWorker(admitted),
+    capabilities: () => new TurnCapabilityService(f.spaceId, new SessionCapabilityBroker(), f.db),
+    agentConfig: async () => config(f),
+  });
+  try {
+    await scheduler.schedule(f.spaceId);
+    assert.equal(admitted.length, 1);
+    const agent = f.db.select().from(schema.agents).where(eq(schema.agents.id, f.agentId)).get()!;
+    assert.equal(agent.modelBindingState, "ready");
+    assert.equal(agent.runtimeRestartRequired, false);
+    assert.ok(agent.modelBindingFingerprint);
+    assert.equal(f.db.select().from(schema.agentDeliveryItems).where(eq(schema.agentDeliveryItems.id, f.deliveryId)).get()?.disposition, "bound");
+  } finally {
+    await scheduler.shutdown();
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
+
+test("scheduler records activity instead of silently dropping deliveries when the runtime default is unset", async () => {
+  const f = setup();
+  appDataConnection().prepare(`
+    UPDATE runtime_profiles
+    SET default_binding_mode = 'unset',
+        default_model_configuration_id = NULL,
+        default_model_configuration_revision = NULL
+    WHERE runtime_id = 'claude'
+  `).run();
+  const admitted: TurnAdmitCommand[] = [];
+  const scheduler = new HarnessTurnScheduler({
+    runtimeWorker: connectedWorker(admitted),
+    capabilities: () => new TurnCapabilityService(f.spaceId, new SessionCapabilityBroker(), f.db),
+    agentConfig: async () => config(f),
+  });
+  try {
+    await scheduler.schedule(f.spaceId);
+    await scheduler.schedule(f.spaceId);
+    assert.equal(admitted.length, 0);
+    assert.equal(f.db.select().from(schema.agentDeliveryItems).where(eq(schema.agentDeliveryItems.id, f.deliveryId)).get()?.disposition, "pending");
+    const activity = f.db.select().from(schema.agentActivityLog).where(eq(schema.agentActivityLog.agentId, f.agentId)).all();
+    assert.equal(activity.length, 1);
+    assert.equal(activity[0]?.kind, "status");
+    assert.match(String(activity[0]?.detail), /运行器默认配置/);
+    assert.equal(activity[0]?.channelId, f.channelId);
+  } finally {
+    appDataConnection().prepare(`
+      UPDATE runtime_profiles
+      SET default_binding_mode = 'unmanaged_cli_native',
+          default_model_configuration_id = NULL,
+          default_model_configuration_revision = NULL
+      WHERE runtime_id = 'claude'
+    `).run();
+    await scheduler.shutdown();
+    closeSpaceDb(f.spaceId);
+    unregisterSpace(f.spaceId);
+  }
+});
