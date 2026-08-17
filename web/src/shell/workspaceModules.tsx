@@ -28,6 +28,12 @@ export const HOME_SIDEBAR_MODULES = WORKSPACE_MODULES.filter(
 
 export const sidebarModulesForSpace = (isHome: boolean) => isHome ? HOME_SIDEBAR_MODULES : SIDEBAR_MODULES;
 
+export const workspaceLaunchModulesForSpace = (isHome: boolean) => WORKSPACE_MODULES.filter((module) => (
+  module.id !== "settings"
+    && module.id !== "search"
+    && (module.id !== "spaces" || isHome)
+));
+
 export function getWorkspaceModule(moduleId: WorkspaceModuleId) {
   return WORKSPACE_MODULES.find((module) => module.id === moduleId) ?? WORKSPACE_MODULES[0]!;
 }

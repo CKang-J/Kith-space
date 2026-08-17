@@ -17,12 +17,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PanelVisibilityIcon } from "@/components/icons/PanelVisibilityIcon"
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
@@ -256,8 +256,6 @@ function SidebarTrigger({
   ...props
 }: React.ComponentProps<typeof Button>) {
   const { state, toggleSidebar } = useSidebar()
-  const SidebarStateIcon = state === "expanded" ? PanelLeftCloseIcon : PanelLeftOpenIcon
-
   return (
     <Button
       data-sidebar="trigger"
@@ -271,7 +269,7 @@ function SidebarTrigger({
       }}
       {...props}
     >
-      <SidebarStateIcon aria-hidden="true" />
+      <PanelVisibilityIcon open={state === "expanded"} />
       <span className="sr-only">
         {state === "expanded" ? "Collapse Sidebar" : "Expand Sidebar"}
       </span>

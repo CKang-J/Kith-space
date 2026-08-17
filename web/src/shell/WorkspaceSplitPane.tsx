@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { usePanelRef } from "react-resizable-panels";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -12,10 +13,19 @@ interface WorkspaceSplitPaneProps {
   chat: ReactNode;
   workspace: ReactNode | null;
   workspaceOpen: boolean;
+  keepWorkspaceMounted?: boolean;
+  workspaceExpanded: boolean;
 }
 
-export function WorkspaceSplitPane({ chat, workspace, workspaceOpen }: WorkspaceSplitPaneProps) {
+export function WorkspaceSplitPane({
+  chat,
+  workspace,
+  workspaceOpen,
+  keepWorkspaceMounted = false,
+  workspaceExpanded,
+}: WorkspaceSplitPaneProps) {
   const closeTimerRef = useRef<number | null>(null);
+  const chatPanelRef = usePanelRef();
   const [renderedWorkspace, setRenderedWorkspace] = useState<ReactNode>(workspace);
   const [workspaceVisible, setWorkspaceVisible] = useState(workspaceOpen);
   const [workspaceResizing, setWorkspaceResizing] = useState(false);
@@ -31,6 +41,7 @@ export function WorkspaceSplitPane({ chat, workspace, workspaceOpen }: Workspace
       return () => window.cancelAnimationFrame(frame);
     }
     setWorkspaceVisible(false);
+    if (keepWorkspaceMounted) return;
     closeTimerRef.current = window.setTimeout(() => {
       setRenderedWorkspace(null);
       closeTimerRef.current = null;
@@ -38,7 +49,7 @@ export function WorkspaceSplitPane({ chat, workspace, workspaceOpen }: Workspace
     return () => {
       if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
     };
-  }, [workspaceOpen]);
+  }, [keepWorkspaceMounted, workspaceOpen]);
 
   useEffect(() => {
     if (!workspaceResizing) return;
@@ -50,6 +61,15 @@ export function WorkspaceSplitPane({ chat, workspace, workspaceOpen }: Workspace
       window.removeEventListener("pointercancel", stopResizing);
     };
   }, [workspaceResizing]);
+
+  useEffect(() => {
+    if (!workspaceVisible) {
+      chatPanelRef.current?.expand();
+      return;
+    }
+    if (workspaceExpanded) chatPanelRef.current?.collapse();
+    else chatPanelRef.current?.expand();
+  }, [chatPanelRef, workspaceExpanded, workspaceVisible]);
 
   return (
     <ResizablePanelGroup
@@ -63,7 +83,12 @@ export function WorkspaceSplitPane({ chat, workspace, workspaceOpen }: Workspace
         defaultSize="38%"
         minSize={320}
         maxSize="58%"
+        collapsible
+        collapsedSize={0}
+        panelRef={chatPanelRef}
         className="min-w-0 overflow-hidden"
+        inert={workspaceExpanded}
+        aria-hidden={workspaceExpanded}
       >
         <div className="flex h-full min-w-0 [&>.shell-chat-workspace]:!h-full [&>.shell-chat-workspace]:!min-w-0 [&>.shell-chat-workspace]:!flex-1 [&>.shell-chat-workspace]:!border-r-0">
           {chat}
@@ -74,8 +99,8 @@ export function WorkspaceSplitPane({ chat, workspace, workspaceOpen }: Workspace
         disabled={!workspaceVisible}
         onPointerDown={() => setWorkspaceResizing(true)}
         className={cn(
-          "shell-workspace-split-handle shrink-0 cursor-col-resize bg-transparent after:w-2 hover:bg-border focus-visible:bg-ring/40",
-          workspaceVisible ? "w-1" : "pointer-events-none w-0 opacity-0",
+          "shell-workspace-split-handle shrink-0 cursor-col-resize bg-border after:w-3 hover:bg-muted-foreground/40 focus-visible:bg-ring/40",
+          workspaceVisible && !workspaceExpanded ? "w-px" : "pointer-events-none w-0 opacity-0",
         )}
       />
       <ResizablePanel

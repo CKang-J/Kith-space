@@ -25,6 +25,7 @@ import { resolveKithCanvasTheme } from "@/features/canvas/adapters/recombynTheme
 import { useCanvasCoreResource } from "./useCanvasCoreResource";
 import { useCanvasAssetBridges } from "./useCanvasAssetBridges";
 import { useRecombynCanvasProjection } from "./useRecombynCanvasProjection";
+import { RecombynEditorIconSprite } from "./RecombynEditorIconSprite";
 
 const PROJECT_ID = "kith-stage-one-native";
 const STAGE_ONE_THEME = new URLSearchParams(window.location.search).get("__canvas_theme") === "dark" ? "dark" : "light";
@@ -100,8 +101,10 @@ function NativeEditorSurface({ projectId, projectName = "Kith Canvas", document:
       if (!stage) return;
       observer.observe(stage);
       const stageBounds = stage.getBoundingClientRect();
+      const rootBounds = root.getBoundingClientRect();
       const toolbarWidth = toolbar?.getBoundingClientRect().width ?? 0;
-      root.style.setProperty("--kith-canvas-toolbar-center-x", `${stageBounds.left + (stageBounds.width - toolbarWidth) / 2}px`);
+      root.style.setProperty("--kith-canvas-toolbar-center-x", `${stageBounds.left - rootBounds.left + (stageBounds.width - toolbarWidth) / 2}px`);
+      root.style.setProperty("--kith-canvas-tool-dock-center-x", `${stageBounds.left - rootBounds.left + stageBounds.width / 2}px`);
       if (toolbar && stage) contentObserver?.disconnect();
     };
     const observer = new ResizeObserver(positionToolbar);
@@ -178,6 +181,7 @@ function NativeEditorSurface({ projectId, projectName = "Kith Canvas", document:
 
   return (
     <div ref={rootRef} className={embedded ? "size-full !h-full min-h-0 min-w-0 overflow-hidden text-base" : "h-dvh w-full overflow-hidden text-base"} data-kith-canvas-root data-recombyn-native-editor data-theme={embedded ? resolveKithCanvasTheme(document.documentElement.classList) : STAGE_ONE_THEME}>
+      <RecombynEditorIconSprite />
       <div ref={editorMountRef} className="size-full" />
     </div>
   );

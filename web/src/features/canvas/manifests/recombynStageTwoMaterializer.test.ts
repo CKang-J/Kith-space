@@ -91,23 +91,43 @@ test("Canvas realtime lifecycle forwards a remote delete to the Workspace tab ow
   assert.match(resource, /CustomEvent\("kith:canvas-deleted"/);
 });
 
-test("Stage2 materializer removes product-shell home and account controls from Canvas chrome", () => {
+test("Stage2 materializer removes product-shell home, share, and account controls from Canvas chrome", () => {
   const path = new URL("../upstream/apps/web/src/components/editor/page/EditorTopChrome.tsx", import.meta.url);
   const result = materializeRecombynStageTwoHostSeams(readFileSync(path, "utf8"), path.pathname);
   assert.doesNotMatch(result, /aria-label=\{t\('editor\.home'/);
   assert.doesNotMatch(result, /WalletAccountChip/);
   assert.match(result, /aria-label=\{t\('home\.untitled'\)\}/);
   assert.match(result, /<EditorTopExportButton \/>/);
-  assert.match(result, /aria-label=\{t\('editor\.share'\)\}/);
+  assert.doesNotMatch(result, /aria-label=\{t\('editor\.share'\)\}/);
+  assert.doesNotMatch(result, /HiOutlineShare/);
+  assert.doesNotMatch(result, /onShare/);
+});
+
+test("Stage2 materializer removes the native share dialog lifecycle from the product Canvas", () => {
+  const path = new URL("../upstream/apps/web/src/pages/EditorPage.tsx", import.meta.url);
+  const result = materializeRecombynStageTwoHostSeams(readFileSync(path, "utf8"), path.pathname);
+  assert.doesNotMatch(result, /import ShareDialog/);
+  assert.doesNotMatch(result, /const \[shareOpen|setShareOpen\(|openShareDialog\b/);
+  assert.doesNotMatch(result, /onShare=/);
+  assert.doesNotMatch(result, /<ShareDialog/);
 });
 
 test("Stage2 materializer centers the bottom toolbar in the embedded Canvas page", () => {
   const path = new URL("../upstream/apps/web/src/pages/EditorPage.tsx", import.meta.url);
   const result = materializeRecombynStageTwoHostSeams(readFileSync(path, "utf8"), path.pathname);
   assert.match(result, /style=\{\{ left: 'var\(--kith-canvas-toolbar-center-x\)' \}\}/);
-  assert.match(result, /pointer-events-none fixed z-20'/);
-  assert.doesNotMatch(result, /fixed z-20 -translate-x-1\/2/);
+  assert.match(result, /pointer-events-none absolute z-20'/);
+  assert.doesNotMatch(result, /pointer-events-none fixed/);
   assert.doesNotMatch(result, /absolute left-1\/2 z-20/);
+});
+
+test("Stage2 materializer centers pen and pencil docks on the visible Canvas stage", () => {
+  const path = new URL("../upstream/apps/web/src/components/editor/page/EditorToolDocks.tsx", import.meta.url);
+  const result = materializeRecombynStageTwoHostSeams(readFileSync(path, "utf8"), path.pathname);
+  assert.equal(result.match(/--kith-canvas-tool-dock-center-x/g)?.length, 3);
+  assert.equal(result.match(/transform: 'translateX\(-50%\)'/g)?.length, 3);
+  assert.doesNotMatch(result, /absolute left-1\/2 top-3/);
+  assert.doesNotMatch(result, /-translate-x-1\/2/);
 });
 
 test("the native host keeps the floating-ui portal outside React's editor mount", () => {
@@ -151,5 +171,6 @@ test("the embedded toolbar observes the visible stage when side panels resize it
   const host = readFileSync(new URL("../host/NativeRecombynCanvasHarness.tsx", import.meta.url), "utf8");
   assert.match(host, /querySelector<HTMLElement>\('\[data-canvas-stage="1"\]'\)/);
   assert.match(host, /observer\.observe\(stage\)/);
-  assert.match(host, /stageBounds\.left \+ \(stageBounds\.width - toolbarWidth\) \/ 2/);
+  assert.match(host, /stageBounds\.left - rootBounds\.left \+ \(stageBounds\.width - toolbarWidth\) \/ 2/);
+  assert.match(host, /stageBounds\.left - rootBounds\.left \+ stageBounds\.width \/ 2/);
 });

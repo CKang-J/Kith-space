@@ -230,6 +230,7 @@ interface ChatShellControls {
   onOpenTasks?(conversationId: string): void;
   onOpenChannelSettings?(channelId: string, trigger?: HTMLButtonElement): void;
   onNavigateConversation?(target: string): void;
+  headerTrailingAction?: ReactNode;
 }
 interface ChatProps extends ChatShellControls {
   embedded?: boolean;
@@ -251,6 +252,7 @@ export function Chat({
   onOpenTasks,
   onOpenChannelSettings,
   onNavigateConversation,
+  headerTrailingAction,
 }: ChatProps) {
   const { t } = useTranslation();
   const { reload, channels, archivedChannels, dms, unread, agents, slug, me, attachmentUrl, react, openAgentDM, savedIds, saveMsg, unsaveMsg, agentPanelReq, clearAgentPanelReq } = useStore();
@@ -489,6 +491,7 @@ export function Chat({
           <MoreHorizontal size={17} />
         </button>
       ) : null}
+      {headerTrailingAction}
     </div>
   ) : null;
 

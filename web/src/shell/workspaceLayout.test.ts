@@ -8,7 +8,7 @@ import {
   workspaceLayoutForSpace,
   type SidebarModuleId,
 } from "./workspaceLayout.ts";
-import { HOME_SIDEBAR_MODULES, SIDEBAR_MODULES, WORKSPACE_MODULES } from "./workspaceModules.tsx";
+import { HOME_SIDEBAR_MODULES, SIDEBAR_MODULES, WORKSPACE_MODULES, workspaceLaunchModulesForSpace } from "./workspaceModules.tsx";
 
 test("ordinary and Home sidebars expose their fixed module sets", () => {
   assert.deepEqual(
@@ -20,6 +20,17 @@ test("ordinary and Home sidebars expose their fixed module sets", () => {
     ["spaces", "inbox", "tasks", "agents", "canvas", "settings"],
   );
   assert.equal(WORKSPACE_MODULES.find((module) => module.id === "search")?.sidebar, false);
+});
+
+test("empty workspace launcher reuses the module choices from the tab add menu", () => {
+  assert.deepEqual(
+    workspaceLaunchModulesForSpace(false).map((module) => module.id),
+    ["inbox", "tasks", "agents", "canvas"],
+  );
+  assert.deepEqual(
+    workspaceLaunchModulesForSpace(true).map((module) => module.id),
+    ["spaces", "inbox", "tasks", "agents", "canvas"],
+  );
 });
 
 test("Spaces layout is valid only inside stable Home", () => {

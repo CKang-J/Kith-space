@@ -1056,6 +1056,10 @@ html[data-kith-desktop-platform="darwin"] .workspace-navigation-rail {
   background: var(--card);
 }
 
+.shell-workspace-tabs--expanded {
+  padding-left: 46px;
+}
+
 .shell-workspace-tabs__list {
   display: flex;
   width: auto;
@@ -1127,6 +1131,13 @@ html[data-kith-desktop-platform="darwin"] .workspace-navigation-rail {
 .shell-workspace-tabs :is(button, [role="tab"]) > svg {
   width: 14px;
   height: 14px;
+}
+
+.shell-workspace-tabs .workspace-panel-toggle__icon {
+  display: block;
+  width: 18px !important;
+  height: 18px !important;
+  flex: none;
 }
 
 .shell-workspace-tab__close > svg {

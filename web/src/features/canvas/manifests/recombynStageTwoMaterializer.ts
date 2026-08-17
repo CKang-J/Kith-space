@@ -4,6 +4,7 @@ const CANVAS_CONTEXT_ACTION_SUFFIX = "/features/canvas/upstream/apps/web/src/com
 const SVG_CANVAS_SUFFIX = "/features/canvas/upstream/apps/web/src/components/editor/canvas/SvgCanvas.tsx";
 const EDITOR_PAGE_SUFFIX = "/features/canvas/upstream/apps/web/src/pages/EditorPage.tsx";
 const EDITOR_BOTTOM_HUD_SUFFIX = "/features/canvas/upstream/apps/web/src/components/editor/page/EditorBottomHud.tsx";
+const EDITOR_TOOL_DOCKS_SUFFIX = "/features/canvas/upstream/apps/web/src/components/editor/page/EditorToolDocks.tsx";
 const EXPORT_PANEL_SUFFIX = "/features/canvas/upstream/apps/web/src/components/editor/panels/ExportSelectionPanel.tsx";
 const DISABLED_MEDIA_PICKER = "tip={L.uploadMedia}\n        active={imageActive}\n        disabled\n        menuOpen={openMenu === 'upload'}";
 const DURABLE_MEDIA_PICKER = "tip={L.uploadMedia}\n        active={imageActive}\n        disabled={toolsLocked}\n        menuOpen={openMenu === 'upload'}";
@@ -37,15 +38,49 @@ function replacePatternOnce(value: string, pattern: RegExp, replacement: string,
 /** Compile-time Stage2 host seam. The Stage1 upstream bytes and source-mapping SHA stay immutable. */
 export function materializeRecombynStageTwoHostSeams(source: string, id: string): string {
   const sourcePath = id.split("?", 1)[0]!;
+  if (sourcePath.endsWith(EDITOR_TOOL_DOCKS_SUFFIX)) {
+    const pattern = /<div className="pointer-events-none absolute left-1\/2 top-3 z-\[70\] -translate-x-1\/2 hidden md:block">/g;
+    const matches = source.match(pattern);
+    if (matches?.length !== 3) {
+      throw new Error(`Stage2 Canvas materializer expected three visible-stage tool docks, found ${matches?.length ?? 0}`);
+    }
+    return source.replace(
+      pattern,
+      `<div
+        style={{ left: 'var(--kith-canvas-tool-dock-center-x)', transform: 'translateX(-50%)' }}
+        className="pointer-events-none absolute top-3 z-[70] hidden md:block"
+      >`,
+    );
+  }
   if (sourcePath.endsWith(EDITOR_PAGE_SUFFIX)) {
-    return replacePatternOnce(
+    let result = replacePatternOnce(
       source,
       /data-tour="editor-tools"\n              className=\{cn\(\n                'pointer-events-none absolute left-1\/2 z-20 -translate-x-1\/2',/,
       `data-tour="editor-tools"
               style={{ left: 'var(--kith-canvas-toolbar-center-x)' }}
               className={cn(
-                'pointer-events-none fixed z-20',`,
+                'pointer-events-none absolute z-20',`,
       "embedded bottom toolbar centering",
+    );
+    result = replacePatternOnce(
+      result,
+      /import ShareDialog from '@recombyn-native\/components\/editor\/panels\/ShareDialog';\n/,
+      "",
+      "native share dialog import",
+    );
+    result = replacePatternOnce(result, /  const \[shareOpen, setShareOpen\] = useState\(false\);\n/, "", "native share state");
+    result = replacePatternOnce(
+      result,
+      /  const openShareDialog = useCallback\(\(\) => \{\n    setShareOpen\(true\);\n  \}, \[\]\);\n\n/,
+      "",
+      "native share callback",
+    );
+    result = replacePatternOnce(result, /              onShare=\{openShareDialog\}\n/, "", "native share prop");
+    return replacePatternOnce(
+      result,
+      /        \{shareOpen \? \(\n          <ShareDialog open=\{shareOpen\} onClose=\{\(\) => setShareOpen\(false\)\} \/>\n        \) : null\}\n/,
+      "",
+      "native share dialog render",
     );
   }
   if (sourcePath.endsWith(EDITOR_BOTTOM_HUD_SUFFIX)) {
@@ -73,8 +108,16 @@ export function materializeRecombynStageTwoHostSeams(source: string, id: string)
     result = replacePatternOnce(
       result,
       /import \{ HiOutlineHome, HiOutlineShare \} from 'react-icons\/hi2';/,
-      "import { HiOutlineShare } from 'react-icons/hi2';",
+      "",
       "native home icon import",
+    );
+    result = replacePatternOnce(result, /  onShare: \(\) => void;\n/, "", "native share prop type");
+    result = replacePatternOnce(result, /  onShare,\n/, "", "native share prop binding");
+    result = replacePatternOnce(
+      result,
+      /          <Tooltip tip=\{t\('editor\.share'\)\} placement="bottom">[\s\S]*?          <\/Tooltip>\n/,
+      "",
+      "native share control",
     );
     result = replacePatternOnce(
       result,

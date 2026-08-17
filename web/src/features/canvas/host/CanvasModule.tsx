@@ -1,11 +1,13 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { FilePlus2, LayoutDashboard, Trash2, Upload } from "lucide-react";
+import { Plus, Trash2, Upload } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import emptyScene from "@/features/canvas/fixtures/recombyn-empty-scene.json";
 import { canvasCoreApi, type CanvasLibraryItem } from "@/features/canvas/adapters/canvasCoreApi";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/store";
 import { workspaceLocationForModule } from "@/shell/workspaceRoute";
+import { CanvasLibraryThumbnail } from "./CanvasLibraryThumbnail";
+import { formatCanvasUpdatedAt } from "./canvasLibraryPresentation";
 
 const NativeRecombynCanvas = lazy(() => import("./NativeRecombynCanvasHarness").then((module) => ({ default: module.NativeRecombynCanvas })));
 
@@ -24,7 +26,7 @@ export function CanvasModule({ canvasId }: { canvasId: string | null }) {
     if (canvasId) return;
     let cancelled = false;
     void client.list().then((items) => { if (!cancelled) { setCanvases(items); setError(null); } })
-      .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : "Unable to load Canvases"); });
+      .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : "无法加载画布"); });
     return () => { cancelled = true; };
   }, [canvasId, spaceId]);
 
@@ -41,10 +43,10 @@ export function CanvasModule({ canvasId }: { canvasId: string | null }) {
     setCreating(true);
     setError(null);
     try {
-      const created = await client.create("Untitled Canvas", emptyScene);
+      const created = await client.create("未命名画布", emptyScene);
       openCanvas(created);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to create Canvas");
+      setError(reason instanceof Error ? reason.message : "无法新建画布");
     } finally {
       setCreating(false);
     }
@@ -59,26 +61,26 @@ export function CanvasModule({ canvasId }: { canvasId: string | null }) {
       setCanvases((items) => items.filter((item) => item.id !== canvas.id));
       window.dispatchEvent(new CustomEvent("kith:canvas-deleted", { detail: { canvasId: canvas.id } }));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to delete Canvas");
+      setError(reason instanceof Error ? reason.message : "无法删除画布");
     } finally {
       setDeletingId(null);
     }
   };
 
   if (canvasId) return (
-    <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading Canvas editor…</div>}>
+    <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">正在加载画布编辑器…</div>}>
       <NativeRecombynCanvas canvasId={canvasId} api={api} spaceId={spaceId} />
     </Suspense>
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-auto p-5">
-      <header className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">Canvas Library</h1>
-          <p className="text-sm text-muted-foreground">Local canvases stored in this Space.</p>
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="h-full min-h-0 w-full flex-1 overflow-auto bg-white px-6 py-7 dark:bg-background sm:px-8 lg:px-10">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-7">
+        <header className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">我的画布</h1>
+            <p className="mt-1 text-sm text-muted-foreground">保存在当前空间中的本地画布</p>
+          </div>
           <input
             ref={importRef}
             type="file"
@@ -89,54 +91,51 @@ export function CanvasModule({ canvasId }: { canvasId: string | null }) {
               event.currentTarget.value = "";
               if (!file) return;
               setError(null);
-              void file.text().then((text) => client.importScene(file.name.replace(/\.json$/i, "") || "Imported Canvas", JSON.parse(text))).then(openCanvas)
-                .catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to import Canvas JSON"));
+              void file.text().then((text) => client.importScene(file.name.replace(/\.json$/i, "") || "导入的画布", JSON.parse(text))).then(openCanvas)
+                .catch((reason) => setError(reason instanceof Error ? reason.message : "无法导入画布 JSON"));
             }}
           />
-          <Button type="button" variant="outline" onClick={() => importRef.current?.click()}>
-            <Upload data-icon="inline-start" /> Import JSON
+          <Button type="button" variant="outline" onClick={() => importRef.current?.click()} className="rounded-lg">
+            <Upload data-icon="inline-start" /> 导入 JSON
           </Button>
-          <Button type="button" onClick={() => void createCanvas()} disabled={creating}>
-            <FilePlus2 data-icon="inline-start" />
-            {creating ? "Creating…" : "New Canvas"}
-          </Button>
-        </div>
-      </header>
-      {error ? <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div> : null}
-      {canvases.length === 0 ? (
-        <button
-          type="button"
-          className="grid min-h-56 place-items-center rounded-xl border border-dashed border-border bg-muted/20 text-sm text-muted-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={() => void createCanvas()}
-        >
-          Create your first local Canvas
-        </button>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        </header>
+        {error ? <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div> : null}
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-x-5 gap-y-8">
+          <button
+            type="button"
+            disabled={creating}
+            className="group block w-full min-w-0 self-start border-0 bg-transparent p-0 text-left text-foreground focus-visible:outline-none"
+            onClick={() => void createCanvas()}
+          >
+            <span className="grid aspect-video place-items-center rounded-xl border border-dashed border-border bg-muted/30 text-muted-foreground transition-colors group-hover:border-foreground/30 group-hover:bg-muted/50 group-hover:text-foreground group-focus-visible:ring-2 group-focus-visible:ring-ring">
+              <Plus aria-hidden className="size-11 stroke-[1.25]" />
+            </span>
+            <span className="mt-3 block text-base font-semibold text-foreground">{creating ? "正在新建…" : "新建画布"}</span>
+          </button>
           {canvases.map((canvas) => (
-            <div key={canvas.id} className="relative rounded-xl border border-border bg-card transition-colors hover:bg-muted/30">
-              <button type="button" className="w-full p-4 pr-12 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => openCanvas(canvas)}>
-                <div className="flex items-center gap-3">
-                  <div className="grid size-9 place-items-center rounded-md bg-muted"><LayoutDashboard className="size-4" /></div>
-                  <div className="truncate text-sm font-semibold">{canvas.title}</div>
-                </div>
-                <div className="mt-4 text-xs text-muted-foreground">Updated {new Date(canvas.updatedAt).toLocaleString()}</div>
+            <article key={canvas.id} className="group relative min-w-0 self-start">
+              <button type="button" className="block w-full border-0 bg-transparent p-0 text-left text-foreground focus-visible:outline-none" onClick={() => openCanvas(canvas)}>
+                <span className="block aspect-video rounded-xl group-focus-within:ring-2 group-focus-within:ring-ring">
+                  <CanvasLibraryThumbnail document={canvas.document} title={canvas.title || "未命名画布"} />
+                </span>
+                <span className="mt-3 block truncate text-base font-semibold text-foreground">{canvas.title || "未命名画布"}</span>
+                <span className="mt-1 block !text-[12px] leading-4 text-muted-foreground">{formatCanvasUpdatedAt(canvas.updatedAt)}</span>
               </button>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label={`Delete ${canvas.title}`}
+                aria-label={`删除${canvas.title || "未命名画布"}`}
                 disabled={deletingId === canvas.id}
-                className="absolute right-3 top-3 text-muted-foreground hover:text-destructive"
+                className="absolute right-2 top-2 bg-background/85 text-muted-foreground opacity-0 shadow-sm backdrop-blur-sm transition-opacity hover:text-destructive group-hover:opacity-100 group-focus-within:opacity-100"
                 onClick={() => void deleteCanvas(canvas)}
               >
                 <Trash2 />
               </Button>
-            </div>
+            </article>
           ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }
