@@ -32,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/toast";
 
 type ApiRequest = (method: string, path: string, body?: unknown) => Promise<unknown>;
@@ -68,6 +69,8 @@ const COLOR_MODE_OPTIONS: Array<{ value: ColorMode; label: string }> = [
   { value: "dark", label: "misc.appearanceColorModeDark" },
   { value: "system", label: "misc.appearanceColorModeSystem" },
 ];
+const APPEARANCE_SECTION_CLASS =
+  "rounded-2xl border border-border/35 bg-muted/25 p-6 text-card-foreground shadow-sm";
 
 export function AppearanceSettings({ api }: { api: ApiRequest }) {
   const { t } = useTranslation();
@@ -132,7 +135,7 @@ export function AppearanceSettings({ api }: { api: ApiRequest }) {
 
   return (
     <div className="mr-auto flex w-full max-w-3xl flex-col gap-8 pb-10">
-      <section className="rounded-2xl border border-border/80 bg-card p-6 text-card-foreground">
+      <section className={APPEARANCE_SECTION_CLASS}>
         <FieldSet className="m-0 border-0 p-0">
           <FieldLegend>{t("misc.appearanceColorModeTitle")}</FieldLegend>
           <FieldDescription>{t("misc.appearanceColorModeDesc")}</FieldDescription>
@@ -163,7 +166,7 @@ export function AppearanceSettings({ api }: { api: ApiRequest }) {
         </FieldSet>
       </section>
 
-      <section className="rounded-2xl border border-border/80 bg-card p-6 text-card-foreground">
+      <section className={APPEARANCE_SECTION_CLASS}>
         <FieldSet className="m-0 border-0 p-0">
           <FieldLegend>{t("misc.appearanceTypographyTitle")}</FieldLegend>
           <FieldDescription>{t("misc.appearanceTypographyDesc")}</FieldDescription>
@@ -275,7 +278,7 @@ export function AppearanceSettings({ api }: { api: ApiRequest }) {
         </FieldSet>
       </section>
 
-      <section className="flex flex-col gap-4 rounded-2xl border border-border/80 bg-card p-6 text-card-foreground">
+      <section className={cn("flex flex-col gap-4", APPEARANCE_SECTION_CLASS)}>
         <div>
           <h2 className="m-0 text-base font-normal">{t("misc.appearancePreviewTitle")}</h2>
           <p className="mt-1 mb-0 text-sm text-muted-foreground">{t("misc.appearancePreviewDesc")}</p>

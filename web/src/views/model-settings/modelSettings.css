@@ -1,9 +1,9 @@
 .model-settings {
-  --settings-ink: #202124;
-  --settings-muted: #6f7177;
-  --settings-border: color-mix(in srgb, var(--hair) 88%, #d8d9dc);
-  --settings-soft: #f7f7f8;
-  --settings-accent: #202124;
+  --settings-ink: var(--foreground);
+  --settings-muted: var(--muted-foreground);
+  --settings-border: color-mix(in srgb, var(--border) 88%, transparent);
+  --settings-soft: var(--secondary);
+  --settings-accent: var(--foreground);
   display: grid;
   gap: 18px;
   width: 100%;
@@ -50,7 +50,7 @@
   border: 1px solid var(--settings-border);
   border-radius: 10px;
   padding: 8px 13px;
-  background: #fff;
+  background: var(--background);
   color: var(--settings-ink);
   font: inherit;
   font-size: 14px;
@@ -60,10 +60,10 @@
   cursor: pointer;
 }
 
-.settings-button:hover:not(:disabled) { background: #f4f4f4; }
+.settings-button:hover:not(:disabled) { background: var(--muted); }
 .settings-button:disabled { cursor: not-allowed; opacity: .48; }
-.settings-button--primary { border-color: #1e1f21; background: #1e1f21; color: #fff; }
-.settings-button--primary:hover:not(:disabled) { background: #343538; }
+.settings-button--primary { border-color: var(--foreground); background: var(--foreground); color: var(--background); }
+.settings-button--primary:hover:not(:disabled) { background: color-mix(in oklch, var(--foreground) 82%, var(--background)); }
 .settings-button--danger { border-color: #e3b8b6; color: #a2342e; }
 .settings-button--danger:hover:not(:disabled) { background: #fff5f4; }
 
@@ -80,7 +80,7 @@
   cursor: pointer;
 }
 
-.settings-icon-button:hover { background: #f1f1f2; color: var(--settings-ink); }
+.settings-icon-button:hover { background: var(--muted); color: var(--settings-ink); }
 
 .settings-alert {
   padding: 11px 13px;
@@ -103,7 +103,7 @@
   overflow: hidden;
   border: 1px solid var(--settings-border);
   border-radius: 15px;
-  background: #fff;
+  background: var(--card);
 }
 
 .settings-catalog {
@@ -111,7 +111,7 @@
   min-width: 0;
   flex-direction: column;
   border-right: 1px solid var(--settings-border);
-  background: #fbfbfb;
+  background: var(--muted);
 }
 
 .settings-catalog__title {

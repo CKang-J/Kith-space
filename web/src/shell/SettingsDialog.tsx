@@ -50,12 +50,12 @@ export function SettingsDialog({ section, onClose }: SettingsDialogProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] p-5 backdrop-blur-[3px] sm:p-7 lg:p-12"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[color-mix(in_oklch,var(--foreground)_32%,transparent)] p-5 backdrop-blur-[1.5px] sm:p-7 lg:p-10"
       onMouseDown={close}
     >
       <section
         ref={dialogRef}
-        className="relative flex h-[calc(100vh-2.5rem)] w-[calc(100vw-2.5rem)] max-h-[790px] max-w-[960px] overflow-hidden rounded-[32px] border border-border bg-background p-0 shadow-2xl sm:h-[calc(100vh-3.5rem)]"
+        className="relative flex h-[calc(100vh-2.5rem)] w-[calc(100vw-2.5rem)] max-h-[790px] max-w-[960px] overflow-hidden rounded-3xl border border-border/50 bg-secondary p-0 shadow-[0_20px_60px_color-mix(in_oklch,var(--foreground)_12%,transparent)] sm:h-[calc(100vh-3.5rem)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-dialog-title"
@@ -64,10 +64,10 @@ export function SettingsDialog({ section, onClose }: SettingsDialogProps) {
         <h2 id="settings-dialog-title" className="sr-only">{t("nav.settings")}</h2>
         <Button
           ref={closeButtonRef}
-          className="absolute top-5 right-6 z-10 rounded-full bg-transparent"
+          className="absolute top-3.5 right-4 z-10 rounded-full bg-transparent [&_svg:not([class*='size-'])]:size-[18px]"
           type="button"
           variant="ghost"
-          size="icon-lg"
+          size="icon-sm"
           aria-label={t("confirm.cancel")}
           onClick={close}
         >

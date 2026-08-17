@@ -12,6 +12,8 @@ logs/
 .claude/
 .cursor/
 .gemini/
+.mcp.json
+opencode.jsonc
 
 # personal / machine-local dev context — never published
 CLAUDE.local.md

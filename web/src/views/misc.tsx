@@ -302,9 +302,9 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
   }, [cur, location.pathname, location.search, nav, requestedSection]);
   return (
     <>
-      <aside className="flex min-h-0 w-full flex-none flex-col border-b border-border bg-background sm:w-[240px] sm:border-r sm:border-b-0">
-        <div className="min-h-0 flex-1 overflow-auto px-[14px] pt-[14px] pb-[10px] sm:px-[18px] sm:py-[34px]">
-          <div data-slot="settings-sidebar-title" className="mx-3 mb-4 text-base font-normal tracking-[-0.3px] text-foreground sm:mb-6">
+      <aside className="flex min-h-0 w-full flex-none flex-col border-b border-border/50 bg-muted/45 sm:w-[232px] sm:border-r sm:border-b-0">
+        <div className="min-h-0 flex-1 overflow-auto px-[14px] pt-[14px] pb-[10px] sm:px-4 sm:py-5">
+          <div data-slot="settings-sidebar-title" className="mx-3 mb-4 text-base font-normal tracking-[-0.3px] text-foreground sm:hidden">
             {t("nav.settings")}
           </div>
           <nav className="flex gap-1.5 overflow-x-auto sm:flex-col" aria-label={t("nav.settings")}>
@@ -314,8 +314,8 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
                 <button
                   key={key}
                   className={cn(
-                    "flex min-h-[46px] w-full shrink-0 appearance-none items-center gap-2.5 rounded-[14px] border-0 bg-transparent px-[13px] text-left text-[15px] font-normal text-foreground/80 shadow-none transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:shrink",
-                    cur === key && "bg-muted text-foreground",
+                    "flex min-h-[46px] w-full shrink-0 appearance-none items-center gap-2.5 rounded-[14px] border-0 bg-transparent px-[13px] text-left text-[15px] font-normal text-foreground/80 shadow-none transition-colors hover:bg-card/70 hover:text-foreground focus-visible:bg-card/70 focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:shrink",
+                    cur === key && "bg-card text-foreground shadow-sm ring-1 ring-border/45",
                   )}
                   type="button"
                   aria-current={cur === key ? "page" : undefined}
@@ -333,15 +333,15 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
           </nav>
         </div>
       </aside>
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-        <header className="flex min-h-[70px] items-center px-5 pr-13 sm:min-h-[92px] sm:px-[52px]">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-card">
+        <header className="flex min-h-[52px] items-center border-b border-border/40 px-5 pr-14 sm:px-10">
           <div data-slot="settings-page-header" className={cn("mx-auto w-full", pageColumnClass)}>
             <h1 className="m-0 text-base font-normal tracking-[-0.45px] text-foreground">{curLabel}</h1>
           </div>
         </header>
         <div
           data-slot="settings-content"
-          className="min-h-0 flex-1 overflow-auto bg-background px-5 pb-7 sm:px-[52px] sm:pb-14"
+          className="min-h-0 flex-1 overflow-auto bg-card px-5 pb-7 sm:px-10 sm:pb-14"
         >
           <div data-slot="settings-page-content" className={cn("mx-auto w-full", pageColumnClass)}>
             {cur === "human"
