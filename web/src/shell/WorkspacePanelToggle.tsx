@@ -23,12 +23,12 @@ export function WorkspacePanelToggle({ open, onToggle, className }: WorkspacePan
           type="button"
           variant="ghost"
           size="icon-sm"
-          className={cn(className)}
+          className={cn("shell-workspace-panel-trigger", className)}
           aria-label={label}
           aria-pressed={open}
           onClick={onToggle}
         >
-          <PanelVisibilityIcon open={open} className="workspace-panel-toggle__icon" />
+          <PanelVisibilityIcon open={open} className="workspace-panel-toggle__icon -scale-x-100" />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">{label}</TooltipContent>

@@ -6,14 +6,20 @@ import {
   CheckSquare,
   Folder,
   FolderOpen,
+  FolderPlus,
   Link2,
   RefreshCw,
   Star,
   Trash2,
-  X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { SearchField } from "../components/SearchField.tsx";
 import { useConfirm } from "../ConfirmModal.tsx";
 import { copyText } from "../clipboard.ts";
@@ -83,6 +89,7 @@ export function SpacesModule() {
   const visibleSpaces = normalizedQuery
     ? childSpaces.filter((space) => `${space.name} ${space.rootPath ?? ""}`.toLocaleLowerCase().includes(normalizedQuery))
     : childSpaces;
+  const isSearchEmpty = childSpaces.length > 0 && visibleSpaces.length === 0;
 
   const resetFlow = () => {
     setFlow(null);
@@ -183,6 +190,12 @@ export function SpacesModule() {
     setBulkSelectionEnabled((current) => !current);
   };
 
+  const selectAllVisibleSpaces = () => {
+    setSelectedSpaceIds(new Set(visibleSpaces.map((space) => space.id)));
+  };
+
+  const allVisibleSelected = visibleSpaces.length > 0 && visibleSpaces.every((space) => selectedSpaceIds.has(space.id));
+
   const toggleSelectedSpace = (spaceId: string) => {
     setSelectedSpaceIds((current) => {
       const next = new Set(current);
@@ -199,7 +212,7 @@ export function SpacesModule() {
     const accepted = await confirm({
       title: t("spacesModule.bulkRemoveConfirmTitle", { count: selectedIds.length }),
       message: t("spacesModule.bulkRemoveConfirmDescription"),
-      confirmLabel: t("spacesModule.bulkRemove", { count: selectedIds.length }),
+      confirmLabel: t("spacesModule.bulkRemoveAction"),
       danger: true,
     });
     if (!accepted) return;
@@ -246,7 +259,8 @@ export function SpacesModule() {
     setError("");
     try {
       let result;
-      if (flow === "relocate") {
+      const isRelocate = flow === "relocate";
+      if (isRelocate) {
         if (!relocateTargetId) {
           setError(t("space.operationFailed"));
           return;
@@ -259,8 +273,20 @@ export function SpacesModule() {
         setError(result.error || t("space.operationFailed"));
         return;
       }
+      const createdSpace = result.space;
       resetFlow();
-      navigate(`/s/${result.space.slug}/channel`);
+      if (isRelocate) {
+        navigate(`/s/${createdSpace.slug}/channel`);
+        return;
+      }
+      const openNow = await confirm({
+        title: t("spacesModule.createSuccessOpenTitle"),
+        message: t("spacesModule.createSuccessOpenMessage", { name: createdSpace.name }),
+        confirmLabel: t("spacesModule.createSuccessOpenConfirm"),
+        cancelLabel: t("spacesModule.createSuccessStay"),
+      });
+      if (openNow) navigate(`/s/${createdSpace.slug}/channel`);
+      else toast.info(t("spacesModule.createSuccess", { name: createdSpace.name }));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t("space.operationFailed"));
     } finally {
@@ -279,56 +305,96 @@ export function SpacesModule() {
   };
 
   return (
-    <div className="spaces-module">
+    <div className={bulkSelectionEnabled ? "spaces-module spaces-module--bulk" : "spaces-module"}>
       <header className="spaces-module__header">
-        <div>
+        <div className="spaces-module__header-start">
           <h1>{t("spacesModule.title")}</h1>
+          <span className="spaces-module__count">
+            {bulkSelectionEnabled
+              ? t("spacesModule.bulkSelected", { count: selectedSpaceIds.size })
+              : t("spacesModule.spaceCount", { count: childSpaces.length })}
+          </span>
         </div>
-        <div className="spaces-module__toolbar">
-          <SearchField
-            className="w-[min(276px,100%)]"
-            value={query}
-            onValueChange={setQuery}
-            clearLabel={t("spacesModule.clearSearch")}
-            aria-label={t("spacesModule.searchPlaceholder")}
-            placeholder={t("spacesModule.searchPlaceholder")}
-          />
-          <span className="spaces-module__count">{visibleSpaces.length}</span>
-        </div>
-        <div className="spaces-module__actions">
-          <button
-            type="button"
-            className="spaces-module__action spaces-module__action--icon spaces-module__action--bulk"
-            onClick={toggleBulkSelection}
-            disabled={bulkRemoving}
-            aria-pressed={bulkSelectionEnabled}
-            aria-label={t(bulkSelectionEnabled ? "spacesModule.cancelBulkManage" : "spacesModule.bulkManage")}
-            title={t(bulkSelectionEnabled ? "spacesModule.cancelBulkManage" : "spacesModule.bulkManage")}
-          >
-            {bulkSelectionEnabled ? <X size={17} aria-hidden="true" /> : <CheckSquare size={17} aria-hidden="true" />}
-          </button>
-          {bulkSelectionEnabled ? (
-            <button
-              type="button"
-              className="spaces-module__action spaces-module__action--danger"
-              onClick={() => void requestBulkRemove()}
-              disabled={bulkRemoving || selectedSpaceIds.size === 0}
-            >
-              <Trash2 size={16} aria-hidden="true" />
-              {t("spacesModule.bulkRemove", { count: selectedSpaceIds.size })}
-            </button>
+        <div className="spaces-module__header-end">
+          {!bulkSelectionEnabled ? (
+            <SearchField
+              className="spaces-module__search"
+              value={query}
+              onValueChange={setQuery}
+              clearLabel={t("spacesModule.clearSearch")}
+              aria-label={t("spacesModule.searchPlaceholder")}
+              placeholder={t("spacesModule.searchPlaceholder")}
+            />
           ) : null}
-          <button
-            type="button"
-            className="spaces-module__action spaces-module__action--icon"
-            onClick={refresh}
-            disabled={refreshing}
-            aria-label={t("spacesModule.refresh")}
-            title={t("spacesModule.refresh")}
-          >
-            <RefreshCw size={17} className={refreshing ? "is-spinning" : undefined} />
-          </button>
-          <SpaceCreateMenu onSelect={openCreate} />
+          <div className={bulkSelectionEnabled ? "spaces-module__actions spaces-module__bulk-bar" : "spaces-module__actions"}>
+            {bulkSelectionEnabled ? (
+              <>
+                {!allVisibleSelected && visibleSpaces.length > 0 ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={bulkRemoving}
+                    onClick={selectAllVisibleSpaces}
+                  >
+                    {t("spacesModule.bulkSelectAll")}
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={bulkRemoving}
+                  onClick={toggleBulkSelection}
+                >
+                  {t("spacesModule.cancelBulkManage")}
+                </Button>
+                <span className="spaces-module__bulk-divider" aria-hidden="true" />
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  disabled={bulkRemoving || selectedSpaceIds.size === 0}
+                  onClick={() => void requestBulkRemove()}
+                >
+                  <Trash2 data-icon="inline-start" aria-hidden="true" />
+                  {t("spacesModule.bulkRemoveAction")}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="spaces-module__action spaces-module__action--icon spaces-module__action--bulk"
+                      onClick={toggleBulkSelection}
+                      disabled={bulkRemoving || childSpaces.length === 0}
+                      aria-label={t("spacesModule.bulkManage")}
+                    >
+                      <CheckSquare size={17} aria-hidden="true" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">{t("spacesModule.bulkManage")}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="spaces-module__action spaces-module__action--icon"
+                      onClick={refresh}
+                      disabled={refreshing}
+                      aria-label={t("spacesModule.refresh")}
+                    >
+                      <RefreshCw size={17} className={refreshing ? "is-spinning" : undefined} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">{t("spacesModule.refresh")}</TooltipContent>
+                </Tooltip>
+                <SpaceCreateMenu onSelect={openCreate} />
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -350,99 +416,139 @@ export function SpacesModule() {
         />
       ) : null}
 
-      {visibleSpaces.length > 0 ? (
-        <div className="spaces-module__grid">
-          {visibleSpaces.map((space) => {
-            const ready = space.status === "ready";
-            const lastOpened = formatLastOpened(space.lastOpenedAt);
-            const menuProps = {
-              favorite: favoriteIds.has(space.id),
-              revealAvailable: !!desktopBridge && !!space.rootPath,
-              onOpen: () => openSpace(space),
-              onReveal: () => void revealSpace(space),
-              onCopyPath: () => void copySpacePath(space),
-              onRename: () => {
-                setSpaceActionError("");
-                setRenameTarget(space);
-              },
-              onToggleFavorite: () => toggleFavorite(space.id),
-              onRemove: () => void requestRemove(space),
-            };
-            return (
-              <SpaceCardContextMenu
-                key={space.id}
-                disabled={bulkSelectionEnabled}
-                {...menuProps}
-              >
-                <article
-                  className={`spaces-module__card spaces-module__card--${space.status}${selectedSpaceIds.has(space.id) ? " is-selected" : ""}`}
+      <div className="spaces-module__body">
+        {visibleSpaces.length > 0 ? (
+          <div className={bulkSelectionEnabled ? "spaces-module__grid spaces-module__grid--selecting" : "spaces-module__grid"}>
+            {visibleSpaces.map((space) => {
+              const ready = space.status === "ready";
+              const lastOpened = formatLastOpened(space.lastOpenedAt);
+              const menuProps = {
+                favorite: favoriteIds.has(space.id),
+                revealAvailable: !!desktopBridge && !!space.rootPath,
+                onOpen: () => openSpace(space),
+                onReveal: () => void revealSpace(space),
+                onCopyPath: () => void copySpacePath(space),
+                onRename: () => {
+                  setSpaceActionError("");
+                  setRenameTarget(space);
+                },
+                onToggleFavorite: () => toggleFavorite(space.id),
+                onRemove: () => void requestRemove(space),
+              };
+              return (
+                <SpaceCardContextMenu
+                  key={space.id}
+                  disabled={bulkSelectionEnabled}
+                  {...menuProps}
                 >
-                  {bulkSelectionEnabled ? (
-                    <label className="spaces-module__card-select">
-                      <input
-                        type="checkbox"
-                        checked={selectedSpaceIds.has(space.id)}
-                        onChange={() => toggleSelectedSpace(space.id)}
-                        disabled={bulkRemoving}
-                        aria-label={t("spacesModule.selectSpace", { name: space.name })}
-                      />
-                      <span className="spaces-module__card-select-box" aria-hidden="true">
-                        {selectedSpaceIds.has(space.id) ? <Check size={13} strokeWidth={2.5} /> : null}
-                      </span>
-                    </label>
-                  ) : (
-                    <SpaceCardMenu
-                      spaceName={space.name}
-                      {...menuProps}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => openSpace(space)}
-                    aria-label={`${space.name}: ${t(statusKey(space.status))}`}
-                    disabled={bulkSelectionEnabled}
+                  <article
+                    className={`spaces-module__card spaces-module__card--${space.status}${selectedSpaceIds.has(space.id) ? " is-selected" : ""}`}
                   >
-                    <span className="spaces-module__card-top">
-                      <span className="spaces-module__folder"><Folder size={24} /></span>
-                      {favoriteIds.has(space.id) || !ready ? (
-                        <span className={`spaces-module__status spaces-module__status--${space.status}`}>
-                          {favoriteIds.has(space.id) ? <Star size={12} fill="currentColor" aria-label={t("spacesModule.favorited")} /> : null}
-                          {!ready ? <AlertTriangle size={13} aria-hidden="true" /> : null}
-                          {!ready ? t(statusKey(space.status)) : null}
+                    {bulkSelectionEnabled ? (
+                      <label className="spaces-module__card-select">
+                        <input
+                          type="checkbox"
+                          checked={selectedSpaceIds.has(space.id)}
+                          onChange={() => toggleSelectedSpace(space.id)}
+                        onClick={(event) => event.stopPropagation()}
+                          disabled={bulkRemoving}
+                          aria-label={t("spacesModule.selectSpace", { name: space.name })}
+                        />
+                        <span className="spaces-module__card-select-box" aria-hidden="true">
+                          {selectedSpaceIds.has(space.id) ? <Check size={13} strokeWidth={2.5} /> : null}
                         </span>
-                      ) : null}
-                    </span>
-                    <span className="spaces-module__name">{space.name}</span>
-                    <span className="spaces-module__path" title={space.rootPath}>
-                      <span>{t("spacesModule.pathLabel")}</span>
-                      {space.rootPath || "-"}
-                    </span>
-                    <span className="spaces-module__last-opened-row">
-                      <span className="spaces-module__last-opened">
-                        {lastOpened ? t("spacesModule.lastOpened", { time: lastOpened }) : t("spacesModule.neverOpened")}
+                      </label>
+                    ) : (
+                      <SpaceCardMenu
+                        spaceName={space.name}
+                        {...menuProps}
+                      />
+                    )}
+                    <button
+                      type="button"
+                      className="spaces-module__card-body"
+                      onClick={() => {
+                        if (bulkSelectionEnabled) toggleSelectedSpace(space.id);
+                        else openSpace(space);
+                      }}
+                      aria-label={`${space.name}: ${t(statusKey(space.status))}`}
+                      disabled={bulkSelectionEnabled ? bulkRemoving : false}
+                    >
+                      <span className="spaces-module__card-head">
+                        <span className="spaces-module__folder" aria-hidden="true">
+                          <Folder size={20} strokeWidth={1.75} />
+                          {favoriteIds.has(space.id) ? (
+                            <Star className="spaces-module__folder-star" size={11} fill="currentColor" aria-label={t("spacesModule.favorited")} />
+                          ) : null}
+                        </span>
+                        <span className="spaces-module__card-head-text">
+                          <span className="spaces-module__name">{space.name}</span>
+                          {!ready ? (
+                            <span className={`spaces-module__status spaces-module__status--${space.status}`}>
+                              <AlertTriangle size={12} aria-hidden="true" />
+                              {t(statusKey(space.status))}
+                            </span>
+                          ) : null}
+                        </span>
                       </span>
-                      {ready ? <ArrowRight className="spaces-module__card-arrow" size={15} aria-hidden="true" /> : null}
-                    </span>
-                    {!ready && space.rootError ? <span className="spaces-module__root-error">{space.rootError}</span> : null}
-                    {!ready ? (
-                      <span className="spaces-module__card-action">
-                        {t("spacesModule.reconnect")}
-                        <Link2 size={15} />
+                      <span className="spaces-module__path" title={space.rootPath}>
+                        <span className="spaces-module__path-value">{space.rootPath || "-"}</span>
                       </span>
-                    ) : null}
-                  </button>
-                </article>
-              </SpaceCardContextMenu>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="spaces-module__empty">
-          <FolderOpen size={28} />
-          <h2>{t("spacesModule.emptyTitle")}</h2>
-          <p>{t("spacesModule.emptyDescription")}</p>
-        </div>
-      )}
+                      <span className="spaces-module__card-footer">
+                        <span className="spaces-module__last-opened">
+                          {lastOpened ? t("spacesModule.lastOpened", { time: lastOpened }) : t("spacesModule.neverOpened")}
+                        </span>
+                        {ready ? (
+                          <span className="spaces-module__open-affordance" aria-hidden="true">
+                            <ArrowRight size={14} strokeWidth={2} />
+                          </span>
+                        ) : (
+                          <span className="spaces-module__card-action">
+                            {t("spacesModule.reconnect")}
+                            <Link2 size={14} />
+                          </span>
+                        )}
+                      </span>
+                      {!ready && space.rootError ? <span className="spaces-module__root-error">{space.rootError}</span> : null}
+                    </button>
+                  </article>
+                </SpaceCardContextMenu>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="spaces-module__empty">
+            <div className="spaces-module__empty-icon">
+              <FolderOpen size={26} aria-hidden="true" />
+            </div>
+            <h2>
+              {isSearchEmpty
+                ? t("spacesModule.emptyTitleSearch", { query: query.trim() })
+                : t("spacesModule.emptyTitleNone")}
+            </h2>
+            <p>
+              {isSearchEmpty
+                ? t("spacesModule.emptyDescriptionSearch")
+                : t("spacesModule.emptyDescriptionNone")}
+            </p>
+            {!isSearchEmpty ? <p className="spaces-module__empty-hint">{t("spacesModule.emptyHomeHint")}</p> : null}
+            <div className="spaces-module__empty-actions">
+              {isSearchEmpty ? (
+                <Button type="button" variant="outline" onClick={() => setQuery("")}>
+                  {t("spacesModule.clearSearch")}
+                </Button>
+              ) : null}
+              <Button type="button" onClick={() => openCreate("default")}>
+                <FolderPlus data-icon="inline-start" aria-hidden="true" />
+                {t("spacesModule.createBlank")}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => openCreate("attach")}>
+                {t("spacesModule.attachExisting")}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

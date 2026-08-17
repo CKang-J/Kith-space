@@ -573,12 +573,6 @@ export function WorkspaceFrame() {
       onOpenTasks={openConversationTasks}
       onOpenChannelSettings={openChannelSettings}
       onNavigateConversation={navigateConversation}
-      headerTrailingAction={!workspacePanelOpen || !activeTab ? (
-        <WorkspacePanelToggle
-          open={workspacePanelOpen}
-          onToggle={toggleWorkspacePanel}
-        />
-      ) : undefined}
       aggregateDrawer={aggregateAvailable && !aggregateInlineAvailable ? aggregatePanel : undefined}
       aggregateDrawerOpen={aggregateDrawerOpen}
       settingsDrawer={settingsInDrawer ? channelSettings : undefined}
@@ -596,8 +590,6 @@ export function WorkspaceFrame() {
       onOpenModule={(moduleId) => void selectModule(moduleId)}
       workspaceExpanded={workspaceExpanded}
       onToggleWorkspaceExpanded={toggleWorkspaceExpanded}
-      workspacePanelOpen={workspacePanelOpen}
-      onToggleWorkspacePanel={toggleWorkspacePanel}
     >
       <ModuleWorkspace moduleId={contentModuleId} />
     </WorkspaceTabs>
@@ -647,6 +639,10 @@ export function WorkspaceFrame() {
         >
           <div ref={workspaceRef} className="shell-workspace-canvas">
             <SidebarTrigger className="shell-sidebar-trigger" />
+            <WorkspacePanelToggle
+              open={workspacePanelOpen}
+              onToggle={toggleWorkspacePanel}
+            />
             <WorkspaceSplitPane
               chat={(
                 <>

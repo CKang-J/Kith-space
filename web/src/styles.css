@@ -305,15 +305,15 @@ main.content-col{display:flex;flex-direction:column;height:100vh;background:var(
    keep name + description + tabs on ONE row. The description shrinks to an ellipsis instead of wrapping — wrapping
    otherwise multiplied the header height and dropped the channel name to the bottom when the column got narrow
    (e.g. a wide right panel). Name + tabs never shrink, so the tab row stays intact instead of being pushed around. */
-.chat-head{position:relative;height:52px;flex:none;padding:0 14px;border-bottom:1px solid var(--hair);background:var(--surface);z-index:11}
+.chat-head{position:relative;display:flex;height:52px;flex:none;align-items:center;gap:0;padding:0 14px;border-bottom:1px solid var(--hair);background:var(--surface);z-index:11}
 .chat-head__rail{display:flex;width:100%;max-width:none;min-width:0;height:100%;align-items:center;gap:8px;margin:0}
-.chat-head__rail>h1{flex-shrink:0;font-family:var(--sans);font-size:20px;font-weight:600;line-height:1.2;letter-spacing:-.2px}
-.chat-head__rail>.chat-head__channel-title{display:flex;align-items:center;gap:4px;font-weight:400}
+.chat-head__rail>h1{flex-shrink:0;font-family:var(--sans);font-size:20px;font-weight:600;line-height:1;letter-spacing:-.2px}
+.chat-head__rail>.chat-head__channel-title{display:flex;align-items:center;gap:4px;font-weight:400;line-height:1}
 .chat-head__channel-title .channel-row-icon{width:14px;height:14px;flex:none;color:var(--muted-soft)}
-.chat-head__rail>.chat-head__dm-title{font-size:16px;font-weight:400;letter-spacing:-.1px}
+.chat-head__rail>.chat-head__dm-title{font-size:16px;font-weight:400;letter-spacing:-.1px;line-height:1}
 .chat-head__rail>small,.chat-head__rail>.head-status{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chat-head-actions{display:flex;flex:none;align-items:center;gap:3px;margin-left:auto}
-.chat-head-icon-btn{display:inline-flex;width:30px;height:30px;flex:none;align-self:center;align-items:center;justify-content:center;padding:0;border:0;border-radius:9px;background:transparent;color:var(--legacy-muted);cursor:pointer}
+.chat-head-icon-btn{display:inline-flex;width:28px;height:28px;flex:none;align-items:center;justify-content:center;padding:0;border:0;border-radius:9px;background:transparent;color:var(--legacy-muted);cursor:pointer}
 .chat-head-icon-btn>svg{width:14px;height:14px}
 .chat-head-icon-btn:hover{background:var(--surface-strong);color:var(--ink)}
 .chat-head-icon-btn[aria-pressed="true"]{background:var(--canvas);color:var(--ink)}

@@ -19,9 +19,9 @@ import {
 } from "../components/ui/tooltip.tsx";
 import { cn } from "../lib/utils.ts";
 import { WORKSPACE_MODULES, workspaceLaunchModulesForSpace } from "./workspaceModules.tsx";
-import { WorkspacePanelToggle } from "./WorkspacePanelToggle.tsx";
 import type { ContentModuleId } from "./workspaceLayout.ts";
 import type { WorkspaceTab } from "./workspaceTabs.ts";
+import { WorkspaceTabPanel } from "./WorkspaceTabPanel.tsx";
 
 interface WorkspaceTabsProps {
   activeTabId: string;
@@ -33,8 +33,6 @@ interface WorkspaceTabsProps {
   onOpenModule(moduleId: ContentModuleId): void;
   workspaceExpanded: boolean;
   onToggleWorkspaceExpanded(): void;
-  workspacePanelOpen: boolean;
-  onToggleWorkspacePanel(): void;
 }
 
 export function WorkspaceTabs({
@@ -47,8 +45,6 @@ export function WorkspaceTabs({
   onOpenModule,
   workspaceExpanded,
   onToggleWorkspaceExpanded,
-  workspacePanelOpen,
-  onToggleWorkspacePanel,
 }: WorkspaceTabsProps) {
   const { t } = useTranslation();
   const availableModules = workspaceLaunchModulesForSpace(isHome);
@@ -75,7 +71,7 @@ export function WorkspaceTabs({
               <div className="shell-workspace-tab" key={tab.id}>
                 <TabsTrigger value={tab.id} title={title} className="shell-workspace-tab__trigger">
                   {TabIcon ? <TabIcon data-icon="inline-start" /> : null}
-                  <span className="truncate">{title}</span>
+                  <span className="shell-workspace-tab__label">{title}</span>
                 </TabsTrigger>
                 <Button
                   type="button"
@@ -139,16 +135,10 @@ export function WorkspaceTabs({
               {workspaceExpanded ? "恢复面板宽度" : "展开面板宽度"}
             </TooltipContent>
           </Tooltip>
-          <div className="ml-1 border-l border-border/60 pl-1">
-            <WorkspacePanelToggle
-              open={workspacePanelOpen}
-              onToggle={onToggleWorkspacePanel}
-            />
-          </div>
         </div>
       </header>
       <TabsContent value={activeTabId} className="shell-workspace-tab__content">
-        {children}
+        <WorkspaceTabPanel tabId={activeTabId}>{children}</WorkspaceTabPanel>
       </TabsContent>
     </Tabs>
   );

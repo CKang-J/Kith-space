@@ -74,33 +74,42 @@ export function CanvasModule({ canvasId }: { canvasId: string | null }) {
   );
 
   return (
-    <div className="h-full min-h-0 w-full flex-1 overflow-auto bg-white px-6 py-7 dark:bg-background sm:px-8 lg:px-10">
-      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-7">
-        <header className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">我的画布</h1>
-            <p className="mt-1 text-sm text-muted-foreground">保存在当前空间中的本地画布</p>
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-auto bg-card px-7 py-6">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
+        <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 pb-5">
+          <div className="flex min-w-0 items-baseline gap-2.5">
+            <h1 className="m-0 font-normal text-foreground">我的画布</h1>
+            <span className="text-[length:var(--font-size-meta)] text-muted-foreground">{canvases.length} 个画布</span>
           </div>
-          <input
-            ref={importRef}
-            type="file"
-            accept="application/json,.json"
-            className="sr-only"
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              event.currentTarget.value = "";
-              if (!file) return;
-              setError(null);
-              void file.text().then((text) => client.importScene(file.name.replace(/\.json$/i, "") || "导入的画布", JSON.parse(text))).then(openCanvas)
-                .catch((reason) => setError(reason instanceof Error ? reason.message : "无法导入画布 JSON"));
-            }}
-          />
-          <Button type="button" variant="outline" onClick={() => importRef.current?.click()} className="rounded-lg">
-            <Upload data-icon="inline-start" /> 导入 JSON
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <input
+              ref={importRef}
+              type="file"
+              accept="application/json,.json"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = "";
+                if (!file) return;
+                setError(null);
+                void file.text().then((text) => client.importScene(file.name.replace(/\.json$/i, "") || "导入的画布", JSON.parse(text))).then(openCanvas)
+                  .catch((reason) => setError(reason instanceof Error ? reason.message : "无法导入画布 JSON"));
+              }}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => importRef.current?.click()}
+            >
+              <Upload data-icon="inline-start" />
+              导入 JSON
+            </Button>
+          </div>
         </header>
         {error ? <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div> : null}
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-x-5 gap-y-8">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),18rem))] justify-items-stretch gap-x-5 gap-y-8">
           <button
             type="button"
             disabled={creating}
