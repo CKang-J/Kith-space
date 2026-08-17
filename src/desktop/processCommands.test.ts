@@ -31,7 +31,7 @@ test("packaged Desktop runs internal Core and Worker bundles without tsx or Vite
   assert.equal(commands.core.env?.NODE_PATH, path.join(appRoot, "node_modules"));
 });
 
-test("development Desktop serves the built web shell from Core for browser access", () => {
+test("development Desktop proxies browser frontend to Vite while keeping a dist fallback", () => {
   const appRoot = path.resolve("/repo/kith-space");
   const commands = buildDesktopProcessCommands({
     mode: "development",
@@ -44,6 +44,7 @@ test("development Desktop serves the built web shell from Core for browser acces
   });
 
   assert.equal(commands.core.env?.KITH_SPACE_WEB_DIST, path.join(appRoot, "web", "dist"));
+  assert.equal(commands.core.env?.KITH_SPACE_VITE_DEV_URL, "http://127.0.0.1:5273");
   assert.equal(commands.core.env?.KITH_SPACE_PI_ADVISOR_HELPER, path.join(appRoot, "desktop/dist/runtime/pi-advisor-helper.mjs"));
   assert.equal(commands.worker.env?.KITH_SPACE_PI_ADVISOR_HELPER, path.join(appRoot, "desktop/dist/runtime/pi-advisor-helper.mjs"));
 });
