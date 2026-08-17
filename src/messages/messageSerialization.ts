@@ -1,5 +1,6 @@
 import type { schema } from "../db/index.js";
 import type { MessageMention } from "../channels/channelAllMention.js";
+import type { FrozenCanvasSelectionSnapshot } from "../canvas/canvasTypes.js";
 
 export interface ReactionAggregate {
   emoji: string;
@@ -23,6 +24,7 @@ export function serializeMessage(
   mentions: MessageMention[],
   attachments: (typeof schema.attachments.$inferSelect)[] = [],
   reactions: ReactionAggregate[] = [],
+  canvasContext: FrozenCanvasSelectionSnapshot | null = null,
 ) {
   return {
     id: message.id,
@@ -56,6 +58,17 @@ export function serializeMessage(
     })),
     mentions: mentions.map((mention) => ({ type: mention.type, id: mention.id, name: mention.name })),
     reactions,
+    canvasContext: canvasContext
+      ? {
+          snapshotId: canvasContext.snapshotId,
+          canvasId: canvasContext.canvasId,
+          canvasTitle: canvasContext.canvasTitle,
+          documentRevision: canvasContext.documentRevision,
+          summary: canvasContext.summary,
+          projection: canvasContext.projection,
+          canvasAvailable: !canvasContext.canvasDeleted,
+        }
+      : null,
     createdAt: message.createdAt,
     updatedAt: message.updatedAt,
   };

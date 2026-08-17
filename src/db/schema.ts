@@ -855,3 +855,32 @@ export const canvasAssets = sqliteTable("canvas_assets", {
   storageUniq: uniqueIndex("canvas_assets_storage_uniq").on(t.canvasId, t.storageKey),
   byCanvasState: index("canvas_assets_canvas_state_idx").on(t.canvasId, t.state),
 }));
+
+export const canvasSelectionSnapshots = sqliteTable("canvas_selection_snapshots", {
+  id: id("id").primaryKey(),
+  spaceId: text("space_id").notNull().references(() => spaces.id, { onDelete: "cascade" }),
+  canvasId: text("canvas_id").notNull().references(() => canvasDocuments.id, { onDelete: "no action" }),
+  messageId: text("message_id").references(() => messages.id, { onDelete: "cascade" }),
+  documentRevision: integer("document_revision").notNull(),
+  structureRevision: integer("structure_revision"),
+  selectedElements: text("selected_elements_json", { mode: "json" }).$type<Array<{ id: string; revision: number }>>().notNull(),
+  selectedFrames: text("selected_frames_json", { mode: "json" }).$type<Array<{ id: string; revision: number }>>().notNull(),
+  projection: text("projection_json", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  previewAssetId: text("preview_asset_id").references(() => canvasAssets.id, { onDelete: "set null" }),
+  selectionHash: text("selection_hash").notNull(),
+  summary: text("summary").notNull(),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+}, (t) => ({
+  byMessage: index("canvas_selection_snapshots_message_idx").on(t.messageId),
+  byCanvas: index("canvas_selection_snapshots_canvas_idx").on(t.canvasId, t.createdAt),
+}));
+
+export const messageExecutionBindings = sqliteTable("message_execution_bindings", {
+  messageId: text("message_id").primaryKey().references(() => messages.id, { onDelete: "cascade" }),
+  executorAgentId: text("executor_agent_id").notNull().references(() => agents.id, { onDelete: "no action" }),
+  mode: text("mode").$type<"required">().notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+}, (t) => ({
+  byExecutor: index("message_execution_bindings_executor_idx").on(t.executorAgentId),
+}));

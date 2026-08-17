@@ -171,19 +171,19 @@ H4 已复用 H3 领域/API 能力交付本节：Home Spaces 提供卡片网格�
 
 未来可在 Home 增加真正的跨 Space Inbox/Tasks/Calendar 聚合，但它们是后续真实能力，不恢复已移除的薄总览页。
 
-### 5.2 Canvas Workspace（阶段 2 Human 本地闭环已实现）
+### 5.2 Canvas Workspace（阶段 3 Chat 上下文联动已实现）
 
-阶段 1 的固定 Recombyn `EditorPage`/RCB/nodes/chrome/panels 与原生观感保持不变。阶段2已从正式左侧 Canvas 入口打开 Canvas Library；新建/受限 JSON 导入后形成独立 resource tab，同一 Canvas 去重，不同 Canvas 可多开并按 Space 隔离恢复。实际 Canvas 继续使用原生工具栏、节点、Frame、选择/变换、结构和导出 UI；嵌入宿主时 editor island 高度严格跟随 workspace surface，不再按 browser viewport 溢出并裁掉底部工具栏。媒体按钮在相同原生位置经可复现 host materializer 恢复，先写入 Canvas-local durable asset，再把受控 resolver URL 提交 Core；AssetPanel 显示同 Canvas 本地资产。上游产品壳的 Home 与账户按钮在正式 Kith Canvas 中移除，标题、导出与分享保留。`⌘/Ctrl+Z`、`⌘⇧Z`/`Ctrl+Y` 由宿主捕获后调用 Core undo/redo。OCR、AI处理和真实图片/视频生成明确 unavailable；没有 AgentDock、第二套画布 UI、Page 或 Chat/Agent联动。
+阶段 1 的固定 Recombyn `EditorPage`/RCB/nodes/chrome/panels 与原生观感保持不变。阶段2已从正式左侧 Canvas 入口打开 Canvas Library；新建/受限 JSON 导入后形成独立 resource tab，同一 Canvas 去重，不同 Canvas 可多开并按 Space 隔离恢复。实际 Canvas 继续使用原生工具栏、节点、Frame、选择/变换、结构和导出 UI；嵌入宿主时 editor island 高度严格跟随 workspace surface，不再按 browser viewport 溢出并裁掉底部工具栏。媒体按钮在相同原生位置经可复现 host materializer 恢复，先写入 Canvas-local durable asset，再把受控 resolver URL 提交 Core；AssetPanel 显示同 Canvas 本地资产。上游产品壳的 Home 与账户按钮在正式 Kith Canvas 中移除，标题、导出与分享保留。`⌘/Ctrl+Z`、`⌘⇧Z`/`Ctrl+Y` 由宿主捕获后调用 Core undo/redo。OCR、AI处理和真实图片/视频生成明确 unavailable；没有 AgentDock、第二套画布 UI 或 Page。阶段3复用原生 Add to Chat，把选区发到现有 DM/频道/话题 Composer，不新增第二套 Chat 面板。
 
 - 规范 module id 为 `canvas`；实际 Canvas 使用当前会话 pathname 上的 `?module=canvas&canvas=<canvasId>`。`canvasId` 同时是 `WorkspaceTab.resourceId`，同一 Canvas 只聚焦一个 tab，不同 Canvas 可多开。
 - `resourceId = null` 是 Canvas Library，用于新建、导入、打开和软删除当前 Space Canvas；它不是 Canvas Page。Library 使用中文缩略图网格：首卡始终是“新建画布”，其余卡片从 Core canonical document 只读绘制轻量 SVG 预览，并显示中文标题与更新时间；网格按 Workspace 实际可用宽度自动从一列扩展到四列。标题在原生编辑器内修改后经 `metadata.rename` 持久化，并同步 Workspace tab、URL 与 SQLite；删除会关闭对应 tab，活动项退回 Library，重启后仍保持删除态。每个实际 Canvas 永远是一个独立无限平面，产品不增加 Page 导航或层级。
 - Canvas tab 与 Chat 并排，继续服从现有 split、相邻关闭、URL 活动项、按 Space 标签恢复和侧栏自动收起规则；不新增 Dock、第二套标签栏或全局壳。
-- 实际编辑器直接移植 Recombyn RCB 的画布、节点、工具栏、属性/图层/资产/导出面板视觉结构和交互，不为统一 Kith 视觉而重设计。资产面板改接 Kith Canvas-local asset library；上游 JSON 导出按钮经宿主 port 读取 Core canonical scene，等待实际下载结果后再报告成功。Library 的受限 JSON 导入会校验格式、重映射全部外部 ID、归一隐藏 root，并拒绝未重绑定资产和悬空结构；正式 URL/tab/DB 不暴露 Page。上游“Export All Pages/导出全部页面”等产品文案与动作必须替换为“导出全部画布内容/画板”等无 Page 语义，并登记为批准的 visual golden 例外。Kith 另提供标签宿主、Canvas Library、冲突/错误提示和导入导出窄桥；会话/执行者绑定仍属于阶段3。
+- 实际编辑器直接移植 Recombyn RCB 的画布、节点、工具栏、属性/图层/资产/导出面板视觉结构和交互，不为统一 Kith 视觉而重设计。资产面板改接 Kith Canvas-local asset library；上游 JSON 导出按钮经宿主 port 读取 Core canonical scene，等待实际下载结果后再报告成功。Library 的受限 JSON 导入会校验格式、重映射全部外部 ID、归一隐藏 root，并拒绝未重绑定资产和悬空结构；正式 URL/tab/DB 不暴露 Page。上游“Export All Pages/导出全部页面”等产品文案与动作必须替换为“导出全部画布内容/画板”等无 Page 语义，并登记为批准的 visual golden 例外。Kith 另提供标签宿主、Canvas Library、冲突/错误提示、导入导出窄桥，以及 Composer Canvas Context Chip 与频道/话题 executor 选择。
 - 嵌入态底部原生工具栏以当前可见编辑舞台（排除已展开的资产/图层侧栏，不按浏览器 viewport）为水平居中基准，并随 Workspace split 或内部侧栏 resize 重算。Core snapshot 回投只替换 canonical document；当前节点仍存在时保留 Recombyn renderer 的临时选中态，避免创建后选框闪退。
 - Recombyn floating UI portal 位于 Canvas island 内、React editor mount 外，既继承 Canvas scoped 样式又不被 React 首次提交清除；缩放菜单由按钮单独拥有开关事件，避免 focus 与 wrapper click 双重切换。
 - 正式 Canvas 不读取 Recombyn 自有主题偏好；Kith `<html>.dark` 是解析 light/dark/system 后的唯一事实源，Canvas root 实时同步 `data-theme`，继续复用 Recombyn 原生深浅色 token。
-- Recombyn Home/Auth/Billing/Share/Cloud/Tauri 与 AgentDock 产品壳不出现。阶段1保留的 selection-to-chat 窄 host event seam 在阶段2仍不接 chat/runtime；Canvas 输入绑定、执行者选择和 Agent 写回留给阶段3/4。
-- 圈选后的不可变 Canvas Selection Snapshot、Chat context chip、选区摘要和“在画布中打开”深链属于阶段3目标，阶段2未创建；MVP 不做原生跨栏拖放。
+- Recombyn Home/Auth/Billing/Share/Cloud/Tauri 与 AgentDock 产品壳不出现。阶段1保留的 selection-to-chat 窄 host event seam 在阶段3接到现有 Composer；Canvas Access Grant、Agent 写回和“让 Agent 处理”留给阶段4。
+- 圈选后的不可变 Canvas Selection Snapshot、Composer/消息 Canvas Context Chip、选区摘要和“在画布中打开”深链已在阶段3落地；发送成功后 chip 不可移除。MVP 不做原生跨栏拖放。
 - Recombyn Tailwind 3 必须独立构建并加 Canvas 作用域，Preflight/`html/body/:root` 不得进入 Kith 全局；Kith 全局选择器显式排除 Canvas root，并给 Canvas 建立 scoped reset 和独立 portal root。合法离线字体集先于 Kith golden 确定，替代字体是显式视觉例外；截图、交互和 computed-style 断言共同验收 UI 保护。
 
 完整边界、MVP 和后续能力见 `../superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md`。

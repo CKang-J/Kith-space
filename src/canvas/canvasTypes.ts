@@ -48,3 +48,63 @@ export interface ApplyCanvasOperationInput {
   expectedRevision: number;
   operation: CanvasOperation;
 }
+
+export interface CanvasSelectedRef {
+  id: string;
+  revision: number;
+}
+
+export interface CanvasSelectionInput {
+  canvasId: string;
+  selectedIds?: string[];
+}
+
+export interface CanvasElementProjection {
+  id: string;
+  key: string | null;
+  x: number | null;
+  y: number | null;
+  width: number | null;
+  height: number | null;
+  text: string | null;
+  fill: CanvasJson | null;
+  stroke: CanvasJson | null;
+  assetId: string | null;
+}
+
+export interface CanvasFrameProjection {
+  id: string;
+  name: string | null;
+  x: number | null;
+  y: number | null;
+  width: number | null;
+  height: number | null;
+}
+
+export interface CanvasSelectionProjection {
+  canvasId: string;
+  canvasTitle: string;
+  documentRevision: number;
+  structureRevision: number | null;
+  elements: CanvasElementProjection[];
+  frames: CanvasFrameProjection[];
+  membershipIncluded: boolean;
+  truncated: boolean;
+  wholeCanvas: boolean;
+}
+
+export interface FrozenCanvasSelectionSnapshot {
+  snapshotId: string;
+  canvasId: string;
+  canvasTitle: string;
+  documentRevision: number;
+  structureRevision: number | null;
+  selectedElements: CanvasSelectedRef[];
+  selectedFrames: CanvasSelectedRef[];
+  projection: CanvasSelectionProjection;
+  previewAssetId: string | null;
+  selectionHash: string;
+  summary: string;
+  deepLink: { moduleId: "canvas"; canvas: string };
+  canvasDeleted: boolean;
+}

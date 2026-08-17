@@ -1,7 +1,7 @@
 import { getTableColumns, getTableName, type Table } from "drizzle-orm";
 import * as schema from "./schema.js";
 
-export const SPACE_DATABASE_SCHEMA_VERSION = 12;
+export const SPACE_DATABASE_SCHEMA_VERSION = 13;
 export const MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION = 2;
 
 export interface WorkspaceMigrationHistoryEntry {
@@ -28,6 +28,7 @@ export const WORKSPACE_MIGRATION_HISTORY: readonly WorkspaceMigrationHistoryEntr
   { version: 10, tag: "0011_model_runtime_bindings", createdAt: 1784880000000, hash: "f769bdff845cb983bcad5e29bf7ae1c11613494bf3899a425eada499d14d169f", compatibleHashes: ["ae25a562a20e771338abb2797e8027b0b99354f9aebf40e09b8dd4513fba78fd"] },
   { version: 11, tag: "0012_agent_activity_surface_scope", createdAt: 1785060000000, hash: "334d5e31313898b80ed518f5f696ee5f3b2d65e88f97e29e449a6de582a37c04" },
   { version: 12, tag: "0013_canvas_core", createdAt: 1786781746994, hash: "9a22b7c6afa44a3af0e3b37fd94320080b86aced974fa1bdc1efa5803f67b9da" },
+  { version: 13, tag: "0014_canvas_chat_context", createdAt: 1787011200000, hash: "1e54a376fdb4f03f935506b6dca0d0cdd0bd57cbb41d464265d3bd5a92f134b5" },
 ];
 
 /** Immutable v2 baseline. Later schema entries are layered on explicitly below. */
@@ -160,6 +161,16 @@ const TABLES_BY_MIGRATION = new Map<string, Array<[string, string[]]>>([
       "state", "created_at", "deleted_at",
     ]],
   ]],
+  ["0014_canvas_chat_context", [
+    ["canvas_selection_snapshots", [
+      "id", "space_id", "canvas_id", "message_id", "document_revision", "structure_revision",
+      "selected_elements_json", "selected_frames_json", "projection_json", "preview_asset_id",
+      "selection_hash", "summary", "created_by", "created_at",
+    ]],
+    ["message_execution_bindings", [
+      "message_id", "executor_agent_id", "mode", "created_at",
+    ]],
+  ]],
 ]);
 
 const ADDITIONS_BY_MIGRATION = new Map<string, Array<[string, string]>>([
@@ -289,6 +300,10 @@ export function requiredSpaceIndexes(version: number, migrationCount?: number): 
       "canvas_mutations_sequence_uniq", "canvas_mutations_history_idx",
       "canvas_assets_storage_uniq", "canvas_assets_canvas_state_idx",
     ] : []),
+    ...(tags.has("0014_canvas_chat_context") ? [
+      "canvas_selection_snapshots_message_idx", "canvas_selection_snapshots_canvas_idx",
+      "message_execution_bindings_executor_idx",
+    ] : []),
   ];
 }
 
@@ -356,6 +371,14 @@ export function requiredSpaceForeignKeys(version: number, migrationCount?: numbe
       { table: "canvas_documents", from: "space_id", targetTable: "spaces", onDelete: "CASCADE" },
       { table: "canvas_mutations", from: "canvas_id", targetTable: "canvas_documents", onDelete: "CASCADE" },
       { table: "canvas_assets", from: "canvas_id", targetTable: "canvas_documents", onDelete: "CASCADE" },
+    ] : []),
+    ...(tags.has("0014_canvas_chat_context") ? [
+      { table: "canvas_selection_snapshots", from: "space_id", targetTable: "spaces", onDelete: "CASCADE" },
+      { table: "canvas_selection_snapshots", from: "canvas_id", targetTable: "canvas_documents", onDelete: "NO ACTION" },
+      { table: "canvas_selection_snapshots", from: "message_id", targetTable: "messages", onDelete: "CASCADE" },
+      { table: "canvas_selection_snapshots", from: "preview_asset_id", targetTable: "canvas_assets", onDelete: "SET NULL" },
+      { table: "message_execution_bindings", from: "message_id", targetTable: "messages", onDelete: "CASCADE" },
+      { table: "message_execution_bindings", from: "executor_agent_id", targetTable: "agents", onDelete: "NO ACTION" },
     ] : []),
   ];
 }

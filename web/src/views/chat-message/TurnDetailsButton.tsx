@@ -69,7 +69,7 @@ export function TurnDetailsButton({ turnId }: { turnId: string }) {
                   <span>{data.context.envelope?.budget ? `${data.context.envelope.budget.used}/${data.context.envelope.budget.available} tokens` : "—"}</span>
                 </div>
                 {data.context.sources.map((source) => <section className="turn-details-card" key={`${source.phase}:${source.ordinal}`}>
-                  <div className="turn-details-card-head"><strong>{source.sourceKind}</strong><span className={`turn-source-state is-${source.state}`}>{source.state}</span></div>
+                  <div className="turn-details-card-head"><strong>{source.sourceKind === "canvas_selection_snapshot" ? t("chat.canvasContextSource") : source.sourceKind}</strong><span className={`turn-source-state is-${source.state}`}>{source.state}</span></div>
                   <div className="turn-details-meta">{source.reason} · {source.injectionMode} · {source.projection} · ~{source.estimatedTokens} tokens</div>
                   <code>{source.sourceId}</code>
                   {source.content != null ? <pre>{typeof source.content === "string" ? source.content : json(source.content)}</pre> : null}

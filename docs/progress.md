@@ -2,11 +2,12 @@
 
 本文件是当前进度的权威来源。新会话先读本文件和 `AGENTS.md`，再按文档地图进入专项资料。
 
-最后更新：2026-08-17。
+最后更新：2026-08-18。
 
 - **v2 Agent 绑定门禁静默吞掉投递已根治**：创建 Claude Code / Codex / Pi 等 Harness v2 Agent 后，若运行器默认仍是 `unset`，或把默认改成 `unmanaged_cli_native` 时把从未确认过目的地的 follow-default Agent 一律打成 `restart_required`，`HarnessTurnScheduler.bindPending` 会直接跳过 pending delivery，聊天不回复、活动轨迹空白。现在从未确认过的 `runtime_default` Agent 会在运行器默认变为可用时同步为 ready 并写入 fingerprint；已确认过不同 fingerprint 的仍需 Human 再确认。绑定仍阻塞时写入 `agent_activity_log`。`POST /api/agents` 在绑定未 ready 时 409 `model_binding_setup_required`，不再留下僵尸 Agent；绑定或运行器 PATCH 成功后会重新调度 turns。unmanaged Pi 不再把空的 `PI_CODING_AGENT_DIR` 指到 generation 根目录，从而继续使用本机 `~/.pi/agent`。
 
-- **Recombyn Canvas Workspace 阶段 2 已完成并通过主任务最终复核**：正式 `canvas` 模块、Canvas Library、按 Space 隔离的 resource tabs/URL/title、多 Canvas 已进入 Kith 产品壳；workspace schema v12 的 `canvas_documents / canvas_mutations / canvas_assets`、`src/canvas/` Core、Human API 与 per-canvas realtime sequence 是 canonical owner，Renderer Redux 只作交互投影。服务端从 operation 派生 element/Frame/Frame-membership/parent/root/order read/write set，以 base sequence 扫描 ledger；renderer 对既有 Frame 属性使用稳定 Frame ID patch，不相交 Frame 可从同一 base 提交，相交 Frame、增删/重排、membership/order 冲突，scene/revision/ledger/sequence 同事务。资产删除只写 DB tombstone，不在用户可变目录做不可靠的 path unlink；resolver 每次从同一 fd 读取并核验 size + SHA-256，未知 staging 与不可达文件保留给阶段5物理 GC。versioned Scene import 用 document/ROOT/node/Frame allowlist 转换并剥离嵌套 Core 状态，继续重映射全部 ID、归一隐藏 root、拒绝未重绑定资产并经 Core operation 原子提交。`/changes` 对同 Space 已删除 Canvas 返回 tombstone，漏掉 socket 事件的离线客户端重连后幂等关闭 tab、清 URL 并回到 Library；网络失败与跨 Space 404 不视为删除。Stage1 两个 SHA 和 upstream bytes 保持不变。Selection Snapshot、Chat、Gateway/MCP、Agent 写回和真实 AI 生成仍为零；retained 历史/资产 reachability、阶段5物理 GC、Windows/Linux 实机文件语义与约 3.5 MB Canvas chunk 仍未通过，不能表述为性能或跨平台完成。
+- **Recombyn Canvas Workspace 阶段 3 已实现**：Human 可通过原生 Add to Chat 把当时选区交给现有 DM/频道/话题。workspace schema v13 新增 `canvas_selection_snapshots` 与 `message_execution_bindings`。Canvas Core 从 canonical scene 冻结不可变 Selection Snapshot（revision、有界投影、摘要、深链）；MessagePosting 同一事务写入 snapshot、canvas module context ref、server-owned required binding 和 executor required delivery，失败整笔回滚。DM 由服务端从对端推导 executor；频道/话题必须显式选择唯一 v2、未删除、有当前 surface access 且拥有 `message:send` 的 executor，并保持原 surface。其他 Agent 不获 optional wake。Composer 显示可移除/可预览 chip，发送成功后消息上的 chip 不可变。注册式 `ContextObjectSnapshotResolver` 把 bound refs 注入 Context Envelope/Turn Inspector；Canvas 删除后历史 snapshot 仍可审计，live read/write/deep-link fail-closed。阶段4的 Canvas Access Grant、MCP/CLI Gateway、`snapshot_get`、Agent 读写/ToolOps 回写、`turn_output_artifacts` 和 AgentDock 尚未开始。
+- **Recombyn Canvas Workspace 阶段 2 已完成并通过主任务最终复核**：正式 `canvas` 模块、Canvas Library、按 Space 隔离的 resource tabs/URL/title、多 Canvas 已进入 Kith 产品壳；workspace schema v12 的 `canvas_documents / canvas_mutations / canvas_assets`、`src/canvas/` Core、Human API 与 per-canvas realtime sequence 是 canonical owner，Renderer Redux 只作交互投影。服务端从 operation 派生 element/Frame/Frame-membership/parent/root/order read/write set，以 base sequence 扫描 ledger；renderer 对既有 Frame 属性使用稳定 Frame ID patch，不相交 Frame 可从同一 base 提交，相交 Frame、增删/重排、membership/order 冲突，scene/revision/ledger/sequence 同事务。资产删除只写 DB tombstone，不在用户可变目录做不可靠的 path unlink；resolver 每次从同一 fd 读取并核验 size + SHA-256，未知 staging 与不可达文件保留给阶段5物理 GC。versioned Scene import 用 document/ROOT/node/Frame allowlist 转换并剥离嵌套 Core 状态，继续重映射全部 ID、归一隐藏 root、拒绝未重绑定资产并经 Core operation 原子提交。`/changes` 对同 Space 已删除 Canvas 返回 tombstone，漏掉 socket 事件的离线客户端重连后幂等关闭 tab、清 URL 并回到 Library；网络失败与跨 Space 404 不视为删除。Stage1 两个 SHA 和 upstream bytes 保持不变。retained 历史/资产 reachability、阶段5物理 GC、Windows/Linux 实机文件语义与约 3.5 MB Canvas chunk 仍未通过，不能表述为性能或跨平台完成。
 
 - **Windows workspace migration journal 换行符兼容已根治**：Drizzle 以迁移 SQL 原始字节计算 journal hash，而既有 Windows checkout 会把 LF 改写为 CRLF，导致同一迁移在 schema v10 完成后被严格兼容门误判为 journal 不一致，Desktop 因全部已注册 Space 不可打开而进入重连页。`drizzle/*.sql` 现由 `.gitattributes` 固定为 LF；`WORKSPACE_MIGRATION_HISTORY` 保留 canonical LF hash，并只对白名单中的逐文件 CRLF hash提供精确兼容，时间戳、顺序、长度、完整 schema/index/FK 与 SQLite integrity 校验保持不变，未知/缺失 journal 继续拒绝。Windows 定向回归14/14通过，现有4个真实 schema v10 Space 均通过且 Core 在7777 ready时无 migration journal 告警。
 - **Windows下Pi/模型文件权限误报已根治并补齐DACL门禁**：CredentialPort、Pi CLI配置读取器、通用CLI脱敏导入和Pi Advisor helper完整性检查统一使用平台文件元数据策略，不再把Windows/Node合成的POSIX `0666` mode误判为认证、配置或artifact异常；Windows凭据目录和文件现在会主动收紧并验证当前owner SID的私有DACL，已有宽松ACL会在首次读取时升级，收紧或验证失败则fail closed。普通文件、大小上限、同一FD前后身份、加密、内容digest和凭据摘要校验继续保留，macOS/Linux的uid与各自权限掩码门禁不变。隔离回归已覆盖真实Windows凭据写入/单次activation、Pi配置导入、helper prepare和现有模型配置绑定；内置Pi无需安装Pi CLI或创建Pi全局配置。
@@ -170,7 +171,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 
 1. P-A9 与本次 Runtime admission 真实数据回归修复完成后停止本阶段；不自动推送、不合并、不发布，也不做仓库外数据清理。
 2. P-A10.0–P-A10.7 已收口；统一模型/运行器控制面、Pi正式v2 runtime与记忆设置UI必须按`2026-07-23-model-provider-runtime-memory-settings-design.md`作为独立增量实施，不回写成P-A10补丁。P-A11 consolidation、P-A12 skill reconciliation、P-S1安全升级或H5仍按各自独立规格推进；Rust试验和生产力模块继续按各自前置关系推进。
-3. Canvas 阶段2已完成并通过主任务最终复核；本轮提交不进入阶段3。Selection Snapshot/Chat、Agent Gateway/MCP、Agent写回与真实生成仍未开始。
+3. Canvas 阶段3已实现 Selection Snapshot 与现有 Chat surface 联动；本轮不进入阶段4。Canvas Access Grant、MCP/CLI Gateway、Agent `snapshot_get`/读写 Canvas、ToolOps 回写、`turn_output_artifacts` 与真实生成仍未开始。
 
 ## 六、验证与工作约定
 
@@ -196,7 +197,7 @@ Runtime 对接调研已完成，位于 `docs/kith-space/notes/_runtime-research/
 - `docs/superpowers/specs/2026-07-15-chat-message-ui-density-design.md`：聊天消息流密度、气泡层级、消息工具、表现层组件边界、实施切片与量化验收规格；代码、自动化验证与用户手动视觉验收均已完成。
 - `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`：P-A9 进程拓扑、深 Module、窄 Interface、实施切片、性能/Rust 决策门与验收规格。
 - `docs/superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`：已实现的模型供应商/模型配置/运行器控制面、Pi正式v2 runtime、Memory Advisor与Agent记忆页重构规格。
-- `docs/superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md`：阶段 1、阶段 2 均已通过主任务最终复核的 Recombyn Canvas Workspace 规格，含 MVP、5个开发阶段、Agent/Context/Gateway 与后续路线。
+- `docs/superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md`：阶段 1–3 已实现的 Recombyn Canvas Workspace 规格，含 MVP、5个开发阶段、Agent/Context/Gateway 与后续路线。
 - `docs/vision.md`：长期北极星与永久边界。
 - `docs/decisions.md`：锁定决策、推理和被推翻路线。
 - `docs/roadmap.md`：阶段与后续能力顺序。

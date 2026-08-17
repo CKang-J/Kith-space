@@ -36,6 +36,7 @@ import { shouldGroupMessage } from "./chat-message/messageGrouping.ts";
 import { surfaceForSender } from "./chat-message/messagePresentation.ts";
 import { buildMessageImageGallery, isSingleImageMessage } from "./chat-message/messageImageGallery.ts";
 import { TurnDetailsButton } from "./chat-message/TurnDetailsButton.tsx";
+import { CanvasContextChip } from "./chat-message/CanvasContextChip.tsx";
 import type { LightboxImage } from "../Lightbox.tsx";
 import { useConversationApi } from "../features/conversation/data/conversationApi.ts";
 import { useTaskApi } from "../features/conversation/data/taskApi.ts";
@@ -628,6 +629,7 @@ export function Chat({
                       ? <AgentReplyPreviewBody m={m} />
                       : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={messageChannels} nav={navToken} /></div>}
                     {!!m.attachments?.length && <div className={`msg-atts attachment-list${isSingleImageMessage(m.attachments) ? " attachment-list--single-image" : ""}`}>{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} gallery={messageImageGallery} />)}</div>}
+                    {m.canvasContext ? <div className="mt-2"><CanvasContextChip context={m.canvasContext} /></div> : null}
                     {hasInlineMeta ? <div className="msg-meta">
                         {m.taskStatus && (() => {
                           const TI = TASK_ICON[m.taskStatus] || Circle;
@@ -835,6 +837,7 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
           ? <AgentReplyPreviewBody m={m} />
           : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={[...channels, ...archivedChannels]} nav={navToken} /></div>}
         {!!m.attachments?.length && <div className={`msg-atts attachment-list${isSingleImageMessage(m.attachments) ? " attachment-list--single-image" : ""}`}>{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} gallery={threadImageGallery} />)}</div>}
+        {m.canvasContext ? <div className="mt-2"><CanvasContextChip context={m.canvasContext} /></div> : null}
         <Reactions m={m} mine={me?.id ?? ""} readOnly={readOnly} onReact={(emoji, remove) => react(m.id, emoji, remove)} />
       </ChatMessageItem>
     </Fragment>

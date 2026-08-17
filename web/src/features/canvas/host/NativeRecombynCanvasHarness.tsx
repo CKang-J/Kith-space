@@ -26,6 +26,7 @@ import { useCanvasCoreResource } from "./useCanvasCoreResource";
 import { useCanvasAssetBridges } from "./useCanvasAssetBridges";
 import { useRecombynCanvasProjection } from "./useRecombynCanvasProjection";
 import { RecombynEditorIconSprite } from "./RecombynEditorIconSprite";
+import { bindCanvasSelectionToChat } from "./canvasChatBridge";
 
 const PROJECT_ID = "kith-stage-one-native";
 const STAGE_ONE_THEME = new URLSearchParams(window.location.search).get("__canvas_theme") === "dark" ? "dark" : "light";
@@ -214,6 +215,11 @@ function DurableCanvasEditor({ canvasId, resourceKey, snapshot, client, connecti
   connectionRef: MutableRefObject<RecombynCoreProjectionConnection | null>;
 }) {
   const { connect, handleHistory } = useRecombynCanvasProjection({ canvasId, resourceKey, snapshot, client, connectionRef });
+  useEffect(() => bindCanvasSelectionToChat({
+    canvasId,
+    canvasTitle: snapshot.title,
+    previewDocument: snapshot.document,
+  }), [canvasId, snapshot.document, snapshot.title]);
   return <NativeEditorSurface
     projectId={canvasId}
     projectName={snapshot.title}

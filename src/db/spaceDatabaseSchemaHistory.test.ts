@@ -11,6 +11,7 @@ test("workspace compatibility manifest is selected by the database version", () 
   const v7 = requiredSpaceSchema(7);
   const v8 = requiredSpaceSchema(8);
   const v12 = requiredSpaceSchema(12);
+  const v13 = requiredSpaceSchema(13);
 
   assert.equal(v2.size, 19);
   assert.ok(!v2.get("agents")?.includes("introduced_at"));
@@ -38,6 +39,10 @@ test("workspace compatibility manifest is selected by the database version", () 
   assert.ok(v12.get("canvas_documents")?.includes("revision"));
   assert.ok(v12.has("canvas_mutations"));
   assert.ok(v12.has("canvas_assets"));
+  assert.ok(!v12.has("canvas_selection_snapshots"));
+  assert.ok(v13.has("canvas_selection_snapshots"));
+  assert.ok(v13.has("message_execution_bindings"));
+  assert.ok(v13.get("canvas_selection_snapshots")?.includes("selection_hash"));
   assert.deepEqual(requiredSpaceIndexes(5), []);
   assert.ok(requiredSpaceIndexes(6).includes("runtime_sessions_current_uniq"));
   assert.ok(requiredSpaceIndexes(8).includes("memory_advisor_jobs_due_idx"));
@@ -47,4 +52,7 @@ test("workspace compatibility manifest is selected by the database version", () 
   assert.ok(requiredSpaceForeignKeys(6).some((foreignKey) => foreignKey.table === "agent_delivery_items" && foreignKey.from === "target_runtime_session_id" && foreignKey.onDelete === "SET NULL"));
   assert.ok(requiredSpaceForeignKeys(8).some((foreignKey) => foreignKey.table === "memory_advisor_jobs" && foreignKey.from === "source_turn_id" && foreignKey.onDelete === "CASCADE"));
   assert.ok(requiredSpaceForeignKeys(12).some((foreignKey) => foreignKey.table === "canvas_assets" && foreignKey.targetTable === "canvas_documents" && foreignKey.onDelete === "CASCADE"));
+  assert.ok(requiredSpaceIndexes(13).includes("canvas_selection_snapshots_message_idx"));
+  assert.ok(requiredSpaceForeignKeys(13).some((foreignKey) => foreignKey.table === "message_execution_bindings" && foreignKey.from === "executor_agent_id" && foreignKey.onDelete === "NO ACTION"));
+  assert.ok(requiredSpaceForeignKeys(13).some((foreignKey) => foreignKey.table === "canvas_selection_snapshots" && foreignKey.from === "canvas_id" && foreignKey.onDelete === "NO ACTION"));
 });

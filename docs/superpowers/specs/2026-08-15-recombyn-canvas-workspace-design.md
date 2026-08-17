@@ -601,6 +601,8 @@ Canvas 诊断至少记录：canvas/mutation id、可选 job id、actor domain、
 
 ### 阶段 3：Canvas 与 Chat 上下文联动
 
+实现状态（2026-08-18）：阶段3已实现。workspace schema v13 新增 `canvas_selection_snapshots` 与 `message_execution_bindings`。原生 SelectionContextToolbar/MultiSelectionToolbar 经 `kith:canvas-selection-to-chat` 把选区交给现有 Composer；Core 重读 canonical scene 并冻结 snapshot（document/structure revision、有界投影、摘要、深链）。MessagePosting 同一事务写入 snapshot、canvas module context ref、server-owned required binding 和 executor required delivery；DM 从对端推导 executor，频道/话题必须显式选择唯一 eligible executor 并保持原 surface。executor 必须未删除、v2、有当前 surface access 且实时拥有 `message:send`，否则整笔回滚且不留孤立数据。其他 Agent 不获 optional wake，也不因正文 mention 改 surface。Composer chip 可移除/可预览，发送成功后消息 chip 不可变。注册式 Canvas `ContextObjectSnapshotResolver` 接入 Context Assembler 与 Turn Inspector；Canvas 删除后历史 snapshot 仍可审计，live read/write/deep-link fail-closed。空选区冻结整张画布有界 snapshot，不是 grant。“让 Agent 处理”、Canvas Access Grant、MCP/CLI Gateway、`snapshot_get`、Agent 读写/回写与 AgentDock 仍留给阶段4。
+
 目标：Human 可以把发送当时的画布选区安全交给真实 Chat surface 中的一个明确 Agent。
 
 交付：

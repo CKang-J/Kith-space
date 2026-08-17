@@ -99,6 +99,13 @@
       "when": 1786781746994,
       "tag": "0013_canvas_core",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1787011200000,
+      "tag": "0014_canvas_chat_context",
+      "breakpoints": true
     }
   ]
 }

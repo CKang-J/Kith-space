@@ -284,7 +284,7 @@
 : Chat 右侧可关闭、聚焦并按 Space 恢复的业务资源视图。稳定身份由 `moduleId + resourceId` 组成；同一资源重复打开只聚焦既有标签。当前 URL 只表达活动标签，完整标签集合由版本化本地状态保存。
 
 **Canvas / 无限画布**
-: 2026-08-15 已接受、尚未实现的 Kith 生产力模块。内部直接移植 Recombyn RCB 编辑器；每个 `canvasId` 是一张独立无限平面和一个 Workspace resource tab，不增加用户可见 Page。Kith Canvas Core Module 是文档、资产、revision、mutation 和 Agent 工具的唯一 durable truth。
+: 2026-08-15 已接受、阶段1–3已实现的 Kith 生产力模块。内部直接移植 Recombyn RCB 编辑器；每个 `canvasId` 是一张独立无限平面和一个 Workspace resource tab，不增加用户可见 Page。Kith Canvas Core Module 是文档、资产、revision、mutation 的唯一 durable truth；阶段3把选区冻结为 Chat 上下文，阶段4才允许 Agent 经 Gateway 回写。
 
 **Canvas Selection Snapshot / 画布选区快照**
 : Human 发送选区时由 Core 从 canonical scene 冻结的不可变上下文，包含 document/元素/Frame revisions、有界文字/几何/样式/资产投影、可选预览与 hash。Chat 消息只引用一个 snapshot id，注册式 Context Object resolver 遍历所有 bound message 的规范 refs 后再把它冻结进 turn；后续画布变化不改写历史快照。
