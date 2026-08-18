@@ -1,11 +1,12 @@
-import { useState } from "react";
-import { X } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Eye, ScanSearch, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CanvasLibraryThumbnail } from "@/features/canvas/host/CanvasLibraryThumbnail";
 import { requestCanvasSelectionFocus } from "@/features/canvas/host/canvasSelectionFocus";
-import { formatCanvasSelectionSummaryI18n, type CanvasSelectionSummaryParts } from "@/features/canvas/host/canvasSelectionCopy";
+import { formatCanvasSelectionDetailI18n, type CanvasSelectionSummaryParts } from "@/features/canvas/host/canvasSelectionCopy";
 import { workspaceLocationForModule } from "@/shell/workspaceRoute";
 import { cn } from "@/lib/utils";
 
@@ -81,13 +82,42 @@ function summaryPartsFrom(context: CanvasContextChipModel): CanvasSelectionSumma
   };
 }
 
+function IconAction({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          title={label}
+          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          onClick={onClick}
+        >
+          {children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function CanvasContextChip({
   context,
   removable,
+  compact,
   onRemove,
 }: {
   context: CanvasContextChipModel;
   removable?: boolean;
+  compact?: boolean;
   onRemove?: () => void;
 }) {
   const { t } = useTranslation();
@@ -97,7 +127,9 @@ export function CanvasContextChip({
   const available = context.canvasAvailable !== false;
   const preview = previewFrom(context);
   const title = context.canvasTitle?.trim() || t("chat.canvasUntitled");
-  const summary = formatCanvasSelectionSummaryI18n(summaryPartsFrom(context), t);
+  const parts = summaryPartsFrom(context);
+  const selectionLabel = formatCanvasSelectionDetailI18n(parts, t);
+  const revisionLabel = t("chat.canvasRevision", { revision: parts.documentRevision });
   const openCanvas = () => {
     const selected = selectedIdsFrom(context);
     if (available) {
@@ -115,53 +147,48 @@ export function CanvasContextChip({
     }
     setExpanded(true);
   };
+  const previewLabel = expanded ? t("chat.canvasHidePreview") : t("chat.canvasShowPreview");
+  const viewLabel = available ? t("chat.canvasViewSelection") : t("chat.canvasViewSnapshot");
 
   return (
     <div
       data-canvas-context-chip
       data-canvas-available={available ? "true" : "false"}
       className={cn(
-        "relative flex max-w-72 min-w-44 flex-col overflow-hidden rounded-[13px] border border-border bg-muted/40",
+        "relative flex min-w-44 max-w-64 shrink-0 flex-col overflow-hidden rounded-[13px] border border-border bg-muted/40",
+        compact && "min-w-40 max-w-56",
         !available && "opacity-80",
       )}
     >
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent p-1.5 text-left text-foreground"
-        onClick={openCanvas}
-        aria-label={available ? t("chat.canvasOpenInCanvas", { title }) : t("chat.canvasUnavailable")}
-      >
-        <span className="size-11 shrink-0 overflow-hidden rounded-[10px]">
+      <div className="flex min-w-0 items-center gap-2 p-1.5 pr-8">
+        <span className={cn("shrink-0 overflow-hidden rounded-[10px]", compact ? "size-9" : "size-11")}>
           {preview
             ? <CanvasLibraryThumbnail document={preview} title={title} />
             : <span className="grid size-full place-items-center bg-muted text-[11px] text-muted-foreground">{t("chat.canvasName")}</span>}
         </span>
-        <span className="min-w-0">
+        <span className="min-w-0 flex-1">
           <strong className="block truncate text-sm font-medium">{title}</strong>
           <small className="block truncate text-[length:var(--font-size-meta)] text-muted-foreground">
-            {available ? summary : t("chat.canvasUnavailable")}
+            {available ? selectionLabel : t("chat.canvasUnavailable")}
           </small>
+          {available ? (
+            <small className="block truncate text-[length:var(--font-size-meta)] text-muted-foreground">
+              {revisionLabel}
+            </small>
+          ) : null}
         </span>
-      </button>
-      <div className="flex items-center gap-1 px-1.5 pb-1.5">
-        <button
-          type="button"
-          className="rounded-md px-1.5 py-0.5 text-[length:var(--font-size-meta)] text-muted-foreground hover:bg-muted"
-          onClick={() => setExpanded((open) => !open)}
-        >
-          {expanded ? t("chat.canvasHidePreview") : t("chat.canvasShowPreview")}
-        </button>
-        <button
-          type="button"
-          className="rounded-md px-1.5 py-0.5 text-[length:var(--font-size-meta)] text-muted-foreground hover:bg-muted"
-          onClick={openCanvas}
-        >
-          {available ? t("chat.canvasViewSelection") : t("chat.canvasViewSnapshot")}
-        </button>
+      </div>
+      <div className="flex items-center gap-0.5 px-1.5 pb-1.5">
+        <IconAction label={previewLabel} onClick={() => setExpanded((open) => !open)}>
+          <Eye className="size-3.5" />
+        </IconAction>
+        <IconAction label={viewLabel} onClick={openCanvas}>
+          <ScanSearch className="size-3.5" />
+        </IconAction>
       </div>
       {expanded ? (
         <div className="border-t border-border p-1.5">
-          <div className="h-28 overflow-hidden rounded-[10px] bg-muted">
+          <div className={cn("overflow-hidden rounded-[10px] bg-muted", compact ? "h-20" : "h-28")}>
             {preview
               ? <CanvasLibraryThumbnail document={preview} title={title} />
               : <span className="grid size-full place-items-center text-[11px] text-muted-foreground">{t("chat.canvasName")}</span>}
@@ -175,6 +202,7 @@ export function CanvasContextChip({
           size="icon-sm"
           className="absolute right-1 top-1 size-4 rounded-full bg-background/90 text-muted-foreground"
           aria-label={t("chat.canvasRemoveContext", { title })}
+          title={t("chat.canvasRemoveContext", { title })}
           onClick={onRemove}
         >
           <X className="size-2.5" />

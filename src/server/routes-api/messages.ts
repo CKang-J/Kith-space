@@ -140,12 +140,13 @@ export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
   if (p === "/api/messages" && method === "POST") {
     const b = await readJson(req);
     const hasAtt = Array.isArray(b.attachmentIds) && b.attachmentIds.length > 0;
-    if (!b.channelId || (!b.content && !hasAtt && !b.canvasSelection)) return (sendErr(res, 400, "channelId + content (or attachmentIds) required"), true);
+    const hasCanvas = Boolean(b.canvasSelection) || (Array.isArray(b.canvasSelections) && b.canvasSelections.length > 0);
+    if (!b.channelId || (!b.content && !hasAtt && !hasCanvas)) return (sendErr(res, 400, "channelId + content (or attachmentIds) required"), true);
     if (!(await canHumanReadChannel(spaceId, b.channelId))) return (sendErr(res, 403, "forbidden"), true);
     const human = humanIdentityForId(humanId);
     if (!human) return (sendErr(res, 403, "not the local Human"), true);
     const mode = normalizeTaskExecutionMode(b.taskExecutionMode ?? b.executionMode);
-    if (b.asTask && b.canvasSelection) return (sendErr(res, 400, "Canvas context cannot be sent as a task"), true);
+    if (b.asTask && hasCanvas) return (sendErr(res, 400, "Canvas context cannot be sent as a task"), true);
     if (b.memoryPolicy !== undefined && b.memoryPolicy !== "eligible" && b.memoryPolicy !== "exclude") {
       return (sendErr(res, 400, "memoryPolicy must be eligible or exclude"), true);
     }
@@ -163,6 +164,7 @@ export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
         contextSnapshot: b.contextSnapshot,
         memoryPolicy: b.memoryPolicy ?? "eligible",
         canvasSelection: b.canvasSelection,
+        canvasSelections: b.canvasSelections,
         executionBinding: b.executionBinding,
       });
       return (sendJson(res, 200, { ok: true, id: msg.id, seq: msg.seq }), true);

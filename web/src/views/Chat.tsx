@@ -70,6 +70,10 @@ function AttCard({ a, url, gallery }: { a: Att; url: string; gallery: readonly L
   return <AttachmentCard filename={a.filename} mimeType={a.mimeType} imageSrc={image ? url : undefined} imageId={image ? a.id : undefined} imageGallery={image ? gallery : undefined} href={image ? undefined : url} sizeLabel={fmtSize(a.sizeBytes)} />;
 }
 
+function messageCanvasContexts(m: Msg) {
+  return m.canvasContexts?.length ? m.canvasContexts : m.canvasContext ? [m.canvasContext] : [];
+}
+
 // Message emoji reactions: chip shows emoji×count (highlighted if the current user reacted), click to toggle; hovering the add button reveals a quick picker
 const QUICK_EMOJIS = ["👍", "✅", "❤️", "😂", "🎉", "👀", "🚀", "🙏"];
 function Reactions({ m, mine, onReact, readOnly = false }: { m: Msg; mine: string; onReact: (emoji: string, remove: boolean) => void; readOnly?: boolean }) {
@@ -629,7 +633,13 @@ export function Chat({
                       ? <AgentReplyPreviewBody m={m} />
                       : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={messageChannels} nav={navToken} /></div>}
                     {!!m.attachments?.length && <div className={`msg-atts attachment-list${isSingleImageMessage(m.attachments) ? " attachment-list--single-image" : ""}`}>{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} gallery={messageImageGallery} />)}</div>}
-                    {m.canvasContext ? <div className="mt-2"><CanvasContextChip context={m.canvasContext} /></div> : null}
+                    {messageCanvasContexts(m).length ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {messageCanvasContexts(m).map((context) => (
+                          <CanvasContextChip key={context.snapshotId || `${context.canvasId}-${context.documentRevision}`} compact context={context} />
+                        ))}
+                      </div>
+                    ) : null}
                     {hasInlineMeta ? <div className="msg-meta">
                         {m.taskStatus && (() => {
                           const TI = TASK_ICON[m.taskStatus] || Circle;
@@ -837,7 +847,13 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
           ? <AgentReplyPreviewBody m={m} />
           : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={[...channels, ...archivedChannels]} nav={navToken} /></div>}
         {!!m.attachments?.length && <div className={`msg-atts attachment-list${isSingleImageMessage(m.attachments) ? " attachment-list--single-image" : ""}`}>{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} gallery={threadImageGallery} />)}</div>}
-        {m.canvasContext ? <div className="mt-2"><CanvasContextChip context={m.canvasContext} /></div> : null}
+        {messageCanvasContexts(m).length ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {messageCanvasContexts(m).map((context) => (
+              <CanvasContextChip key={context.snapshotId || `${context.canvasId}-${context.documentRevision}`} compact context={context} />
+            ))}
+          </div>
+        ) : null}
         <Reactions m={m} mine={me?.id ?? ""} readOnly={readOnly} onReact={(emoji, remove) => react(m.id, emoji, remove)} />
       </ChatMessageItem>
     </Fragment>

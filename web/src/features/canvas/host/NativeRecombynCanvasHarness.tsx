@@ -28,7 +28,6 @@ import { useRecombynCanvasProjection } from "./useRecombynCanvasProjection";
 import { RecombynEditorIconSprite } from "./RecombynEditorIconSprite";
 import i18n from "@/i18n";
 import { bindCanvasSelectionToChat } from "./canvasChatBridge";
-import { CanvasSendToChatHostAction } from "./CanvasSendToChatHostAction";
 import { applyCanvasSelectionFocus } from "./canvasSelectionFocus";
 
 const PROJECT_ID = "kith-stage-one-native";
@@ -65,7 +64,7 @@ interface NativeEditorSurfaceProps {
   onHistory?(kind: "undo" | "redo"): void;
 }
 
-function NativeEditorApp({ projectId, sendToChatTitle }: { projectId: string; sendToChatTitle?: string }) {
+function NativeEditorApp({ projectId }: { projectId: string; sendToChatTitle?: string }) {
   return (
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
@@ -73,7 +72,6 @@ function NativeEditorApp({ projectId, sendToChatTitle }: { projectId: string; se
           <MemoryRouter initialEntries={[`/editor/${projectId}`]}>
             <Routes><Route path="/editor/:projectId" element={<EditorPage />} /></Routes>
           </MemoryRouter>
-          {sendToChatTitle ? <CanvasSendToChatHostAction canvasId={projectId} canvasTitle={sendToChatTitle} /> : null}
           <MessageContainer />
         </div>
       </QueryClientProvider>
@@ -148,7 +146,7 @@ function NativeEditorSurface({ projectId, projectName = "Kith Canvas", document:
     localStorage.setItem("recombyn-editor-tour-v3", "1");
     const detachPortalRoot = attachRecombynPortalRoot(rootRef.current);
     const editorRoot = createRoot(editorMountRef.current);
-    editorRoot.render(<NativeEditorApp projectId={projectId} sendToChatTitle={embedded ? projectName : undefined} />);
+    editorRoot.render(<NativeEditorApp projectId={projectId} />);
     document.documentElement.dataset.recombynStageOne = "native";
     const releaseFocus = embedded
       ? applyCanvasSelectionFocus(projectId, (request) => {

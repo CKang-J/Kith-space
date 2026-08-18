@@ -281,8 +281,8 @@ export function loadCanvasContextsForMessages(
   db: SpaceDb,
   spaceId: string,
   messageIds: string[],
-): Map<string, FrozenCanvasSelectionSnapshot> {
-  const result = new Map<string, FrozenCanvasSelectionSnapshot>();
+): Map<string, FrozenCanvasSelectionSnapshot[]> {
+  const result = new Map<string, FrozenCanvasSelectionSnapshot[]>();
   if (!messageIds.length) return result;
   const rows = db.select().from(schema.canvasSelectionSnapshots)
     .where(inArray(schema.canvasSelectionSnapshots.messageId, messageIds)).all();
@@ -297,9 +297,17 @@ export function loadCanvasContextsForMessages(
   )).all();
   const deleted = new Set(canvases.filter((row) => row.deletedAt).map((row) => row.id));
   const missing = new Set(canvasIds.filter((id) => !canvases.some((row) => row.id === id)));
-  for (const row of rows) {
+  const ordered = [...rows].sort((left, right) => {
+    const leftTime = new Date(left.createdAt).getTime();
+    const rightTime = new Date(right.createdAt).getTime();
+    if (leftTime !== rightTime) return leftTime - rightTime;
+    return left.id.localeCompare(right.id);
+  });
+  for (const row of ordered) {
     if (!row.messageId) continue;
-    result.set(row.messageId, canvasSelectionPresentation(row, deleted.has(row.canvasId) || missing.has(row.canvasId)));
+    const list = result.get(row.messageId) ?? [];
+    list.push(canvasSelectionPresentation(row, deleted.has(row.canvasId) || missing.has(row.canvasId)));
+    result.set(row.messageId, list);
   }
   return result;
 }

@@ -63,6 +63,7 @@ import {
 import { FillColorSwatch, StrokeColorSwatch } from './StyleToolbarIcons';
 import BlendModeControl from './BlendModeControl';
 import { SelectionToolbarShell } from './SelectionToolbarShell';
+import { canvasToolbarChatTargets, SendToChatToolbarAction } from './SendToChatToolbarAction';
 import AspectRatioPresetMenu, {
   ELEMENT_ASPECT_PRESETS,
 } from './AspectRatioPresetMenu';
@@ -629,6 +630,8 @@ function MultiSelectionToolbar({
         </Tooltip>
         <Sep />
         <ExportSelectionPopover nodeIds={opNodeIds} />
+        <Sep />
+        <SendToChatToolbarAction target={canvasToolbarChatTargets(opNodeIds, frameIds)} />
       </SelectionToolbarShell>
     );
   }
@@ -815,6 +818,7 @@ function MultiSelectionToolbar({
         </Tooltip>
       )}
       <ExportSelectionPopover nodeIds={opNodeIds} />
+      <SendToChatToolbarAction target={canvasToolbarChatTargets(opNodeIds, frameIds)} />
     </>
   );
 

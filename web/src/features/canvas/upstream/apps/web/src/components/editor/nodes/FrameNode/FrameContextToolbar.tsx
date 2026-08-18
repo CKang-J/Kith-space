@@ -31,6 +31,7 @@ import {
 import Tooltip from '@recombyn-native/components/base/tooltip';
 import { SEL_ICON_BTN, SEL_SIZE_INPUT, SEL_TOOL_BTN } from '@recombyn-native/components/rcb/selection/chrome/ToolbarValueSlider';
 import { SelectionToolbarShell } from '@recombyn-native/components/rcb/selection/chrome/SelectionToolbarShell';
+import { SendToChatToolbarAction } from '@recombyn-native/components/rcb/selection/chrome/SendToChatToolbarAction';
 import { ExportSelectionPopover } from '@recombyn-native/components/editor/panels/ExportSelectionPanel';
 import { cn } from '@recombyn-native/utils/classnames';
 
@@ -348,6 +349,7 @@ function FrameContextToolbar({ frame }: Props) {
         }}
         baseName={frame.name || 'Frame'}
       />
+      <SendToChatToolbarAction target={`frame:${frame.id}`} />
     </SelectionToolbarShell>
   );
 }

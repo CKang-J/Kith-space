@@ -93,6 +93,7 @@ import {
 } from '@recombyn-native/components/editor/nodes/AudioNode';
 import ShapeSelectionToolbar from '@recombyn-native/components/editor/nodes/ShapeNode/ShapeSelectionToolbar';
 import { SelectionToolbarShell } from './SelectionToolbarShell';
+import { SendToChatToolbarAction } from './SendToChatToolbarAction';
 import {
   cornerRadiusToolbarDisplay,
   getLiveCornerRadiusPreview,
@@ -888,6 +889,8 @@ function SelectionContextToolbar(props: Props): ReactNode {
               <ExportSelectionPopover nodeIds={[nodeId]} />
             </>
           ) : null}
+          <Sep />
+          <SendToChatToolbarAction target={nodeId} />
       </SelectionToolbarShell>
 
       {kind === 'text' ? (

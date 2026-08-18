@@ -963,9 +963,10 @@
       "changes": [
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
-        "add host-project typecheck boundary"
+        "add host-project typecheck boundary",
+        "add native Send to Chat selection-toolbar action"
       ],
-      "targetSha256": "d3464ef3dc5bba5639370007f64c279f3d5bca49b235acf5daa8ee34e76357ea"
+      "targetSha256": "f951ef5935e8c9acbc53a4febecd99ed86f00652a3821c452e3812454ec3cf62"
     },
     {
       "source": "apps/web/src/components/editor/nodes/FrameNode/FrameSizePresetMenu.tsx",
@@ -2903,9 +2904,10 @@
       "changes": [
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
-        "add host-project typecheck boundary"
+        "add host-project typecheck boundary",
+        "add native Send to Chat selection-toolbar action"
       ],
-      "targetSha256": "e324bba3c3023968e51a9f84985b72c2ece95e2ba39058a9a0b910da74bf9588"
+      "targetSha256": "a4dad24097cde4142370ce7cd1ea87e3f2dd7c7f4cf6b86c96bfa0b7032ef29b"
     },
     {
       "source": "apps/web/src/components/rcb/selection/chrome/NodeTitleLabel.tsx",
@@ -2940,9 +2942,10 @@
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
         "add host-project typecheck boundary",
-        "disable unavailable Stage 1 image-processing actions while retaining native toolbar structure"
+        "disable unavailable Stage 1 image-processing actions while retaining native toolbar structure",
+        "add native Send to Chat selection-toolbar action"
       ],
-      "targetSha256": "0a6237c0778c434d625ee4a32380a579f730668345398db38cb800c1b3ab4502"
+      "targetSha256": "2d91fecdc9cd3752f4265e7fe8ee4a266d179e2404d6818d4ce307d3efdb2671"
     },
     {
       "source": "apps/web/src/components/rcb/selection/chrome/SelectionToolbarShell.tsx",

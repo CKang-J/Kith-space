@@ -17,6 +17,15 @@ export interface CanvasMessageContext {
   deepLink: FrozenCanvasSelectionSnapshot["deepLink"];
 }
 
+export function presentCanvasContexts(
+  snapshots: FrozenCanvasSelectionSnapshot[] | null | undefined,
+): CanvasMessageContext[] {
+  return (snapshots ?? []).flatMap((snapshot) => {
+    const presented = presentCanvasContext(snapshot);
+    return presented ? [presented] : [];
+  });
+}
+
 export function presentCanvasContext(
   snapshot: FrozenCanvasSelectionSnapshot | null | undefined,
 ): CanvasMessageContext | null {

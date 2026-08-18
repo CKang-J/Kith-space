@@ -50,7 +50,7 @@ export interface CanvasMessageContextView {
   canvasAvailable: boolean;
   deepLink?: { canvas?: string };
 }
-export interface Msg { id: string; seq: number; channelId: string; senderType: string; senderId?: string | null; senderName: string; senderDeleted?: boolean; content: string; messageType?: string; actionMetadata?: ActionMeta | null; createdAt?: string; taskStatus?: string | null; taskNumber?: number | null; taskAssigneeType?: string | null; taskAssigneeId?: string | null; producedByTurnId?: string | null; mentions?: { type?: string; id?: string; name: string }[]; attachments?: Att[]; reactions?: Reaction[]; canvasContext?: CanvasMessageContextView | null }
+export interface Msg { id: string; seq: number; channelId: string; senderType: string; senderId?: string | null; senderName: string; senderDeleted?: boolean; content: string; messageType?: string; actionMetadata?: ActionMeta | null; createdAt?: string; taskStatus?: string | null; taskNumber?: number | null; taskAssigneeType?: string | null; taskAssigneeId?: string | null; producedByTurnId?: string | null; mentions?: { type?: string; id?: string; name: string }[]; attachments?: Att[]; reactions?: Reaction[]; canvasContext?: CanvasMessageContextView | null; canvasContexts?: CanvasMessageContextView[] }
 type Ev = { type: string; [k: string]: any };
 
 interface Store {

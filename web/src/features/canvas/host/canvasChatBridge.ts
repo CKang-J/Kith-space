@@ -2,6 +2,7 @@ import { pendingSelectionSummaryParts, type CanvasSelectionSummaryParts } from "
 import { CANVAS_SELECTION_TO_CHAT_EVENT, type CanvasSelectionToChatTarget } from "../adapters/recombynSelectionToChat";
 
 export interface PendingCanvasChatContext {
+  id: string;
   canvasId: string;
   canvasTitle: string;
   selectedIds: string[];
@@ -11,12 +12,18 @@ export interface PendingCanvasChatContext {
   surfaceId: string;
 }
 
+export type PendingCanvasChatContextInput = Omit<PendingCanvasChatContext, "id" | "surfaceId" | "summaryParts"> & {
+  id?: string;
+  summaryParts?: CanvasSelectionSummaryParts;
+};
+
 type Listener = () => void;
 
-const pendingBySurface = new Map<string, PendingCanvasChatContext>();
+const pendingBySurface = new Map<string, PendingCanvasChatContext[]>();
 const listeners = new Set<Listener>();
 const surfaceStack: string[] = [];
 let activeSurfaceId: string | null = null;
+let pendingSeq = 0;
 
 function notify(): void {
   for (const listener of listeners) listener();
@@ -24,6 +31,10 @@ function notify(): void {
 
 export function canvasChatSurfaceKey(channelId: string): string {
   return channelId;
+}
+
+export function pendingCanvasSelectionKey(canvasId: string, selectedIds: readonly string[]): string {
+  return `${canvasId}::${[...selectedIds].map((id) => id.trim()).filter(Boolean).sort().join("\0")}`;
 }
 
 export function setActiveCanvasChatSurface(surfaceId: string | null): void {
@@ -48,10 +59,24 @@ export function resetCanvasChatBridgeForTests(): void {
   pendingBySurface.clear();
   surfaceStack.length = 0;
   activeSurfaceId = null;
+  pendingSeq = 0;
 }
 
 export function getActiveCanvasChatSurface(): string | null {
   return activeSurfaceId;
+}
+
+export function canvasToolbarChatTargets(
+  nodeIds: readonly string[] = [],
+  frameIds: readonly string[] = [],
+): string | string[] {
+  const targets = [
+    ...nodeIds.filter((id) => typeof id === "string" && id.trim()),
+    ...frameIds
+      .filter((id) => typeof id === "string" && id.trim())
+      .map((id) => (id.startsWith("frame:") ? id : `frame:${id}`)),
+  ];
+  return targets.length === 1 ? targets[0]! : targets;
 }
 
 export function parseCanvasSelectionTarget(target: CanvasSelectionToChatTarget | unknown): string[] {
@@ -68,14 +93,68 @@ export function parseCanvasSelectionTarget(target: CanvasSelectionToChatTarget |
   return ids;
 }
 
+function listFor(surfaceId: string): PendingCanvasChatContext[] {
+  return pendingBySurface.get(surfaceId) ?? [];
+}
+
+export function getPendingCanvasChatContexts(surfaceId?: string | null): PendingCanvasChatContext[] {
+  const key = surfaceId ?? activeSurfaceId;
+  if (!key) return [];
+  return [...listFor(key)];
+}
+
+/** First pending card on the surface. Prefer `getPendingCanvasChatContexts` for multi-card Composer. */
 export function getPendingCanvasChatContext(surfaceId?: string | null): PendingCanvasChatContext | null {
+  return getPendingCanvasChatContexts(surfaceId)[0] ?? null;
+}
+
+function hydratePending(
+  value: PendingCanvasChatContextInput,
+  surfaceId: string,
+): PendingCanvasChatContext {
+  pendingSeq += 1;
+  return {
+    ...value,
+    id: value.id?.trim() || `pending-canvas-${pendingSeq}`,
+    surfaceId,
+    summaryParts: value.summaryParts ?? pendingSelectionSummaryParts(
+      value.canvasTitle,
+      value.selectedIds,
+      value.documentRevision ?? 0,
+    ),
+  };
+}
+
+export function appendPendingCanvasChatContext(
+  value: PendingCanvasChatContextInput,
+  surfaceId?: string | null,
+): PendingCanvasChatContext | null {
   const key = surfaceId ?? activeSurfaceId;
   if (!key) return null;
-  return pendingBySurface.get(key) ?? null;
+  const next = hydratePending(value, key);
+  const current = listFor(key);
+  const identity = pendingCanvasSelectionKey(next.canvasId, next.selectedIds);
+  if (current.some((item) => pendingCanvasSelectionKey(item.canvasId, item.selectedIds) === identity)) {
+    return current.find((item) => pendingCanvasSelectionKey(item.canvasId, item.selectedIds) === identity) ?? null;
+  }
+  pendingBySurface.set(key, [...current, next]);
+  notify();
+  return next;
+}
+
+export function removePendingCanvasChatContext(pendingId: string, surfaceId?: string | null): void {
+  const key = surfaceId ?? activeSurfaceId;
+  if (!key) return;
+  const current = listFor(key);
+  const next = current.filter((item) => item.id !== pendingId);
+  if (next.length === current.length) return;
+  if (next.length) pendingBySurface.set(key, next);
+  else pendingBySurface.delete(key);
+  notify();
 }
 
 export function setPendingCanvasChatContext(
-  value: Omit<PendingCanvasChatContext, "surfaceId" | "summaryParts"> & { summaryParts?: CanvasSelectionSummaryParts } | null,
+  value: PendingCanvasChatContextInput | null,
   surfaceId?: string | null,
 ): void {
   const key = surfaceId ?? activeSurfaceId;
@@ -86,25 +165,18 @@ export function setPendingCanvasChatContext(
     return;
   }
   if (!key) return;
-  pendingBySurface.set(key, {
-    ...value,
-    surfaceId: key,
-    summaryParts: value.summaryParts ?? pendingSelectionSummaryParts(
-      value.canvasTitle,
-      value.selectedIds,
-      value.documentRevision ?? 0,
-    ),
-  });
+  pendingBySurface.set(key, [hydratePending(value, key)]);
   notify();
 }
 
 export function clearPendingCanvasChatContextForCanvas(canvasId: string): void {
   let changed = false;
   for (const [key, value] of pendingBySurface) {
-    if (value.canvasId === canvasId) {
-      pendingBySurface.delete(key);
-      changed = true;
-    }
+    const next = value.filter((item) => item.canvasId !== canvasId);
+    if (next.length === value.length) continue;
+    changed = true;
+    if (next.length) pendingBySurface.set(key, next);
+    else pendingBySurface.delete(key);
   }
   if (changed) notify();
 }
@@ -130,7 +202,7 @@ export function bindCanvasSelectionToChat(input: {
   const onSelection = (event: Event) => {
     const target = (event as CustomEvent<{ target?: CanvasSelectionToChatTarget }>).detail?.target;
     const selectedIds = parseCanvasSelectionTarget(target);
-    setPendingCanvasChatContext({
+    appendPendingCanvasChatContext({
       canvasId: input.canvasId,
       canvasTitle: input.canvasTitle,
       selectedIds,

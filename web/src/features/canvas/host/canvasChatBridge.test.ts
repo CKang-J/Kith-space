@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  appendPendingCanvasChatContext,
+  canvasToolbarChatTargets,
   getActiveCanvasChatSurface,
   getPendingCanvasChatContext,
+  getPendingCanvasChatContexts,
   parseCanvasSelectionTarget,
+  pendingCanvasSelectionKey,
   pushCanvasChatSurface,
+  removePendingCanvasChatContext,
   resetCanvasChatBridgeForTests,
   setPendingCanvasChatContext,
 } from "./canvasChatBridge";
@@ -18,35 +23,72 @@ import {
 
 test("selection-to-chat parses element and Frame targets", () => {
   assert.deepEqual(parseCanvasSelectionTarget(["shape-1", "frame:board", "shape-1", ""]), ["shape-1", "frame:board"]);
+  assert.deepEqual(canvasToolbarChatTargets(["shape-1"], ["board"]), ["shape-1", "frame:board"]);
+  assert.equal(canvasToolbarChatTargets(["shape-1"], []), "shape-1");
+  assert.equal(canvasToolbarChatTargets([], ["board"]), "frame:board");
 });
 
-test("pending canvas selection is isolated per Chat surface", () => {
+test("pending canvas selections append, dedupe, remove, and stay isolated per Chat surface", () => {
   resetCanvasChatBridgeForTests();
   const releaseA = pushCanvasChatSurface("channel-a");
-  setPendingCanvasChatContext({
+  appendPendingCanvasChatContext({
     canvasId: "canvas-a",
     canvasTitle: "Board A",
     selectedIds: ["shape-1"],
     previewDocument: { id: "a" },
   });
-  assert.equal(getPendingCanvasChatContext("channel-a")?.canvasId, "canvas-a");
+  appendPendingCanvasChatContext({
+    canvasId: "canvas-a",
+    canvasTitle: "Board A",
+    selectedIds: ["shape-2"],
+    previewDocument: { id: "a2" },
+  });
+  appendPendingCanvasChatContext({
+    canvasId: "canvas-a",
+    canvasTitle: "Board A",
+    selectedIds: ["shape-1"],
+    previewDocument: { id: "dup" },
+  });
+  assert.deepEqual(getPendingCanvasChatContexts("channel-a").map((item) => item.selectedIds), [["shape-1"], ["shape-2"]]);
+  assert.equal(getPendingCanvasChatContext("channel-a")?.selectedIds[0], "shape-1");
   const releaseB = pushCanvasChatSurface("channel-b");
   assert.equal(getActiveCanvasChatSurface(), "channel-b");
-  assert.equal(getPendingCanvasChatContext("channel-b"), null);
-  assert.equal(getPendingCanvasChatContext("channel-a")?.selectedIds[0], "shape-1");
-  setPendingCanvasChatContext({
+  assert.deepEqual(getPendingCanvasChatContexts("channel-b"), []);
+  assert.equal(getPendingCanvasChatContexts("channel-a").length, 2);
+  appendPendingCanvasChatContext({
     canvasId: "canvas-b",
     canvasTitle: "Board B",
     selectedIds: ["frame:one"],
     previewDocument: { id: "b" },
   });
-  assert.equal(getPendingCanvasChatContext("channel-b")?.canvasId, "canvas-b");
-  assert.equal(getPendingCanvasChatContext("channel-a")?.canvasId, "canvas-a");
+  assert.equal(getPendingCanvasChatContexts("channel-b")[0]?.canvasId, "canvas-b");
+  assert.equal(getPendingCanvasChatContexts("channel-a")[0]?.canvasId, "canvas-a");
+  const first = getPendingCanvasChatContexts("channel-a")[0]!;
+  removePendingCanvasChatContext(first.id, "channel-a");
+  assert.deepEqual(getPendingCanvasChatContexts("channel-a").map((item) => item.selectedIds), [["shape-2"]]);
   releaseB();
   assert.equal(getActiveCanvasChatSurface(), "channel-a");
-  assert.equal(getPendingCanvasChatContext()?.canvasId, "canvas-a");
+  assert.equal(getPendingCanvasChatContexts()[0]?.selectedIds[0], "shape-2");
+  setPendingCanvasChatContext(null, "channel-a");
+  assert.deepEqual(getPendingCanvasChatContexts("channel-a"), []);
+  assert.equal(getPendingCanvasChatContexts("channel-b").length, 1);
   releaseA();
   resetCanvasChatBridgeForTests();
+});
+
+test("same canvas and same selected ids share one pending identity", () => {
+  assert.equal(
+    pendingCanvasSelectionKey("canvas-a", ["shape-2", "frame:one"]),
+    pendingCanvasSelectionKey("canvas-a", ["frame:one", "shape-2"]),
+  );
+  assert.notEqual(
+    pendingCanvasSelectionKey("canvas-a", ["shape-1"]),
+    pendingCanvasSelectionKey("canvas-a", ["shape-2"]),
+  );
+  assert.notEqual(
+    pendingCanvasSelectionKey("canvas-a", ["frame:one"]),
+    pendingCanvasSelectionKey("canvas-a", ["frame:two"]),
+  );
 });
 
 test("pending selection summary parts stay locale-neutral", () => {

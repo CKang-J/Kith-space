@@ -25,13 +25,12 @@ export function pendingSelectionSummaryParts(
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
-export function formatCanvasSelectionSummaryI18n(parts: CanvasSelectionSummaryParts, t: Translate): string {
-  const title = parts.canvasTitle.trim() || t("chat.canvasUntitled");
+export function formatCanvasSelectionDetailI18n(parts: CanvasSelectionSummaryParts, t: Translate): string {
   if (parts.wholeCanvas) {
     const elementsKey = parts.elementCount === 1 ? "chat.canvasSummaryElement" : "chat.canvasSummaryElements";
-    return `${title} · ${t("chat.canvasSummaryWhole")} · ${t(elementsKey, { count: parts.elementCount })} · ${t("chat.canvasRevision", { revision: parts.documentRevision })}`;
+    return t("chat.canvasSummaryWhole") + " · " + t(elementsKey, { count: parts.elementCount });
   }
-  const segments = [title];
+  const segments: string[] = [];
   if (parts.frameCount) {
     const framesKey = parts.frameCount === 1 ? "chat.canvasSummaryFrame" : "chat.canvasSummaryFrames";
     segments.push(t(framesKey, { count: parts.frameCount }));
@@ -41,6 +40,13 @@ export function formatCanvasSelectionSummaryI18n(parts: CanvasSelectionSummaryPa
     segments.push(t(elementsKey, { count: parts.elementCount }));
   }
   if (parts.truncated) segments.push(t("chat.canvasSummaryTruncated"));
-  if (parts.documentRevision != null) segments.push(t("chat.canvasRevision", { revision: parts.documentRevision }));
+  if (!segments.length) segments.push(t("chat.canvasSummaryWhole"));
   return segments.join(" · ");
+}
+
+export function formatCanvasSelectionSummaryI18n(parts: CanvasSelectionSummaryParts, t: Translate): string {
+  const title = parts.canvasTitle.trim() || t("chat.canvasUntitled");
+  const detail = formatCanvasSelectionDetailI18n(parts, t);
+  const revision = t("chat.canvasRevision", { revision: parts.documentRevision });
+  return `${title} · ${detail} · ${revision}`;
 }

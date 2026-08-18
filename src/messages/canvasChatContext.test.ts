@@ -438,3 +438,36 @@ test("deleting the canvas after send still injects an auditable snapshot and fai
     f.cleanup();
   }
 });
+
+test("multiple canvas selections freeze in order in the same MessagePosting transaction", async () => {
+  const f = fixture("canvas-multi");
+  try {
+    const executor = f.addAgent("executor");
+    const channel = f.addChannel("channel", "studio");
+    f.addMember(channel.id, executor.id);
+    const { modules } = posting();
+    const message = await modules.messagePosting.post({
+      kind: "chat",
+      context: { spaceId: f.spaceId, channelId: channel.id, sender: { type: "human", id: f.humanId, name: "Human" } },
+      content: "two selections",
+      canvasSelections: [
+        { canvasId: f.canvas.id, selectedIds: ["shape-1"] },
+        { canvasId: f.canvas.id, selectedIds: ["frame:frame-1"] },
+      ],
+      executionBinding: { executorAgentId: executor.id, mode: "required" },
+    });
+    const snapshots = f.db.select().from(schema.canvasSelectionSnapshots)
+      .where(eq(schema.canvasSelectionSnapshots.messageId, message.id)).all();
+    assert.equal(snapshots.length, 2);
+    const refs = (message.contextSnapshot as { openObjectRefs?: Array<{ id: string }> } | null)?.openObjectRefs ?? [];
+    assert.equal(refs.length, 2);
+    assert.deepEqual([...refs.map((ref) => ref.id)].sort(), [...snapshots.map((row) => row.id)].sort());
+    const first = snapshots.find((row) => row.id === refs[0]?.id);
+    const second = snapshots.find((row) => row.id === refs[1]?.id);
+    assert.deepEqual(first?.selectedElements, [{ id: "shape-1", revision: 0 }]);
+    assert.deepEqual(second?.selectedFrames, [{ id: "frame-1", revision: 0 }]);
+    assert.equal(f.db.select().from(schema.messageExecutionBindings).where(eq(schema.messageExecutionBindings.messageId, message.id)).all().length, 1);
+  } finally {
+    f.cleanup();
+  }
+});

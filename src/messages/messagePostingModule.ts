@@ -78,6 +78,7 @@ export type PostMessageCommand =
       content: string;
       attachmentIds?: string[];
       canvasSelection?: CanvasSelectionInput;
+      canvasSelections?: CanvasSelectionInput[];
       executionBinding?: MessageExecutionBindingInput | null;
     }
   | {
@@ -258,6 +259,7 @@ type WriteInput = {
   actionMetadata?: unknown;
   introductionProof?: { agentId: string; token: string };
   canvasSelection?: CanvasSelectionInput;
+  canvasSelections?: CanvasSelectionInput[];
   executionBinding?: MessageExecutionBindingInput | null;
   task?: { messageId?: string; writePrecondition?: (tx: SpaceTransaction, channelId: string) => void; executionMode: "autopilot" | "plan-first"; parentTaskId?: string | null };
 };
@@ -281,18 +283,26 @@ const log = createLogger("messages:posting");
 
 function canvasMessageContextSnapshot(
   spaceId: string,
-  snapshotId: string,
-  documentRevision: number,
+  snapshots: Array<{ snapshotId: string; documentRevision: number }>,
   capturedAt: number,
 ): MessageContextSnapshot {
   return {
     spaceId,
     module: "canvas",
     routeId: "canvas.document",
-    openObjectRefs: [{ type: CANVAS_SELECTION_SNAPSHOT_REF_TYPE, id: snapshotId, revision: documentRevision }],
-    focusedRef: { type: CANVAS_SELECTION_SNAPSHOT_REF_TYPE, id: snapshotId },
+    openObjectRefs: snapshots.map((snapshot) => ({
+      type: CANVAS_SELECTION_SNAPSHOT_REF_TYPE,
+      id: snapshot.snapshotId,
+      revision: snapshot.documentRevision,
+    })),
+    focusedRef: snapshots[0] ? { type: CANVAS_SELECTION_SNAPSHOT_REF_TYPE, id: snapshots[0].snapshotId } : undefined,
     capturedAt,
   };
+}
+
+function requestedCanvasSelections(input: { canvasSelections?: CanvasSelectionInput[]; canvasSelection?: CanvasSelectionInput }): CanvasSelectionInput[] {
+  if (input.canvasSelections?.length) return input.canvasSelections;
+  return input.canvasSelection ? [input.canvasSelection] : [];
 }
 
 function ensureDispatchChainInTransaction(
@@ -619,7 +629,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
           member.type === "agent"
           && member.id !== context.sender.id
           && (!directMentionThread || mentionedAgents.has(member.id))
-          && !write.canvasSelection
+          && !requestedCanvasSelections(write).length
           && !deliveryJournal?.usesV2(context.spaceId, member.id));
     if (!candidateAgents.length) return [];
     const dispatchSettings = await resolveAgentDispatchSettings(
@@ -928,7 +938,8 @@ export function createConversationModules(dependencies: ConversationModuleDepend
       senderId: context.sender.id,
       taskMessageId,
     });
-    if (input.canvasSelection) {
+    const canvasSelections = requestedCanvasSelections(input);
+    if (canvasSelections.length) {
       if (input.task || input.messageType !== "chat") {
         throw new MessageExecutionBindingError("INVALID_ARGUMENT", "Canvas context can only be attached to an ordinary Chat message");
       }
@@ -990,7 +1001,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
         )
       : ordinaryMentions;
     const directlyMentionedAgents = mentions.filter((mention) => mention.type === "agent");
-    const hasCanvasSelectionBinding = Boolean(input.canvasSelection);
+    const hasCanvasSelectionBinding = canvasSelections.length > 0;
     const shouldCreateDirectThread = !input.task
       && input.messageType === "chat"
       && (context.sender.type === "human" || context.sender.type === "agent")
@@ -1046,25 +1057,24 @@ export function createConversationModules(dependencies: ConversationModuleDepend
             }).returning().get()
           : null;
         let executionBinding: MessageExecutionBindingInput | null = null;
-        let frozenCanvas: ReturnType<typeof freezeCanvasSelectionInTransaction> | null = null;
-        if (input.canvasSelection && context.sender.id) {
+        let frozenCanvases: Array<ReturnType<typeof freezeCanvasSelectionInTransaction>> = [];
+        if (canvasSelections.length && context.sender.id) {
           executionBinding = resolveExecutionBindingInTransaction(tx, {
             spaceId: context.spaceId,
             channel: prepared.channel,
             requested: input.executionBinding ?? null,
           });
-          frozenCanvas = freezeCanvasSelectionInTransaction(
+          frozenCanvases = canvasSelections.map((selection) => freezeCanvasSelectionInTransaction(
             tx,
             context.spaceId,
-            input.canvasSelection,
-            context.sender.id,
-          );
+            selection,
+            context.sender.id!,
+          ));
           messageValues = {
             ...messageValues,
             contextSnapshot: canvasMessageContextSnapshot(
               context.spaceId,
-              frozenCanvas.snapshotId,
-              frozenCanvas.documentRevision,
+              frozenCanvases,
               Date.now(),
             ),
           };
@@ -1078,7 +1088,9 @@ export function createConversationModules(dependencies: ConversationModuleDepend
               assigneeId: prepared.taskAssigneeId,
             })
           : tx.insert(schema.messages).values(messageValues).returning().get();
-        if (frozenCanvas) attachCanvasSelectionToMessage(tx, frozenCanvas.snapshotId, message.id);
+        for (const frozenCanvas of frozenCanvases) {
+          attachCanvasSelectionToMessage(tx, frozenCanvas.snapshotId, message.id);
+        }
         if (executionBinding) {
           tx.insert(schema.messageExecutionBindings).values({
             messageId: message.id,
@@ -1361,7 +1373,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
           durable.mentions,
           durable.attachments,
           [],
-          loadCanvasContextsForMessages(db, context.spaceId, [durable.message.id]).get(durable.message.id) ?? null,
+          loadCanvasContextsForMessages(db, context.spaceId, [durable.message.id]).get(durable.message.id) ?? [],
         ),
         channelType: prepared.channel.type,
       },
@@ -1475,6 +1487,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
         messageType: "chat",
         introductionProof: command.kind === "agent-introduction" ? command.proof : undefined,
         canvasSelection: command.kind === "chat" ? command.canvasSelection : undefined,
+        canvasSelections: command.kind === "chat" ? command.canvasSelections : undefined,
         executionBinding: command.kind === "chat" ? command.executionBinding : undefined,
       });
     },
