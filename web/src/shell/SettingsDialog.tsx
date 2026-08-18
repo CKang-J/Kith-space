@@ -55,7 +55,7 @@ export function SettingsDialog({ section, onClose }: SettingsDialogProps) {
     >
       <section
         ref={dialogRef}
-        className="relative flex h-[calc(100vh-2.5rem)] w-[calc(100vw-2.5rem)] max-h-[790px] max-w-[960px] overflow-hidden rounded-3xl border border-border/50 bg-secondary p-0 shadow-[0_20px_60px_color-mix(in_oklch,var(--foreground)_12%,transparent)] sm:h-[calc(100vh-3.5rem)]"
+        className="relative flex h-[calc(100vh-2.5rem)] w-[calc(100vw-2.5rem)] max-h-[790px] max-w-[960px] overflow-hidden rounded-3xl border border-border/60 bg-secondary p-0 sm:h-[calc(100vh-3.5rem)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-dialog-title"

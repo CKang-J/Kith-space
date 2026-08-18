@@ -315,7 +315,7 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
                   key={key}
                   className={cn(
                     "flex min-h-[46px] w-full shrink-0 appearance-none items-center gap-2.5 rounded-[14px] border-0 bg-transparent px-[13px] text-left text-[15px] font-normal text-foreground/80 shadow-none transition-colors hover:bg-card/70 hover:text-foreground focus-visible:bg-card/70 focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:shrink",
-                    cur === key && "bg-card text-foreground shadow-sm ring-1 ring-border/45",
+                    cur === key && "bg-card text-foreground ring-1 ring-border/50",
                   )}
                   type="button"
                   aria-current={cur === key ? "page" : undefined}

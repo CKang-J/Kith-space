@@ -70,7 +70,7 @@ const COLOR_MODE_OPTIONS: Array<{ value: ColorMode; label: string }> = [
   { value: "system", label: "misc.appearanceColorModeSystem" },
 ];
 const APPEARANCE_SECTION_CLASS =
-  "rounded-2xl border border-border/35 bg-muted/25 p-6 text-card-foreground shadow-sm";
+  "rounded-2xl border border-border/40 bg-muted/25 p-6 text-card-foreground";
 
 export function AppearanceSettings({ api }: { api: ApiRequest }) {
   const { t } = useTranslation();

@@ -24,7 +24,7 @@ test("Settings exposes a dedicated Appearance page backed by shadcn fields and s
   assert.match(appearanceView, /INTERFACE_MONOSPACE_OPTIONS/);
   assert.match(appearanceView, /<SelectSeparator \/>/);
   assert.match(appearanceView, /APPEARANCE_SECTION_CLASS/);
-  assert.match(appearanceView, /rounded-2xl border border-border\/35 bg-muted\/25 p-6 text-card-foreground shadow-sm/);
+  assert.match(appearanceView, /rounded-2xl border border-border\/40 bg-muted\/25 p-6 text-card-foreground/);
   assert.match(appearanceView, /<FieldSet className="m-0 border-0 p-0">/);
 });
 
