@@ -18,7 +18,7 @@ import "@/features/canvas/upstream/recombyn-native.css";
 import EditorPage from "@recombyn-native/pages/EditorPage";
 import { MessageContainer } from "@recombyn-native/components/base";
 import { store } from "@recombyn-native/store";
-import { importDocument, setMixedSelection } from "@recombyn-native/store/modules/editor";
+import { importDocument, setActiveTool, setMixedSelection } from "@recombyn-native/store/modules/editor";
 import type { CanvasCoreClient, CanvasLibraryItem, KithApi } from "@/features/canvas/adapters/canvasCoreApi";
 import type { RecombynCoreProjectionConnection } from "@/features/canvas/adapters/recombynCoreProjection";
 import { resolveKithCanvasTheme } from "@/features/canvas/adapters/recombynThemeBridge";
@@ -153,6 +153,7 @@ function NativeEditorSurface({ projectId, projectName = "Kith Canvas", document:
     document.documentElement.dataset.recombynStageOne = "native";
     const releaseFocus = embedded
       ? applyCanvasSelectionFocus(projectId, (request) => {
+        store.dispatch(setActiveTool("select"));
         store.dispatch(setMixedSelection({ nodeIds: request.nodeIds, frameIds: request.frameIds }));
       })
       : undefined;

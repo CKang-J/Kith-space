@@ -634,7 +634,7 @@ export function Chat({
                       : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={messageChannels} nav={navToken} /></div>}
                     {!!m.attachments?.length && <div className={`msg-atts attachment-list${isSingleImageMessage(m.attachments) ? " attachment-list--single-image" : ""}`}>{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} gallery={messageImageGallery} />)}</div>}
                     {messageCanvasContexts(m).length ? (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
+                      <div className="mt-2 flex snap-x snap-mandatory gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         {messageCanvasContexts(m).map((context) => (
                           <CanvasContextChip key={context.snapshotId || `${context.canvasId}-${context.documentRevision}`} compact context={context} />
                         ))}
@@ -848,7 +848,7 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
           : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={[...channels, ...archivedChannels]} nav={navToken} /></div>}
         {!!m.attachments?.length && <div className={`msg-atts attachment-list${isSingleImageMessage(m.attachments) ? " attachment-list--single-image" : ""}`}>{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} gallery={threadImageGallery} />)}</div>}
         {messageCanvasContexts(m).length ? (
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          <div className="mt-2 flex snap-x snap-mandatory gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {messageCanvasContexts(m).map((context) => (
               <CanvasContextChip key={context.snapshotId || `${context.canvasId}-${context.documentRevision}`} compact context={context} />
             ))}

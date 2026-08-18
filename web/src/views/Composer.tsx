@@ -7,6 +7,7 @@ import { autosizeComposerInput, observeComposerInputWidth } from "./composerAuto
 import { uniqueMentionedAgentIds } from "./composerTaskMentions.ts";
 import { ComposerActions } from "./composer/ComposerActions.tsx";
 import { ComposerAttachments, type PendingAttachment } from "./composer/ComposerAttachments.tsx";
+import { ComposerCanvasContextList } from "./composer/ComposerCanvasContextList.tsx";
 import { useComposerExpansion } from "./composer/useComposerExpansion.ts";
 import { useComposerReserve } from "./composer/useComposerReserve.ts";
 import {
@@ -17,7 +18,6 @@ import {
 import { insertAgentMention } from "./composerMention.ts";
 import { messageContextSnapshot } from "../messageContextSnapshot.ts";
 import { ConversationActivityStatus } from "./ConversationActivityStatus.tsx";
-import { CanvasContextChip } from "./chat-message/CanvasContextChip.tsx";
 import { useComposerCanvasContext } from "./composer/useComposerCanvasContext.ts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -223,43 +223,36 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       {canvas.executorLoadError && canvas.canvasContexts.length > 0 && !dmAgent ? <div className="composer-validation-error" role="alert">{canvas.executorLoadError}</div> : null}
       <ConversationActivityStatus channelId={channelId} />
       <div ref={boxRef} className={`composer-box ${expanded ? "is-expanded" : "is-compact"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
-        <ComposerAttachments
-          attachments={pendingAtts}
-          attachmentUrl={attachmentUrl}
-          onRemove={(id) => setPendingAtts((pending) => pending.filter((attachment) => attachment.id !== id))}
-        />
-        {canvas.canvasContexts.length ? (
-          <div className="flex flex-col gap-2 px-2.5 pt-2.5">
-            <div className="flex max-h-28 flex-wrap gap-1.5 overflow-x-auto overflow-y-auto" data-canvas-context-list>
-              {canvas.canvasContexts.map((item) => (
-                <CanvasContextChip
-                  key={item.id}
-                  compact
-                  context={{
-                    canvasId: item.canvasId,
-                    canvasTitle: item.canvasTitle,
-                    summaryParts: item.summaryParts,
-                    documentRevision: item.documentRevision,
-                    selectedIds: item.selectedIds,
-                    previewDocument: item.previewDocument,
-                    canvasAvailable: true,
-                  }}
-                  removable
-                  onRemove={() => canvas.removeContext(item.id)}
+        {(pendingAtts.length > 0 || canvas.canvasContexts.length > 0) ? (
+          <div className="composer-attachments">
+            {pendingAtts.length > 0 ? (
+              <ComposerAttachments
+                attachments={pendingAtts}
+                attachmentUrl={attachmentUrl}
+                onRemove={(id) => setPendingAtts((pending) => pending.filter((attachment) => attachment.id !== id))}
+              />
+            ) : null}
+            {canvas.canvasContexts.length > 0 ? (
+              <>
+                <ComposerCanvasContextList
+                  contexts={canvas.canvasContexts}
+                  onRemove={canvas.removeContext}
                 />
-              ))}
-            </div>
-            {!dmAgent ? (
-              <Select value={canvas.executorAgentId || undefined} onValueChange={canvas.setExecutorAgentId}>
-                <SelectTrigger size="sm" className="w-full max-w-64" data-canvas-executor-select>
-                  <SelectValue placeholder={t("chat.canvasExecutorPlaceholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {canvas.canvasExecutors.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>{agent.displayName || agent.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                {!dmAgent ? (
+                  <div className="composer-canvas-executor">
+                    <Select value={canvas.executorAgentId || undefined} onValueChange={canvas.setExecutorAgentId}>
+                      <SelectTrigger size="sm" className="w-full max-w-64" data-canvas-executor-select>
+                        <SelectValue placeholder={t("chat.canvasExecutorPlaceholder")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {canvas.canvasExecutors.map((agent) => (
+                          <SelectItem key={agent.id} value={agent.id}>{agent.displayName || agent.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+              </>
             ) : null}
           </div>
         ) : null}

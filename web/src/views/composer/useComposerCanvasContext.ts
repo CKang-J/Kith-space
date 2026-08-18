@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Agent } from "../../store.tsx";
 import {
-  getActiveCanvasChatSurface,
   getPendingCanvasChatContexts,
-  noteActiveCanvasFlyLand,
   pushCanvasChatSurface,
   removePendingCanvasChatContext,
   setPendingCanvasChatContext,
@@ -35,11 +33,9 @@ export function useComposerCanvasContext(input: {
   useEffect(() => subscribePendingCanvasChatContext(() => setCanvasContexts(getPendingCanvasChatContexts(channelId))), [channelId]);
   useEffect(() => {
     const release = pushCanvasChatSurface(channelId);
-    noteActiveCanvasFlyLand(channelId);
     setCanvasContexts(getPendingCanvasChatContexts(channelId));
     return () => {
       release();
-      noteActiveCanvasFlyLand(getActiveCanvasChatSurface());
     };
   }, [channelId]);
   useEffect(() => { setExecutorAgentId(""); setCanvasExecutors([]); setExecutorLoadError(""); }, [channelId]);

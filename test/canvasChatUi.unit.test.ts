@@ -11,37 +11,46 @@ test("Canvas send-to-chat is a native selection-toolbar action, not a host overl
   const multi = read("../web/src/features/canvas/upstream/apps/web/src/components/rcb/selection/chrome/MultiSelectionToolbar.tsx");
   const frame = read("../web/src/features/canvas/upstream/apps/web/src/components/editor/nodes/FrameNode/FrameContextToolbar.tsx");
   const adapter = read("../web/src/features/canvas/adapters/recombynSelectionToChat.ts");
-  const fly = read("../web/src/features/canvas/adapters/canvasFlyToChat.ts");
   assert.doesNotMatch(harness, /CanvasSendToChatHostAction/);
   assert.doesNotMatch(action, /CanvasSendToChatHostAction/);
   assert.doesNotMatch(adapter, /@recombyn-native\/components\/editor\/panels\/agent\/flyToChat/);
   assert.doesNotMatch(action, /@recombyn-native\/components\/editor\/panels\/agent\/flyToChat/);
+  assert.doesNotMatch(adapter, /playCanvasFlyToChat/);
+  assert.doesNotMatch(action, /noteCanvasFlyOrigin/);
   assert.match(action, /data-canvas-send-to-chat/);
   assert.match(action, /requestCanvasSelectionToChat/);
   assert.match(action, /chat\.canvasSendToChat/);
-  assert.match(action, /noteCanvasFlyOrigin/);
   assert.match(action, /canvasId/);
-  assert.match(adapter, /playCanvasFlyToChat/);
-  assert.match(fly, /data-kith-fly-to-chat/);
-  assert.doesNotMatch(fly, /AgentDock/);
   assert.match(single, /SendToChatToolbarAction/);
   assert.match(single, /<SendToChatToolbarAction target=\{nodeId\} \/>/);
   assert.match(multi, /SendToChatToolbarAction/);
   assert.match(multi, /canvasToolbarChatTargets\(opNodeIds, frameIds\)/);
   assert.match(frame, /SendToChatToolbarAction/);
   assert.match(frame, /target=\{`frame:\$\{frame\.id\}`\}/);
+  assert.match(harness, /setActiveTool\("select"\)/);
+  assert.match(harness, /setMixedSelection/);
 });
 
 test("Composer appends pending Canvas selections per surface and submits them in order", () => {
   const composer = read("../web/src/views/Composer.tsx");
+  const composerCanvasList = read("../web/src/views/composer/ComposerCanvasContextList.tsx");
   const hook = read("../web/src/views/composer/useComposerCanvasContext.ts");
   const payload = read("../web/src/views/composer/composerCanvasContext.ts");
+  const preview = read("../web/src/features/canvas/host/canvasSelectionPreview.ts");
   const chip = read("../web/src/views/chat-message/CanvasContextChip.tsx");
   const en = read("../web/src/locales/en.json");
   const zh = read("../web/src/locales/zh.json");
   assert.match(composer, /useComposerCanvasContext/);
   assert.match(composer, /canvas\.buildSendPayload\(\)/);
-  assert.match(composer, /data-canvas-context-list/);
+  assert.match(composer, /ComposerCanvasContextList/);
+  assert.match(composerCanvasList, /data-canvas-context-list/);
+  assert.match(composerCanvasList, /composer-canvas-context-scroll/);
+  assert.match(composerCanvasList, /scrollStripHorizontally/);
+  assert.match(chip, /CanvasSelectionThumbnail/);
+  assert.match(preview, /renderComposerChipThumb/);
+  assert.match(chip, /selectedIds=\{selectionTokens\}/);
+  assert.match(composerCanvasList, /aria-label=\{t\("chat\.canvasPendingSelections"/);
+  assert.match(composer, /composer-attachments/);
   assert.doesNotMatch(composer, /previousChannelIdRef/);
   assert.doesNotMatch(composer, /setPendingCanvasChatContext\(null, previous\)/);
   assert.doesNotMatch(composer, /@recombyn-native/);
@@ -50,12 +59,14 @@ test("Composer appends pending Canvas selections per surface and submits them in
   assert.match(hook, /removePendingCanvasChatContext\(pendingId, channelId\)/);
   assert.doesNotMatch(hook, /previousChannelIdRef/);
   assert.match(payload, /canvasSelections: input\.canvasContexts\.map/);
-  assert.match(chip, /aria-label=\{label\}/);
-  assert.match(chip, /title=\{label\}/);
-  assert.match(chip, /<IconAction label=\{previewLabel\}/);
-  assert.match(chip, /<IconAction label=\{viewLabel\}/);
-  assert.match(chip, /<Eye /);
-  assert.match(chip, /<ScanSearch /);
+  assert.match(chip, /aria-label=\{previewLabel\}/);
+  assert.match(chip, /title=\{previewLabel\}/);
+  assert.match(chip, /<PopoverTrigger/);
+  assert.doesNotMatch(chip, /<Eye /);
+  assert.doesNotMatch(chip, /<ScanSearch /);
+  assert.match(chip, /attachment-card is-file is-canvas-context/);
+  assert.match(chip, /canvas-context-chip__thumb-btn/);
+  assert.match(chip, /attachment-card__remove/);
   assert.match(chip, /requestCanvasSelectionFocus/);
   assert.match(chip, /workspaceLocationForModule/);
   assert.doesNotMatch(chip, />\{t\("chat\.canvasViewSelection"\)\}</);
@@ -69,10 +80,10 @@ test("Composer appends pending Canvas selections per surface and submits them in
     "canvasExecutorUnavailable",
     "canvasRemoveContext",
     "canvasSendToChat",
-    "canvasFlyLabel",
     "canvasShowPreview",
     "canvasHidePreview",
     "canvasRevision",
+    "canvasPendingSelections",
     "canvasSourceConversation",
   ]) {
     assert.match(en, new RegExp(`"${key}"`));

@@ -371,6 +371,17 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+/** Kith host API (canvas assets, attachments) authenticates via browser session cookies or Desktop trust — not Recombyn Bearer. */
+function usesKithHostSessionAuth(src: string, absolute: string): boolean {
+  if (src.startsWith('/api/')) return true;
+  try {
+    const path = new URL(absolute, window.location.origin).pathname;
+    return path.startsWith('/api/canvas-assets/') || path.startsWith('/api/attachments/');
+  } catch {
+    return absolute.includes('/api/canvas-assets/') || absolute.includes('/api/attachments/');
+  }
+}
+
 /** Last-resort: draw via HTMLImageElement (works when img already paints on canvas). */
 function rasterizeViaHtmlImage(src: string): Promise<string | null> {
   return new Promise((resolve) => {
@@ -432,10 +443,16 @@ async function fetchHrefAsDataUrl(
     const absolute = src.startsWith('/') ? resolveApiUrl(src) : src;
     const headers: HeadersInit = {};
     const token = getToken();
-    if (token && (src.startsWith('/api/') || absolute.includes('/api/v1/uploads/'))) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-    const res = await fetch(absolute, { headers, mode: 'cors', credentials: 'omit' });
+    const usesBearer =
+      Boolean(token) &&
+      (src.startsWith('/api/v1/uploads/') || absolute.includes('/api/v1/uploads/'));
+    if (usesBearer) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(absolute, {
+      headers,
+      mode: 'cors',
+      // Kith browser web: Human session cookie. Electron: Desktop trust header is injected separately.
+      credentials: usesKithHostSessionAuth(src, absolute) && !usesBearer ? 'same-origin' : 'omit',
+    });
     if (!res.ok) throw new Error(`fetch ${res.status}`);
     const blob = await res.blob();
     if (!blob || blob.size < 8) throw new Error('empty body');

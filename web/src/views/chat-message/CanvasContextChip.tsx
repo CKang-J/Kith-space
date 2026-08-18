@@ -1,15 +1,15 @@
-import { useState, type ReactNode } from "react";
-import { Eye, ScanSearch, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { CanvasLibraryThumbnail } from "@/features/canvas/host/CanvasLibraryThumbnail";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CanvasSelectionThumbnail } from "@/features/canvas/host/CanvasSelectionThumbnail";
 import { requestCanvasSelectionFocus } from "@/features/canvas/host/canvasSelectionFocus";
 import { formatCanvasSelectionDetailI18n, type CanvasSelectionSummaryParts } from "@/features/canvas/host/canvasSelectionCopy";
 import { previewDocumentFromCanvasSelection } from "@/features/canvas/host/canvasSelectionPreview";
 import { workspaceLocationForModule } from "@/shell/workspaceRoute";
 import { cn } from "@/lib/utils";
+
+export type CanvasContextChipDensity = "full" | "medium" | "compact";
 
 export interface CanvasContextChipModel {
   snapshotId?: string;
@@ -67,131 +67,134 @@ function summaryPartsFrom(context: CanvasContextChipModel): CanvasSelectionSumma
   };
 }
 
-function IconAction({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-label={label}
-          title={label}
-          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-          onClick={onClick}
-        >
-          {children}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="top">{label}</TooltipContent>
-    </Tooltip>
-  );
+export function canvasContextChipDensity(count: number): CanvasContextChipDensity {
+  if (count <= 1) return "full";
+  if (count === 2) return "medium";
+  return "compact";
 }
 
 export function CanvasContextChip({
   context,
   removable,
   compact,
+  density = "full",
   onRemove,
 }: {
   context: CanvasContextChipModel;
   removable?: boolean;
   compact?: boolean;
+  density?: CanvasContextChipDensity;
   onRemove?: () => void;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const [expanded, setExpanded] = useState(false);
   const available = context.canvasAvailable !== false;
   const preview = previewDocumentFromCanvasSelection(context);
+  const selected = selectedIdsFrom(context);
+  const selectionTokens = context.selectedIds?.length
+    ? context.selectedIds
+    : [
+      ...selected.nodeIds,
+      ...selected.frameIds.map((frameId) => `frame:${frameId}`),
+    ];
   const title = context.canvasTitle?.trim() || t("chat.canvasUntitled");
   const parts = summaryPartsFrom(context);
   const selectionLabel = formatCanvasSelectionDetailI18n(parts, t);
   const revisionLabel = t("chat.canvasRevision", { revision: parts.documentRevision });
-  const openCanvas = () => {
-    const selected = selectedIdsFrom(context);
-    if (available) {
-      requestCanvasSelectionFocus({
-        canvasId: context.canvasId,
-        nodeIds: selected.nodeIds,
-        frameIds: selected.frameIds,
-      });
-      navigate(workspaceLocationForModule(location.pathname, location.search, {
-        moduleId: "canvas",
-        canvas: context.canvasId,
-        canvasTitle: context.canvasTitle,
-      }));
-      return;
-    }
-    setExpanded(true);
-  };
-  const previewLabel = expanded ? t("chat.canvasHidePreview") : t("chat.canvasShowPreview");
+  const previewLabel = t("chat.canvasShowPreview");
   const viewLabel = available ? t("chat.canvasViewSelection") : t("chat.canvasViewSnapshot");
+  const showRevision = Boolean(compact && !removable);
+  const metaLine = available
+    ? (showRevision ? `${selectionLabel} · ${revisionLabel}` : selectionLabel)
+    : t("chat.canvasUnavailable");
+
+  const openCanvas = () => {
+    if (!available) return;
+    const selected = selectedIdsFrom(context);
+    requestCanvasSelectionFocus({
+      canvasId: context.canvasId,
+      nodeIds: selected.nodeIds,
+      frameIds: selected.frameIds,
+    });
+    navigate(workspaceLocationForModule(location.pathname, location.search, {
+      moduleId: "canvas",
+      canvas: context.canvasId,
+      canvasTitle: context.canvasTitle,
+    }));
+  };
+
+  const previewNode = preview
+    ? (
+      <CanvasSelectionThumbnail
+        document={preview}
+        selectedIds={selectionTokens}
+        title={title}
+        maxEdge={density === "compact" ? 96 : density === "medium" ? 112 : 128}
+      />
+    )
+    : <span className="canvas-context-chip__fallback">{t("chat.canvasName")}</span>;
 
   return (
     <div
       data-canvas-context-chip
       data-canvas-available={available ? "true" : "false"}
+      data-canvas-density={density}
       className={cn(
-        "relative flex min-w-44 max-w-64 shrink-0 flex-col overflow-hidden rounded-[13px] border border-border bg-muted/40",
-        compact && "min-w-40 max-w-56",
-        !available && "opacity-80",
+        "attachment-card is-file is-canvas-context",
+        density !== "full" && `is-density-${density}`,
+        removable && "has-remove",
+        !available && "is-unavailable",
       )}
+      title={title}
     >
-      <div className="flex min-w-0 items-center gap-2 p-1.5 pr-8">
-        <span className={cn("shrink-0 overflow-hidden rounded-[10px]", compact ? "size-9" : "size-11")}>
-          {preview
-            ? <CanvasLibraryThumbnail document={preview} title={title} />
-            : <span className="grid size-full place-items-center bg-muted text-[11px] text-muted-foreground">{t("chat.canvasName")}</span>}
-        </span>
-        <span className="min-w-0 flex-1">
-          <strong className="block truncate text-sm font-medium">{title}</strong>
-          <small className="block truncate text-[length:var(--font-size-meta)] text-muted-foreground">
-            {available ? selectionLabel : t("chat.canvasUnavailable")}
-          </small>
-          {available ? (
-            <small className="block truncate text-[length:var(--font-size-meta)] text-muted-foreground">
-              {revisionLabel}
-            </small>
-          ) : null}
-        </span>
-      </div>
-      <div className="flex items-center gap-0.5 px-1.5 pb-1.5">
-        <IconAction label={previewLabel} onClick={() => setExpanded((open) => !open)}>
-          <Eye className="size-3.5" />
-        </IconAction>
-        <IconAction label={viewLabel} onClick={openCanvas}>
-          <ScanSearch className="size-3.5" />
-        </IconAction>
-      </div>
-      {expanded ? (
-        <div className="border-t border-border p-1.5">
-          <div className={cn("overflow-hidden rounded-[10px] bg-muted", compact ? "h-20" : "h-28")}>
-            {preview
-              ? <CanvasLibraryThumbnail document={preview} title={title} />
-              : <span className="grid size-full place-items-center text-[11px] text-muted-foreground">{t("chat.canvasName")}</span>}
-          </div>
-        </div>
-      ) : null}
-      {removable ? (
-        <Button
+      <div className="attachment-card__body">
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="canvas-context-chip__thumb-btn"
+              aria-label={previewLabel}
+              title={previewLabel}
+            >
+              {previewNode}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            side="top"
+            align="start"
+            className="w-56 gap-2 border border-border/60 bg-card p-2 shadow-none ring-0"
+          >
+            <div className="canvas-context-chip__popover-preview">
+              {previewNode}
+            </div>
+            <p className="truncate text-[length:var(--font-size-meta)] text-muted-foreground">{metaLine}</p>
+          </PopoverContent>
+        </Popover>
+        <button
           type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="absolute right-1 top-1 size-4 rounded-full bg-background/90 text-muted-foreground"
+          className="canvas-context-chip__open"
+          disabled={!available}
+          aria-label={available ? t("chat.canvasOpenInCanvas", { title }) : viewLabel}
+          onClick={openCanvas}
+        >
+          <strong>{title}</strong>
+          <small>{metaLine}</small>
+        </button>
+      </div>
+      {removable ? (
+        <button
+          type="button"
+          className="attachment-card__remove"
           aria-label={t("chat.canvasRemoveContext", { title })}
           title={t("chat.canvasRemoveContext", { title })}
-          onClick={onRemove}
+          onClick={(event) => {
+            event.stopPropagation();
+            onRemove?.();
+          }}
         >
-          <X className="size-2.5" />
-        </Button>
+          <X size={10} aria-hidden="true" />
+        </button>
       ) : null}
     </div>
   );

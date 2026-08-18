@@ -1,4 +1,3 @@
-import { noteCanvasFlyLand } from "../adapters/canvasFlyToChat";
 import { pendingSelectionSummaryParts, type CanvasSelectionSummaryParts } from "./canvasSelectionCopy";
 import { CANVAS_SELECTION_TO_CHAT_EVENT, type CanvasSelectionToChatDetail, type CanvasSelectionToChatTarget } from "../adapters/recombynSelectionToChat";
 
@@ -179,11 +178,6 @@ export function setPendingCanvasChatContext(
 export function subscribePendingCanvasChatContext(listener: Listener): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
-}
-
-export function noteActiveCanvasFlyLand(surfaceId: string | null): void {
-  if (!surfaceId) return;
-  noteCanvasFlyLand(`kith-chat:${surfaceId}`);
 }
 
 export function bindCanvasSelectionToChat(input: {

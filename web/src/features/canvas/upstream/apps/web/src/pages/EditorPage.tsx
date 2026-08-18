@@ -1386,7 +1386,7 @@ function EditorPage() {
               onZoomIn={onZoomIn}
               onZoomOut={onZoomOut}
               onCanvasReady={onCanvasReady}
-              onAddToChat={(target) => requestCanvasSelectionToChat(target, undefined, currentId ? { canvasId: currentId } : undefined)}
+              onAddToChat={(target) => requestCanvasSelectionToChat(target, currentId ? { canvasId: currentId } : undefined)}
             />
 
             <div

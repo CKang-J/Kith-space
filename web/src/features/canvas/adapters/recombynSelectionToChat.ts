@@ -1,5 +1,3 @@
-import { playCanvasFlyToChat } from "./canvasFlyToChat";
-
 export const CANVAS_SELECTION_TO_CHAT_EVENT = "kith:canvas-selection-to-chat";
 
 export type CanvasSelectionToChatTarget = string | string[];
@@ -14,7 +12,6 @@ export interface CanvasSelectionToChatDetail {
 
 export function requestCanvasSelectionToChat(
   target: CanvasSelectionToChatTarget,
-  label = "Chat",
   source?: { canvasId: string; canvasTitle?: string; documentRevision?: number; previewDocument?: unknown },
 ): void {
   const canvasId = source?.canvasId?.trim() ?? "";
@@ -29,5 +26,4 @@ export function requestCanvasSelectionToChat(
       } satisfies CanvasSelectionToChatDetail,
     }),
   );
-  void playCanvasFlyToChat({ label });
 }

@@ -18,7 +18,7 @@ test("selection-to-chat stays a local host event seam and carries source canvasI
     value: { dispatchEvent: (event: unknown) => (events.push(event), true) },
   });
   try {
-    requestCanvasSelectionToChat(["node-a", "node-b"], "Chat", {
+    requestCanvasSelectionToChat(["node-a", "node-b"], {
       canvasId: "canvas-a",
       canvasTitle: "Board A",
       documentRevision: 3,
