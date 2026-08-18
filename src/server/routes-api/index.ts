@@ -42,6 +42,7 @@ import { handleAdvisorProvider } from "./advisorProvider.js";
 import { handleModelSettings } from "./modelSettings.js";
 import { handleAppearanceSettings } from "./appearanceSettings.js";
 import { handleCanvas, handleCanvasAssetResolver } from "./canvas.js";
+import { handleCanvasChat } from "./canvasChat.js";
 
 export async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, method: string): Promise<boolean> {
   const p = url.pathname;
@@ -86,6 +87,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (await handleMemoryAdvisor(spaceCtx)) return true;
   if (await handleReminders(spaceCtx)) return true;
   if (await handleChannels(spaceCtx)) return true;
+  if (await handleCanvasChat(spaceCtx)) return true;
   if (await handleMessages(spaceCtx)) return true;
   if (await handleTurns(spaceCtx)) return true;
   if (await handleDisclosureGrants(spaceCtx)) return true;

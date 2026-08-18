@@ -990,13 +990,13 @@ export function createConversationModules(dependencies: ConversationModuleDepend
         )
       : ordinaryMentions;
     const directlyMentionedAgents = mentions.filter((mention) => mention.type === "agent");
-    const hasExecutionBinding = Boolean(input.canvasSelection);
+    const hasCanvasSelectionBinding = Boolean(input.canvasSelection);
     const shouldCreateDirectThread = !input.task
       && input.messageType === "chat"
       && (context.sender.type === "human" || context.sender.type === "agent")
       && (prepared.channel.type === "channel" || prepared.channel.type === "private")
       && !prepared.channelAllScope
-      && !hasExecutionBinding
+      && !hasCanvasSelectionBinding
       && directlyMentionedAgents.length > 0;
     const directThreadId = shouldCreateDirectThread ? randomUUID() : null;
     if (directThreadId) messageValues.threadId = directThreadId;

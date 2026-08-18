@@ -19,7 +19,7 @@ const RESERVED_STATE_KEYS = new Set([
   "revision", "revisions", "lifecycle", "deletedAt", "sequence", "operation", "operations",
   "operationId", "mutation", "mutations", "mutationId", "realtimeSequence", "metadataRevision",
   "documentRevision", "elementRevision", "frameRevision", "structureRevision", "createdAt", "updatedAt",
-  "spaceId", "canvasId",
+  "spaceId", "canvasId", "_kithRevision",
 ]);
 const IMPORT_ROOT_NODE_FIELDS = new Set(["id", "key", "x", "y", "z", "width", "height", "attrs", "children", "name"]);
 const IMPORT_NODE_FIELDS = new Set([...IMPORT_ROOT_NODE_FIELDS, "parentId", "frameId"]);

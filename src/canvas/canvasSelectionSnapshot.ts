@@ -4,6 +4,12 @@ import type { SpaceTransaction } from "../counters.js";
 import type { SpaceDb } from "../db/index.js";
 import { schema } from "../db/index.js";
 import { CanvasNotFoundError, CanvasValidationError } from "./canvasCore.js";
+import { canonicalJson } from "./canonicalJson.js";
+import { readEntityRevision } from "./canvasEntityRevision.js";
+import {
+  canvasSelectionSummaryParts,
+  formatCanvasSelectionSummary,
+} from "./canvasSelectionSummary.js";
 import type {
   CanvasElementProjection,
   CanvasFrameProjection,
@@ -17,15 +23,6 @@ export const CANVAS_SELECTION_SNAPSHOT_REF_TYPE = "canvas_selection_snapshot";
 export const MAX_CANVAS_SELECTION_IDS = 80;
 const MAX_TEXT = 240;
 const FRAME_PREFIX = "frame:";
-
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  return `{${Object.entries(value as Record<string, unknown>)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`)
-    .join(",")}}`;
-}
 
 function asRecord(value: unknown): Record<string, CanvasJson> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -102,14 +99,14 @@ function projectFrame(frame: Record<string, CanvasJson>): CanvasFrameProjection 
 }
 
 function summarize(projection: CanvasSelectionProjection): string {
-  if (projection.wholeCanvas) {
-    return `${projection.canvasTitle} · 整张画布 · ${projection.elements.length} 个元素`;
-  }
-  const parts: string[] = [projection.canvasTitle];
-  if (projection.frames.length) parts.push(`${projection.frames.length} 个 Frame`);
-  if (projection.elements.length) parts.push(`${projection.elements.length} 个元素`);
-  if (projection.truncated) parts.push("已截断");
-  return parts.join(" · ");
+  return formatCanvasSelectionSummary(canvasSelectionSummaryParts({
+    canvasTitle: projection.canvasTitle,
+    wholeCanvas: projection.wholeCanvas,
+    elementCount: projection.elements.length,
+    frameCount: projection.frames.length,
+    truncated: projection.truncated,
+    documentRevision: projection.documentRevision,
+  }));
 }
 
 export function parseCanvasSelectionInput(value: unknown): CanvasSelectionInput | null {
@@ -200,8 +197,14 @@ export function freezeCanvasSelectionInTransaction(
     truncated,
     wholeCanvas,
   };
-  const selectedElements = limitedNodes.map((id) => ({ id, revision: row.elementRevision }));
-  const selectedFrames = limitedFrames.map((id) => ({ id, revision: row.frameRevision }));
+  const selectedElements = limitedNodes.map((id) => ({
+    id,
+    revision: readEntityRevision(nodes[id], 0),
+  }));
+  const selectedFrames = limitedFrames.map((id) => ({
+    id,
+    revision: readEntityRevision(frameById.get(id), 0),
+  }));
   const selectionHash = createHash("sha256").update(canonicalJson({
     canvasId: row.id,
     documentRevision: row.documentRevision,

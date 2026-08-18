@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { PanelsTopLeft, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useStore } from "../../store.tsx";
+import { CanvasTurnSourceCard, canvasTurnOpenLocation } from "./CanvasTurnSourceCard.tsx";
 
 type TurnDetails = {
   turn: { id: string; status: string; outcome?: string | null; directive: string; agent?: { displayName: string } | null; session?: { surfaceKind: string; surfaceId: string; generation: number; runtime: string; status: string } | null };
@@ -22,6 +24,8 @@ function json(value: unknown): string {
 export function TurnDetailsButton({ turnId }: { turnId: string }) {
   const { t } = useTranslation();
   const { api } = useStore();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("context");
   const [data, setData] = useState<TurnDetails | null>(null);
@@ -68,12 +72,23 @@ export function TurnDetailsButton({ turnId }: { turnId: string }) {
                   <span>{data.context.envelope?.continuityMode ?? "—"}</span>
                   <span>{data.context.envelope?.budget ? `${data.context.envelope.budget.used}/${data.context.envelope.budget.available} tokens` : "—"}</span>
                 </div>
-                {data.context.sources.map((source) => <section className="turn-details-card" key={`${source.phase}:${source.ordinal}`}>
-                  <div className="turn-details-card-head"><strong>{source.sourceKind === "canvas_selection_snapshot" ? t("chat.canvasContextSource") : source.sourceKind}</strong><span className={`turn-source-state is-${source.state}`}>{source.state}</span></div>
-                  <div className="turn-details-meta">{source.reason} · {source.injectionMode} · {source.projection} · ~{source.estimatedTokens} tokens</div>
-                  <code>{source.sourceId}</code>
-                  {source.content != null ? <pre>{typeof source.content === "string" ? source.content : json(source.content)}</pre> : null}
-                </section>)}
+                {data.context.sources.map((source) => source.sourceKind === "canvas_selection_snapshot"
+                  ? (
+                    <CanvasTurnSourceCard
+                      key={`${source.phase}:${source.ordinal}`}
+                      source={source}
+                      t={t}
+                      onOpen={(canvasId, canvasTitle) => navigate(canvasTurnOpenLocation(location.pathname, location.search, canvasId, canvasTitle))}
+                    />
+                  )
+                  : (
+                    <section className="turn-details-card" key={`${source.phase}:${source.ordinal}`}>
+                      <div className="turn-details-card-head"><strong>{source.sourceKind}</strong><span className={`turn-source-state is-${source.state}`}>{source.state}</span></div>
+                      <div className="turn-details-meta">{source.reason} · {source.injectionMode} · {source.projection} · ~{source.estimatedTokens} tokens</div>
+                      <code>{source.sourceId}</code>
+                      {source.content != null ? <pre>{typeof source.content === "string" ? source.content : json(source.content)}</pre> : null}
+                    </section>
+                  ))}
               </> : null}
               {data && tab === "steps" ? data.attempts.map((attempt) => <section className="turn-details-card" key={attempt.id}>
                 <div className="turn-details-card-head"><strong>{t("chat.turnAttempt", { number: attempt.number })}</strong><span>{attempt.status}</span></div>

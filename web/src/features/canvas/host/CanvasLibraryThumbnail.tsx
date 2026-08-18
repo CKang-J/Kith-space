@@ -27,7 +27,7 @@ export function CanvasLibraryThumbnail({ document, title }: { document: unknown;
       {renderedThumbnail ? (
         <img
           src={renderedThumbnail}
-          alt={`${title}的画布缩略图`}
+          alt={title}
           className="size-full object-contain"
           loading="lazy"
           draggable={false}
@@ -36,7 +36,7 @@ export function CanvasLibraryThumbnail({ document, title }: { document: unknown;
       <svg
         viewBox={preview.viewBox}
         role="img"
-        aria-label={`${title}的画布缩略图`}
+        aria-label={title}
         preserveAspectRatio="xMidYMid meet"
         className="size-full"
       >

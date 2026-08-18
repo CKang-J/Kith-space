@@ -1,5 +1,6 @@
 import type { schema } from "../db/index.js";
 import type { MessageMention } from "../channels/channelAllMention.js";
+import { presentCanvasContext } from "../canvas/canvasChatPresentation.js";
 import type { FrozenCanvasSelectionSnapshot } from "../canvas/canvasTypes.js";
 
 export interface ReactionAggregate {
@@ -58,17 +59,7 @@ export function serializeMessage(
     })),
     mentions: mentions.map((mention) => ({ type: mention.type, id: mention.id, name: mention.name })),
     reactions,
-    canvasContext: canvasContext
-      ? {
-          snapshotId: canvasContext.snapshotId,
-          canvasId: canvasContext.canvasId,
-          canvasTitle: canvasContext.canvasTitle,
-          documentRevision: canvasContext.documentRevision,
-          summary: canvasContext.summary,
-          projection: canvasContext.projection,
-          canvasAvailable: !canvasContext.canvasDeleted,
-        }
-      : null,
+    canvasContext: presentCanvasContext(canvasContext),
     createdAt: message.createdAt,
     updatedAt: message.updatedAt,
   };

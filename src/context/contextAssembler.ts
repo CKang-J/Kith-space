@@ -294,7 +294,7 @@ export class ContextAssembler {
     const uiSnapshots = messages
       .map((message) => message.contextSnapshot)
       .filter((snapshot): snapshot is Record<string, unknown> => snapshot != null);
-    const uiSnapshot = uiSnapshots.find((snapshot) => snapshot.module === "canvas") ?? uiSnapshots[0] ?? null;
+    const uiSnapshot = uiSnapshots[0] ?? null;
     const uiSnapshotRef = uiSnapshot
       ? this.persistSnapshot("ui", `${turn.id}:ui`, uiSnapshot, "ui_context_at_send", auditRefs, snapshotRows)
       : null;

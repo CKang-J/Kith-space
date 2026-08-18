@@ -58,7 +58,7 @@ test("empty selectedIds freezes the whole live canvas as a bounded snapshot", ()
     assert.equal(frozen.documentRevision, 0);
     assert.equal(frozen.selectedElements.length, 2);
     assert.equal(frozen.selectedFrames.length, 1);
-    assert.match(frozen.summary, /整张画布/);
+    assert.match(frozen.summary, /entire canvas/);
     assert.deepEqual(frozen.deepLink, { moduleId: "canvas", canvas: created.id });
     const parsed = parseCanvasSelectionInput({ canvasId: created.id, selectedIds: [] });
     assert.ok(parsed);
@@ -110,6 +110,44 @@ test("a later canvas mutation does not rewrite an already frozen snapshot", () =
     assert.equal((row?.projection as { elements: Array<{ x: number }> }).elements[0]?.x, 10);
     assert.equal(row?.selectionHash, frozen.selectionHash);
     assert.equal((f.core.read(created.id).document as typeof baseDocument).deltaSetLike["shape-1"].x, 240);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("selection snapshot records per-element revisions instead of a single document revision", () => {
+  const f = fixture();
+  try {
+    const created = f.core.create({ title: "Revisions", document: baseDocument });
+    const before = f.db.transaction((tx) => freezeCanvasSelectionInTransaction(
+      tx,
+      f.spaceId,
+      { canvasId: created.id, selectedIds: ["shape-1", "text-1"] },
+      "human-1",
+    ));
+    assert.deepEqual(before.selectedElements, [
+      { id: "shape-1", revision: 0 },
+      { id: "text-1", revision: 0 },
+    ]);
+    f.core.apply({
+      canvasId: created.id,
+      operationId: randomUUID(),
+      expectedRevision: created.revisions.revision,
+      operation: { type: "document.patch", patches: [{ op: "set", path: ["deltaSetLike", "shape-1", "x"], value: 88 }] },
+    });
+    const after = f.db.transaction((tx) => freezeCanvasSelectionInTransaction(
+      tx,
+      f.spaceId,
+      { canvasId: created.id, selectedIds: ["shape-1", "text-1"] },
+      "human-1",
+    ));
+    const shape = after.selectedElements.find((item) => item.id === "shape-1");
+    const text = after.selectedElements.find((item) => item.id === "text-1");
+    assert.ok(shape);
+    assert.ok(text);
+    assert.equal(text.revision, 0);
+    assert.ok(shape.revision > text.revision);
+    assert.notEqual(after.selectionHash, before.selectionHash);
   } finally {
     f.cleanup();
   }

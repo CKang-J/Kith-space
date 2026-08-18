@@ -1,6 +1,7 @@
 // Shared helpers used by ≥2 route modules — verbatim from the former routes-api.ts.
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { dbForSpace, schema } from "../../db/index.js";
+import { presentCanvasContext } from "../../canvas/canvasChatPresentation.js";
 import { loadCanvasContextsForMessages } from "../../canvas/canvasSelectionSnapshot.js";
 import { aggregateReactions } from "../core.js";
 
@@ -22,17 +23,7 @@ export async function attachMentions(spaceId: string, msgs: (typeof schema.messa
       mentions: mts.filter((x) => x.messageId === m.id).map((x) => ({ type: x.mentionType, id: x.mentionId, name: x.mentionName })),
       attachments: atts.filter((a) => a.messageId === m.id).map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType, sizeBytes: a.sizeBytes })),
       reactions: reactions.get(m.id) ?? [],
-      canvasContext: canvas
-        ? {
-            snapshotId: canvas.snapshotId,
-            canvasId: canvas.canvasId,
-            canvasTitle: canvas.canvasTitle,
-            documentRevision: canvas.documentRevision,
-            summary: canvas.summary,
-            projection: canvas.projection,
-            canvasAvailable: !canvas.canvasDeleted,
-          }
-        : null,
+      canvasContext: presentCanvasContext(canvas),
     };
   });
 }

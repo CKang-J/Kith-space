@@ -1,17 +1,58 @@
-import { CANVAS_SELECTION_TO_CHAT_EVENT, type CanvasSelectionToChatTarget } from "@/features/canvas/adapters/recombynSelectionToChat";
+import { pendingSelectionSummaryParts, type CanvasSelectionSummaryParts } from "./canvasSelectionCopy";
+import { CANVAS_SELECTION_TO_CHAT_EVENT, type CanvasSelectionToChatTarget } from "../adapters/recombynSelectionToChat";
 
 export interface PendingCanvasChatContext {
   canvasId: string;
   canvasTitle: string;
   selectedIds: string[];
-  summary: string;
+  summaryParts: CanvasSelectionSummaryParts;
   previewDocument: unknown;
+  documentRevision?: number;
+  surfaceId: string;
 }
 
 type Listener = () => void;
 
-let pending: PendingCanvasChatContext | null = null;
+const pendingBySurface = new Map<string, PendingCanvasChatContext>();
 const listeners = new Set<Listener>();
+const surfaceStack: string[] = [];
+let activeSurfaceId: string | null = null;
+
+function notify(): void {
+  for (const listener of listeners) listener();
+}
+
+export function canvasChatSurfaceKey(channelId: string): string {
+  return channelId;
+}
+
+export function setActiveCanvasChatSurface(surfaceId: string | null): void {
+  if (activeSurfaceId === surfaceId) return;
+  activeSurfaceId = surfaceId;
+  notify();
+}
+
+export function pushCanvasChatSurface(surfaceId: string): () => void {
+  surfaceStack.push(surfaceId);
+  activeSurfaceId = surfaceId;
+  notify();
+  return () => {
+    const index = surfaceStack.lastIndexOf(surfaceId);
+    if (index >= 0) surfaceStack.splice(index, 1);
+    activeSurfaceId = surfaceStack.at(-1) ?? null;
+    notify();
+  };
+}
+
+export function resetCanvasChatBridgeForTests(): void {
+  pendingBySurface.clear();
+  surfaceStack.length = 0;
+  activeSurfaceId = null;
+}
+
+export function getActiveCanvasChatSurface(): string | null {
+  return activeSurfaceId;
+}
 
 export function parseCanvasSelectionTarget(target: CanvasSelectionToChatTarget | unknown): string[] {
   const values = Array.isArray(target) ? target : [target];
@@ -27,23 +68,45 @@ export function parseCanvasSelectionTarget(target: CanvasSelectionToChatTarget |
   return ids;
 }
 
-export function pendingCanvasSummary(canvasTitle: string, selectedIds: string[]): string {
-  if (!selectedIds.length) return `${canvasTitle} · 整张画布`;
-  const frames = selectedIds.filter((id) => id.startsWith("frame:")).length;
-  const elements = selectedIds.length - frames;
-  const parts = [canvasTitle];
-  if (frames) parts.push(`${frames} 个 Frame`);
-  if (elements) parts.push(`${elements} 个元素`);
-  return parts.join(" · ");
+export function getPendingCanvasChatContext(surfaceId?: string | null): PendingCanvasChatContext | null {
+  const key = surfaceId ?? activeSurfaceId;
+  if (!key) return null;
+  return pendingBySurface.get(key) ?? null;
 }
 
-export function getPendingCanvasChatContext(): PendingCanvasChatContext | null {
-  return pending;
+export function setPendingCanvasChatContext(
+  value: Omit<PendingCanvasChatContext, "surfaceId" | "summaryParts"> & { summaryParts?: CanvasSelectionSummaryParts } | null,
+  surfaceId?: string | null,
+): void {
+  const key = surfaceId ?? activeSurfaceId;
+  if (!value) {
+    if (key) pendingBySurface.delete(key);
+    else pendingBySurface.clear();
+    notify();
+    return;
+  }
+  if (!key) return;
+  pendingBySurface.set(key, {
+    ...value,
+    surfaceId: key,
+    summaryParts: value.summaryParts ?? pendingSelectionSummaryParts(
+      value.canvasTitle,
+      value.selectedIds,
+      value.documentRevision ?? 0,
+    ),
+  });
+  notify();
 }
 
-export function setPendingCanvasChatContext(value: PendingCanvasChatContext | null): void {
-  pending = value;
-  for (const listener of listeners) listener();
+export function clearPendingCanvasChatContextForCanvas(canvasId: string): void {
+  let changed = false;
+  for (const [key, value] of pendingBySurface) {
+    if (value.canvasId === canvasId) {
+      pendingBySurface.delete(key);
+      changed = true;
+    }
+  }
+  if (changed) notify();
 }
 
 export function subscribePendingCanvasChatContext(listener: Listener): () => void {
@@ -51,10 +114,18 @@ export function subscribePendingCanvasChatContext(listener: Listener): () => voi
   return () => { listeners.delete(listener); };
 }
 
+export function noteActiveCanvasFlyLand(surfaceId: string | null): void {
+  if (!surfaceId) return;
+  void import("@recombyn-native/components/editor/panels/agent/flyToChat").then(({ noteCanvasFlyLand }) => {
+    noteCanvasFlyLand(`kith-chat:${surfaceId}`);
+  }).catch(() => undefined);
+}
+
 export function bindCanvasSelectionToChat(input: {
   canvasId: string;
   canvasTitle: string;
   previewDocument: unknown;
+  documentRevision?: number;
 }): () => void {
   const onSelection = (event: Event) => {
     const target = (event as CustomEvent<{ target?: CanvasSelectionToChatTarget }>).detail?.target;
@@ -63,10 +134,13 @@ export function bindCanvasSelectionToChat(input: {
       canvasId: input.canvasId,
       canvasTitle: input.canvasTitle,
       selectedIds,
-      summary: pendingCanvasSummary(input.canvasTitle, selectedIds),
       previewDocument: input.previewDocument,
+      documentRevision: input.documentRevision,
     });
   };
   window.addEventListener(CANVAS_SELECTION_TO_CHAT_EVENT, onSelection);
-  return () => window.removeEventListener(CANVAS_SELECTION_TO_CHAT_EVENT, onSelection);
+  return () => {
+    window.removeEventListener(CANVAS_SELECTION_TO_CHAT_EVENT, onSelection);
+    clearPendingCanvasChatContextForCanvas(input.canvasId);
+  };
 }

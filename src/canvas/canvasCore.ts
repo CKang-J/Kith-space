@@ -9,10 +9,12 @@ import type {
   CanvasOperation,
   CanvasSnapshot,
 } from "./canvasTypes.js";
+import { canonicalJson } from "./canonicalJson.js";
+import { KITH_ENTITY_REVISION_KEY, stampCanvasEntityRevisions } from "./canvasEntityRevision.js";
 
 const MAX_DOCUMENT_BYTES = 16 * 1024 * 1024;
 const MAX_PATCHES = 10_000;
-const FORBIDDEN_PATH_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
+const FORBIDDEN_PATH_SEGMENTS = new Set(["__proto__", "prototype", "constructor", KITH_ENTITY_REVISION_KEY]);
 const MEDIA_URL_KEYS = new Set(["src", "url", "href", "poster", "thumbnail"]);
 
 export class CanvasNotFoundError extends Error {}
@@ -23,15 +25,6 @@ export class CanvasConflictError extends Error {
   }
 }
 export class CanvasIdempotencyError extends Error {}
-
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  return `{${Object.entries(value as Record<string, unknown>)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`)
-    .join(",")}}`;
-}
 
 function requestHash(value: unknown): string {
   return createHash("sha256").update(canonicalJson(value)).digest("hex");
@@ -404,6 +397,7 @@ export class CanvasCore {
       delete (document as Record<string, CanvasJson>).pages;
       delete (document as Record<string, CanvasJson>).activePageId;
     }
+    stampCanvasEntityRevisions(document, "all", "all", 0, 0);
     this.assertDurableMedia(document, canvasId);
     const hash = requestHash({ canvasId, title, document });
     return this.db.transaction((tx) => {
@@ -486,6 +480,13 @@ export class CanvasCore {
         result: storedResult(created),
       }).run();
       const applied = patchDocument(emptyDocument, operation, title);
+      stampCanvasEntityRevisions(
+        applied.document,
+        applied.impact.elementIds.length ? applied.impact.elementIds : "all",
+        applied.impact.frameIds.length ? applied.impact.frameIds : "all",
+        Number(applied.impact.element),
+        Number(applied.impact.frame),
+      );
       this.assertDurableMedia(applied.document, input.canvasId);
       const row = tx.update(schema.canvasDocuments).set({
         document: applied.document,
@@ -594,6 +595,14 @@ export class CanvasCore {
         throw new CanvasConflictError(current.revisions.revision);
       }
       const result = patchDocument(current.document, input.operation, current.title);
+      const nextElementRevision = current.revisions.element + Number(result.impact.element);
+      const nextFrameRevision = current.revisions.frame + Number(result.impact.frame);
+      if (result.impact.element) {
+        stampCanvasEntityRevisions(result.document, result.impact.elementIds, [], nextElementRevision, nextFrameRevision);
+      }
+      if (result.impact.frame) {
+        stampCanvasEntityRevisions(result.document, [], result.impact.frameIds, nextElementRevision, nextFrameRevision);
+      }
       if (input.expectedRevision < current.revisions.revision) {
         const committed = tx.select({ impact: schema.canvasMutations.impact }).from(schema.canvasMutations).where(and(
           eq(schema.canvasMutations.canvasId, input.canvasId),
@@ -706,6 +715,14 @@ export class CanvasCore {
       const applied = patchDocument(current.document, operation, current.title);
       const document = applied.document;
       const title = applied.title ?? current.title;
+      const nextElementRevision = current.revisions.element + Number(impact.element);
+      const nextFrameRevision = current.revisions.frame + Number(impact.frame);
+      if (impact.element) {
+        stampCanvasEntityRevisions(document, impact.elementIds, [], nextElementRevision, nextFrameRevision);
+      }
+      if (impact.frame) {
+        stampCanvasEntityRevisions(document, [], impact.frameIds, nextElementRevision, nextFrameRevision);
+      }
       this.assertDurableMedia(document, canvasId);
       tx.update(schema.canvasMutations).set({ state: kind === "undo" ? "reverted" : "applied" })
         .where(eq(schema.canvasMutations.id, source.id)).run();
@@ -755,6 +772,26 @@ export class CanvasCore {
       const applied = patchDocument(document, row.operation as CanvasOperation, title);
       document = applied.document;
       title = applied.title ?? title;
+      const stored = row.result as StoredCanvasResult;
+      const impact = row.impact as CanvasMutationImpact;
+      if (impact.element) {
+        stampCanvasEntityRevisions(
+          document,
+          impact.elementIds.length ? impact.elementIds : "all",
+          [],
+          stored.revisions.element,
+          stored.revisions.frame,
+        );
+      }
+      if (impact.frame) {
+        stampCanvasEntityRevisions(
+          document,
+          [],
+          impact.frameIds.length ? impact.frameIds : "all",
+          stored.revisions.element,
+          stored.revisions.frame,
+        );
+      }
     }
     return { ...(target.result as StoredCanvasResult), title, document };
   }

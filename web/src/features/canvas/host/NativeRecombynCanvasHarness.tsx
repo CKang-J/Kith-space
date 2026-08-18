@@ -18,7 +18,7 @@ import "@/features/canvas/upstream/recombyn-native.css";
 import EditorPage from "@recombyn-native/pages/EditorPage";
 import { MessageContainer } from "@recombyn-native/components/base";
 import { store } from "@recombyn-native/store";
-import { importDocument } from "@recombyn-native/store/modules/editor";
+import { importDocument, setMixedSelection } from "@recombyn-native/store/modules/editor";
 import type { CanvasCoreClient, CanvasLibraryItem, KithApi } from "@/features/canvas/adapters/canvasCoreApi";
 import type { RecombynCoreProjectionConnection } from "@/features/canvas/adapters/recombynCoreProjection";
 import { resolveKithCanvasTheme } from "@/features/canvas/adapters/recombynThemeBridge";
@@ -26,7 +26,10 @@ import { useCanvasCoreResource } from "./useCanvasCoreResource";
 import { useCanvasAssetBridges } from "./useCanvasAssetBridges";
 import { useRecombynCanvasProjection } from "./useRecombynCanvasProjection";
 import { RecombynEditorIconSprite } from "./RecombynEditorIconSprite";
+import i18n from "@/i18n";
 import { bindCanvasSelectionToChat } from "./canvasChatBridge";
+import { CanvasSendToChatHostAction } from "./CanvasSendToChatHostAction";
+import { applyCanvasSelectionFocus } from "./canvasSelectionFocus";
 
 const PROJECT_ID = "kith-stage-one-native";
 const STAGE_ONE_THEME = new URLSearchParams(window.location.search).get("__canvas_theme") === "dark" ? "dark" : "light";
@@ -62,14 +65,17 @@ interface NativeEditorSurfaceProps {
   onHistory?(kind: "undo" | "redo"): void;
 }
 
-function NativeEditorApp({ projectId }: { projectId: string }) {
+function NativeEditorApp({ projectId, sendToChatTitle }: { projectId: string; sendToChatTitle?: string }) {
   return (
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={[`/editor/${projectId}`]}>
-          <Routes><Route path="/editor/:projectId" element={<EditorPage />} /></Routes>
-        </MemoryRouter>
-        <MessageContainer />
+        <div className="relative size-full min-h-0 min-w-0">
+          <MemoryRouter initialEntries={[`/editor/${projectId}`]}>
+            <Routes><Route path="/editor/:projectId" element={<EditorPage />} /></Routes>
+          </MemoryRouter>
+          {sendToChatTitle ? <CanvasSendToChatHostAction canvasId={projectId} canvasTitle={sendToChatTitle} /> : null}
+          <MessageContainer />
+        </div>
       </QueryClientProvider>
     </Provider>
   );
@@ -142,15 +148,21 @@ function NativeEditorSurface({ projectId, projectName = "Kith Canvas", document:
     localStorage.setItem("recombyn-editor-tour-v3", "1");
     const detachPortalRoot = attachRecombynPortalRoot(rootRef.current);
     const editorRoot = createRoot(editorMountRef.current);
-    editorRoot.render(<NativeEditorApp projectId={projectId} />);
+    editorRoot.render(<NativeEditorApp projectId={projectId} sendToChatTitle={embedded ? projectName : undefined} />);
     document.documentElement.dataset.recombynStageOne = "native";
+    const releaseFocus = embedded
+      ? applyCanvasSelectionFocus(projectId, (request) => {
+        store.dispatch(setMixedSelection({ nodeIds: request.nodeIds, frameIds: request.frameIds }));
+      })
+      : undefined;
     return () => {
       disconnectProjection();
+      releaseFocus?.();
       editorRoot.unmount();
       detachPortalRoot();
       delete document.documentElement.dataset.recombynStageOne;
     };
-  }, [connect, initialDocument, projectId, projectName]);
+  }, [connect, embedded, initialDocument, projectId, projectName]);
   useEffect(() => rootRef.current ? installNativePerformanceProbe(rootRef.current) : undefined, []);
   useEffect(() => {
     if (!onHistory) return undefined;
@@ -203,7 +215,7 @@ export function NativeRecombynCanvas({ canvasId, api, spaceId }: { canvasId: str
   useCanvasAssetBridges(client, canvasId, spaceId, resourceKey);
 
   if (loadError) return <div role="alert" className="grid h-full place-items-center p-6 text-sm text-destructive">{loadError}</div>;
-  if (!loaded || loaded.resourceKey !== resourceKey) return <div className="grid h-full place-items-center text-sm text-muted-foreground">Loading Canvas…</div>;
+  if (!loaded || loaded.resourceKey !== resourceKey) return <div className="grid h-full place-items-center text-sm text-muted-foreground">{i18n.t("chat.canvasLoading")}</div>;
   return <DurableCanvasEditor canvasId={canvasId} resourceKey={resourceKey} snapshot={loaded.snapshot} client={client} connectionRef={connectionRef} />;
 }
 
@@ -219,7 +231,8 @@ function DurableCanvasEditor({ canvasId, resourceKey, snapshot, client, connecti
     canvasId,
     canvasTitle: snapshot.title,
     previewDocument: snapshot.document,
-  }), [canvasId, snapshot.document, snapshot.title]);
+    documentRevision: snapshot.revisions.document,
+  }), [canvasId, snapshot.document, snapshot.revisions.document, snapshot.title]);
   return <NativeEditorSurface
     projectId={canvasId}
     projectName={snapshot.title}

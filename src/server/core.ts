@@ -52,8 +52,7 @@ import {
 import { SessionModule } from "../sessions/sessionModule.js";
 import { DeliveryJournal } from "../deliveries/deliveryJournal.js";
 import { normalizeMessageContextSnapshot } from "../context/messageContextSnapshot.js";
-import { parseCanvasSelectionInput } from "../canvas/canvasSelectionSnapshot.js";
-import { parseExecutionBinding, MessageExecutionBindingError } from "../messages/messageExecutionBinding.js";
+import { parseOptionalExecutionBinding, parseRequiredCanvasSelection } from "../messages/postMessageCommandParse.js";
 import { harnessTurnScheduler, scheduleV2Turns, turnCapabilityService } from "./harnessComposition.js";
 import { inboxSummary, type InboxSummary } from "../deliveries/inboxSummary.js";
 import { configureTaskGatewayPort } from "../capabilities/taskGatewayPort.js";
@@ -553,20 +552,6 @@ async function agentConfigs(agents: (typeof schema.agents.$inferSelect)[]) {
     if (config) configs.set(agent.id, config);
   }
   return configs;
-}
-
-function parseRequiredCanvasSelection(value: unknown) {
-  if (value == null) return undefined;
-  const parsed = parseCanvasSelectionInput(value);
-  if (!parsed) throw new MessageExecutionBindingError("INVALID_ARGUMENT", "canvas selection is invalid");
-  return parsed;
-}
-
-function parseOptionalExecutionBinding(value: unknown) {
-  if (value == null) return null;
-  const parsed = parseExecutionBinding(value);
-  if (!parsed) throw new MessageExecutionBindingError("INVALID_ARGUMENT", "execution binding is invalid");
-  return parsed;
 }
 
 export async function createMessage(options: CreateMessageOptions) {

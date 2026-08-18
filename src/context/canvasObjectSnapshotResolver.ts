@@ -52,6 +52,8 @@ registerContextObjectSnapshotResolver({
           structureRevision: presentation.structureRevision,
           selectedElementCount: presentation.selectedElements.length,
           selectedFrameCount: presentation.selectedFrames.length,
+          selectedElements: presentation.selectedElements,
+          selectedFrames: presentation.selectedFrames,
           summary: presentation.summary,
           projection: presentation.projection,
           previewAssetId: presentation.previewAssetId,
