@@ -144,11 +144,33 @@ export const CanvasContextBundleCreateCommandSchema = z.object({
 export const CanvasAssetImportCommandSchema = z.object({
   canvasId: z.string().trim().min(1).optional(),
   snapshotId: z.string().trim().min(1).optional(),
+  /** Local Space attachment id (message-bound or current-turn temporary). */
+  attachmentId: z.string().trim().min(1).optional(),
+  /** Alias retained for MCP/CLI transport parity; treated as attachmentId. */
   assetId: z.string().trim().min(1).optional(),
   url: z.string().optional(),
   dataUrl: z.string().optional(),
   idempotencyKey: z.string().trim().min(1).max(200),
 }).strict();
+
+export {
+  CanvasCreateFrameCommandSchema,
+  CanvasCreateImageCommandSchema,
+  CanvasCreateShapeCommandSchema,
+  CanvasCreateTextCommandSchema,
+  CanvasDeleteNodesCommandSchema,
+  CanvasSceneSummaryCommandSchema,
+  CanvasUpdateNodeCommandSchema,
+} from "../canvas/canvasAgentTools.js";
+export type {
+  CanvasCreateFrameCommand,
+  CanvasCreateImageCommand,
+  CanvasCreateShapeCommand,
+  CanvasCreateTextCommand,
+  CanvasDeleteNodesCommand,
+  CanvasSceneSummaryCommand,
+  CanvasUpdateNodeCommand,
+} from "../canvas/canvasAgentTools.js";
 export type ContextCheckCommand = z.infer<typeof ContextCheckCommandSchema>;
 export type CanvasSnapshotGetCommand = z.infer<typeof CanvasSnapshotGetCommandSchema>;
 export type CanvasElementsGetCommand = z.infer<typeof CanvasElementsGetCommandSchema>;

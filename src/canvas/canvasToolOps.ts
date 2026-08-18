@@ -22,6 +22,8 @@ export type MappedCanvasToolOps = {
   createdFrameIds: string[];
   deletedElementIds: string[];
   deletedFrameIds: string[];
+  reorderedElementIds: string[];
+  reorderedFrameIds: string[];
   viewport: CanvasViewportSuggestion | null;
   backgroundWrite: boolean;
 };
@@ -140,12 +142,22 @@ function collectDescendants(nodes: Record<string, Record<string, CanvasJson>>, i
   return [...seen];
 }
 
+function creatableIdCollides(
+  id: string,
+  nodes: Record<string, Record<string, CanvasJson>>,
+  frames: Array<Record<string, CanvasJson>>,
+): boolean {
+  return id === "ROOT" || Boolean(nodes[id]) || frames.some((frame) => frame.id === id);
+}
+
 function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
   patches: CanvasPatch[];
   createdElementIds: string[];
   createdFrameIds: string[];
   deletedElementIds: string[];
   deletedFrameIds: string[];
+  reorderedElementIds: string[];
+  reorderedFrameIds: string[];
   backgroundWrite: boolean;
 } {
   const op = opName(raw);
@@ -158,6 +170,8 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
     createdFrameIds: [] as string[],
     deletedElementIds: [] as string[],
     deletedFrameIds: [] as string[],
+    reorderedElementIds: [] as string[],
+    reorderedFrameIds: [] as string[],
     backgroundWrite: false,
   };
 
@@ -190,7 +204,7 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
       }
     }
     const id = typeof raw.id === "string" && raw.id ? raw.id : randomUUID();
-    if (id === "ROOT" || nodes[id]) throw new CanvasValidationError("create ToolOp id collides");
+    if (creatableIdCollides(id, nodes, frames)) throw new CanvasValidationError("create ToolOp id collides");
     const parentId = typeof raw.parentId === "string" && raw.parentId ? raw.parentId : "ROOT";
     if (!nodes[parentId]) throw new CanvasValidationError("create ToolOp parent does not exist");
     const key = op === "create_text" ? "text" : op === "create_svg" ? "svg" : op === "create_image" ? "image" : op === "create_lottie" ? "lottie" : op === "create_icon" ? "icon" : "shape";
@@ -226,7 +240,7 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
 
   if (op === "create_frame") {
     const id = typeof raw.id === "string" && raw.id ? raw.id : randomUUID();
-    if (frames.some((frame) => frame.id === id)) throw new CanvasValidationError("create_frame id collides");
+    if (creatableIdCollides(id, nodes, frames)) throw new CanvasValidationError("create_frame id collides");
     const frame = {
       id,
       name: typeof raw.name === "string" && raw.name ? raw.name : "Frame",
@@ -351,8 +365,21 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
 
   if (op === "reorder_nodes") {
     const ids = requireIds(raw.ids ?? raw.nodeIds ?? raw.order, "reorder_nodes");
-    const nextStack = [...ids, ...stack.filter((item) => !ids.includes(item) && !ids.includes(item.replace(/^frame:/, "")))];
-    return { ...empty, patches: [setStack(nextStack)] };
+    const frameIdSet = new Set(frames.flatMap((frame) => typeof frame.id === "string" ? [frame.id] : []));
+    const reorderedElementIds: string[] = [];
+    const reorderedFrameIds: string[] = [];
+    for (const id of ids) {
+      const bare = id.startsWith("frame:") ? id.slice(6) : id.startsWith("node:") ? id.slice(5) : id;
+      if (id.startsWith("frame:") || frameIdSet.has(bare)) reorderedFrameIds.push(bare);
+      else reorderedElementIds.push(bare);
+    }
+    const nextStack = [...ids, ...stack.filter((item) => !ids.includes(item) && !ids.includes(item.replace(/^frame:/, "")) && !ids.includes(item.replace(/^node:/, "")))];
+    return {
+      ...empty,
+      patches: [setStack(nextStack)],
+      reorderedElementIds,
+      reorderedFrameIds,
+    };
   }
 
   if (op === "group_nodes") {
@@ -479,6 +506,8 @@ export function mapCanvasToolOps(document: CanvasJson, operations: unknown[]): M
   const createdFrameIds: string[] = [];
   const deletedElementIds: string[] = [];
   const deletedFrameIds: string[] = [];
+  const reorderedElementIds: string[] = [];
+  const reorderedFrameIds: string[] = [];
   let viewport: CanvasViewportSuggestion | null = null;
   let backgroundWrite = false;
   for (const item of operations) {
@@ -506,6 +535,8 @@ export function mapCanvasToolOps(document: CanvasJson, operations: unknown[]): M
     createdFrameIds.push(...mapped.createdFrameIds);
     deletedElementIds.push(...mapped.deletedElementIds);
     deletedFrameIds.push(...mapped.deletedFrameIds);
+    reorderedElementIds.push(...mapped.reorderedElementIds);
+    reorderedFrameIds.push(...mapped.reorderedFrameIds);
     backgroundWrite = backgroundWrite || mapped.backgroundWrite;
     current = applyPatches(current, mapped.patches);
   }
@@ -515,6 +546,8 @@ export function mapCanvasToolOps(document: CanvasJson, operations: unknown[]): M
     createdFrameIds,
     deletedElementIds,
     deletedFrameIds,
+    reorderedElementIds,
+    reorderedFrameIds,
     viewport,
     backgroundWrite,
   };

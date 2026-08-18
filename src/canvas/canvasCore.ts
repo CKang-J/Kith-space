@@ -11,6 +11,7 @@ import type {
 } from "./canvasTypes.js";
 import { canonicalJson } from "./canonicalJson.js";
 import { KITH_ENTITY_REVISION_KEY, stampCanvasEntityRevisions } from "./canvasEntityRevision.js";
+import { revokeCanvasAccessGrantsForCanvasInTransaction } from "./canvasAccessGrant.js";
 
 const MAX_DOCUMENT_BYTES = 16 * 1024 * 1024;
 const MAX_PATCHES = 10_000;
@@ -575,10 +576,7 @@ export class CanvasCore {
         impact: { ...emptyImpact(), metadata: true, writeResources: ["metadata:lifecycle"] },
         result: storedResult(result),
       }).run();
-      tx.update(schema.canvasAccessGrants).set({ revokedAt: new Date() }).where(and(
-        eq(schema.canvasAccessGrants.canvasId, canvasId),
-        isNull(schema.canvasAccessGrants.revokedAt),
-      )).run();
+      revokeCanvasAccessGrantsForCanvasInTransaction(tx, canvasId);
       return result;
     });
   }
@@ -802,6 +800,23 @@ export class CanvasCore {
 
   private assertDurableMedia(document: CanvasJson, targetCanvasId: string): void {
     const inspect = (value: CanvasJson, key = ""): void => {
+      if (typeof value === "string" && key === "assetId") {
+        const assetId = value.trim();
+        if (!assetId) return;
+        const asset = this.db.select({ id: schema.canvasAssets.id }).from(schema.canvasAssets).innerJoin(
+          schema.canvasDocuments,
+          eq(schema.canvasDocuments.id, schema.canvasAssets.canvasId),
+        ).where(and(
+          eq(schema.canvasAssets.id, assetId),
+          eq(schema.canvasAssets.canvasId, targetCanvasId),
+          eq(schema.canvasAssets.state, "ready"),
+          isNull(schema.canvasAssets.deletedAt),
+          eq(schema.canvasDocuments.spaceId, this.spaceId),
+          isNull(schema.canvasDocuments.deletedAt),
+        )).get();
+        if (!asset) throw new CanvasValidationError("canvas media asset does not exist on this Canvas");
+        return;
+      }
       if (typeof value === "string" && MEDIA_URL_KEYS.has(key)) {
         const url = value.trim();
         if (!url) return;

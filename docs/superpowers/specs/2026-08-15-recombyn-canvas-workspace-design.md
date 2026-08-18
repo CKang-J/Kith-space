@@ -359,7 +359,7 @@ Recombyn 的 24 个 action 全部进入阶段 1 适配 manifest；其中只有 d
 | `image_process` | 保留 schema 兼容但默认不向 Agent 开放；只有已经随包离线落地且通过许可/性能/安全门的 kind 才可逐项启用，OCR/SAM/LaMa、生成式替换等进入后续 durable job |
 | `export_canvas` | 映射到 `canvas.export` 和 Electron/Web Export Port；不作为 scene mutation |
 
-`create_image.genPrompt/removeBg`、`create_lottie.genPrompt` 等依赖 Recombyn 生成后端的参数在 MVP 禁用；Agent 先用 Kith 后续生成 Provider/job 取得 asset，再通过 `asset_import` 与普通 create op 附着。`elements_apply` 接受有界 operation 数量和总字节，内部复用 allowlist、schema、stable id、Kith-owned SVG sanitizer 与危险操作策略。删除、覆盖、导入、导出和外部生成使用独立风险 scope。
+`create_image.genPrompt/removeBg`、`create_lottie.genPrompt` 等依赖 Recombyn 生成后端的参数在 MVP 禁用；Agent 通过 `canvas.asset_import` 把**当前 Space / turn / 授权范围内的本地可信附件**导入目标 Canvas 的 `CanvasAssetStore`（staged→ready），再以普通 create op 附着 `assetId`。允许来源仅限：授权 grant 绑定消息上的 attachment，或本 turn Agent 上传的 temporary attachment（`sourceTurnId`/`uploaderId` 匹配）。拒绝 remote URL、data URL、宿主任意路径、跨 Space 与跨 Canvas。`elements_apply` 接受有界 operation 数量和总字节，内部复用 allowlist、schema、stable id、Kith-owned SVG sanitizer 与危险操作策略。删除、覆盖、导入、导出和外部生成使用独立风险 scope。`set_canvas_background` 是整 Canvas document 写：Gateway 要求 grant 显式携带 `set_canvas_background`；阶段4产品从局部选区派生的 grant **不**签发该 action，因此普通“发送选区到 Chat”路径不能静默获得整板背景写权限。若未来增加整 Canvas 全局写产品入口，须显式签发后再启用。
 
 ## 10. Selection Snapshot 与 Context Envelope
 
@@ -613,13 +613,13 @@ Canvas 诊断至少记录：canvas/mutation id、可选 job id、actor domain、
 - 通用 `MessageExecutionBinding`、MessagePosting 同事务附件和 eligible executor 预检；
 - Chat context chip/deep link、`ContextObjectSnapshotResolver`、Context Assembler 与 Turn Inspector 投影。
 
-门禁：“让 Agent 处理”入口继续由 `KITH_CANVAS_AGENT_EXECUTION` / `isCanvasAgentExecutionEnabled()` 保护；阶段4已提供最小 `snapshot_get`、Canvas grant 与 reply artifact 契约，生产默认仍 fail-closed，测试环境默认开启。
+门禁：“让 Agent 处理”入口继续由 `KITH_CANVAS_AGENT_EXECUTION` / `isCanvasAgentExecutionEnabled()` 保护；阶段4已提供最小 `snapshot_get`、Canvas grant 与 reply artifact 契约，生产/packaged 默认仍 fail-closed，`pnpm run desktop:dev` 的 Core/Worker 由 development process env adapter 显式注入 `KITH_CANVAS_AGENT_EXECUTION=1`，测试环境默认开启；手动分进程须自行设置。
 
 验收：DM/频道/话题保持原 surface，仅一个 required delivery，其他 active Agent 无 optional wake；executor 删除/v1/无 surface access/无 `message:send` 均整笔回滚；另覆盖删除后审计、发送后 assembly 前删除、选区后改画布、无选择 broad grant、未授权读取和事务失败清理。
 
 ### 阶段 4：单 Agent 读取与回写闭环
 
-实现状态（2026-08-18）：阶段4代码已落地。workspace schema v14 新增 `canvas_access_grants`、`turn_output_artifacts`，并为 `message_execution_bindings` 增加 `binding_source`。`TurnCapabilityService.prepare()` 仅从 server-owned binding + bound required delivery + frozen Selection Snapshot 派生 durable `CanvasAccessGrant`（绑定 message/snapshot/delivery/turn/executor/canvas/objectScope/actions/expiry）；生产入口由 `KITH_CANVAS_AGENT_EXECUTION` / `isCanvasAgentExecutionEnabled()` 保护。Gateway scopes 增加 `canvas.read/write/export/import`；MCP/CLI thin tools（`canvas.snapshot_get`、`elements_get`、`elements_apply`、`export`、`context_bundle_create`、`asset_import`）与 Human API 共用同一 Canvas Core。Recombyn 24 ToolOps 经 `canvasToolOps` 映射到阶段2 Core operation：viewport 为 ephemeral suggestion，export 为独立副作用，`image_process`/`outline_text` 延后 job。写回路径服务端 `analyzeCanvasOperationBatch` + grant impact 重验，同 key ledger 幂等，冲突 CAS，破坏性操作需 `confirmDestructive`；Agent/Canvas 删除撤权。`TurnReplyCommand.outputRefs` 经 `turn_output_artifacts` 关联同 turn 已提交 mutation；Turn Inspector 支持 bound/unattached 双向查询。Canvas skill pack 在具备 grant 时注入 Context Assembler。定向验收覆盖 grant 伪造/扩张/过期、ToolOps 映射、同 key 重放与 payload 冲突、CAS、批量确认、撤权/删除、mutation-reply 崩溃恢复、DM/channel/thread executor 与其他 Agent 不唤醒。
+实现状态（2026-08-19）：阶段4代码已落地，并完成双审查 P1/P2 收口。workspace schema v14 新增 `canvas_access_grants`、`turn_output_artifacts`，并为 `message_execution_bindings` 增加 `binding_source`。`TurnCapabilityService.prepare()` 仅从 server-owned binding + bound required delivery + frozen Selection Snapshot 派生 durable `CanvasAccessGrant`（绑定 message/snapshot/delivery/turn/executor/canvas/objectScope/actions/expiry）；`renewAttempt` 在同一事务把该 turn/executor 仍 live 的 grant `expiresAt` 同步到新 lease，已撤权 grant 不复活。同 Canvas 多 snapshot grant 在未传 `snapshotId` 时 fail-closed。生产入口由 `KITH_CANVAS_AGENT_EXECUTION` / `isCanvasAgentExecutionEnabled()` 保护；`pnpm run desktop:dev` 经 `src/desktop/processCommands.ts` 为 Core/Worker 注入开发开关，packaged 不强制开启。Gateway scopes 增加 `canvas.read/write/export/import`；MCP 与 CLI 对称暴露 `canvas.snapshot_get`、`elements_get`、`elements_apply`、`export`、`context_bundle_create`、`asset_import` 以及 typed `scene_summary/create_*/update_node/delete_nodes`，均经 `/agent-gateway/canvas/*` 与同一 `CapabilityGateway`。非空选区 grant 默认签发 `import`（不签发 `set_canvas_background`）；`asset_import` 只接受当前 Space 内、绑定授权消息或本 turn 临时附件的本地 attachment，经既有 `CanvasAssetStore` staged→ready 写入 `.kith/canvas-assets`，拒绝 remote URL/data URL/宿主任意路径/跨 Space/跨 Canvas。`create_image`/`create_lottie`/`create_icon` 的 `assetId` 必须存在且属于当前 Canvas；`create_frame` 自定义 id 不能是 `ROOT` 或与已有 element/Frame 冲突。自然语言 edit/question/read/export 由 Canvas skill 要求 Agent 自己判断；服务端不把正则分类写成 `mutationRequired=yes`，也没有 Agent finish/intent 工具，因此 `turn.reply` 不做自然语言硬拦截（`enforcedOnReply=false`）。`set_canvas_background` 仍映射为 scene-wide op，但只有 grant 显式携带该 action 时才允许——产品入口当前不会签发整 Canvas 全局写 grant，文档与 24 ToolOps/Gateway 规则保持一致而非静默扩权。局部 `reorder_nodes` 只校验被排序目标是否在 objectScope 内，不再因 stackOrder 含选区外邻居而恒拒。Agent/Canvas 删除复用 `revokeCanvasAccessGrantsFor*InTransaction`。`TurnReplyCommand.outputRefs` 经 `turn_output_artifacts` 关联同 turn 已提交 mutation；Turn Inspector 批量查询 bound/unattached。Canvas skill pack 在具备 grant 时注入 Context Assembler。定向验收覆盖 grant 伪造/扩张/过期、多 grant 歧义、ToolOps/局部排序、同 key 重放与 payload 冲突、CAS、批量确认、撤权/删除、renew 同步、asset_import 成功/越权/冲突/失败清理、跨 Canvas assetId、Frame/element id 冲突、纯问句 intent、schema 缺目标、mutation-reply 崩溃恢复、DM/channel/thread executor 与其他 Agent 不唤醒、CLI/MCP 同域契约、development Desktop process env 开关与 flag-off fail-closed。真实 Desktop/Web Agent smoke 与阶段5硬化仍未宣称通过。
 
 目标：一个明确 Agent 可以安全读取冻结上下文、原子修改 Canvas，并在真实 Chat 中留下可审计回执。
 
@@ -630,7 +630,7 @@ Canvas 诊断至少记录：canvas/mutation id、可选 job id、actor domain、
 - Canvas Gateway Port 与 MCP/CLI thin tools；
 - Recombyn ToolOps validator/allowlist 适配；
 - `CanvasAccessGrant` 持久化、`prepare()` 派生、逐调用重验和 Canvas action scopes；
-- Canvas skill pack 与最小 system prompt 增量；
+- Canvas skill pack 与最小 system prompt 增量（Agent 自己判断 edit/question/read/export；服务端不把自然语言正则写成 mutationRequired）；
 - `TurnReplyCommand.outputRefs`、`turn_output_artifacts` 与 mutation/turn operation 双向查询；
 - 冲突、重试、撤权和 crash recovery。
 

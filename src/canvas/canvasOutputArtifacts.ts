@@ -1,13 +1,17 @@
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { SpaceTransaction } from "../counters.js";
+import type { SpaceDb } from "../db/index.js";
 import { schema } from "../db/index.js";
 import { HarnessError } from "../harness/errors.js";
+import { isCanvasMutationToolName } from "./canvasAgentTools.js";
 
 export type CanvasMutationOutputRef = {
   kind: "canvas_mutation";
   artifactId: string;
 };
+
+type ArtifactQueryable = SpaceDb | SpaceTransaction;
 
 /** Bind committed Canvas mutations to a turn.reply output. sourceRefs cannot substitute. */
 export function bindCanvasMutationOutputArtifactsInTransaction(
@@ -44,10 +48,10 @@ export function bindCanvasMutationOutputArtifactsInTransaction(
       eq(schema.turnOperations.turnId, input.turnId),
       eq(schema.turnOperations.status, "committed"),
     )).get();
-    if (!operation || operation.toolName !== "canvas.elements_apply") {
+    if (!operation || !isCanvasMutationToolName(operation.toolName)) {
       throw new HarnessError(
         "capability_scope_denied",
-        "canvas_mutation outputRef must reference a mutation committed by this turn via canvas.elements_apply",
+        "canvas_mutation outputRef must reference a mutation committed by this turn via a Canvas write tool",
       );
     }
     const existing = tx.select().from(schema.turnOutputArtifacts).where(and(
@@ -70,12 +74,12 @@ export function bindCanvasMutationOutputArtifactsInTransaction(
   }
 }
 
-export function listTurnOutputArtifactsInTransaction(tx: SpaceTransaction, turnId: string) {
-  return tx.select().from(schema.turnOutputArtifacts).where(eq(schema.turnOutputArtifacts.turnId, turnId)).all();
+export function listTurnOutputArtifactsInTransaction(db: ArtifactQueryable, turnId: string) {
+  return db.select().from(schema.turnOutputArtifacts).where(eq(schema.turnOutputArtifacts.turnId, turnId)).all();
 }
 
-export function findTurnOutputsForCanvasMutationInTransaction(tx: SpaceTransaction, mutationId: string) {
-  return tx.select().from(schema.turnOutputArtifacts).where(and(
+export function findTurnOutputsForCanvasMutationInTransaction(db: ArtifactQueryable, mutationId: string) {
+  return db.select().from(schema.turnOutputArtifacts).where(and(
     eq(schema.turnOutputArtifacts.kind, "canvas_mutation"),
     eq(schema.turnOutputArtifacts.artifactId, mutationId),
   )).all();

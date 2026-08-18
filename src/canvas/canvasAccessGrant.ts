@@ -55,9 +55,19 @@ function projectionFlags(snapshot: SnapshotRow): { wholeCanvas: boolean; groupId
   return { wholeCanvas, groupIds };
 }
 
+/**
+ * Stage-4 product grants:
+ * - empty / whole-canvas snapshot → read-only (`read_snapshot`)
+ * - non-empty selection → live read/write/create/delete/export/import
+ *
+ * `set_canvas_background` is intentionally NOT signed here. It is a whole-Canvas
+ * document write; ordinary partial selections must not silently receive it.
+ * A future whole-Canvas write grant product path may add it explicitly; until
+ * then Gateway still enforces the action when present (tests may inject it).
+ */
 function defaultActions(emptySelection: boolean): CanvasGrantAction[] {
   if (emptySelection) return ["read_snapshot"];
-  return ["read_snapshot", "read_live", "write_existing", "create", "delete_existing", "export"];
+  return ["read_snapshot", "read_live", "write_existing", "create", "delete_existing", "import", "export"];
 }
 
 export function prepareCanvasAccessGrantsInTransaction(
@@ -188,8 +198,11 @@ export function resolveCanvasAccessGrantInTransaction(
   if (canvasIds.size !== 1) {
     throw new CanvasAccessGrantError("denied", "Canvas write is limited to one authorized Canvas");
   }
-  if (byCanvas.length !== 1 && !input.requestedSnapshotId) {
-    return byCanvas[0]!;
+  if (byCanvas.length !== 1) {
+    throw new CanvasAccessGrantError(
+      "denied",
+      "multiple Canvas access grants match; snapshotId is required to select one",
+    );
   }
   return byCanvas[0]!;
 }
@@ -250,17 +263,34 @@ export function authorizeCanvasMutationImpact(
     createdFrameIds?: string[];
     deletedElementIds?: string[];
     deletedFrameIds?: string[];
+    reorderedElementIds?: string[];
+    reorderedFrameIds?: string[];
     confirmDestructive?: boolean;
   } = {},
 ): void {
   const scope = grant.objectScope;
   if (scope.emptySelection) {
-    throw new CanvasAccessGrantError("denied", "whole-canvas snapshot grants are read-only");
+    // Product Stage-4 empty/whole-canvas snapshots stay read-only unless a grant
+    // explicitly carries set_canvas_background (not signed by defaultActions).
+    if (!grant.actions.includes("set_canvas_background")) {
+      throw new CanvasAccessGrantError("denied", "whole-canvas snapshot grants are read-only");
+    }
+    for (const resource of impact.writeResources) {
+      if (resource !== "document:background") {
+        throw new CanvasAccessGrantError("denied", "whole-canvas write grant only allows set_canvas_background");
+      }
+    }
+    if (!impact.writeResources.includes("document:background")) {
+      throw new CanvasAccessGrantError("denied", "whole-canvas write grant only allows set_canvas_background");
+    }
+    return;
   }
   const createdElements = new Set(meta.createdElementIds ?? []);
   const createdFrames = new Set(meta.createdFrameIds ?? []);
   const deletedElements = new Set(meta.deletedElementIds ?? []);
   const deletedFrames = new Set(meta.deletedFrameIds ?? []);
+  const reorderedElements = new Set(meta.reorderedElementIds ?? []);
+  const reorderedFrames = new Set(meta.reorderedFrameIds ?? []);
   if ((deletedElements.size || deletedFrames.size) && !meta.confirmDestructive) {
     throw new CanvasAccessGrantError("denied", "destructive Canvas operations require confirmDestructive");
   }
@@ -268,13 +298,30 @@ export function authorizeCanvasMutationImpact(
     throw new CanvasAccessGrantError("denied", "Canvas grant does not allow delete_existing");
   }
   for (const id of deletedElements) {
-    if (!scope.elementIds.includes(id)) throw new CanvasAccessGrantError("denied", "cannot delete an element outside the grant");
+    if (scope.elementIds.includes(id) || createdElements.has(id)) continue;
+    throw new CanvasAccessGrantError("denied", "cannot delete an element outside the grant");
   }
   for (const id of deletedFrames) {
-    if (!scope.frameIds.includes(id)) throw new CanvasAccessGrantError("denied", "cannot delete a Frame outside the grant");
+    if (scope.frameIds.includes(id) || createdFrames.has(id)) continue;
+    throw new CanvasAccessGrantError("denied", "cannot delete a Frame outside the grant");
   }
   if (createdElements.size || createdFrames.size) {
     if (!grant.actions.includes("create")) throw new CanvasAccessGrantError("denied", "Canvas grant does not allow create");
+  }
+  if (reorderedElements.size || reorderedFrames.size) {
+    if (!grant.actions.includes("write_existing")) {
+      throw new CanvasAccessGrantError("denied", "Canvas grant does not allow write_existing");
+    }
+    for (const id of reorderedElements) {
+      if (!scope.elementIds.includes(id)) {
+        throw new CanvasAccessGrantError("denied", `cannot reorder element ${id} outside the grant`);
+      }
+    }
+    for (const id of reorderedFrames) {
+      if (!scope.frameIds.includes(id)) {
+        throw new CanvasAccessGrantError("denied", `cannot reorder Frame ${id} outside the grant`);
+      }
+    }
   }
 
   const authorizedRead = new Set<string>([
@@ -283,8 +330,19 @@ export function authorizeCanvasMutationImpact(
     ...[...createdElements].map((id) => `element:${id}`),
     ...[...createdFrames].map((id) => `frame:${id}`),
   ]);
+  const writingOrder = impact.writeResources.includes("structure:order");
   for (const resource of impact.readResources) {
     if (resource.startsWith("element:") || resource.startsWith("frame:")) {
+      // Ambient stack neighbors may appear in stackOrder reads when authorized
+      // nodes are reordered; only explicitly reordered / otherwise authorized
+      // objects require grant membership.
+      if (writingOrder) {
+        const id = resource.startsWith("element:") ? resource.slice("element:".length) : resource.slice("frame:".length);
+        const isTargeted = resource.startsWith("element:")
+          ? reorderedElements.has(id)
+          : reorderedFrames.has(id);
+        if (!isTargeted && !authorizedRead.has(resource)) continue;
+      }
       if (!authorizedRead.has(resource)) {
         throw new CanvasAccessGrantError("denied", `read impact ${resource} is outside the Canvas grant`);
       }
@@ -305,7 +363,14 @@ export function authorizeCanvasMutationImpact(
       if (resource === "document:background" && grant.actions.includes("set_canvas_background")) continue;
       throw new CanvasAccessGrantError("denied", `write impact ${resource} is outside the Canvas grant`);
     }
-    if (resource === "structure:root" || resource === "structure:active-frame") {
+    if (resource === "structure:active-frame") {
+      throw new CanvasAccessGrantError("denied", `write impact ${resource} is outside the Canvas grant`);
+    }
+    if (resource === "structure:root") {
+      const childrenRoot = impact.writeResources.includes("children:ROOT");
+      const creating = createdElements.size > 0 && grant.actions.includes("create") && scope.createParents.includes("ROOT");
+      const deleting = deletedElements.size > 0 && grant.actions.includes("delete_existing") && scope.createParents.includes("ROOT");
+      if (childrenRoot && (creating || deleting)) continue;
       throw new CanvasAccessGrantError("denied", `write impact ${resource} is outside the Canvas grant`);
     }
     if (resource === "structure:order" || resource === "structure:frames") continue;
@@ -332,6 +397,13 @@ export function authorizeCanvasMutationImpact(
     if (resource.startsWith("parent:")) {
       const id = resource.slice("parent:".length);
       if (createdElements.has(id) || scope.elementIds.includes(id) || deletedElements.has(id)) continue;
+      // Appending/removing a ROOT child rewrites ROOT.children; Core then emits
+      // parent: writes for every sibling. Those ambient siblings are not in-scope.
+      if (
+        impact.writeResources.includes("children:ROOT")
+        && scope.createParents.includes("ROOT")
+        && (createdElements.size > 0 || deletedElements.size > 0)
+      ) continue;
       throw new CanvasAccessGrantError("denied", `cannot reparent ${id} outside the grant`);
     }
     if (resource.startsWith("frame-membership:")) {
@@ -342,4 +414,24 @@ export function authorizeCanvasMutationImpact(
       throw new CanvasAccessGrantError("denied", `cannot change Frame membership for ${id} outside the grant`);
     }
   }
+}
+
+/** After a successful create, the same turn may update/delete those new ids. */
+export function expandCanvasAccessGrantAfterCreateInTransaction(
+  tx: SpaceTransaction,
+  grant: CanvasAccessGrantRow,
+  created: { elementIds?: string[]; frameIds?: string[] },
+): void {
+  const elementIds = created.elementIds?.filter(Boolean) ?? [];
+  const frameIds = created.frameIds?.filter(Boolean) ?? [];
+  if (!elementIds.length && !frameIds.length) return;
+  const scope = grant.objectScope;
+  tx.update(schema.canvasAccessGrants).set({
+    objectScope: {
+      ...scope,
+      elementIds: [...new Set([...scope.elementIds, ...elementIds])],
+      frameIds: [...new Set([...scope.frameIds, ...frameIds])],
+      createParents: [...new Set([...scope.createParents, ...frameIds])],
+    },
+  }).where(eq(schema.canvasAccessGrants.id, grant.id)).run();
 }

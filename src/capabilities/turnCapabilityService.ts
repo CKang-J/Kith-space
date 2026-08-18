@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte } from "drizzle-orm";
 import { prepareCanvasAccessGrantsInTransaction } from "../canvas/canvasAccessGrant.js";
 import { dbForSpace, schema, type SpaceDb } from "../db/index.js";
 import { HarnessError } from "../harness/errors.js";
@@ -250,14 +250,25 @@ export class TurnCapabilityService {
     if (!handle) throw new HarnessError("capability_inactive", "runtime session broker handle is unavailable", { attemptId });
     const claims = this.broker.renew(handle, activation.id, expiresAt);
     const claimsDigest = createHash("sha256").update(JSON.stringify(claims)).digest("hex");
-    const updated = this.db.update(schema.turnCapabilityActivations).set({
-      expiresAt: new Date(expiresAt),
-      claimsDigest,
-    }).where(and(
-      eq(schema.turnCapabilityActivations.id, activation.id),
-      eq(schema.turnCapabilityActivations.status, "active"),
-    )).run();
-    if (!updated.changes) {
+    const leaseExpiresAt = new Date(expiresAt);
+    const updated = this.db.transaction((tx) => {
+      const activationUpdate = tx.update(schema.turnCapabilityActivations).set({
+        expiresAt: leaseExpiresAt,
+        claimsDigest,
+      }).where(and(
+        eq(schema.turnCapabilityActivations.id, activation.id),
+        eq(schema.turnCapabilityActivations.status, "active"),
+      )).run();
+      if (!activationUpdate.changes) return 0;
+      // Extend only still-live grants for this turn/executor. Revoked grants stay revoked.
+      tx.update(schema.canvasAccessGrants).set({ expiresAt: leaseExpiresAt }).where(and(
+        eq(schema.canvasAccessGrants.turnId, turn.id),
+        eq(schema.canvasAccessGrants.executorAgentId, turn.agentId),
+        isNull(schema.canvasAccessGrants.revokedAt),
+      )).run();
+      return activationUpdate.changes;
+    });
+    if (!updated) {
       this.broker.deactivate(handle, activation.id);
       throw new HarnessError("capability_inactive", "capability activation changed during renewal", { attemptId });
     }

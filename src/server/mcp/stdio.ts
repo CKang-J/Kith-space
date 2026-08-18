@@ -3,12 +3,42 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { BrokerGatewayClient, GatewayClientError } from "../../capabilities/gatewayClient.js";
+import {
+  CanvasCreateFrameCommandSchema,
+  CanvasCreateImageCommandSchema,
+  CanvasCreateShapeCommandSchema,
+  CanvasCreateTextCommandSchema,
+  CanvasDeleteNodesCommandSchema,
+  CanvasSceneSummaryCommandSchema,
+  CanvasUpdateNodeCommandSchema,
+  CANVAS_AGENT_GATEWAY_PATHS,
+  CANVAS_TYPED_TOOL_DESCRIPTIONS,
+} from "../../canvas/canvasAgentTools.js";
 
 const client = BrokerGatewayClient.fromEnv(process.env, "mcp");
 const server = new McpServer({ name: "kith-core", version: "0.1.0" });
 
 function result(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
+}
+
+function registerSchema(
+  name: string,
+  description: string,
+  schema: z.ZodObject<z.ZodRawShape>,
+  method: "GET" | "POST",
+  path: string,
+): void {
+  server.registerTool(name, { description, inputSchema: schema }, async (input) => {
+    try {
+      const value = await client.request(method, path, method === "POST" ? input : undefined);
+      return result(value);
+    } catch (error) {
+      const code = error instanceof GatewayClientError ? error.code : "gateway_failed";
+      const message = error instanceof Error ? error.message : String(error);
+      return { isError: true, content: [{ type: "text" as const, text: JSON.stringify({ code, error: message }) }] };
+    }
+  });
 }
 
 function register(
@@ -140,10 +170,18 @@ register("canvas.export", "Export the authorized immutable Selection Snapshot as
 register("canvas.context_bundle_create", "Create a bounded Canvas context bundle from the authorized snapshot.", {
   snapshotId: z.string().min(1), canvasId: z.string().min(1).optional(), idempotencyKey: z.string().min(1),
 }, "POST", "/agent-gateway/canvas/context_bundle_create");
-register("canvas.asset_import", "Import a Canvas asset when the turn grant allows import (MVP may deny).", {
+register("canvas.asset_import", "Import a turn-bound local attachment into the authorized Canvas asset store.", {
   canvasId: z.string().min(1).optional(), snapshotId: z.string().min(1).optional(),
-  assetId: z.string().min(1).optional(), url: z.string().optional(), dataUrl: z.string().optional(),
+  attachmentId: z.string().min(1).optional(), assetId: z.string().min(1).optional(),
+  url: z.string().optional(), dataUrl: z.string().optional(),
   idempotencyKey: z.string().min(1),
 }, "POST", "/agent-gateway/canvas/asset_import");
+registerSchema("canvas.scene_summary", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.scene_summary"], CanvasSceneSummaryCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.scene_summary"]);
+registerSchema("canvas.create_frame", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_frame"], CanvasCreateFrameCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_frame"]);
+registerSchema("canvas.create_text", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_text"], CanvasCreateTextCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_text"]);
+registerSchema("canvas.create_shape", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_shape"], CanvasCreateShapeCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_shape"]);
+registerSchema("canvas.create_image", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_image"], CanvasCreateImageCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_image"]);
+registerSchema("canvas.update_node", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.update_node"], CanvasUpdateNodeCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.update_node"]);
+registerSchema("canvas.delete_nodes", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.delete_nodes"], CanvasDeleteNodesCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.delete_nodes"]);
 
 await server.connect(new StdioServerTransport());

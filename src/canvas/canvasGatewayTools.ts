@@ -1,9 +1,10 @@
 import { eq } from "drizzle-orm";
 import type { SpaceTransaction } from "../counters.js";
-import type { SpaceDb } from "../db/index.js";
+import { spaceRecord, type SpaceDb } from "../db/index.js";
 import { schema } from "../db/index.js";
 import { HarnessError } from "../harness/errors.js";
 import type { TurnCapabilityClaims } from "../capabilities/contracts.js";
+import { readObjectSync } from "../files/localObjectStorage.js";
 import {
   analyzeCanvasOperationBatch,
   CanvasConflictError,
@@ -16,11 +17,22 @@ import {
   assertLiveCanvasAccessGrant,
   authorizeCanvasMutationImpact,
   CanvasAccessGrantError,
+  expandCanvasAccessGrantAfterCreateInTransaction,
   resolveCanvasAccessGrantInTransaction,
   type CanvasGrantAction,
 } from "./canvasAccessGrant.js";
+import { CanvasAssetStore } from "./canvasAssetStore.js";
 import { mapCanvasToolOps } from "./canvasToolOps.js";
 import type { CanvasJson } from "./canvasTypes.js";
+import {
+  typedCanvasCommandToToolOp,
+  type CanvasTypedMutationCommand,
+  type CanvasTypedToolName,
+} from "./canvasAgentTools.js";
+import { canvasMutationFeedback, type CanvasMutationFeedback } from "./canvasMutationFeedback.js";
+import { executeCanvasSceneSummary } from "./canvasSceneSummary.js";
+
+export { executeCanvasSceneSummary };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -151,7 +163,7 @@ export function executeCanvasElementsApply(
   },
   operationId: string,
   now: number,
-) {
+): CanvasMutationFeedback {
   const grant = grantFor(tx, claims, command);
   const actions: CanvasGrantAction[] = ["read_live"];
   assertLiveCanvasAccessGrant(tx, grant, {
@@ -169,13 +181,20 @@ export function executeCanvasElementsApply(
       actions: ["set_canvas_background"],
     });
   }
+  const createdIds = [...mapped.createdElementIds, ...mapped.createdFrameIds];
+  const deletedIds = [...mapped.deletedElementIds, ...mapped.deletedFrameIds];
   if (!mapped.operation) {
-    return {
-      mutationId: null,
+    return canvasMutationFeedback({
+      operationId,
       canvasId: grant.canvasId,
+      snapshotId: grant.snapshotId,
+      previousRevision: live.revisions.revision,
       revision: live.revisions.revision,
+      mutationId: null,
+      createdIds,
+      deletedIds,
       viewport: mapped.viewport,
-    };
+    });
   }
   const analyzed = analyzeCanvasOperationBatch(live.document as CanvasJson, mapped.operation, live.title);
   authorizeCanvasMutationImpact(grant, analyzed.impact, {
@@ -183,6 +202,8 @@ export function executeCanvasElementsApply(
     createdFrameIds: mapped.createdFrameIds,
     deletedElementIds: mapped.deletedElementIds,
     deletedFrameIds: mapped.deletedFrameIds,
+    reorderedElementIds: mapped.reorderedElementIds,
+    reorderedFrameIds: mapped.reorderedFrameIds,
     confirmDestructive: command.confirmDestructive,
   });
   const snapshot = core.apply({
@@ -192,14 +213,61 @@ export function executeCanvasElementsApply(
     operation: mapped.operation,
   });
   const mutation = canvasMutationResultInTransaction(tx, operationId);
-  return {
-    mutationId: mutation?.mutationId ?? null,
+  if (createdIds.length) {
+    expandCanvasAccessGrantAfterCreateInTransaction(tx, grant, {
+      elementIds: mapped.createdElementIds,
+      frameIds: mapped.createdFrameIds,
+    });
+  }
+  const created = new Set(createdIds);
+  const deleted = new Set(deletedIds);
+  const updatedIds = [
+    ...analyzed.impact.elementIds.filter((id) => !created.has(id) && !deleted.has(id)),
+    ...analyzed.impact.frameIds.filter((id) => !created.has(id) && !deleted.has(id)),
+  ];
+  return canvasMutationFeedback({
+    operationId,
     canvasId: snapshot.id,
+    snapshotId: grant.snapshotId,
+    previousRevision: live.revisions.revision,
     revision: snapshot.revisions.revision,
+    mutationId: mutation?.mutationId ?? null,
     sequence: snapshot.sequence,
+    createdIds,
+    updatedIds,
+    deletedIds,
     impact: analyzed.impact,
     viewport: mapped.viewport,
-  };
+  });
+}
+
+export function executeCanvasTypedMutation(
+  db: SpaceDb,
+  tx: SpaceTransaction,
+  spaceId: string,
+  claims: TurnCapabilityClaims,
+  toolName: Exclude<CanvasTypedToolName, "canvas.scene_summary">,
+  command: CanvasTypedMutationCommand,
+  operationId: string,
+  now: number,
+): CanvasMutationFeedback {
+  const grant = grantFor(tx, claims, command);
+  const operations = [typedCanvasCommandToToolOp(toolName, command, grant)];
+  return executeCanvasElementsApply(
+    db,
+    tx,
+    spaceId,
+    claims,
+    {
+      canvasId: command.canvasId,
+      snapshotId: command.snapshotId,
+      expectedRevision: command.expectedRevision,
+      operations,
+      confirmDestructive: "confirmDestructive" in command ? command.confirmDestructive : undefined,
+    },
+    operationId,
+    now,
+  );
 }
 
 export function executeCanvasExport(
@@ -241,11 +309,20 @@ export function executeCanvasContextBundleCreate(
 }
 
 export function executeCanvasAssetImport(
+  db: SpaceDb,
   tx: SpaceTransaction,
+  spaceId: string,
   claims: TurnCapabilityClaims,
-  command: { canvasId?: string; snapshotId?: string; assetId?: string; url?: string; dataUrl?: string },
+  command: {
+    canvasId?: string;
+    snapshotId?: string;
+    attachmentId?: string;
+    assetId?: string;
+    url?: string;
+    dataUrl?: string;
+  },
   now: number,
-): never {
+) {
   const grant = grantFor(tx, claims, command);
   assertLiveCanvasAccessGrant(tx, grant, {
     executorAgentId: claims.agentId,
@@ -255,5 +332,59 @@ export function executeCanvasAssetImport(
   if (command.url || command.dataUrl) {
     throw new CanvasAccessGrantError("denied", "Canvas asset import does not accept remote URLs or data URLs");
   }
-  throw new CanvasAccessGrantError("denied", "Canvas asset import is not granted for this turn");
+  const attachmentId = command.attachmentId ?? command.assetId;
+  if (!attachmentId) {
+    throw new CanvasAccessGrantError("denied", "Canvas asset import requires attachmentId from a turn-bound local attachment");
+  }
+
+  const attachment = tx.select().from(schema.attachments).where(eq(schema.attachments.id, attachmentId)).get();
+  if (!attachment || attachment.spaceId !== spaceId) {
+    throw new CanvasAccessGrantError("denied", "attachment is outside the current Space");
+  }
+
+  const boundToGrantMessage = attachment.messageId === grant.messageId;
+  const turnOwnedTemporary = attachment.uploaderType === "agent"
+    && attachment.uploaderId === claims.agentId
+    && attachment.sourceTurnId === claims.turnId
+    && attachment.uploadState === "temporary"
+    && !attachment.messageId;
+  if (!boundToGrantMessage && !turnOwnedTemporary) {
+    throw new CanvasAccessGrantError(
+      "denied",
+      "attachment is not bound to the authorized Canvas message or the current turn",
+    );
+  }
+
+  const rootPath = spaceRecord(spaceId)?.rootPath;
+  if (!rootPath) {
+    throw new CanvasAccessGrantError("denied", "Space root is unavailable for Canvas asset import");
+  }
+
+  let bytes: Buffer;
+  try {
+    bytes = readObjectSync(spaceId, attachment.storageKey);
+  } catch {
+    throw new CanvasAccessGrantError("denied", "attachment bytes are unavailable");
+  }
+
+  const mimeType = typeof attachment.mimeType === "string" && attachment.mimeType
+    ? attachment.mimeType
+    : "application/octet-stream";
+  const store = new CanvasAssetStore(db, spaceId, rootPath);
+  const asset = store.write({
+    canvasId: grant.canvasId,
+    filename: attachment.filename,
+    mimeType,
+    bytes,
+  });
+  return {
+    assetId: asset.id,
+    canvasId: grant.canvasId,
+    snapshotId: grant.snapshotId,
+    attachmentId: attachment.id,
+    mimeType: asset.mimeType,
+    filename: asset.filename,
+    sizeBytes: asset.sizeBytes,
+    sha256: asset.sha256,
+  };
 }

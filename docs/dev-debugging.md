@@ -12,6 +12,7 @@ KITH_SPACE_HOME=C:/path/to/kith-space-data
 KITH_SPACE_SPACES_DIR=C:/path/to/kith-space-spaces
 KITH_SPACE_DESKTOP_TOKEN=<独立随机值>
 KITH_SPACE_WORKER_TOKEN=<另一个独立随机值>
+KITH_CANVAS_AGENT_EXECUTION=1
 ```
 
 - `PORT`：手动 Core Service 端口，默认 `7777`。
@@ -19,6 +20,7 @@ KITH_SPACE_WORKER_TOKEN=<另一个独立随机值>
 - `KITH_SPACE_SPACES_DIR`：开发/测试专用的默认 Space 容器覆盖，正式默认值为 `~/Kith-space`。隔离验收时应与 `KITH_SPACE_HOME` 一起指向临时 profile 的不同子目录。
 - `KITH_SPACE_DESKTOP_TOKEN`：手动开发管理请求到 Core 的内部凭据。
 - `KITH_SPACE_WORKER_TOKEN`：Worker 控制 WebSocket 的独立凭据。
+- `KITH_CANVAS_AGENT_EXECUTION`：Canvas Agent Gateway/MCP/CLI 执行入口。设为 `1`/`true`/`on` 时，`TurnCapabilityService.prepare()` 才会从 binding+bound required delivery+frozen Selection Snapshot 派生 Access Grant 并把对应 `canvas.*` scopes 写入 activation claims；`0`/`false`/`off` 或未设置时生产路径 fail-closed（测试 runner 默认开启）。`pnpm run desktop:dev` 已为 Core/Worker 自动注入 `1`；手动分进程、打包产物或独立 `server`/`daemon` 调试若要做 Canvas Agent smoke，必须在 Core（以及需要时 Worker）进程环境显式设置，且新 turn/重启后才生效，旧 activation 不会被静默升级。
 
 路径职责固定为：主要 runtime 的 cwd 是 registry 中所属 Space 的 rootPath；Agent Memory 位于 `<space>/.kith/agents/<agentId>`；prompt、turn 文件等 runtime 临时状态位于 `$KITH_SPACE_HOME/runtime/<spaceId>/<agentId>`。普通 reset 只清 session/runtime state，完整 reset 额外清当前 Agent Memory；两者都不会删除共享 Space 文件，同 agent 的 reset/start 会在 Worker 内串行。OpenCode system prompt 只通过 child env 的 inline execution agent 注入，不写 Space 的 `AGENTS.md`。Copilot/Kimi/Cursor 仍为 experimental adapter，因其会向 cwd 写 `AGENTS.md`，暂时使用 runtime state cwd。
 

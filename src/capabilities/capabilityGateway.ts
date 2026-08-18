@@ -13,10 +13,17 @@ import type { TurnCapabilityClaims } from "./contracts.js";
 import type {
   CanvasAssetImportCommand,
   CanvasContextBundleCreateCommand,
+  CanvasCreateFrameCommand,
+  CanvasCreateImageCommand,
+  CanvasCreateShapeCommand,
+  CanvasCreateTextCommand,
+  CanvasDeleteNodesCommand,
   CanvasElementsApplyCommand,
   CanvasElementsGetCommand,
   CanvasExportCommand,
+  CanvasSceneSummaryCommand,
   CanvasSnapshotGetCommand,
+  CanvasUpdateNodeCommand,
   ChecklistClearCommand,
   ChecklistUpsertCommand,
   ConversationReadCommand,
@@ -43,9 +50,12 @@ import {
   executeCanvasElementsApply,
   executeCanvasElementsGet,
   executeCanvasExport,
+  executeCanvasSceneSummary,
   executeCanvasSnapshotGet,
+  executeCanvasTypedMutation,
   mapCanvasToolError,
 } from "../canvas/canvasGatewayTools.js";
+import type { CanvasMutationFeedback } from "../canvas/canvasMutationFeedback.js";
 import { EpisodicMemoryService, MemoryError, type RecalledMemory } from "../memory/episodicMemoryService.js";
 import { UserGlobalMemoryService, type RecalledUserGlobalMemory } from "../memory/userGlobalMemoryService.js";
 import { selectUnifiedMemoryRecall } from "../memory/memoryRecallSelection.js";
@@ -506,6 +516,70 @@ export class CapabilityGateway {
     }
   }
 
+  canvasSceneSummary(claims: TurnCapabilityClaims, command: CanvasSceneSummaryCommand) {
+    try {
+      return this.db.transaction((tx) => {
+        this.assertLiveCapabilityInTransaction(tx, claims, "canvas.read");
+        return executeCanvasSceneSummary(this.db, tx, this.spaceId, claims, command, this.now());
+      });
+    } catch (error) {
+      mapCanvasToolError(error);
+    }
+  }
+
+  canvasCreateFrame(claims: TurnCapabilityClaims, command: CanvasCreateFrameCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.create_frame", command);
+  }
+
+  canvasCreateText(claims: TurnCapabilityClaims, command: CanvasCreateTextCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.create_text", command);
+  }
+
+  canvasCreateShape(claims: TurnCapabilityClaims, command: CanvasCreateShapeCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.create_shape", command);
+  }
+
+  canvasCreateImage(claims: TurnCapabilityClaims, command: CanvasCreateImageCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.create_image", command);
+  }
+
+  canvasUpdateNode(claims: TurnCapabilityClaims, command: CanvasUpdateNodeCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.update_node", command);
+  }
+
+  canvasDeleteNodes(claims: TurnCapabilityClaims, command: CanvasDeleteNodesCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.delete_nodes", command);
+  }
+
+  private canvasTypedWrite(
+    claims: TurnCapabilityClaims,
+    toolName: "canvas.create_frame" | "canvas.create_text" | "canvas.create_shape" | "canvas.create_image" | "canvas.update_node" | "canvas.delete_nodes",
+    command: CanvasCreateFrameCommand | CanvasCreateTextCommand | CanvasCreateShapeCommand | CanvasCreateImageCommand | CanvasUpdateNodeCommand | CanvasDeleteNodesCommand,
+  ): CanvasMutationFeedback {
+    try {
+      return this.operation(
+        claims,
+        toolName,
+        command.idempotencyKey,
+        command,
+        "canvas:apply",
+        "canvas.write",
+        (tx, operationId) => executeCanvasTypedMutation(
+          this.db,
+          tx,
+          this.spaceId,
+          claims,
+          toolName,
+          command,
+          operationId,
+          this.now(),
+        ) as OperationResult,
+      ) as CanvasMutationFeedback;
+    } catch (error) {
+      mapCanvasToolError(error);
+    }
+  }
+
   canvasExport(claims: TurnCapabilityClaims, command: CanvasExportCommand) {
     try {
       return this.operation(
@@ -553,13 +627,14 @@ export class CapabilityGateway {
         {
           canvasId: command.canvasId ?? null,
           snapshotId: command.snapshotId ?? null,
+          attachmentId: command.attachmentId ?? null,
           assetId: command.assetId ?? null,
           url: command.url ?? null,
           dataUrl: command.dataUrl ?? null,
         },
         "canvas:import",
         "canvas.import",
-        (tx) => executeCanvasAssetImport(tx, claims, command, this.now()),
+        (tx) => executeCanvasAssetImport(this.db, tx, this.spaceId, claims, command, this.now()),
       );
     } catch (error) {
       mapCanvasToolError(error);
