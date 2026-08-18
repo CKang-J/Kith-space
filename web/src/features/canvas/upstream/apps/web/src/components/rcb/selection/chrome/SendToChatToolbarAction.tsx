@@ -4,7 +4,8 @@
  */
 import { useTranslation } from "react-i18next";
 import { requestCanvasSelectionToChat } from "@/features/canvas/adapters/recombynSelectionToChat";
-import { noteCanvasFlyOrigin } from "@recombyn-native/components/editor/panels/agent/flyToChat";
+import { noteCanvasFlyOrigin } from "@/features/canvas/adapters/canvasFlyToChat";
+import { useCanvasSelectionSourceId } from "@/features/canvas/host/canvasSelectionSource";
 import { cn } from "@recombyn-native/utils/classnames";
 
 export { canvasToolbarChatTargets } from "@/features/canvas/host/canvasChatBridge";
@@ -15,6 +16,7 @@ export function SendToChatToolbarAction({
   target: string | string[];
 }) {
   const { t } = useTranslation();
+  const canvasId = useCanvasSelectionSourceId();
   const label = t("chat.canvasSendToChat");
   const empty = Array.isArray(target) ? target.length === 0 : !target;
 
@@ -32,8 +34,9 @@ export function SendToChatToolbarAction({
         event.preventDefault();
         event.stopPropagation();
         if (empty) return;
+        if (!canvasId) return;
         noteCanvasFlyOrigin(event.clientX, event.clientY);
-        requestCanvasSelectionToChat(target, t("chat.canvasFlyLabel"));
+        requestCanvasSelectionToChat(target, t("chat.canvasFlyLabel"), { canvasId });
       }}
     >
       {label}

@@ -29,6 +29,7 @@ import { RecombynEditorIconSprite } from "./RecombynEditorIconSprite";
 import i18n from "@/i18n";
 import { bindCanvasSelectionToChat } from "./canvasChatBridge";
 import { applyCanvasSelectionFocus } from "./canvasSelectionFocus";
+import { CanvasSelectionSourceProvider } from "./canvasSelectionSource";
 
 const PROJECT_ID = "kith-stage-one-native";
 const STAGE_ONE_THEME = new URLSearchParams(window.location.search).get("__canvas_theme") === "dark" ? "dark" : "light";
@@ -66,16 +67,18 @@ interface NativeEditorSurfaceProps {
 
 function NativeEditorApp({ projectId }: { projectId: string; sendToChatTitle?: string }) {
   return (
-    <Provider store={store}>
-      <QueryClientProvider client={queryClient}>
-        <div className="relative size-full min-h-0 min-w-0">
-          <MemoryRouter initialEntries={[`/editor/${projectId}`]}>
-            <Routes><Route path="/editor/:projectId" element={<EditorPage />} /></Routes>
-          </MemoryRouter>
-          <MessageContainer />
-        </div>
-      </QueryClientProvider>
-    </Provider>
+    <CanvasSelectionSourceProvider canvasId={projectId}>
+      <Provider store={store}>
+        <QueryClientProvider client={queryClient}>
+          <div className="relative size-full min-h-0 min-w-0">
+            <MemoryRouter initialEntries={[`/editor/${projectId}`]}>
+              <Routes><Route path="/editor/:projectId" element={<EditorPage />} /></Routes>
+            </MemoryRouter>
+            <MessageContainer />
+          </div>
+        </QueryClientProvider>
+      </Provider>
+    </CanvasSelectionSourceProvider>
   );
 }
 

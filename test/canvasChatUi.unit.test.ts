@@ -11,12 +11,19 @@ test("Canvas send-to-chat is a native selection-toolbar action, not a host overl
   const multi = read("../web/src/features/canvas/upstream/apps/web/src/components/rcb/selection/chrome/MultiSelectionToolbar.tsx");
   const frame = read("../web/src/features/canvas/upstream/apps/web/src/components/editor/nodes/FrameNode/FrameContextToolbar.tsx");
   const adapter = read("../web/src/features/canvas/adapters/recombynSelectionToChat.ts");
+  const fly = read("../web/src/features/canvas/adapters/canvasFlyToChat.ts");
   assert.doesNotMatch(harness, /CanvasSendToChatHostAction/);
+  assert.doesNotMatch(action, /CanvasSendToChatHostAction/);
+  assert.doesNotMatch(adapter, /@recombyn-native\/components\/editor\/panels\/agent\/flyToChat/);
+  assert.doesNotMatch(action, /@recombyn-native\/components\/editor\/panels\/agent\/flyToChat/);
   assert.match(action, /data-canvas-send-to-chat/);
   assert.match(action, /requestCanvasSelectionToChat/);
   assert.match(action, /chat\.canvasSendToChat/);
   assert.match(action, /noteCanvasFlyOrigin/);
-  assert.match(adapter, /playFlyChipToChat/);
+  assert.match(action, /canvasId/);
+  assert.match(adapter, /playCanvasFlyToChat/);
+  assert.match(fly, /data-kith-fly-to-chat/);
+  assert.doesNotMatch(fly, /AgentDock/);
   assert.match(single, /SendToChatToolbarAction/);
   assert.match(single, /<SendToChatToolbarAction target=\{nodeId\} \/>/);
   assert.match(multi, /SendToChatToolbarAction/);
@@ -27,16 +34,22 @@ test("Canvas send-to-chat is a native selection-toolbar action, not a host overl
 
 test("Composer appends pending Canvas selections per surface and submits them in order", () => {
   const composer = read("../web/src/views/Composer.tsx");
+  const hook = read("../web/src/views/composer/useComposerCanvasContext.ts");
+  const payload = read("../web/src/views/composer/composerCanvasContext.ts");
   const chip = read("../web/src/views/chat-message/CanvasContextChip.tsx");
   const en = read("../web/src/locales/en.json");
   const zh = read("../web/src/locales/zh.json");
-  assert.match(composer, /pushCanvasChatSurface\(channelId\)/);
-  assert.match(composer, /getPendingCanvasChatContexts\(channelId\)/);
-  assert.match(composer, /removePendingCanvasChatContext\(item\.id, channelId\)/);
-  assert.match(composer, /canvasSelections: canvasContexts\.map/);
+  assert.match(composer, /useComposerCanvasContext/);
+  assert.match(composer, /canvas\.buildSendPayload\(\)/);
   assert.match(composer, /data-canvas-context-list/);
+  assert.doesNotMatch(composer, /previousChannelIdRef/);
   assert.doesNotMatch(composer, /setPendingCanvasChatContext\(null, previous\)/);
   assert.doesNotMatch(composer, /@recombyn-native/);
+  assert.match(hook, /pushCanvasChatSurface\(channelId\)/);
+  assert.match(hook, /getPendingCanvasChatContexts\(channelId\)/);
+  assert.match(hook, /removePendingCanvasChatContext\(pendingId, channelId\)/);
+  assert.doesNotMatch(hook, /previousChannelIdRef/);
+  assert.match(payload, /canvasSelections: input\.canvasContexts\.map/);
   assert.match(chip, /aria-label=\{label\}/);
   assert.match(chip, /title=\{label\}/);
   assert.match(chip, /<IconAction label=\{previewLabel\}/);
@@ -60,6 +73,7 @@ test("Composer appends pending Canvas selections per surface and submits them in
     "canvasShowPreview",
     "canvasHidePreview",
     "canvasRevision",
+    "canvasSourceConversation",
   ]) {
     assert.match(en, new RegExp(`"${key}"`));
     assert.match(zh, new RegExp(`"${key}"`));
@@ -78,6 +92,10 @@ test("sent Canvas context and Turn Inspector render structured cards, not raw JS
   assert.match(turnCard, /data-canvas-turn-source/);
   assert.match(turnCard, /chat\.canvasSnapshotId/);
   assert.match(turnCard, /chat\.canvasViewSelection/);
+  assert.match(turnCard, /chat\.canvasSourceConversation/);
+  assert.match(turnCard, /data-canvas-source-surface/);
   assert.match(turnCard, /liveReadWrite/);
+  assert.match(chip, /previewDocumentFromCanvasSelection/);
+  assert.match(turnCard, /previewDocumentFromCanvasSelection/);
   assert.doesNotMatch(inspector, /source\.sourceKind === "canvas_selection_snapshot" \? t\("chat\.canvasContextSource"\)/);
 });

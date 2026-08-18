@@ -77,7 +77,7 @@ test("task assignment shares the compact row and only the remaining safe text wi
   assert.equal(composerTextNeedsExpansion("task draft", 150, 140), true);
   assert.equal(composerTextNeedsExpansion("safe edge", 200, 200), true);
   assert.equal(composerTextNeedsExpansion("manual\nbreak", 40, 200), true);
-  assert.match(composer, /const expanded = textNeedsExpansion \|\| pendingAtts\.length > 0 \|\| !!canvasContext;/);
+  assert.match(composer, /const expanded = textNeedsExpansion \|\| pendingAtts\.length > 0 \|\| canvas\.canvasExpanded;/);
   assert.doesNotMatch(composer, /const expanded =[^;]*\|\| asTask/);
   assert.match(composer, /expanded \? "is-expanded" : "is-compact"/);
   assert.match(composer, /expanded \? " composer--expanded" : ""/);

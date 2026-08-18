@@ -49,18 +49,24 @@ export function formatCanvasSelectionSummary(
   copy: CanvasSelectionCopy = ENGLISH_CANVAS_SELECTION_COPY,
 ): string {
   const title = parts.canvasTitle.trim() || copy.unnamedCanvas;
+  const revision = copy.revision(parts.documentRevision);
   if (parts.wholeCanvas) {
-    return `${title} · ${copy.wholeCanvas} · ${copy.elements(parts.elementCount)}`;
+    return `${title} · ${copy.wholeCanvas} · ${copy.elements(parts.elementCount)} · ${revision}`;
   }
   const segments = [title];
   if (parts.frameCount) segments.push(copy.frames(parts.frameCount));
   if (parts.elementCount) segments.push(copy.elements(parts.elementCount));
   if (parts.truncated) segments.push(copy.truncated);
   if (!parts.frameCount && !parts.elementCount) segments.push(copy.wholeCanvas);
+  segments.push(revision);
   return segments.join(" · ");
 }
 
-export function pendingSelectionSummaryParts(canvasTitle: string, selectedIds: string[]): CanvasSelectionSummaryParts {
+export function pendingSelectionSummaryParts(
+  canvasTitle: string,
+  selectedIds: string[],
+  documentRevision = 0,
+): CanvasSelectionSummaryParts {
   const frameCount = selectedIds.filter((id) => id.startsWith("frame:")).length;
   const elementCount = selectedIds.length - frameCount;
   return canvasSelectionSummaryParts({
@@ -68,5 +74,6 @@ export function pendingSelectionSummaryParts(canvasTitle: string, selectedIds: s
     wholeCanvas: selectedIds.length === 0,
     elementCount,
     frameCount,
+    documentRevision,
   });
 }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   appendPendingCanvasChatContext,
+  bindCanvasSelectionToChat,
   canvasToolbarChatTargets,
   getActiveCanvasChatSurface,
   getPendingCanvasChatContext,
@@ -13,6 +14,7 @@ import {
   resetCanvasChatBridgeForTests,
   setPendingCanvasChatContext,
 } from "./canvasChatBridge";
+import { CANVAS_SELECTION_TO_CHAT_EVENT } from "../adapters/recombynSelectionToChat";
 import { pendingSelectionSummaryParts } from "./canvasSelectionCopy";
 import {
   applyCanvasSelectionFocus,
@@ -89,6 +91,83 @@ test("same canvas and same selected ids share one pending identity", () => {
     pendingCanvasSelectionKey("canvas-a", ["frame:one"]),
     pendingCanvasSelectionKey("canvas-a", ["frame:two"]),
   );
+});
+
+test("switching Chat surface A to B and back to A restores pending cards", () => {
+  resetCanvasChatBridgeForTests();
+  const releaseA = pushCanvasChatSurface("channel-a");
+  appendPendingCanvasChatContext({
+    canvasId: "canvas-a",
+    canvasTitle: "Board A",
+    selectedIds: ["shape-1"],
+    previewDocument: { id: "a" },
+  });
+  const releaseB = pushCanvasChatSurface("channel-b");
+  assert.deepEqual(getPendingCanvasChatContexts("channel-b"), []);
+  assert.equal(getPendingCanvasChatContexts("channel-a")[0]?.selectedIds[0], "shape-1");
+  releaseB();
+  assert.equal(getActiveCanvasChatSurface(), "channel-a");
+  assert.equal(getPendingCanvasChatContexts("channel-a")[0]?.selectedIds[0], "shape-1");
+  assert.equal(getPendingCanvasChatContexts()[0]?.canvasId, "canvas-a");
+  releaseA();
+  resetCanvasChatBridgeForTests();
+});
+
+test("selection-to-chat writes pending from the event canvasId, not whichever Canvas is mounted", () => {
+  resetCanvasChatBridgeForTests();
+  pushCanvasChatSurface("channel-a");
+  const originalWindow = globalThis.window;
+  const listeners = new Map<string, Set<EventListener>>();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      addEventListener(type: string, listener: EventListener) {
+        const set = listeners.get(type) ?? new Set();
+        set.add(listener);
+        listeners.set(type, set);
+      },
+      removeEventListener(type: string, listener: EventListener) {
+        listeners.get(type)?.delete(listener);
+      },
+      dispatchEvent(event: { type: string; detail?: unknown }) {
+        for (const listener of listeners.get(event.type) ?? []) {
+          listener(event as Event);
+        }
+        return true;
+      },
+    },
+  });
+  try {
+    const releaseA = bindCanvasSelectionToChat({
+      canvasId: "canvas-a",
+      canvasTitle: "Board A",
+      previewDocument: { id: "a" },
+      documentRevision: 2,
+    });
+    const releaseB = bindCanvasSelectionToChat({
+      canvasId: "canvas-b",
+      canvasTitle: "Board B",
+      previewDocument: { id: "b" },
+      documentRevision: 5,
+    });
+    window.dispatchEvent(new CustomEvent(CANVAS_SELECTION_TO_CHAT_EVENT, {
+      detail: { target: ["shape-from-b"], canvasId: "canvas-b" },
+    }));
+    assert.deepEqual(getPendingCanvasChatContexts("channel-a").map((item) => item.canvasId), ["canvas-b"]);
+    assert.equal(getPendingCanvasChatContexts("channel-a")[0]?.canvasTitle, "Board B");
+    window.dispatchEvent(new CustomEvent(CANVAS_SELECTION_TO_CHAT_EVENT, {
+      detail: { target: ["shape-missing"], canvasId: "canvas-missing" },
+    }));
+    window.dispatchEvent(new CustomEvent(CANVAS_SELECTION_TO_CHAT_EVENT, {
+      detail: { target: ["shape-orphan"] },
+    }));
+    assert.deepEqual(getPendingCanvasChatContexts("channel-a").map((item) => item.selectedIds[0]), ["shape-from-b"]);
+    releaseA();
+    releaseB();
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+    resetCanvasChatBridgeForTests();
+  }
 });
 
 test("pending selection summary parts stay locale-neutral", () => {

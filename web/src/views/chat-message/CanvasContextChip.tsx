@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { CanvasLibraryThumbnail } from "@/features/canvas/host/CanvasLibraryThumbnail";
 import { requestCanvasSelectionFocus } from "@/features/canvas/host/canvasSelectionFocus";
 import { formatCanvasSelectionDetailI18n, type CanvasSelectionSummaryParts } from "@/features/canvas/host/canvasSelectionCopy";
+import { previewDocumentFromCanvasSelection } from "@/features/canvas/host/canvasSelectionPreview";
 import { workspaceLocationForModule } from "@/shell/workspaceRoute";
 import { cn } from "@/lib/utils";
 
@@ -28,22 +29,6 @@ export interface CanvasContextChipModel {
     truncated?: boolean;
   } | unknown;
   canvasAvailable?: boolean;
-}
-
-function previewFrom(context: CanvasContextChipModel): unknown {
-  if (context.previewDocument) return context.previewDocument;
-  const projection = context.projection;
-  if (!projection || typeof projection !== "object") return null;
-  const record = projection as { elements?: Array<Record<string, unknown>>; frames?: Array<Record<string, unknown>> };
-  if (!Array.isArray(record.elements) && !Array.isArray(record.frames)) return projection;
-  const elements = record.elements ?? [];
-  const deltaSetLike: Record<string, unknown> = {
-    ROOT: { children: elements.map((element) => element.id).filter((id): id is string => typeof id === "string") },
-  };
-  for (const element of elements) {
-    if (typeof element.id === "string") deltaSetLike[element.id] = element;
-  }
-  return { deltaSetLike, frames: record.frames ?? [] };
 }
 
 function selectedIdsFrom(context: CanvasContextChipModel): { nodeIds: string[]; frameIds: string[] } {
@@ -125,7 +110,7 @@ export function CanvasContextChip({
   const location = useLocation();
   const [expanded, setExpanded] = useState(false);
   const available = context.canvasAvailable !== false;
-  const preview = previewFrom(context);
+  const preview = previewDocumentFromCanvasSelection(context);
   const title = context.canvasTitle?.trim() || t("chat.canvasUntitled");
   const parts = summaryPartsFrom(context);
   const selectionLabel = formatCanvasSelectionDetailI18n(parts, t);

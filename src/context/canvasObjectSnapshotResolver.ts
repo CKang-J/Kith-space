@@ -40,6 +40,22 @@ registerContextObjectSnapshotResolver({
       if (!row.messageId || !boundMessageIds.has(row.messageId) || !authorizedMessages.has(row.messageId)) continue;
       const deleted = canvasDeleted(input.db, row.canvasId, input.spaceId);
       const presentation = canvasSelectionPresentation(row, deleted);
+      const boundMessage = input.db.select({
+        channelId: schema.messages.channelId,
+      }).from(schema.messages).where(and(
+        eq(schema.messages.id, row.messageId),
+        eq(schema.messages.spaceId, input.spaceId),
+      )).get();
+      const sourceChannel = boundMessage
+        ? input.db.select({
+          id: schema.channels.id,
+          type: schema.channels.type,
+          name: schema.channels.name,
+        }).from(schema.channels).where(and(
+          eq(schema.channels.id, boundMessage.channelId),
+          eq(schema.channels.spaceId, input.spaceId),
+        )).get()
+        : undefined;
       resolved.push({
         sourceKind: CANVAS_SELECTION_SNAPSHOT_REF_TYPE,
         sourceId: row.id,
@@ -61,6 +77,11 @@ registerContextObjectSnapshotResolver({
           deepLink: presentation.deepLink,
           canvasAvailable: !deleted,
           liveReadWrite: deleted ? "fail_closed" : "snapshot_only",
+          sourceSurface: sourceChannel ? {
+            kind: sourceChannel.type,
+            id: sourceChannel.id,
+            name: sourceChannel.type === "dm" ? null : sourceChannel.name,
+          } : null,
         },
         reason: deleted
           ? "canvas_selection_snapshot_audit_after_delete"

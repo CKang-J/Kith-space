@@ -356,7 +356,13 @@ test("executor assembly injects the frozen snapshot; later edits and unauthorize
     assert.equal(payload?.documentRevision, 0);
     assert.equal(payload?.canvasAvailable, true);
     assert.equal(payload?.liveReadWrite, "snapshot_only");
-    assert.ok(inspected?.context.sources.some((source) => source.sourceKind === "canvas_selection_snapshot" && source.content));
+    const inspectedSource = inspected?.context.sources.find((source) => source.sourceKind === "canvas_selection_snapshot");
+    assert.ok(inspectedSource?.content);
+    assert.deepEqual((inspectedSource.content as { sourceSurface?: { kind?: string; id?: string; name?: string | null } }).sourceSurface, {
+      kind: "channel",
+      id: channel.id,
+      name: "inspect",
+    });
 
     const otherSession = randomUUID();
     const otherTurn = randomUUID();
@@ -467,6 +473,31 @@ test("multiple canvas selections freeze in order in the same MessagePosting tran
     assert.deepEqual(first?.selectedElements, [{ id: "shape-1", revision: 0 }]);
     assert.deepEqual(second?.selectedFrames, [{ id: "frame-1", revision: 0 }]);
     assert.equal(f.db.select().from(schema.messageExecutionBindings).where(eq(schema.messageExecutionBindings.messageId, message.id)).all().length, 1);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("executionBinding without canvas selections is rejected and leaves no orphans", async () => {
+  const f = fixture("canvas-binding-only");
+  try {
+    const executor = f.addAgent("executor");
+    const channel = f.addChannel("channel", "studio");
+    f.addMember(channel.id, executor.id);
+    const { modules } = posting();
+    const baseline = f.counts();
+    await assert.rejects(
+      modules.messagePosting.post({
+        kind: "chat",
+        context: { spaceId: f.spaceId, channelId: channel.id, sender: { type: "human", id: f.humanId, name: "Human" } },
+        content: "binding only",
+        executionBinding: { executorAgentId: executor.id, mode: "required" },
+      }),
+      (error: unknown) => error instanceof MessageExecutionBindingError
+        && error.code === "INVALID_ARGUMENT"
+        && /canvasSelection/.test(error.message),
+    );
+    assert.deepEqual(f.counts(), baseline);
   } finally {
     f.cleanup();
   }

@@ -18,15 +18,7 @@ import { insertAgentMention } from "./composerMention.ts";
 import { messageContextSnapshot } from "../messageContextSnapshot.ts";
 import { ConversationActivityStatus } from "./ConversationActivityStatus.tsx";
 import { CanvasContextChip } from "./chat-message/CanvasContextChip.tsx";
-import {
-  getActiveCanvasChatSurface,
-  getPendingCanvasChatContexts,
-  noteActiveCanvasFlyLand,
-  pushCanvasChatSurface,
-  removePendingCanvasChatContext,
-  setPendingCanvasChatContext,
-  subscribePendingCanvasChatContext,
-} from "@/features/canvas/host/canvasChatBridge";
+import { useComposerCanvasContext } from "./composer/useComposerCanvasContext.ts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // Shared message composer for channels, DMs, and threads. Owns text, attachment upload
@@ -61,51 +53,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
   const [taskMentionError, setTaskMentionError] = useState("");
-  const [canvasContexts, setCanvasContexts] = useState(() => getPendingCanvasChatContexts(channelId));
-  const [executorAgentId, setExecutorAgentId] = useState("");
-  const [canvasExecutors, setCanvasExecutors] = useState<Array<{ id: string; name: string; displayName: string }>>([]);
-  const [executorLoadError, setExecutorLoadError] = useState("");
+  const canvas = useComposerCanvasContext({ channelId, api, dmAgent, t });
   const sendingRef = useRef(false);
   const atPosRef = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { boxRef, textNeedsExpansion } = useComposerExpansion(text, inputRef, asTask);
   const composerRootRef = useComposerReserve();
-  useEffect(() => subscribePendingCanvasChatContext(() => setCanvasContexts(getPendingCanvasChatContexts(channelId))), [channelId]);
-  useEffect(() => {
-    const release = pushCanvasChatSurface(channelId);
-    noteActiveCanvasFlyLand(channelId);
-    setCanvasContexts(getPendingCanvasChatContexts(channelId));
-    return () => {
-      release();
-      noteActiveCanvasFlyLand(getActiveCanvasChatSurface());
-    };
-  }, [channelId]);
-  useEffect(() => { setExecutorAgentId(""); setCanvasExecutors([]); setExecutorLoadError(""); }, [channelId]);
-  useEffect(() => {
-    if (!canvasContexts.length || dmAgent) return undefined;
-    let live = true;
-    api("GET", `/api/channels/${encodeURIComponent(channelId)}/canvas-executors`).then((result) => {
-      if (!live) return;
-      if (result?.error) {
-        setCanvasExecutors([]);
-        setExecutorLoadError(String(result.error));
-        return;
-      }
-      const agents = Array.isArray(result?.agents) ? result.agents as Array<{ id: string; name: string; displayName: string }> : [];
-      setCanvasExecutors(agents);
-      if (!agents.length) setExecutorLoadError(t("chat.canvasExecutorUnavailable"));
-      else {
-        setExecutorLoadError("");
-        if (agents.length === 1) setExecutorAgentId(agents[0]!.id);
-      }
-    }).catch((reason) => {
-      if (!live) return;
-      setCanvasExecutors([]);
-      setExecutorLoadError(reason instanceof Error ? reason.message : String(reason));
-    });
-    return () => { live = false; };
-  }, [api, canvasContexts.length, channelId, dmAgent, t]);
   useEffect(() => { const el = inputRef.current; if (el) autosizeComposerInput(el); }, [text]); // textarea auto-grows up to 160px
   useEffect(() => { const el = inputRef.current; return el ? observeComposerInputWidth(el) : undefined; }, []); // reflowed placeholders/drafts shrink again when a hidden Chat pane expands
 
@@ -129,7 +83,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     t("chat.agentSleepingComposerPlaceholder", { name: reach.names })
   ) : null;
   const effectivePlaceholder = reachPlaceholder ?? (allowAsTask && asTask ? t("chat.taskPlaceholder") : placeholder);
-  const expanded = textNeedsExpansion || pendingAtts.length > 0 || canvasContexts.length > 0;
+  const expanded = textNeedsExpansion || pendingAtts.length > 0 || canvas.canvasExpanded;
 
   const changeTaskMode = (active: boolean) => {
     setAsTask(active);
@@ -155,7 +109,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const send = async (forceTask?: boolean) => {
     if (sendingRef.current) return;
-    const v = text.trim(); if ((!v && !pendingAtts.length && !canvasContexts.length) || !channelId) return;
+    const v = text.trim(); if ((!v && !pendingAtts.length && !canvas.canvasContexts.length) || !channelId) return;
     const asT = allowAsTask && (forceTask ?? asTask); // ⌘/Ctrl+Shift+Enter forces task; threads (allowAsTask=false) never send as task
     if (asT) {
       if (containsChannelAllMention(v)) {
@@ -170,13 +124,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       }
     }
     setTaskMentionError("");
-    if (canvasContexts.length && asT) {
-      setTaskMentionError(t("chat.canvasCannotBeTask"));
-      inputRef.current?.focus();
-      return;
-    }
-    if (canvasContexts.length && !dmAgent && (!executorAgentId || executorLoadError)) {
-      setTaskMentionError(executorLoadError || t("chat.canvasExecutorRequired"));
+    const canvasError = canvas.validateSend(asT);
+    if (canvasError) {
+      setTaskMentionError(canvasError);
       inputRef.current?.focus();
       return;
     }
@@ -191,15 +141,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         attachmentIds: ids,
         contextSnapshot: messageContextSnapshot(spaceId, channelId, className === "thread-composer"),
         memoryPolicy: memoryExcluded ? "exclude" : "eligible",
-        ...(canvasContexts.length ? {
-          canvasSelections: canvasContexts.map((item) => ({ canvasId: item.canvasId, selectedIds: item.selectedIds })),
-          executionBinding: dmAgent ? undefined : { executorAgentId, mode: "required" as const },
-        } : {}),
+        ...canvas.buildSendPayload(),
       });
       if (result?.error) throw new Error(String(result.error));
       setText(""); setAtQuery(null); setAsTask(false); setMemoryExcluded(false); setPendingAtts([]);
-      setPendingCanvasChatContext(null, channelId);
-      setExecutorAgentId("");
+      canvas.clearAfterSend();
     } catch (error) {
       setTaskMentionError(error instanceof Error ? error.message : String(error));
       inputRef.current?.focus();
@@ -274,7 +220,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       )}
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={onPickFiles} />
       {taskMentionError ? <div className="composer-validation-error" role="alert">{taskMentionError}</div> : null}
-      {executorLoadError && canvasContexts.length > 0 && !dmAgent ? <div className="composer-validation-error" role="alert">{executorLoadError}</div> : null}
+      {canvas.executorLoadError && canvas.canvasContexts.length > 0 && !dmAgent ? <div className="composer-validation-error" role="alert">{canvas.executorLoadError}</div> : null}
       <ConversationActivityStatus channelId={channelId} />
       <div ref={boxRef} className={`composer-box ${expanded ? "is-expanded" : "is-compact"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
         <ComposerAttachments
@@ -282,10 +228,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           attachmentUrl={attachmentUrl}
           onRemove={(id) => setPendingAtts((pending) => pending.filter((attachment) => attachment.id !== id))}
         />
-        {canvasContexts.length ? (
+        {canvas.canvasContexts.length ? (
           <div className="flex flex-col gap-2 px-2.5 pt-2.5">
             <div className="flex max-h-28 flex-wrap gap-1.5 overflow-x-auto overflow-y-auto" data-canvas-context-list>
-              {canvasContexts.map((item) => (
+              {canvas.canvasContexts.map((item) => (
                 <CanvasContextChip
                   key={item.id}
                   compact
@@ -299,20 +245,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     canvasAvailable: true,
                   }}
                   removable
-                  onRemove={() => {
-                    removePendingCanvasChatContext(item.id, channelId);
-                    if (canvasContexts.length <= 1) setExecutorAgentId("");
-                  }}
+                  onRemove={() => canvas.removeContext(item.id)}
                 />
               ))}
             </div>
             {!dmAgent ? (
-              <Select value={executorAgentId || undefined} onValueChange={setExecutorAgentId}>
+              <Select value={canvas.executorAgentId || undefined} onValueChange={canvas.setExecutorAgentId}>
                 <SelectTrigger size="sm" className="w-full max-w-64" data-canvas-executor-select>
                   <SelectValue placeholder={t("chat.canvasExecutorPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
-                  {canvasExecutors.map((agent) => (
+                  {canvas.canvasExecutors.map((agent) => (
                     <SelectItem key={agent.id} value={agent.id}>{agent.displayName || agent.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -343,7 +286,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               taskActive={asTask}
               memoryExcluded={memoryExcluded}
               uploadDisabled={uploading || sending}
-              taskDisabled={sending || canvasContexts.length > 0}
+              taskDisabled={sending || canvas.canvasContexts.length > 0}
               memoryDisabled={sending}
               onAddFiles={() => fileRef.current?.click()}
               onTaskChange={changeTaskMode}
@@ -351,7 +294,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             />
           </div>
           <div className="cb-right">
-            <button className="send-btn" title={t("chat.sendTitle")} disabled={sending || (!text.trim() && !pendingAtts.length && !canvasContexts.length) || !!(canvasContexts.length && !dmAgent && (!executorAgentId || !!executorLoadError))} onClick={() => send()}><ArrowUp size={17} aria-hidden="true" /></button>
+            <button className="send-btn" title={t("chat.sendTitle")} disabled={canvas.sendDisabled(sending, !!text.trim(), pendingAtts.length > 0)} onClick={() => send()}><ArrowUp size={17} aria-hidden="true" /></button>
           </div>
         </div>
       </div>

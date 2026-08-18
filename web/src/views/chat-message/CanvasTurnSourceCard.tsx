@@ -2,22 +2,9 @@ import { workspaceLocationForModule } from "@/shell/workspaceRoute";
 import { CanvasLibraryThumbnail } from "@/features/canvas/host/CanvasLibraryThumbnail";
 import { requestCanvasSelectionFocus } from "@/features/canvas/host/canvasSelectionFocus";
 import { formatCanvasSelectionSummaryI18n } from "@/features/canvas/host/canvasSelectionCopy";
+import { previewDocumentFromCanvasSelection } from "@/features/canvas/host/canvasSelectionPreview";
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
-
-function previewFrom(projection: unknown): unknown {
-  if (!projection || typeof projection !== "object") return null;
-  const record = projection as { elements?: Array<Record<string, unknown>>; frames?: Array<Record<string, unknown>> };
-  if (!Array.isArray(record.elements) && !Array.isArray(record.frames)) return projection;
-  const elements = record.elements ?? [];
-  const deltaSetLike: Record<string, unknown> = {
-    ROOT: { children: elements.map((element) => element.id).filter((id): id is string => typeof id === "string") },
-  };
-  for (const element of elements) {
-    if (typeof element.id === "string") deltaSetLike[element.id] = element;
-  }
-  return { deltaSetLike, frames: record.frames ?? [] };
-}
 
 export function CanvasTurnSourceCard({
   source,
@@ -53,6 +40,7 @@ export function CanvasTurnSourceCard({
       canvasAvailable?: boolean;
       liveReadWrite?: string;
       deepLink?: { canvas?: string };
+      sourceSurface?: { kind?: string; id?: string; name?: string | null } | null;
     }
     : {};
   const available = payload.canvasAvailable !== false && payload.liveReadWrite !== "fail_closed";
@@ -66,7 +54,14 @@ export function CanvasTurnSourceCard({
     documentRevision: payload.documentRevision ?? 0,
   }, t);
   const canvasId = payload.canvasId || payload.deepLink?.canvas;
-  const preview = previewFrom(payload.projection);
+  const preview = previewDocumentFromCanvasSelection({ projection: payload.projection });
+  const sourceKind = payload.sourceSurface?.kind;
+  const sourceName = payload.sourceSurface?.name?.trim();
+  const sourceLabel = sourceKind
+    ? t(`chat.canvasSourceSurface.${sourceKind === "private" ? "channel" : sourceKind}`, {
+      name: sourceName || payload.sourceSurface?.id || "",
+    })
+    : null;
   const open = () => {
     if (!available || !canvasId) return;
     requestCanvasSelectionFocus({
@@ -87,6 +82,7 @@ export function CanvasTurnSourceCard({
       <dl className="mt-2 grid gap-1 text-[length:var(--font-size-meta)] text-muted-foreground">
         <div>{t("chat.canvasSnapshotId")}: <code>{payload.snapshotId || source.snapshotId || source.sourceId}</code></div>
         <div>{t("chat.canvasName")}: {title}</div>
+        {sourceLabel ? <div data-canvas-source-surface>{t("chat.canvasSourceConversation")}: {sourceLabel}</div> : null}
         <div>{summary}</div>
         <div>{t("chat.canvasRevision", { revision: payload.documentRevision ?? "—" })}</div>
         <div>{t("chat.canvasLiveLink")}: {available ? t("chat.canvasLiveSnapshotOnly") : t("chat.canvasUnavailable")}</div>

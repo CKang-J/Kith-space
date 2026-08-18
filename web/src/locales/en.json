@@ -615,6 +615,12 @@
     "canvasExecutorUnavailable": "No eligible executor Agent is available on this conversation.",
     "canvasCannotBeTask": "Canvas context cannot be sent as a task.",
     "canvasContextSource": "Canvas selection snapshot",
+    "canvasSourceConversation": "Source conversation",
+    "canvasSourceSurface": {
+      "channel": "#{{name}}",
+      "dm": "Direct message",
+      "thread": "Topic {{name}}"
+    },
     "canvasUntitled": "Untitled Canvas",
     "canvasSummaryWhole": "entire canvas",
     "canvasSummaryFrame": "{{count}} Frame",

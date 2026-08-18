@@ -939,6 +939,12 @@ export function createConversationModules(dependencies: ConversationModuleDepend
       taskMessageId,
     });
     const canvasSelections = requestedCanvasSelections(input);
+    if (input.executionBinding && !canvasSelections.length) {
+      throw new MessageExecutionBindingError(
+        "INVALID_ARGUMENT",
+        "executionBinding requires canvasSelection or canvasSelections",
+      );
+    }
     if (canvasSelections.length) {
       if (input.task || input.messageType !== "chat") {
         throw new MessageExecutionBindingError("INVALID_ARGUMENT", "Canvas context can only be attached to an ordinary Chat message");

@@ -1,24 +1,33 @@
+import { playCanvasFlyToChat } from "./canvasFlyToChat";
+
 export const CANVAS_SELECTION_TO_CHAT_EVENT = "kith:canvas-selection-to-chat";
 
 export type CanvasSelectionToChatTarget = string | string[];
 
-/** Stage 1 host seam only: later Kith chat integration can subscribe without importing Recombyn chat. */
-export function requestCanvasSelectionToChat(target: CanvasSelectionToChatTarget, label = "Chat"): void {
-  window.dispatchEvent(
-    new CustomEvent(CANVAS_SELECTION_TO_CHAT_EVENT, {
-      detail: { target },
-    }),
-  );
-  void playSelectionFlyToChat(label);
+export interface CanvasSelectionToChatDetail {
+  canvasId: string;
+  target: CanvasSelectionToChatTarget;
+  canvasTitle?: string;
+  documentRevision?: number;
+  previewDocument?: unknown;
 }
 
-async function playSelectionFlyToChat(label: string): Promise<void> {
-  const { playFlyChipToChat, takeCanvasFlyOrigin } = await import(
-    "@recombyn-native/components/editor/panels/agent/flyToChat"
+export function requestCanvasSelectionToChat(
+  target: CanvasSelectionToChatTarget,
+  label = "Chat",
+  source?: { canvasId: string; canvasTitle?: string; documentRevision?: number; previewDocument?: unknown },
+): void {
+  const canvasId = source?.canvasId?.trim() ?? "";
+  window.dispatchEvent(
+    new CustomEvent(CANVAS_SELECTION_TO_CHAT_EVENT, {
+      detail: {
+        target,
+        canvasId,
+        canvasTitle: source?.canvasTitle,
+        documentRevision: source?.documentRevision,
+        previewDocument: source?.previewDocument,
+      } satisfies CanvasSelectionToChatDetail,
+    }),
   );
-  const origin = takeCanvasFlyOrigin() ?? {
-    x: Math.max(120, window.innerWidth * 0.45),
-    y: Math.max(96, window.innerHeight * 0.38),
-  };
-  await playFlyChipToChat({ from: origin, label });
+  void playCanvasFlyToChat({ label });
 }

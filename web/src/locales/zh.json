@@ -615,6 +615,12 @@
     "canvasExecutorUnavailable": "当前会话没有可用的执行 Agent。",
     "canvasCannotBeTask": "画布上下文不能作为任务发送。",
     "canvasContextSource": "画布选区快照",
+    "canvasSourceConversation": "来源会话",
+    "canvasSourceSurface": {
+      "channel": "#{{name}}",
+      "dm": "私信",
+      "thread": "话题 {{name}}"
+    },
     "canvasUntitled": "未命名画布",
     "canvasSummaryWhole": "整张画布",
     "canvasSummaryFrame": "{{count}} 个 Frame",

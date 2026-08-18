@@ -1,5 +1,6 @@
+import { noteCanvasFlyLand } from "../adapters/canvasFlyToChat";
 import { pendingSelectionSummaryParts, type CanvasSelectionSummaryParts } from "./canvasSelectionCopy";
-import { CANVAS_SELECTION_TO_CHAT_EVENT, type CanvasSelectionToChatTarget } from "../adapters/recombynSelectionToChat";
+import { CANVAS_SELECTION_TO_CHAT_EVENT, type CanvasSelectionToChatDetail, type CanvasSelectionToChatTarget } from "../adapters/recombynSelectionToChat";
 
 export interface PendingCanvasChatContext {
   id: string;
@@ -22,6 +23,11 @@ type Listener = () => void;
 const pendingBySurface = new Map<string, PendingCanvasChatContext[]>();
 const listeners = new Set<Listener>();
 const surfaceStack: string[] = [];
+const canvasSources = new Map<string, {
+  canvasTitle: string;
+  previewDocument: unknown;
+  documentRevision?: number;
+}>();
 let activeSurfaceId: string | null = null;
 let pendingSeq = 0;
 
@@ -60,6 +66,7 @@ export function resetCanvasChatBridgeForTests(): void {
   surfaceStack.length = 0;
   activeSurfaceId = null;
   pendingSeq = 0;
+  canvasSources.clear();
 }
 
 export function getActiveCanvasChatSurface(): string | null {
@@ -188,9 +195,7 @@ export function subscribePendingCanvasChatContext(listener: Listener): () => voi
 
 export function noteActiveCanvasFlyLand(surfaceId: string | null): void {
   if (!surfaceId) return;
-  void import("@recombyn-native/components/editor/panels/agent/flyToChat").then(({ noteCanvasFlyLand }) => {
-    noteCanvasFlyLand(`kith-chat:${surfaceId}`);
-  }).catch(() => undefined);
+  noteCanvasFlyLand(`kith-chat:${surfaceId}`);
 }
 
 export function bindCanvasSelectionToChat(input: {
@@ -199,20 +204,29 @@ export function bindCanvasSelectionToChat(input: {
   previewDocument: unknown;
   documentRevision?: number;
 }): () => void {
+  canvasSources.set(input.canvasId, {
+    canvasTitle: input.canvasTitle,
+    previewDocument: input.previewDocument,
+    documentRevision: input.documentRevision,
+  });
   const onSelection = (event: Event) => {
-    const target = (event as CustomEvent<{ target?: CanvasSelectionToChatTarget }>).detail?.target;
-    const selectedIds = parseCanvasSelectionTarget(target);
+    const detail = (event as CustomEvent<CanvasSelectionToChatDetail>).detail;
+    const canvasId = typeof detail?.canvasId === "string" ? detail.canvasId.trim() : "";
+    if (!canvasId || canvasId !== input.canvasId) return;
+    const source = canvasSources.get(canvasId);
+    if (!source) return;
     appendPendingCanvasChatContext({
-      canvasId: input.canvasId,
-      canvasTitle: input.canvasTitle,
-      selectedIds,
-      previewDocument: input.previewDocument,
-      documentRevision: input.documentRevision,
+      canvasId,
+      canvasTitle: source.canvasTitle,
+      selectedIds: parseCanvasSelectionTarget(detail.target),
+      previewDocument: source.previewDocument,
+      documentRevision: source.documentRevision,
     });
   };
   window.addEventListener(CANVAS_SELECTION_TO_CHAT_EVENT, onSelection);
   return () => {
     window.removeEventListener(CANVAS_SELECTION_TO_CHAT_EVENT, onSelection);
+    canvasSources.delete(input.canvasId);
     clearPendingCanvasChatContextForCanvas(input.canvasId);
   };
 }

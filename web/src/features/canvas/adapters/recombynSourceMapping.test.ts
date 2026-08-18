@@ -65,7 +65,7 @@ test("stage-one runtime seams stay hard-disabled and production-gated", () => {
   const closureAudit = readFileSync(path.join(repoRoot, "scripts/audit-recombyn-stage1-closure.mjs"), "utf8");
   assert.doesNotMatch(editorPage, /AgentDock|agentOpen|onOpenAgent/);
   assert.doesNotMatch(topChrome, /onOpenAgent|editor\.chat|TbMessage2Filled/);
-  assert.match(editorPage, /onAddToChat=\{requestCanvasSelectionToChat\}/);
+  assert.match(editorPage, /onAddToChat=\{\(target\) => requestCanvasSelectionToChat\(target, undefined, currentId \? \{ canvasId: currentId \} : undefined\)\}/);
   assert.match(toolStrip, /onClick=\{spawnImageGeneratorAtView\}/);
   assert.match(toolStrip, /onClick=\{spawnVideoGeneratorAtView\}/);
   assert.match(toolStrip, /imageGenerator} \(A\)/);

@@ -9,12 +9,12 @@ import { publish } from "../realtime.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { attachMentions, humanChannels } from "./shared.js";
 import { canHumanReadChannel } from "../channelAccess.js";
-import { normalizeTaskExecutionMode } from "../dispatchGuard.js";
 import { humanIdentityForId } from "../../human/humanIdentity.js";
 import { activeChannels, assertChannelWritable } from "../../channels/channelLifecycle.js";
 import { sendTaskOperationError } from "../tasks/taskHttp.js";
 import { isMessageExecutionBindingError } from "../../messages/messageExecutionBinding.js";
 import { CanvasNotFoundError, CanvasValidationError } from "../../canvas/canvasCore.js";
+import { inspectHumanMessagePost, validateHumanMessagePost } from "./messagePostValidation.js";
 
 export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
   const { req, res, url, method, p, humanId, spaceId } = ctx;
@@ -139,17 +139,12 @@ export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
   }
   if (p === "/api/messages" && method === "POST") {
     const b = await readJson(req);
-    const hasAtt = Array.isArray(b.attachmentIds) && b.attachmentIds.length > 0;
-    const hasCanvas = Boolean(b.canvasSelection) || (Array.isArray(b.canvasSelections) && b.canvasSelections.length > 0);
-    if (!b.channelId || (!b.content && !hasAtt && !hasCanvas)) return (sendErr(res, 400, "channelId + content (or attachmentIds) required"), true);
+    const invalid = validateHumanMessagePost(b);
+    if (invalid) return (sendErr(res, 400, invalid), true);
+    const { hasAtt, mode } = inspectHumanMessagePost(b);
     if (!(await canHumanReadChannel(spaceId, b.channelId))) return (sendErr(res, 403, "forbidden"), true);
     const human = humanIdentityForId(humanId);
     if (!human) return (sendErr(res, 403, "not the local Human"), true);
-    const mode = normalizeTaskExecutionMode(b.taskExecutionMode ?? b.executionMode);
-    if (b.asTask && hasCanvas) return (sendErr(res, 400, "Canvas context cannot be sent as a task"), true);
-    if (b.memoryPolicy !== undefined && b.memoryPolicy !== "eligible" && b.memoryPolicy !== "exclude") {
-      return (sendErr(res, 400, "memoryPolicy must be eligible or exclude"), true);
-    }
     try {
       const msg = await createMessage({
         spaceId,
