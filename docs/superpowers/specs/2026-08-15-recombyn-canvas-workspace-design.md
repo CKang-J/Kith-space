@@ -621,6 +621,8 @@ Canvas 诊断至少记录：canvas/mutation id、可选 job id、actor domain、
 
 目标：一个明确 Agent 可以安全读取冻结上下文、原子修改 Canvas，并在真实 Chat 中留下可审计回执。
 
+执行者决策（已锁定）：DM 的 executor 永远由服务端从私聊对端 Agent 派生，调用方不能覆盖。频道、私密频道和话题必须只有一个 required executor；用户可在 Composer 选择执行 Agent，或从 Agent mention 菜单选择一个结构化 `@Agent` 作为 executor。普通正文中的 `@name` 不授予 Canvas 写权限。未指定、指定多个或选择器与结构化 mention 冲突时，消息拒绝发送；`@all` 不能作为 Canvas executor。消息保持当前频道/话题 surface，不因 mention 自动创建新话题或改变成员；其他 Agent 可见但不获得 optional wake。executor 绑定写入 `bindingSource`（`dm_peer`、`explicit_picker` 或 `structured_mention`），重试不自动换绑。阶段4 MVP 先限制一个 Canvas 写入域，破坏性操作需要明确确认。
+
 交付：
 
 - Canvas Gateway Port 与 MCP/CLI thin tools；

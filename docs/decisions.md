@@ -612,6 +612,8 @@
 
 **草稿生命周期**：关闭 Canvas 标签只卸载画布视图，不清除已经附加到任何 Chat surface Composer 的 pending 选区。pending 只在用户主动移除、消息发送成功或明确清空草稿时删除；若 Canvas 或元素在发送前失效，Core fail-closed 并要求重新选择。
 
+**阶段 4 执行者选择**：DM executor 由服务端固定派生为私聊对端 Agent；频道、私密频道和话题必须绑定唯一 required executor。用户可通过 Composer 执行者选择器，或通过 Agent mention 菜单产生结构化 `@Agent` 指定执行者；普通正文 mention 不授予 Canvas 写权限。未指定、多个 mention、选择器与 mention 冲突或 `@all` 均拒绝发送。消息保持当前 surface，不自动创建话题；其他 Agent 只观察，不获得 optional wake。绑定记录 `bindingSource`，重试不自动改派；阶段4 MVP 先限制单 Canvas 写入域，破坏性操作需明确确认。
+
 **MVP**：先交付 Recombyn 原生编辑能力、多 Canvas tabs、选区发 Chat 和一个明确 Agent 的 revisioned 回写。便签、链接、任意文件/PDF/DOCX、语义思维导图/流程图、多 Agent 区域和并发写入、AI 视频/音频生成、原生跨栏拖放、Yjs 真人协作与 reviewer swarm 后置。
 
 **MCP 结论**：`2026-07-28` modern core 的无 `initialize/initialized` 与同版本 Streamable HTTP 的无 `Mcp-Session-Id` 对未来外部 host/多实例有价值，但不提供 Canvas 的身份、ACL、幂等、事务、revision、冲突或撤销。MVP 继续使用现有 broker-backed stdio MCP + CLI fallback；SDK v2 + dual-era 是独立后续，不作为 Canvas 前置。Kith 的 `x-kith-session-handle` 是 application-level broker handle，不是 MCP transport session；它单独无权，仍需当前 activation 与 worker generation 才能解析 turn claims。
