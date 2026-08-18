@@ -164,6 +164,11 @@ test("selection-to-chat writes pending from the event canvasId, not whichever Ca
     assert.deepEqual(getPendingCanvasChatContexts("channel-a").map((item) => item.selectedIds[0]), ["shape-from-b"]);
     releaseA();
     releaseB();
+    assert.deepEqual(
+      getPendingCanvasChatContexts("channel-a").map((item) => item.selectedIds),
+      [["shape-from-b"]],
+      "closing Canvas tabs must not discard pending Chat context",
+    );
   } finally {
     Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
     resetCanvasChatBridgeForTests();

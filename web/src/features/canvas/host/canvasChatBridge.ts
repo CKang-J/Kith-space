@@ -176,18 +176,6 @@ export function setPendingCanvasChatContext(
   notify();
 }
 
-export function clearPendingCanvasChatContextForCanvas(canvasId: string): void {
-  let changed = false;
-  for (const [key, value] of pendingBySurface) {
-    const next = value.filter((item) => item.canvasId !== canvasId);
-    if (next.length === value.length) continue;
-    changed = true;
-    if (next.length) pendingBySurface.set(key, next);
-    else pendingBySurface.delete(key);
-  }
-  if (changed) notify();
-}
-
 export function subscribePendingCanvasChatContext(listener: Listener): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
@@ -227,6 +215,5 @@ export function bindCanvasSelectionToChat(input: {
   return () => {
     window.removeEventListener(CANVAS_SELECTION_TO_CHAT_EVENT, onSelection);
     canvasSources.delete(input.canvasId);
-    clearPendingCanvasChatContextForCanvas(input.canvasId);
   };
 }
