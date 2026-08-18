@@ -27,6 +27,9 @@ import {
   contextObjectSnapshotResolvers,
 } from "./objectSnapshotResolver.js";
 import "./canvasObjectSnapshotResolver.js";
+import { listCanvasAccessGrantsInTransaction } from "../canvas/canvasAccessGrant.js";
+import { canvasSkillPackText } from "../canvas/canvasSkills.js";
+import { isCanvasAgentExecutionEnabled } from "../canvas/canvasAgentExecution.js";
 
 type ContextSourceRef = z.infer<typeof ContextSourceRefSchema>;
 type MessageRow = typeof schema.messages.$inferSelect;
@@ -580,6 +583,13 @@ export class ContextAssembler {
     }
     lines.push("", "File memory indexes (read selectively when relevant):");
     for (const ref of envelope.fileMemoryRefs) lines.push(`- ${ref.path} (${ref.reason}, hash=${ref.contentHash})`);
+    if (isCanvasAgentExecutionEnabled()) {
+      const grants = this.db.transaction((tx) => listCanvasAccessGrantsInTransaction(tx, envelope.turnId, envelope.session.agentId));
+      const skillPack = canvasSkillPackText(grants);
+      if (skillPack) {
+        lines.push("", skillPack);
+      }
+    }
     lines.push("", "Use `kith-space turn context` to inspect the authoritative input IDs before settling them.");
     return lines.join("\n");
   }

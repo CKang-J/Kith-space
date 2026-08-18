@@ -93,6 +93,7 @@ turn.command("reply").description("commit one server-targeted reply; body is rea
   .requiredOption("--input <ids>", "handled delivery input ids, comma-separated")
   .option("--attach <ids>", "temporary attachment ids, comma-separated")
   .option("--source-ref <json...>", "audited source refs as JSON objects")
+  .option("--output-ref <json...>", "committed output artifacts such as {\"kind\":\"canvas_mutation\",\"artifactId\":\"...\"}")
   .option("--disclosure-grant <id>", "Human-issued one-shot disclosure grant")
   .option("--idempotency-key <key>", "stable retry key", "reply:primary")
   .action(async (opts) => {
@@ -100,11 +101,13 @@ turn.command("reply").description("commit one server-targeted reply; body is rea
     const handledInputIds = String(opts.input).split(",").map((value) => value.trim()).filter(Boolean);
     const attachmentIds = opts.attach ? String(opts.attach).split(",").map((value) => value.trim()).filter(Boolean) : [];
     const sourceRefs = (opts.sourceRef ?? []).map((value: string) => JSON.parse(value));
+    const outputRefs = (opts.outputRef ?? []).map((value: string) => JSON.parse(value));
     const data = await brokerApi("POST", "/agent-gateway/turn/reply", {
       schemaVersion: 1,
       body,
       attachmentIds,
       sourceRefs,
+      outputRefs,
       ...(opts.disclosureGrant ? { disclosureGrantId: opts.disclosureGrant } : {}),
       handledInputIds,
       operationKey: opts.idempotencyKey,
@@ -134,6 +137,54 @@ turn.command("progress").description("record bounded progress for the active tur
 turn.command("get").description("inspect the active turn, Context, Steps, Usage and Outcome").action(async () => {
   console.log(JSON.stringify(await brokerApi("GET", "/agent-gateway/turn/get"), null, 2));
 });
+
+const canvas = program.command("canvas").description("authorized Canvas Access Grant tools for the active turn");
+canvas.command("snapshot-get").requiredOption("--snapshot-id <id>").option("--canvas-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:snapshot_get")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/snapshot_get", {
+      snapshotId: opts.snapshotId,
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("elements-get").option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--element-ids <ids>", "comma-separated element ids")
+  .option("--frame-ids <ids>", "comma-separated frame ids")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:elements_get")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/elements_get", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      ...(opts.elementIds ? { elementIds: String(opts.elementIds).split(",").map((value: string) => value.trim()).filter(Boolean) } : {}),
+      ...(opts.frameIds ? { frameIds: String(opts.frameIds).split(",").map((value: string) => value.trim()).filter(Boolean) } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("elements-apply").requiredOption("--expected-revision <n>")
+  .requiredOption("--operations <json>", "JSON array of Recombyn ToolOps")
+  .option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--confirm-destructive")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:elements_apply")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/elements_apply", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      operations: JSON.parse(opts.operations),
+      ...(opts.confirmDestructive ? { confirmDestructive: true } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("export").requiredOption("--snapshot-id <id>").option("--canvas-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:export")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/export", {
+      snapshotId: opts.snapshotId,
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
 
 const context = program.command("context").description("authoritative Harness v2 context");
 context.command("check").option("--refresh").action(async (opts) => printTurnContext(!!opts.refresh));

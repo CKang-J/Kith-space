@@ -575,6 +575,10 @@ export class CanvasCore {
         impact: { ...emptyImpact(), metadata: true, writeResources: ["metadata:lifecycle"] },
         result: storedResult(result),
       }).run();
+      tx.update(schema.canvasAccessGrants).set({ revokedAt: new Date() }).where(and(
+        eq(schema.canvasAccessGrants.canvasId, canvasId),
+        isNull(schema.canvasAccessGrants.revokedAt),
+      )).run();
       return result;
     });
   }
@@ -834,4 +838,17 @@ export class CanvasCore {
     };
     inspect(document);
   }
+}
+
+export function analyzeCanvasOperationBatch(
+  document: CanvasJson,
+  operation: unknown,
+  currentTitle = "Untitled Canvas",
+): {
+  document: CanvasJson;
+  impact: CanvasMutationImpact;
+  title?: string;
+  inverseOperation: CanvasOperation;
+} {
+  return patchDocument(document, operation, currentTitle);
 }

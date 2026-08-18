@@ -1,12 +1,24 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { agentHasScope } from "../agents/agentScopes.js";
+import { containsChannelAllMention } from "../channels/channelAllMention.js";
 import { hasAgentSurfaceAccessInTransaction } from "../channels/agentSurfaceAccess.js";
 import type { SpaceTransaction } from "../counters.js";
 import { schema } from "../db/index.js";
 
+export type ExecutionBindingSource = "dm_peer" | "explicit_picker" | "structured_mention";
+
 export type MessageExecutionBindingInput = {
   executorAgentId: string;
   mode: "required";
+};
+
+export type StructuredAgentMention = {
+  type: "agent";
+  id: string;
+};
+
+export type ResolvedExecutionBinding = MessageExecutionBindingInput & {
+  bindingSource: ExecutionBindingSource;
 };
 
 export class MessageExecutionBindingError extends Error {
@@ -30,6 +42,32 @@ export function parseExecutionBinding(value: unknown): MessageExecutionBindingIn
   if (!executorAgentId || executorAgentId.length > 128) return null;
   if (raw.mode !== undefined && raw.mode !== "required") return null;
   return { executorAgentId, mode: "required" };
+}
+
+export function parseStructuredAgentMentions(value: unknown): StructuredAgentMention[] {
+  if (value == null) return [];
+  if (!Array.isArray(value)) {
+    throw new MessageExecutionBindingError("INVALID_ARGUMENT", "structuredMentions must be an array");
+  }
+  const parsed: StructuredAgentMention[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new MessageExecutionBindingError("INVALID_ARGUMENT", "structured mention is invalid");
+    }
+    const raw = item as Record<string, unknown>;
+    if (raw.type !== "agent") {
+      throw new MessageExecutionBindingError("INVALID_ARGUMENT", "only structured @Agent mentions can bind a Canvas executor");
+    }
+    const id = typeof raw.id === "string" ? raw.id.trim() : "";
+    if (!id || id.length > 128) {
+      throw new MessageExecutionBindingError("INVALID_ARGUMENT", "structured mention Agent id is invalid");
+    }
+    if (seen.has(id)) continue;
+    seen.add(id);
+    parsed.push({ type: "agent", id });
+  }
+  return parsed;
 }
 
 function ineligible(reason: string): never {
@@ -96,12 +134,24 @@ export function resolveExecutionBindingInTransaction(
     spaceId: string;
     channel: typeof schema.channels.$inferSelect;
     requested: MessageExecutionBindingInput | null;
+    structuredMentions?: StructuredAgentMention[];
+    content?: string;
     now?: number;
   },
-): MessageExecutionBindingInput {
+): ResolvedExecutionBinding {
+  if (containsChannelAllMention(input.content ?? "")) {
+    throw new MessageExecutionBindingError("INVALID_ARGUMENT", "@all cannot be a Canvas executor");
+  }
+  const structuredIds = [...new Set((input.structuredMentions ?? []).filter((item) => item.type === "agent").map((item) => item.id))];
   if (input.channel.type === "dm") {
     const executorAgentId = deriveDmExecutorAgentId(tx, input.spaceId, input.channel.id);
     if (input.requested && input.requested.executorAgentId !== executorAgentId) {
+      throw new MessageExecutionBindingError(
+        "INVALID_ARGUMENT",
+        "DM executor is derived from the peer Agent and cannot be chosen by the caller",
+      );
+    }
+    if (structuredIds.some((id) => id !== executorAgentId)) {
       throw new MessageExecutionBindingError(
         "INVALID_ARGUMENT",
         "DM executor is derived from the peer Agent and cannot be chosen by the caller",
@@ -113,19 +163,38 @@ export function resolveExecutionBindingInTransaction(
       executorAgentId,
       now: input.now,
     });
-    return { executorAgentId, mode: "required" };
+    return { executorAgentId, mode: "required", bindingSource: "dm_peer" };
   }
   if (input.channel.type !== "channel" && input.channel.type !== "private" && input.channel.type !== "thread") {
     throw new MessageExecutionBindingError("INVALID_ARGUMENT", "Canvas context can only be sent to a DM, channel, or thread");
   }
-  if (!input.requested) {
-    throw new MessageExecutionBindingError("INVALID_ARGUMENT", "channel and thread Canvas context require an explicit executor Agent");
+  if (structuredIds.length > 1) {
+    throw new MessageExecutionBindingError("INVALID_ARGUMENT", "Canvas context requires exactly one structured @Agent mention");
+  }
+  const pickerId = input.requested?.executorAgentId ?? null;
+  const mentionId = structuredIds[0] ?? null;
+  if (pickerId && mentionId && pickerId !== mentionId) {
+    throw new MessageExecutionBindingError(
+      "INVALID_ARGUMENT",
+      "Composer executor and structured @Agent mention do not match",
+    );
+  }
+  const executorAgentId = pickerId ?? mentionId;
+  if (!executorAgentId) {
+    throw new MessageExecutionBindingError(
+      "INVALID_ARGUMENT",
+      "channel and thread Canvas context require an explicit executor Agent",
+    );
   }
   assertEligibleExecutorInTransaction(tx, {
     spaceId: input.spaceId,
     channelId: input.channel.id,
-    executorAgentId: input.requested.executorAgentId,
+    executorAgentId,
     now: input.now,
   });
-  return input.requested;
+  return {
+    executorAgentId,
+    mode: "required",
+    bindingSource: pickerId ? "explicit_picker" : "structured_mention",
+  };
 }

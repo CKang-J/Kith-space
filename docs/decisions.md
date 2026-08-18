@@ -602,7 +602,7 @@
 
 ## 决策 38：Canvas 直接移植 Recombyn RCB，接入既有 Workspace Tabs 与 Kith Harness
 
-**状态**：Accepted（2026-08-15；阶段 1、阶段 2 已通过主任务最终复核；阶段 3 Selection Snapshot/Chat 联动已实现，阶段 4 尚未开始）。
+**状态**：Accepted（2026-08-15；阶段 1–3 已实现；阶段 4 单 Agent 读取与回写闭环已落地，生产入口仍受 `KITH_CANVAS_AGENT_EXECUTION` 保护）。
 
 **结论**：保留 Recombyn RCB 无限画布编辑器内部的视觉、节点、工具栏、面板与原生交互。阶段1按本轮用户纠偏移除 AgentDock 视觉外壳、Dock 开关、占位和 resize/让位，只保留 selection-to-chat 的窄 host event seam；底栏以两个相邻原生按钮和 `A` / `Shift+A` 创建图片/视频生成器节点。生成提交是短小的显式 unavailable 实现，媒体文件只形成本地 data URL；三个 composer scene helper 已收敛到窄 Canvas adapter，`runDesignAgent`、`designTools`、`agentMemory`、`service/design` 与 `service/upload` 不进入物化闭包，共享 chat service 的媒体 Job transport 也被移除。Home/Auth/Billing/Share/Cloud、Tauri、Yjs 服务和 Python/LangGraph runtime 均不迁移。当前 `codex/development` 已有 Chat 常驻的右侧 Workspace Tabs；Canvas 直接以 `canvasId` 作为 resource tab 身份接入，每个 Canvas 是独立无限平面，产品不增加 Page 层级。该结论取代决策 28 中“业务模块继续同槽位替换、第二工作面退役”的旧布局描述，但不恢复正式产品 Dock，也不改变 Settings 模态层。
 

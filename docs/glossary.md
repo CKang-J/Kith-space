@@ -293,7 +293,7 @@
 : Human 或 Agent 经同一 Canvas Module 原子提交的一批 durable scene operations。Core 从 operations 派生真实 read/write/root/order/asset set，并校验 metadata/document/element/Frame/structure revisions；Agent 幂等沿用 `(turnId, toolName, key)`，Human 使用全局唯一 client command。mutation ledger 同时是 realtime transactional outbox。Canvas mutation 不等于 Chat turn 已完成。
 
 **Message Execution Binding / 消息执行绑定**
-: Server-owned 的“这条真实 DM/频道/话题消息由哪个 Agent 执行”事实。Executor 必须未删除、v2、有当前 surface access 且实时拥有 `message:send`；Canvas 请求的 snapshot、message/ref、binding 与 executor required delivery 在同一事务写入。它不改变原 surface，不由正文 `@mention` 冒充，也不会给其他 active Agent optional wake。
+: Server-owned 的“这条真实 DM/频道/话题消息由哪个 Agent 执行”事实。Executor 必须未删除、v2、有当前 surface access 且实时拥有 `message:send`；Canvas 请求的 snapshot、message/ref、binding 与 executor required delivery 在同一事务写入。绑定持久化 `bindingSource`（`dm_peer` / `explicit_picker` / `structured_mention`），重试不自动换绑。它不改变原 surface，不由普通正文 `@mention` 冒充，也不会给其他 active Agent optional wake。
 
 **Canvas Access Grant / 画布访问授权**
 : 从 Message Execution Binding 与 bound delivery 派生的 durable capability 事实，限定 turn/executor、Canvas、selection/object scope、read/write/create/import/export actions、expiry 与撤销状态。Gateway 每次调用按 Core 派生的真实影响集重验，不能信任请求体自行声明权限。

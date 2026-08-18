@@ -613,11 +613,13 @@ Canvas 诊断至少记录：canvas/mutation id、可选 job id、actor domain、
 - 通用 `MessageExecutionBinding`、MessagePosting 同事务附件和 eligible executor 预检；
 - Chat context chip/deep link、`ContextObjectSnapshotResolver`、Context Assembler 与 Turn Inspector 投影。
 
-门禁：“让 Agent 处理”入口继续由 feature flag 隐藏，直到阶段 4 的最小 `snapshot_get`、Canvas grant 和诚实 reply 契约通过；不能先制造 Agent 无法读取的 required delivery。
+门禁：“让 Agent 处理”入口继续由 `KITH_CANVAS_AGENT_EXECUTION` / `isCanvasAgentExecutionEnabled()` 保护；阶段4已提供最小 `snapshot_get`、Canvas grant 与 reply artifact 契约，生产默认仍 fail-closed，测试环境默认开启。
 
 验收：DM/频道/话题保持原 surface，仅一个 required delivery，其他 active Agent 无 optional wake；executor 删除/v1/无 surface access/无 `message:send` 均整笔回滚；另覆盖删除后审计、发送后 assembly 前删除、选区后改画布、无选择 broad grant、未授权读取和事务失败清理。
 
 ### 阶段 4：单 Agent 读取与回写闭环
+
+实现状态（2026-08-18）：阶段4代码已落地。workspace schema v14 新增 `canvas_access_grants`、`turn_output_artifacts`，并为 `message_execution_bindings` 增加 `binding_source`。`TurnCapabilityService.prepare()` 仅从 server-owned binding + bound required delivery + frozen Selection Snapshot 派生 durable `CanvasAccessGrant`（绑定 message/snapshot/delivery/turn/executor/canvas/objectScope/actions/expiry）；生产入口由 `KITH_CANVAS_AGENT_EXECUTION` / `isCanvasAgentExecutionEnabled()` 保护。Gateway scopes 增加 `canvas.read/write/export/import`；MCP/CLI thin tools（`canvas.snapshot_get`、`elements_get`、`elements_apply`、`export`、`context_bundle_create`、`asset_import`）与 Human API 共用同一 Canvas Core。Recombyn 24 ToolOps 经 `canvasToolOps` 映射到阶段2 Core operation：viewport 为 ephemeral suggestion，export 为独立副作用，`image_process`/`outline_text` 延后 job。写回路径服务端 `analyzeCanvasOperationBatch` + grant impact 重验，同 key ledger 幂等，冲突 CAS，破坏性操作需 `confirmDestructive`；Agent/Canvas 删除撤权。`TurnReplyCommand.outputRefs` 经 `turn_output_artifacts` 关联同 turn 已提交 mutation；Turn Inspector 支持 bound/unattached 双向查询。Canvas skill pack 在具备 grant 时注入 Context Assembler。定向验收覆盖 grant 伪造/扩张/过期、ToolOps 映射、同 key 重放与 payload 冲突、CAS、批量确认、撤权/删除、mutation-reply 崩溃恢复、DM/channel/thread executor 与其他 Agent 不唤醒。
 
 目标：一个明确 Agent 可以安全读取冻结上下文、原子修改 Canvas，并在真实 Chat 中留下可审计回执。
 

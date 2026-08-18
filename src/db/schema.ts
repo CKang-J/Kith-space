@@ -880,7 +880,47 @@ export const messageExecutionBindings = sqliteTable("message_execution_bindings"
   messageId: text("message_id").primaryKey().references(() => messages.id, { onDelete: "cascade" }),
   executorAgentId: text("executor_agent_id").notNull().references(() => agents.id, { onDelete: "no action" }),
   mode: text("mode").$type<"required">().notNull(),
+  bindingSource: text("binding_source").$type<"dm_peer" | "explicit_picker" | "structured_mention">().default("explicit_picker").notNull(),
   createdAt: timestamp("created_at").default(now).notNull(),
 }, (t) => ({
   byExecutor: index("message_execution_bindings_executor_idx").on(t.executorAgentId),
+}));
+
+export const canvasAccessGrants = sqliteTable("canvas_access_grants", {
+  id: id("id").primaryKey(),
+  spaceId: text("space_id").notNull().references(() => spaces.id, { onDelete: "cascade" }),
+  messageId: text("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
+  snapshotId: text("snapshot_id").notNull().references(() => canvasSelectionSnapshots.id, { onDelete: "no action" }),
+  deliveryId: text("delivery_id").notNull().references(() => agentDeliveryItems.id, { onDelete: "cascade" }),
+  turnId: text("turn_id").notNull().references(() => agentTurns.id, { onDelete: "cascade" }),
+  executorAgentId: text("executor_agent_id").notNull().references(() => agents.id, { onDelete: "no action" }),
+  canvasId: text("canvas_id").notNull().references(() => canvasDocuments.id, { onDelete: "no action" }),
+  objectScope: text("object_scope_json", { mode: "json" }).$type<{
+    snapshotId: string;
+    canvasId: string;
+    elementIds: string[];
+    frameIds: string[];
+    emptySelection: boolean;
+    createParents: string[];
+  }>().notNull(),
+  actions: text("actions_json", { mode: "json" }).$type<string[]>().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").default(now).notNull(),
+}, (t) => ({
+  turnSnapshotUniq: uniqueIndex("canvas_access_grants_turn_snapshot_uniq").on(t.turnId, t.snapshotId),
+  byTurn: index("canvas_access_grants_turn_idx").on(t.turnId, t.executorAgentId),
+  byDelivery: index("canvas_access_grants_delivery_idx").on(t.deliveryId),
+}));
+
+export const turnOutputArtifacts = sqliteTable("turn_output_artifacts", {
+  id: id("id").primaryKey(),
+  outputId: text("output_id").notNull().references(() => turnOutputs.id, { onDelete: "cascade" }),
+  turnId: text("turn_id").notNull().references(() => agentTurns.id, { onDelete: "cascade" }),
+  kind: text("kind").$type<"canvas_mutation">().notNull(),
+  artifactId: text("artifact_id").notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+}, (t) => ({
+  outputKindArtifactUniq: uniqueIndex("turn_output_artifacts_output_kind_artifact_uniq").on(t.outputId, t.kind, t.artifactId),
+  byArtifact: index("turn_output_artifacts_artifact_idx").on(t.kind, t.artifactId),
 }));

@@ -19,6 +19,10 @@ export const GatewayScopeSchema = z.enum([
   "task.read",
   "task.write",
   "capability.describe",
+  "canvas.read",
+  "canvas.write",
+  "canvas.export",
+  "canvas.import",
 ]);
 export type GatewayScope = z.infer<typeof GatewayScopeSchema>;
 
@@ -107,7 +111,51 @@ export const TaskDeliverCommandSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(200),
 }).strict();
 
+export const CanvasSnapshotGetCommandSchema = z.object({
+  snapshotId: z.string().trim().min(1),
+  canvasId: z.string().trim().min(1).optional(),
+  idempotencyKey: z.string().trim().min(1).max(200),
+}).strict();
+export const CanvasElementsGetCommandSchema = z.object({
+  canvasId: z.string().trim().min(1).optional(),
+  snapshotId: z.string().trim().min(1).optional(),
+  elementIds: z.array(z.string().trim().min(1)).max(200).optional(),
+  frameIds: z.array(z.string().trim().min(1)).max(200).optional(),
+  idempotencyKey: z.string().trim().min(1).max(200),
+}).strict();
+export const CanvasElementsApplyCommandSchema = z.object({
+  canvasId: z.string().trim().min(1).optional(),
+  snapshotId: z.string().trim().min(1).optional(),
+  expectedRevision: z.number().int().nonnegative(),
+  operations: z.array(z.record(z.string(), z.unknown())).min(1).max(100),
+  confirmDestructive: z.boolean().optional(),
+  idempotencyKey: z.string().trim().min(1).max(200),
+}).strict();
+export const CanvasExportCommandSchema = z.object({
+  snapshotId: z.string().trim().min(1),
+  canvasId: z.string().trim().min(1).optional(),
+  idempotencyKey: z.string().trim().min(1).max(200),
+}).strict();
+export const CanvasContextBundleCreateCommandSchema = z.object({
+  snapshotId: z.string().trim().min(1),
+  canvasId: z.string().trim().min(1).optional(),
+  idempotencyKey: z.string().trim().min(1).max(200),
+}).strict();
+export const CanvasAssetImportCommandSchema = z.object({
+  canvasId: z.string().trim().min(1).optional(),
+  snapshotId: z.string().trim().min(1).optional(),
+  assetId: z.string().trim().min(1).optional(),
+  url: z.string().optional(),
+  dataUrl: z.string().optional(),
+  idempotencyKey: z.string().trim().min(1).max(200),
+}).strict();
 export type ContextCheckCommand = z.infer<typeof ContextCheckCommandSchema>;
+export type CanvasSnapshotGetCommand = z.infer<typeof CanvasSnapshotGetCommandSchema>;
+export type CanvasElementsGetCommand = z.infer<typeof CanvasElementsGetCommandSchema>;
+export type CanvasElementsApplyCommand = z.infer<typeof CanvasElementsApplyCommandSchema>;
+export type CanvasExportCommand = z.infer<typeof CanvasExportCommandSchema>;
+export type CanvasContextBundleCreateCommand = z.infer<typeof CanvasContextBundleCreateCommandSchema>;
+export type CanvasAssetImportCommand = z.infer<typeof CanvasAssetImportCommandSchema>;
 export type TurnReplyCommand = z.infer<typeof TurnReplyCommandSchema>;
 export type TurnCedeCommand = z.infer<typeof TurnCedeCommandSchema>;
 export type TurnProgressCommand = z.infer<typeof TurnProgressCommandSchema>;

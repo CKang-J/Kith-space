@@ -30,6 +30,10 @@ function detectedMimeType(bytes: Buffer): string | null {
   return null;
 }
 
+export function sanitizeInlineSvgMarkup(markup: string): string {
+  return sanitizeSvg(Buffer.from(markup, "utf8")).toString("utf8");
+}
+
 function sanitizeSvg(bytes: Buffer): Buffer {
   const source = bytes.toString("utf8");
   if (!/^\s*<svg[\s>]/i.test(source)

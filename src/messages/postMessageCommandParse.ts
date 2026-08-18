@@ -3,7 +3,9 @@ import type { CanvasSelectionInput } from "../canvas/canvasTypes.js";
 import {
   MessageExecutionBindingError,
   parseExecutionBinding,
+  parseStructuredAgentMentions,
   type MessageExecutionBindingInput,
+  type StructuredAgentMention,
 } from "./messageExecutionBinding.js";
 
 export function parseRequiredCanvasSelections(value: unknown): CanvasSelectionInput[] | undefined {
@@ -26,4 +28,9 @@ export function parseOptionalExecutionBinding(value: unknown): MessageExecutionB
   const parsed = parseExecutionBinding(value);
   if (!parsed) throw new MessageExecutionBindingError("INVALID_ARGUMENT", "execution binding is invalid");
   return parsed;
+}
+
+export function parseOptionalStructuredMentions(value: unknown): StructuredAgentMention[] | undefined {
+  if (value == null) return undefined;
+  return parseStructuredAgentMentions(value);
 }

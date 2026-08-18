@@ -11,6 +11,12 @@ import { isTaskOperationError, parseTaskActionMetadata } from "../tasks/taskType
 import { taskGatewayPort } from "./taskGatewayPort.js";
 import type { TurnCapabilityClaims } from "./contracts.js";
 import type {
+  CanvasAssetImportCommand,
+  CanvasContextBundleCreateCommand,
+  CanvasElementsApplyCommand,
+  CanvasElementsGetCommand,
+  CanvasExportCommand,
+  CanvasSnapshotGetCommand,
   ChecklistClearCommand,
   ChecklistUpsertCommand,
   ConversationReadCommand,
@@ -31,6 +37,15 @@ import type {
   GatewayScope,
 } from "./gatewayContracts.js";
 import { requiredAgentScopes } from "./gatewayContracts.js";
+import {
+  executeCanvasAssetImport,
+  executeCanvasContextBundleCreate,
+  executeCanvasElementsApply,
+  executeCanvasElementsGet,
+  executeCanvasExport,
+  executeCanvasSnapshotGet,
+  mapCanvasToolError,
+} from "../canvas/canvasGatewayTools.js";
 import { EpisodicMemoryService, MemoryError, type RecalledMemory } from "../memory/episodicMemoryService.js";
 import { UserGlobalMemoryService, type RecalledUserGlobalMemory } from "../memory/userGlobalMemoryService.js";
 import { selectUnifiedMemoryRecall } from "../memory/memoryRecallSelection.js";
@@ -439,6 +454,118 @@ export class CapabilityGateway {
     return { capabilityMode: this.capabilityMode(claims), scopes: claims.scopes, serverName: "kith-core" };
   }
 
+  canvasSnapshotGet(claims: TurnCapabilityClaims, command: CanvasSnapshotGetCommand) {
+    try {
+      return this.db.transaction((tx) => {
+        this.assertLiveCapabilityInTransaction(tx, claims, "canvas.read");
+        return executeCanvasSnapshotGet(tx, claims, command, this.now());
+      });
+    } catch (error) {
+      mapCanvasToolError(error);
+    }
+  }
+
+  canvasElementsGet(claims: TurnCapabilityClaims, command: CanvasElementsGetCommand) {
+    try {
+      return this.db.transaction((tx) => {
+        this.assertLiveCapabilityInTransaction(tx, claims, "canvas.read");
+        return executeCanvasElementsGet(this.db, tx, this.spaceId, claims, command, this.now());
+      });
+    } catch (error) {
+      mapCanvasToolError(error);
+    }
+  }
+
+  canvasElementsApply(claims: TurnCapabilityClaims, command: CanvasElementsApplyCommand) {
+    try {
+      return this.operation(
+        claims,
+        "canvas.elements_apply",
+        command.idempotencyKey,
+        {
+          canvasId: command.canvasId ?? null,
+          snapshotId: command.snapshotId ?? null,
+          expectedRevision: command.expectedRevision,
+          operations: command.operations,
+          confirmDestructive: command.confirmDestructive ?? false,
+        },
+        "canvas:apply",
+        "canvas.write",
+        (tx, operationId) => executeCanvasElementsApply(
+          this.db,
+          tx,
+          this.spaceId,
+          claims,
+          command,
+          operationId,
+          this.now(),
+        ) as OperationResult,
+      );
+    } catch (error) {
+      mapCanvasToolError(error);
+    }
+  }
+
+  canvasExport(claims: TurnCapabilityClaims, command: CanvasExportCommand) {
+    try {
+      return this.operation(
+        claims,
+        "canvas.export",
+        command.idempotencyKey,
+        {
+          snapshotId: command.snapshotId,
+          canvasId: command.canvasId ?? null,
+        },
+        "canvas:export",
+        "canvas.export",
+        (tx) => executeCanvasExport(tx, claims, command, this.now()) as OperationResult,
+      );
+    } catch (error) {
+      mapCanvasToolError(error);
+    }
+  }
+
+  canvasContextBundleCreate(claims: TurnCapabilityClaims, command: CanvasContextBundleCreateCommand) {
+    try {
+      return this.operation(
+        claims,
+        "canvas.context_bundle_create",
+        command.idempotencyKey,
+        {
+          snapshotId: command.snapshotId,
+          canvasId: command.canvasId ?? null,
+        },
+        "canvas:bundle",
+        "canvas.read",
+        (tx) => executeCanvasContextBundleCreate(tx, claims, command, this.now()) as OperationResult,
+      );
+    } catch (error) {
+      mapCanvasToolError(error);
+    }
+  }
+
+  canvasAssetImport(claims: TurnCapabilityClaims, command: CanvasAssetImportCommand): OperationResult {
+    try {
+      return this.operation(
+        claims,
+        "canvas.asset_import",
+        command.idempotencyKey,
+        {
+          canvasId: command.canvasId ?? null,
+          snapshotId: command.snapshotId ?? null,
+          assetId: command.assetId ?? null,
+          url: command.url ?? null,
+          dataUrl: command.dataUrl ?? null,
+        },
+        "canvas:import",
+        "canvas.import",
+        (tx) => executeCanvasAssetImport(tx, claims, command, this.now()),
+      );
+    } catch (error) {
+      mapCanvasToolError(error);
+    }
+  }
+
   observeTransport(claims: TurnCapabilityClaims, transport: "cli" | "mcp"): void {
     this.db.transaction((tx) => {
       this.assertLiveCapabilityInTransaction(tx, claims, "capability.describe");
@@ -519,7 +646,7 @@ export class CapabilityGateway {
     request: unknown,
     slot: string,
     scope: GatewayScope,
-    execute: (tx: SpaceTransaction) => OperationResult,
+    execute: (tx: SpaceTransaction, operationId: string) => OperationResult,
   ): OperationResult {
     this.assertClaims(claims);
     const requestHash = hash(request);
@@ -538,7 +665,7 @@ export class CapabilityGateway {
       const operation = tx.insert(schema.turnOperations).values({
         id: randomUUID(), turnId: claims.turnId, toolName, idempotencyKey, requestHash, operationSlot: slot, status: "pending",
       }).returning().get();
-      const result = execute(tx);
+      const result = execute(tx, operation.id);
       tx.update(schema.turnOperations).set({ status: "committed", resultRef: result, updatedAt: new Date(this.now()) })
         .where(eq(schema.turnOperations.id, operation.id)).run();
       return result;

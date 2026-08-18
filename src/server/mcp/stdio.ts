@@ -42,6 +42,10 @@ register("turn.reply", "Commit a server-targeted Chat reply and settle the liste
     sourceKind: z.string().min(1), sourceId: z.string().min(1), sourceRevision: z.number().int().nonnegative().nullable(),
     projection: z.enum(["canonical", "internal_summary", "shareable_summary", "ref_only"]),
   }).strict()).max(20).default([]),
+  outputRefs: z.array(z.object({
+    kind: z.literal("canvas_mutation"),
+    artifactId: z.string().min(1),
+  }).strict()).max(20).default([]),
   disclosureGrantId: z.string().min(1).optional(),
   handledInputIds: z.array(z.string().min(1)).min(1).max(50), operationKey: z.string().min(1).max(128),
 }, "POST", "/agent-gateway/turn/reply");
@@ -116,5 +120,30 @@ register("task.deliver", "Publish an idempotent delivery summary and move the ta
   childTaskIds: z.array(z.string().min(6)).max(100).default([]), idempotencyKey: z.string().min(1),
 }, "POST", "/agent-gateway/task/deliver");
 register("capability.describe", "Describe the active kith-core capability mode and scopes.", {}, "GET", "/agent-gateway/capability/describe");
+register("canvas.snapshot_get", "Read the authorized immutable Canvas Selection Snapshot for this turn.", {
+  snapshotId: z.string().min(1), canvasId: z.string().min(1).optional(), idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/canvas/snapshot_get");
+register("canvas.elements_get", "Read live authorized Canvas elements/Frames within the current grant.", {
+  canvasId: z.string().min(1).optional(), snapshotId: z.string().min(1).optional(),
+  elementIds: z.array(z.string().min(1)).max(200).optional(), frameIds: z.array(z.string().min(1)).max(200).optional(),
+  idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/canvas/elements_get");
+register("canvas.elements_apply", "Map Recombyn ToolOps onto Canvas Core under the current grant and CAS revision.", {
+  canvasId: z.string().min(1).optional(), snapshotId: z.string().min(1).optional(),
+  expectedRevision: z.number().int().nonnegative(),
+  operations: z.array(z.record(z.string(), z.unknown())).min(1).max(100),
+  confirmDestructive: z.boolean().optional(), idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/canvas/elements_apply");
+register("canvas.export", "Export the authorized immutable Selection Snapshot as a Canvas side effect.", {
+  snapshotId: z.string().min(1), canvasId: z.string().min(1).optional(), idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/canvas/export");
+register("canvas.context_bundle_create", "Create a bounded Canvas context bundle from the authorized snapshot.", {
+  snapshotId: z.string().min(1), canvasId: z.string().min(1).optional(), idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/canvas/context_bundle_create");
+register("canvas.asset_import", "Import a Canvas asset when the turn grant allows import (MVP may deny).", {
+  canvasId: z.string().min(1).optional(), snapshotId: z.string().min(1).optional(),
+  assetId: z.string().min(1).optional(), url: z.string().optional(), dataUrl: z.string().optional(),
+  idempotencyKey: z.string().min(1),
+}, "POST", "/agent-gateway/canvas/asset_import");
 
 await server.connect(new StdioServerTransport());

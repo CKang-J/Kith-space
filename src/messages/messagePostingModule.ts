@@ -22,6 +22,7 @@ import {
   resolveExecutionBindingInTransaction,
   MessageExecutionBindingError,
   type MessageExecutionBindingInput,
+  type StructuredAgentMention,
 } from "./messageExecutionBinding.js";
 import { getHumanIdentity } from "../human/humanIdentity.js";
 import { humanChannelState } from "../human/humanChannelState.js";
@@ -80,6 +81,7 @@ export type PostMessageCommand =
       canvasSelection?: CanvasSelectionInput;
       canvasSelections?: CanvasSelectionInput[];
       executionBinding?: MessageExecutionBindingInput | null;
+      structuredMentions?: StructuredAgentMention[];
     }
   | {
       kind: "agent-introduction";
@@ -261,6 +263,7 @@ type WriteInput = {
   canvasSelection?: CanvasSelectionInput;
   canvasSelections?: CanvasSelectionInput[];
   executionBinding?: MessageExecutionBindingInput | null;
+  structuredMentions?: StructuredAgentMention[];
   task?: { messageId?: string; writePrecondition?: (tx: SpaceTransaction, channelId: string) => void; executionMode: "autopilot" | "plan-first"; parentTaskId?: string | null };
 };
 
@@ -952,6 +955,10 @@ export function createConversationModules(dependencies: ConversationModuleDepend
       if (context.sender.type !== "human" || !context.sender.id) {
         throw new MessageExecutionBindingError("INVALID_ARGUMENT", "only the Human can attach Canvas context");
       }
+      const canvasIds = new Set(canvasSelections.map((selection) => selection.canvasId));
+      if (canvasIds.size !== 1) {
+        throw new MessageExecutionBindingError("INVALID_ARGUMENT", "Canvas context MVP is limited to one Canvas write domain");
+      }
     }
     let messageValues = {
       id: messageId,
@@ -1062,13 +1069,15 @@ export function createConversationModules(dependencies: ConversationModuleDepend
               name: `thread-${messageId.slice(0, 8)}`,
             }).returning().get()
           : null;
-        let executionBinding: MessageExecutionBindingInput | null = null;
+        let executionBinding: ReturnType<typeof resolveExecutionBindingInTransaction> | null = null;
         let frozenCanvases: Array<ReturnType<typeof freezeCanvasSelectionInTransaction>> = [];
         if (canvasSelections.length && context.sender.id) {
           executionBinding = resolveExecutionBindingInTransaction(tx, {
             spaceId: context.spaceId,
             channel: prepared.channel,
             requested: input.executionBinding ?? null,
+            structuredMentions: input.structuredMentions,
+            content: input.content,
           });
           frozenCanvases = canvasSelections.map((selection) => freezeCanvasSelectionInTransaction(
             tx,
@@ -1102,6 +1111,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
             messageId: message.id,
             executorAgentId: executionBinding.executorAgentId,
             mode: executionBinding.mode,
+            bindingSource: executionBinding.bindingSource,
           }).run();
         }
         ensureDispatchChainInTransaction(tx, {
@@ -1495,6 +1505,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
         canvasSelection: command.kind === "chat" ? command.canvasSelection : undefined,
         canvasSelections: command.kind === "chat" ? command.canvasSelections : undefined,
         executionBinding: command.kind === "chat" ? command.executionBinding : undefined,
+        structuredMentions: command.kind === "chat" ? command.structuredMentions : undefined,
       });
     },
   };

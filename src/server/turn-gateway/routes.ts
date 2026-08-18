@@ -11,6 +11,12 @@ import { deleteObject } from "../../files/localObjectStorage.js";
 import { TEMPORARY_ATTACHMENT_TTL_MS, cleanupTemporaryAttachments } from "../../files/temporaryAttachmentCleanup.js";
 import { assertAgentSurfaceAccessInTransaction } from "../../channels/agentSurfaceAccess.js";
 import {
+  CanvasAssetImportCommandSchema,
+  CanvasContextBundleCreateCommandSchema,
+  CanvasElementsApplyCommandSchema,
+  CanvasElementsGetCommandSchema,
+  CanvasExportCommandSchema,
+  CanvasSnapshotGetCommandSchema,
   ChecklistClearCommandSchema,
   ChecklistUpsertCommandSchema,
   ContextCheckCommandSchema,
@@ -176,6 +182,7 @@ export async function handleTurnGateway(
         body: body.body,
         attachmentIds: body.attachmentIds,
         sourceRefs: body.sourceRefs,
+        outputRefs: body.outputRefs,
         disclosureGrantId: body.disclosureGrantId,
         allowedDisclosureGrantIds: claims.disclosureGrantIds,
         attachmentActivationId: claims.activationId,
@@ -183,6 +190,42 @@ export async function handleTurnGateway(
         writePrecondition: capabilityGateway(claims.spaceId).writePrecondition(claims, "turn.reply"),
       });
       sendJson(res, 200, { ok: true, messageId: message.id, seq: message.seq, channelId: message.channelId });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/snapshot_get" && method === "POST") {
+      const body = CanvasSnapshotGetCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.read");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasSnapshotGet(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/elements_get" && method === "POST") {
+      const body = CanvasElementsGetCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.read");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasElementsGet(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/elements_apply" && method === "POST") {
+      const body = CanvasElementsApplyCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasElementsApply(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/export" && method === "POST") {
+      const body = CanvasExportCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.export");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasExport(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/context_bundle_create" && method === "POST") {
+      const body = CanvasContextBundleCreateCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.read");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasContextBundleCreate(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/asset_import" && method === "POST") {
+      const body = CanvasAssetImportCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.import");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasAssetImport(claims, body));
       return true;
     }
     if (url.pathname === "/agent-gateway/turn/progress" && method === "POST") {

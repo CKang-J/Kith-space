@@ -13,7 +13,7 @@ Kith-space 的终点是桌面优先、单人使用的个人 AgentOS：一个 Hum
 - 公网部署、SaaS、云同步、云数据库和独立 Web 发行。
 - 移动 Web、PWA、push、Docker 部署和公共 server/daemon 包。
 
-Home/Space root、文件夹接入、Space root cwd 和 Agent Memory 可移植性地基已经完成 H1–H4；H5 仍独立后置。Recombyn Canvas Workspace 阶段 1、阶段 2 均已通过主任务最终复核，阶段 3 Selection Snapshot/Chat 已实现；阶段 4 Agent Gateway/写回尚未开始。长期路线还包括跨 Space 聚合/委派成熟化、邮箱、日历、Canvas 后续能力、记忆增强、编排成熟化、HTTPS 与 runtime 权限升级、macOS/Linux 发行。
+Home/Space root、文件夹接入、Space root cwd 和 Agent Memory 可移植性地基已经完成 H1–H4；H5 仍独立后置。Recombyn Canvas Workspace 阶段 1–4 均已落地（阶段4生产入口受 `KITH_CANVAS_AGENT_EXECUTION` 保护）；阶段 5 硬化与真实 Desktop/Web Agent smoke 仍待后续。长期路线还包括跨 Space 聚合/委派成熟化、邮箱、日历、Canvas 后续能力、记忆增强、编排成熟化、HTTPS 与 runtime 权限升级、macOS/Linux 发行。
 
 ## 2. 已完成基础
 

@@ -161,6 +161,7 @@ export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
         canvasSelection: b.canvasSelection,
         canvasSelections: b.canvasSelections,
         executionBinding: b.executionBinding,
+        structuredMentions: b.structuredMentions,
       });
       return (sendJson(res, 200, { ok: true, id: msg.id, seq: msg.seq }), true);
     } catch (error) {
