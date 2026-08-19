@@ -630,7 +630,7 @@ Canvas 诊断至少记录：canvas/mutation id、可选 job id、actor domain、
 - Canvas Gateway Port 与 MCP/CLI thin tools；
 - Recombyn ToolOps validator/allowlist 适配；
 - `CanvasAccessGrant` 持久化、`prepare()` 派生、逐调用重验和 Canvas action scopes；
-- Canvas skill pack 与最小 system prompt 增量（Agent 自己判断 edit/question/read/export；服务端不把自然语言正则写成 mutationRequired）；
+- Canvas skill pack 与操作协议手册（Agent 自己判断 edit/question/read/export；Frame-first / fill-stroke / placement / edit protocol；服务端不把自然语言正则写成 mutationRequired）；
 - `TurnReplyCommand.outputRefs`、`turn_output_artifacts` 与 mutation/turn operation 双向查询；
 - 冲突、重试、撤权和 crash recovery。
 

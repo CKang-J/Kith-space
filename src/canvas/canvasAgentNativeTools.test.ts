@@ -450,6 +450,11 @@ test("canvas intent stays unknown from natural language and pure questions do no
   assert.match(pack, /heuristic mutation requirement/);
   assert.doesNotMatch(pack, /Turn intent:/);
   assert.match(pack, /does not hard-refuse turn\.reply/);
+  assert.match(pack, /Canvas Operation Protocol/);
+  assert.match(pack, /Frame-first principle/);
+  assert.match(pack, /NEVER use CSS: fill="linear-gradient/);
+  assert.match(pack, /Prefer canvas\.update_node on the same id/);
+  assert.match(pack, /do not delete\+create/);
 });
 
 test("scene_summary is grant-scoped and typed create/update/delete share Gateway→Core with mutation feedback", async () => {
@@ -490,6 +495,14 @@ test("scene_summary is grant-scoped and typed create/update/delete share Gateway
     assert.equal(summary.elements.some((element) => element.id === "shape-2"), false);
     assert.ok(summary.allowedCreateParents.includes("frame-1"));
     assert.match(summary.nextSuggestedAction, /typed canvas\.create_/);
+    assert.equal(summary.focusFrameId, "frame-1");
+    assert.match(summary.contextText, /=== CANVAS_SCENE ===/);
+    assert.match(summary.contextText, /FOCUS_FRAME_ID: frame-1/);
+    assert.match(summary.contextText, /=== SCENE_FRAMES ===/);
+    assert.match(summary.contextText, /=== SCENE_NODES ===/);
+    assert.match(summary.contextText, /shape-1/);
+    assert.doesNotMatch(summary.contextText, /shape-2/);
+    assert.ok(summary.availableFonts.includes("Inter"));
 
     const baseRevision = f.core.read(f.canvas.id).revisions.revision;
     const created = turn.gateway.canvasCreateText(turn.claims, {

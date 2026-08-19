@@ -612,14 +612,15 @@ Agent 完成操作后，按清单自检，发现问题自行修正。
 
 **目标**：让 Agent 专业地操作画布
 **验收标准**：
-- [ ] Canvas skill pack 扩展完成（paint_system + edit protocol + placement rules）
-- [ ] scene_summary 输出格式对齐 Recombyn（SCENE_FRAMES / SCENE_NODES / FOCUS_FRAME / GRANT 分区）
+- [x] Canvas skill pack 扩展完成（paint_system + edit protocol + placement rules）
+- [x] scene_summary 输出格式对齐 Recombyn（SCENE_FRAMES / SCENE_NODES / FOCUS_FRAME / GRANT 分区）——JSON 保留，并增加 `contextText` 分区文本
 - [ ] 操作测试：让 Agent "做一个简单的海报（标题+副标题+一个装饰形状）"
   - 会先 create_frame
   - 内容都在 frame 内
   - 文本有正确的颜色和大小
   - 形状有正确的填充色
-- [ ] 编辑测试：让 Agent "把标题改成蓝色" → 正确 update_node，不删除重建
+  ——自动化覆盖 skill pack 文案与 scene_summary 分区；真实 Agent smoke 仍待本机 Desktop
+- [ ] 编辑测试：让 Agent "把标题改成蓝色" → 正确 update_node，不删除重建 ——真实 Agent smoke 仍待本机 Desktop
 
 ### Phase 2：设计技能系统（5-7天）
 
