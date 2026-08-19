@@ -7,12 +7,17 @@ import {
   getActiveCanvasChatSurface,
   getPendingCanvasChatContext,
   getPendingCanvasChatContexts,
+  grantWholeCanvasChatContext,
+  isWholeCanvasChatContext,
+  listOpenCanvasChatSources,
   parseCanvasSelectionTarget,
   pendingCanvasSelectionKey,
   pushCanvasChatSurface,
   removePendingCanvasChatContext,
   resetCanvasChatBridgeForTests,
   setPendingCanvasChatContext,
+  toggleOpenCanvasChatContext,
+  toggleWholeCanvasChatContext,
 } from "./canvasChatBridge";
 import { CANVAS_SELECTION_TO_CHAT_EVENT } from "../adapters/recombynSelectionToChat";
 import { pendingSelectionSummaryParts } from "./canvasSelectionCopy";
@@ -151,21 +156,16 @@ test("selection-to-chat writes pending from the event canvasId, not whichever Ca
       documentRevision: 5,
     });
     assert.deepEqual(
-      getPendingCanvasChatContexts("channel-a").map((item) => ({ canvasId: item.canvasId, auto: Boolean(item.autoWholeCanvas), ids: item.selectedIds })),
-      [
-        { canvasId: "canvas-a", auto: true, ids: [] },
-        { canvasId: "canvas-b", auto: true, ids: [] },
-      ],
+      getPendingCanvasChatContexts("channel-a"),
+      [],
+      "opening a Canvas must not auto-authorize Chat",
     );
     window.dispatchEvent(new CustomEvent(CANVAS_SELECTION_TO_CHAT_EVENT, {
       detail: { target: ["shape-from-b"], canvasId: "canvas-b" },
     }));
     assert.deepEqual(
-      getPendingCanvasChatContexts("channel-a").map((item) => ({ canvasId: item.canvasId, auto: Boolean(item.autoWholeCanvas), ids: item.selectedIds })),
-      [
-        { canvasId: "canvas-a", auto: true, ids: [] },
-        { canvasId: "canvas-b", auto: false, ids: ["shape-from-b"] },
-      ],
+      getPendingCanvasChatContexts("channel-a").map((item) => ({ canvasId: item.canvasId, ids: item.selectedIds })),
+      [{ canvasId: "canvas-b", ids: ["shape-from-b"] }],
     );
     assert.equal(getPendingCanvasChatContexts("channel-a").find((item) => item.canvasId === "canvas-b")?.canvasTitle, "Board B");
     window.dispatchEvent(new CustomEvent(CANVAS_SELECTION_TO_CHAT_EVENT, {
@@ -174,7 +174,7 @@ test("selection-to-chat writes pending from the event canvasId, not whichever Ca
     window.dispatchEvent(new CustomEvent(CANVAS_SELECTION_TO_CHAT_EVENT, {
       detail: { target: ["shape-orphan"] },
     }));
-    assert.deepEqual(getPendingCanvasChatContexts("channel-a").map((item) => item.canvasId), ["canvas-a", "canvas-b"]);
+    assert.deepEqual(getPendingCanvasChatContexts("channel-a").map((item) => item.canvasId), ["canvas-b"]);
     releaseA();
     releaseB();
     assert.deepEqual(
@@ -188,7 +188,7 @@ test("selection-to-chat writes pending from the event canvasId, not whichever Ca
   }
 });
 
-test("opening a Canvas auto-authorizes the whole board; closing the tab drops only that auto chip", () => {
+test("opening a Canvas does not auto-authorize; plus-menu grant survives closing the tab", () => {
   resetCanvasChatBridgeForTests();
   const originalWindow = globalThis.window;
   const listeners = new Map<string, Set<EventListener>>();
@@ -214,14 +214,116 @@ test("opening a Canvas auto-authorizes the whole board; closing the tab drops on
       previewDocument: { id: "open" },
       documentRevision: 3,
     });
-    const auto = getPendingCanvasChatContexts("channel-a")[0];
-    assert.equal(auto?.canvasId, "canvas-open");
-    assert.equal(auto?.autoWholeCanvas, true);
-    assert.deepEqual(auto?.selectedIds, []);
-    assert.equal(auto?.summaryParts.wholeCanvas, true);
-    releaseCanvas();
     assert.deepEqual(getPendingCanvasChatContexts("channel-a"), []);
+    assert.deepEqual(listOpenCanvasChatSources(), [{ canvasId: "canvas-open", canvasTitle: "Open Board" }]);
+    const granted = grantWholeCanvasChatContext("canvas-open", "channel-a");
+    assert.equal(granted?.canvasId, "canvas-open");
+    assert.deepEqual(granted?.selectedIds, []);
+    assert.equal(granted?.previewDocument, null);
+    assert.equal(granted?.summaryParts.wholeCanvas, true);
+    assert.equal(isWholeCanvasChatContext(granted!), true);
+    releaseCanvas();
+    assert.equal(getPendingCanvasChatContexts("channel-a")[0]?.id, granted?.id);
+    assert.deepEqual(listOpenCanvasChatSources(), []);
     releaseSurface();
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+    resetCanvasChatBridgeForTests();
+  }
+});
+
+test("whole-canvas grant and circled selection coexist; toggling the menu only drops whole-canvas chips", () => {
+  resetCanvasChatBridgeForTests();
+  const originalWindow = globalThis.window;
+  const listeners = new Map<string, Set<EventListener>>();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      addEventListener(type: string, listener: EventListener) {
+        const set = listeners.get(type) ?? new Set();
+        set.add(listener);
+        listeners.set(type, set);
+      },
+      removeEventListener(type: string, listener: EventListener) {
+        listeners.get(type)?.delete(listener);
+      },
+      dispatchEvent(event: { type: string; detail?: unknown }) {
+        for (const listener of listeners.get(event.type) ?? []) {
+          listener(event as Event);
+        }
+        return true;
+      },
+    },
+  });
+  try {
+    pushCanvasChatSurface("channel-a");
+    bindCanvasSelectionToChat({
+      canvasId: "canvas-open",
+      canvasTitle: "Open Board",
+      previewDocument: { id: "open" },
+      documentRevision: 3,
+    });
+    grantWholeCanvasChatContext("canvas-open", "channel-a");
+    window.dispatchEvent(new CustomEvent(CANVAS_SELECTION_TO_CHAT_EVENT, {
+      detail: { target: ["shape-1"], canvasId: "canvas-open" },
+    }));
+    assert.deepEqual(
+      getPendingCanvasChatContexts("channel-a").map((item) => item.selectedIds),
+      [[], ["shape-1"]],
+    );
+    toggleWholeCanvasChatContext("canvas-open", "channel-a");
+    assert.deepEqual(getPendingCanvasChatContexts("channel-a").map((item) => item.selectedIds), [["shape-1"]]);
+    toggleOpenCanvasChatContext("channel-a");
+    assert.deepEqual(
+      getPendingCanvasChatContexts("channel-a").map((item) => item.selectedIds),
+      [["shape-1"], []],
+    );
+    toggleOpenCanvasChatContext("channel-a");
+    assert.deepEqual(getPendingCanvasChatContexts("channel-a").map((item) => item.selectedIds), [["shape-1"]]);
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+    resetCanvasChatBridgeForTests();
+  }
+});
+
+test("selection-to-chat reads the live document at send time instead of every editor tick", () => {
+  resetCanvasChatBridgeForTests();
+  const originalWindow = globalThis.window;
+  const listeners = new Map<string, Set<EventListener>>();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      addEventListener(type: string, listener: EventListener) {
+        const set = listeners.get(type) ?? new Set();
+        set.add(listener);
+        listeners.set(type, set);
+      },
+      removeEventListener(type: string, listener: EventListener) {
+        listeners.get(type)?.delete(listener);
+      },
+      dispatchEvent(event: { type: string; detail?: unknown }) {
+        for (const listener of listeners.get(event.type) ?? []) {
+          listener(event as Event);
+        }
+        return true;
+      },
+    },
+  });
+  try {
+    pushCanvasChatSurface("channel-a");
+    const live = { id: "live-at-send" };
+    bindCanvasSelectionToChat({
+      canvasId: "canvas-open",
+      canvasTitle: "Open Board",
+      previewDocument: { id: "stale" },
+      documentRevision: 3,
+      getLivePreviewDocument: () => live,
+    });
+    window.dispatchEvent(new CustomEvent(CANVAS_SELECTION_TO_CHAT_EVENT, {
+      detail: { target: ["shape-1"], canvasId: "canvas-open" },
+    }));
+    const selection = getPendingCanvasChatContexts("channel-a").find((item) => !isWholeCanvasChatContext(item));
+    assert.equal(selection?.previewDocument, live);
   } finally {
     Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
     resetCanvasChatBridgeForTests();

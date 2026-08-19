@@ -2,10 +2,14 @@ import { useEffect, useState } from "react";
 import type { Agent } from "../../store.tsx";
 import {
   getPendingCanvasChatContexts,
+  isWholeCanvasChatContext,
+  listOpenCanvasChatSources,
   pushCanvasChatSurface,
   removePendingCanvasChatContext,
   setPendingCanvasChatContext,
   subscribePendingCanvasChatContext,
+  toggleOpenCanvasChatContext,
+  toggleWholeCanvasChatContext,
   type PendingCanvasChatContext,
 } from "@/features/canvas/host/canvasChatBridge";
 import {
@@ -26,14 +30,22 @@ export function useComposerCanvasContext(input: {
 }) {
   const { channelId, api, dmAgent, t } = input;
   const [canvasContexts, setCanvasContexts] = useState(() => getPendingCanvasChatContexts(channelId));
+  const [openCanvases, setOpenCanvases] = useState(() => listOpenCanvasChatSources());
   const [executorAgentId, setExecutorAgentId] = useState("");
   const [canvasExecutors, setCanvasExecutors] = useState<CanvasComposerExecutor[]>([]);
   const [executorLoadError, setExecutorLoadError] = useState("");
+  const selectionContexts = canvasContexts.filter((item) => !isWholeCanvasChatContext(item));
+  const wholeCanvasContexts = canvasContexts.filter((item) => isWholeCanvasChatContext(item));
+  const needsExecutorPicker = !dmAgent && canvasContexts.length > 0 && (Boolean(executorLoadError) || (!executorAgentId && canvasExecutors.length > 1));
 
-  useEffect(() => subscribePendingCanvasChatContext(() => setCanvasContexts(getPendingCanvasChatContexts(channelId))), [channelId]);
+  useEffect(() => subscribePendingCanvasChatContext(() => {
+    setCanvasContexts(getPendingCanvasChatContexts(channelId));
+    setOpenCanvases(listOpenCanvasChatSources());
+  }), [channelId]);
   useEffect(() => {
     const release = pushCanvasChatSurface(channelId);
     setCanvasContexts(getPendingCanvasChatContexts(channelId));
+    setOpenCanvases(listOpenCanvasChatSources());
     return () => {
       release();
     };
@@ -65,11 +77,16 @@ export function useComposerCanvasContext(input: {
 
   return {
     canvasContexts,
+    selectionContexts,
+    wholeCanvasContexts,
+    openCanvases,
+    canvasAvailable: openCanvases.length > 0,
+    canvasActive: wholeCanvasContexts.length > 0,
     executorAgentId,
     setExecutorAgentId,
     canvasExecutors,
     executorLoadError,
-    canvasExpanded: canvasContexts.length > 0,
+    canvasExpanded: selectionContexts.length > 0 || needsExecutorPicker,
     sendDisabled(sending: boolean, hasText: boolean, hasAttachments: boolean) {
       return canvasComposerSendDisabled({
         sending,
@@ -98,6 +115,12 @@ export function useComposerCanvasContext(input: {
     removeContext(pendingId: string) {
       removePendingCanvasChatContext(pendingId, channelId);
       if (canvasContexts.length <= 1) setExecutorAgentId("");
+    },
+    toggleCanvasAuthorization() {
+      toggleOpenCanvasChatContext(channelId);
+    },
+    toggleCanvas(canvasId: string) {
+      toggleWholeCanvasChatContext(canvasId, channelId);
     },
     clearAfterSend() {
       setPendingCanvasChatContext(null, channelId);

@@ -456,6 +456,7 @@ main.content-col > .composer,.thread-panel > .composer{position:absolute;left:0;
 .composer-task-chip__remove-icon{display:none;width:14px;height:14px;border-radius:9999px;background:var(--muted-soft);color:var(--surface);padding:2px}
 .composer-task-chip:hover .composer-task-chip__default-icon,.composer-task-chip:focus-visible .composer-task-chip__default-icon{display:none}
 .composer-task-chip:hover .composer-task-chip__remove-icon,.composer-task-chip:focus-visible .composer-task-chip__remove-icon{display:block}
+.composer-canvas-chip__title{max-width:10em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .send-btn{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:9999px;background:var(--ink-2);color:var(--on-ink);cursor:pointer;padding:0;flex:none}
 .send-btn svg{width:17px;height:17px;stroke-width:2.2}
 .send-btn:hover{background:var(--ink)}

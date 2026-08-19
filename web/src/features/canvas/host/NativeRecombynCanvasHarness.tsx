@@ -27,7 +27,7 @@ import { useCanvasAssetBridges } from "./useCanvasAssetBridges";
 import { useRecombynCanvasProjection } from "./useRecombynCanvasProjection";
 import { RecombynEditorIconSprite } from "./RecombynEditorIconSprite";
 import i18n from "@/i18n";
-import { bindCanvasSelectionToChat, updateCanvasChatSource } from "./canvasChatBridge";
+import { bindCanvasSelectionToChat } from "./canvasChatBridge";
 import { applyCanvasSelectionFocus } from "./canvasSelectionFocus";
 import { CanvasSelectionSourceProvider } from "./canvasSelectionSource";
 
@@ -229,26 +229,19 @@ function DurableCanvasEditor({ canvasId, resourceKey, snapshot, client, connecti
   connectionRef: MutableRefObject<RecombynCoreProjectionConnection | null>;
 }) {
   const { connect, handleHistory } = useRecombynCanvasProjection({ canvasId, resourceKey, snapshot, client, connectionRef });
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
   useEffect(() => bindCanvasSelectionToChat({
     canvasId,
-    canvasTitle: snapshot.title,
-    previewDocument: snapshot.document,
-    documentRevision: snapshot.revisions.document,
-  }), [canvasId, snapshot.document, snapshot.revisions.document, snapshot.title]);
-  useEffect(() => {
-    const syncLivePreview = () => {
+    canvasTitle: snapshotRef.current.title,
+    previewDocument: snapshotRef.current.document,
+    documentRevision: snapshotRef.current.revisions.document,
+    getLivePreviewDocument: () => {
       const editor = (store.getState() as { editor?: { document?: unknown; currentId?: string | null } }).editor;
-      if (!editor || editor.currentId !== canvasId || !editor.document) return;
-      updateCanvasChatSource({
-        canvasId,
-        canvasTitle: snapshot.title,
-        previewDocument: editor.document,
-        documentRevision: snapshot.revisions.document,
-      });
-    };
-    syncLivePreview();
-    return store.subscribe(syncLivePreview);
-  }, [canvasId, snapshot.revisions.document, snapshot.title]);
+      if (editor?.currentId === canvasId && editor.document) return editor.document;
+      return snapshotRef.current.document;
+    },
+  }), [canvasId]);
   return <NativeEditorSurface
     projectId={canvasId}
     projectName={snapshot.title}

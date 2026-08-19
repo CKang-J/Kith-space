@@ -1,18 +1,37 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Brain, ListChecks, Paperclip, Plus, X } from "lucide-react";
+import { Brain, LayoutDashboard, ListChecks, Paperclip, Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+
+export interface ComposerCanvasChip {
+  id: string;
+  canvasId: string;
+  canvasTitle: string;
+}
+
+export interface ComposerOpenCanvas {
+  canvasId: string;
+  canvasTitle: string;
+}
 
 interface ComposerActionsProps {
   allowTask: boolean;
   taskActive: boolean;
   memoryExcluded: boolean;
+  canvasAvailable: boolean;
+  canvasActive: boolean;
+  canvasChips: ComposerCanvasChip[];
+  openCanvases: ComposerOpenCanvas[];
   uploadDisabled: boolean;
   taskDisabled: boolean;
   memoryDisabled: boolean;
+  canvasDisabled: boolean;
   onAddFiles(): void;
   onTaskChange(active: boolean): void;
   onMemoryExcludedChange(active: boolean): void;
+  onCanvasChange(active: boolean): void;
+  onToggleCanvas(canvasId: string): void;
+  onRemoveCanvas(id: string): void;
 }
 
 interface MenuPosition {
@@ -22,7 +41,7 @@ interface MenuPosition {
   ready: boolean;
 }
 
-type ComposerMenuItem = "files" | "task" | "memory";
+type ComposerMenuItem = "files" | "canvas" | "task" | "memory";
 
 const VIEWPORT_MARGIN = 8;
 const MENU_GAP = 8;
@@ -31,12 +50,20 @@ export function ComposerActions({
   allowTask,
   taskActive,
   memoryExcluded,
+  canvasAvailable,
+  canvasActive,
+  canvasChips,
+  openCanvases,
   uploadDisabled,
   taskDisabled,
   memoryDisabled,
+  canvasDisabled,
   onAddFiles,
   onTaskChange,
   onMemoryExcludedChange,
+  onCanvasChange,
+  onToggleCanvas,
+  onRemoveCanvas,
 }: ComposerActionsProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -45,8 +72,12 @@ export function ComposerActions({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState<MenuPosition>({ left: VIEWPORT_MARGIN, top: VIEWPORT_MARGIN, width: 0, ready: false });
-  const triggerDisabled = uploadDisabled && (!allowTask || taskDisabled) && memoryDisabled;
-  const firstAvailableItem: ComposerMenuItem = !uploadDisabled ? "files" : allowTask && !taskDisabled ? "task" : "memory";
+  const triggerDisabled = uploadDisabled && (!allowTask || taskDisabled) && memoryDisabled && (!canvasAvailable || canvasDisabled);
+  const firstAvailableItem: ComposerMenuItem = !uploadDisabled
+    ? "files"
+    : canvasAvailable && !canvasDisabled
+      ? "canvas"
+      : allowTask && !taskDisabled ? "task" : "memory";
 
   useEffect(() => {
     if (!open) return;
@@ -110,7 +141,7 @@ export function ComposerActions({
   };
 
   const openMenu = () => {
-    setHighlightedItem(firstAvailableItem);
+    setHighlightedItem(canvasAvailable && !canvasDisabled ? "canvas" : firstAvailableItem);
     setOpen(true);
   };
 
@@ -158,6 +189,29 @@ export function ComposerActions({
           <Plus size={18} aria-hidden="true" />
         </button>
       </div>
+      {canvasChips.map((chip) => {
+        const title = chip.canvasTitle.trim() || t("chat.canvasUntitled");
+        const label = t("chat.canvasLabel", { title });
+        return (
+          <button
+            key={chip.id}
+            type="button"
+            className="composer-task-chip composer-canvas-chip"
+            data-composer-canvas-chip
+            aria-pressed="true"
+            aria-label={t("chat.removeCanvas")}
+            title={t("chat.removeCanvas")}
+            disabled={canvasDisabled}
+            onClick={() => onRemoveCanvas(chip.id)}
+          >
+            <span className="composer-task-chip__icon" aria-hidden="true">
+              <LayoutDashboard className="composer-task-chip__default-icon" size={15} />
+              <X className="composer-task-chip__remove-icon" size={11} />
+            </span>
+            <span className="composer-canvas-chip__title">{label}</span>
+          </button>
+        );
+      })}
       {allowTask && taskActive ? (
         <button
           type="button"
@@ -213,6 +267,57 @@ export function ComposerActions({
             <Paperclip size={17} aria-hidden="true" />
             <span>{t("chat.addPhotosAndFiles")}</span>
           </button>
+          {openCanvases.length > 1 ? openCanvases.map((canvas) => {
+            const title = canvas.canvasTitle.trim() || t("chat.canvasUntitled");
+            const granted = canvasChips.some((chip) => chip.canvasId === canvas.canvasId);
+            return (
+              <button
+                key={canvas.canvasId}
+                type="button"
+                role="menuitemcheckbox"
+                data-canvas-menu-item
+                data-canvas-id={canvas.canvasId}
+                aria-checked={granted}
+                className={highlightedItem === "canvas" ? "is-highlighted" : undefined}
+                disabled={canvasDisabled}
+                onFocus={() => setHighlightedItem("canvas")}
+                onPointerEnter={() => setHighlightedItem("canvas")}
+                onClick={() => select(() => onToggleCanvas(canvas.canvasId))}
+              >
+                <LayoutDashboard size={17} aria-hidden="true" />
+                <span className="composer-add-menu__copy">
+                  <span className="composer-add-menu__label">{t("chat.canvasLabel", { title })}</span>
+                  <span className="composer-add-menu__description">
+                    {granted ? t("chat.disableCanvasAccess") : t("chat.enableCanvasAccess")}
+                  </span>
+                </span>
+              </button>
+            );
+          }) : (
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-canvas-menu-item
+              aria-checked={canvasActive}
+              className={highlightedItem === "canvas" ? "is-highlighted" : undefined}
+              disabled={!canvasAvailable || canvasDisabled}
+              onFocus={() => setHighlightedItem("canvas")}
+              onPointerEnter={() => setHighlightedItem("canvas")}
+              onClick={() => select(() => onCanvasChange(!canvasActive))}
+            >
+              <LayoutDashboard size={17} aria-hidden="true" />
+              <span className="composer-add-menu__copy">
+                <span className="composer-add-menu__label">
+                  {openCanvases[0]
+                    ? t("chat.canvasLabel", { title: openCanvases[0].canvasTitle.trim() || t("chat.canvasUntitled") })
+                    : t("chat.canvas")}
+                </span>
+                <span className="composer-add-menu__description">
+                  {canvasActive ? t("chat.disableCanvasAccess") : t("chat.enableCanvasAccess")}
+                </span>
+              </span>
+            </button>
+          )}
           {allowTask ? (
             <button
               type="button"

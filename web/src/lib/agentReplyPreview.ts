@@ -12,8 +12,8 @@ export interface AgentReplyEvent {
 }
 
 export const AGENT_REPLY_PREVIEW_TYPE = "agent_reply_preview";
-export const AGENT_REPLY_STREAM_TICK_MS = 12;
-export const AGENT_REPLY_CHARS_PER_TICK = 3;
+export const AGENT_REPLY_STREAM_TICK_MS = 50;
+export const AGENT_REPLY_CHARS_PER_TICK = 12;
 export const AGENT_REPLY_PREVIEW_DELAY_MS = 1000;
 export const AGENT_REPLY_ENTER_DURATION_MS = 1000;
 export const AGENT_REPLY_THINKING_DELAY_MS = 0;

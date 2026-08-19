@@ -34,16 +34,31 @@ test("Canvas send-to-chat is a native selection-toolbar action, not a host overl
 test("Composer appends pending Canvas selections per surface and submits them in order", () => {
   const composer = read("../web/src/views/Composer.tsx");
   const composerCanvasList = read("../web/src/views/composer/ComposerCanvasContextList.tsx");
+  const actions = read("../web/src/views/composer/ComposerActions.tsx");
   const hook = read("../web/src/views/composer/useComposerCanvasContext.ts");
   const payload = read("../web/src/views/composer/composerCanvasContext.ts");
   const preview = read("../web/src/features/canvas/host/canvasSelectionPreview.ts");
+  const harness = read("../web/src/features/canvas/host/NativeRecombynCanvasHarness.tsx");
   const chip = read("../web/src/views/chat-message/CanvasContextChip.tsx");
   const en = read("../web/src/locales/en.json");
   const zh = read("../web/src/locales/zh.json");
   assert.match(composer, /useComposerCanvasContext/);
   assert.match(composer, /canvas\.buildSendPayload\(\)/);
   assert.match(composer, /ComposerCanvasContextList/);
-  assert.match(composerCanvasList, /data-canvas-context-list/);
+  assert.match(composer, /canvas\.selectionContexts/);
+  assert.match(composer, /wholeCanvasContexts/);
+  assert.doesNotMatch(composerCanvasList, /autoWholeCanvas/);
+  assert.match(actions, /composer-canvas-chip/);
+  assert.doesNotMatch(actions, /CanvasSelectionThumbnail/);
+  assert.match(hook, /toggleOpenCanvasChatContext/);
+  assert.match(hook, /toggleWholeCanvasChatContext/);
+  assert.doesNotMatch(hook, /restoreOpenCanvasChatContext/);
+  assert.doesNotMatch(hook, /autoWholeCanvas/);
+  assert.match(harness, /bindCanvasSelectionToChat\(\{[\s\S]*?\}\), \[canvasId\]/);
+  assert.match(harness, /getLivePreviewDocument/);
+  assert.doesNotMatch(harness, /store\.subscribe/);
+  assert.doesNotMatch(harness, /syncLivePreview/);
+  assert.doesNotMatch(harness, /updateCanvasChatSource/);
   assert.match(composerCanvasList, /composer-canvas-context-scroll/);
   assert.match(composerCanvasList, /scrollStripHorizontally/);
   assert.match(chip, /CanvasSelectionThumbnail/);
@@ -85,6 +100,12 @@ test("Composer appends pending Canvas selections per surface and submits them in
     "canvasRevision",
     "canvasPendingSelections",
     "canvasSourceConversation",
+    "canvas",
+    "canvasLabel",
+    "addCanvas",
+    "removeCanvas",
+    "enableCanvasAccess",
+    "disableCanvasAccess",
   ]) {
     assert.match(en, new RegExp(`"${key}"`));
     assert.match(zh, new RegExp(`"${key}"`));

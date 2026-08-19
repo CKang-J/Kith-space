@@ -223,7 +223,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       {canvas.executorLoadError && canvas.canvasContexts.length > 0 && !dmAgent ? <div className="composer-validation-error" role="alert">{canvas.executorLoadError}</div> : null}
       <ConversationActivityStatus channelId={channelId} />
       <div ref={boxRef} className={`composer-box ${expanded ? "is-expanded" : "is-compact"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
-        {(pendingAtts.length > 0 || canvas.canvasContexts.length > 0) ? (
+        {(pendingAtts.length > 0 || canvas.canvasExpanded) ? (
           <div className="composer-attachments">
             {pendingAtts.length > 0 ? (
               <ComposerAttachments
@@ -232,27 +232,25 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 onRemove={(id) => setPendingAtts((pending) => pending.filter((attachment) => attachment.id !== id))}
               />
             ) : null}
-            {canvas.canvasContexts.length > 0 ? (
-              <>
-                <ComposerCanvasContextList
-                  contexts={canvas.canvasContexts}
-                  onRemove={canvas.removeContext}
-                />
-                {!dmAgent ? (
-                  <div className="composer-canvas-executor">
-                    <Select value={canvas.executorAgentId || undefined} onValueChange={canvas.setExecutorAgentId}>
-                      <SelectTrigger size="sm" className="w-full max-w-64" data-canvas-executor-select>
-                        <SelectValue placeholder={t("chat.canvasExecutorPlaceholder")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {canvas.canvasExecutors.map((agent) => (
-                          <SelectItem key={agent.id} value={agent.id}>{agent.displayName || agent.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : null}
-              </>
+            {canvas.selectionContexts.length > 0 ? (
+              <ComposerCanvasContextList
+                contexts={canvas.selectionContexts}
+                onRemove={canvas.removeContext}
+              />
+            ) : null}
+            {canvas.canvasContexts.length > 0 && !dmAgent && (canvas.selectionContexts.length > 0 || canvas.executorLoadError || (!canvas.executorAgentId && canvas.canvasExecutors.length > 1)) ? (
+              <div className="composer-canvas-executor">
+                <Select value={canvas.executorAgentId || undefined} onValueChange={canvas.setExecutorAgentId}>
+                  <SelectTrigger size="sm" className="w-full max-w-64" data-canvas-executor-select>
+                    <SelectValue placeholder={t("chat.canvasExecutorPlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {canvas.canvasExecutors.map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id}>{agent.displayName || agent.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             ) : null}
           </div>
         ) : null}
@@ -278,12 +276,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               allowTask={allowAsTask}
               taskActive={asTask}
               memoryExcluded={memoryExcluded}
+              canvasAvailable={canvas.canvasAvailable}
+              canvasActive={canvas.canvasActive}
+              canvasChips={canvas.wholeCanvasContexts.map((item) => ({
+                id: item.id,
+                canvasId: item.canvasId,
+                canvasTitle: item.canvasTitle,
+              }))}
+              openCanvases={canvas.openCanvases}
               uploadDisabled={uploading || sending}
               taskDisabled={sending || canvas.canvasContexts.length > 0}
               memoryDisabled={sending}
+              canvasDisabled={sending}
               onAddFiles={() => fileRef.current?.click()}
               onTaskChange={changeTaskMode}
               onMemoryExcludedChange={setMemoryExcluded}
+              onCanvasChange={() => canvas.toggleCanvasAuthorization()}
+              onToggleCanvas={canvas.toggleCanvas}
+              onRemoveCanvas={canvas.removeContext}
             />
           </div>
           <div className="cb-right">
