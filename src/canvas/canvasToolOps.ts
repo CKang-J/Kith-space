@@ -13,6 +13,55 @@ const DEFERRED_OPS = new Set(["image_process", "outline_text"]);
 const EPHEMERAL_OPS = new Set(["set_viewport"]);
 const SIDE_EFFECT_OPS = new Set(["export_canvas"]);
 const MEDIA_CREATE = new Set(["create_image", "create_lottie", "create_icon"]);
+const CSS_GRADIENT_RE = /^(?:repeating-)?(?:linear|radial|conic)-gradient\s*\(/i;
+const ALLOWED_FILL_TYPES = new Set(["solid", "linear", "radial", "angular", "diffuse", "image"]);
+
+export function formatCanvasOpError(code: string, fix = "", detail = ""): string {
+  const parts = [`code=${(code || "invalid_op").trim() || "invalid_op"}`];
+  if (fix.trim()) parts.push(`fix=${fix.trim()}`);
+  if (detail.trim()) parts.push(`detail=${detail.trim()}`);
+  return parts.join("; ");
+}
+
+export function parseCanvasOpError(message: string): { code: string; fix?: string; detail?: string } | null {
+  const match = /(?:^|; )code=([^;]+)(?:; |$)/.exec(message);
+  if (!match) return null;
+  const fix = /(?:^|; )fix=([^;]+)/.exec(message)?.[1]?.trim();
+  const detail = /(?:^|; )detail=([^;]+)/.exec(message)?.[1]?.trim();
+  return { code: match[1]!.trim(), ...(fix ? { fix } : {}), ...(detail ? { detail } : {}) };
+}
+
+function opError(code: string, fix: string, detail = ""): CanvasValidationError {
+  return new CanvasValidationError(formatCanvasOpError(code, fix, detail));
+}
+
+function looksLikeCssGradient(raw: unknown): boolean {
+  return CSS_GRADIENT_RE.test(String(raw ?? "").trim());
+}
+
+function assertFillArgs(op: string, source: Record<string, unknown>): void {
+  for (const key of ["fill", "fillColor", "backgroundColor", "color", "stroke"]) {
+    if (!(key in source) || source[key] == null) continue;
+    if (looksLikeCssGradient(source[key])) {
+      throw opError(
+        `${op}_css_gradient_fill`,
+        "do not put CSS linear-gradient()/radial-gradient() in fill; use fillType=linear|radial|angular|diffuse with fill + fillEnd (+ gradientAngle?)",
+        `${key}=${String(source[key]).slice(0, 96)}`,
+      );
+    }
+  }
+  const fillType = source.fillType;
+  if (fillType != null && String(fillType).trim()) {
+    const normalized = String(fillType).trim().toLowerCase();
+    if (!ALLOWED_FILL_TYPES.has(normalized)) {
+      throw opError(
+        `${op}_invalid_fillType`,
+        "fillType must be solid|linear|radial|angular|diffuse|image",
+        `fillType=${normalized}`,
+      );
+    }
+  }
+}
 
 export type CanvasViewportSuggestion = { x: number; y: number; zoom: number };
 
@@ -68,14 +117,18 @@ function numberOf(value: unknown, fallback: number): number {
 
 function requireIds(raw: unknown, label: string): string[] {
   if (!Array.isArray(raw) || raw.length === 0 || raw.some((item) => typeof item !== "string" || !item)) {
-    throw new CanvasValidationError(`${label} requires a non-empty id list`);
+    throw opError(
+      `${label}_missing_ids`,
+      `pass a non-empty ${label} nodeIds/ids string array`,
+      `${label} requires a non-empty id list`,
+    );
   }
   return raw as string[];
 }
 
 function opName(raw: Record<string, unknown>): string {
   const name = typeof raw.op === "string" ? raw.op : typeof raw.name === "string" ? raw.name : "";
-  if (!name) throw new CanvasValidationError("Canvas ToolOp requires op");
+  if (!name) throw opError("missing_op", "each ToolOp must include op", "Canvas ToolOp requires op");
   return name;
 }
 
@@ -177,36 +230,80 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
 
   if (op === "update_node") {
     const nodeId = typeof raw.nodeId === "string" ? raw.nodeId : typeof raw.id === "string" ? raw.id : "";
-    if (!nodeId || !nodes[nodeId]) throw new CanvasValidationError("update_node target does not exist");
+    if (!nodeId || !nodes[nodeId]) {
+      throw opError("update_node_missing_target", "pass nodeId of an existing authorized node from scene_summary", "update_node target does not exist");
+    }
     const patch = asRecord(raw.patch) ?? asRecord(raw.attrs) ?? {};
+    assertFillArgs(op, { ...patch, fill: patch.fill ?? raw.fill, fillType: patch.fillType ?? raw.fillType });
+
+    // Normalize fill parameter: frontend expects attrs['fill-color'], not attrs.fill
+    if (typeof patch.fill === "string" && !patch["fill-color"]) {
+      patch["fill-color"] = patch.fill;
+    }
+    if (typeof raw.fill === "string" && !patch["fill-color"]) {
+      patch["fill-color"] = raw.fill;
+    }
+
     const next = { ...nodes[nodeId]! };
     for (const [key, value] of Object.entries(patch)) {
       if (key === "id" || key === "children" || key === "__kithEntityRevision") continue;
       if (key === "src" || key === "url" || key === "href") {
-        throw new CanvasValidationError("update_node cannot set remote media URLs");
+        throw opError("update_node_remote_url", "update_node cannot set remote media URLs; use canvas.asset_import + canvas.create_image", `key=${key}`);
       }
       next[key] = value as CanvasJson;
     }
+
+    // Also handle top-level raw parameters (x, y, width, height, fill, etc.)
     if (typeof raw.x === "number") next.x = raw.x;
     if (typeof raw.y === "number") next.y = raw.y;
     if (typeof raw.width === "number") next.width = raw.width;
     if (typeof raw.height === "number") next.height = raw.height;
+    if (typeof raw.fill === "string") {
+      const attrs = asRecord(next.attrs) ?? {};
+      attrs["fill-color"] = raw.fill;
+      next.attrs = attrs as CanvasJson;
+      next.fill = raw.fill;
+    }
+    if (typeof raw.cornerRadius === "number") {
+      const attrs = asRecord(next.attrs) ?? {};
+      attrs.cornerRadius = raw.cornerRadius;
+      next.attrs = attrs as CanvasJson;
+    }
+    if (typeof raw.stroke === "string") {
+      const attrs = asRecord(next.attrs) ?? {};
+      attrs.stroke = raw.stroke;
+      attrs["border-color"] = raw.stroke;
+      next.attrs = attrs as CanvasJson;
+    }
+
     return { ...empty, patches: [setNode(nodeId, next)] };
   }
 
   if (op === "create_shape" || op === "create_text" || MEDIA_CREATE.has(op) || op === "create_svg") {
     if (MEDIA_CREATE.has(op)) {
       if (raw.url || raw.genPrompt || raw.removeBg || raw.dataUrl) {
-        throw new CanvasValidationError(`${op} only accepts an existing assetId`);
+        throw opError(`${op}_asset_only`, `${op} only accepts an existing assetId`, "url/genPrompt/dataUrl are rejected");
       }
       if (typeof raw.assetId !== "string" || !raw.assetId) {
-        throw new CanvasValidationError(`${op} requires assetId`);
+        throw opError(`${op}_missing_assetId`, "pass assetId from canvas.asset_import", `${op} requires assetId`);
       }
     }
+    const attrs = asRecord(raw.attrs) ?? {};
+    assertFillArgs(op, { ...attrs, fill: attrs.fill ?? raw.fill, fillType: attrs.fillType ?? raw.fillType });
+
+    // Normalize fill parameter: frontend expects attrs['fill-color'], not attrs.fill
+    if (typeof attrs.fill === "string" && !attrs["fill-color"]) {
+      attrs["fill-color"] = attrs.fill;
+    }
+
     const id = typeof raw.id === "string" && raw.id ? raw.id : randomUUID();
-    if (creatableIdCollides(id, nodes, frames)) throw new CanvasValidationError("create ToolOp id collides");
+    if (creatableIdCollides(id, nodes, frames)) {
+      throw opError("create_id_collides", "choose a unique id that is not ROOT and does not match an existing node or frame", "create ToolOp id collides");
+    }
     const parentId = typeof raw.parentId === "string" && raw.parentId ? raw.parentId : "ROOT";
-    if (!nodes[parentId]) throw new CanvasValidationError("create ToolOp parent does not exist");
+    if (!nodes[parentId]) {
+      throw opError("create_parent_missing", "parentId must be ROOT or an existing group from scene_summary", "create ToolOp parent does not exist");
+    }
     const key = op === "create_text" ? "text" : op === "create_svg" ? "svg" : op === "create_image" ? "image" : op === "create_lottie" ? "lottie" : op === "create_icon" ? "icon" : "shape";
     const node: Record<string, CanvasJson> = {
       id,
@@ -216,15 +313,20 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
       y: numberOf(raw.y, 0),
       width: numberOf(raw.width, 100),
       height: numberOf(raw.height, 100),
-      attrs: (asRecord(raw.attrs) ?? {}) as CanvasJson,
+      attrs: attrs as CanvasJson,
       children: [],
     };
+    if (typeof attrs.fill === "string" || typeof attrs["fill-color"] === "string") {
+      node.fill = String(attrs["fill-color"] ?? attrs.fill);
+    }
+    if (typeof attrs.shapeType === "string") node.shapeType = attrs.shapeType;
+    if (typeof attrs.fillType === "string") node.fillType = attrs.fillType;
     if (typeof raw.frameId === "string") node.frameId = raw.frameId;
     if (typeof raw.text === "string") node.text = raw.text;
     if (typeof raw.assetId === "string") node.assetId = raw.assetId;
     if (op === "create_svg") {
       const markup = typeof raw.svg === "string" ? raw.svg : typeof raw.markup === "string" ? raw.markup : "";
-      if (!markup) throw new CanvasValidationError("create_svg requires sanitized svg markup");
+      if (!markup) throw opError("create_svg_missing_markup", "pass sanitized svg markup with a viewBox", "create_svg requires sanitized svg markup");
       node.svg = sanitizeInlineSvgMarkup(markup);
     }
     return {
@@ -240,7 +342,9 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
 
   if (op === "create_frame") {
     const id = typeof raw.id === "string" && raw.id ? raw.id : randomUUID();
-    if (creatableIdCollides(id, nodes, frames)) throw new CanvasValidationError("create_frame id collides");
+    if (creatableIdCollides(id, nodes, frames)) {
+      throw opError("create_frame_id_collides", "choose a unique frame id that is not ROOT and does not match an existing node or frame", "create_frame id collides");
+    }
     const frame = {
       id,
       name: typeof raw.name === "string" && raw.name ? raw.name : "Frame",
@@ -262,13 +366,16 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
   if (op === "update_frame") {
     const frameId = typeof raw.frameId === "string" ? raw.frameId : typeof raw.id === "string" ? raw.id : "";
     const current = frames.find((frame) => frame.id === frameId);
-    if (!current) throw new CanvasValidationError("update_frame target does not exist");
+    if (!current) throw opError("update_frame_missing_target", "pass frameId from SCENE_FRAMES / FOCUS_FRAME_ID", "update_frame target does not exist");
+    assertFillArgs(op, { backgroundColor: raw.backgroundColor, fill: raw.fill, color: raw.color });
     const next = { ...current };
     if (typeof raw.name === "string") next.name = raw.name;
     if (typeof raw.x === "number") next.x = raw.x;
     if (typeof raw.y === "number") next.y = raw.y;
     if (typeof raw.width === "number") next.width = raw.width;
     if (typeof raw.height === "number") next.height = raw.height;
+    if (typeof raw.backgroundColor === "string") next.backgroundColor = raw.backgroundColor;
+    if (typeof raw.locked === "boolean") next.locked = raw.locked;
     const patch = asRecord(raw.patch) ?? {};
     for (const [key, value] of Object.entries(patch)) {
       if (key !== "id") next[key] = value as CanvasJson;
@@ -296,7 +403,9 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
 
   if (op === "delete_frame") {
     const frameId = typeof raw.frameId === "string" ? raw.frameId : typeof raw.id === "string" ? raw.id : "";
-    if (!frames.some((frame) => frame.id === frameId)) throw new CanvasValidationError("delete_frame target does not exist");
+    if (!frames.some((frame) => frame.id === frameId)) {
+      throw opError("delete_frame_missing_target", "pass frameId from SCENE_FRAMES", "delete_frame target does not exist");
+    }
     return {
       ...empty,
       patches: [
@@ -311,7 +420,7 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
     const ids = requireIds(raw.ids ?? raw.nodeIds, op);
     const targets = ids.map((id) => {
       const node = nodes[id];
-      if (!node) throw new CanvasValidationError(`${op} target ${id} does not exist`);
+      if (!node) throw opError(`${op}_missing_target`, `pass existing nodeIds from scene_summary`, `${op} target ${id} does not exist`);
       return { id, node };
     });
     const xs = targets.map(({ node }) => numberOf(node.x, 0));
@@ -320,26 +429,32 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
     const heights = targets.map(({ node }) => numberOf(node.height, 0));
     const patches: CanvasPatch[] = [];
     if (op === "align_nodes") {
-      const axis = raw.axis === "y" || raw.align === "top" || raw.align === "bottom" || raw.align === "middle" ? "y" : "x";
-      const align = typeof raw.align === "string" ? raw.align : "start";
+      const mode = typeof raw.mode === "string" ? raw.mode : "";
+      const axis = mode === "top" || mode === "middle" || mode === "bottom" || raw.axis === "y" || raw.align === "top" || raw.align === "bottom" || raw.align === "middle" ? "y" : "x";
+      const align = mode === "left" ? "start"
+        : mode === "right" || mode === "bottom" ? "end"
+        : mode === "centerX" || mode === "middle" ? (mode === "middle" ? "middle" : "center")
+        : typeof raw.align === "string" ? raw.align : "start";
       let origin = axis === "x" ? Math.min(...xs) : Math.min(...ys);
       if (align === "end" || align === "right" || align === "bottom") {
         origin = axis === "x" ? Math.max(...xs.map((x, index) => x + widths[index]!)) - widths[0]! : Math.max(...ys.map((y, index) => y + heights[index]!)) - heights[0]!;
       }
-      if (align === "center" || align === "middle") {
+      if (align === "center" || align === "middle" || mode === "centerX") {
         const min = axis === "x" ? Math.min(...xs) : Math.min(...ys);
         const max = axis === "x" ? Math.max(...xs.map((x, index) => x + widths[index]!)) : Math.max(...ys.map((y, index) => y + heights[index]!));
         origin = (min + max) / 2;
       }
       for (const { id, node } of targets) {
         const next = { ...node };
-        if (axis === "x") next.x = align === "center" ? origin - numberOf(node.width, 0) / 2 : origin;
+        if (axis === "x") next.x = align === "center" || mode === "centerX" ? origin - numberOf(node.width, 0) / 2 : origin;
         else next.y = align === "middle" ? origin - numberOf(node.height, 0) / 2 : origin;
         patches.push(setNode(id, next));
       }
     } else if (op === "distribute_nodes") {
-      if (targets.length < 3) throw new CanvasValidationError("distribute_nodes requires at least 3 nodes");
-      const axis = raw.axis === "y" ? "y" : "x";
+      if (targets.length < 3) {
+        throw opError("distribute_nodes_too_few", "distribute_nodes requires at least 3 nodes", `count=${targets.length}`);
+      }
+      const axis = raw.axis === "y" || raw.axis === "v" ? "y" : "x";
       const ordered = [...targets].sort((left, right) => numberOf(axis === "x" ? left.node.x : left.node.y, 0) - numberOf(axis === "x" ? right.node.x : right.node.y, 0));
       const start = numberOf(axis === "x" ? ordered[0]!.node.x : ordered[0]!.node.y, 0);
       const end = numberOf(axis === "x" ? ordered.at(-1)!.node.x : ordered.at(-1)!.node.y, 0);
@@ -351,12 +466,23 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
         patches.push(setNode(item.id, next));
       });
     } else {
+      const explicitX = raw.flipX === true;
+      const explicitY = raw.flipY === true;
+      const flipX = explicitX || (!explicitY && raw.axis !== "y");
+      const flipY = explicitY || (!explicitX && raw.axis !== "x");
+      if (!flipX && !flipY) {
+        throw opError("flip_nodes_missing_axis", "pass flipX=true and/or flipY=true", "flip_nodes requires flipX or flipY");
+      }
       for (const { id, node } of targets) {
         const next = { ...node };
-        const scaleX = raw.axis === "y" ? 1 : -1;
-        const scaleY = raw.axis === "x" ? 1 : -1;
-        next.scaleX = numberOf(node.scaleX, 1) * (raw.axis === "y" ? 1 : scaleX);
-        next.scaleY = numberOf(node.scaleY, 1) * (raw.axis === "x" ? 1 : scaleY);
+        if (flipX) {
+          next.flipX = !Boolean(node.flipX);
+          next.scaleX = numberOf(node.scaleX, 1) * -1;
+        }
+        if (flipY) {
+          next.flipY = !Boolean(node.flipY);
+          next.scaleY = numberOf(node.scaleY, 1) * -1;
+        }
         patches.push(setNode(id, next));
       }
     }
@@ -368,12 +494,42 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
     const frameIdSet = new Set(frames.flatMap((frame) => typeof frame.id === "string" ? [frame.id] : []));
     const reorderedElementIds: string[] = [];
     const reorderedFrameIds: string[] = [];
+    const stackKey = (id: string) => {
+      const bare = id.startsWith("frame:") ? id.slice(6) : id.startsWith("node:") ? id.slice(5) : id;
+      return frameIdSet.has(bare) || id.startsWith("frame:") ? `frame:${bare}` : bare;
+    };
+    const matchesId = (item: string, id: string) => {
+      const bare = id.startsWith("frame:") ? id.slice(6) : id.startsWith("node:") ? id.slice(5) : id;
+      return item === id || item === bare || item === `frame:${bare}` || item === `node:${bare}`;
+    };
     for (const id of ids) {
       const bare = id.startsWith("frame:") ? id.slice(6) : id.startsWith("node:") ? id.slice(5) : id;
       if (id.startsWith("frame:") || frameIdSet.has(bare)) reorderedFrameIds.push(bare);
       else reorderedElementIds.push(bare);
     }
-    const nextStack = [...ids, ...stack.filter((item) => !ids.includes(item) && !ids.includes(item.replace(/^frame:/, "")) && !ids.includes(item.replace(/^node:/, "")))];
+    const action = typeof raw.action === "string" ? raw.action : "";
+    let nextStack: string[];
+    if (action === "front" || action === "back" || action === "forward" || action === "backward") {
+      nextStack = [...stack];
+      const moving = ids.map(stackKey);
+      if (action === "front") {
+        nextStack = [...nextStack.filter((item) => !ids.some((id) => matchesId(item, id))), ...moving];
+      } else if (action === "back") {
+        nextStack = [...moving, ...nextStack.filter((item) => !ids.some((id) => matchesId(item, id)))];
+      } else {
+        const step = action === "forward" ? 1 : -1;
+        const indexes = moving.map((key) => nextStack.findIndex((item) => matchesId(item, key))).filter((index) => index >= 0);
+        const ordered = action === "forward" ? [...indexes].sort((a, b) => b - a) : [...indexes].sort((a, b) => a - b);
+        for (const index of ordered) {
+          const nextIndex = index + step;
+          if (nextIndex < 0 || nextIndex >= nextStack.length) continue;
+          const [item] = nextStack.splice(index, 1);
+          nextStack.splice(nextIndex, 0, item!);
+        }
+      }
+    } else {
+      nextStack = [...ids, ...stack.filter((item) => !ids.includes(item) && !ids.includes(item.replace(/^frame:/, "")) && !ids.includes(item.replace(/^node:/, "")))];
+    }
     return {
       ...empty,
       patches: [setStack(nextStack)],
@@ -385,7 +541,7 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
   if (op === "group_nodes") {
     const ids = requireIds(raw.ids ?? raw.nodeIds, "group_nodes");
     const groupId = typeof raw.groupId === "string" && raw.groupId ? raw.groupId : randomUUID();
-    if (nodes[groupId]) throw new CanvasValidationError("group_nodes id collides");
+    if (nodes[groupId]) throw opError("group_nodes_id_collides", "omit id or choose a unique group id", "group_nodes id collides");
     const parentId = typeof nodes[ids[0]!]?.parentId === "string" ? String(nodes[ids[0]!]!.parentId) : "ROOT";
     const group: Record<string, CanvasJson> = {
       id: groupId, key: "group", parentId, children: ids,
@@ -399,7 +555,7 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
     ];
     for (const id of ids) {
       const current = nodes[id];
-      if (!current) throw new CanvasValidationError(`group_nodes target ${id} does not exist`);
+      if (!current) throw opError("group_nodes_missing_target", "pass existing nodeIds from scene_summary", `group_nodes target ${id} does not exist`);
       patches.push(setNode(id, { ...current, parentId: groupId }));
     }
     patches.push(setStack([...stack.filter((item) => !ids.includes(item)), groupId]));
@@ -407,9 +563,14 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
   }
 
   if (op === "ungroup_nodes") {
-    const groupId = typeof raw.groupId === "string" ? raw.groupId : typeof raw.id === "string" ? raw.id : "";
+    const groupIds = Array.isArray(raw.nodeIds) || Array.isArray(raw.ids)
+      ? requireIds(raw.nodeIds ?? raw.ids, "ungroup_nodes")
+      : [typeof raw.groupId === "string" ? raw.groupId : typeof raw.id === "string" ? raw.id : ""];
+    const groupId = groupIds[0] ?? "";
     const group = nodes[groupId];
-    if (!group || group.key !== "group") throw new CanvasValidationError("ungroup_nodes target is not a group");
+    if (!group || group.key !== "group") {
+      throw opError("ungroup_nodes_not_group", "pass group ids from scene_summary", "ungroup_nodes target is not a group");
+    }
     const parentId = typeof group.parentId === "string" ? group.parentId : "ROOT";
     const kids = childrenOf(group);
     const patches: CanvasPatch[] = [
@@ -431,13 +592,13 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
     const parentChildren = new Map<string, string[]>();
     for (const id of ids) {
       const current = nodes[id];
-      if (!current) throw new CanvasValidationError(`duplicate_nodes target ${id} does not exist`);
+      if (!current) throw opError("duplicate_nodes_missing_target", "pass existing nodeIds from scene_summary", `duplicate_nodes target ${id} does not exist`);
       const copyId = randomUUID();
       const parentId = typeof current.parentId === "string" ? current.parentId : "ROOT";
       const copy = cloneNode(current);
       copy.id = copyId;
-      copy.x = numberOf(current.x, 0) + 16;
-      copy.y = numberOf(current.y, 0) + 16;
+      copy.x = numberOf(current.x, 0) + numberOf(raw.offsetX, 16);
+      copy.y = numberOf(current.y, 0) + numberOf(raw.offsetY, 16);
       copy.children = [];
       patches.push(setNode(copyId, copy));
       if (!parentChildren.has(parentId)) parentChildren.set(parentId, [...childrenOf(nodes[parentId])]);
@@ -451,10 +612,10 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
 
   if (op === "boolean_op") {
     const ids = requireIds(raw.ids ?? raw.nodeIds, "boolean_op");
-    if (ids.length < 2) throw new CanvasValidationError("boolean_op requires at least two operands");
+    if (ids.length < 2) throw opError("boolean_op_too_few", "boolean_op requires at least two operands", `count=${ids.length}`);
     const operands = ids.map((id) => {
       const node = nodes[id];
-      if (!node) throw new CanvasValidationError(`boolean_op operand ${id} does not exist`);
+      if (!node) throw opError("boolean_op_missing_operand", "pass existing shape nodeIds from scene_summary", `boolean_op operand ${id} does not exist`);
       return { id, node };
     });
     const resultId = typeof raw.resultId === "string" && raw.resultId ? raw.resultId : randomUUID();
@@ -465,7 +626,7 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
       id: resultId,
       key: "path",
       parentId,
-      booleanOp: typeof raw.operation === "string" ? raw.operation : "union",
+      booleanOp: typeof raw.mode === "string" ? raw.mode : typeof raw.operation === "string" ? raw.operation : "union",
       operandIds: ids,
       x: Math.min(...xs),
       y: Math.min(...ys),
@@ -486,19 +647,37 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
   }
 
   if (op === "set_canvas_background") {
+    const color = raw.color ?? raw.fill ?? raw.backgroundColor ?? raw.value ?? raw.background ?? null;
+    assertFillArgs(op, {
+      color: raw.color,
+      fill: raw.fill,
+      backgroundColor: raw.backgroundColor,
+      fillType: raw.fillType,
+    });
+    const value = asRecord(raw.value)
+      ?? (color != null || raw.fillType != null
+        ? {
+          color,
+          fill: raw.fill ?? color,
+          ...(typeof raw.fillType === "string" ? { fillType: raw.fillType } : {}),
+          ...(raw.fillEnd != null ? { fillEnd: raw.fillEnd } : {}),
+          ...(raw.gradientAngle != null ? { gradientAngle: raw.gradientAngle } : {}),
+          ...(raw.opacity != null ? { opacity: raw.opacity } : {}),
+        }
+        : color);
     return {
       ...empty,
-      patches: [{ op: "set", path: ["background"], value: (raw.value ?? raw.background ?? null) as CanvasJson }],
+      patches: [{ op: "set", path: ["background"], value: value as CanvasJson }],
       backgroundWrite: true,
     };
   }
 
-  throw new CanvasValidationError(`unsupported Canvas ToolOp ${op}`);
+  throw opError("unsupported_op", "use a durable Canvas ToolOp from the typed tool list", `unsupported Canvas ToolOp ${op}`);
 }
 
 export function mapCanvasToolOps(document: CanvasJson, operations: unknown[]): MappedCanvasToolOps {
   if (!Array.isArray(operations) || operations.length === 0) {
-    throw new CanvasValidationError("canvas.elements_apply requires a non-empty operations list");
+    throw opError("apply_empty", "pass a non-empty operations list", "canvas.elements_apply requires a non-empty operations list");
   }
   let current = document;
   const patches: CanvasPatch[] = [];
@@ -512,13 +691,13 @@ export function mapCanvasToolOps(document: CanvasJson, operations: unknown[]): M
   let backgroundWrite = false;
   for (const item of operations) {
     const raw = asRecord(item);
-    if (!raw) throw new CanvasValidationError("Canvas ToolOp must be an object");
+    if (!raw) throw opError("op_not_object", "each ToolOp must be an object", "Canvas ToolOp must be an object");
     const name = opName(raw);
     if (DEFERRED_OPS.has(name)) {
-      throw new CanvasValidationError(`${name} is deferred to a durable job and cannot join a scene batch`);
+      throw opError(`${name}_deferred`, `${name} is deferred to a durable job and cannot join a scene batch`, name);
     }
     if (SIDE_EFFECT_OPS.has(name)) {
-      throw new CanvasValidationError("export_canvas is a Canvas export side effect; use canvas.export");
+      throw opError("export_side_effect", "export_canvas is a Canvas export side effect; use canvas.export", name);
     }
     if (EPHEMERAL_OPS.has(name)) {
       viewport = {
@@ -528,7 +707,7 @@ export function mapCanvasToolOps(document: CanvasJson, operations: unknown[]): M
       };
       continue;
     }
-    if (!DURABLE_OPS.has(name)) throw new CanvasValidationError(`unknown Canvas ToolOp ${name}`);
+    if (!DURABLE_OPS.has(name)) throw opError("unknown_op", "use a durable Canvas ToolOp from the typed tool list", `unknown Canvas ToolOp ${name}`);
     const mapped = mapOne(current, raw);
     patches.push(...mapped.patches);
     createdElementIds.push(...mapped.createdElementIds);

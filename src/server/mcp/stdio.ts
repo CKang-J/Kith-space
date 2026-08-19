@@ -4,12 +4,22 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { BrokerGatewayClient, GatewayClientError } from "../../capabilities/gatewayClient.js";
 import {
+  CanvasAlignNodesCommandSchema,
+  CanvasBooleanOpCommandSchema,
   CanvasCreateFrameCommandSchema,
   CanvasCreateImageCommandSchema,
   CanvasCreateShapeCommandSchema,
   CanvasCreateTextCommandSchema,
   CanvasDeleteNodesCommandSchema,
+  CanvasDistributeNodesCommandSchema,
+  CanvasDuplicateNodesCommandSchema,
+  CanvasFlipNodesCommandSchema,
+  CanvasGroupNodesCommandSchema,
+  CanvasReorderNodesCommandSchema,
   CanvasSceneSummaryCommandSchema,
+  CanvasSetCanvasBackgroundCommandSchema,
+  CanvasUngroupNodesCommandSchema,
+  CanvasUpdateFrameCommandSchema,
   CanvasUpdateNodeCommandSchema,
   CANVAS_AGENT_GATEWAY_PATHS,
   CANVAS_TYPED_TOOL_DESCRIPTIONS,
@@ -183,5 +193,15 @@ registerSchema("canvas.create_shape", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.cre
 registerSchema("canvas.create_image", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_image"], CanvasCreateImageCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_image"]);
 registerSchema("canvas.update_node", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.update_node"], CanvasUpdateNodeCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.update_node"]);
 registerSchema("canvas.delete_nodes", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.delete_nodes"], CanvasDeleteNodesCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.delete_nodes"]);
+registerSchema("canvas.update_frame", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.update_frame"], CanvasUpdateFrameCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.update_frame"]);
+registerSchema("canvas.align_nodes", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.align_nodes"], CanvasAlignNodesCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.align_nodes"]);
+registerSchema("canvas.distribute_nodes", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.distribute_nodes"], CanvasDistributeNodesCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.distribute_nodes"]);
+registerSchema("canvas.reorder_nodes", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.reorder_nodes"], CanvasReorderNodesCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.reorder_nodes"]);
+registerSchema("canvas.group_nodes", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.group_nodes"], CanvasGroupNodesCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.group_nodes"]);
+registerSchema("canvas.ungroup_nodes", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.ungroup_nodes"], CanvasUngroupNodesCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.ungroup_nodes"]);
+registerSchema("canvas.duplicate_nodes", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.duplicate_nodes"], CanvasDuplicateNodesCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.duplicate_nodes"]);
+registerSchema("canvas.flip_nodes", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.flip_nodes"], CanvasFlipNodesCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.flip_nodes"]);
+registerSchema("canvas.boolean_op", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.boolean_op"], CanvasBooleanOpCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.boolean_op"]);
+registerSchema("canvas.set_canvas_background", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.set_canvas_background"], CanvasSetCanvasBackgroundCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.set_canvas_background"]);
 
 await server.connect(new StdioServerTransport());

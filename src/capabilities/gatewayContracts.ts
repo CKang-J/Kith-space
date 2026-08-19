@@ -154,21 +154,41 @@ export const CanvasAssetImportCommandSchema = z.object({
 }).strict();
 
 export {
+  CanvasAlignNodesCommandSchema,
+  CanvasBooleanOpCommandSchema,
   CanvasCreateFrameCommandSchema,
   CanvasCreateImageCommandSchema,
   CanvasCreateShapeCommandSchema,
   CanvasCreateTextCommandSchema,
   CanvasDeleteNodesCommandSchema,
+  CanvasDistributeNodesCommandSchema,
+  CanvasDuplicateNodesCommandSchema,
+  CanvasFlipNodesCommandSchema,
+  CanvasGroupNodesCommandSchema,
+  CanvasReorderNodesCommandSchema,
   CanvasSceneSummaryCommandSchema,
+  CanvasSetCanvasBackgroundCommandSchema,
+  CanvasUngroupNodesCommandSchema,
+  CanvasUpdateFrameCommandSchema,
   CanvasUpdateNodeCommandSchema,
 } from "../canvas/canvasAgentTools.js";
 export type {
+  CanvasAlignNodesCommand,
+  CanvasBooleanOpCommand,
   CanvasCreateFrameCommand,
   CanvasCreateImageCommand,
   CanvasCreateShapeCommand,
   CanvasCreateTextCommand,
   CanvasDeleteNodesCommand,
+  CanvasDistributeNodesCommand,
+  CanvasDuplicateNodesCommand,
+  CanvasFlipNodesCommand,
+  CanvasGroupNodesCommand,
+  CanvasReorderNodesCommand,
   CanvasSceneSummaryCommand,
+  CanvasSetCanvasBackgroundCommand,
+  CanvasUngroupNodesCommand,
+  CanvasUpdateFrameCommand,
   CanvasUpdateNodeCommand,
 } from "../canvas/canvasAgentTools.js";
 export type ContextCheckCommand = z.infer<typeof ContextCheckCommandSchema>;

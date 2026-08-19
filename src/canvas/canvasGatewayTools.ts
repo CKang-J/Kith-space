@@ -22,7 +22,7 @@ import {
   type CanvasGrantAction,
 } from "./canvasAccessGrant.js";
 import { CanvasAssetStore } from "./canvasAssetStore.js";
-import { mapCanvasToolOps } from "./canvasToolOps.js";
+import { mapCanvasToolOps, parseCanvasOpError } from "./canvasToolOps.js";
 import type { CanvasJson } from "./canvasTypes.js";
 import {
   typedCanvasCommandToToolOp,
@@ -53,7 +53,12 @@ export function mapCanvasToolError(error: unknown): never {
   }
   if (error instanceof CanvasIdempotencyError) throw new HarnessError("idempotency_conflict", error.message);
   if (error instanceof CanvasValidationError || error instanceof CanvasNotFoundError) {
-    throw new HarnessError("capability_scope_denied", error.message);
+    const parsed = parseCanvasOpError(error.message);
+    throw new HarnessError("capability_scope_denied", error.message, parsed ? {
+      canvasCode: parsed.code,
+      ...(parsed.fix ? { fix: parsed.fix } : {}),
+      ...(parsed.detail ? { detail: parsed.detail } : {}),
+    } : {});
   }
   throw error;
 }

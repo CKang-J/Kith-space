@@ -102,6 +102,16 @@ test("CLI/MCP canvas context_bundle_create and asset_import share Gateway contra
     assert.ok(names.has("canvas.create_frame"));
     assert.ok(names.has("canvas.update_node"));
     assert.ok(names.has("canvas.delete_nodes"));
+    assert.ok(names.has("canvas.update_frame"));
+    assert.ok(names.has("canvas.align_nodes"));
+    assert.ok(names.has("canvas.distribute_nodes"));
+    assert.ok(names.has("canvas.reorder_nodes"));
+    assert.ok(names.has("canvas.group_nodes"));
+    assert.ok(names.has("canvas.ungroup_nodes"));
+    assert.ok(names.has("canvas.duplicate_nodes"));
+    assert.ok(names.has("canvas.flip_nodes"));
+    assert.ok(names.has("canvas.boolean_op"));
+    assert.ok(names.has("canvas.set_canvas_background"));
 
     const mcpBundle = await client.callTool({
       name: "canvas.context_bundle_create",
@@ -150,4 +160,9 @@ test("CLI canvas subcommands expose context-bundle-create and asset-import", asy
   assert.match(canonical, /--fill/);
   assert.match(canonical, /--opacity/);
   assert.match(canonical, /--shape-type/);
+  assert.match(canonical, /canvas\.command\("update-frame"\)/);
+  assert.match(canonical, /\/agent-gateway\/canvas\/update_frame/);
+  assert.match(canonical, /canvas\.command\("align-nodes"\)/);
+  assert.match(canonical, /canvas\.command\("boolean-op"\)/);
+  assert.match(canonical, /\/agent-gateway\/canvas\/set_canvas_background/);
 });

@@ -13,16 +13,26 @@ import type { TurnCapabilityClaims } from "./contracts.js";
 import type {
   CanvasAssetImportCommand,
   CanvasContextBundleCreateCommand,
+  CanvasAlignNodesCommand,
+  CanvasBooleanOpCommand,
   CanvasCreateFrameCommand,
   CanvasCreateImageCommand,
   CanvasCreateShapeCommand,
   CanvasCreateTextCommand,
   CanvasDeleteNodesCommand,
+  CanvasDistributeNodesCommand,
+  CanvasDuplicateNodesCommand,
   CanvasElementsApplyCommand,
   CanvasElementsGetCommand,
   CanvasExportCommand,
+  CanvasFlipNodesCommand,
+  CanvasGroupNodesCommand,
+  CanvasReorderNodesCommand,
   CanvasSceneSummaryCommand,
+  CanvasSetCanvasBackgroundCommand,
   CanvasSnapshotGetCommand,
+  CanvasUngroupNodesCommand,
+  CanvasUpdateFrameCommand,
   CanvasUpdateNodeCommand,
   ChecklistClearCommand,
   ChecklistUpsertCommand,
@@ -56,6 +66,11 @@ import {
   mapCanvasToolError,
 } from "../canvas/canvasGatewayTools.js";
 import type { CanvasMutationFeedback } from "../canvas/canvasMutationFeedback.js";
+import {
+  CANVAS_LAST_ERROR_KEY,
+  CANVAS_LAST_ERROR_TOOL,
+} from "../canvas/canvasSkills.js";
+import type { CanvasTypedMutationCommand, CanvasTypedToolName } from "../canvas/canvasAgentTools.js";
 import { EpisodicMemoryService, MemoryError, type RecalledMemory } from "../memory/episodicMemoryService.js";
 import { UserGlobalMemoryService, type RecalledUserGlobalMemory } from "../memory/userGlobalMemoryService.js";
 import { selectUnifiedMemoryRecall } from "../memory/memoryRecallSelection.js";
@@ -488,7 +503,7 @@ export class CapabilityGateway {
 
   canvasElementsApply(claims: TurnCapabilityClaims, command: CanvasElementsApplyCommand) {
     try {
-      return this.operation(
+      const result = this.operation(
         claims,
         "canvas.elements_apply",
         command.idempotencyKey,
@@ -511,7 +526,10 @@ export class CapabilityGateway {
           this.now(),
         ) as OperationResult,
       );
+      this.clearCanvasLastError(claims);
+      return result;
     } catch (error) {
+      this.recordCanvasLastError(claims, error);
       mapCanvasToolError(error);
     }
   }
@@ -551,13 +569,53 @@ export class CapabilityGateway {
     return this.canvasTypedWrite(claims, "canvas.delete_nodes", command);
   }
 
+  canvasUpdateFrame(claims: TurnCapabilityClaims, command: CanvasUpdateFrameCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.update_frame", command);
+  }
+
+  canvasAlignNodes(claims: TurnCapabilityClaims, command: CanvasAlignNodesCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.align_nodes", command);
+  }
+
+  canvasDistributeNodes(claims: TurnCapabilityClaims, command: CanvasDistributeNodesCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.distribute_nodes", command);
+  }
+
+  canvasReorderNodes(claims: TurnCapabilityClaims, command: CanvasReorderNodesCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.reorder_nodes", command);
+  }
+
+  canvasGroupNodes(claims: TurnCapabilityClaims, command: CanvasGroupNodesCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.group_nodes", command);
+  }
+
+  canvasUngroupNodes(claims: TurnCapabilityClaims, command: CanvasUngroupNodesCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.ungroup_nodes", command);
+  }
+
+  canvasDuplicateNodes(claims: TurnCapabilityClaims, command: CanvasDuplicateNodesCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.duplicate_nodes", command);
+  }
+
+  canvasFlipNodes(claims: TurnCapabilityClaims, command: CanvasFlipNodesCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.flip_nodes", command);
+  }
+
+  canvasBooleanOp(claims: TurnCapabilityClaims, command: CanvasBooleanOpCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.boolean_op", command);
+  }
+
+  canvasSetCanvasBackground(claims: TurnCapabilityClaims, command: CanvasSetCanvasBackgroundCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.set_canvas_background", command);
+  }
+
   private canvasTypedWrite(
     claims: TurnCapabilityClaims,
-    toolName: "canvas.create_frame" | "canvas.create_text" | "canvas.create_shape" | "canvas.create_image" | "canvas.update_node" | "canvas.delete_nodes",
-    command: CanvasCreateFrameCommand | CanvasCreateTextCommand | CanvasCreateShapeCommand | CanvasCreateImageCommand | CanvasUpdateNodeCommand | CanvasDeleteNodesCommand,
+    toolName: Exclude<CanvasTypedToolName, "canvas.scene_summary">,
+    command: CanvasTypedMutationCommand,
   ): CanvasMutationFeedback {
     try {
-      return this.operation(
+      const result = this.operation(
         claims,
         toolName,
         command.idempotencyKey,
@@ -575,8 +633,61 @@ export class CapabilityGateway {
           this.now(),
         ) as OperationResult,
       ) as CanvasMutationFeedback;
+      this.clearCanvasLastError(claims);
+      return result;
     } catch (error) {
+      this.recordCanvasLastError(claims, error);
       mapCanvasToolError(error);
+    }
+  }
+
+  private recordCanvasLastError(claims: TurnCapabilityClaims, error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    try {
+      this.db.transaction((tx) => {
+        const existing = tx.select().from(schema.turnOperations).where(and(
+          eq(schema.turnOperations.turnId, claims.turnId),
+          eq(schema.turnOperations.toolName, CANVAS_LAST_ERROR_TOOL),
+          eq(schema.turnOperations.idempotencyKey, CANVAS_LAST_ERROR_KEY),
+        )).get();
+        const now = new Date(this.now());
+        if (existing) {
+          tx.update(schema.turnOperations).set({
+            status: "failed",
+            errorCode: message,
+            requestHash: hash({ error: message }),
+            updatedAt: now,
+          }).where(eq(schema.turnOperations.id, existing.id)).run();
+          return;
+        }
+        tx.insert(schema.turnOperations).values({
+          id: randomUUID(),
+          turnId: claims.turnId,
+          toolName: CANVAS_LAST_ERROR_TOOL,
+          idempotencyKey: CANVAS_LAST_ERROR_KEY,
+          requestHash: hash({ error: message }),
+          operationSlot: "canvas:last_error",
+          status: "failed",
+          errorCode: message,
+        }).run();
+      });
+    } catch {
+      // Persistence of LAST_ERROR must not replace the original tool failure.
+    }
+  }
+
+  private clearCanvasLastError(claims: TurnCapabilityClaims): void {
+    try {
+      this.db.update(schema.turnOperations).set({
+        status: "committed",
+        errorCode: null,
+        updatedAt: new Date(this.now()),
+      }).where(and(
+        eq(schema.turnOperations.turnId, claims.turnId),
+        eq(schema.turnOperations.toolName, CANVAS_LAST_ERROR_TOOL),
+      )).run();
+    } catch {
+      // ignore
     }
   }
 

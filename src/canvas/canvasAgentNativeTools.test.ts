@@ -5,11 +5,15 @@ import test from "node:test";
 import { and, eq } from "drizzle-orm";
 import { CapabilityGateway } from "../capabilities/capabilityGateway.js";
 import {
+  CanvasAlignNodesCommandSchema,
+  CanvasBooleanOpCommandSchema,
   CanvasCreateFrameCommandSchema,
   CanvasCreateImageCommandSchema,
+  CanvasCreateShapeCommandSchema,
   CanvasCreateTextCommandSchema,
   CanvasDeleteNodesCommandSchema,
   CanvasSceneSummaryCommandSchema,
+  CanvasUpdateFrameCommandSchema,
   CanvasUpdateNodeCommandSchema,
 } from "../capabilities/gatewayContracts.js";
 import { SessionCapabilityBroker } from "../capabilities/sessionCapabilityBroker.js";
@@ -29,6 +33,7 @@ import { TurnOutputService } from "../turns/turnOutputService.js";
 import {
   CANVAS_MEDIA_GENERATE_SEAM,
   CANVAS_MUTATION_TOOL_NAMES,
+  CANVAS_TYPED_TOOL_DESCRIPTIONS,
   typedCanvasCommandToToolOp,
 } from "./canvasAgentTools.js";
 import { CanvasCore } from "./canvasCore.js";
@@ -289,6 +294,61 @@ test("typed Canvas tool schemas reject unknown fields and remote image inputs", 
   assert.equal(CANVAS_MEDIA_GENERATE_SEAM.status, "deferred");
   assert.ok(CANVAS_MUTATION_TOOL_NAMES.includes("canvas.create_text"));
   assert.ok(CANVAS_MUTATION_TOOL_NAMES.includes("canvas.elements_apply"));
+  assert.ok(CANVAS_MUTATION_TOOL_NAMES.includes("canvas.align_nodes"));
+  assert.ok(CANVAS_MUTATION_TOOL_NAMES.includes("canvas.boolean_op"));
+  const shape = CanvasCreateShapeCommandSchema.parse({
+    expectedRevision: 1,
+    x: 0,
+    y: 0,
+    width: 40,
+    height: 40,
+    fill: "#FF0000",
+    fillType: "solid",
+    cornerRadius: 8,
+    rotation: 15,
+    idempotencyKey: "shape:red",
+  });
+  assert.equal(shape.fill, "#FF0000");
+  CanvasUpdateNodeCommandSchema.parse({
+    expectedRevision: 1,
+    nodeId: "shape-1",
+    fillType: "linear",
+    fillEnd: "#000000",
+    fontSize: 24,
+    idempotencyKey: "upd-style",
+  });
+  CanvasCreateTextCommandSchema.parse({
+    expectedRevision: 1,
+    text: "Hello",
+    x: 0,
+    y: 0,
+    rotation: 10,
+    opacity: 0.9,
+    blendMode: "multiply",
+    idempotencyKey: "text-style",
+  });
+  CanvasAlignNodesCommandSchema.parse({
+    expectedRevision: 1,
+    nodeIds: ["a", "b"],
+    mode: "centerX",
+    idempotencyKey: "align-1",
+  });
+  CanvasUpdateFrameCommandSchema.parse({
+    expectedRevision: 1,
+    frameId: "frame-1",
+    backgroundColor: "#111111",
+    locked: true,
+    idempotencyKey: "frame-upd",
+  });
+  CanvasBooleanOpCommandSchema.parse({
+    expectedRevision: 1,
+    nodeIds: ["a", "b"],
+    mode: "subtract",
+    confirmDestructive: true,
+    idempotencyKey: "bool-1",
+  });
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_shape"], /NEVER put CSS/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.update_node"], /fillType/);
 });
 
 test("typed Canvas commands map onto the same ToolOp names Core already executes", () => {
@@ -332,6 +392,28 @@ test("typed Canvas commands map onto the same ToolOp names Core already executes
   }, grant);
   assert.equal(deleteOp.op, "delete_nodes");
   assert.deepEqual(deleteOp.ids, ["shape-1"]);
+  const shapeOp = typedCanvasCommandToToolOp("canvas.create_shape", {
+    expectedRevision: 1,
+    x: 0,
+    y: 0,
+    width: 80,
+    height: 40,
+    fill: "#FF0000",
+    fillType: "solid",
+    cornerRadius: 4,
+    idempotencyKey: "map-shape",
+  }, grant);
+  assert.equal(shapeOp.op, "create_shape");
+  assert.equal((shapeOp.attrs as { fill?: string }).fill, "#FF0000");
+  assert.equal((shapeOp.attrs as { fillType?: string }).fillType, "solid");
+  const alignOp = typedCanvasCommandToToolOp("canvas.align_nodes", {
+    expectedRevision: 1,
+    nodeIds: ["shape-1", "shape-2"],
+    mode: "left",
+    idempotencyKey: "map-align",
+  }, grant);
+  assert.equal(alignOp.op, "align_nodes");
+  assert.equal(alignOp.mode, "left");
   assert.throws(() => CanvasUpdateNodeCommandSchema.parse({
     expectedRevision: 1,
     nodeId: "shape-1",
@@ -557,6 +639,19 @@ test("create_frame custom ids cannot be ROOT or collide with elements or Frames"
     op: "create_frame", id: "frame-2", x: 40, y: 40, width: 120, height: 80, name: "Poster",
   }]);
   assert.deepEqual(created.createdFrameIds, ["frame-2"]);
+  assert.throws(() => mapCanvasToolOps(doc, [{
+    op: "create_shape", x: 0, y: 0, width: 40, height: 40,
+    attrs: { fill: "linear-gradient(red, blue)" },
+  }]), /code=create_shape_css_gradient_fill/);
+  const aligned = mapCanvasToolOps(doc, [{
+    op: "align_nodes", nodeIds: ["shape-1", "shape-2"], mode: "left",
+  }]);
+  assert.ok(aligned.operation);
+  const red = mapCanvasToolOps(doc, [{
+    op: "create_shape", id: "red-1", x: 8, y: 8, width: 40, height: 24,
+    attrs: { shapeType: "rect", fill: "#FF0000", fillType: "solid" },
+  }]);
+  assert.deepEqual(red.createdElementIds, ["red-1"]);
 });
 
 test("pure Chinese how-to questions do not inject mutationRequired into Canvas context", async () => {
@@ -729,6 +824,66 @@ test("create_image rejects missing and cross-canvas assets; outputRefs cannot bi
       assert.match(error.message, /already bound|this turn|capability_scope_denied/);
       return true;
     });
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("failed canvas tool persists LAST_CANVAS_ERROR and a later success clears it", async () => {
+  const f = fixture("native-last-error");
+  try {
+    const executor = f.addAgent("executor");
+    const channel = f.addChannel();
+    f.addMember(channel.id, executor.id);
+    const modules = posting();
+    const message = await modules.messagePosting.post({
+      kind: "chat",
+      context: { spaceId: f.spaceId, channelId: channel.id, sender: { type: "human", id: f.humanId, name: "Human" } },
+      content: "画一个红色矩形",
+      canvasSelection: { canvasId: f.canvas.id, selectedIds: ["frame:frame-1", "shape-1"] },
+      executionBinding: { executorAgentId: executor.id, mode: "required" },
+    });
+    const turn = await prepareTurn({
+      spaceId: f.spaceId,
+      db: f.db,
+      agentId: executor.id,
+      channelId: channel.id,
+      messageId: message.id,
+    });
+    const grant = f.db.select().from(schema.canvasAccessGrants).where(eq(schema.canvasAccessGrants.turnId, turn.turnId)).get();
+    assert.ok(grant);
+    const revision = f.core.read(f.canvas.id).revisions.revision;
+    assert.throws(() => turn.gateway.canvasCreateShape(turn.claims, {
+      snapshotId: grant.snapshotId,
+      expectedRevision: revision,
+      x: 10,
+      y: 10,
+      width: 80,
+      height: 40,
+      fill: "linear-gradient(red, blue)",
+      idempotencyKey: "bad-fill",
+    }), /code=create_shape_css_gradient_fill/);
+    const afterFail = new ContextAssembler(f.spaceId, f.db, () => Date.now()).assemble(turn.turnId, turn.claims.activationId);
+    assert.match(afterFail.renderedContext, /LAST_CANVAS_ERROR: code=create_shape_css_gradient_fill/);
+    const created = turn.gateway.canvasCreateShape(turn.claims, {
+      snapshotId: grant.snapshotId,
+      expectedRevision: revision,
+      x: 10,
+      y: 10,
+      width: 80,
+      height: 40,
+      fill: "#FF0000",
+      fillType: "solid",
+      idempotencyKey: "red-rect",
+    });
+    assert.equal(created.status, "committed");
+    const live = f.core.read(f.canvas.id).document as {
+      deltaSetLike: Record<string, { fill?: string; attrs?: { fill?: string } }>;
+    };
+    const node = live.deltaSetLike[created.createdIds[0]!];
+    assert.equal(node?.fill ?? node?.attrs?.fill, "#FF0000");
+    const afterOk = new ContextAssembler(f.spaceId, f.db, () => Date.now()).assemble(turn.turnId, turn.claims.activationId);
+    assert.doesNotMatch(afterOk.renderedContext, /LAST_CANVAS_ERROR: code=/);
   } finally {
     f.cleanup();
   }
