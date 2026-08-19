@@ -9,6 +9,7 @@ import { HarnessError } from "../harness/errors.js";
 import { TurnInspector } from "../turns/turnInspector.js";
 import { isTaskOperationError, parseTaskActionMetadata } from "../tasks/taskTypes.js";
 import { taskGatewayPort } from "./taskGatewayPort.js";
+import { publish } from "../server/realtime.js";
 import type { TurnCapabilityClaims } from "./contracts.js";
 import type {
   CanvasAssetImportCommand,
@@ -527,6 +528,20 @@ export class CapabilityGateway {
         ) as OperationResult,
       );
       this.clearCanvasLastError(claims);
+
+      // Publish realtime event so frontend updates immediately
+      const feedback = result as CanvasMutationFeedback;
+      if (feedback.canvasId && feedback.sequence !== undefined) {
+        void publish(this.spaceId, {
+          type: "canvas:changed",
+          canvasId: feedback.canvasId,
+          sequence: feedback.sequence,
+          revision: feedback.revision,
+        }).catch((error) => {
+          console.error("Failed to publish canvas:changed event", error);
+        });
+      }
+
       return result;
     } catch (error) {
       this.recordCanvasLastError(claims, error);
@@ -634,6 +649,19 @@ export class CapabilityGateway {
         ) as OperationResult,
       ) as CanvasMutationFeedback;
       this.clearCanvasLastError(claims);
+
+      // Publish realtime event so frontend updates immediately
+      if (result.canvasId && result.sequence !== undefined) {
+        void publish(this.spaceId, {
+          type: "canvas:changed",
+          canvasId: result.canvasId,
+          sequence: result.sequence,
+          revision: result.revision,
+        }).catch((error) => {
+          console.error("Failed to publish canvas:changed event", error);
+        });
+      }
+
       return result;
     } catch (error) {
       this.recordCanvasLastError(claims, error);
