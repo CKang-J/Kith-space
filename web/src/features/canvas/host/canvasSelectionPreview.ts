@@ -129,7 +129,9 @@ export function extractSelectionPreviewDocument(
     if (!node) continue;
     for (const frameId of includeFrameIds) {
       const frame = frameById.get(frameId);
-      if (frame && overlapsNodeFrame(node, frame)) {
+      if (!frame) continue;
+      const boundFrame = typeof node.frameId === "string" ? node.frameId : null;
+      if (boundFrame === frameId || overlapsNodeFrame(node, frame)) {
         includeNodeIds.add(nodeId);
         break;
       }
@@ -230,26 +232,19 @@ export async function renderCanvasSelectionThumbnail(
   const { nodeIds, frameIds } = parseSelectionTokens(selectedIds);
   const surviving = survivingNodeIds(document, nodeIds);
 
-  if (frameIds.length === 1 && !surviving.length) {
-    return renderComposerChipThumb({
+  if (frameIds.length === 1) {
+    const cropped = await renderComposerChipThumb({
       document: document as never,
       frameId: frameIds[0],
       maxSide,
     });
+    if (cropped) return cropped;
   }
 
   if (surviving.length) {
     return renderComposerChipThumb({
       document: document as never,
       nodeIds: surviving,
-      maxSide,
-    });
-  }
-
-  if (frameIds.length === 1) {
-    return renderComposerChipThumb({
-      document: document as never,
-      frameId: frameIds[0],
       maxSide,
     });
   }

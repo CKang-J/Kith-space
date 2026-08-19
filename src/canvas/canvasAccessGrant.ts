@@ -56,18 +56,51 @@ function projectionFlags(snapshot: SnapshotRow): { wholeCanvas: boolean; groupId
 }
 
 /**
- * Stage-4 product grants:
- * - empty / whole-canvas snapshot → read-only (`read_snapshot`)
- * - non-empty selection → live read/write/create/delete/export/import
+ * Product grants:
+ * - empty / whole-canvas snapshot → live read/write/create on the whole Canvas (createParents includes ROOT + Frames)
+ * - Frame selection → live read/write/create inside those Frames (createParents is the Frame ids, not ROOT)
+ * - element-only selection → live read/write/create; ROOT remains a valid parent
  *
- * `set_canvas_background` is intentionally NOT signed here. It is a whole-Canvas
- * document write; ordinary partial selections must not silently receive it.
- * A future whole-Canvas write grant product path may add it explicitly; until
- * then Gateway still enforces the action when present (tests may inject it).
+ * `set_canvas_background` is signed only for whole-canvas grants. Partial selections
+ * must not silently receive a document-wide background write.
  */
 function defaultActions(emptySelection: boolean): CanvasGrantAction[] {
-  if (emptySelection) return ["read_snapshot"];
-  return ["read_snapshot", "read_live", "write_existing", "create", "delete_existing", "import", "export"];
+  const write: CanvasGrantAction[] = ["read_snapshot", "read_live", "write_existing", "create", "delete_existing", "import", "export"];
+  if (emptySelection) return [...write, "set_canvas_background"];
+  return write;
+}
+
+export function buildCanvasGrantObjectScope(snapshot: SnapshotRow): CanvasGrantObjectScope {
+  const { wholeCanvas, groupIds } = projectionFlags(snapshot);
+  const elementIds = snapshot.selectedElements.map((item) => item.id);
+  const frameIds = snapshot.selectedFrames.map((item) => item.id);
+  const emptySelection = wholeCanvas || (elementIds.length === 0 && frameIds.length === 0);
+  const createParents = emptySelection
+    ? [...new Set(["ROOT", ...frameIds, ...groupIds])]
+    : frameIds.length
+      ? [...new Set([...frameIds, ...groupIds])]
+      : [...new Set(["ROOT", ...groupIds])];
+  return {
+    snapshotId: snapshot.id,
+    canvasId: snapshot.canvasId,
+    elementIds,
+    frameIds,
+    emptySelection,
+    createParents,
+  };
+}
+
+function allowsRootChildMutation(
+  scope: CanvasGrantObjectScope,
+  grant: CanvasAccessGrantRow,
+  createdElements: Set<string>,
+  deletedElements: Set<string>,
+): boolean {
+  if (scope.createParents.includes("ROOT")) return true;
+  if (scope.frameIds.length === 0) return false;
+  if (createdElements.size > 0 && grant.actions.includes("create")) return true;
+  if (deletedElements.size > 0 && grant.actions.includes("delete_existing")) return true;
+  return false;
 }
 
 export function prepareCanvasAccessGrantsInTransaction(
@@ -107,10 +140,7 @@ export function prepareCanvasAccessGrantsInTransaction(
     if (!binding || binding.executorAgentId !== input.executorAgentId) continue;
     const delivery = required.find((item) => item.messageId === snapshot.messageId);
     if (!delivery) continue;
-    const { wholeCanvas, groupIds } = projectionFlags(snapshot);
-    const elementIds = snapshot.selectedElements.map((item) => item.id);
-    const frameIds = snapshot.selectedFrames.map((item) => item.id);
-    const emptySelection = wholeCanvas || (elementIds.length === 0 && frameIds.length === 0);
+    const objectScope = buildCanvasGrantObjectScope(snapshot);
     const grant = tx.insert(schema.canvasAccessGrants).values({
       id: randomUUID(),
       spaceId: input.spaceId,
@@ -120,15 +150,8 @@ export function prepareCanvasAccessGrantsInTransaction(
       turnId: input.turnId,
       executorAgentId: input.executorAgentId,
       canvasId: snapshot.canvasId,
-      objectScope: {
-        snapshotId: snapshot.id,
-        canvasId: snapshot.canvasId,
-        elementIds: emptySelection ? [] : elementIds,
-        frameIds: emptySelection ? [] : frameIds,
-        emptySelection,
-        createParents: emptySelection ? [] : [...new Set(["ROOT", ...frameIds, ...groupIds])],
-      },
-      actions: defaultActions(emptySelection),
+      objectScope,
+      actions: defaultActions(objectScope.emptySelection),
       expiresAt: input.expiresAt,
     }).returning().get();
     created.push(grant);
@@ -243,12 +266,12 @@ export function assertLiveCanvasAccessGrant(
   }
   const scope = grant.objectScope;
   for (const elementId of input.requestedElementIds ?? []) {
-    if (scope.emptySelection || !scope.elementIds.includes(elementId)) {
+    if (!scope.elementIds.includes(elementId)) {
       throw new CanvasAccessGrantError("denied", "elementId is outside the authorized Canvas grant");
     }
   }
   for (const frameId of input.requestedFrameIds ?? []) {
-    if (scope.emptySelection || !scope.frameIds.includes(frameId)) {
+    if (!scope.frameIds.includes(frameId)) {
       throw new CanvasAccessGrantError("denied", "frameId is outside the authorized Canvas grant");
     }
   }
@@ -269,9 +292,8 @@ export function authorizeCanvasMutationImpact(
   } = {},
 ): void {
   const scope = grant.objectScope;
-  if (scope.emptySelection) {
-    // Product Stage-4 empty/whole-canvas snapshots stay read-only unless a grant
-    // explicitly carries set_canvas_background (not signed by defaultActions).
+  if (scope.emptySelection && !grant.actions.includes("create") && !grant.actions.includes("write_existing")) {
+    // Explicitly injected read-only / background-only grants stay fail-closed.
     if (!grant.actions.includes("set_canvas_background")) {
       throw new CanvasAccessGrantError("denied", "whole-canvas snapshot grants are read-only");
     }
@@ -368,8 +390,8 @@ export function authorizeCanvasMutationImpact(
     }
     if (resource === "structure:root") {
       const childrenRoot = impact.writeResources.includes("children:ROOT");
-      const creating = createdElements.size > 0 && grant.actions.includes("create") && scope.createParents.includes("ROOT");
-      const deleting = deletedElements.size > 0 && grant.actions.includes("delete_existing") && scope.createParents.includes("ROOT");
+      const creating = createdElements.size > 0 && grant.actions.includes("create") && allowsRootChildMutation(scope, grant, createdElements, deletedElements);
+      const deleting = deletedElements.size > 0 && grant.actions.includes("delete_existing") && allowsRootChildMutation(scope, grant, createdElements, deletedElements);
       if (childrenRoot && (creating || deleting)) continue;
       throw new CanvasAccessGrantError("denied", `write impact ${resource} is outside the Canvas grant`);
     }
@@ -390,7 +412,7 @@ export function authorizeCanvasMutationImpact(
     }
     if (resource.startsWith("children:")) {
       const parent = resource.slice("children:".length);
-      if (parent === "ROOT" && scope.createParents.includes("ROOT")) continue;
+      if (parent === "ROOT" && allowsRootChildMutation(scope, grant, createdElements, deletedElements)) continue;
       if (scope.createParents.includes(parent) || scope.elementIds.includes(parent) || createdElements.has(parent)) continue;
       throw new CanvasAccessGrantError("denied", `cannot change children of ${parent} outside the grant`);
     }
@@ -401,7 +423,7 @@ export function authorizeCanvasMutationImpact(
       // parent: writes for every sibling. Those ambient siblings are not in-scope.
       if (
         impact.writeResources.includes("children:ROOT")
-        && scope.createParents.includes("ROOT")
+        && allowsRootChildMutation(scope, grant, createdElements, deletedElements)
         && (createdElements.size > 0 || deletedElements.size > 0)
       ) continue;
       throw new CanvasAccessGrantError("denied", `cannot reparent ${id} outside the grant`);

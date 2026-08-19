@@ -43,7 +43,15 @@ Ordinary body @name text does not grant Canvas write. Do not invent or expand ca
 - Never replace an artboard with a full-bleed background rect.
 - Exception: only if the user explicitly refuses frames (不要画框 / 自由画布 / 不要 create_frame).
 - Multi-artboard: create one frame per board, populate it, then the next frame. Do not merge multiple posters into one tall/wide frame.
-- If FOCUS_FRAME_ID is already set: place ALL new content inside that frame; do not emit another create_frame for it.
+- If FOCUS_FRAME_ID is already set to a real frame id (not "(none)"):
+  1. Use that Frame. Do NOT call canvas.create_frame.
+  2. Every create_text / create_shape / create_image MUST pass frameId=FOCUS_FRAME_ID.
+  3. x/y are **frame-local**: 0,0 is the top-left of that Frame, not the infinite canvas.
+  4. Do not place content on ROOT / the empty canvas around the Frame.
+- If FOCUS_FRAME_ID is "(none)" (empty selection / whole-canvas grant) and you are creating a new design (poster/banner):
+  1. Create a new frame first with canvas.create_frame at the deliverable size. Do NOT treat an existing SCENE_FRAMES id as the target unless the user named it.
+  2. Then place all content inside it (frameId of that new frame; x/y frame-local).
+  3. ROOT is allowed as a parent so you can create that new Frame; do not dump titles/shapes onto the empty canvas around existing boards.
 - New design while SCENE_FRAMES already has other boards: paint the new FOCUS plate only. Do not update_node / delete ambient SCENE ids unless the user asked.
 
 ### Size inference (do not ask)
@@ -82,21 +90,22 @@ Ordinary body @name text does not grant Canvas write. Do not invent or expand ca
 ## Placement Rules
 
 ### Coordinate system
-- Origin: top-left of canvas (or of the frame if the node has frameId)
-- x increases rightward, y increases downward
-- Units: CSS pixels, not physical mm/pt
+- Stored scene coordinates are canvas-absolute. **create_*/update_node x/y when frameId is set are frame-local** (0,0 = that Frame's top-left). The host converts to canvas-absolute.
+- x increases rightward, y increases downward. Units: CSS pixels, not physical mm/pt.
+- SCENE_NODES lists canvas-absolute x/y. When a node is inside FOCUS_FRAME_ID it also lists local_x/local_y — use those for placement inside the Frame.
+- Example: FOCUS frame at canvas x=1200 y=0, 1080×1920. A title 80px from the top of the poster is create_text({ frameId: FOCUS_FRAME_ID, x: 40, y: 80, ... }) — not x=1240.
 
 ### Parenting
 - frameId: which frame this element belongs to (visual grouping / artboard)
 - parentId: which group/container this element is a child of (hierarchy)
 - Root elements: parentId="ROOT" or omit
 - Frame id passed as parentId → server remaps to ROOT (frames cannot parent nodes)
-- allowedCreateParents from scene_summary lists valid parent options
+- allowedCreateParents from scene_summary lists valid parent options. When FOCUS_FRAME_ID is set, ROOT is not a place to dump new artwork.
 
 ### Creating inside frames
-- Use frameId from scene_summary FOCUS_FRAME_ID or SCENE_FRAMES
-- Coordinates are relative to the frame origin when frameId is set
-- Same-batch create_frame + content: set frameId on every create_* to that new frame id
+- If FOCUS_FRAME_ID has a value, ALL new elements must set frameId=FOCUS_FRAME_ID.
+- Coordinates are frame-local when frameId is set.
+- Same-batch create_frame + content: set frameId on every create_* to that new frame id; x/y are local to that new frame.
 
 ### Multi-artboard workflow
 1. canvas.create_frame({x:0, y:0, width:1080, height:1920, name:"Poster 1"})
@@ -178,7 +187,8 @@ actions, createParents, selectedElements, selectedFrames
 === AVAILABLE_FONTS ===
 listed faces you may pass as fontFamily
 
-If FOCUS_FRAME_ID is "(none)", either the grant has multiple frames or none; do not invent a frame id. Use SCENE_FRAMES ids only.
+If FOCUS_FRAME_ID is a real id, every create_* MUST set frameId to that id. Do not create another frame. x/y are frame-local.
+If FOCUS_FRAME_ID is "(none)", the grant is either multi-frame, element-only, or whole-canvas. Do not invent a frame id and do not assume the only existing Frame is the target. For a new design, create_frame first.
 
 ## Icon Construction
 

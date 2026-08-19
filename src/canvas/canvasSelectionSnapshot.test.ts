@@ -17,7 +17,7 @@ const baseDocument = {
   deltaSetLike: {
     ROOT: { children: ["shape-1", "text-1"] },
     "shape-1": { id: "shape-1", key: "shape", x: 10, y: 20, width: 100, height: 80, attrs: {}, children: [] },
-    "text-1": { id: "text-1", key: "text", x: 40, y: 60, width: 120, height: 24, attrs: { text: "hello" }, children: [] },
+    "text-1": { id: "text-1", key: "text", x: 500, y: 60, width: 120, height: 24, attrs: { text: "hello" }, children: [] },
   },
   frames: [{ id: "frame-1", name: "Board", x: 0, y: 0, width: 400, height: 300 }],
   stackOrder: ["shape-1", "text-1"],
@@ -83,6 +83,25 @@ test("element and Frame selection projects only the requested live objects", () 
     assert.deepEqual(frozen.selectedFrames.map((item) => item.id), ["frame-1"]);
     assert.equal(frozen.projection.elements[0]?.x, 10);
     assert.equal(frozen.projection.frames[0]?.name, "Board");
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("selecting a Frame also freezes overlapping member nodes and keeps the Frame", () => {
+  const f = fixture();
+  try {
+    const created = f.core.create({ title: "Frame members", document: baseDocument });
+    const frozen = f.db.transaction((tx) => freezeCanvasSelectionInTransaction(
+      tx,
+      f.spaceId,
+      { canvasId: created.id, selectedIds: ["frame:frame-1"] },
+      "human-1",
+    ));
+    assert.equal(frozen.projection.wholeCanvas, false);
+    assert.deepEqual(frozen.selectedFrames.map((item) => item.id), ["frame-1"]);
+    assert.ok(frozen.selectedElements.some((item) => item.id === "shape-1"));
+    assert.equal(frozen.selectedElements.some((item) => item.id === "text-1"), false);
   } finally {
     f.cleanup();
   }

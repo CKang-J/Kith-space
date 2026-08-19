@@ -9,8 +9,11 @@ import {
 } from "./canvasAccessGrant.js";
 import type { CanvasJson } from "./canvasTypes.js";
 import type { CanvasSceneSummaryCommand } from "./canvasAgentTools.js";
+import { MAX_CANVAS_SELECTION_IDS } from "./canvasSelectionSnapshot.js";
+import { canvasNodeBelongsToFrame } from "./canvasFrameMembership.js";
 
 const CANVAS_AVAILABLE_FONTS = ["Alibaba PuHuiTi", "Inter"] as const;
+const MAX_SCENE_NODES = 50;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -94,14 +97,14 @@ function mapFrame(record: Record<string, unknown>): CanvasSceneSummaryFrame | nu
   };
 }
 
-function mapElement(id: string, node: Record<string, unknown>): CanvasSceneSummaryElement {
+function mapElement(id: string, node: Record<string, unknown>, inferredFrameId: string | null = null): CanvasSceneSummaryElement {
   const attrs = asRecord(node.attrs) ?? {};
   return {
     id,
     type: stringOf(node.key),
     name: stringOf(node.name),
     parentId: stringOf(node.parentId),
-    frameId: stringOf(node.frameId),
+    frameId: stringOf(node.frameId) ?? inferredFrameId,
     shapeType: stringOf(node.shapeType) ?? stringOf(attrs.shapeType),
     fill: paintOf(node, "fill"),
     stroke: paintOf(node, "stroke"),
@@ -115,6 +118,19 @@ function mapElement(id: string, node: Record<string, unknown>): CanvasSceneSumma
   };
 }
 
+function inferElementFrameId(
+  node: Record<string, unknown>,
+  frames: CanvasSceneSummaryFrame[],
+  allowedFrames: Set<string>,
+): string | null {
+  const bound = stringOf(node.frameId);
+  if (bound) return bound;
+  for (const frame of frames) {
+    if (allowedFrames.has(frame.id) && canvasNodeBelongsToFrame(node, frame, frame.id)) return frame.id;
+  }
+  return null;
+}
+
 function liveFrames(document: CanvasJson): CanvasSceneSummaryFrame[] {
   const root = asRecord(document) ?? {};
   const frames = Array.isArray(root.frames) ? root.frames : [];
@@ -125,12 +141,44 @@ function liveFrames(document: CanvasJson): CanvasSceneSummaryFrame[] {
   });
 }
 
-function liveElements(document: CanvasJson, ids: string[]): CanvasSceneSummaryElement[] {
+function liveElements(document: CanvasJson, grant: CanvasAccessGrantRow): CanvasSceneSummaryElement[] {
   const root = asRecord(document) ?? {};
   const nodes = asRecord(root.deltaSetLike) ?? {};
-  return ids.flatMap((id) => {
+  const frames = liveFrames(document);
+  const frameById = new Map(frames.map((frame) => [frame.id, frame]));
+  const allowedFrames = new Set(grant.objectScope.frameIds);
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const take = (id: string) => {
+    if (id === "ROOT" || seen.has(id) || !nodes[id]) return;
+    seen.add(id);
+    ids.push(id);
+  };
+  if (grant.objectScope.emptySelection) {
+    const rootNode = asRecord(nodes.ROOT);
+    const children = Array.isArray(rootNode?.children) ? rootNode.children : [];
+    for (const id of children) {
+      if (typeof id === "string") take(id);
+    }
+  }
+  for (const id of grant.objectScope.elementIds) take(id);
+  if (allowedFrames.size) {
+    for (const id of Object.keys(nodes)) {
+      const node = asRecord(nodes[id]);
+      if (!node) continue;
+      for (const frameId of allowedFrames) {
+        const frame = frameById.get(frameId);
+        if (frame && canvasNodeBelongsToFrame(node, frame, frameId)) {
+          take(id);
+          break;
+        }
+      }
+    }
+  }
+  const limited = grant.objectScope.emptySelection ? ids.slice(0, MAX_SCENE_NODES) : ids.slice(0, MAX_CANVAS_SELECTION_IDS);
+  return limited.flatMap((id) => {
     const node = asRecord(nodes[id]);
-    return node ? [mapElement(id, node)] : [];
+    return node ? [mapElement(id, node, inferElementFrameId(node, frames, allowedFrames))] : [];
   });
 }
 
@@ -154,11 +202,13 @@ function snapshotFrames(grant: CanvasAccessGrantRow, snapshot: { projection: unk
 function snapshotElements(grant: CanvasAccessGrantRow, snapshot: { projection: unknown }): CanvasSceneSummaryElement[] {
   const projection = asRecord(snapshot.projection);
   const elements = Array.isArray(projection?.elements) ? projection.elements : [];
+  const frames = snapshotFrames(grant, { projection, selectedFrames: grant.objectScope.frameIds.map((id) => ({ id })) });
   const allowed = new Set(grant.objectScope.elementIds);
+  const allowedFrames = new Set(grant.objectScope.frameIds);
   return elements.flatMap((item) => {
     const record = asRecord(item);
     if (!record || typeof record.id !== "string" || !allowed.has(record.id)) return [];
-    return [mapElement(record.id, record)];
+    return [mapElement(record.id, record, inferElementFrameId(record, frames, allowedFrames))];
   });
 }
 
@@ -197,7 +247,14 @@ function formatCanvasSceneContextText(input: {
         node.shapeType ? `shapeType=${node.shapeType}` : "",
       ].filter(Boolean);
       const preview = node.text ? ` text_preview=${JSON.stringify(node.text.slice(0, 40))}` : "";
-      return `- ${node.id}: ${node.type ?? "node"} name=${node.name ?? "—"} x=${formatNum(node.bounds.x)} y=${formatNum(node.bounds.y)} w=${formatNum(node.bounds.width)} h=${formatNum(node.bounds.height)} parent=${node.parentId ?? "ROOT"} frame=${node.frameId ?? "—"}${style.length ? ` style: ${style.join(" ")}` : ""}${preview}`;
+      const local = node.frameId && input.focusFrameId === node.frameId
+        ? (() => {
+          const frame = input.selectedFrames.find((item) => item.id === node.frameId);
+          if (!frame || node.bounds.x == null || node.bounds.y == null || frame.x == null || frame.y == null) return "";
+          return ` local_x=${formatNum(node.bounds.x - frame.x)} local_y=${formatNum(node.bounds.y - frame.y)}`;
+        })()
+        : "";
+      return `- ${node.id}: ${node.type ?? "node"} name=${node.name ?? "—"} x=${formatNum(node.bounds.x)} y=${formatNum(node.bounds.y)} w=${formatNum(node.bounds.width)} h=${formatNum(node.bounds.height)} parent=${node.parentId ?? "ROOT"} frame=${node.frameId ?? "—"}${local}${style.length ? ` style: ${style.join(" ")}` : ""}${preview}`;
     })
     : ["- (none)"];
   return [
@@ -258,14 +315,23 @@ export function executeCanvasSceneSummary(
     const frames = liveFrames(document);
     const allowedFrames = new Set(grant.objectScope.frameIds);
     selectedFrames = frames.filter((frame) => allowedFrames.has(frame.id));
-    elements = liveElements(document, grant.objectScope.elementIds);
+    elements = liveElements(document, grant);
   }
-  const allowedCreateParents = grant.objectScope.emptySelection ? [] : grant.objectScope.createParents;
-  const focusFrameId = selectedFrames.length === 1 ? selectedFrames[0]!.id : null;
+  const allowedCreateParents = grant.objectScope.createParents;
+  const canCreate = grant.actions.includes("create");
+  const focusFrameId = grant.objectScope.emptySelection
+    ? null
+    : grant.objectScope.frameIds.length === 1
+      ? grant.objectScope.frameIds[0]!
+      : (selectedFrames.length === 1 ? selectedFrames[0]!.id : null);
   const availableFonts = [...CANVAS_AVAILABLE_FONTS];
-  const nextSuggestedAction = grant.objectScope.emptySelection
+  const nextSuggestedAction = !canCreate && grant.objectScope.emptySelection
     ? "Grant is read-only. Use canvas.snapshot_get / canvas.export. Do not call create/update/delete."
-    : "Create inside allowedCreateParents. Call typed canvas.create_* or canvas.update_node, then verify with canvas.scene_summary before turn.reply outputRefs.canvas_mutation.";
+    : grant.objectScope.emptySelection
+      ? "FOCUS_FRAME_ID is (none). For a new poster/banner, canvas.create_frame first at the deliverable size, then place content with that new frameId (x/y are frame-local). Do not reuse an existing SCENE_FRAMES id as FOCUS unless the user pointed at it. ALLOWED_CREATE_PARENTS includes ROOT and existing Frames. Then verify with canvas.scene_summary before turn.reply outputRefs.canvas_mutation."
+      : focusFrameId
+        ? `FOCUS_FRAME_ID is ${focusFrameId}. Place ALL new content inside it with frameId=${focusFrameId}. x/y are frame-local (0,0 = that Frame's top-left). Do not create another frame. Then verify with canvas.scene_summary before turn.reply outputRefs.canvas_mutation.`
+        : "Create inside allowedCreateParents. Call typed canvas.create_* or canvas.update_node, then verify with canvas.scene_summary before turn.reply outputRefs.canvas_mutation.";
   const contextText = formatCanvasSceneContextText({
     canvasId: grant.canvasId,
     snapshotId: grant.snapshotId,

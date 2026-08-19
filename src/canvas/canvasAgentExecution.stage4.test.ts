@@ -600,7 +600,8 @@ test("stage4 review fixes: multi-grant snapshotId, background auth, reorder, ren
       idempotencyKey: "bg-deny",
     }), /set_canvas_background|capability_scope_denied/);
 
-    // Explicit whole-canvas write grant (injected) may set background; product does not issue these yet.
+    // Explicit whole-canvas write grant (injected) may set background; product now
+    // also signs set_canvas_background on empty/whole-canvas grants.
     const wholeGrant = grants[0]!;
     f.db.update(schema.canvasAccessGrants).set({
       actions: ["read_snapshot", "read_live", "set_canvas_background"],

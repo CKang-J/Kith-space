@@ -150,25 +150,78 @@ test("selection-to-chat writes pending from the event canvasId, not whichever Ca
       previewDocument: { id: "b" },
       documentRevision: 5,
     });
+    assert.deepEqual(
+      getPendingCanvasChatContexts("channel-a").map((item) => ({ canvasId: item.canvasId, auto: Boolean(item.autoWholeCanvas), ids: item.selectedIds })),
+      [
+        { canvasId: "canvas-a", auto: true, ids: [] },
+        { canvasId: "canvas-b", auto: true, ids: [] },
+      ],
+    );
     window.dispatchEvent(new CustomEvent(CANVAS_SELECTION_TO_CHAT_EVENT, {
       detail: { target: ["shape-from-b"], canvasId: "canvas-b" },
     }));
-    assert.deepEqual(getPendingCanvasChatContexts("channel-a").map((item) => item.canvasId), ["canvas-b"]);
-    assert.equal(getPendingCanvasChatContexts("channel-a")[0]?.canvasTitle, "Board B");
+    assert.deepEqual(
+      getPendingCanvasChatContexts("channel-a").map((item) => ({ canvasId: item.canvasId, auto: Boolean(item.autoWholeCanvas), ids: item.selectedIds })),
+      [
+        { canvasId: "canvas-a", auto: true, ids: [] },
+        { canvasId: "canvas-b", auto: false, ids: ["shape-from-b"] },
+      ],
+    );
+    assert.equal(getPendingCanvasChatContexts("channel-a").find((item) => item.canvasId === "canvas-b")?.canvasTitle, "Board B");
     window.dispatchEvent(new CustomEvent(CANVAS_SELECTION_TO_CHAT_EVENT, {
       detail: { target: ["shape-missing"], canvasId: "canvas-missing" },
     }));
     window.dispatchEvent(new CustomEvent(CANVAS_SELECTION_TO_CHAT_EVENT, {
       detail: { target: ["shape-orphan"] },
     }));
-    assert.deepEqual(getPendingCanvasChatContexts("channel-a").map((item) => item.selectedIds[0]), ["shape-from-b"]);
+    assert.deepEqual(getPendingCanvasChatContexts("channel-a").map((item) => item.canvasId), ["canvas-a", "canvas-b"]);
     releaseA();
     releaseB();
     assert.deepEqual(
       getPendingCanvasChatContexts("channel-a").map((item) => item.selectedIds),
       [["shape-from-b"]],
-      "closing Canvas tabs must not discard pending Chat context",
+      "closing Canvas tabs must not discard user-sent pending Chat context",
     );
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+    resetCanvasChatBridgeForTests();
+  }
+});
+
+test("opening a Canvas auto-authorizes the whole board; closing the tab drops only that auto chip", () => {
+  resetCanvasChatBridgeForTests();
+  const originalWindow = globalThis.window;
+  const listeners = new Map<string, Set<EventListener>>();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      addEventListener(type: string, listener: EventListener) {
+        const set = listeners.get(type) ?? new Set();
+        set.add(listener);
+        listeners.set(type, set);
+      },
+      removeEventListener(type: string, listener: EventListener) {
+        listeners.get(type)?.delete(listener);
+      },
+      dispatchEvent() { return true; },
+    },
+  });
+  try {
+    const releaseSurface = pushCanvasChatSurface("channel-a");
+    const releaseCanvas = bindCanvasSelectionToChat({
+      canvasId: "canvas-open",
+      canvasTitle: "Open Board",
+      previewDocument: { id: "open" },
+      documentRevision: 3,
+    });
+    const auto = getPendingCanvasChatContexts("channel-a")[0];
+    assert.equal(auto?.canvasId, "canvas-open");
+    assert.equal(auto?.autoWholeCanvas, true);
+    assert.deepEqual(auto?.selectedIds, []);
+    assert.equal(auto?.summaryParts.wholeCanvas, true);
+    releaseCanvas();
+    assert.deepEqual(getPendingCanvasChatContexts("channel-a"), []);
+    releaseSurface();
   } finally {
     Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
     resetCanvasChatBridgeForTests();

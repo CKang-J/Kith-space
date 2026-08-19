@@ -10,6 +10,8 @@ export interface PendingCanvasChatContext {
   previewDocument: unknown;
   documentRevision?: number;
   surfaceId: string;
+  /** Implicit whole-canvas chip while the Canvas tab is open. Closing the tab removes only these. */
+  autoWholeCanvas?: boolean;
 }
 
 export type PendingCanvasChatContextInput = Omit<PendingCanvasChatContext, "id" | "surfaceId" | "summaryParts"> & {
@@ -51,6 +53,7 @@ export function setActiveCanvasChatSurface(surfaceId: string | null): void {
 export function pushCanvasChatSurface(surfaceId: string): () => void {
   surfaceStack.push(surfaceId);
   activeSurfaceId = surfaceId;
+  for (const canvasId of canvasSources.keys()) ensureAutoWholeCanvasContext(canvasId);
   notify();
   return () => {
     const index = surfaceStack.lastIndexOf(surfaceId);
@@ -139,13 +142,48 @@ export function appendPendingCanvasChatContext(
   if (!key) return null;
   const next = hydratePending(value, key);
   const current = listFor(key);
+  const withoutAuto = next.autoWholeCanvas
+    ? current
+    : current.filter((item) => !(item.canvasId === next.canvasId && item.autoWholeCanvas));
   const identity = pendingCanvasSelectionKey(next.canvasId, next.selectedIds);
-  if (current.some((item) => pendingCanvasSelectionKey(item.canvasId, item.selectedIds) === identity)) {
-    return current.find((item) => pendingCanvasSelectionKey(item.canvasId, item.selectedIds) === identity) ?? null;
+  if (withoutAuto.some((item) => pendingCanvasSelectionKey(item.canvasId, item.selectedIds) === identity)) {
+    if (withoutAuto.length !== current.length) {
+      pendingBySurface.set(key, withoutAuto);
+      notify();
+    }
+    return withoutAuto.find((item) => pendingCanvasSelectionKey(item.canvasId, item.selectedIds) === identity) ?? null;
   }
-  pendingBySurface.set(key, [...current, next]);
+  pendingBySurface.set(key, [...withoutAuto, next]);
   notify();
   return next;
+}
+
+export function ensureAutoWholeCanvasContext(canvasId: string): void {
+  const source = canvasSources.get(canvasId);
+  if (!source) return;
+  const key = activeSurfaceId;
+  if (!key) return;
+  if (listFor(key).some((item) => item.canvasId === canvasId)) return;
+  appendPendingCanvasChatContext({
+    canvasId,
+    canvasTitle: source.canvasTitle,
+    selectedIds: [],
+    previewDocument: source.previewDocument,
+    documentRevision: source.documentRevision,
+    autoWholeCanvas: true,
+  }, key);
+}
+
+export function removeAutoWholeCanvasContext(canvasId: string): void {
+  let changed = false;
+  for (const [surfaceId, list] of pendingBySurface.entries()) {
+    const next = list.filter((item) => !(item.canvasId === canvasId && item.autoWholeCanvas));
+    if (next.length === list.length) continue;
+    changed = true;
+    if (next.length) pendingBySurface.set(surfaceId, next);
+    else pendingBySurface.delete(surfaceId);
+  }
+  if (changed) notify();
 }
 
 export function removePendingCanvasChatContext(pendingId: string, surfaceId?: string | null): void {
@@ -186,11 +224,8 @@ export function bindCanvasSelectionToChat(input: {
   previewDocument: unknown;
   documentRevision?: number;
 }): () => void {
-  canvasSources.set(input.canvasId, {
-    canvasTitle: input.canvasTitle,
-    previewDocument: input.previewDocument,
-    documentRevision: input.documentRevision,
-  });
+  rememberCanvasChatSource(input);
+  ensureAutoWholeCanvasContext(input.canvasId);
   const onSelection = (event: Event) => {
     const detail = (event as CustomEvent<CanvasSelectionToChatDetail>).detail;
     const canvasId = typeof detail?.canvasId === "string" ? detail.canvasId.trim() : "";
@@ -208,6 +243,53 @@ export function bindCanvasSelectionToChat(input: {
   window.addEventListener(CANVAS_SELECTION_TO_CHAT_EVENT, onSelection);
   return () => {
     window.removeEventListener(CANVAS_SELECTION_TO_CHAT_EVENT, onSelection);
+    removeAutoWholeCanvasContext(input.canvasId);
     canvasSources.delete(input.canvasId);
   };
+}
+
+export function updateCanvasChatSource(input: {
+  canvasId: string;
+  canvasTitle: string;
+  previewDocument: unknown;
+  documentRevision?: number;
+}): void {
+  if (!canvasSources.has(input.canvasId)) return;
+  rememberCanvasChatSource(input);
+  let anyChanged = false;
+  for (const [surfaceId, list] of pendingBySurface.entries()) {
+    let surfaceChanged = false;
+    const next = list.map((item) => {
+      if (item.canvasId !== input.canvasId || !item.autoWholeCanvas) return item;
+      surfaceChanged = true;
+      return {
+        ...item,
+        canvasTitle: input.canvasTitle,
+        previewDocument: input.previewDocument,
+        documentRevision: input.documentRevision,
+        summaryParts: pendingSelectionSummaryParts(
+          input.canvasTitle,
+          item.selectedIds,
+          input.documentRevision ?? 0,
+        ),
+      };
+    });
+    if (!surfaceChanged) continue;
+    pendingBySurface.set(surfaceId, next);
+    anyChanged = true;
+  }
+  if (anyChanged) notify();
+}
+
+function rememberCanvasChatSource(input: {
+  canvasId: string;
+  canvasTitle: string;
+  previewDocument: unknown;
+  documentRevision?: number;
+}): void {
+  canvasSources.set(input.canvasId, {
+    canvasTitle: input.canvasTitle,
+    previewDocument: input.previewDocument,
+    documentRevision: input.documentRevision,
+  });
 }

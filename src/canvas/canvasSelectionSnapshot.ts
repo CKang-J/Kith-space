@@ -6,6 +6,7 @@ import { schema } from "../db/index.js";
 import { CanvasNotFoundError, CanvasValidationError } from "./canvasCore.js";
 import { canonicalJson } from "./canonicalJson.js";
 import { readEntityRevision } from "./canvasEntityRevision.js";
+import { canvasNodeBelongsToFrame } from "./canvasFrameMembership.js";
 import {
   canvasSelectionSummaryParts,
   formatCanvasSelectionSummary,
@@ -170,15 +171,24 @@ export function freezeCanvasSelectionInTransaction(
       else if (frameById.has(token) && !nodes[token]) takeFrame(token);
       else takeNode(token);
     }
+    for (const frameId of selectedFrameIds) {
+      const frame = frameById.get(frameId);
+      if (!frame) continue;
+      for (const id of Object.keys(nodes)) {
+        const node = asRecord(nodes[id]);
+        if (!node) continue;
+        if (canvasNodeBelongsToFrame(node, frame, frameId)) takeNode(id);
+      }
+    }
   }
   if (!wholeCanvas && !selectedNodeIds.length && !selectedFrameIds.length) {
     throw new CanvasValidationError("canvas selection does not match any live element or Frame");
   }
 
   const truncated = selectedNodeIds.length + selectedFrameIds.length > MAX_CANVAS_SELECTION_IDS;
-  const limitedNodes = selectedNodeIds.slice(0, MAX_CANVAS_SELECTION_IDS);
-  const remaining = MAX_CANVAS_SELECTION_IDS - limitedNodes.length;
-  const limitedFrames = selectedFrameIds.slice(0, Math.max(0, remaining));
+  const limitedFrames = selectedFrameIds.slice(0, MAX_CANVAS_SELECTION_IDS);
+  const remaining = MAX_CANVAS_SELECTION_IDS - limitedFrames.length;
+  const limitedNodes = selectedNodeIds.slice(0, Math.max(0, remaining));
   const membershipIncluded = wholeCanvas || limitedFrames.length > 0;
   const projection: CanvasSelectionProjection = {
     canvasId: row.id,

@@ -53,7 +53,7 @@ const scene = {
   deltaSetLike: {
     ROOT: { children: ["shape-1", "shape-2"] },
     "shape-1": { id: "shape-1", key: "shape", x: 10, y: 20, width: 100, height: 80, attrs: {}, children: [] },
-    "shape-2": { id: "shape-2", key: "shape", x: 140, y: 20, width: 100, height: 80, attrs: {}, children: [] },
+    "shape-2": { id: "shape-2", key: "shape", x: 520, y: 20, width: 100, height: 80, attrs: {}, children: [] },
   },
   frames: [{ id: "frame-1", name: "Board", x: 0, y: 0, width: 400, height: 300 }],
   stackOrder: ["shape-1", "shape-2"],
@@ -452,6 +452,8 @@ test("canvas intent stays unknown from natural language and pure questions do no
   assert.match(pack, /does not hard-refuse turn\.reply/);
   assert.match(pack, /Canvas Operation Protocol/);
   assert.match(pack, /Frame-first principle/);
+  assert.match(pack, /frame-local/);
+  assert.match(pack, /Every create_text \/ create_shape \/ create_image MUST pass frameId/);
   assert.match(pack, /NEVER use CSS: fill="linear-gradient/);
   assert.match(pack, /Prefer canvas\.update_node on the same id/);
   assert.match(pack, /do not delete\+create/);
@@ -494,7 +496,8 @@ test("scene_summary is grant-scoped and typed create/update/delete share Gateway
     assert.ok(summary.elements.some((element) => element.id === "shape-1"));
     assert.equal(summary.elements.some((element) => element.id === "shape-2"), false);
     assert.ok(summary.allowedCreateParents.includes("frame-1"));
-    assert.match(summary.nextSuggestedAction, /typed canvas\.create_/);
+    assert.equal(summary.allowedCreateParents.includes("ROOT"), false);
+    assert.match(summary.nextSuggestedAction, /FOCUS_FRAME_ID is frame-1/);
     assert.equal(summary.focusFrameId, "frame-1");
     assert.match(summary.contextText, /=== CANVAS_SCENE ===/);
     assert.match(summary.contextText, /FOCUS_FRAME_ID: frame-1/);
@@ -529,6 +532,8 @@ test("scene_summary is grant-scoped and typed create/update/delete share Gateway
     assert.equal(liveAfterCreate.deltaSetLike[createdId]?.text, "Poster title");
     assert.equal(liveAfterCreate.deltaSetLike[createdId]?.parentId, "ROOT");
     assert.equal((liveAfterCreate.deltaSetLike[createdId] as { frameId?: string }).frameId, "frame-1");
+    assert.equal((liveAfterCreate.deltaSetLike[createdId] as { x?: number }).x, 24);
+    assert.equal((liveAfterCreate.deltaSetLike[createdId] as { y?: number }).y, 32);
 
     const updated = turn.gateway.canvasUpdateNode(turn.claims, {
       snapshotId: grant.snapshotId,
@@ -928,6 +933,150 @@ test("failed canvas tool persists LAST_CANVAS_ERROR and a later success clears i
     assert.equal(node?.fill ?? node?.attrs?.fill, "#FF0000");
     const afterOk = new ContextAssembler(f.spaceId, f.db, () => Date.now()).assemble(turn.turnId, turn.claims.activationId);
     assert.doesNotMatch(afterOk.renderedContext, /LAST_CANVAS_ERROR: code=/);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("selecting only a Frame focuses it, hides out-of-frame nodes, and converts frame-local create coords", async () => {
+  const f = fixture("frame-focus");
+  try {
+    const offsetDoc = {
+      width: 1600,
+      height: 900,
+      deltaSetLike: {
+        ROOT: { children: ["inside", "outside"] },
+        inside: { id: "inside", key: "shape", x: 220, y: 90, width: 80, height: 40, attrs: {}, children: [] },
+        outside: { id: "outside", key: "shape", x: 20, y: 20, width: 40, height: 40, attrs: {}, children: [] },
+      },
+      frames: [{ id: "poster", name: "Poster", x: 200, y: 80, width: 1080, height: 1920 }],
+      stackOrder: ["inside", "outside"],
+    };
+    const canvas = f.core.create({ title: "Offset", document: offsetDoc });
+    const executor = f.addAgent("executor");
+    const channel = f.addChannel();
+    f.addMember(channel.id, executor.id);
+    const modules = posting();
+    const message = await modules.messagePosting.post({
+      kind: "chat",
+      context: { spaceId: f.spaceId, channelId: channel.id, sender: { type: "human", id: f.humanId, name: "Human" } },
+      content: "在这个框里加标题",
+      canvasSelection: { canvasId: canvas.id, selectedIds: ["frame:poster"] },
+      executionBinding: { executorAgentId: executor.id, mode: "required" },
+    });
+    const turn = await prepareTurn({
+      spaceId: f.spaceId,
+      db: f.db,
+      agentId: executor.id,
+      channelId: channel.id,
+      messageId: message.id,
+    });
+    const grant = f.db.select().from(schema.canvasAccessGrants).where(eq(schema.canvasAccessGrants.turnId, turn.turnId)).get();
+    assert.ok(grant);
+    assert.deepEqual(grant.objectScope.frameIds, ["poster"]);
+    assert.equal(grant.objectScope.createParents.includes("ROOT"), false);
+    assert.ok(grant.objectScope.createParents.includes("poster"));
+    assert.ok(grant.objectScope.elementIds.includes("inside"));
+    assert.equal(grant.objectScope.elementIds.includes("outside"), false);
+    const summary = turn.gateway.canvasSceneSummary(turn.claims, {
+      snapshotId: grant.snapshotId,
+      idempotencyKey: "focus-summary",
+    });
+    assert.equal(summary.focusFrameId, "poster");
+    assert.equal(summary.emptySelection, false);
+    assert.ok(summary.elements.some((element) => element.id === "inside"));
+    assert.equal(summary.elements.some((element) => element.id === "outside"), false);
+    assert.match(summary.contextText, /FOCUS_FRAME_ID: poster/);
+    assert.match(summary.contextText, /local_x=20/);
+    const created = turn.gateway.canvasCreateText(turn.claims, {
+      snapshotId: grant.snapshotId,
+      expectedRevision: f.core.read(canvas.id).revisions.revision,
+      text: "新品上市",
+      x: 40,
+      y: 80,
+      idempotencyKey: "focus-title",
+    });
+    assert.equal(created.status, "committed");
+    const node = (f.core.read(canvas.id).document as {
+      deltaSetLike: Record<string, { x?: number; y?: number; frameId?: string; text?: string }>;
+    }).deltaSetLike[created.createdIds[0]!];
+    assert.equal(node?.frameId, "poster");
+    assert.equal(node?.x, 240);
+    assert.equal(node?.y, 160);
+    assert.equal(node?.text, "新品上市");
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("empty selection issues a whole-canvas write grant with FOCUS_FRAME_ID none", async () => {
+  const f = fixture("whole-canvas-write");
+  try {
+    const executor = f.addAgent("executor");
+    const channel = f.addChannel();
+    f.addMember(channel.id, executor.id);
+    const modules = posting();
+    const message = await modules.messagePosting.post({
+      kind: "chat",
+      context: { spaceId: f.spaceId, channelId: channel.id, sender: { type: "human", id: f.humanId, name: "Human" } },
+      content: "做一个 1080×1920 的海报",
+      canvasSelection: { canvasId: f.canvas.id, selectedIds: [] },
+      executionBinding: { executorAgentId: executor.id, mode: "required" },
+    });
+    const turn = await prepareTurn({
+      spaceId: f.spaceId,
+      db: f.db,
+      agentId: executor.id,
+      channelId: channel.id,
+      messageId: message.id,
+    });
+    const grant = f.db.select().from(schema.canvasAccessGrants).where(eq(schema.canvasAccessGrants.turnId, turn.turnId)).get();
+    assert.ok(grant);
+    assert.equal(grant.objectScope.emptySelection, true);
+    assert.ok(grant.objectScope.createParents.includes("ROOT"));
+    assert.ok(grant.objectScope.createParents.includes("frame-1"));
+    assert.ok(grant.actions.includes("create"));
+    assert.ok(grant.actions.includes("set_canvas_background"));
+    const summary = turn.gateway.canvasSceneSummary(turn.claims, {
+      snapshotId: grant.snapshotId,
+      idempotencyKey: "whole-summary",
+    });
+    assert.equal(summary.focusFrameId, null);
+    assert.equal(summary.emptySelection, true);
+    assert.match(summary.contextText, /FOCUS_FRAME_ID: \(none\)/);
+    assert.match(summary.nextSuggestedAction, /create_frame first/);
+    const createdFrame = turn.gateway.canvasCreateFrame(turn.claims, {
+      snapshotId: grant.snapshotId,
+      expectedRevision: f.core.read(f.canvas.id).revisions.revision,
+      x: 1200,
+      y: 0,
+      width: 1080,
+      height: 1920,
+      name: "Poster",
+      idempotencyKey: "whole-frame",
+    });
+    assert.equal(createdFrame.status, "committed");
+    const frameId = createdFrame.createdIds[0]!;
+    const createdText = turn.gateway.canvasCreateText(turn.claims, {
+      snapshotId: grant.snapshotId,
+      expectedRevision: f.core.read(f.canvas.id).revisions.revision,
+      frameId,
+      text: "新品上市",
+      x: 40,
+      y: 80,
+      idempotencyKey: "whole-title",
+    });
+    assert.equal(createdText.status, "committed");
+    const node = (f.core.read(f.canvas.id).document as {
+      frames: Array<{ id: string; x?: number; y?: number }>;
+      deltaSetLike: Record<string, { x?: number; y?: number; frameId?: string; text?: string }>;
+    });
+    const frame = node.frames.find((item) => item.id === frameId);
+    const text = node.deltaSetLike[createdText.createdIds[0]!];
+    assert.equal(text?.frameId, frameId);
+    assert.equal(text?.x, (frame?.x ?? 0) + 40);
+    assert.equal(text?.y, (frame?.y ?? 0) + 80);
+    assert.equal(text?.text, "新品上市");
   } finally {
     f.cleanup();
   }

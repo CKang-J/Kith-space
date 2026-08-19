@@ -363,11 +363,13 @@ export function defaultCreateParentId(grant: CanvasAccessGrantRow): string | und
   if (!parents.length) return undefined;
   const groups = grant.objectScope.elementIds.filter((id) => parents.includes(id));
   if (groups.length === 1) return groups[0];
+  if (grant.objectScope.frameIds.length > 0) return "ROOT";
   if (parents.includes("ROOT")) return "ROOT";
   return parents.find((id) => id !== "ROOT" && !grant.objectScope.frameIds.includes(id)) ?? "ROOT";
 }
 
 export function defaultCreateFrameId(grant: CanvasAccessGrantRow): string | undefined {
+  if (grant.objectScope.emptySelection) return undefined;
   return grant.objectScope.frameIds.length === 1 ? grant.objectScope.frameIds[0] : undefined;
 }
 

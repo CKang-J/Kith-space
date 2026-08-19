@@ -31,7 +31,7 @@ export function classifyCanvasTurnIntent(explicitIntent?: CanvasTurnIntent | nul
 }
 
 export function grantAllowsCanvasWrite(grants: CanvasAccessGrantRow[]): boolean {
-  return grants.some((grant) => !grant.objectScope.emptySelection && (
+  return grants.some((grant) => (
     grant.actions.includes("create")
     || grant.actions.includes("write_existing")
     || grant.actions.includes("delete_existing")

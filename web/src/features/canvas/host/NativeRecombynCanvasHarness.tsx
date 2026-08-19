@@ -27,7 +27,7 @@ import { useCanvasAssetBridges } from "./useCanvasAssetBridges";
 import { useRecombynCanvasProjection } from "./useRecombynCanvasProjection";
 import { RecombynEditorIconSprite } from "./RecombynEditorIconSprite";
 import i18n from "@/i18n";
-import { bindCanvasSelectionToChat } from "./canvasChatBridge";
+import { bindCanvasSelectionToChat, updateCanvasChatSource } from "./canvasChatBridge";
 import { applyCanvasSelectionFocus } from "./canvasSelectionFocus";
 import { CanvasSelectionSourceProvider } from "./canvasSelectionSource";
 
@@ -235,6 +235,20 @@ function DurableCanvasEditor({ canvasId, resourceKey, snapshot, client, connecti
     previewDocument: snapshot.document,
     documentRevision: snapshot.revisions.document,
   }), [canvasId, snapshot.document, snapshot.revisions.document, snapshot.title]);
+  useEffect(() => {
+    const syncLivePreview = () => {
+      const editor = (store.getState() as { editor?: { document?: unknown; currentId?: string | null } }).editor;
+      if (!editor || editor.currentId !== canvasId || !editor.document) return;
+      updateCanvasChatSource({
+        canvasId,
+        canvasTitle: snapshot.title,
+        previewDocument: editor.document,
+        documentRevision: snapshot.revisions.document,
+      });
+    };
+    syncLivePreview();
+    return store.subscribe(syncLivePreview);
+  }, [canvasId, snapshot.revisions.document, snapshot.title]);
   return <NativeEditorSurface
     projectId={canvasId}
     projectName={snapshot.title}

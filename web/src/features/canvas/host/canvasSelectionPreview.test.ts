@@ -42,3 +42,22 @@ test("selection preview document crops to selected nodes and shifts them into a 
   assert.ok(slice.width >= 32);
   assert.ok(slice.height >= 32);
 });
+
+test("selection preview document crops to a selected Frame and its overlapping nodes", () => {
+  const source = {
+    deltaSetLike: {
+      ROOT: { children: ["in", "out"] },
+      in: { id: "in", key: "shape", x: 10, y: 10, width: 40, height: 40 },
+      out: { id: "out", key: "shape", x: 400, y: 10, width: 40, height: 40 },
+    },
+    frames: [{ id: "board", x: 0, y: 0, width: 200, height: 200 }],
+  };
+  const slice = extractSelectionPreviewDocument(source, ["frame:board"]) as {
+    frames: Array<{ id: string }>;
+    deltaSetLike: Record<string, unknown>;
+  };
+  assert.ok(slice);
+  assert.equal(slice.frames[0]?.id, "board");
+  assert.ok(slice.deltaSetLike.in);
+  assert.equal(slice.deltaSetLike.out, undefined);
+});

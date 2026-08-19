@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { sanitizeInlineSvgMarkup } from "./canvasAssetStore.js";
 import { CanvasValidationError } from "./canvasCore.js";
+import { canvasFrameLocalToCanvas, findCanvasFrame } from "./canvasFrameMembership.js";
 import type { CanvasJson, CanvasOperation, CanvasPatch } from "./canvasTypes.js";
 
 // 默认文本样式
@@ -379,8 +380,11 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
     }
 
     // Also handle top-level raw parameters (x, y, width, height, fill, etc.)
-    if (typeof raw.x === "number") next.x = raw.x;
-    if (typeof raw.y === "number") next.y = raw.y;
+    // Frame-local x/y: 0,0 is the Frame's top-left. Recombyn stores canvas-absolute coords.
+    const targetFrameId = typeof raw.frameId === "string" ? raw.frameId : (typeof next.frameId === "string" ? next.frameId : undefined);
+    const targetFrame = findCanvasFrame(frames, targetFrameId);
+    if (typeof raw.x === "number") next.x = canvasFrameLocalToCanvas(targetFrame, raw.x, 0).x;
+    if (typeof raw.y === "number") next.y = canvasFrameLocalToCanvas(targetFrame, 0, raw.y).y;
     if (typeof raw.width === "number") next.width = raw.width;
     if (typeof raw.height === "number") next.height = raw.height;
     if (typeof raw.fill === "string") {
@@ -547,12 +551,15 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
       throw opError("create_parent_missing", "parentId must be ROOT or an existing group from scene_summary", "create ToolOp parent does not exist");
     }
     const key = op === "create_text" ? "text" : op === "create_svg" ? "svg" : op === "create_image" ? "image" : op === "create_lottie" ? "lottie" : op === "create_icon" ? "icon" : "shape";
+    const createFrameId = typeof raw.frameId === "string" ? raw.frameId : undefined;
+    const createFrame = findCanvasFrame(frames, createFrameId);
+    const canvasPoint = canvasFrameLocalToCanvas(createFrame, numberOf(raw.x, 0), numberOf(raw.y, 0));
     const node: Record<string, CanvasJson> = {
       id,
       key,
       parentId,
-      x: numberOf(raw.x, 0),
-      y: numberOf(raw.y, 0),
+      x: canvasPoint.x,
+      y: canvasPoint.y,
       width: numberOf(raw.width, 100),
       height: numberOf(raw.height, 100),
       attrs: attrs as CanvasJson,
