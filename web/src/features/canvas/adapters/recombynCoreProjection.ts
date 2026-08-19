@@ -200,6 +200,9 @@ export function connectRecombynCoreProjection(
   };
   const unsubscribe = store.subscribe(() => {
     if (closed || suppressProjection) return;
+    // Skip expensive deep comparison and clones during active interactions (drag/pan/zoom).
+    // The debounce timer will catch the final state once the pointer is released.
+    if (options.interactionActive?.()) return;
     const next = (store.getState() as { editor?: { document?: unknown } }).editor?.document;
     if (next === undefined || same(projected, next)) return;
     if (scheduledDocument === null) {
@@ -209,7 +212,6 @@ export function connectRecombynCoreProjection(
     projected = structuredClone(next);
     scheduledDocument = structuredClone(next);
     if (settleTimer !== null) clearTimeout(settleTimer);
-    if (options.interactionActive?.()) return;
     settleTimer = setTimeout(flushScheduled, options.settleDelayMs ?? 0);
   });
   return {
