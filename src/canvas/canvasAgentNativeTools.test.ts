@@ -39,8 +39,9 @@ import {
 import { CanvasCore } from "./canvasCore.js";
 import { CanvasAssetStore } from "./canvasAssetStore.js";
 import { classifyCanvasTurnIntent, evaluateCanvasEditCompletion } from "./canvasIntentGate.js";
+import { mapCanvasToolError } from "./canvasGatewayTools.js";
 import { canvasSkillPackText } from "./canvasSkills.js";
-import { mapCanvasToolOps } from "./canvasToolOps.js";
+import { CanvasToolError, mapCanvasToolOps } from "./canvasToolOps.js";
 import type { CanvasAccessGrantRow } from "./canvasAccessGrant.js";
 import type { CanvasJson } from "./canvasTypes.js";
 
@@ -642,7 +643,18 @@ test("create_frame custom ids cannot be ROOT or collide with elements or Frames"
   assert.throws(() => mapCanvasToolOps(doc, [{
     op: "create_shape", x: 0, y: 0, width: 40, height: 40,
     attrs: { fill: "linear-gradient(red, blue)" },
-  }]), /code=create_shape_css_gradient_fill/);
+  }]), /code=invalid_fill/);
+  assert.throws(() => mapCanvasToolOps(doc, [{
+    op: "create_shape", x: 0, y: 0, width: 40, height: 40,
+    fillType: "linear", fill: "#FF0000",
+  }]), /code=missing_gradient_end/);
+  assert.throws(() => mapCanvasToolOps(doc, [{
+    op: "create_shape", x: 0, y: 0, width: 40, height: 40,
+    stroke: "radial-gradient(circle, red, blue)",
+  }]), /code=invalid_stroke/);
+  assert.throws(() => mapCanvasToolOps(doc, [{
+    op: "create_shape", x: 0, y: 0,
+  }]), /code=missing_required_param/);
   const aligned = mapCanvasToolOps(doc, [{
     op: "align_nodes", nodeIds: ["shape-1", "shape-2"], mode: "left",
   }]);
@@ -652,6 +664,22 @@ test("create_frame custom ids cannot be ROOT or collide with elements or Frames"
     attrs: { shapeType: "rect", fill: "#FF0000", fillType: "solid" },
   }]);
   assert.deepEqual(red.createdElementIds, ["red-1"]);
+});
+
+test("mapCanvasToolError attaches canvasErrorCode/fix/detail for CanvasToolError", () => {
+  const error = new CanvasToolError(
+    "invalid_fill",
+    "use fill=#RRGGBB or rgba(...), never CSS linear-gradient()/radial-gradient()",
+    "fill=linear-gradient(red,blue)",
+  );
+  assert.throws(() => mapCanvasToolError(error), (caught: unknown) => {
+    assert.ok(caught instanceof HarnessError);
+    assert.equal(caught.code, "capability_scope_denied");
+    assert.equal(caught.details.canvasErrorCode, "invalid_fill");
+    assert.equal(caught.details.canvasErrorFix, error.fix);
+    assert.equal(caught.details.canvasErrorDetail, error.detail);
+    return true;
+  });
 });
 
 test("pure Chinese how-to questions do not inject mutationRequired into Canvas context", async () => {
@@ -862,9 +890,12 @@ test("failed canvas tool persists LAST_CANVAS_ERROR and a later success clears i
       height: 40,
       fill: "linear-gradient(red, blue)",
       idempotencyKey: "bad-fill",
-    }), /code=create_shape_css_gradient_fill/);
+    }), /code=invalid_fill/);
     const afterFail = new ContextAssembler(f.spaceId, f.db, () => Date.now()).assemble(turn.turnId, turn.claims.activationId);
-    assert.match(afterFail.renderedContext, /LAST_CANVAS_ERROR: code=create_shape_css_gradient_fill/);
+    assert.match(afterFail.renderedContext, /LAST_CANVAS_ERROR: code=invalid_fill/);
+    assert.match(afterFail.renderedContext, /fix=use fill=#RRGGBB or rgba\(\.\.\.\)/);
+    assert.match(afterFail.renderedContext, /detail=fill=linear-gradient\(red, blue\)/);
+    assert.match(afterFail.renderedContext, /The previous canvas operation failed\. Review the fix suggestion/);
     const created = turn.gateway.canvasCreateShape(turn.claims, {
       snapshotId: grant.snapshotId,
       expectedRevision: revision,

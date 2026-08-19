@@ -29,10 +29,11 @@ canvas.create_image accepts an existing assetId that already belongs to this Can
 
 Ordinary body @name text does not grant Canvas write. Do not invent or expand canvasId, snapshotId, elementId, action, or grant scope. Destructive ops require confirmDestructive. Viewport suggestions are ephemeral; export is a file side effect; image_process and outline_text are deferred jobs.`;
 
-export function canvasSkillPackText(grants: CanvasAccessGrantRow[]): string {
+export function canvasSkillPackText(grants: CanvasAccessGrantRow[], lastError?: string | null): string {
   if (!grants.length) return "";
   const lines = [
     "## Canvas skill pack",
+    ...(lastError ? [canvasLastErrorContextLine(lastError)] : []),
     CANVAS_CAPABILITY_DISCOVERY,
     "Authorized grants:",
     ...grants.map((grant) => {
@@ -48,12 +49,14 @@ export function canvasSkillPackText(grants: CanvasAccessGrantRow[]): string {
   return lines.join("\n");
 }
 
+const LAST_CANVAS_ERROR_RETRY = "The previous canvas operation failed. Review the fix suggestion and retry with corrected parameters.";
+
 export function canvasLastErrorContextLine(errorLine: string): string {
   const parsed = parseCanvasOpError(errorLine);
-  if (parsed) {
-    return `LAST_CANVAS_ERROR: code=${parsed.code}${parsed.fix ? `; fix=${parsed.fix}` : ""}${parsed.detail ? `; detail=${parsed.detail}` : ""}`;
-  }
-  return `LAST_CANVAS_ERROR: ${errorLine}`;
+  const header = parsed
+    ? `LAST_CANVAS_ERROR: code=${parsed.code}${parsed.fix ? `; fix=${parsed.fix}` : ""}${parsed.detail ? `; detail=${parsed.detail}` : ""}`
+    : `LAST_CANVAS_ERROR: ${errorLine}`;
+  return `${header}\n${LAST_CANVAS_ERROR_RETRY}`;
 }
 
 /** Latest failed canvas tool in this runtime session. A later success clears injection. */

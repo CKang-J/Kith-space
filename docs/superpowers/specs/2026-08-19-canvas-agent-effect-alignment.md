@@ -603,7 +603,7 @@ Agent 完成操作后，按清单自检，发现问题自行修正。
 - [x] typed tools 参数 schema 完整覆盖 RECOMBYN model_hint 中列出的所有参数
 - [x] 工具描述替换为 Recombyn 级别的详尽 model_hint
 - [x] 10 个常用 typed tools 补全（update_frame、align/distribute/reorder、group/ungroup、duplicate、flip、boolean_op、set_canvas_background）
-- [x] 结构化错误码 + fix 提示机制生效
+- [x] 结构化错误码 + fix 提示机制生效（Phase 0.5：`CanvasToolError` + `invalid_fill`/`invalid_stroke`/`missing_gradient_end`/`missing_required_param`；`LAST_CANVAS_ERROR` 注入下一轮 skill pack）
 - [ ] 基础操作测试：创建红色矩形 → 正确有红色（成功率 > 80%）——自动化已覆盖 fill 写入与 CSS gradient 拒绝；真实 Agent smoke 仍待本机 Desktop
 - [x] `pnpm run typecheck` 通过
 - [x] `pnpm run web:build` 通过

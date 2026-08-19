@@ -22,7 +22,7 @@ import {
   type CanvasGrantAction,
 } from "./canvasAccessGrant.js";
 import { CanvasAssetStore } from "./canvasAssetStore.js";
-import { mapCanvasToolOps, parseCanvasOpError } from "./canvasToolOps.js";
+import { CanvasToolError, mapCanvasToolOps, parseCanvasOpError } from "./canvasToolOps.js";
 import type { CanvasJson } from "./canvasTypes.js";
 import {
   typedCanvasCommandToToolOp,
@@ -52,12 +52,23 @@ export function mapCanvasToolError(error: unknown): never {
     });
   }
   if (error instanceof CanvasIdempotencyError) throw new HarnessError("idempotency_conflict", error.message);
+  if (error instanceof CanvasToolError) {
+    throw new HarnessError("capability_scope_denied", error.message, {
+      canvasErrorCode: error.code,
+      canvasErrorFix: error.fix,
+      canvasErrorDetail: error.detail,
+      canvasCode: error.code,
+      ...(error.fix ? { fix: error.fix } : {}),
+      ...(error.detail ? { detail: error.detail } : {}),
+    });
+  }
   if (error instanceof CanvasValidationError || error instanceof CanvasNotFoundError) {
     const parsed = parseCanvasOpError(error.message);
     throw new HarnessError("capability_scope_denied", error.message, parsed ? {
+      canvasErrorCode: parsed.code,
+      ...(parsed.fix ? { canvasErrorFix: parsed.fix, fix: parsed.fix } : {}),
+      ...(parsed.detail ? { canvasErrorDetail: parsed.detail, detail: parsed.detail } : {}),
       canvasCode: parsed.code,
-      ...(parsed.fix ? { fix: parsed.fix } : {}),
-      ...(parsed.detail ? { detail: parsed.detail } : {}),
     } : {});
   }
   throw error;

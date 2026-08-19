@@ -3,6 +3,55 @@ import { sanitizeInlineSvgMarkup } from "./canvasAssetStore.js";
 import { CanvasValidationError } from "./canvasCore.js";
 import type { CanvasJson, CanvasOperation, CanvasPatch } from "./canvasTypes.js";
 
+// 默认文本样式
+const DEFAULT_TEXT_STYLE = {
+  fontSize: 16,
+  fill: "#000000",
+  fontWeight: "400",
+  fontFamily: "Inter",
+  fontStyle: "normal",
+  textAlign: "left",
+  lineHeight: 1.2,
+  letterSpacing: 0,
+  textDecoration: "none",
+};
+
+// 构建前端需要的 text attrs 结构
+function buildTextAttrs(text: string, style: Partial<typeof DEFAULT_TEXT_STYLE> = {}): Record<string, unknown> {
+  const merged = { ...DEFAULT_TEXT_STYLE, ...style };
+  const chars = String(text || "")
+    .split("")
+    .map((char) => ({
+      char,
+      config: {
+        SIZE: merged.fontSize,
+        COLOR: merged.fill,
+        WEIGHT: merged.fontWeight,
+        FAMILY: merged.fontFamily,
+        STYLE: merged.fontStyle,
+        ALIGN: merged.textAlign,
+        LINE_HEIGHT: merged.lineHeight,
+        LETTER_SPACING: merged.letterSpacing,
+        DECORATION: merged.textDecoration,
+      },
+    }));
+
+  return {
+    DATA: JSON.stringify([{ chars, config: {} }]),
+    ORIGIN_DATA: JSON.stringify([
+      {
+        children: [
+          {
+            text,
+            bold: merged.fontWeight === "bold" || Number(merged.fontWeight) >= 600,
+          },
+        ],
+      },
+    ]),
+    markdown: text,
+  };
+}
+
 const DURABLE_OPS = new Set([
   "update_node", "create_shape", "create_text", "create_image", "create_svg",
   "create_lottie", "create_icon", "create_frame", "update_frame", "delete_frame",
@@ -15,6 +64,13 @@ const SIDE_EFFECT_OPS = new Set(["export_canvas"]);
 const MEDIA_CREATE = new Set(["create_image", "create_lottie", "create_icon"]);
 const CSS_GRADIENT_RE = /^(?:repeating-)?(?:linear|radial|conic)-gradient\s*\(/i;
 const ALLOWED_FILL_TYPES = new Set(["solid", "linear", "radial", "angular", "diffuse", "image"]);
+const GRADIENT_FILL_TYPES = new Set(["linear", "radial", "angular", "diffuse"]);
+const FILL_COLOR_KEYS = ["fill", "fillColor", "backgroundColor", "color"] as const;
+const STROKE_COLOR_KEYS = ["stroke", "border-color", "borderColor"] as const;
+const SOLID_COLOR_RE = /^(#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|rgba?\(\s*(?:\d{1,3}%?\s*,\s*){2}\d{1,3}%?(?:\s*,\s*(?:0|1|0?\.\d+|1(?:\.0)?|\d{1,3}%))?\s*\)|transparent)$/i;
+const INVALID_FILL_FIX = "use fill=#RRGGBB or rgba(...), never CSS linear-gradient()/radial-gradient()";
+const INVALID_STROKE_FIX = "use stroke=#RRGGBB or rgba(...), never CSS linear-gradient()/radial-gradient()";
+const MISSING_GRADIENT_END_FIX = "gradient requires both fill (start color) and fillEnd (end color)";
 
 export function formatCanvasOpError(code: string, fix = "", detail = ""): string {
   const parts = [`code=${(code || "invalid_op").trim() || "invalid_op"}`];
@@ -31,35 +87,101 @@ export function parseCanvasOpError(message: string): { code: string; fix?: strin
   return { code: match[1]!.trim(), ...(fix ? { fix } : {}), ...(detail ? { detail } : {}) };
 }
 
-function opError(code: string, fix: string, detail = ""): CanvasValidationError {
-  return new CanvasValidationError(formatCanvasOpError(code, fix, detail));
+export class CanvasToolError extends CanvasValidationError {
+  readonly code: string;
+  readonly fix: string;
+  readonly detail: string;
+
+  constructor(code: string, fix: string, detail = "") {
+    const normalizedCode = (code || "invalid_op").trim() || "invalid_op";
+    super(formatCanvasOpError(normalizedCode, fix, detail));
+    this.name = "CanvasToolError";
+    this.code = normalizedCode;
+    this.fix = fix.trim();
+    this.detail = detail.trim();
+  }
+}
+
+export function isCanvasToolError(error: unknown): error is CanvasToolError {
+  return error instanceof CanvasToolError;
+}
+
+function opError(code: string, fix: string, detail = ""): CanvasToolError {
+  return new CanvasToolError(code, fix, detail);
 }
 
 function looksLikeCssGradient(raw: unknown): boolean {
   return CSS_GRADIENT_RE.test(String(raw ?? "").trim());
 }
 
-function assertFillArgs(op: string, source: Record<string, unknown>): void {
-  for (const key of ["fill", "fillColor", "backgroundColor", "color", "stroke"]) {
+function isSolidPaintColor(raw: unknown): boolean {
+  return SOLID_COLOR_RE.test(String(raw ?? "").trim());
+}
+
+function colorDetail(key: string, value: unknown): string {
+  return `${key}=${String(value).slice(0, 96)}`;
+}
+
+function assertSolidPaint(code: "invalid_fill" | "invalid_stroke", key: string, value: unknown, fix: string): void {
+  if (value == null) return;
+  if (looksLikeCssGradient(value) || !isSolidPaintColor(value)) {
+    throw opError(code, fix, colorDetail(key, value));
+  }
+}
+
+function paintSource(raw: Record<string, unknown>, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    ...raw,
+    ...extra,
+    fill: extra.fill ?? raw.fill ?? extra["fill-color"] ?? raw["fill-color"],
+    fillType: extra.fillType ?? raw.fillType,
+    fillEnd: extra.fillEnd ?? raw.fillEnd,
+    stroke: extra.stroke ?? raw.stroke ?? extra["border-color"] ?? raw["border-color"],
+    backgroundColor: extra.backgroundColor ?? raw.backgroundColor,
+    color: extra.color ?? raw.color,
+  };
+}
+
+function assertFillArgs(_op: string, source: Record<string, unknown>): void {
+  for (const key of FILL_COLOR_KEYS) {
     if (!(key in source) || source[key] == null) continue;
-    if (looksLikeCssGradient(source[key])) {
-      throw opError(
-        `${op}_css_gradient_fill`,
-        "do not put CSS linear-gradient()/radial-gradient() in fill; use fillType=linear|radial|angular|diffuse with fill + fillEnd (+ gradientAngle?)",
-        `${key}=${String(source[key]).slice(0, 96)}`,
-      );
-    }
+    assertSolidPaint("invalid_fill", key, source[key], INVALID_FILL_FIX);
+  }
+  for (const key of STROKE_COLOR_KEYS) {
+    if (!(key in source) || source[key] == null) continue;
+    assertSolidPaint("invalid_stroke", key, source[key], INVALID_STROKE_FIX);
   }
   const fillType = source.fillType;
-  if (fillType != null && String(fillType).trim()) {
-    const normalized = String(fillType).trim().toLowerCase();
-    if (!ALLOWED_FILL_TYPES.has(normalized)) {
-      throw opError(
-        `${op}_invalid_fillType`,
-        "fillType must be solid|linear|radial|angular|diffuse|image",
-        `fillType=${normalized}`,
-      );
+  const normalized = fillType != null && String(fillType).trim() ? String(fillType).trim().toLowerCase() : "";
+  if (normalized && !ALLOWED_FILL_TYPES.has(normalized)) {
+    throw opError(
+      "invalid_fill",
+      "fillType must be solid|linear|radial|angular|diffuse|image",
+      `fillType=${normalized}`,
+    );
+  }
+  if (GRADIENT_FILL_TYPES.has(normalized)) {
+    const fillEnd = source.fillEnd;
+    if (fillEnd == null || String(fillEnd).trim() === "") {
+      throw opError("missing_gradient_end", MISSING_GRADIENT_END_FIX, `fillType=${normalized}`);
     }
+    assertSolidPaint("invalid_fill", "fillEnd", fillEnd, INVALID_FILL_FIX);
+  }
+}
+
+function requireParams(raw: Record<string, unknown>, keys: string[]): void {
+  const missing = keys.filter((key) => {
+    const value = raw[key];
+    if (value == null || value === "") return true;
+    if (typeof value === "number") return !Number.isFinite(value);
+    return false;
+  });
+  if (missing.length) {
+    throw opError(
+      "missing_required_param",
+      `pass required parameter(s): ${missing.join(", ")}`,
+      `missing=${missing.join(",")}`,
+    );
   }
 }
 
@@ -234,7 +356,7 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
       throw opError("update_node_missing_target", "pass nodeId of an existing authorized node from scene_summary", "update_node target does not exist");
     }
     const patch = asRecord(raw.patch) ?? asRecord(raw.attrs) ?? {};
-    assertFillArgs(op, { ...patch, fill: patch.fill ?? raw.fill, fillType: patch.fillType ?? raw.fillType });
+    assertFillArgs(op, paintSource(raw, patch));
 
     // Normalize fill parameter: frontend expects attrs['fill-color'], not attrs.fill
     if (typeof patch.fill === "string" && !patch["fill-color"]) {
@@ -245,12 +367,15 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
     }
 
     const next = { ...nodes[nodeId]! };
+    const attrs = asRecord(next.attrs) ?? {};
+
+    // Apply patch to attrs
     for (const [key, value] of Object.entries(patch)) {
       if (key === "id" || key === "children" || key === "__kithEntityRevision") continue;
       if (key === "src" || key === "url" || key === "href") {
         throw opError("update_node_remote_url", "update_node cannot set remote media URLs; use canvas.asset_import + canvas.create_image", `key=${key}`);
       }
-      next[key] = value as CanvasJson;
+      attrs[key] = value as CanvasJson;
     }
 
     // Also handle top-level raw parameters (x, y, width, height, fill, etc.)
@@ -259,22 +384,92 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
     if (typeof raw.width === "number") next.width = raw.width;
     if (typeof raw.height === "number") next.height = raw.height;
     if (typeof raw.fill === "string") {
-      const attrs = asRecord(next.attrs) ?? {};
       attrs["fill-color"] = raw.fill;
-      next.attrs = attrs as CanvasJson;
       next.fill = raw.fill;
     }
-    if (typeof raw.cornerRadius === "number") {
-      const attrs = asRecord(next.attrs) ?? {};
-      attrs.cornerRadius = raw.cornerRadius;
-      next.attrs = attrs as CanvasJson;
+
+    // Handle cornerRadius: frontend expects radiusTL/TR/BR/BL
+    const cornerRadius = typeof raw.cornerRadius === "number" ? raw.cornerRadius : typeof patch.cornerRadius === "number" ? Number(patch.cornerRadius) : undefined;
+    if (cornerRadius !== undefined) {
+      attrs.radiusTL = cornerRadius;
+      attrs.radiusTR = cornerRadius;
+      attrs.radiusBR = cornerRadius;
+      attrs.radiusBL = cornerRadius;
+      delete attrs.cornerRadius; // Remove the non-standard field
     }
+
+    // Handle stroke: frontend expects border-color and border-width
     if (typeof raw.stroke === "string") {
-      const attrs = asRecord(next.attrs) ?? {};
       attrs.stroke = raw.stroke;
       attrs["border-color"] = raw.stroke;
-      next.attrs = attrs as CanvasJson;
     }
+    if (typeof raw.borderWidth === "number") {
+      attrs["border-width"] = raw.borderWidth;
+    }
+    if (typeof raw.strokeWidth === "number") {
+      attrs["border-width"] = raw.strokeWidth;
+    }
+
+    // Handle text update: frontend expects DATA and ORIGIN_DATA
+    if (typeof raw.text === "string" && next.key === "text") {
+      const currentStyle = {
+        fontSize: typeof raw.fontSize === "number" ? raw.fontSize : typeof attrs.fontSize === "number" ? Number(attrs.fontSize) : 16,
+        fill: String(attrs["fill-color"] || raw.fill || next.fill || "#000000"),
+        fontWeight: String(raw.fontWeight || attrs.fontWeight || "400"),
+        fontFamily: String(raw.fontFamily || attrs.fontFamily || "Inter"),
+      };
+      const textAttrs = buildTextAttrs(raw.text, currentStyle);
+      Object.assign(attrs, textAttrs);
+      next.text = raw.text;
+    }
+
+    // Handle fontSize, fontWeight, fontFamily updates for text nodes
+    if (next.key === "text") {
+      if (typeof raw.fontSize === "number") attrs.fontSize = raw.fontSize;
+      if (typeof raw.fontWeight === "string") attrs.fontWeight = raw.fontWeight;
+      if (typeof raw.fontFamily === "string") attrs.fontFamily = raw.fontFamily;
+    }
+
+    // Handle rotation: frontend uses 'angle' field in attrs
+    if (typeof raw.rotation === "number") {
+      attrs.angle = raw.rotation;
+    }
+    if (typeof raw.angle === "number") {
+      attrs.angle = raw.angle;
+    }
+
+    // Handle opacity: node-level field (0-1 range)
+    if (typeof raw.opacity === "number") {
+      next.opacity = Math.max(0, Math.min(1, raw.opacity));
+    }
+
+    // Handle blendMode
+    if (typeof raw.blendMode === "string") {
+      next.blendMode = raw.blendMode;
+    }
+
+    // Handle flipX/flipY
+    if (typeof raw.flipX === "boolean") {
+      next.flipX = raw.flipX;
+    }
+    if (typeof raw.flipY === "boolean") {
+      next.flipY = raw.flipY;
+    }
+
+    // Handle locked/hidden
+    if (typeof raw.locked === "boolean") {
+      next.locked = raw.locked;
+    }
+    if (typeof raw.hidden === "boolean") {
+      next.hidden = raw.hidden;
+    }
+
+    // Handle name
+    if (typeof raw.name === "string") {
+      next.name = raw.name;
+    }
+
+    next.attrs = attrs as CanvasJson;
 
     return { ...empty, patches: [setNode(nodeId, next)] };
   }
@@ -288,12 +483,59 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
         throw opError(`${op}_missing_assetId`, "pass assetId from canvas.asset_import", `${op} requires assetId`);
       }
     }
+    if (op === "create_text") requireParams(raw, ["text", "x", "y"]);
+    else if (op === "create_shape") requireParams(raw, ["x", "y", "width", "height"]);
+    else if (MEDIA_CREATE.has(op)) requireParams(raw, ["x", "y", "width", "height"]);
     const attrs = asRecord(raw.attrs) ?? {};
-    assertFillArgs(op, { ...attrs, fill: attrs.fill ?? raw.fill, fillType: attrs.fillType ?? raw.fillType });
+    assertFillArgs(op, paintSource(raw, attrs));
 
     // Normalize fill parameter: frontend expects attrs['fill-color'], not attrs.fill
     if (typeof attrs.fill === "string" && !attrs["fill-color"]) {
       attrs["fill-color"] = attrs.fill;
+    }
+    // Normalize fill from raw.fill if not in attrs
+    if (typeof raw.fill === "string" && !attrs["fill-color"]) {
+      attrs["fill-color"] = raw.fill;
+    }
+
+    // Normalize stroke: frontend expects attrs['border-color'] and attrs['border-width']
+    if (typeof raw.stroke === "string") {
+      attrs["border-color"] = raw.stroke;
+      attrs.stroke = raw.stroke;
+    }
+    if (typeof attrs.stroke === "string" && !attrs["border-color"]) {
+      attrs["border-color"] = attrs.stroke;
+    }
+    if (typeof raw.borderWidth === "number") {
+      attrs["border-width"] = raw.borderWidth;
+    }
+    if (typeof attrs.borderWidth === "number" && !attrs["border-width"]) {
+      attrs["border-width"] = attrs.borderWidth;
+    }
+    if (typeof raw.strokeWidth === "number") {
+      attrs["border-width"] = raw.strokeWidth;
+    }
+
+    // Handle cornerRadius: frontend expects radiusTL/TR/BR/BL
+    const cornerRadius = typeof raw.cornerRadius === "number" ? raw.cornerRadius : typeof attrs.cornerRadius === "number" ? Number(attrs.cornerRadius) : undefined;
+    if (cornerRadius !== undefined) {
+      attrs.radiusTL = cornerRadius;
+      attrs.radiusTR = cornerRadius;
+      attrs.radiusBR = cornerRadius;
+      attrs.radiusBL = cornerRadius;
+      delete attrs.cornerRadius; // Remove the non-standard field
+    }
+
+    // Handle text node: frontend expects DATA and ORIGIN_DATA
+    if (op === "create_text" && typeof raw.text === "string") {
+      const textStyle = {
+        fontSize: typeof raw.fontSize === "number" ? raw.fontSize : typeof attrs.fontSize === "number" ? Number(attrs.fontSize) : 16,
+        fill: String(attrs["fill-color"] || raw.fill || "#000000"),
+        fontWeight: String(raw.fontWeight || attrs.fontWeight || "400"),
+        fontFamily: String(raw.fontFamily || attrs.fontFamily || "Inter"),
+      };
+      const textAttrs = buildTextAttrs(raw.text, textStyle);
+      Object.assign(attrs, textAttrs);
     }
 
     const id = typeof raw.id === "string" && raw.id ? raw.id : randomUUID();
@@ -324,6 +566,40 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
     if (typeof raw.frameId === "string") node.frameId = raw.frameId;
     if (typeof raw.text === "string") node.text = raw.text;
     if (typeof raw.assetId === "string") node.assetId = raw.assetId;
+
+    // Handle rotation: frontend uses 'angle' field
+    if (typeof raw.rotation === "number") {
+      attrs.angle = raw.rotation;
+    }
+    if (typeof raw.angle === "number") {
+      attrs.angle = raw.angle;
+    }
+
+    // Handle opacity: node-level field (0-1 range)
+    if (typeof raw.opacity === "number") {
+      node.opacity = Math.max(0, Math.min(1, raw.opacity));
+    }
+
+    // Handle blendMode
+    if (typeof raw.blendMode === "string") {
+      node.blendMode = raw.blendMode;
+    }
+
+    // Handle flipX/flipY
+    if (typeof raw.flipX === "boolean") {
+      node.flipX = raw.flipX;
+    }
+    if (typeof raw.flipY === "boolean") {
+      node.flipY = raw.flipY;
+    }
+
+    // Handle locked/hidden
+    if (typeof raw.locked === "boolean") {
+      node.locked = raw.locked;
+    }
+    if (typeof raw.hidden === "boolean") {
+      node.hidden = raw.hidden;
+    }
     if (op === "create_svg") {
       const markup = typeof raw.svg === "string" ? raw.svg : typeof raw.markup === "string" ? raw.markup : "";
       if (!markup) throw opError("create_svg_missing_markup", "pass sanitized svg markup with a viewBox", "create_svg requires sanitized svg markup");
@@ -341,6 +617,7 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
   }
 
   if (op === "create_frame") {
+    requireParams(raw, ["x", "y", "width", "height"]);
     const id = typeof raw.id === "string" && raw.id ? raw.id : randomUUID();
     if (creatableIdCollides(id, nodes, frames)) {
       throw opError("create_frame_id_collides", "choose a unique frame id that is not ROOT and does not match an existing node or frame", "create_frame id collides");
@@ -367,7 +644,7 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
     const frameId = typeof raw.frameId === "string" ? raw.frameId : typeof raw.id === "string" ? raw.id : "";
     const current = frames.find((frame) => frame.id === frameId);
     if (!current) throw opError("update_frame_missing_target", "pass frameId from SCENE_FRAMES / FOCUS_FRAME_ID", "update_frame target does not exist");
-    assertFillArgs(op, { backgroundColor: raw.backgroundColor, fill: raw.fill, color: raw.color });
+    assertFillArgs(op, paintSource(raw));
     const next = { ...current };
     if (typeof raw.name === "string") next.name = raw.name;
     if (typeof raw.x === "number") next.x = raw.x;
@@ -648,12 +925,7 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
 
   if (op === "set_canvas_background") {
     const color = raw.color ?? raw.fill ?? raw.backgroundColor ?? raw.value ?? raw.background ?? null;
-    assertFillArgs(op, {
-      color: raw.color,
-      fill: raw.fill,
-      backgroundColor: raw.backgroundColor,
-      fillType: raw.fillType,
-    });
+    assertFillArgs(op, paintSource(raw));
     const value = asRecord(raw.value)
       ?? (color != null || raw.fillType != null
         ? {

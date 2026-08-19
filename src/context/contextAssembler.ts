@@ -28,7 +28,7 @@ import {
 } from "./objectSnapshotResolver.js";
 import "./canvasObjectSnapshotResolver.js";
 import { listCanvasAccessGrantsInTransaction } from "../canvas/canvasAccessGrant.js";
-import { canvasLastErrorContextLine, canvasSkillPackText, latestCanvasErrorForTurn } from "../canvas/canvasSkills.js";
+import { canvasSkillPackText, latestCanvasErrorForTurn } from "../canvas/canvasSkills.js";
 import { isCanvasAgentExecutionEnabled } from "../canvas/canvasAgentExecution.js";
 
 type ContextSourceRef = z.infer<typeof ContextSourceRefSchema>;
@@ -585,11 +585,9 @@ export class ContextAssembler {
     for (const ref of envelope.fileMemoryRefs) lines.push(`- ${ref.path} (${ref.reason}, hash=${ref.contentHash})`);
     if (isCanvasAgentExecutionEnabled()) {
       const grants = this.db.transaction((tx) => listCanvasAccessGrantsInTransaction(tx, envelope.turnId, envelope.session.agentId));
-      const skillPack = canvasSkillPackText(grants);
-      if (skillPack) {
-        const lastError = latestCanvasErrorForTurn(this.db, envelope.turnId);
-        lines.push("", lastError ? `${canvasLastErrorContextLine(lastError)}\n${skillPack}` : skillPack);
-      }
+      const lastError = latestCanvasErrorForTurn(this.db, envelope.turnId);
+      const skillPack = canvasSkillPackText(grants, lastError);
+      if (skillPack) lines.push("", skillPack);
     }
     lines.push("", "Use `kith-space turn context` to inspect the authoritative input IDs before settling them.");
     return lines.join("\n");
