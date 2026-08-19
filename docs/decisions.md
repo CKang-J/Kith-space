@@ -610,7 +610,7 @@
 
 **调用与完成语义**：Canvas 输入必须绑定真实私聊、频道或话题和一个 eligible Agent；它必须未删除、已处于 v2、具有当前 surface access 且实时拥有 `message:send`。server-owned `MessageExecutionBinding` 与 snapshot、message/ref、required delivery 在同一 MessagePosting transaction 写入；不能用正文 mention 代替，也不能给其他 active Agent optional wake。Canvas 工具权力来自由 binding + bound delivery 派生的 durable `CanvasAccessGrant`，逐调用按服务端真实影响集重验。mutation 关联既有 `turn_operations`，`turn.reply` 通过 strict `outputRefs` / `turn_output_artifacts` 关联已提交 mutation；`sourceRefs` 不承担输出 artifact 语义。operation 重试不得重复修改，同元素/Frame/structure revision 冲突不得静默覆盖。
 
-**草稿生命周期**：关闭 Canvas 标签只卸载画布视图，不清除已经附加到任何 Chat surface Composer 的 pending 选区。pending 只在用户主动移除、消息发送成功或明确清空草稿时删除；若 Canvas 或元素在发送前失效，Core fail-closed 并要求重新选择。
+**草稿生命周期**：关闭 Canvas 标签只卸载画布视图，不清除已经由用户“发送到 Chat”附加到 Composer 的 pending 选区。pending 只在用户主动移除、消息发送成功或明确清空草稿时删除；若 Canvas 或元素在发送前失效，Core fail-closed 并要求重新选择。打开右侧 Canvas 且未圈选时，Composer 自动挂一条空选中整板授权 chip；这条自动 chip 在关闭该 Canvas 标签时移除，用户圈选发送的卡片不受影响。
 
 **阶段 4 执行者选择**：DM executor 由服务端固定派生为私聊对端 Agent；频道、私密频道和话题必须绑定唯一 required executor。用户可通过 Composer 执行者选择器，或通过 Agent mention 菜单产生结构化 `@Agent` 指定执行者；普通正文 mention 不授予 Canvas 写权限。未指定、多个 mention、选择器与 mention 冲突或 `@all` 均拒绝发送。消息保持当前 surface，不自动创建话题；其他 Agent 只观察，不获得 optional wake。绑定记录 `bindingSource`，重试不自动改派；阶段4 MVP 先限制单 Canvas 写入域，破坏性操作需明确确认。
 

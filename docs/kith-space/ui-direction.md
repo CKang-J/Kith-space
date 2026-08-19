@@ -173,7 +173,7 @@ H4 已复用 H3 领域/API 能力交付本节：Home Spaces 提供卡片网格�
 
 ### 5.2 Canvas Workspace（阶段 3 Chat 上下文联动已实现）
 
-阶段 1 的固定 Recombyn `EditorPage`/RCB/nodes/chrome/panels 与原生观感保持不变。阶段2已从正式左侧 Canvas 入口打开 Canvas Library；新建/受限 JSON 导入后形成独立 resource tab，同一 Canvas 去重，不同 Canvas 可多开并按 Space 隔离恢复。实际 Canvas 继续使用原生工具栏、节点、Frame、选择/变换、结构和导出 UI；嵌入宿主时 editor island 高度严格跟随 workspace surface，不再按 browser viewport 溢出并裁掉底部工具栏。媒体按钮在相同原生位置经可复现 host materializer 恢复，先写入 Canvas-local durable asset，再把受控 resolver URL 提交 Core；AssetPanel 显示同 Canvas 本地资产。上游产品壳的 Home 与账户按钮在正式 Kith Canvas 中移除，标题、导出与分享保留。`⌘/Ctrl+Z`、`⌘⇧Z`/`Ctrl+Y` 由宿主捕获后调用 Core undo/redo。OCR、AI处理和真实图片/视频生成明确 unavailable；没有 AgentDock、第二套画布 UI 或 Page。阶段3在原生选区浮动工具栏最右侧提供描边胶囊“发送到 Chat”动作（单选、多选和 Frame；右键 Add to Chat 仍保留），点击后走已有 `kith:canvas-selection-to-chat` seam；事件必须携带来源 `canvasId`，bridge 按事件来源写入对应 Canvas 的 pending，飞入反馈由 Kith 自有 `canvasFlyToChat` 适配模块完成，不再 import Recombyn AgentDock/`flyToChat`。发送目标跟随当前 DM/频道/话题 surface，不默认发送整张画布，也不新增第二套 Chat 面板。
+阶段 1 的固定 Recombyn `EditorPage`/RCB/nodes/chrome/panels 与原生观感保持不变。阶段2已从正式左侧 Canvas 入口打开 Canvas Library；新建/受限 JSON 导入后形成独立 resource tab，同一 Canvas 去重，不同 Canvas 可多开并按 Space 隔离恢复。实际 Canvas 继续使用原生工具栏、节点、Frame、选择/变换、结构和导出 UI；嵌入宿主时 editor island 高度严格跟随 workspace surface，不再按 browser viewport 溢出并裁掉底部工具栏。媒体按钮在相同原生位置经可复现 host materializer 恢复，先写入 Canvas-local durable asset，再把受控 resolver URL 提交 Core；AssetPanel 显示同 Canvas 本地资产。上游产品壳的 Home 与账户按钮在正式 Kith Canvas 中移除，标题、导出与分享保留。`⌘/Ctrl+Z`、`⌘⇧Z`/`Ctrl+Y` 由宿主捕获后调用 Core undo/redo。OCR、AI处理和真实图片/视频生成明确 unavailable；没有 AgentDock、第二套画布 UI 或 Page。阶段3在原生选区浮动工具栏最右侧提供描边胶囊“发送到 Chat”动作（单选、多选和 Frame；右键 Add to Chat 仍保留），点击后走已有 `kith:canvas-selection-to-chat` seam；事件必须携带来源 `canvasId`，bridge 按事件来源写入对应 Canvas 的 pending，飞入反馈由 Kith 自有 `canvasFlyToChat` 适配模块完成，不再 import Recombyn AgentDock/`flyToChat`。发送目标跟随当前 DM/频道/话题 surface，也不新增第二套 Chat 面板。打开右侧 Canvas 且尚未圈选发送时，Composer 自动挂一条整板授权 chip（空选中）；用户圈选发送会替换该自动 chip，关闭 Canvas 标签只移除自动 chip。
 
 - 规范 module id 为 `canvas`；实际 Canvas 使用当前会话 pathname 上的 `?module=canvas&canvas=<canvasId>`。`canvasId` 同时是 `WorkspaceTab.resourceId`，同一 Canvas 只聚焦一个 tab，不同 Canvas 可多开。
 - `resourceId = null` 是 Canvas Library，用于新建、导入、打开和软删除当前 Space Canvas；它不是 Canvas Page。Library 使用中文缩略图网格：首卡始终是“新建画布”，其余卡片从 Core canonical document 只读绘制轻量 SVG 预览，并显示中文标题与更新时间；网格按 Workspace 实际可用宽度自动从一列扩展到四列。标题在原生编辑器内修改后经 `metadata.rename` 持久化，并同步 Workspace tab、URL 与 SQLite；删除会关闭对应 tab，活动项退回 Library，重启后仍保持删除态。每个实际 Canvas 永远是一个独立无限平面，产品不增加 Page 导航或层级。
@@ -195,7 +195,7 @@ H4 已复用 H3 领域/API 能力交付本节：Home Spaces 提供卡片网格�
 - 业务模块与 Chat 可以并排显示，但模块标签不会暗中改变下一条聊天消息的上下文。
 - 任务、文件、agent 等对象只有通过明确的“在 Chat 中讨论”动作，才会成为 Chat 的 focused item。
 - 每条消息发送时固化结构化 `MessageContextSnapshot`，包含 Space、会话、可见 UI context 和 focused item；UI 与服务端保存 Kith-space 自己的结构，不把特定 runtime 提示格式硬编码进核心模型。
-- Canvas 是显式联动的特例而不是隐式上下文：只有 Human 执行“发送到 Chat/让 Agent 处理”，Core 才冻结当时全部 pending selection snapshot 并把对应规范 refs 按序绑定消息；仅切换或选中 Canvas 元素不会影响下一条普通 Chat 消息。
+- Canvas 联动：打开右侧 Canvas 即在当前 Chat surface 挂整板授权 pending；用户也可“发送到 Chat”圈选 Frame/元素以收窄范围。发送时 Core 冻结当时全部 pending snapshot。用户可移除自动 chip 后再发普通消息；关闭 Canvas 标签只丢掉自动 chip，不丢掉已圈选发送的卡片。
 - Canvas 请求在 DM 中绑定对端 Agent，在频道/话题中绑定明确的一个 Agent；消息可见性与实际执行者继续分离，不因 Canvas context 默认唤醒全体。
 - Agent 的 Canvas mutation 与 server-owned Chat reply 分开建模。UI 可在回执中展示 mutation 链接，但不能把画布已变更误当作 Chat turn 已结算。
 

@@ -296,7 +296,7 @@
 : Server-owned 的“这条真实 DM/频道/话题消息由哪个 Agent 执行”事实。Executor 必须未删除、v2、有当前 surface access 且实时拥有 `message:send`；Canvas 请求的 snapshot、message/ref、binding 与 executor required delivery 在同一事务写入。绑定持久化 `bindingSource`（`dm_peer` / `explicit_picker` / `structured_mention`），重试不自动换绑。它不改变原 surface，不由普通正文 `@mention` 冒充，也不会给其他 active Agent optional wake。
 
 **Canvas Access Grant / 画布访问授权**
-: 从 Message Execution Binding 与 bound delivery 派生的 durable capability 事实，限定 turn/executor、Canvas、selection/object scope、read/write/create/import/export actions、expiry 与撤销状态。Gateway 每次调用按 Core 派生的真实影响集重验，不能信任请求体自行声明权限。
+: 从 Message Execution Binding 与 bound delivery 派生的 durable capability 事实，限定 turn/executor、Canvas、selection/object scope、read/write/create/import/export actions、expiry 与撤销状态。打开画布或空选中签发整板写；选中 Frame 时焦点与 createParents 限制在该 Frame。Gateway 每次调用按 Core 派生的真实影响集重验，不能信任请求体自行声明权限。
 
 **Turn Output Artifact / Turn 输出制品**
 : `turn.reply` 除 Chat message 外关联的规范输出对象。Canvas MVP 用 strict `outputRefs` 与 `turn_output_artifacts` 关联已提交 mutation；它不同于只证明输入披露来源的 `sourceRefs`。
