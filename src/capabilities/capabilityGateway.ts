@@ -30,6 +30,8 @@ import type {
   CanvasGroupNodesCommand,
   CanvasReorderNodesCommand,
   CanvasSceneSummaryCommand,
+  CanvasSkillGetCommand,
+  CanvasSkillListCommand,
   CanvasSetCanvasBackgroundCommand,
   CanvasSnapshotGetCommand,
   CanvasUngroupNodesCommand,
@@ -62,6 +64,8 @@ import {
   executeCanvasElementsGet,
   executeCanvasExport,
   executeCanvasSceneSummary,
+  executeCanvasSkillGet,
+  executeCanvasSkillList,
   executeCanvasSnapshotGet,
   executeCanvasTypedMutation,
   mapCanvasToolError,
@@ -71,7 +75,7 @@ import {
   CANVAS_LAST_ERROR_KEY,
   CANVAS_LAST_ERROR_TOOL,
 } from "../canvas/canvasSkills.js";
-import type { CanvasTypedMutationCommand, CanvasTypedToolName } from "../canvas/canvasAgentTools.js";
+import type { CanvasTypedMutationCommand, CanvasTypedMutationToolName } from "../canvas/canvasAgentTools.js";
 import { EpisodicMemoryService, MemoryError, type RecalledMemory } from "../memory/episodicMemoryService.js";
 import { UserGlobalMemoryService, type RecalledUserGlobalMemory } from "../memory/userGlobalMemoryService.js";
 import { selectUnifiedMemoryRecall } from "../memory/memoryRecallSelection.js";
@@ -560,6 +564,28 @@ export class CapabilityGateway {
     }
   }
 
+  canvasSkillList(claims: TurnCapabilityClaims, command: CanvasSkillListCommand) {
+    try {
+      return this.db.transaction((tx) => {
+        this.assertLiveCapabilityInTransaction(tx, claims, "canvas.read");
+        return executeCanvasSkillList(tx, claims, command, this.now());
+      });
+    } catch (error) {
+      mapCanvasToolError(error);
+    }
+  }
+
+  canvasSkillGet(claims: TurnCapabilityClaims, command: CanvasSkillGetCommand) {
+    try {
+      return this.db.transaction((tx) => {
+        this.assertLiveCapabilityInTransaction(tx, claims, "canvas.read");
+        return executeCanvasSkillGet(tx, claims, command, this.now());
+      });
+    } catch (error) {
+      mapCanvasToolError(error);
+    }
+  }
+
   canvasCreateFrame(claims: TurnCapabilityClaims, command: CanvasCreateFrameCommand): CanvasMutationFeedback {
     return this.canvasTypedWrite(claims, "canvas.create_frame", command);
   }
@@ -626,7 +652,7 @@ export class CapabilityGateway {
 
   private canvasTypedWrite(
     claims: TurnCapabilityClaims,
-    toolName: Exclude<CanvasTypedToolName, "canvas.scene_summary">,
+    toolName: CanvasTypedMutationToolName,
     command: CanvasTypedMutationCommand,
   ): CanvasMutationFeedback {
     try {

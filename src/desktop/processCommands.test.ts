@@ -26,6 +26,7 @@ test("packaged Desktop runs internal Core and Worker bundles without tsx or Vite
   assert.equal(commands.worker.env?.NODE_PATH, undefined);
   assert.equal(commands.core.env?.KITH_SPACE_WEB_DIST, path.join(resourcesPath, "web/dist"));
   assert.equal(commands.core.env?.KITH_SPACE_MIGRATIONS_DIR, path.join(resourcesPath, "drizzle"));
+  assert.equal(commands.core.env?.KITH_SPACE_CANVAS_SKILLS_DIR, path.join(resourcesPath, "canvas-skills"));
   assert.equal(commands.core.env?.KITH_SPACE_PI_ADVISOR_HELPER, path.join(resourcesPath, "runtime/pi-advisor-helper.mjs"));
   assert.equal(commands.worker.env?.KITH_SPACE_PI_ADVISOR_HELPER, path.join(resourcesPath, "runtime/pi-advisor-helper.mjs"));
   assert.equal(commands.core.env?.NODE_PATH, path.join(appRoot, "node_modules"));

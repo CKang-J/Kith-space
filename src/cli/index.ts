@@ -217,6 +217,26 @@ canvas.command("scene-summary").option("--canvas-id <id>").option("--snapshot-id
       idempotencyKey: opts.idempotencyKey,
     }), null, 2));
   });
+canvas.command("skill-list").option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:skill_list")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/skill_list", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("skill-get").argument("<skillKey>", "skill key from skill-list")
+  .option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:skill_get")
+  .action(async (skillKey, opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/skill_get", {
+      skillKey,
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
 canvas.command("create-frame").requiredOption("--expected-revision <n>")
   .requiredOption("--x <n>").requiredOption("--y <n>").requiredOption("--width <n>").requiredOption("--height <n>")
   .option("--name <name>").option("--id <id>").option("--canvas-id <id>").option("--snapshot-id <id>")

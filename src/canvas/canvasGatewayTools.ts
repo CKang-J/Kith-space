@@ -27,10 +27,15 @@ import type { CanvasJson } from "./canvasTypes.js";
 import {
   typedCanvasCommandToToolOp,
   type CanvasTypedMutationCommand,
-  type CanvasTypedToolName,
+  type CanvasTypedMutationToolName,
+  type CanvasSkillGetCommand,
+  type CanvasSkillListCommand,
 } from "./canvasAgentTools.js";
 import { canvasMutationFeedback, type CanvasMutationFeedback } from "./canvasMutationFeedback.js";
 import { executeCanvasSceneSummary } from "./canvasSceneSummary.js";
+import { loadSkill } from "./skills/skillLoader.js";
+import { listSkills } from "./skills/skillRegistry.js";
+import type { CanvasSkillGetResult, CanvasSkillListResult } from "./skills/contracts.js";
 
 export { executeCanvasSceneSummary };
 
@@ -99,6 +104,62 @@ function grantFor(
     requestedCanvasId: command.canvasId,
     requestedSnapshotId: command.snapshotId,
   });
+}
+
+function assertCanvasSkillRead(
+  tx: SpaceTransaction,
+  claims: TurnCapabilityClaims,
+  command: { canvasId?: string; snapshotId?: string },
+  now: number,
+) {
+  const grant = grantFor(tx, claims, command);
+  const liveRead = grant.actions.includes("read_live");
+  assertLiveCanvasAccessGrant(tx, grant, {
+    executorAgentId: claims.agentId,
+    now,
+    actions: liveRead ? ["read_live"] : ["read_snapshot"],
+    allowDeletedCanvas: !liveRead,
+  });
+  return grant;
+}
+
+export function executeCanvasSkillList(
+  tx: SpaceTransaction,
+  claims: TurnCapabilityClaims,
+  command: CanvasSkillListCommand,
+  now: number,
+): CanvasSkillListResult {
+  assertCanvasSkillRead(tx, claims, command, now);
+  return {
+    catalog: listSkills(),
+    nextSuggestedAction: "Load ONE primary surface skill with canvas.skill_get (poster_craft / landing_page / banner_ad) plus design_brief for new work. Keep anti_ai_slop in mind.",
+  };
+}
+
+export function executeCanvasSkillGet(
+  tx: SpaceTransaction,
+  claims: TurnCapabilityClaims,
+  command: CanvasSkillGetCommand,
+  now: number,
+): CanvasSkillGetResult {
+  assertCanvasSkillRead(tx, claims, command, now);
+  const skill = loadSkill(command.skillKey);
+  if (!skill) {
+    throw new CanvasToolError(
+      "skill_not_found",
+      "Pass skillKey from canvas.skill_list (e.g. poster_craft, design_brief, anti_ai_slop)",
+      `unknown skillKey ${command.skillKey}`,
+    );
+  }
+  const related = skill.metadata.relatedSkills?.length
+    ? ` Related: ${skill.metadata.relatedSkills.join(", ")}.`
+    : "";
+  return {
+    skillKey: skill.metadata.skillKey,
+    metadata: skill.metadata,
+    content: skill.content,
+    nextSuggestedAction: `Follow this playbook, then canvas.scene_summary before create_*.${related}`,
+  };
 }
 
 export function executeCanvasSnapshotGet(
@@ -262,7 +323,7 @@ export function executeCanvasTypedMutation(
   tx: SpaceTransaction,
   spaceId: string,
   claims: TurnCapabilityClaims,
-  toolName: Exclude<CanvasTypedToolName, "canvas.scene_summary">,
+  toolName: CanvasTypedMutationToolName,
   command: CanvasTypedMutationCommand,
   operationId: string,
   now: number,

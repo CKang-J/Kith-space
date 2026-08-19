@@ -11,8 +11,8 @@ import type { CanvasJson } from "./canvasTypes.js";
 import type { CanvasSceneSummaryCommand } from "./canvasAgentTools.js";
 import { MAX_CANVAS_SELECTION_IDS } from "./canvasSelectionSnapshot.js";
 import { canvasNodeBelongsToFrame } from "./canvasFrameMembership.js";
+import { CANVAS_AVAILABLE_FONTS, canvasAvailableFontLabels } from "./fonts/fontsCatalog.js";
 
-const CANVAS_AVAILABLE_FONTS = ["Alibaba PuHuiTi", "Inter"] as const;
 const MAX_SCENE_NODES = 50;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -278,7 +278,7 @@ function formatCanvasSceneContextText(input: {
     `selectedFrames: [${input.selectedFrameIds.join(", ")}]`,
     "",
     `=== AVAILABLE_FONTS ===`,
-    input.availableFonts.join(", "),
+    canvasAvailableFontLabels(input.availableFonts).join(", "),
   ].join("\n");
 }
 

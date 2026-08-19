@@ -29,6 +29,8 @@ import {
   CanvasElementsGetCommandSchema,
   CanvasExportCommandSchema,
   CanvasSceneSummaryCommandSchema,
+  CanvasSkillGetCommandSchema,
+  CanvasSkillListCommandSchema,
   CanvasSetCanvasBackgroundCommandSchema,
   CanvasSnapshotGetCommandSchema,
   CanvasUngroupNodesCommandSchema,
@@ -231,6 +233,18 @@ export async function handleTurnGateway(
       const body = CanvasSceneSummaryCommandSchema.parse(await readGatewayJson(req));
       const { claims } = authorize(req, "canvas.read");
       sendJson(res, 200, capabilityGateway(claims.spaceId).canvasSceneSummary(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/skill_list" && method === "POST") {
+      const body = CanvasSkillListCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.read");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasSkillList(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/skill_get" && method === "POST") {
+      const body = CanvasSkillGetCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.read");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasSkillGet(claims, body));
       return true;
     }
     if (url.pathname === "/agent-gateway/canvas/create_frame" && method === "POST") {

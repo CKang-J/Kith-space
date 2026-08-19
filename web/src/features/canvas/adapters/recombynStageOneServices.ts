@@ -1,4 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
+import { CANVAS_FONT_CATALOG } from "@kith-canvas-fonts";
 
 export class StageOneCapabilityUnavailable extends Error {
   constructor(capability: string) {
@@ -33,6 +34,14 @@ const canvasAssetPage = async (bridge: RecombynCanvasAssetBridge) => {
   return { items, hasMore: false, page: 1, total: items.length, nextCursor: null };
 };
 
+const canvasFontPage = {
+  items: CANVAS_FONT_CATALOG,
+  hasMore: false,
+  page: 1,
+  total: CANVAS_FONT_CATALOG.length,
+  nextCursor: null,
+};
+
 function capabilityProxy(path: string): unknown {
   return new Proxy(() => unavailable(path), {
     get(_target, key) {
@@ -41,6 +50,9 @@ function capabilityProxy(path: string): unknown {
       const canvasAssetDelete = path === "apiQuery.assetsDeleteMyAsset" ? activeCanvasAssetBridge : null;
       if (key === "queryOptions") {
         if (canvasAssetList) return () => ({ queryKey: canvasAssetList.queryKey, queryFn: () => canvasAssetPage(canvasAssetList), retry: false });
+        if (path === "apiQuery.fontsListFontsEndpoint") {
+          return () => ({ queryKey: ["canvas-fonts"], queryFn: async () => canvasFontPage, retry: false });
+        }
         return () => ({ queryKey: ["canvas-stage-one", path], queryFn: async () => emptyQueryResult, retry: false });
       }
       if (key === "infiniteOptions") return (options: Record<string, unknown> = {}) => ({

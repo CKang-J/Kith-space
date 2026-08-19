@@ -61,6 +61,7 @@ try {
     "desktop/dist",
     "web/dist",
     "drizzle",
+    "src/canvas/skills",
     "LICENSE",
     "NOTICE",
     "THIRD_PARTY_LICENSES.md",

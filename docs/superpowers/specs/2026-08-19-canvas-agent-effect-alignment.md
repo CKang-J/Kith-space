@@ -626,17 +626,18 @@ Agent 完成操作后，按清单自检，发现问题自行修正。
 
 **目标**：从"会操作"到"会设计"
 **验收标准**：
-- [ ] skill_list / skill_get 工具可用
-- [ ] 6 个 foundation skills 移植完成
-- [ ] 3 个 domain skills 移植完成（poster_craft 优先）
-- [ ] skill catalog 正确注入 Canvas skill pack
+- [x] skill_list / skill_get 工具可用（Gateway/MCP/CLI 对称，POST + `canvas.read`）
+- [x] 6 个 foundation skills 移植完成
+- [x] 3 个 domain skills 移植完成（poster_craft 优先）
+- [x] skill catalog 正确注入 Canvas skill pack（`CANVAS_SKILLS_CATALOG`）
 - [ ] 海报设计测试：叫 Agent "设计一张万圣节活动海报"
   - 会主动加载 poster_craft skill
   - 有结构化 design brief
   - 构图完整（hero + title + support text + CTA）
   - 色彩氛围符合主题
   - 层次清晰
-- [ ] anti_ai_slop 禁令生效：不出现紫蓝渐变、玻璃卡片等俗套
+  ——代码与定向单测已覆盖 catalog/load；真实 Desktop Agent smoke 仍待本机验收
+- [ ] anti_ai_slop 禁令生效：不出现紫蓝渐变、玻璃卡片等俗套 ——依赖真实 Agent 是否加载并遵守 skill，仍待本机验收
 
 ### Phase 3：图像/视频生成接入（5-7天）
 

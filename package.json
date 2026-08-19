@@ -90,6 +90,20 @@
           "**/*"
         ]
       },
+      {
+        "from": "src/canvas/skills/foundation",
+        "to": "canvas-skills/foundation",
+        "filter": [
+          "**/*.md"
+        ]
+      },
+      {
+        "from": "src/canvas/skills/domains",
+        "to": "canvas-skills/domains",
+        "filter": [
+          "**/*.md"
+        ]
+      },
       "LICENSE",
       "NOTICE",
       "THIRD_PARTY_LICENSES.md"

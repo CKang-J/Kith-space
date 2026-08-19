@@ -7,6 +7,63 @@ import { parseCanvasOpError } from "./canvasToolOps.js";
 export const CANVAS_LAST_ERROR_TOOL = "canvas.last_error";
 export const CANVAS_LAST_ERROR_KEY = "canvas:last_error";
 
+export const CANVAS_DESIGN_PRINCIPLES = `
+## Design Decision Framework
+
+### Medium Selection (何时用 shape vs image)
+- Simple geometry (icons, buttons, basic shapes) → create_shape + boolean_op
+- Typography with catalog fonts (≥90% match) → create_text + fontFamily
+- Hero lettering (calligraphy, decorative titles) → create_image with letteringText (deferred)
+- Atmosphere / materials / photo-realistic elements → create_image with genPrompt (deferred)
+- **Never use emoji (🏠🔍❤️🧘👋) in create_text as icons or decorations**
+
+### Icon Construction Hierarchy (如何构建复杂图标)
+1. **Primitives + boolean_op** (moon = large circle subtract small circle)
+2. **create_shape with pen path** (closed path for filled silhouettes)
+3. **create_svg** (only for complex single-path marks that can't be built from primitives)
+
+Examples:
+- Moon: create_shape circle (large) + create_shape circle (small) → boolean_op mode=subtract
+- Magnifier: create_shape circle (lens) + create_shape rect (handle) → boolean_op mode=union
+- Ring: create_shape circle (outer) + create_shape circle (inner) → boolean_op mode=subtract
+- Heart: create_shape pen with path="M150,50 C125,25 75,50 150,150 C225,50 175,25 150,50 Z"
+
+### Composition Hard Rules (量化指标)
+When creating posters / banners / KV:
+- hero_coverage: 60-85% of the artboard
+- text_area: ≤20% of the artboard
+- primary_focal: exactly 1 (one hero element)
+- secondary_focal: ≤2 (optional supporting elements)
+- empty_space: ≥15% (breathing room, not filled)
+- cta: ≤1 (one call-to-action, or omit if none provided)
+
+### Anti AI Slop (禁止 AI 陈词滥调)
+**Never** use these unless the user explicitly requests them or the design brief justifies them:
+- Purple-blue gradients (fillType=linear fill="#9333EA" fillEnd="#3B82F6")
+- Glassmorphism (semi-transparent cards with blur)
+- Random particle effects (decorative dots/circles)
+- Emoji as icons (🏠🔍❤️) inside create_text
+- Three equal-sized feature cards layout
+- Excessive corner rounding (cornerRadius > width/4)
+- Generic "floating 3D objects" without design rationale
+
+### Execution Order (Brief → Paint → Review)
+1. **BRIEF**: Define purpose, audience, emotion, visual_thesis, composition archetype
+2. **ART DIRECTION**: Choose palette roles (primary/accent/ground), type ladder (title/support/meta)
+3. **LAYOUT PLAN**: Pick one composition archetype (center_hero / bottom_weighted / rule_of_thirds / editorial / typographic)
+4. **EXECUTION**: create_frame → ground (update_frame backgroundColor) → hero marks (shapes/boolean_op) → title (create_text) → support → CTA → sparse decoration
+5. **OBSERVE**: Re-read canvas.scene_summary to verify placement and hierarchy
+6. **REVIEW**: Check hierarchy (title > support > meta), color contrast, slop hits
+7. **SUBTRACT**: Second pass removes unnecessary decoration, not adds more
+
+### Honesty Rule
+Unless the user provides them, **do not invent**:
+- Logos, brand marks, QR codes
+- Prices, phone numbers, review counts
+- Extra slogans or marketing copy
+- Product images or photos
+`;
+
 export const CANVAS_CAPABILITY_DISCOVERY = `This turn has a server-owned CanvasAccessGrant derived from a frozen Selection Snapshot. Discover tools with capability.describe.
 
 Do not inspect project source code, repository files, or Canvas implementation to learn how to operate the canvas.
@@ -32,11 +89,12 @@ Ordinary body @name text does not grant Canvas write. Do not invent or expand ca
 ## Canvas Operation Protocol
 
 ### Step-by-step workflow
-1. **Read the scene first**: Always call canvas.scene_summary before any edit. Read FOCUS_FRAME_ID, SCENE_FRAMES, SCENE_NODES, ALLOWED_CREATE_PARENTS from the returned contextText.
-2. **Plan your operations**: Decide which elements to create, where to place them, and which styles to apply. Prefer one typed tool call per clear action.
-3. **Execute operations**: Call typed tools (prefer canvas.create_* / canvas.update_node over canvas.elements_apply).
-4. **Verify the result**: Re-read canvas.scene_summary if placement or style is uncertain.
-5. **Fix errors if any**: If a tool call failed, read LAST_CANVAS_ERROR (code/fix/detail) and retry with corrected parameters. Do not repeat the same invalid fill or missing args.
+1. **New poster / landing / banner**: Call canvas.skill_list, then canvas.skill_get for ONE primary surface skill (poster_craft / landing_page / banner_ad) plus design_brief. Recolor or rearrange existing nodes: skip skills and use typed tools.
+2. **Read the scene first**: Always call canvas.scene_summary before any edit. Read FOCUS_FRAME_ID, SCENE_FRAMES, SCENE_NODES, ALLOWED_CREATE_PARENTS from the returned contextText.
+3. **Plan your operations**: Decide which elements to create, where to place them, and which styles to apply. Prefer one typed tool call per clear action.
+4. **Execute operations**: Call typed tools (prefer canvas.create_* / canvas.update_node over canvas.elements_apply).
+5. **Verify the result**: Re-read canvas.scene_summary if placement or style is uncertain.
+6. **Fix errors if any**: If a tool call failed, read LAST_CANVAS_ERROR (code/fix/detail) and retry with corrected parameters. Do not repeat the same invalid fill or missing args.
 
 ### Frame-first principle (画框优先)
 - Poster / banner / H5 / mobile / deliverable plates → ALWAYS canvas.create_frame first at the deliverable size.
@@ -140,6 +198,8 @@ Prefer typed tools. canvas.elements_apply is a low-level batch compatibility pat
 | Need | Tool |
 |---|---|
 | Read authorized scene | canvas.scene_summary |
+| List design skills | canvas.skill_list |
+| Load a design playbook | canvas.skill_get (skillKey from skill_list) |
 | New deliverable plate | canvas.create_frame |
 | Rectangle / circle / polygon / path / pencil | canvas.create_shape |
 | Title / body copy | canvas.create_text |
@@ -258,6 +318,28 @@ canvas.set_canvas_background({ fill: "#FFF" })
 canvas.create_shape({ shapeType: "circle", fill: "red" })
 ✅ Fix:
 canvas.create_shape({ shapeType: "circle", fill: "#FF0000", fillType: "solid", x, y, width, height, frameId })
+
+=== CANVAS_SKILLS_CATALOG ===
+Available design skills (use canvas.skill_get to load full content):
+
+Foundation:
+- design_brief: Structured design brief template (purpose/audience/emotion/visual_thesis/composition)
+- composition: Layout archetypes and composition rules
+- color: Color theory and palette strategies
+- typography: Type ladders and font selection rules
+- anti_ai_slop: Common AI design clichés to avoid
+- polish: Refinement and self-review checklist
+
+Domains:
+- poster_craft: Poster / roll-up / KV design playbook
+- landing_page: Landing page / homepage design playbook
+- banner_ad: Banner ad design playbook
+
+How to choose:
+- New design from scratch → load ONE primary surface skill (poster_craft / landing_page / banner_ad) + design_brief
+- Just recolor / rearrange → no skill needed, use typed tools directly
+- Style/color decisions → load color + composition
+- Always keep anti_ai_slop in mind (or load it explicitly)
 `;
 
 export function canvasSkillPackText(grants: CanvasAccessGrantRow[], lastError?: string | null): string {
@@ -265,13 +347,14 @@ export function canvasSkillPackText(grants: CanvasAccessGrantRow[], lastError?: 
   const lines = [
     "## Canvas skill pack",
     ...(lastError ? [canvasLastErrorContextLine(lastError)] : []),
+    CANVAS_DESIGN_PRINCIPLES,
     CANVAS_CAPABILITY_DISCOVERY,
     "Authorized grants:",
     ...grants.map((grant) => {
       const scope = grant.objectScope;
       return `- grant ${grant.id} snapshot=${grant.snapshotId} canvas=${grant.canvasId} actions=${grant.actions.join(",")} empty=${scope.emptySelection ? "yes" : "no"} elements=${scope.elementIds.join(",") || "—"} frames=${scope.frameIds.join(",") || "—"} createParents=${scope.createParents.join(",") || "—"} expiresAt=${grant.expiresAt instanceof Date ? grant.expiresAt.toISOString() : "—"}`;
     }),
-    "Preferred tools: canvas.scene_summary, canvas.create_frame, canvas.create_text, canvas.create_shape, canvas.create_image(assetId), canvas.update_node, canvas.delete_nodes, canvas.update_frame, canvas.align_nodes, canvas.distribute_nodes, canvas.reorder_nodes, canvas.group_nodes, canvas.ungroup_nodes, canvas.duplicate_nodes, canvas.flip_nodes, canvas.boolean_op, canvas.set_canvas_background.",
+    "Preferred tools: canvas.scene_summary, canvas.skill_list, canvas.skill_get, canvas.create_frame, canvas.create_text, canvas.create_shape, canvas.create_image(assetId), canvas.update_node, canvas.delete_nodes, canvas.update_frame, canvas.align_nodes, canvas.distribute_nodes, canvas.reorder_nodes, canvas.group_nodes, canvas.ungroup_nodes, canvas.duplicate_nodes, canvas.flip_nodes, canvas.boolean_op, canvas.set_canvas_background.",
     "Compatibility: canvas.elements_apply still maps a ToolOps list onto Canvas Core. Prefer typed tools.",
     "Also available: canvas.snapshot_get, canvas.elements_get, canvas.export, canvas.context_bundle_create, canvas.asset_import.",
     "ToolOps durable subset if using elements_apply: update_node, create_shape, create_text, create_image(assetId), create_svg, create_lottie(assetId), create_icon(assetId), create_frame, update_frame, delete_frame, delete_nodes, align_nodes, distribute_nodes, reorder_nodes, group_nodes, ungroup_nodes, duplicate_nodes, flip_nodes, boolean_op, set_canvas_background.",

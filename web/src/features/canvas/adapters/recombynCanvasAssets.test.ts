@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { apiQuery, configureRecombynCanvasAssetBridge } from "./recombynStageOneServices.ts";
+import { CANVAS_FONT_CATALOG } from "@kith-canvas-fonts";
 
 test("native AssetPanel query and delete use the active Canvas-local bridge", async () => {
   const deleted: string[] = [];
@@ -17,4 +18,15 @@ test("native AssetPanel query and delete use the active Canvas-local bridge", as
     await apiQuery.assetsDeleteMyAsset.mutationOptions().mutationFn({ params: { asset_id: "asset-1" } });
     assert.deepEqual(deleted, ["asset-1"]);
   } finally { detach(); }
+});
+
+test("fontsListFontsEndpoint serves the transplanted Recombyn catalog", async () => {
+  const options = apiQuery.fontsListFontsEndpoint.queryOptions({
+    input: { query: { page: 1, pageSize: 500 } },
+  });
+  const page = await options.queryFn();
+  assert.equal(page.items, CANVAS_FONT_CATALOG);
+  assert.ok(page.items.length >= 40);
+  assert.ok(page.items.some((font: { family: string }) => font.family === "Zhi Mang Xing"));
+  assert.ok(page.items.some((font: { family: string }) => font.family === "Playfair Display"));
 });

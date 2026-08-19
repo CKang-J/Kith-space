@@ -66,6 +66,7 @@ export function buildDesktopProcessCommands(options: DesktopProcessCommandOption
         NODE_PATH: path.join(options.appRoot, "node_modules"),
         KITH_SPACE_WEB_DIST: path.join(options.resourcesPath, "web", "dist"),
         KITH_SPACE_MIGRATIONS_DIR: path.join(options.resourcesPath, "drizzle"),
+        KITH_SPACE_CANVAS_SKILLS_DIR: path.join(options.resourcesPath, "canvas-skills"),
         KITH_SPACE_PI_ADVISOR_HELPER: advisorHelper,
       },
     },

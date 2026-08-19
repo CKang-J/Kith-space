@@ -295,8 +295,11 @@
 **Message Execution Binding / 消息执行绑定**
 : Server-owned 的“这条真实 DM/频道/话题消息由哪个 Agent 执行”事实。Executor 必须未删除、v2、有当前 surface access 且实时拥有 `message:send`；Canvas 请求的 snapshot、message/ref、binding 与 executor required delivery 在同一事务写入。绑定持久化 `bindingSource`（`dm_peer` / `explicit_picker` / `structured_mention`），重试不自动换绑。它不改变原 surface，不由普通正文 `@mention` 冒充，也不会给其他 active Agent optional wake。
 
-**Canvas Access Grant / 画布访问授权**
-: 从 Message Execution Binding 与 bound delivery 派生的 durable capability 事实，限定 turn/executor、Canvas、selection/object scope、read/write/create/import/export actions、expiry 与撤销状态。加号菜单整板授权或空选中签发整板写；选中 Frame 时焦点与 createParents 限制在该 Frame。Gateway 每次调用按 Core 派生的真实影响集重验，不能信任请求体自行声明权限。
+**Canvas Design Skill / 画布设计技能**
+: Phase 2 起由 `canvas.skill_list` / `canvas.skill_get` 按需加载的 Markdown playbook（foundation + domains）。它是 Agent 的设计方法论，不是独立 runtime，也不替代 Canvas Access Grant。只读，需 `canvas.read` 与 grant 的 `read_snapshot` 或 `read_live`。P0 另在 skill pack 固定注入 `CANVAS_DESIGN_PRINCIPLES`，不经过 skill_get。
+
+**Canvas Font Catalog / 画布字体目录**
+: Canvas 文本节点可用的 46 个 family（含中文无衬线/书法、英文衬线与装饰体），源数据移植自 Recombyn `fonts_seed.json`，由 `src/canvas/fonts/fontsCatalog.ts` 导出。`canvas.scene_summary` 的 `AVAILABLE_FONTS` 与编辑器字体选择器共用该目录；字面文件走 jsDelivr CDN，不进入 Desktop extraResources。它不是安装级 UI 外观字体（Sora/Inter 等 Fontsource 包）。
 
 **Turn Output Artifact / Turn 输出制品**
 : `turn.reply` 除 Chat message 外关联的规范输出对象。Canvas MVP 用 strict `outputRefs` 与 `turn_output_artifacts` 关联已提交 mutation；它不同于只证明输入披露来源的 `sourceRefs`。

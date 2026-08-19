@@ -17,6 +17,8 @@ import {
   CanvasGroupNodesCommandSchema,
   CanvasReorderNodesCommandSchema,
   CanvasSceneSummaryCommandSchema,
+  CanvasSkillGetCommandSchema,
+  CanvasSkillListCommandSchema,
   CanvasSetCanvasBackgroundCommandSchema,
   CanvasUngroupNodesCommandSchema,
   CanvasUpdateFrameCommandSchema,
@@ -187,6 +189,8 @@ register("canvas.asset_import", "Import a turn-bound local attachment into the a
   idempotencyKey: z.string().min(1),
 }, "POST", "/agent-gateway/canvas/asset_import");
 registerSchema("canvas.scene_summary", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.scene_summary"], CanvasSceneSummaryCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.scene_summary"]);
+registerSchema("canvas.skill_list", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.skill_list"], CanvasSkillListCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.skill_list"]);
+registerSchema("canvas.skill_get", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.skill_get"], CanvasSkillGetCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.skill_get"]);
 registerSchema("canvas.create_frame", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_frame"], CanvasCreateFrameCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_frame"]);
 registerSchema("canvas.create_text", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_text"], CanvasCreateTextCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_text"]);
 registerSchema("canvas.create_shape", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_shape"], CanvasCreateShapeCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_shape"]);

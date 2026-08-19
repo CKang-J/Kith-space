@@ -23,6 +23,7 @@ export default defineConfig({
   }, react(), tailwindcss()],
   resolve: {
     alias: [
+      { find: "@kith-canvas-fonts", replacement: fileURLToPath(new URL("../src/canvas/fonts/fontsCatalog.ts", import.meta.url)) },
       { find: "@recombyn-native/utils/uploadImage", replacement: fileURLToPath(new URL("./src/features/canvas/adapters/recombynDurableMedia.ts", import.meta.url)) },
       { find: /^@recombyn-native\/i18n$/, replacement: fileURLToPath(new URL("./src/features/canvas/adapters/recombynEmbeddedI18n.ts", import.meta.url)) },
       { find: "@", replacement: fileURLToPath(new URL("./src", import.meta.url)) },
@@ -33,6 +34,7 @@ export default defineConfig({
   server: {
     port: Number(process.env.VITE_PORT ?? 5273),
     strictPort: true,
+    fs: { allow: [fileURLToPath(new URL("..", import.meta.url))] },
     proxy: {
       // Preserve the browser-visible Host so Core can compare it with Origin for browser-session CSRF checks.
       "/api": { target: API, changeOrigin: false, agent: coreProxyAgent },

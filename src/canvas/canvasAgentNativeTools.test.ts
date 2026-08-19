@@ -349,7 +349,11 @@ test("typed Canvas tool schemas reject unknown fields and remote image inputs", 
     idempotencyKey: "bool-1",
   });
   assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_shape"], /NEVER put CSS/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_shape"], /Never use emoji/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_shape"], /boolean_op subtract/);
   assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.update_node"], /fillType/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.boolean_op"], /moon = large circle subtract/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.boolean_op"], /magnifier = circle union rect handle/);
 });
 
 test("typed Canvas commands map onto the same ToolOp names Core already executes", () => {
@@ -457,6 +461,14 @@ test("canvas intent stays unknown from natural language and pure questions do no
   assert.match(pack, /NEVER use CSS: fill="linear-gradient/);
   assert.match(pack, /Prefer canvas\.update_node on the same id/);
   assert.match(pack, /do not delete\+create/);
+  assert.match(pack, /CANVAS_SKILLS_CATALOG/);
+  assert.match(pack, /poster_craft/);
+  assert.match(pack, /anti_ai_slop/);
+  assert.match(pack, /canvas\.skill_get/);
+  assert.match(pack, /Design Decision Framework/);
+  assert.match(pack, /Anti AI Slop/);
+  assert.match(pack, /hero_coverage: 60-85%/);
+  assert.match(pack, /Never use emoji/);
 });
 
 test("scene_summary is grant-scoped and typed create/update/delete share Gateway→Core with mutation feedback", async () => {
@@ -506,6 +518,38 @@ test("scene_summary is grant-scoped and typed create/update/delete share Gateway
     assert.match(summary.contextText, /shape-1/);
     assert.doesNotMatch(summary.contextText, /shape-2/);
     assert.ok(summary.availableFonts.includes("Inter"));
+    assert.ok(summary.availableFonts.length >= 40);
+    assert.ok(summary.availableFonts.includes("Zhi Mang Xing"));
+    assert.ok(summary.availableFonts.includes("Ma Shan Zheng"));
+    assert.ok(summary.availableFonts.includes("Bebas Neue"));
+    assert.ok(summary.availableFonts.includes("Playfair Display"));
+    assert.match(summary.contextText, /=== AVAILABLE_FONTS ===/);
+    assert.match(summary.contextText, /Zhi Mang Xing \(志莽行书\)/);
+    assert.match(summary.contextText, /Bebas Neue/);
+
+    const catalog = turn.gateway.canvasSkillList(turn.claims, {
+      snapshotId: grant.snapshotId,
+      idempotencyKey: "skill-list-1",
+    });
+    assert.equal(catalog.catalog.foundation.length, 6);
+    assert.equal(catalog.catalog.domains.length, 3);
+    assert.ok(catalog.catalog.domains.some((skill) => skill.skillKey === "poster_craft"));
+    const poster = turn.gateway.canvasSkillGet(turn.claims, {
+      snapshotId: grant.snapshotId,
+      skillKey: "poster_craft",
+      idempotencyKey: "skill-get-1",
+    });
+    assert.equal(poster.skillKey, "poster_craft");
+    assert.match(poster.content, /create_frame/);
+    assert.match(poster.content, /## Hard rules/);
+    assert.throws(
+      () => turn.gateway.canvasSkillGet(turn.claims, {
+        snapshotId: grant.snapshotId,
+        skillKey: "not_a_skill",
+        idempotencyKey: "skill-get-missing",
+      }),
+      (error: unknown) => error instanceof HarnessError && String(error.message).includes("not_a_skill"),
+    );
 
     const baseRevision = f.core.read(f.canvas.id).revisions.revision;
     const created = turn.gateway.canvasCreateText(turn.claims, {

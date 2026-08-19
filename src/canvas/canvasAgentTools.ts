@@ -41,6 +41,17 @@ export const CanvasSceneSummaryCommandSchema = z.object({
   idempotencyKey: IdempotencyKey,
 }).strict();
 
+export const CanvasSkillListCommandSchema = z.object({
+  ...CanvasLocator,
+  idempotencyKey: IdempotencyKey,
+}).strict();
+
+export const CanvasSkillGetCommandSchema = z.object({
+  ...CanvasLocator,
+  skillKey: z.string().trim().min(1).max(80),
+  idempotencyKey: IdempotencyKey,
+}).strict();
+
 export const CanvasCreateFrameCommandSchema = z.object({
   ...WriteLocator,
   x: z.number().finite(),
@@ -240,6 +251,8 @@ export const CanvasSetCanvasBackgroundCommandSchema = z.object({
 }).strict();
 
 export type CanvasSceneSummaryCommand = z.infer<typeof CanvasSceneSummaryCommandSchema>;
+export type CanvasSkillListCommand = z.infer<typeof CanvasSkillListCommandSchema>;
+export type CanvasSkillGetCommand = z.infer<typeof CanvasSkillGetCommandSchema>;
 export type CanvasCreateFrameCommand = z.infer<typeof CanvasCreateFrameCommandSchema>;
 export type CanvasCreateTextCommand = z.infer<typeof CanvasCreateTextCommandSchema>;
 export type CanvasCreateShapeCommand = z.infer<typeof CanvasCreateShapeCommandSchema>;
@@ -310,9 +323,16 @@ export const CANVAS_MEDIA_GENERATE_SEAM = {
 
 export const CANVAS_TYPED_TOOL_DESCRIPTIONS = {
   "canvas.scene_summary": "Read a grant-scoped, model-friendly Canvas summary. Returns JSON plus contextText with CANVAS_SCENE / SCENE_FRAMES / SCENE_NODES / FOCUS_FRAME_ID / GRANT / AVAILABLE_FONTS. Call this before creating or editing. Do not inspect project source to learn Canvas. 画布摘要/先读再改",
+  "canvas.skill_list": "List Canvas design skills (foundation + domains). Returns catalog with skillKey, category, whenToUse, priority. Load one primary surface skill before a new poster/landing/banner. Read-only. 设计技能目录",
+  "canvas.skill_get": "Load the full Markdown playbook for one skillKey from skill_list (e.g. poster_craft, design_brief, anti_ai_slop). Read-only. 加载设计技能全文",
   "canvas.create_frame": "Create a frame/artboard. Args: x,y,width,height,name?. Fixed-size poster/mobile/H5/banner: MUST create_frame first at the deliverable size — never replace the artboard with a full-bleed create_shape bg rect. Exception only if the user explicitly refuses a frame (不要画板/自由画布/不要 create_frame). Multi-screen or multi-poster: one create_frame per board (name it), then that board's content, then the next create_frame — do not merge into one tall frame. Custom id cannot be ROOT and cannot collide with an existing element or Frame. 画框/画板/先建 frame",
   "canvas.create_text": "Add a text node. Args: text, x, y, width?, height?, fontSize?, fill?, fontWeight?, fontFamily?, rotation?, opacity?, blendMode?, name?. fontFamily only from Available fonts, and only when that face is ~≥90% similar to the needed look. Hero/main titles below that bar → prefer create_image+letteringText instead of forcing a near calligraphy font. Do not invent font names. Do not map 书法感→Zhi Mang Xing by default. Prefer frameId from the selected Frame in canvas.scene_summary; node parentId is ROOT or a group (Frame ids passed as parentId are remapped). 文字/标题/不要编字体",
-  "canvas.create_shape": "Add a shape. Args: shapeType|type = rect|ellipse|circle|line|arrow|triangle|polygon|star|path|pen|pencil (+ path for pen/pencil/path; sides for polygon/star), x,y,width,height, fill, stroke, borderWidth, strokeAlign=center|inside|outside (default center — ink + selection indicator sit on stroke mid-band; outside/inside shift the band). Fills: solid → fill=#RRGGBB|rgba(…); gradient → fillType=linear|radial|angular|diffuse + fill + fillEnd + gradientAngle? (example vignette: fillType=linear fill=rgba(0,0,0,0) fillEnd=rgba(0,0,0,0.35) gradientAngle=90). NEVER put CSS linear-gradient()/radial-gradient()/conic-gradient() in fill — rejected by host. Diffuse may pass meshSize/meshPoints. Optional: strokeStyle, strokeLinecap, strokeLinejoin, strokeOpacity, cornerRadius, rotation, blendMode, opacity, flipX, flipY. Pen=pen+path (icons: closed path for filled silhouettes). Brush/板绘=pencil tip-stamp: path (M/L only)+pathPressure (csv 0.05-1, same length as points)+brushStyle tip id (solid|pencil-hb|soft|fountain|calligraphy|brushpen|marker|highlighter|chalk|charcoal|bristle|airbrush|watercolor|needle|bold)+optional brushHardness 0-100 (soft→hard tip, default ~80)+optional pressureEnabled true|false (default true when pathPressure set); stroke-only. Line/arrow are open center strokes (full arrow path includes head). Icons: prefer primitives + boolean_op (cutouts/combines); create_svg/create_icon only for simple single-path marks. For Q-illustration / pencil sketch do NOT collage with circles — use multiple pencil strokes with pressure. Prefer frameId from the selected Frame; never delete+recreate the same object to restyle it. 形状/填充/描边/渐变/禁止 CSS gradient",
+  "canvas.create_shape": "Add a shape. Args: shapeType|type = rect|ellipse|circle|line|arrow|triangle|polygon|star|path|pen|pencil (+ path for pen/pencil/path; sides for polygon/star), x,y,width,height, fill, stroke, borderWidth. " +
+    "**Icon construction**: Prefer simple primitives (circle/rect/polygon) + boolean_op for complex icons. " +
+    "Example: moon = circle + circle → boolean_op subtract; magnifier = circle + rect → boolean_op union. " +
+    "Only use create_svg for complex single-path marks that can't be built from 2-4 primitives. " +
+    "**Never use emoji (🏠🔍❤️) in create_text as icons**. " +
+    "strokeAlign=center|inside|outside (default center — ink + selection indicator sit on stroke mid-band; outside/inside shift the band). Fills: solid → fill=#RRGGBB|rgba(…); gradient → fillType=linear|radial|angular|diffuse + fill + fillEnd + gradientAngle? (example vignette: fillType=linear fill=rgba(0,0,0,0) fillEnd=rgba(0,0,0,0.35) gradientAngle=90). NEVER put CSS linear-gradient()/radial-gradient()/conic-gradient() in fill — rejected by host. Diffuse may pass meshSize/meshPoints. Optional: strokeStyle, strokeLinecap, strokeLinejoin, strokeOpacity, cornerRadius, rotation, blendMode, opacity, flipX, flipY. Pen=pen+path (icons: closed path for filled silhouettes). Brush/板绘=pencil tip-stamp: path (M/L only)+pathPressure (csv 0.05-1, same length as points)+brushStyle tip id (solid|pencil-hb|soft|fountain|calligraphy|brushpen|marker|highlighter|chalk|charcoal|bristle|airbrush|watercolor|needle|bold)+optional brushHardness 0-100 (soft→hard tip, default ~80)+optional pressureEnabled true|false (default true when pathPressure set); stroke-only. Line/arrow are open center strokes (full arrow path includes head). For Q-illustration / pencil sketch do NOT collage with circles — use multiple pencil strokes with pressure. Prefer frameId from the selected Frame; never delete+recreate the same object to restyle it. 形状/填充/描边/渐变/禁止 CSS gradient",
   "canvas.create_image": "Create an image node from an existing Canvas assetId that already belongs to this Canvas. Missing or cross-canvas assets are rejected. Remote URLs, data URLs, and genPrompt are rejected — do not pass src|url|attachmentIndex|genPrompt. Import a turn-bound local attachment with canvas.asset_import first. Image generation jobs are not available in this turn. Optional letteringText/removeBg/cutoutMode from Recombyn are not accepted here. Atmosphere/poster heroes: keep titles/dates/logos in create_text, not baked into the image. 图片/只用 assetId/禁止 URL 与 genPrompt",
   "canvas.update_node": "Patch an existing node by nodeId|id (keeps z-order). Geometry: x,y,width,height. Morph shape: shapeType|type=rect|ellipse|circle|triangle|polygon|star|line|arrow|… (rect→circle = update_node shapeType=circle on same id — NEVER delete+create_shape). Style: fill (solid hex/rgba only — NEVER CSS linear-gradient()/radial-gradient()), fillType=solid|linear|radial|angular|diffuse|image?, fillEnd?, gradientAngle?, stroke,borderWidth,strokeAlign=center|inside|outside (default center; selection chrome sits on mid of stroke band), strokeStyle, strokeLinecap, strokeLinejoin, strokeOpacity, opacity,cornerRadius,rotation,blendMode,name, flipX/flipY, fontSize, fontWeight, fontFamily, text styles…. Gradients: fillType=linear|radial|angular|diffuse + fill + fillEnd (+ gradientAngle?). Pencil tip edits: brushStyle (tip id), brushHardness 0-100, pathPressure csv, pressureEnabled. Visibility/edit: hidden, locked (boolean). Keep the same id; do not delete+create to change type or style. 改节点/改填充/改字号/禁止删除重建",
   "canvas.delete_nodes": "Remove nodes by id. Args: ids|nodeIds (string[]). Only when user asked to delete. Destructive: confirmDestructive must be true. Never put ids in the chat reply. 删除节点/需确认",
@@ -324,14 +344,32 @@ export const CANVAS_TYPED_TOOL_DESCRIPTIONS = {
   "canvas.ungroup_nodes": "Ungroup. Args: nodeIds (group ids). Replaces the group node — confirmDestructive must be true. 解组",
   "canvas.duplicate_nodes": "Duplicate nodes. Args: nodeIds, offsetX?, offsetY?. 复制节点",
   "canvas.flip_nodes": "Flip nodes. Args: nodeIds, flipX?=true and/or flipY?=true. Do not pass axis. 翻转",
-  "canvas.boolean_op": "Boolean on shapes — primary tool for constructed icons (cutouts/combines). Args: nodeIds (2+ from SCENE), mode=union|subtract|intersect|exclude. Examples: moon=large circle subtract small; magnifier=circle union handle rect; ring=outer circle subtract inner. Prefer this over dumping create_svg when the mark can be built from primitives/pen. Operands are replaced — confirmDestructive must be true. 布尔运算/挖空/合并",
+  "canvas.boolean_op": "Boolean operations on 2+ shapes — PRIMARY tool for constructing complex icons with cutouts/combines. " +
+    "Prefer this over create_svg when the icon can be built from primitives. " +
+    "Examples: " +
+    "moon = large circle subtract small circle (mode=subtract); " +
+    "magnifier = circle union rect handle (mode=union); " +
+    "ring = outer circle subtract inner circle (mode=subtract); " +
+    "heart = two circles + triangle boolean union. " +
+    "Args: nodeIds (2+ from SCENE), mode=union|subtract|intersect|exclude, confirmDestructive=true. " +
+    "Operands are replaced. 布尔运算/挖空/合并/构建复杂图标",
   "canvas.set_canvas_background": "Set infinite-canvas stage background (not artboard fill). Args: color|fill|backgroundColor (solid hex/rgba — never CSS gradient()), fillType?=solid|linear|radial|angular|diffuse|image, fillEnd?, gradientAngle?, opacity?. Do not use a full-bleed rect as the canvas stage background. 画布背景/不是画板填充",
 } as const;
 
 export type CanvasTypedToolName = keyof typeof CANVAS_TYPED_TOOL_DESCRIPTIONS;
 
+export const CANVAS_TYPED_READ_TOOL_NAMES = [
+  "canvas.scene_summary",
+  "canvas.skill_list",
+  "canvas.skill_get",
+] as const;
+export type CanvasTypedReadToolName = (typeof CANVAS_TYPED_READ_TOOL_NAMES)[number];
+export type CanvasTypedMutationToolName = Exclude<CanvasTypedToolName, CanvasTypedReadToolName>;
+
 export const CANVAS_AGENT_GATEWAY_PATHS = {
   "canvas.scene_summary": "/agent-gateway/canvas/scene_summary",
+  "canvas.skill_list": "/agent-gateway/canvas/skill_list",
+  "canvas.skill_get": "/agent-gateway/canvas/skill_get",
   "canvas.create_frame": "/agent-gateway/canvas/create_frame",
   "canvas.create_text": "/agent-gateway/canvas/create_text",
   "canvas.create_shape": "/agent-gateway/canvas/create_shape",
@@ -374,7 +412,7 @@ export function defaultCreateFrameId(grant: CanvasAccessGrantRow): string | unde
 }
 
 export function typedCanvasCommandToToolOp(
-  toolName: Exclude<CanvasTypedToolName, "canvas.scene_summary">,
+  toolName: CanvasTypedMutationToolName,
   command: CanvasTypedMutationCommand,
   grant: CanvasAccessGrantRow,
 ): Record<string, unknown> {
