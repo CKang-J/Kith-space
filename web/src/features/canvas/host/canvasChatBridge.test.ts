@@ -374,3 +374,57 @@ test("selection focus is consumed after the matching canvas applies it", () => {
     resetCanvasSelectionFocusForTests();
   }
 });
+
+test("a second mark on the same image merges the boxed region onto the existing pending card", () => {
+  resetCanvasChatBridgeForTests();
+  const originalWindow = globalThis.window;
+  const listeners = new Map<string, Set<EventListener>>();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      addEventListener(type: string, listener: EventListener) {
+        const set = listeners.get(type) ?? new Set();
+        set.add(listener);
+        listeners.set(type, set);
+      },
+      removeEventListener(type: string, listener: EventListener) {
+        listeners.get(type)?.delete(listener);
+      },
+      dispatchEvent(event: { type: string; detail?: unknown }) {
+        for (const listener of listeners.get(event.type) ?? []) {
+          listener(event as Event);
+        }
+        return true;
+      },
+    },
+  });
+  try {
+    pushCanvasChatSurface("channel-a");
+    bindCanvasSelectionToChat({
+      canvasId: "canvas-open",
+      canvasTitle: "Open Board",
+      previewDocument: { id: "open" },
+    });
+    window.dispatchEvent(new CustomEvent(CANVAS_SELECTION_TO_CHAT_EVENT, {
+      detail: {
+        target: "image-1",
+        canvasId: "canvas-open",
+        markedRegions: [{ nodeId: "image-1", label: "1 区域", kind: "manual", nx: 0.1, ny: 0.1, nw: 0.2, nh: 0.2 }],
+      },
+    }));
+    window.dispatchEvent(new CustomEvent(CANVAS_SELECTION_TO_CHAT_EVENT, {
+      detail: {
+        target: "image-1",
+        canvasId: "canvas-open",
+        markedRegions: [{ nodeId: "image-1", label: "2 区域", kind: "manual", nx: 0.5, ny: 0.5, nw: 0.2, nh: 0.2 }],
+      },
+    }));
+    const pending = getPendingCanvasChatContexts("channel-a");
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0]?.markedRegions?.length, 2);
+    assert.equal(pending[0]?.markedRegions?.[1]?.label, "2 区域");
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+    resetCanvasChatBridgeForTests();
+  }
+});

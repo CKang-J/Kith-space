@@ -36,6 +36,11 @@ import {
   CANVAS_TYPED_TOOL_DESCRIPTIONS,
   typedCanvasCommandToToolOp,
 } from "./canvasAgentTools.js";
+import {
+  clearGenerationProviders,
+  registerGenerationProvider,
+} from "./generation/generationProviders.js";
+import type { IGenerationProvider } from "./generation/contracts.js";
 import { CanvasCore } from "./canvasCore.js";
 import { CanvasAssetStore } from "./canvasAssetStore.js";
 import { classifyCanvasTurnIntent, evaluateCanvasEditCompletion } from "./canvasIntentGate.js";
@@ -243,15 +248,37 @@ test("typed Canvas tool schemas reject unknown fields and remote image inputs", 
     height: 10,
     idempotencyKey: "img:url",
   }));
-  assert.throws(() => CanvasCreateImageCommandSchema.parse({
+  const bothSources = CanvasCreateImageCommandSchema.parse({
     expectedRevision: 1,
     assetId: "asset-1",
-    genPrompt: "a poster",
+    genPrompt: "a starry night poster background",
     x: 0,
     y: 0,
     width: 10,
     height: 10,
     idempotencyKey: "img:prompt",
+  });
+  assert.equal(bothSources.assetId, "asset-1");
+  assert.equal(bothSources.genPrompt, "a starry night poster background");
+  const generated = CanvasCreateImageCommandSchema.parse({
+    expectedRevision: 1,
+    genPrompt: "a starry night poster background",
+    x: 0,
+    y: 0,
+    width: 10,
+    height: 10,
+    idempotencyKey: "img:gen-only",
+  });
+  assert.equal(generated.genPrompt, "a starry night poster background");
+  assert.equal(generated.assetId, undefined);
+  assert.throws(() => CanvasCreateImageCommandSchema.parse({
+    expectedRevision: 1,
+    genPrompt: "too short",
+    x: 0,
+    y: 0,
+    width: 10,
+    height: 10,
+    idempotencyKey: "img:short",
   }));
   assert.throws(() => CanvasCreateImageCommandSchema.parse({
     expectedRevision: 1,
@@ -292,7 +319,7 @@ test("typed Canvas tool schemas reject unknown fields and remote image inputs", 
     id: "ROOT",
     idempotencyKey: "frame-root",
   }), /id cannot be ROOT/);
-  assert.equal(CANVAS_MEDIA_GENERATE_SEAM.status, "deferred");
+  assert.equal(CANVAS_MEDIA_GENERATE_SEAM.status, "accepted");
   assert.ok(CANVAS_MUTATION_TOOL_NAMES.includes("canvas.create_text"));
   assert.ok(CANVAS_MUTATION_TOOL_NAMES.includes("canvas.elements_apply"));
   assert.ok(CANVAS_MUTATION_TOOL_NAMES.includes("canvas.align_nodes"));
@@ -469,6 +496,8 @@ test("canvas intent stays unknown from natural language and pure questions do no
   assert.match(pack, /Anti AI Slop/);
   assert.match(pack, /hero_coverage: 60-85%/);
   assert.match(pack, /Never use emoji/);
+  assert.match(pack, /markedRegions/);
+  assert.match(pack, /do not paste markedRegions/);
 });
 
 test("scene_summary is grant-scoped and typed create/update/delete share Gateway→Core with mutation feedback", async () => {
@@ -728,6 +757,30 @@ test("create_frame custom ids cannot be ROOT or collide with elements or Frames"
   assert.deepEqual(red.createdElementIds, ["red-1"]);
 });
 
+test("create_image binds durable attrs.src from assetId so the editor can paint the asset", () => {
+  const mapped = mapCanvasToolOps(scene as CanvasJson, [{
+    op: "create_image",
+    id: "img-1",
+    assetId: "asset-1",
+    x: 12,
+    y: 16,
+    width: 80,
+    height: 60,
+    attrs: { name: "hero" },
+  }], { spaceId: "space-a", canvasId: "canvas-a" });
+  assert.deepEqual(mapped.createdElementIds, ["img-1"]);
+  const node = mapped.operation && mapped.operation.type === "document.patch"
+    ? mapped.operation.patches.find((patch) => patch.path[0] === "deltaSetLike" && patch.path[1] === "img-1")?.value
+    : null;
+  const record = node && typeof node === "object" && !Array.isArray(node)
+    ? node as { assetId?: string; attrs?: { src?: string; uploadKey?: string; name?: string } }
+    : null;
+  assert.equal(record?.assetId, "asset-1");
+  assert.equal(record?.attrs?.src, "/api/canvas-assets/space-a/canvas-a/asset-1");
+  assert.equal(record?.attrs?.uploadKey, "asset-1");
+  assert.equal(record?.attrs?.name, "hero");
+});
+
 test("mapCanvasToolError attaches canvasErrorCode/fix/detail for CanvasToolError", () => {
   const error = new CanvasToolError(
     "invalid_fill",
@@ -832,7 +885,7 @@ test("create_image rejects missing and cross-canvas assets; outputRefs cannot bi
       width: 40,
       height: 40,
       idempotencyKey: "img-missing",
-    }), /does not exist on this Canvas|capability_scope_denied/);
+    }), /does not exist(?: on this Canvas)?|capability_scope_denied/);
     assert.throws(() => turn.gateway.canvasCreateImage(turn.claims, {
       snapshotId: grant.snapshotId,
       expectedRevision: baseRevision,
@@ -842,7 +895,7 @@ test("create_image rejects missing and cross-canvas assets; outputRefs cannot bi
       width: 40,
       height: 40,
       idempotencyKey: "img-cross",
-    }), /does not exist on this Canvas|capability_scope_denied/);
+    }), /does not exist(?: on this Canvas)?|cannot cross Canvas|capability_scope_denied/);
     assert.throws(() => turn.gateway.canvasCreateFrame(turn.claims, {
       snapshotId: grant.snapshotId,
       expectedRevision: baseRevision,
@@ -866,6 +919,16 @@ test("create_image rejects missing and cross-canvas assets; outputRefs cannot bi
     });
     assert.equal(created.status, "committed");
     assert.ok(created.mutationId);
+    const placedId = created.createdIds[0];
+    assert.ok(placedId);
+    const placed = (f.core.read(f.canvas.id).document as {
+      deltaSetLike?: Record<string, { assetId?: string; attrs?: { src?: string } }>;
+    }).deltaSetLike?.[placedId];
+    assert.equal(placed?.assetId, localAsset.id);
+    assert.equal(
+      placed?.attrs?.src,
+      `/api/canvas-assets/${encodeURIComponent(f.spaceId)}/${encodeURIComponent(f.canvas.id)}/${encodeURIComponent(localAsset.id)}`,
+    );
     const replay = turn.gateway.canvasCreateImage(turn.claims, {
       snapshotId: grant.snapshotId,
       expectedRevision: baseRevision,
@@ -915,6 +978,81 @@ test("create_image rejects missing and cross-canvas assets; outputRefs cannot bi
       return true;
     });
   } finally {
+    f.cleanup();
+  }
+});
+
+test("create_image(genPrompt) queues a job and rejects XOR with assetId", async () => {
+  const f = fixture("native-genprompt");
+  const fake: IGenerationProvider = {
+    name: "doubao",
+    type: "image",
+    async submit() { return "ark-url:https://example.invalid/generated.png"; },
+    async getStatus() { return { status: "completed", resultUrl: "https://example.invalid/generated.png" }; },
+    async downloadResult() { return PNG_BYTES; },
+  };
+  registerGenerationProvider(fake);
+  try {
+    const executor = f.addAgent("executor");
+    const channel = f.addChannel();
+    f.addMember(channel.id, executor.id);
+    const modules = posting();
+    const message = await modules.messagePosting.post({
+      kind: "chat",
+      context: { spaceId: f.spaceId, channelId: channel.id, sender: { type: "human", id: f.humanId, name: "Human" } },
+      content: "生成星空背景",
+      canvasSelection: { canvasId: f.canvas.id, selectedIds: ["frame:frame-1"] },
+      executionBinding: { executorAgentId: executor.id, mode: "required" },
+    });
+    const turn = await prepareTurn({
+      spaceId: f.spaceId,
+      db: f.db,
+      agentId: executor.id,
+      channelId: channel.id,
+      messageId: message.id,
+    });
+    const grant = f.db.select().from(schema.canvasAccessGrants).where(eq(schema.canvasAccessGrants.turnId, turn.turnId)).get();
+    assert.ok(grant);
+    const baseRevision = f.core.read(f.canvas.id).revisions.revision;
+    assert.throws(() => turn.gateway.canvasCreateImage(turn.claims, {
+      snapshotId: grant.snapshotId,
+      expectedRevision: baseRevision,
+      assetId: "asset-1",
+      genPrompt: "a starry night poster background",
+      x: 0,
+      y: 0,
+      width: 80,
+      height: 120,
+      idempotencyKey: "img-xor",
+    }), /exactly one of assetId or genPrompt|capability_scope_denied/);
+    const queued = turn.gateway.canvasCreateImage(turn.claims, {
+      snapshotId: grant.snapshotId,
+      expectedRevision: baseRevision,
+      genPrompt: "a starry night poster background",
+      x: 12,
+      y: 16,
+      width: 80,
+      height: 120,
+      frameId: "frame-1",
+      idempotencyKey: "img-gen",
+    });
+    assert.equal("kind" in queued && queued.kind, "canvas_generation_job");
+    assert.equal(queued.status, "queued");
+    assert.ok("jobId" in queued && queued.jobId);
+    const replay = turn.gateway.canvasCreateImage(turn.claims, {
+      snapshotId: grant.snapshotId,
+      expectedRevision: baseRevision,
+      genPrompt: "a starry night poster background",
+      x: 12,
+      y: 16,
+      width: 80,
+      height: 120,
+      frameId: "frame-1",
+      idempotencyKey: "img-gen",
+    });
+    assert.equal("jobId" in replay ? replay.jobId : null, "jobId" in queued ? queued.jobId : null);
+  } finally {
+    clearGenerationProviders();
     f.cleanup();
   }
 });

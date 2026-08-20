@@ -55,14 +55,14 @@ function buildTextAttrs(text: string, style: Partial<typeof DEFAULT_TEXT_STYLE> 
 
 const DURABLE_OPS = new Set([
   "update_node", "create_shape", "create_text", "create_image", "create_svg",
-  "create_lottie", "create_icon", "create_frame", "update_frame", "delete_frame",
+  "create_lottie", "create_icon", "create_video", "create_frame", "update_frame", "delete_frame",
   "delete_nodes", "align_nodes", "distribute_nodes", "reorder_nodes", "group_nodes",
   "ungroup_nodes", "duplicate_nodes", "flip_nodes", "boolean_op", "set_canvas_background",
 ]);
 const DEFERRED_OPS = new Set(["image_process", "outline_text"]);
 const EPHEMERAL_OPS = new Set(["set_viewport"]);
 const SIDE_EFFECT_OPS = new Set(["export_canvas"]);
-const MEDIA_CREATE = new Set(["create_image", "create_lottie", "create_icon"]);
+const MEDIA_CREATE = new Set(["create_image", "create_lottie", "create_icon", "create_video"]);
 const CSS_GRADIENT_RE = /^(?:repeating-)?(?:linear|radial|conic)-gradient\s*\(/i;
 const ALLOWED_FILL_TYPES = new Set(["solid", "linear", "radial", "angular", "diffuse", "image"]);
 const GRADIENT_FILL_TYPES = new Set(["linear", "radial", "angular", "diffuse"]);
@@ -187,6 +187,36 @@ function requireParams(raw: Record<string, unknown>, keys: string[]): void {
 }
 
 export type CanvasViewportSuggestion = { x: number; y: number; zoom: number };
+
+export type CanvasToolOpsContext = {
+  spaceId: string;
+  canvasId: string;
+};
+
+/** Durable resolver URL that Image/Video nodes render via attrs.src. */
+export function durableCanvasAssetSrc(spaceId: string, canvasId: string, assetId: string): string {
+  return `/api/canvas-assets/${encodeURIComponent(spaceId)}/${encodeURIComponent(canvasId)}/${encodeURIComponent(assetId)}`;
+}
+
+function bindCreatedMediaAttrs(
+  op: string,
+  attrs: Record<string, CanvasJson>,
+  assetId: string,
+  context?: CanvasToolOpsContext,
+): void {
+  if (!context) return;
+  const src = durableCanvasAssetSrc(context.spaceId, context.canvasId, assetId);
+  if (typeof attrs.src !== "string" || !String(attrs.src).trim()) attrs.src = src;
+  if (typeof attrs.uploadKey !== "string" || !String(attrs.uploadKey).trim()) attrs.uploadKey = assetId;
+  if (typeof attrs.assetId !== "string" || !String(attrs.assetId).trim()) attrs.assetId = assetId;
+  if (typeof attrs.assetKind !== "string") {
+    attrs.assetKind = op === "create_icon" ? "icon"
+      : op === "create_video" ? "video"
+        : op === "create_lottie" ? "lottie"
+          : "image";
+  }
+  if ((op === "create_image" || op === "create_icon") && typeof attrs.mode !== "string") attrs.mode = "FIT";
+}
 
 export type MappedCanvasToolOps = {
   operation: CanvasOperation | null;
@@ -326,7 +356,7 @@ function creatableIdCollides(
   return id === "ROOT" || Boolean(nodes[id]) || frames.some((frame) => frame.id === id);
 }
 
-function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
+function mapOne(document: CanvasJson, raw: Record<string, unknown>, context?: CanvasToolOpsContext): {
   patches: CanvasPatch[];
   createdElementIds: string[];
   createdFrameIds: string[];
@@ -550,7 +580,7 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
     if (!nodes[parentId]) {
       throw opError("create_parent_missing", "parentId must be ROOT or an existing group from scene_summary", "create ToolOp parent does not exist");
     }
-    const key = op === "create_text" ? "text" : op === "create_svg" ? "svg" : op === "create_image" ? "image" : op === "create_lottie" ? "lottie" : op === "create_icon" ? "icon" : "shape";
+    const key = op === "create_text" ? "text" : op === "create_svg" ? "svg" : op === "create_image" ? "image" : op === "create_lottie" ? "lottie" : op === "create_icon" ? "icon" : op === "create_video" ? "video" : "shape";
     const createFrameId = typeof raw.frameId === "string" ? raw.frameId : undefined;
     const createFrame = findCanvasFrame(frames, createFrameId);
     const canvasPoint = canvasFrameLocalToCanvas(createFrame, numberOf(raw.x, 0), numberOf(raw.y, 0));
@@ -572,7 +602,10 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
     if (typeof attrs.fillType === "string") node.fillType = attrs.fillType;
     if (typeof raw.frameId === "string") node.frameId = raw.frameId;
     if (typeof raw.text === "string") node.text = raw.text;
-    if (typeof raw.assetId === "string") node.assetId = raw.assetId;
+    if (typeof raw.assetId === "string") {
+      node.assetId = raw.assetId;
+      bindCreatedMediaAttrs(op, attrs as Record<string, CanvasJson>, raw.assetId, context);
+    }
 
     // Handle rotation: frontend uses 'angle' field
     if (typeof raw.rotation === "number") {
@@ -954,7 +987,11 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>): {
   throw opError("unsupported_op", "use a durable Canvas ToolOp from the typed tool list", `unsupported Canvas ToolOp ${op}`);
 }
 
-export function mapCanvasToolOps(document: CanvasJson, operations: unknown[]): MappedCanvasToolOps {
+export function mapCanvasToolOps(
+  document: CanvasJson,
+  operations: unknown[],
+  context?: CanvasToolOpsContext,
+): MappedCanvasToolOps {
   if (!Array.isArray(operations) || operations.length === 0) {
     throw opError("apply_empty", "pass a non-empty operations list", "canvas.elements_apply requires a non-empty operations list");
   }
@@ -987,7 +1024,7 @@ export function mapCanvasToolOps(document: CanvasJson, operations: unknown[]): M
       continue;
     }
     if (!DURABLE_OPS.has(name)) throw opError("unknown_op", "use a durable Canvas ToolOp from the typed tool list", `unknown Canvas ToolOp ${name}`);
-    const mapped = mapOne(current, raw);
+    const mapped = mapOne(current, raw, context);
     patches.push(...mapped.patches);
     createdElementIds.push(...mapped.createdElementIds);
     createdFrameIds.push(...mapped.createdFrameIds);

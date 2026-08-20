@@ -45,6 +45,7 @@ import { cloudImageFallbackId } from '@recombyn-native/components/editor/panels/
 import {
   listImageVariantUrls,
   writeImageVariantsAttr,
+  clearImageProcessAttrs,
 } from '@recombyn-native/components/rcb/scene/document/mediaLifecycle';
 import {
   clearCanvasAttachPick,
@@ -53,6 +54,7 @@ import {
   finishImageProcess,
   patchDocumentNode,
   pushEditorHistory,
+  setDocumentFromCanvas,
   startCanvasAttachPick,
 } from '@recombyn-native/store/modules/editor';
 import { noteCanvasFlyLand } from '@recombyn-native/components/editor/panels/agent/flyToChat';
@@ -62,6 +64,7 @@ import { cn } from '@recombyn-native/utils/classnames';
 import { isDesktopLocal } from '@recombyn-native/utils/apiBase';
 import { estimateImageCredits } from '@recombyn-native/utils/imageCredits';
 import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';
+import { firstReferenceAssetId, runCanvasMediaGeneration } from '@/features/canvas/adapters/recombynGeneration';
 import store from '@recombyn-native/store';
 
 type SceneBox = { left: number; top: number; width: number; height: number };
@@ -124,6 +127,7 @@ function ImageQuickEditComposer({
   const [prompt, setPrompt] = useState(savedPrompt);
   const [contexts, setContexts] = useState<ComposerContext[]>([]);
   const [sending, setSending] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [models, setModels] = useState<LlmModel[]>([]);
@@ -136,7 +140,7 @@ function ImageQuickEditComposer({
   const [imageCount, setImageCount] = useState<number>(DEFAULT_IMAGE_COUNT);
 
   const { planId } = useWalletSnapshot();
-  const canPickModel = planAllowsModelPick(planId);
+  const canPickModel = true;
   const canvasAttachPick = useSelector(
     (s: any) => s.editor?.canvasAttachPick as null | { target: string }
   );
@@ -194,6 +198,27 @@ function ImageQuickEditComposer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
+
+  useEffect(() => {
+    if (sending) return;
+    if (String(node?.attrs?.processStatus) !== 'running') return;
+    const timer = window.setTimeout(() => {
+      if (abortRef.current) return;
+      const doc = (store.getState() as any).editor?.document;
+      if (doc) dispatch(setDocumentFromCanvas(clearImageProcessAttrs(doc, nodeId)));
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [dispatch, nodeId, sending, node?.attrs?.processStatus]);
+
+  useEffect(() => {
+    if (!sending) return;
+    const timer = window.setTimeout(() => {
+      message.info('仍在等待方舟返回。图生图会上传原图，通常比文生图慢。');
+    }, 12_000);
+    return () => window.clearTimeout(timer);
+  }, [sending]);
+
   const attachments = contexts.filter((c) => c.kind === 'attachment');
   const inlineContexts = contexts.filter((c) => c.kind !== 'attachment');
   const selectedModel = models.find((m) => m.id === modelId);
@@ -236,8 +261,63 @@ function ImageQuickEditComposer({
     setContexts((prev) => [...prev, ...next]);
   };
 
-  const onGenerate = () => {
-    message.warning(t('editor.tools.stageOneGenerationUnavailable', { defaultValue: 'Kith Media Job 尚未实现，Stage 1 暂不支持生成' }));
+  const onGenerate = async () => {
+    const text = prompt.trim();
+    if (!text || sending || !node) return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setSending(true);
+    dispatch(
+      patchDocumentNode({
+        nodeId,
+        patch: {
+          attrs: {
+            processStatus: 'running',
+            processKind: 'generate',
+            processLabel: t('editor.tools.imageGenerating'),
+            genPrompt: text,
+          },
+        },
+      })
+    );
+    try {
+      const job = await runCanvasMediaGeneration({
+        jobType: 'image',
+        genPrompt: text,
+        targetNodeId: nodeId,
+        node,
+        aspectRatio,
+        model: modelId,
+        resolution,
+        referenceAssetId: firstReferenceAssetId(contextsRef.current, src)
+          || (typeof node.assetId === 'string' && node.assetId.trim())
+          || (typeof node.attrs?.assetId === 'string' && node.attrs.assetId.trim())
+          || undefined,
+        signal: ac.signal,
+      });
+      const doc = (store.getState() as any).editor?.document;
+      if (ac.signal.aborted) {
+        if (doc) dispatch(setDocumentFromCanvas(clearImageProcessAttrs(doc, nodeId)));
+        return;
+      }
+      const resultSrc = String(job?.resultSrc || '').trim();
+      if (resultSrc) {
+        dispatch(finishImageProcess({ nodeId, src: resultSrc, attrs: { genPrompt: text } }));
+        dispatch(closeImageToolPanel());
+      } else if (doc) {
+        dispatch(setDocumentFromCanvas(clearImageProcessAttrs(doc, nodeId)));
+      }
+    } catch (err: any) {
+      const doc = (store.getState() as any).editor?.document;
+      if (doc) dispatch(setDocumentFromCanvas(clearImageProcessAttrs(doc, nodeId)));
+      if (ac.signal.aborted || err?.name === 'AbortError') return;
+      const raw = String(err?.message || '');
+      message.error(raw || t('editor.tools.imageGenFail'));
+    } finally {
+      if (abortRef.current === ac) abortRef.current = null;
+      setSending(false);
+    }
   };
 
   const subjectChip = useMemo(

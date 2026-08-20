@@ -74,6 +74,7 @@ import { customProvidersAsModels } from '@recombyn-native/components/editor/pane
 import {
   canAttachNodeToChat,
   canvasAttachPickPayload,
+  clearImageProcessAttrs,
 } from '@recombyn-native/components/rcb/scene/document/mediaLifecycle';
 import {
   captureVideoPosterFrame
@@ -87,6 +88,7 @@ import {
   clearCanvasAttachPick,
   consumePendingCanvasAttach,
   patchDocumentNode,
+  setDocumentFromCanvas,
   startCanvasAttachPick,
   EMPTY_ID_LIST,
 } from '@recombyn-native/store/modules/editor';
@@ -95,6 +97,8 @@ import { cn } from '@recombyn-native/utils/classnames';
 import { isDesktopLocal } from '@recombyn-native/utils/apiBase';
 import { estimateImageCredits } from '@recombyn-native/utils/imageCredits';
 import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';
+import { firstReferenceAssetId, runCanvasMediaGeneration } from '@/features/canvas/adapters/recombynGeneration';
+import { DEFAULT_KITH_IMAGE_MODEL_ID, kithImageModels } from '@/features/canvas/adapters/arkModelCatalog';
 import store from '@recombyn-native/store';
 
 type Props = {
@@ -112,7 +116,7 @@ export function buildImageGeneratorModelList(res?: {
   imageModels?: LlmModel[] | null;
 } | null): LlmModel[] {
   return buildByokAwareModelList({
-    byok: customProvidersAsModels(),
+    byok: [...kithImageModels(), ...customProvidersAsModels()],
     catalogs: [res?.models, res?.imageModels],
     filter: (m) => modelIsImageGenerator(m) || m.kind === 'image',
   });
@@ -120,6 +124,8 @@ export function buildImageGeneratorModelList(res?: {
 
 function nextImageModelId(models: LlmModel[], currentId: string): string | null {
   if (!models.length || models.some((m) => m.id === currentId)) return null;
+  const preferred = models.find((m) => m.id === DEFAULT_KITH_IMAGE_MODEL_ID);
+  if (preferred) return preferred.id;
   if (!isDesktopLocal()) {
     const free = models.find((m) => m.id === FREE_IMAGE_MODEL_ID);
     if (free) return free.id;
@@ -540,6 +546,7 @@ function ImageGeneratorCard({
     String(genAttrs?.genPrompt || '').trim()
   );
   const [sending, setSending] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [resolution, setResolution] = useState<string>(() => {
@@ -627,6 +634,8 @@ function ImageGeneratorCard({
     // Stage 1 model choices are local-only; no Recombyn catalog request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
 
   const attachments = useMemo(
     () => contexts.filter((c) => c.kind === 'attachment'),
@@ -759,12 +768,49 @@ function ImageGeneratorCard({
     mentionFloating.update();
   }, [mentionOpen, mentionQuery, prompt, mentionFloating.refs, mentionFloating.update]);
 
-  const onGenerate = () => {
-    message.warning(
-      t('editor.tools.stageOneGenerationUnavailable', {
-        defaultValue: 'Kith Media Job 尚未实现，Stage 1 暂不支持生成',
+  const onGenerate = async () => {
+    const text = prompt.trim();
+    if (!text || sending || disabled) return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setSending(true);
+    dispatch(
+      patchDocumentNode({
+        nodeId,
+        patch: {
+          attrs: {
+            processStatus: 'running',
+            processKind: 'generate',
+            processLabel: t('editor.tools.imageGenerating'),
+            genPrompt: text,
+          },
+        },
       })
     );
+    try {
+      const live = (store.getState() as any).editor?.document?.deltaSetLike?.[nodeId];
+      await runCanvasMediaGeneration({
+        jobType: 'image',
+        genPrompt: text,
+        targetNodeId: nodeId,
+        node: live,
+        fallbackBox: sceneBox,
+        aspectRatio,
+        model: modelId,
+        resolution,
+        referenceAssetId: firstReferenceAssetId(contextsRef.current),
+        signal: ac.signal,
+      });
+    } catch (err: any) {
+      const doc = (store.getState() as any).editor?.document;
+      if (doc) dispatch(setDocumentFromCanvas(clearImageProcessAttrs(doc, nodeId)));
+      if (ac.signal.aborted || err?.name === 'AbortError') return;
+      message.error(String(err?.message || t('editor.tools.imageGenFail')));
+    } finally {
+      if (abortRef.current === ac) abortRef.current = null;
+      setSending(false);
+    }
   };
 
   const persistGenSettings = (

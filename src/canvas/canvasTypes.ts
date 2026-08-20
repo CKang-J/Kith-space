@@ -54,9 +54,21 @@ export interface CanvasSelectedRef {
   revision: number;
 }
 
+export interface CanvasMarkedRegion {
+  nodeId: string;
+  label: string;
+  kind: string;
+  /** Image-local normalized rect: origin top-left, 0–1 of node width/height. */
+  nx: number;
+  ny: number;
+  nw: number;
+  nh: number;
+}
+
 export interface CanvasSelectionInput {
   canvasId: string;
   selectedIds?: string[];
+  markedRegions?: CanvasMarkedRegion[];
 }
 
 export interface CanvasElementProjection {
@@ -91,6 +103,7 @@ export interface CanvasSelectionProjection {
   membershipIncluded: boolean;
   truncated: boolean;
   wholeCanvas: boolean;
+  markedRegions?: CanvasMarkedRegion[];
 }
 
 export interface FrozenCanvasSelectionSnapshot {

@@ -1,7 +1,7 @@
 import { getTableColumns, getTableName, type Table } from "drizzle-orm";
 import * as schema from "./schema.js";
 
-export const SPACE_DATABASE_SCHEMA_VERSION = 14;
+export const SPACE_DATABASE_SCHEMA_VERSION = 15;
 export const MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION = 2;
 
 export interface WorkspaceMigrationHistoryEntry {
@@ -30,6 +30,7 @@ export const WORKSPACE_MIGRATION_HISTORY: readonly WorkspaceMigrationHistoryEntr
   { version: 12, tag: "0013_canvas_core", createdAt: 1786781746994, hash: "9a22b7c6afa44a3af0e3b37fd94320080b86aced974fa1bdc1efa5803f67b9da" },
   { version: 13, tag: "0014_canvas_chat_context", createdAt: 1787011200000, hash: "1e54a376fdb4f03f935506b6dca0d0cdd0bd57cbb41d464265d3bd5a92f134b5" },
   { version: 14, tag: "0015_canvas_agent_execution", createdAt: 1787184000000, hash: "3f9da32702546af1db03d3929816fb89e3fc9b796c79e7ef71e3318b8a2c94d3" },
+  { version: 15, tag: "0016_canvas_generation_jobs", createdAt: 1787212800000, hash: "1a35533f117e3bce803b70a97f0dd0217c80aa0cb25ceae6b370c31c6c52369e" },
 ];
 
 /** Immutable v2 baseline. Later schema entries are layered on explicitly below. */
@@ -182,6 +183,15 @@ const TABLES_BY_MIGRATION = new Map<string, Array<[string, string[]]>>([
       "id", "output_id", "turn_id", "kind", "artifact_id", "created_at",
     ]],
   ]],
+  ["0016_canvas_generation_jobs", [
+    ["canvas_generation_jobs", [
+      "id", "canvas_id", "job_type", "status", "gen_prompt", "config_json",
+      "placement_json", "provider", "provider_job_id", "error_message",
+      "retry_count", "result_asset_id", "result_node_id", "turn_id",
+      "idempotency_key", "expected_revision", "created_at", "started_at",
+      "completed_at", "updated_at",
+    ]],
+  ]],
 ]);
 
 const ADDITIONS_BY_MIGRATION = new Map<string, Array<[string, string]>>([
@@ -323,6 +333,10 @@ export function requiredSpaceIndexes(version: number, migrationCount?: number): 
       "canvas_access_grants_delivery_idx", "turn_output_artifacts_output_kind_artifact_uniq",
       "turn_output_artifacts_artifact_idx",
     ] : []),
+    ...(tags.has("0016_canvas_generation_jobs") ? [
+      "canvas_generation_jobs_canvas_idx", "canvas_generation_jobs_status_idx",
+      "canvas_generation_jobs_idempotency_uniq",
+    ] : []),
   ];
 }
 
@@ -409,6 +423,10 @@ export function requiredSpaceForeignKeys(version: number, migrationCount?: numbe
       { table: "canvas_access_grants", from: "canvas_id", targetTable: "canvas_documents", onDelete: "NO ACTION" },
       { table: "turn_output_artifacts", from: "output_id", targetTable: "turn_outputs", onDelete: "CASCADE" },
       { table: "turn_output_artifacts", from: "turn_id", targetTable: "agent_turns", onDelete: "CASCADE" },
+    ] : []),
+    ...(tags.has("0016_canvas_generation_jobs") ? [
+      { table: "canvas_generation_jobs", from: "canvas_id", targetTable: "canvas_documents", onDelete: "CASCADE" },
+      { table: "canvas_generation_jobs", from: "result_asset_id", targetTable: "canvas_assets", onDelete: "SET NULL" },
     ] : []),
   ];
 }

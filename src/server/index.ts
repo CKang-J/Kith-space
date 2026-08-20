@@ -29,6 +29,7 @@ import {
 } from "./viteDevProxy.js";
 import { startMemoryAdvisorScheduler } from "../memory/memoryAdvisorService.js";
 import { startDurableTurnRecovery } from "./harnessComposition.js";
+import { startGenerationSupervisor } from "../canvas/generation/generationSupervisor.js";
 import { AdvisorProviderSettingsService } from "../advisor-provider/advisorProviderSettingsService.js";
 import { handleRuntimeCredentialRedemption } from "./runtimeCredentialRedemption.js";
 import { RuntimeProfileService } from "../model-control/runtimeProfileService.js";
@@ -149,6 +150,7 @@ startReminderScheduler(); // reminder scheduler: fires at due time, wakes the au
 new AdvisorProviderSettingsService().recover();
 runtimeConfigurationEpochGate.open(new RuntimeProfileService().runtimeConfigurationEpoch());
 const stopMemoryAdvisorScheduler = startMemoryAdvisorScheduler();
+const stopGenerationSupervisor = startGenerationSupervisor();
 let stopDurableTurnRecovery = () => {};
 
 server.on("error", (error: NodeJS.ErrnoException) => {
@@ -179,6 +181,7 @@ const shutdown = () => {
   if (shutdownStarted) return;
   shutdownStarted = true;
   stopMemoryAdvisorScheduler();
+  stopGenerationSupervisor();
   stopDurableTurnRecovery();
   const forcedExit = setTimeout(() => process.exit(0), 3_000);
   forcedExit.unref();

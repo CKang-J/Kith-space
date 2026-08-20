@@ -101,7 +101,40 @@ for (const item of audit.combinedFiles) {
     }
     if (item.path.endsWith("/components/editor/panels/agent/flyToChat.tsx")) {
       changes.push("mount selection-to-chat transition chrome inside the Stage 1 island root");
+      changes.push("land fly chips on the Kith left Chat composer instead of Recombyn's right AgentDock");
       rewritten = `import { getRecombynPortalRoot } from '@/features/canvas/adapters/recombynFloatingUi';\n${rewritten.replace("document.body.appendChild(el);", "getRecombynPortalRoot().appendChild(el);")}`;
+      rewritten = replaceRequired(
+        rewritten,
+        `  if (agentLand) return agentLand;
+
+  const dock =`,
+        `  if (agentLand) return agentLand;
+
+  const kithChatLand = pointFromEl(
+    (landId
+      ? (globalThis.document.querySelector(
+          \`[data-fly-land="\${landId.replace(/\\\\/g, '\\\\\\\\').replace(/"/g, '\\\\"')}"]\`
+        ) as HTMLElement | null)
+      : null) ||
+      (globalThis.document.querySelector('[data-fly-land^="kith-chat:"]') as HTMLElement | null)
+  );
+  if (kithChatLand) return kithChatLand;
+
+  const dock =`,
+        "flyToChat prefer Kith Chat composer",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        `  return {
+    x: Math.max(120, window.innerWidth - 220),
+    y: Math.max(120, window.innerHeight * 0.62),
+  };`,
+        `  return {
+    x: Math.min(180, Math.max(48, window.innerWidth * 0.16)),
+    y: Math.max(120, window.innerHeight * 0.72),
+  };`,
+        "flyToChat left-side fallback",
+      );
     }
     if (item.path.endsWith("/components/base/colorPanel/pickScreenColor.ts")) {
       changes.push("mount the screen-color overlay inside the Stage 1 island portal root");
@@ -463,7 +496,9 @@ export async function generateAudio(
       );
     }
     if (item.path.endsWith("/components/editor/nodes/ImageNode/ImageQuickEditComposer.tsx")) {
-      changes.push("make Stage 1 image quick-edit explicit unavailable with local-only references and no job client");
+      changes.push("route image quick-edit generate through the Kith Canvas generation job host seam");
+      changes.push("apply generation resultSrc locally and always clear the generating overlay");
+      changes.push("clear leftover generating overlay and surface a wait toast for slow i2i");
       rewritten = replaceRequired(rewritten, "import { useQuery } from '@tanstack/react-query';\n", "", "ImageQuickEdit query import");
       rewritten = replaceRequired(
         rewritten,
@@ -472,23 +507,125 @@ export async function generateAudio(
         "ImageQuickEdit job client import",
       );
       rewritten = replaceRequired(rewritten, "import { apiQuery, getHttpErrorMessage } from '@recombyn-native/service/client';\n", "", "ImageQuickEdit API import");
-      rewritten = replaceRequired(rewritten, "import { readFileAsDataUrl } from '@recombyn-native/utils/uploadImage';", "import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';", "ImageQuickEdit local media");
-      rewritten = replaceRequired(rewritten, "  const abortRef = useRef<AbortController | null>(null);\n", "", "ImageQuickEdit abort ref");
+      rewritten = replaceRequired(rewritten, "import { readFileAsDataUrl } from '@recombyn-native/utils/uploadImage';", "import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';\nimport { firstReferenceAssetId, runCanvasMediaGeneration } from '@/features/canvas/adapters/recombynGeneration';", "ImageQuickEdit local media");
+      rewritten = replaceRequired(
+        rewritten,
+        "  const canPickModel = planAllowsModelPick(planId);",
+        "  const canPickModel = true;",
+        "ImageQuickEdit always allow Ark model pick",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "import {\n  listImageVariantUrls,\n  writeImageVariantsAttr,\n} from '@recombyn-native/components/rcb/scene/document/mediaLifecycle';",
+        "import {\n  listImageVariantUrls,\n  writeImageVariantsAttr,\n  clearImageProcessAttrs,\n} from '@recombyn-native/components/rcb/scene/document/mediaLifecycle';",
+        "ImageQuickEdit process-attr helper",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "  pushEditorHistory,\n  startCanvasAttachPick,",
+        "  pushEditorHistory,\n  setDocumentFromCanvas,\n  startCanvasAttachPick,",
+        "ImageQuickEdit restore setDocumentFromCanvas",
+      );
       rewritten = replaceRequired(
         rewritten,
         /  const modelsCatalogQuery = useQuery\([\s\S]*?\n  }, \[\n    modelsCatalogQuery\.data,[\s\S]*?\n  \]\);\n\n  useEffect\(\(\) => \{\n    return \(\) => \{\n      abortRef\.current\?\.abort\(\);\n    \};\n  }, \[\]\);/,
-        "  useEffect(() => {\n    const localModels = buildImageGeneratorModelList(null);\n    setModels(localModels);\n    setModelsStatus('ready');\n    const nextId = nextQuickEditImageModelId(localModels, modelId, canPickModel);\n    if (nextId) setModelId(nextId);\n    // Stage 1 never requests the Recombyn model catalog.\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);",
+        "  useEffect(() => {\n    const localModels = buildImageGeneratorModelList(null);\n    setModels(localModels);\n    setModelsStatus('ready');\n    const nextId = nextQuickEditImageModelId(localModels, modelId, canPickModel);\n    if (nextId) setModelId(nextId);\n    // Stage 1 never requests the Recombyn model catalog.\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);\n\n  useEffect(() => () => { abortRef.current?.abort(); }, []);",
         "ImageQuickEdit local model catalog",
       );
       rewritten = replaceRequired(
         rewritten,
         /  const onGenerate = async \(\) => \{[\s\S]*?\n  \};\n\n  const subjectChip/,
-        "  const onGenerate = () => {\n    message.warning(t('editor.tools.stageOneGenerationUnavailable', { defaultValue: 'Kith Media Job 尚未实现，Stage 1 暂不支持生成' }));\n  };\n\n  const subjectChip",
-        "ImageQuickEdit unavailable generation",
+        `  const onGenerate = async () => {
+    const text = prompt.trim();
+    if (!text || sending || !node) return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setSending(true);
+    dispatch(
+      patchDocumentNode({
+        nodeId,
+        patch: {
+          attrs: {
+            processStatus: 'running',
+            processKind: 'generate',
+            processLabel: t('editor.tools.imageGenerating'),
+            genPrompt: text,
+          },
+        },
+      })
+    );
+    try {
+      const job = await runCanvasMediaGeneration({
+        jobType: 'image',
+        genPrompt: text,
+        targetNodeId: nodeId,
+        node,
+        aspectRatio,
+        model: modelId,
+        resolution,
+        referenceAssetId: firstReferenceAssetId(contextsRef.current, src)
+          || (typeof node.assetId === 'string' && node.assetId.trim())
+          || (typeof node.attrs?.assetId === 'string' && node.attrs.assetId.trim())
+          || undefined,
+        signal: ac.signal,
+      });
+      const doc = (store.getState() as any).editor?.document;
+      if (ac.signal.aborted) {
+        if (doc) dispatch(setDocumentFromCanvas(clearImageProcessAttrs(doc, nodeId)));
+        return;
+      }
+      const resultSrc = String(job?.resultSrc || '').trim();
+      if (resultSrc) {
+        dispatch(finishImageProcess({ nodeId, src: resultSrc, attrs: { genPrompt: text } }));
+        dispatch(closeImageToolPanel());
+      } else if (doc) {
+        dispatch(setDocumentFromCanvas(clearImageProcessAttrs(doc, nodeId)));
+      }
+    } catch (err: any) {
+      const doc = (store.getState() as any).editor?.document;
+      if (doc) dispatch(setDocumentFromCanvas(clearImageProcessAttrs(doc, nodeId)));
+      if (ac.signal.aborted || err?.name === 'AbortError') return;
+      const raw = String(err?.message || '');
+      message.error(raw || t('editor.tools.imageGenFail'));
+    } finally {
+      if (abortRef.current === ac) abortRef.current = null;
+      setSending(false);
+    }
+  };
+
+  const subjectChip`,
+        "ImageQuickEdit Kith generation",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "  useEffect(() => () => { abortRef.current?.abort(); }, []);\n",
+        `  useEffect(() => () => { abortRef.current?.abort(); }, []);
+
+  useEffect(() => {
+    if (sending) return;
+    if (String(node?.attrs?.processStatus) !== 'running') return;
+    const timer = window.setTimeout(() => {
+      if (abortRef.current) return;
+      const doc = (store.getState() as any).editor?.document;
+      if (doc) dispatch(setDocumentFromCanvas(clearImageProcessAttrs(doc, nodeId)));
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [dispatch, nodeId, sending, node?.attrs?.processStatus]);
+
+  useEffect(() => {
+    if (!sending) return;
+    const timer = window.setTimeout(() => {
+      message.info('仍在等待方舟返回。图生图会上传原图，通常比文生图慢。');
+    }, 12_000);
+    return () => window.clearTimeout(timer);
+  }, [sending]);
+`,
+        "ImageQuickEdit stale overlay and wait toast",
       );
     }
     if (item.path.endsWith("/components/editor/nodes/VideoNode/VideoQuickEditComposer.tsx")) {
-      changes.push("make Stage 1 video quick-edit explicit unavailable with local-only references and no job client");
+      changes.push("route video quick-edit generate through the Kith Canvas generation job host seam");
       rewritten = replaceRequired(rewritten, "import { useQuery } from '@tanstack/react-query';\n", "", "VideoQuickEdit query import");
       rewritten = replaceRequired(
         rewritten,
@@ -497,23 +634,76 @@ export async function generateAudio(
         "VideoQuickEdit job client import",
       );
       rewritten = replaceRequired(rewritten, "import { apiQuery, getHttpErrorMessage } from '@recombyn-native/service/client';\n", "", "VideoQuickEdit API import");
-      rewritten = replaceRequired(rewritten, "import { readFileAsDataUrl } from '@recombyn-native/utils/uploadImage';", "import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';", "VideoQuickEdit local media");
-      rewritten = replaceRequired(rewritten, "  const abortRef = useRef<AbortController | null>(null);\n", "", "VideoQuickEdit abort ref");
+      rewritten = replaceRequired(rewritten, "import { readFileAsDataUrl } from '@recombyn-native/utils/uploadImage';", "import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';\nimport { firstReferenceAssetId, runCanvasMediaGeneration } from '@/features/canvas/adapters/recombynGeneration';\nimport { DEFAULT_KITH_VIDEO_MODEL_ID, clampToVideoLimits, kithVideoModels, videoLimitsForModel } from '@/features/canvas/adapters/arkModelCatalog';", "VideoQuickEdit local media");
+      rewritten = replaceRequired(
+        rewritten,
+        "    byok: customProvidersAsModels(),",
+        "    byok: [...kithVideoModels(), ...customProvidersAsModels()],",
+        "VideoQuickEdit Kith model catalog",
+      );
       rewritten = replaceRequired(
         rewritten,
         /  const modelsCatalogQuery = useQuery\([\s\S]*?\n  }, \[\n    modelsCatalogQuery\.data,[\s\S]*?\n  \]\);\n\n  useEffect\(\(\) => \(\) => abortRef\.current\?\.abort\(\), \[\]\);/,
-        "  useEffect(() => {\n    const localModels = buildVideoModelList(null);\n    setModels(localModels);\n    if (localModels.length && !localModels.some((model) => model.id === modelId)) setModelId(localModels[0]!.id);\n    // Stage 1 never requests the Recombyn model catalog.\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);",
+        "  useEffect(() => {\n    const localModels = buildVideoModelList(null);\n    setModels(localModels);\n    if (localModels.length && !localModels.some((model) => model.id === modelId)) setModelId(localModels[0]!.id);\n    // Stage 1 never requests the Recombyn model catalog.\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);\n\n  useEffect(() => () => { abortRef.current?.abort(); }, []);",
         "VideoQuickEdit local model catalog",
       );
       rewritten = replaceRequired(
         rewritten,
         /  const onGenerate = async \(\) => \{[\s\S]*?\n  \};\n\n  if \(!node/,
-        "  const onGenerate = () => {\n    message.warning(t('editor.tools.stageOneGenerationUnavailable', { defaultValue: 'Kith Media Job 尚未实现，Stage 1 暂不支持生成' }));\n  };\n\n  if (!node",
-        "VideoQuickEdit unavailable generation",
+        `  const onGenerate = async () => {
+    const text = prompt.trim();
+    if (!text || sending || !node) return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setSending(true);
+    dispatch(
+      patchDocumentNode({
+        nodeId,
+        patch: {
+          attrs: {
+            processStatus: 'running',
+            processKind: 'generate',
+            processLabel: t('editor.tools.videoGenerating'),
+            genPrompt: text,
+          },
+        },
+      })
+    );
+    try {
+      await runCanvasMediaGeneration({
+        jobType: 'video',
+        genPrompt: text,
+        targetNodeId: nodeId,
+        node,
+        aspectRatio,
+        duration,
+        model: modelId,
+        resolution,
+        referenceAssetId: firstReferenceAssetId(contexts, src)
+          || (typeof node.assetId === 'string' && node.assetId.trim())
+          || (typeof node.attrs?.assetId === 'string' && node.attrs.assetId.trim())
+          || undefined,
+        signal: ac.signal,
+      });
+    } catch (err: any) {
+      if (ac.signal.aborted || err?.name === 'AbortError') return;
+      const doc = (store.getState() as any).editor?.document;
+      if (doc) dispatch(setDocumentFromCanvas(clearImageProcessAttrs(doc, nodeId)));
+      message.error(String(err?.message || t('editor.tools.videoGenFail')));
+    } finally {
+      if (abortRef.current === ac) abortRef.current = null;
+      setSending(false);
+    }
+  };
+
+  if (!node`,
+        "VideoQuickEdit Kith generation",
       );
     }
     if (item.path.endsWith("/components/editor/nodes/ImageGeneratorNode/ImageGeneratorCard.tsx")) {
-      changes.push("make Stage 1 image generation a short unavailable action with local-only references and no upstream job client");
+      changes.push("route image generator submit through the Kith Canvas generation job host seam");
+      changes.push("always clear the generating overlay on abort or error");
       rewritten = replaceRequired(rewritten, "import { useQuery } from '@tanstack/react-query';\n", "", "ImageGeneratorCard query import");
       rewritten = replaceRequired(
         rewritten,
@@ -530,32 +720,81 @@ export async function generateAudio(
       rewritten = replaceRequired(
         rewritten,
         "import { readFileAsDataUrl } from '@recombyn-native/utils/uploadImage';",
-        "import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';",
+        "import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';\nimport { firstReferenceAssetId, runCanvasMediaGeneration } from '@/features/canvas/adapters/recombynGeneration';\nimport { DEFAULT_KITH_IMAGE_MODEL_ID, kithImageModels } from '@/features/canvas/adapters/arkModelCatalog';",
         "ImageGeneratorCard local media adapter",
       );
-      for (const removed of [
-        "  clearImageProcessAttrs\n",
+      rewritten = replaceRequired(
+        rewritten,
+        "    byok: customProvidersAsModels(),",
+        "    byok: [...kithImageModels(), ...customProvidersAsModels()],",
+        "ImageGeneratorCard Kith model catalog",
+      );
+      rewritten = replaceRequired(
+        rewritten,
         "  finishImageGenerator,\n",
-        "  setDocumentFromCanvas,\n",
-        "  const abortRef = useRef<AbortController | null>(null);\n",
-      ]) {
-        rewritten = replaceRequired(rewritten, removed, "", `ImageGeneratorCard remove ${removed.trim()}`);
-      }
+        "",
+        "ImageGeneratorCard remove finishImageGenerator",
+      );
       rewritten = replaceRequired(
         rewritten,
         /  const modelsCatalogQuery = useQuery\([\s\S]*?\n  }, \[\n    modelsCatalogQuery\.data,[\s\S]*?\n  \]\);\n\n  useEffect\(\(\) => \{\n    return \(\) => \{\n      abortRef\.current\?\.abort\(\);\n    };\n  }, \[\]\);/,
-        "  useEffect(() => {\n    const unique = buildImageGeneratorModelList(null);\n    setModels(unique);\n    setModelsStatus('ready');\n    const nextId = nextImageModelId(unique, modelId);\n    if (nextId) setModelId(nextId);\n    // Stage 1 model choices are local-only; no Recombyn catalog request.\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);",
+        "  useEffect(() => {\n    const unique = buildImageGeneratorModelList(null);\n    setModels(unique);\n    setModelsStatus('ready');\n    const nextId = nextImageModelId(unique, modelId);\n    if (nextId) setModelId(nextId);\n    // Stage 1 model choices are local-only; no Recombyn catalog request.\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);\n\n  useEffect(() => () => { abortRef.current?.abort(); }, []);",
         "ImageGeneratorCard local model catalog",
       );
       rewritten = replaceRequired(
         rewritten,
         /  const onGenerate = async \(\) => \{[\s\S]*?\n  };\n\n  const persistGenSettings/,
-        "  const onGenerate = () => {\n    message.warning(\n      t('editor.tools.stageOneGenerationUnavailable', {\n        defaultValue: 'Kith Media Job 尚未实现，Stage 1 暂不支持生成',\n      })\n    );\n  };\n\n  const persistGenSettings",
-        "ImageGeneratorCard unavailable generation",
+        `  const onGenerate = async () => {
+    const text = prompt.trim();
+    if (!text || sending || disabled) return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setSending(true);
+    dispatch(
+      patchDocumentNode({
+        nodeId,
+        patch: {
+          attrs: {
+            processStatus: 'running',
+            processKind: 'generate',
+            processLabel: t('editor.tools.imageGenerating'),
+            genPrompt: text,
+          },
+        },
+      })
+    );
+    try {
+      const live = (store.getState() as any).editor?.document?.deltaSetLike?.[nodeId];
+      await runCanvasMediaGeneration({
+        jobType: 'image',
+        genPrompt: text,
+        targetNodeId: nodeId,
+        node: live,
+        fallbackBox: sceneBox,
+        aspectRatio,
+        model: modelId,
+        resolution,
+        referenceAssetId: firstReferenceAssetId(contextsRef.current),
+        signal: ac.signal,
+      });
+    } catch (err: any) {
+      const doc = (store.getState() as any).editor?.document;
+      if (doc) dispatch(setDocumentFromCanvas(clearImageProcessAttrs(doc, nodeId)));
+      if (ac.signal.aborted || err?.name === 'AbortError') return;
+      message.error(String(err?.message || t('editor.tools.imageGenFail')));
+    } finally {
+      if (abortRef.current === ac) abortRef.current = null;
+      setSending(false);
+    }
+  };
+
+  const persistGenSettings`,
+        "ImageGeneratorCard Kith generation",
       );
     }
     if (item.path.endsWith("/components/editor/nodes/VideoGeneratorNode/VideoGeneratorCard.tsx")) {
-      changes.push("make Stage 1 video generation a short unavailable action with local-only references and no upstream job/upload client");
+      changes.push("route video generator submit through the Kith Canvas generation job host seam");
       rewritten = replaceRequired(rewritten, "import { useQuery } from '@tanstack/react-query';\n", "", "VideoGeneratorCard query import");
       rewritten = replaceRequired(
         rewritten,
@@ -572,21 +811,25 @@ export async function generateAudio(
       rewritten = replaceRequired(
         rewritten,
         "import { uploadComposerAttachment, readFileAsDataUrl } from '@recombyn-native/utils/uploadImage';",
-        "import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';",
+        "import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';\nimport { firstReferenceAssetId, runCanvasMediaGeneration } from '@/features/canvas/adapters/recombynGeneration';\nimport { DEFAULT_KITH_VIDEO_MODEL_ID, clampToVideoLimits, kithVideoModels, videoLimitsForModel } from '@/features/canvas/adapters/arkModelCatalog';",
         "VideoGeneratorCard local media adapter",
       );
-      for (const removed of [
-        "  clearImageProcessAttrs\n",
+      rewritten = replaceRequired(
+        rewritten,
+        "    byok: customProvidersAsModels(),",
+        "    byok: [...kithVideoModels(), ...customProvidersAsModels()],",
+        "VideoGeneratorCard Kith model catalog",
+      );
+      rewritten = replaceRequired(
+        rewritten,
         "  finishVideoGenerator,\n",
-        "  setDocumentFromCanvas,\n",
-        "  const abortRef = useRef<AbortController | null>(null);\n",
-      ]) {
-        rewritten = replaceRequired(rewritten, removed, "", `VideoGeneratorCard remove ${removed.trim()}`);
-      }
+        "",
+        "VideoGeneratorCard remove finishVideoGenerator",
+      );
       rewritten = replaceRequired(
         rewritten,
         /  const modelsCatalogQuery = useQuery\([\s\S]*?\n  }, \[\n    modelsCatalogQuery\.data,[\s\S]*?\n  \]\);\n\n  useEffect\(\(\) => \{\n    return \(\) => \{\n      abortRef\.current\?\.abort\(\);\n    };\n  }, \[\]\);/,
-        "  useEffect(() => {\n    const unique = buildVideoGeneratorModelList(null);\n    setModels(unique);\n    setModelsStatus('ready');\n    const nextId = nextVideoModelId(unique, modelId);\n    if (nextId) setModelId(nextId);\n    // Stage 1 model choices are local-only; no Recombyn catalog request.\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);",
+        "  useEffect(() => {\n    const unique = buildVideoGeneratorModelList(null);\n    setModels(unique);\n    setModelsStatus('ready');\n    const nextId = nextVideoModelId(unique, modelId);\n    if (nextId) setModelId(nextId);\n    // Stage 1 model choices are local-only; no Recombyn catalog request.\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);\n\n  useEffect(() => () => { abortRef.current?.abort(); }, []);",
         "VideoGeneratorCard local model catalog",
       );
       rewritten = replaceRequired(
@@ -636,19 +879,147 @@ export async function generateAudio(
       rewritten = replaceRequired(
         rewritten,
         /  const onGenerate = async \(\) => \{[\s\S]*?\n  };\n\n  const persistGenSettings/,
-        "  const onGenerate = () => {\n    message.warning(\n      t('editor.tools.stageOneGenerationUnavailable', {\n        defaultValue: 'Kith Media Job 尚未实现，Stage 1 暂不支持生成',\n      })\n    );\n  };\n\n  const persistGenSettings",
-        "VideoGeneratorCard unavailable generation",
+        `  const onGenerate = async () => {
+    const text = prompt.trim();
+    if (!text || sending || disabled) return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setSending(true);
+    dispatch(
+      patchDocumentNode({
+        nodeId,
+        patch: {
+          attrs: {
+            processStatus: 'running',
+            processKind: 'generate',
+            processLabel: t('editor.tools.videoGenerating'),
+            genPrompt: text,
+          },
+        },
+      })
+    );
+    try {
+      const live = (store.getState() as any).editor?.document?.deltaSetLike?.[nodeId];
+      await runCanvasMediaGeneration({
+        jobType: 'video',
+        genPrompt: text,
+        targetNodeId: nodeId,
+        node: live,
+        fallbackBox: sceneBox,
+        aspectRatio,
+        duration,
+        model: modelId,
+        resolution,
+        referenceAssetId: firstReferenceAssetId(contextsRef.current),
+        signal: ac.signal,
+      });
+    } catch (err: any) {
+      if (ac.signal.aborted || err?.name === 'AbortError') return;
+      const doc = (store.getState() as any).editor?.document;
+      if (doc) dispatch(setDocumentFromCanvas(clearImageProcessAttrs(doc, nodeId)));
+      message.error(String(err?.message || t('editor.tools.videoGenFail')));
+    } finally {
+      if (abortRef.current === ac) abortRef.current = null;
+      setSending(false);
+    }
+  };
+
+  const persistGenSettings`,
+        "VideoGeneratorCard Kith generation",
+      );
+    }
+    if (item.path.endsWith("/components/rcb/selection/chrome/SelectionContextToolbar.tsx")) {
+      changes.push("hide selection pill during upscale/expand/crop sessions");
+      changes.push("keep image layering honestly unavailable instead of spawning a failing clone");
+      rewritten = replaceRequired(
+        rewritten,
+        "      imageToolPanel?.kind === 'adjust' ||\n      imageToolPanel?.kind === 'mark');",
+        "      imageToolPanel?.kind === 'adjust' ||\n      imageToolPanel?.kind === 'mark' ||\n      imageToolPanel?.kind === 'upscale' ||\n      imageToolPanel?.kind === 'expand' ||\n      imageToolPanel?.kind === 'crop');",
+        "SelectionContextToolbar hide pill for upscale/expand/crop",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "import { message } from '@recombyn-native/components/base';\n",
+        "import { message } from '@recombyn-native/components/base';\nimport { unsupportedImageProcessKindMessage } from '@recombyn-native/service/imageTools';\n",
+        "SelectionContextToolbar layering message helper",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "            onEditElements={() =>\n              runImageProcess(\n                'editElements',\n                t('editor.imageToolbar.processingEditElements')\n              )\n            }",
+        "            onEditElements={() => {\n              message.error(unsupportedImageProcessKindMessage('editElements'));\n            }}",
+        "SelectionContextToolbar editElements toast",
+      );
+    }
+    if (item.path.endsWith("/components/editor/nodes/ImageNode/ImageProcessWatcher.tsx")) {
+      changes.push("keep durable canvas-asset URLs instead of re-uploading process results");
+      changes.push("do not abort in-flight process jobs on watcher remount");
+      changes.push("surface i2i timeout as a processing error, not a layering error");
+      rewritten = rewritten.replace(
+        "  const raw = String(src || '').trim();\n  if (!raw) return raw;\n  try {",
+        "  const raw = String(src || '').trim();\n  if (!raw) return raw;\n  if (/^\\/api\\/canvas-assets\\//.test(raw)) return raw;\n  try {",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "    let cancelled = false;\n    const ac = new AbortController();\n",
+        "    let cancelled = false;\n",
+        "ImageProcessWatcher drop abort controller",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "        const res = await processImageTool(processBody, { signal: ac.signal });",
+        "        const res = await processImageTool(processBody);",
+        "ImageProcessWatcher ignore remount abort",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "    return () => {\n      cancelled = true;\n      ac.abort();\n    };",
+        "    return () => {\n      cancelled = true;\n    };",
+        "ImageProcessWatcher cleanup without abort",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "  if (/timeout/i.test(msg) || (err as { code?: string })?.code === 'ECONNABORTED')\n    return '图片分层超时，请稍后重试（大图首次加载模型会更慢）';",
+        "  if (/timed out|timeout/i.test(msg) || (err as { code?: string })?.code === 'ECONNABORTED')\n    return '处理超时：图生图会把原图发给方舟，通常比文生图慢。请检查网络后重试。';",
+        "ImageProcessWatcher generation timeout copy",
       );
     }
     if (item.path.endsWith("/components/editor/nodes/ImageNode/ImageRemoveBgMenu.tsx")) {
-      changes.push("accept disabled state for unavailable Stage 1 background-removal action");
-      rewritten = rewritten
-        .replace("function ImageRemoveBgMenu({\n  onPick,\n}: {\n  onPick: (mode: RemoveBgMode) => void;", "function ImageRemoveBgMenu({\n  onPick,\n  disabled = false,\n}: {\n  onPick: (mode: RemoveBgMode) => void;\n  disabled?: boolean;")
-        .replace('type="button"\n        ref={refs.setReference}', 'type="button"\n        disabled={disabled}\n        ref={refs.setReference}')
-        .replace("className={cn(imageToolBtn, open && 'bg-[var(--accent-soft)]')}", "className={cn(imageToolBtn, disabled && 'cursor-not-allowed opacity-50', open && 'bg-[var(--accent-soft)]')}");
+      changes.push("accept disabled state for unavailable background-removal action");
+      changes.push("keep remove-bg mode menu inside the selection toolbar instead of a Floating UI portal");
+      rewritten = replaceRequired(
+        rewritten,
+        "import { useState, type ReactNode, memo } from 'react';\nimport { useTranslation } from 'react-i18next';\nimport {\n  autoUpdate,\n  flip,\n  offset,\n  shift,\n  useClick,\n  useDismiss,\n  useFloating,\n  useInteractions,\n  FloatingPortal,\n} from '@/features/canvas/adapters/recombynFloatingUi';",
+        "import { useEffect, useRef, useState, type ReactNode, memo } from 'react';\nimport { useTranslation } from 'react-i18next';",
+        "ImageRemoveBgMenu drop Floating UI portal",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "/** Remove-bg mode menu: hair/portrait (default) vs product hard edge. */\nfunction ImageRemoveBgMenu({\n  onPick,\n}: {\n  onPick: (mode: RemoveBgMode) => void;\n}): ReactNode {\n  const { t } = useTranslation();\n  const [open, setOpen] = useState(false);\n  const { refs, floatingStyles, context } = useFloating({\n    open,\n    onOpenChange: setOpen,\n    placement: 'bottom-start',\n    strategy: 'fixed',\n    whileElementsMounted: autoUpdate,\n    middleware: [offset(8), flip({ padding: 12 }), shift({ padding: 12, mainAxis: false })],\n  });\n  const click = useClick(context);\n  const dismiss = useDismiss(context);\n  const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss]);",
+        "/**\n * Remove-bg mode menu: hair/portrait (default) vs product hard edge.\n * Stay inside the selection toolbar chrome — RCB activates toolbar buttons\n * with a synthetic click, and the Stage 1 Floating UI portal sits under the\n * scene overlay so portaled items never receive the pointer.\n */\nfunction ImageRemoveBgMenu({\n  onPick,\n  disabled = false,\n}: {\n  onPick: (mode: RemoveBgMode) => void;\n  disabled?: boolean;\n}): ReactNode {\n  const { t } = useTranslation();\n  const [open, setOpen] = useState(false);\n  const rootRef = useRef<HTMLDivElement | null>(null);\n\n  useEffect(() => {\n    if (!open) return undefined;\n    const onPointerDown = (event: PointerEvent) => {\n      const root = rootRef.current;\n      if (root && !root.contains(event.target as Node)) setOpen(false);\n    };\n    window.addEventListener('pointerdown', onPointerDown, true);\n    return () => window.removeEventListener('pointerdown', onPointerDown, true);\n  }, [open]);",
+        "ImageRemoveBgMenu inline menu state",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "  return (\n    <>\n      <button\n        type=\"button\"\n        ref={refs.setReference}\n        className={cn(imageToolBtn, open && 'bg-[var(--accent-soft)]')}\n        {...getReferenceProps()}\n      >",
+        "  return (\n    <div ref={rootRef} className=\"relative\">\n      <button\n        type=\"button\"\n        disabled={disabled}\n        className={cn(imageToolBtn, disabled && 'cursor-not-allowed opacity-50', open && 'bg-[var(--accent-soft)]')}\n        onClick={() => {\n          if (disabled) return;\n          setOpen((value) => !value);\n        }}\n      >",
+        "ImageRemoveBgMenu inline trigger",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "      <FloatingPortal>\n        {open ? (\n          <DropdownPanel\n            ref={refs.setFloating}\n            style={floatingStyles}\n            className=\"z-[80] min-w-[11.5rem]\"\n            {...getFloatingProps()}\n          >\n            {modes.map((m) => (\n              <DropdownPanelItem\n                key={m.key}\n                className=\"h-auto min-h-8 items-start py-1.5\"\n                onClick={() => {\n                  onPick(m.key);\n                  setOpen(false);\n                }}\n              >",
+        "      {open ? (\n        <DropdownPanel\n          role=\"menu\"\n          className=\"absolute left-0 top-[calc(100%+8px)] z-[80] min-w-[11.5rem]\"\n        >\n          {modes.map((m) => (\n            <DropdownPanelItem\n              key={m.key}\n              role=\"menuitem\"\n              className=\"h-auto min-h-8 items-start py-1.5\"\n              onClick={() => {\n                onPick(m.key);\n                setOpen(false);\n              }}\n            >",
+        "ImageRemoveBgMenu inline dropdown",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "            ))}\n          </DropdownPanel>\n        ) : null}\n      </FloatingPortal>\n    </>\n  );",
+        "          ))}\n        </DropdownPanel>\n      ) : null}\n    </div>\n  );",
+        "ImageRemoveBgMenu close inline wrapper",
+      );
     }
     if (item.path.endsWith("/components/editor/nodes/ImageNode/ImageToolbarEditTools.tsx")) {
-      changes.push("accept disabled state for unavailable Stage 1 image-processing actions");
+      changes.push("accept optional disabled state for image-processing actions");
       rewritten = rewritten
         .replace("type=\"button\"\n      className={cn(imageToolBtn, 'relative', active && 'bg-[var(--accent-soft)]')}", "type=\"button\"\n      disabled={!onClick}\n      className={cn(imageToolBtn, 'relative', !onClick && 'cursor-not-allowed opacity-50', active && 'bg-[var(--accent-soft)]')}")
         .replace("  downloadSlot,\n}: {", "  downloadSlot,\n  disabled = false,\n}: {")
@@ -661,11 +1032,206 @@ export async function generateAudio(
         .replace("onClick={onEditElements}", "onClick={disabled ? undefined : onEditElements}")
         .replace("onClick={onMultiAngle}", "onClick={disabled ? undefined : onMultiAngle}");
     }
-    if (item.path.endsWith("/components/rcb/selection/chrome/SelectionContextToolbar.tsx")) {
-      changes.push("disable unavailable Stage 1 image-processing actions while retaining native toolbar structure");
-      rewritten = rewritten
-        .replace("type=\"button\"\n            className={imageToolBtn}", "type=\"button\"\n            disabled\n            className={cn(imageToolBtn, 'cursor-not-allowed opacity-50')}")
-        .replace("          <ImageToolbarEditTools\n", "          <ImageToolbarEditTools\n            disabled\n");
+    if (item.path.endsWith("/components/editor/nodes/ImageNode/mark/MarkRegionOverlay.tsx")) {
+      changes.push("follow the pointer with a short drag hint instead of a caption on the photo");
+      changes.push("toast clicks that are too small to commit");
+      rewritten = replaceRequired(
+        rewritten,
+        " * On-image mark overlay: crosshair cursor, drag-to-box, dashed region badges.\n */",
+        " * On-image mark overlay: crosshair cursor, drag-to-box, dashed region badges.\n * Mode hint follows the pointer in the gutter next to the cursor — never a\n * static caption on the photo.\n */",
+        "MarkRegionOverlay hint comment",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "  onCommitDraft: (rect: MarkRect) => void;\n  onSelectRegion: (id: string, additive: boolean) => void;\n};",
+        "  onCommitDraft: (rect: MarkRect) => void;\n  onSelectRegion: (id: string, additive: boolean) => void;\n  onClickWithoutDrag?: () => void;\n};",
+        "MarkRegionOverlay click-without-drag prop",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "  onCommitDraft,\n  onSelectRegion,\n}: Props): ReactNode {",
+        "  onCommitDraft,\n  onSelectRegion,\n  onClickWithoutDrag,\n}: Props): ReactNode {",
+        "MarkRegionOverlay destructure click-without-drag",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "  const onSelectRegionRef = useRef(onSelectRegion);\n  onDraftChangeRef.current = onDraftChange;\n  onCommitDraftRef.current = onCommitDraft;\n  onSelectRegionRef.current = onSelectRegion;",
+        "  const onSelectRegionRef = useRef(onSelectRegion);\n  const onClickWithoutDragRef = useRef(onClickWithoutDrag);\n  onDraftChangeRef.current = onDraftChange;\n  onCommitDraftRef.current = onCommitDraft;\n  onSelectRegionRef.current = onSelectRegion;\n  onClickWithoutDragRef.current = onClickWithoutDrag;",
+        "MarkRegionOverlay click-without-drag ref",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "      const box = normalizeDragBox(drag.x0, drag.y0, p.x, p.y, cw, ch);\n      onDraftChangeRef.current(null);\n      if (box) onCommitDraftRef.current(box);",
+        "      const box = normalizeDragBox(drag.x0, drag.y0, p.x, p.y, cw, ch);\n      onDraftChangeRef.current(null);\n      if (box) onCommitDraftRef.current(box);\n      else if (!drag.moved) onClickWithoutDragRef.current?.();",
+        "MarkRegionOverlay toast tiny clicks",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "    zIndex: 34,",
+        "    zIndex: 80,",
+        "MarkRegionOverlay stacking",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "  const [hoverId, setHoverId] = useState<string | null>(null);",
+        "  const [hoverId, setHoverId] = useState<string | null>(null);\n  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);",
+        "MarkRegionOverlay cursor hint state",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "        {detecting ? (\n          <div className=\"pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20\">\n            <span className=\"rounded-full bg-white/90 px-3 py-1.5 text-[12px] font-medium text-[var(--ink)] shadow-sm\">\n              识别主题中…\n            </span>\n          </div>\n        ) : null}",
+        "        {detecting ? (\n          <div className=\"pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20\">\n            <span className=\"rounded-full bg-white/90 px-3 py-1.5 text-[12px] font-medium text-[var(--ink)] shadow-sm\">\n              识别主题中…\n            </span>\n          </div>\n        ) : !draft && cursor ? (\n          <span\n            role=\"status\"\n            data-mark-cursor-hint\n            className=\"pointer-events-none absolute z-10 whitespace-nowrap rounded-md bg-[var(--ink)]/80 px-2 py-0.5 text-[11px] font-medium text-white shadow-sm\"\n            style={{\n              // Runtime pointer offset — cannot be a static Tailwind class.\n              left: Math.min(cursor.x + 14, Math.max(8, stageW - 72)),\n              top: Math.min(cursor.y + 18, Math.max(8, stageH - 24)),\n            }}\n          >\n            按住拖选\n          </span>\n        ) : null}",
+        "MarkRegionOverlay cursor drag hint",
+      );
+      changes.push("map mark drag from the overlay screen rect, not stage-local origin minus clientX");
+      rewritten = replaceRequired(
+        rewritten,
+        "} from '@recombyn-native/components/rcb';",
+        "} from '@recombyn-native/components/rcb';\nimport { markLocalFromClientRect } from '@/features/canvas/adapters/recombynMarkOverlay';",
+        "MarkRegionOverlay host coordinate helper",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "  const origin = rcbSceneToScreen(camera, imageBox.left, imageBox.top);\n  const stageW = Math.max(1, imageBox.width * z);\n  const stageH = Math.max(1, imageBox.height * z);\n  const cw = imageBox.width;\n  const ch = imageBox.height;\n\n  const localFromClient = useCallback(\n    (clientX: number, clientY: number) => {\n      const lx = (clientX - origin.x) / z;\n      const ly = (clientY - origin.y) / z;\n      return {\n        x: Math.max(0, Math.min(cw, lx)),\n        y: Math.max(0, Math.min(ch, ly)),\n        inside: lx >= 0 && ly >= 0 && lx <= cw && ly <= ch,\n      };\n    },\n    [origin.x, origin.y, z, cw, ch]\n  );",
+        "  const origin = rcbSceneToScreen(camera, imageBox.left, imageBox.top);\n  const stageW = Math.max(1, imageBox.width * z);\n  const stageH = Math.max(1, imageBox.height * z);\n  const cw = imageBox.width;\n  const ch = imageBox.height;\n  const overlayRef = useRef<HTMLDivElement | null>(null);\n\n  const localFromClient = useCallback(\n    (clientX: number, clientY: number) =>\n      markLocalFromClientRect(\n        clientX,\n        clientY,\n        overlayRef.current?.getBoundingClientRect(),\n        cw,\n        ch\n      ),\n    [cw, ch]\n  );",
+        "MarkRegionOverlay client coords via overlay rect",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "      <div\n        data-image-tool-panel\n        data-mark-overlay\n        className=\"pointer-events-auto absolute\"\n        style={shellStyle}",
+        "      <div\n        ref={overlayRef}\n        data-image-tool-panel\n        data-mark-overlay\n        className=\"pointer-events-auto absolute\"\n        style={shellStyle}",
+        "MarkRegionOverlay overlay ref",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "          onDraftChange(null);\n          (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);",
+        "          onDraftChange(null);\n          setCursor(null);\n          (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);",
+        "MarkRegionOverlay hide hint on drag start",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "          if (!p.inside) {\n            setHoverId(null);\n            return;\n          }\n          const hit = [...regions].reverse().find((r) => pointInRect(p.x, p.y, r));\n          setHoverId(hit?.id ?? null);\n        }}\n        onPointerLeave={() => {\n          if (!dragRef.current) setHoverId(null);\n        }}",
+        "          if (!p.inside) {\n            setHoverId(null);\n            setCursor(null);\n            return;\n          }\n          const hit = [...regions].reverse().find((r) => pointInRect(p.x, p.y, r));\n          setHoverId(hit?.id ?? null);\n          setCursor({ x: p.x * z, y: p.y * z });\n        }}\n        onPointerLeave={() => {\n          if (!dragRef.current) {\n            setHoverId(null);\n            setCursor(null);\n          }\n        }}",
+        "MarkRegionOverlay track pointer for hint",
+      );
+    }
+    if (item.path.endsWith("/components/editor/nodes/ImageNode/mark/MarkSessionHost.tsx")) {
+      changes.push("skip Recombyn detectRegions auto-detect and keep manual drag-to-chat");
+      changes.push("send marked crops into the left Kith Chat composer instead of AgentDock");
+      changes.push("freeze marked image regions onto the Canvas snapshot instead of composer caption");
+      changes.push("drop the Recombyn visible @-chip payload builder");
+      rewritten = replaceRequired(
+        rewritten,
+        "import { resolveChatFlyTarget } from '@recombyn-native/components/editor/panels/agent/flyToChat';\nimport { getHttpErrorMessage } from '@recombyn-native/service/client';\nimport {\n  processImageTool,\n  type ImageDecomposeLayer,\n} from '@recombyn-native/service/imageTools';",
+        "import { resolveChatFlyTarget } from '@recombyn-native/components/editor/panels/agent/flyToChat';\nimport { message } from '@recombyn-native/components/base';\nimport { getHttpErrorMessage } from '@recombyn-native/service/client';\nimport {\n  type ImageDecomposeLayer,\n} from '@recombyn-native/service/imageTools';",
+        "MarkSessionHost skip detectRegions client",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "import {\n  closeImageToolPanel,\n  enqueueAgentContexts,\n} from '@recombyn-native/store/modules/editor';",
+        "import {\n  closeImageToolPanel,\n} from '@recombyn-native/store/modules/editor';",
+        "MarkSessionHost drop AgentDock enqueue",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "import { imageSrcToFile } from '@recombyn-native/utils/uploadImage';\nimport { cn } from '@recombyn-native/utils/classnames';",
+        "import { imageSrcToFile } from '@recombyn-native/utils/uploadImage';\nimport { cn } from '@recombyn-native/utils/classnames';\nimport { kithChatFlyLandId, sendMarkedImageRegionToChat } from '@/features/canvas/adapters/recombynMarkToChat';\nimport { useCanvasSelectionSourceId } from '@/features/canvas/host/canvasSelectionSource';",
+        "MarkSessionHost Kith Chat seam",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "/** Landing point inside the right Agent composer (fallback: dock / viewport). */\nfunction resolveMarkChatFlyTarget(): { x: number; y: number } {\n  return resolveChatFlyTarget({ landId: 'agent' });\n}",
+        "/** Landing point inside the left Kith Composer (fallback: left viewport). */\nfunction resolveMarkChatFlyTarget(): { x: number; y: number } {\n  return resolveChatFlyTarget({ landId: kithChatFlyLandId() });\n}",
+        "MarkSessionHost left Chat fly target",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        " * Selecting a region flies an @ chip into the right AgentDock chat.\n */\nfunction MarkSessionHost({ document }: { document: SceneDocument }): ReactNode {\n  const dispatch = useDispatch();",
+        " * Selecting a region flies a chip into the left Kith Chat composer.\n */\nfunction MarkSessionHost({ document }: { document: SceneDocument }): ReactNode {\n  const dispatch = useDispatch();\n  const canvasId = useCanvasSelectionSourceId();",
+        "MarkSessionHost canvasId for Chat grant",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /  useEffect\(\(\) => \{\n    if \(!active \|\| !src \|\| !box\) return;[\s\S]*?  \}, \[active, src\]\);/,
+        `  useEffect(() => {
+    if (!active) return;
+    setRegions([]);
+    setDraft(null);
+    setFlies([]);
+    setDetecting(false);
+    abortRef.current?.abort();
+    // Auto subject detection needs Recombyn's vision decompose API; keep manual drag-select.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, src]);`,
+        "MarkSessionHost skip auto detect",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        `    // Insert into chat as the tag arrives so it feels continuous.
+    window.setTimeout(() => {
+      dispatch(
+        enqueueAgentContexts([
+          {
+            key: \`mark:\${active}:\${region.id}\`,
+            label: region.label || \`区域 \${region.index}\`,
+            kind: 'image',
+            payload: buildMarkChipPayload(active, region, box.width, box.height),
+            ...(thumb ? { dataUrl: thumb, thumbUrl: thumb } : {}),
+          },
+        ])
+      );
+    }, Math.round(FLY_MS * 0.78));`,
+        `    // Insert into the left Kith Chat as the tag arrives so it feels continuous.
+    window.setTimeout(() => {
+      sendMarkedImageRegionToChat({
+        canvasId,
+        nodeId: active,
+        label: region.label || \`区域 \${region.index}\`,
+        region: {
+          x: region.x,
+          y: region.y,
+          w: region.w,
+          h: region.h,
+          kind: region.kind,
+        },
+        nodeWidth: box.width,
+        nodeHeight: box.height,
+        dataUrl: thumb,
+      });
+    }, Math.round(FLY_MS * 0.78));`,
+        "MarkSessionHost send crop to Kith Chat",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        `function buildMarkChipPayload(
+  nodeId: string,
+  region: MarkRegion,
+  nodeW: number,
+  nodeH: number
+): string {
+  const nx = (region.x / nodeW).toFixed(3);
+  const ny = (region.y / nodeH).toFixed(3);
+  const nw = (region.w / nodeW).toFixed(3);
+  const nh = (region.h / nodeH).toFixed(3);
+  const tag = region.kind === 'text' ? 'text' : 'subject';
+  return [
+    '[Marked image region — edit this area on the referenced image]',
+    \`node_id: \${nodeId}\`,
+    \`region: #\${region.index}(\${tag}@\${nx},\${ny},\${nw}x\${nh})\`,
+    \`label: \${region.label || \`区域 \${region.index}\`}\`,
+  ].join('\\n');
+}
+
+`,
+        "",
+        "MarkSessionHost drop visible chip payload",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "        onCommitDraft={onCommitDraft}\n        onSelectRegion={onSelectRegion}",
+        "        onCommitDraft={onCommitDraft}\n        onSelectRegion={onSelectRegion}\n        onClickWithoutDrag={() => message.warning('请按住拖选要标记的区域')}",
+        "MarkSessionHost click-without-drag toast",
+      );
     }
     if (repositoryWhitespaceNormalizedSources.has(item.path)) {
       changes.push("normalize upstream blank-line whitespace and final newline for repository diff checks");

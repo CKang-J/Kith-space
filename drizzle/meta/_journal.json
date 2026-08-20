@@ -113,6 +113,13 @@
       "when": 1787184000000,
       "tag": "0015_canvas_agent_execution",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1787212800000,
+      "tag": "0016_canvas_generation_jobs",
+      "breakpoints": true
     }
   ]
 }

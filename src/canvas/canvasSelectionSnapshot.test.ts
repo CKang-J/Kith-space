@@ -195,3 +195,59 @@ test("deleted canvases and unmatched selections fail closed before a snapshot ex
     f.cleanup();
   }
 });
+
+test("marked image regions freeze onto the snapshot projection and stay out of the Human summary", () => {
+  const f = fixture();
+  try {
+    const created = f.core.create({
+      title: "Mark",
+      document: {
+        ...baseDocument,
+        deltaSetLike: {
+          ...baseDocument.deltaSetLike,
+          "image-1": { id: "image-1", key: "image", x: 0, y: 0, width: 1000, height: 800, attrs: {}, children: [] },
+        },
+      },
+    });
+    const parsed = parseCanvasSelectionInput({
+      canvasId: created.id,
+      selectedIds: ["image-1"],
+      markedRegions: [{
+        nodeId: "image-1",
+        label: "1 区域",
+        kind: "manual",
+        nx: 0.1,
+        ny: 0.2,
+        nw: 0.3,
+        nh: 0.4,
+      }, {
+        nodeId: "shape-1",
+        label: "other node",
+        kind: "manual",
+        nx: 0.1,
+        ny: 0.1,
+        nw: 0.2,
+        nh: 0.2,
+      }],
+    });
+    assert.equal(parsed?.markedRegions?.length, 1);
+    const frozen = f.db.transaction((tx) => freezeCanvasSelectionInTransaction(
+      tx,
+      f.spaceId,
+      parsed!,
+      "human-1",
+    ));
+    assert.deepEqual(frozen.projection.markedRegions, [{
+      nodeId: "image-1",
+      label: "1 区域",
+      kind: "manual",
+      nx: 0.1,
+      ny: 0.2,
+      nw: 0.3,
+      nh: 0.4,
+    }]);
+    assert.doesNotMatch(frozen.summary, /0\.1|marked region|node_id/);
+  } finally {
+    f.cleanup();
+  }
+});

@@ -23,6 +23,7 @@ import {
   CanvasUngroupNodesCommandSchema,
   CanvasUpdateFrameCommandSchema,
   CanvasUpdateNodeCommandSchema,
+  CanvasVideoGenerateCommandSchema,
   CANVAS_AGENT_GATEWAY_PATHS,
   CANVAS_TYPED_TOOL_DESCRIPTIONS,
 } from "../../canvas/canvasAgentTools.js";
@@ -207,5 +208,6 @@ registerSchema("canvas.duplicate_nodes", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.
 registerSchema("canvas.flip_nodes", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.flip_nodes"], CanvasFlipNodesCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.flip_nodes"]);
 registerSchema("canvas.boolean_op", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.boolean_op"], CanvasBooleanOpCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.boolean_op"]);
 registerSchema("canvas.set_canvas_background", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.set_canvas_background"], CanvasSetCanvasBackgroundCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.set_canvas_background"]);
+registerSchema("canvas.video_generate", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.video_generate"], CanvasVideoGenerateCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.video_generate"]);
 
 await server.connect(new StdioServerTransport());

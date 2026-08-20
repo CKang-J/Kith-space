@@ -61,6 +61,7 @@ function resolutionFor(kind: string, node: SceneNodeInput): string | undefined {
 async function persistProcessedSrc(src: string, filename: string): Promise<string> {
   const raw = String(src || '').trim();
   if (!raw) return raw;
+  if (/^\/api\/canvas-assets\//.test(raw)) return raw;
   try {
     const uploaded = await uploadImageFromSrc(raw, filename);
     return uploaded.url || raw;
@@ -88,8 +89,8 @@ function processFailMessage(err: unknown): string {
   if (status === 402 || msg === 'Insufficient credits' || msg === 'Insufficient tokens')
     return 'Token 不足，请充值后再试';
   if (status === 401) return '请先登录后再使用 AI 工具';
-  if (/timeout/i.test(msg) || (err as { code?: string })?.code === 'ECONNABORTED')
-    return '图片分层超时，请稍后重试（大图首次加载模型会更慢）';
+  if (/timed out|timeout/i.test(msg) || (err as { code?: string })?.code === 'ECONNABORTED')
+    return '处理超时：图生图会把原图发给方舟，通常比文生图慢。请检查网络后重试。';
   if (msg.trim()) return msg;
   return '图片处理失败';
 }
@@ -116,8 +117,8 @@ function buildFinishAttrsForKind(
 }
 
 /**
- * Completes spawned image process jobs via backend AI (`POST /api/v1/image/process`).
- * Results are uploaded to our file server so the canvas / export use our URLs.
+ * Completes spawned image process jobs via Kith Canvas generation jobs
+ * (Seedream i2i). Results are durable canvas-asset URLs.
  * Import / upload placeholders are finished by their own flows.
  */
 function ImageProcessWatcher() {
@@ -136,7 +137,6 @@ function ImageProcessWatcher() {
     if (kind === 'import' || kind === 'upload' || kind === 'eraser') return undefined;
 
     let cancelled = false;
-    const ac = new AbortController();
 
     const fail = (msg: string) => {
       if (cancelled) return;
@@ -184,7 +184,7 @@ function ImageProcessWatcher() {
         if (aspect) processBody.aspect_ratio = aspect;
         const resolution = resolutionFor(kind, liveNode);
         if (resolution) processBody.resolution = resolution;
-        const res = await processImageTool(processBody, { signal: ac.signal });
+        const res = await processImageTool(processBody);
         if (cancelled) return;
 
         const layers = Array.isArray(res?.layers) ? res.layers : [];
@@ -258,7 +258,6 @@ function ImageProcessWatcher() {
     run();
     return () => {
       cancelled = true;
-      ac.abort();
     };
     // Only re-run when a new job id is pending — not on every document edit.
   }, [pendingId, dispatch]);

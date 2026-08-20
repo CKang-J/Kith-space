@@ -12,6 +12,7 @@ const apiRoutes = fs.readFileSync(new URL("../src/server/routes-api/index.ts", i
 
 test("Settings exposes a dedicated Appearance page backed by shadcn fields and selects", () => {
   assert.match(settingsView, /\["appearance", "misc\.settingsNavAppearance"\]/);
+  assert.match(settingsView, /\["generation", "misc\.settingsNavGeneration"\]/);
   assert.match(settingsView, /cur === "appearance"[\s\S]*?<AppearanceSettings api=\{api\}/);
   assert.match(settingsView, /data-slot="settings-sidebar-title"/);
   assert.match(appearanceView, /from "@\/components\/ui\/field"/);

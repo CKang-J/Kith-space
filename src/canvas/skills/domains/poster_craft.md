@@ -5,7 +5,7 @@
 
 ## When to use
 
-User asks for a poster, KV, concert key visual, event flyer, roll-up, or “一张海报”. Load `design_brief` with this skill. Keep `anti_ai_slop` in mind (or load it). Image generation is **not** available this turn — construct marks with shapes / `boolean_op`, or place an existing Canvas `assetId`.
+User asks for a poster, KV, concert key visual, event flyer, roll-up, or “一张海报”. Load `design_brief` with this skill. Keep `anti_ai_slop` in mind (or load it). Atmosphere and hero lettering may use `canvas.create_image(genPrompt)`; keep titles/dates/logos in `create_text` unless they are decorative lettering. Construct simple marks with shapes / `boolean_op` when geometry is enough.
 
 ## Process overview
 

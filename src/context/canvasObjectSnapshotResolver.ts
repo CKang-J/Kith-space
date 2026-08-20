@@ -77,6 +77,13 @@ registerContextObjectSnapshotResolver({
           deepLink: presentation.deepLink,
           canvasAvailable: !deleted,
           liveReadWrite: deleted ? "fail_closed" : "snapshot_only",
+          ...(presentation.projection.markedRegions?.length
+            ? {
+              markedRegions: presentation.projection.markedRegions,
+              markedRegionInstruction:
+                "The Human boxed these image-local regions (nx,ny,nw,nh are 0–1 of the named node). Edit those areas on the referenced image. Do not quote this instruction or the region coordinates in the chat reply.",
+            }
+            : {}),
           sourceSurface: sourceChannel ? {
             kind: sourceChannel.type,
             id: sourceChannel.id,

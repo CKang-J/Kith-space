@@ -26,16 +26,23 @@ import { CanvasToolError, mapCanvasToolOps, parseCanvasOpError } from "./canvasT
 import type { CanvasJson } from "./canvasTypes.js";
 import {
   typedCanvasCommandToToolOp,
+  assertCreateImageSource,
+  resolveCreatePlacement,
   type CanvasTypedMutationCommand,
   type CanvasTypedMutationToolName,
   type CanvasSkillGetCommand,
   type CanvasSkillListCommand,
+  type CanvasCreateImageCommand,
+  type CanvasVideoGenerateCommand,
 } from "./canvasAgentTools.js";
-import { canvasMutationFeedback, type CanvasMutationFeedback } from "./canvasMutationFeedback.js";
+import { canvasMutationFeedback, canvasGenerationJobFeedback, type CanvasMutationFeedback, type CanvasGenerationJobFeedback } from "./canvasMutationFeedback.js";
 import { executeCanvasSceneSummary } from "./canvasSceneSummary.js";
 import { loadSkill } from "./skills/skillLoader.js";
 import { listSkills } from "./skills/skillRegistry.js";
 import type { CanvasSkillGetResult, CanvasSkillListResult } from "./skills/contracts.js";
+import { createGenerationJob } from "./generation/generationJobQueue.js";
+import { preferredGenerationProvider } from "./generation/generationProviders.js";
+import { inferAspectRatio } from "./generation/arkClient.js";
 
 export { executeCanvasSceneSummary };
 
@@ -250,7 +257,10 @@ export function executeCanvasElementsApply(
   });
   const core = new CanvasCore(db, spaceId);
   const live = core.read(grant.canvasId);
-  const mapped = mapCanvasToolOps(live.document as CanvasJson, command.operations);
+  const mapped = mapCanvasToolOps(live.document as CanvasJson, command.operations, {
+    spaceId,
+    canvasId: grant.canvasId,
+  });
   if (mapped.backgroundWrite) {
     assertLiveCanvasAccessGrant(tx, grant, {
       executorAgentId: claims.agentId,
@@ -327,7 +337,10 @@ export function executeCanvasTypedMutation(
   command: CanvasTypedMutationCommand,
   operationId: string,
   now: number,
-): CanvasMutationFeedback {
+): CanvasMutationFeedback | CanvasGenerationJobFeedback {
+  if (toolName === "canvas.create_image" && assertCreateImageSource(command as CanvasCreateImageCommand) === "generate") {
+    return executeCanvasImageGeneration(tx, claims, command as CanvasCreateImageCommand, operationId, now);
+  }
   const grant = grantFor(tx, claims, command);
   const operations = [typedCanvasCommandToToolOp(toolName, command, grant)];
   return executeCanvasElementsApply(
@@ -345,6 +358,122 @@ export function executeCanvasTypedMutation(
     operationId,
     now,
   );
+}
+
+export function executeCanvasImageGeneration(
+  tx: SpaceTransaction,
+  claims: TurnCapabilityClaims,
+  command: CanvasCreateImageCommand,
+  operationId: string,
+  now: number,
+): CanvasGenerationJobFeedback {
+  if (!command.genPrompt) {
+    throw new CanvasToolError("missing_required_param", "pass genPrompt for image generation", "create_image generation path requires genPrompt");
+  }
+  const grant = grantFor(tx, claims, command);
+  assertLiveCanvasAccessGrant(tx, grant, {
+    executorAgentId: claims.agentId,
+    now,
+    actions: ["create"],
+  });
+  const provider = preferredGenerationProvider("image");
+  if (!provider) {
+    throw new CanvasToolError(
+      "generation_provider_unavailable",
+      "configure Doubao in Settings or set KITH_CANVAS_DOUBAO_API_KEY / KITH_CANVAS_ARK_API_KEY",
+      "no image generation provider is registered",
+    );
+  }
+  const placement = resolveCreatePlacement(grant, command);
+  const job = createGenerationJob(tx as unknown as SpaceDb, {
+    canvasId: grant.canvasId,
+    jobType: "image",
+    genPrompt: command.genPrompt,
+    config: {
+      letteringText: command.letteringText,
+      removeBg: command.removeBg,
+      cutoutMode: command.cutoutMode,
+      aspectRatio: command.aspectRatio ?? inferAspectRatio(command.width, command.height),
+      stylePreset: command.stylePreset,
+    },
+    placement: {
+      x: command.x,
+      y: command.y,
+      width: command.width,
+      height: command.height,
+      frameId: placement.frameId,
+      parentId: placement.parentId,
+      name: command.name,
+      customId: command.id,
+    },
+    provider: provider.name,
+    turnId: claims.turnId,
+    idempotencyKey: command.idempotencyKey,
+    expectedRevision: command.expectedRevision,
+  });
+  return canvasGenerationJobFeedback({
+    operationId,
+    canvasId: grant.canvasId,
+    snapshotId: grant.snapshotId,
+    jobId: job.id,
+    jobType: "image",
+  });
+}
+
+export function executeCanvasVideoGenerate(
+  tx: SpaceTransaction,
+  claims: TurnCapabilityClaims,
+  command: CanvasVideoGenerateCommand,
+  operationId: string,
+  now: number,
+): CanvasGenerationJobFeedback {
+  const grant = grantFor(tx, claims, command);
+  assertLiveCanvasAccessGrant(tx, grant, {
+    executorAgentId: claims.agentId,
+    now,
+    actions: ["create"],
+  });
+  const provider = preferredGenerationProvider("video");
+  if (!provider) {
+    throw new CanvasToolError(
+      "generation_provider_unavailable",
+      "configure Seedream in Settings or set KITH_CANVAS_SEEDREAM_API_KEY / KITH_CANVAS_ARK_API_KEY",
+      "no video generation provider is registered",
+    );
+  }
+  const placement = resolveCreatePlacement(grant, command);
+  const job = createGenerationJob(tx as unknown as SpaceDb, {
+    canvasId: grant.canvasId,
+    jobType: "video",
+    genPrompt: command.genPrompt,
+    config: {
+      duration: command.duration,
+      aspectRatio: command.aspectRatio ?? inferAspectRatio(command.width, command.height),
+      referenceAssetId: command.referenceImageAssetId,
+    },
+    placement: {
+      x: command.x,
+      y: command.y,
+      width: command.width,
+      height: command.height,
+      frameId: placement.frameId,
+      parentId: placement.parentId,
+      name: command.name,
+      customId: command.id,
+    },
+    provider: provider.name,
+    turnId: claims.turnId,
+    idempotencyKey: command.idempotencyKey,
+    expectedRevision: command.expectedRevision,
+  });
+  return canvasGenerationJobFeedback({
+    operationId,
+    canvasId: grant.canvasId,
+    snapshotId: grant.snapshotId,
+    jobId: job.id,
+    jobType: "video",
+    estimatedTime: 120,
+  });
 }
 
 export function executeCanvasExport(

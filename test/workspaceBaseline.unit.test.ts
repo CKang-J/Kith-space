@@ -123,6 +123,8 @@ test("fresh Space database uses the Personal AgentOS baseline and seeds its Spac
       "agent_consent_epoch", "source_scope_digest", "provider_run_id", "worker_generation",
     ]) assert.ok(columns(sqlite, "memory_advisor_jobs").includes(field), `memory_advisor_jobs must pin ${field}`);
     assert.ok(names.includes("advisor_provider_runs"));
+    assert.ok(names.includes("canvas_generation_jobs"));
+    assert.ok(columns(sqlite, "canvas_generation_jobs").includes("idempotency_key"));
   } finally {
     sqlite.close();
     unregisterSpace(spaceId);

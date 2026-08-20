@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { io } from "socket.io-client";
-import { canvasCoreApi, type CanvasLibraryItem, type KithApi } from "@/features/canvas/adapters/canvasCoreApi";
+import { canvasCoreApi, hydrateCanvasSnapshotMediaSrc, type CanvasLibraryItem, type KithApi } from "@/features/canvas/adapters/canvasCoreApi";
 import { isDeletedCanvasRecovery } from "@/features/canvas/adapters/canvasRecovery";
 import type { RecombynCoreProjectionConnection } from "@/features/canvas/adapters/recombynCoreProjection";
 
@@ -19,12 +19,12 @@ export function useCanvasCoreResource(canvasId: string, spaceId: string, api: Ki
     setLoaded(null);
     setLoadError(null);
     void client.read(canvasId).then((next) => {
-      if (generationRef.current === generation) setLoaded({ resourceKey, snapshot: next });
+      if (generationRef.current === generation) setLoaded({ resourceKey, snapshot: hydrateCanvasSnapshotMediaSrc(next, spaceId) });
     }).catch((reason) => {
       if (generationRef.current === generation) setLoadError(reason instanceof Error ? reason.message : "Unable to load Canvas");
     });
     return () => { generationRef.current += 1; };
-  }, [canvasId, client, resourceKey]);
+  }, [canvasId, client, resourceKey, spaceId]);
 
   useCanvasRealtimeRecovery({ canvasId, spaceId, resourceKey, loaded, client, generationRef, connectionRef });
   return { client, resourceKey, loaded, loadError, connectionRef };
@@ -61,7 +61,7 @@ function useCanvasRealtimeRecovery(input: {
           }
           if (recovered.deleted || recovered.snapshot.sequence <= lastAppliedSequence) return;
           lastAppliedSequence = recovered.snapshot.sequence;
-          connectionRef.current?.replaceFromCore(recovered.snapshot);
+          connectionRef.current?.replaceFromCore(hydrateCanvasSnapshotMediaSrc(recovered.snapshot, spaceId));
         }).catch((error) => { console.error("Canvas realtime recovery will retry on the next signal", error); });
       }, 150);
     };

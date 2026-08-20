@@ -34,13 +34,22 @@ const LEGACY_V3_CHECKSUM = "3188d1283621a7b042594c340ace87b42195cef97b689ffb5c0f
 const LEGACY_V5_CHECKSUM = "935bab99c7fa6ecb6b79e0eabba2ee4e074f12f62551998c9d58daf05c6a2d0b";
 
 function removeV8AppearanceSettings(sqlite: Database.Database): void {
+  removeV11GenerationProviders(sqlite);
   sqlite.exec(`
     DROP TABLE appearance_settings;
     DELETE FROM app_migration_journal WHERE version >= 8;
   `);
 }
 
+function removeV11GenerationProviders(sqlite: Database.Database): void {
+  sqlite.exec(`
+    DROP TABLE IF EXISTS generation_providers;
+    DELETE FROM app_migration_journal WHERE version >= 11;
+  `);
+}
+
 function removeV10AppearanceColorMode(sqlite: Database.Database): void {
+  removeV11GenerationProviders(sqlite);
   sqlite.exec(`
     ALTER TABLE appearance_settings DROP COLUMN color_mode;
     DELETE FROM app_migration_journal WHERE version >= 10;
@@ -163,6 +172,7 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       { version: 8, name: "appearance-font-groups", checksumLength: 64 },
       { version: 9, name: "appearance-ui-font-size", checksumLength: 64 },
       { version: 10, name: "appearance-color-mode", checksumLength: 64 },
+      { version: 11, name: "generation-providers", checksumLength: 64 },
     ]);
     assert.match(String(sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get()), /^[0-9a-f]{64}$/);
     for (const table of [
@@ -186,6 +196,7 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       "runtime_probe_cache",
       "cli_config_import_snapshots",
       "appearance_settings",
+      "generation_providers",
     ]) assert.ok(tableNames(sqlite).includes(table), `missing ${table}`);
     assert.deepEqual((sqlite.prepare("PRAGMA index_info(user_memory_mutations_key_uniq)").all() as Array<{ name: string }>).map((row) => row.name), [
       "actor_json", "idempotency_key",
@@ -273,7 +284,7 @@ test("version 7 app.db carries existing appearance settings into the current typ
 
     migrateAppDatabase(sqlite, dbPath);
 
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 10);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), APP_DATABASE_SCHEMA_VERSION);
     assert.deepEqual(sqlite.prepare(`
       SELECT interface_font, content_font, code_font, ui_font_size, color_mode
       FROM appearance_settings WHERE singleton_key = 1
@@ -295,7 +306,7 @@ test("version 8 app.db receives the default UI font size", () => {
 
     migrateAppDatabase(sqlite, dbPath);
 
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 10);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), APP_DATABASE_SCHEMA_VERSION);
     assert.deepEqual(sqlite.prepare(`
       SELECT ui_font_size, color_mode FROM appearance_settings WHERE singleton_key = 1
     `).get(), {
@@ -313,10 +324,27 @@ test("version 9 app.db receives the default system color mode", () => {
 
     migrateAppDatabase(sqlite, dbPath);
 
-    assert.equal(sqlite.pragma("user_version", { simple: true }), 10);
+    assert.equal(sqlite.pragma("user_version", { simple: true }), APP_DATABASE_SCHEMA_VERSION);
     assert.equal(sqlite.prepare(`
       SELECT color_mode FROM appearance_settings WHERE singleton_key = 1
     `).pluck().get(), "system");
+  });
+});
+
+test("version 10 app.db receives generation provider storage", () => {
+  withAppDatabase((sqlite, dbPath) => {
+    migrateAppDatabase(sqlite, dbPath);
+    removeV11GenerationProviders(sqlite);
+    sqlite.pragma("user_version = 10");
+
+    migrateAppDatabase(sqlite, dbPath);
+
+    assert.equal(sqlite.pragma("user_version", { simple: true }), APP_DATABASE_SCHEMA_VERSION);
+    assert.ok(tableNames(sqlite).includes("generation_providers"));
+    assert.ok(
+      (sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all() as Array<{ name: string }>)
+        .some((row) => row.name === "generation_providers_name_uniq"),
+    );
   });
 });
 

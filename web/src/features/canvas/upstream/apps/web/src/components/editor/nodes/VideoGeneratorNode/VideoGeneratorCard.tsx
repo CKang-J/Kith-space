@@ -58,6 +58,7 @@ import { flyPickIntoImageComposer } from '@recombyn-native/components/editor/nod
 import {
   canAttachNodeToChat,
   canvasAttachPickPayload,
+  clearImageProcessAttrs,
 } from '@recombyn-native/components/rcb/scene/document/mediaLifecycle';
 import {
   captureVideoPosterFrame
@@ -69,6 +70,7 @@ import {
   clearCanvasAttachPick,
   consumePendingCanvasAttach,
   patchDocumentNode,
+  setDocumentFromCanvas,
   startCanvasAttachPick,
   EMPTY_ID_LIST,
 } from '@recombyn-native/store/modules/editor';
@@ -77,6 +79,8 @@ import { cn } from '@recombyn-native/utils/classnames';
 import { isDesktopLocal } from '@recombyn-native/utils/apiBase';
 import { estimateVideoCredits } from '@recombyn-native/utils/imageCredits';
 import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';
+import { firstReferenceAssetId, runCanvasMediaGeneration } from '@/features/canvas/adapters/recombynGeneration';
+import { DEFAULT_KITH_VIDEO_MODEL_ID, clampToVideoLimits, kithVideoModels, videoLimitsForModel } from '@/features/canvas/adapters/arkModelCatalog';
 import { buildByokAwareModelList, DEFAULT_CLOUD_VIDEO_MODEL_ID, cloudVideoFallbackId } from '@recombyn-native/components/editor/panels/agent/llmModelMeta';
 import { customProvidersAsModels } from '@recombyn-native/components/editor/panels/agent/customLlmProviders';
 import store from '@recombyn-native/store';
@@ -111,7 +115,7 @@ function buildVideoGeneratorModelList(res?: {
   videoModels?: LlmModel[] | null;
 } | null): LlmModel[] {
   return buildByokAwareModelList({
-    byok: customProvidersAsModels(),
+    byok: [...kithVideoModels(), ...customProvidersAsModels()],
     catalogs: [res?.models, res?.videoModels],
     filter: (m) => modelIsVideoGenerator(m),
   });
@@ -119,9 +123,11 @@ function buildVideoGeneratorModelList(res?: {
 
 function nextVideoModelId(models: LlmModel[], currentId: string): string | null {
   if (!models.length || models.some((m) => m.id === currentId)) return null;
+  const preferred = models.find((m) => m.id === DEFAULT_KITH_VIDEO_MODEL_ID);
+  if (preferred) return preferred.id;
   if (!isDesktopLocal()) {
-    const preferred = models.find((m) => m.id === DEFAULT_CLOUD_VIDEO_MODEL_ID);
-    if (preferred) return preferred.id;
+    const cloud = models.find((m) => m.id === DEFAULT_CLOUD_VIDEO_MODEL_ID);
+    if (cloud) return cloud.id;
   }
   return models[0]?.id ?? null;
 }
@@ -263,6 +269,9 @@ function VideoSettingsPanel({
   onResolutionChange,
   onDurationChange,
   disabled,
+  allowedResolutions,
+  allowedDurations,
+  allowedAspectRatios,
 }: {
   aspectRatio: string;
   resolution: string;
@@ -271,6 +280,9 @@ function VideoSettingsPanel({
   onResolutionChange: (resolution: string) => void;
   onDurationChange: (duration: number) => void;
   disabled?: boolean;
+  allowedResolutions?: string[];
+  allowedDurations?: number[];
+  allowedAspectRatios?: string[];
 }): ReactNode {
   const { t } = useTranslation();
   return (
@@ -280,11 +292,12 @@ function VideoSettingsPanel({
         <div className="flex items-start justify-between gap-0.5 rounded-xl bg-[var(--rail)] p-1">
           {VIDEO_ASPECT_RATIOS.map((ratio) => {
             const active = aspectRatio === ratio;
+            const unsupported = allowedAspectRatios ? !allowedAspectRatios.includes(ratio) : false;
             return (
               <button
                 key={ratio}
                 type="button"
-                disabled={disabled}
+                disabled={disabled || unsupported}
                 title={ratio}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -316,7 +329,7 @@ function VideoSettingsPanel({
             <VideoSegmentPill
               key={r}
               active={resolution === r}
-              disabled={disabled}
+              disabled={disabled || (allowedResolutions ? !allowedResolutions.includes(r) : false)}
               onClick={() => onResolutionChange(r)}
             >
               {r}
@@ -334,7 +347,7 @@ function VideoSettingsPanel({
             <VideoSegmentPill
               key={n}
               active={duration === n}
-              disabled={disabled}
+              disabled={disabled || (allowedDurations ? !allowedDurations.includes(n) : false)}
               onClick={() => onDurationChange(n)}
             >
               {t('editor.tools.videoDurationNs', { n })}
@@ -386,6 +399,7 @@ function VideoGeneratorCard({
 
   const [prompt, setPrompt] = useState('');
   const [sending, setSending] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [resolution, setResolution] = useState<string>(() => {
@@ -469,6 +483,8 @@ function VideoGeneratorCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
+
   const attachments = useMemo(
     () => contexts.filter((c) => c.kind === 'attachment'),
     [contexts]
@@ -480,9 +496,26 @@ function VideoGeneratorCard({
     [contexts]
   );
   const selectedModel = models.find((m) => m.id === modelId);
+  const videoLimits = videoLimitsForModel(selectedModel);
   const billingEnabled = useBillingEnabled();
   const creditCost = estimateVideoCredits(selectedModel);
   const settingsSummary = `${resolution} · ${aspectRatio} · ${duration}s`;
+
+  useEffect(() => {
+    const next = clampToVideoLimits(videoLimits, { resolution, duration, aspectRatio });
+    if (next.resolution !== resolution) {
+      setResolution(next.resolution);
+      persistGenSettings({ resolution: next.resolution });
+    }
+    if (next.duration !== duration) {
+      setDuration(next.duration);
+      persistGenSettings({ duration: next.duration });
+    }
+    if (next.aspectRatio !== aspectRatio) {
+      applyAspectToNode(next.aspectRatio);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- clamp only when the selected model changes
+  }, [modelId, videoLimits]);
 
   const removeContext = (key: string) =>
     setContexts((prev) =>
@@ -624,12 +657,50 @@ function VideoGeneratorCard({
     mentionFloating.update();
   }, [mentionOpen, mentionQuery, prompt, mentionFloating.refs, mentionFloating.update]);
 
-  const onGenerate = () => {
-    message.warning(
-      t('editor.tools.stageOneGenerationUnavailable', {
-        defaultValue: 'Kith Media Job 尚未实现，Stage 1 暂不支持生成',
+  const onGenerate = async () => {
+    const text = prompt.trim();
+    if (!text || sending || disabled) return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setSending(true);
+    dispatch(
+      patchDocumentNode({
+        nodeId,
+        patch: {
+          attrs: {
+            processStatus: 'running',
+            processKind: 'generate',
+            processLabel: t('editor.tools.videoGenerating'),
+            genPrompt: text,
+          },
+        },
       })
     );
+    try {
+      const live = (store.getState() as any).editor?.document?.deltaSetLike?.[nodeId];
+      await runCanvasMediaGeneration({
+        jobType: 'video',
+        genPrompt: text,
+        targetNodeId: nodeId,
+        node: live,
+        fallbackBox: sceneBox,
+        aspectRatio,
+        duration,
+        model: modelId,
+        resolution,
+        referenceAssetId: firstReferenceAssetId(contextsRef.current),
+        signal: ac.signal,
+      });
+    } catch (err: any) {
+      if (ac.signal.aborted || err?.name === 'AbortError') return;
+      const doc = (store.getState() as any).editor?.document;
+      if (doc) dispatch(setDocumentFromCanvas(clearImageProcessAttrs(doc, nodeId)));
+      message.error(String(err?.message || t('editor.tools.videoGenFail')));
+    } finally {
+      if (abortRef.current === ac) abortRef.current = null;
+      setSending(false);
+    }
   };
 
   const persistGenSettings = (
@@ -834,6 +905,9 @@ function VideoGeneratorCard({
                       aspectRatio={aspectRatio}
                       resolution={resolution}
                       duration={duration}
+                      allowedResolutions={videoLimits.resolutions}
+                      allowedDurations={videoLimits.durations}
+                      allowedAspectRatios={videoLimits.aspectRatios}
                       onAspectRatioChange={applyAspectToNode}
                       onResolutionChange={(r) => {
                         setResolution(r);

@@ -139,7 +139,7 @@ const setOptionalParam = (params: URLSearchParams, key: string, value: string | 
 
 const normalizeSettingsResource = (value: string | null | undefined) => {
   if (value === null || value === undefined) return value;
-  return value === "human" || value === "appearance" || value === "space" || value === "models" || value === "runtimes"
+  return value === "human" || value === "appearance" || value === "generation" || value === "space" || value === "models" || value === "runtimes"
     || value === "advisor" || value === "desktop" ? value : "human";
 };
 

@@ -289,6 +289,9 @@
 **Canvas Selection Snapshot / 画布选区快照**
 : Human 发送选区时由 Core 从 canonical scene 冻结的不可变上下文，包含 document/元素/Frame revisions、有界文字/几何/样式/资产投影、可选预览与 hash。Chat 消息只引用一个 snapshot id，注册式 Context Object resolver 遍历所有 bound message 的规范 refs 后再把它冻结进 turn；后续画布变化不改写历史快照。
 
+**Canvas Mark / 画布标记**
+: 选中图片后按住拖拽框选一块区域。开启标记后图上不叠说明文字，十字光标旁跟一句「按住拖选」；点一下不拖会 toast。裁切 PNG 作为待发附件，同时把该图片节点经既有 `kith:canvas-selection-to-chat` 做成 Canvas 选区 pending。框选的归一化矩形冻进 Selection Snapshot 的 `projection.markedRegions`，只注入 Agent 的 Context Envelope，不写入 Composer 正文，也不出现在已发送聊天气泡里。Recombyn 曾把同样信息写成右侧 AgentDock 的可见 @ chip；Kith 无 AgentDock。用户在左侧输入框补自己的编辑说明后发送。它不是独立视觉分解，也不调用 Recombyn `detectRegions`。
+
 **Canvas Mutation / 画布变更**
 : Human 或 Agent 经同一 Canvas Module 原子提交的一批 durable scene operations。Core 从 operations 派生真实 read/write/root/order/asset set，并校验 metadata/document/element/Frame/structure revisions；Agent 幂等沿用 `(turnId, toolName, key)`，Human 使用全局唯一 client command。mutation ledger 同时是 realtime transactional outbox。Canvas mutation 不等于 Chat turn 已完成。
 
@@ -300,6 +303,12 @@
 
 **Canvas Font Catalog / 画布字体目录**
 : Canvas 文本节点可用的 46 个 family（含中文无衬线/书法、英文衬线与装饰体），源数据移植自 Recombyn `fonts_seed.json`，由 `src/canvas/fonts/fontsCatalog.ts` 导出。`canvas.scene_summary` 的 `AVAILABLE_FONTS` 与编辑器字体选择器共用该目录；字面文件走 jsDelivr CDN，不进入 Desktop extraResources。它不是安装级 UI 外观字体（Sora/Inter 等 Fontsource 包）。
+
+**Canvas Generation Job / 画布生成任务**
+: workspace `canvas_generation_jobs` 中的异步图像/视频生成记录。Agent 调 `create_image(genPrompt)` 或 `canvas.video_generate` 时同步入队并立即返回 `jobId`；Human 工具栏生成器与图片处理（放大/去背景/多角度等）走 `POST /api/canvases/:canvasId/generation-jobs`，不经过 Access Grant，入队后立即 kick Worker。Worker 调供应商、把结果写入本 Canvas `CanvasAssetStore`。若 placement 含 `targetNodeId` 且该节点仍是对应 image/video，则就地 promote；若 `skipNodeCreate`，只导入资产并由现有 process clone 接 durable `src`；否则新建节点。它不是 Canvas Mutation，也不是 Chat turn 完成。幂等键为 `(canvas_id, idempotency_key)`。
+
+**Generation Provider / 生成供应商**
+: 安装级图像/视频供应商配置，存在 app.db `generation_providers`。产品内部仍分两行：`doubao` = 火山方舟图像（Seedream，`/images/generations`），`seedream` = 火山方舟视频（Seedance，`/contents/generations/tasks`）。Settings「图像与视频」只填一把共用方舟 API Key/端点，PATCH `name=ark` 同时写入两行。API Key 用 AES-256-GCM 加密，master key 在 `<appData>/master.key`。LAN 浏览器不能写入密钥。生成器模型目录见 `src/canvas/generation/arkModelCatalog.ts`（Seedream 4.0/4.5/5.0 lite/pro，Seedance 1.0 Pro/Lite）；切换模型时禁用该模型不支持的分辨率/时长（例如 4.5 无 1K，Lite 无 1080p，Seedance 无 15s）。
 
 **Turn Output Artifact / Turn 输出制品**
 : `turn.reply` 除 Chat message 外关联的规范输出对象。Canvas MVP 用 strict `outputRefs` 与 `turn_output_artifacts` 关联已提交 mutation；它不同于只证明输入披露来源的 `sourceRefs`。

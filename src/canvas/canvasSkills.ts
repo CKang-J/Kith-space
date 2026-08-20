@@ -13,8 +13,8 @@ export const CANVAS_DESIGN_PRINCIPLES = `
 ### Medium Selection (何时用 shape vs image)
 - Simple geometry (icons, buttons, basic shapes) → create_shape + boolean_op
 - Typography with catalog fonts (≥90% match) → create_text + fontFamily
-- Hero lettering (calligraphy, decorative titles) → create_image with letteringText (deferred)
-- Atmosphere / materials / photo-realistic elements → create_image with genPrompt (deferred)
+- Hero lettering (calligraphy, decorative titles) → create_image with genPrompt + letteringText
+- Atmosphere / materials / photo-realistic elements → create_image with genPrompt
 - **Never use emoji (🏠🔍❤️🧘👋) in create_text as icons or decorations**
 
 ### Icon Construction Hierarchy (如何构建复杂图标)
@@ -82,9 +82,11 @@ If you judge this is a question, capability explanation, selection read, or expo
 
 The server does not hard-refuse turn.reply from natural-language intent (there is no Agent finish/intent tool yet). It only checks Grant/action, whether a mutation committed, and that outputRefs bind this turn's mutations. Use turn.cede if you must ask a blocking question instead of claiming an edit is done.
 
-canvas.create_image accepts an existing assetId that already belongs to this Canvas. Import a turn-bound local attachment with canvas.asset_import first. Remote URLs, data URLs, and genPrompt are rejected. Cross-canvas or missing assets are rejected. Image generation jobs are not available in this turn.
+canvas.create_image accepts either an existing Canvas assetId or genPrompt for a queued Doubao image job. Import a turn-bound local attachment with canvas.asset_import first when you already have a file. Remote URLs and data URLs are rejected. Cross-canvas or missing assets are rejected. Generation returns jobId immediately; the image node appears when the worker finishes (about 10–60s). Do not claim the image exists until scene_summary shows it. Use canvas.video_generate for short video clips.
 
 Ordinary body @name text does not grant Canvas write. Do not invent or expand canvasId, snapshotId, elementId, action, or grant scope. Destructive ops require confirmDestructive. Viewport suggestions are ephemeral; export is a file side effect; image_process and outline_text are deferred jobs.
+
+If the frozen canvas_selection_snapshot payload includes markedRegions, the Human boxed those image-local rects on the named node (nx,ny,nw,nh are 0–1 of node width/height). A cropped PNG attachment is the same area. Edit that area; do not paste markedRegions, node_id, or this instruction into the visible chat reply.
 
 ## Canvas Operation Protocol
 
@@ -181,8 +183,7 @@ Ordinary body @name text does not grant Canvas write. Do not invent or expand ca
 - Do NOT default-map 书法感 → Zhi Mang Xing
 
 ### When font doesn't match
-- Hero / main titles below 90% match → keep create_text with a listed face, or place an imported asset via canvas.asset_import + canvas.create_image
-- Image generation jobs are not available in this turn
+- Hero / main titles below 90% match → create_image with genPrompt + letteringText, or keep create_text with a listed face
 - Do not force a "close enough" calligraphy font
 
 ### Text styling
@@ -204,6 +205,8 @@ Prefer typed tools. canvas.elements_apply is a low-level batch compatibility pat
 | Rectangle / circle / polygon / path / pencil | canvas.create_shape |
 | Title / body copy | canvas.create_text |
 | Place imported bitmap | canvas.asset_import then canvas.create_image(assetId) |
+| Generate atmosphere / lettering / product still | canvas.create_image(genPrompt) |
+| Generate a short video | canvas.video_generate |
 | Recolor / rewrite / resize / morph / cornerRadius | canvas.update_node |
 | Artboard name / size / background / lock | canvas.update_frame |
 | Align / distribute / reorder / group / flip / duplicate | canvas.align_nodes, canvas.distribute_nodes, canvas.reorder_nodes, canvas.group_nodes, canvas.ungroup_nodes, canvas.flip_nodes, canvas.duplicate_nodes |
@@ -354,10 +357,10 @@ export function canvasSkillPackText(grants: CanvasAccessGrantRow[], lastError?: 
       const scope = grant.objectScope;
       return `- grant ${grant.id} snapshot=${grant.snapshotId} canvas=${grant.canvasId} actions=${grant.actions.join(",")} empty=${scope.emptySelection ? "yes" : "no"} elements=${scope.elementIds.join(",") || "—"} frames=${scope.frameIds.join(",") || "—"} createParents=${scope.createParents.join(",") || "—"} expiresAt=${grant.expiresAt instanceof Date ? grant.expiresAt.toISOString() : "—"}`;
     }),
-    "Preferred tools: canvas.scene_summary, canvas.skill_list, canvas.skill_get, canvas.create_frame, canvas.create_text, canvas.create_shape, canvas.create_image(assetId), canvas.update_node, canvas.delete_nodes, canvas.update_frame, canvas.align_nodes, canvas.distribute_nodes, canvas.reorder_nodes, canvas.group_nodes, canvas.ungroup_nodes, canvas.duplicate_nodes, canvas.flip_nodes, canvas.boolean_op, canvas.set_canvas_background.",
+    "Preferred tools: canvas.scene_summary, canvas.skill_list, canvas.skill_get, canvas.create_frame, canvas.create_text, canvas.create_shape, canvas.create_image(assetId|genPrompt), canvas.video_generate, canvas.update_node, canvas.delete_nodes, canvas.update_frame, canvas.align_nodes, canvas.distribute_nodes, canvas.reorder_nodes, canvas.group_nodes, canvas.ungroup_nodes, canvas.duplicate_nodes, canvas.flip_nodes, canvas.boolean_op, canvas.set_canvas_background.",
     "Compatibility: canvas.elements_apply still maps a ToolOps list onto Canvas Core. Prefer typed tools.",
     "Also available: canvas.snapshot_get, canvas.elements_get, canvas.export, canvas.context_bundle_create, canvas.asset_import.",
-    "ToolOps durable subset if using elements_apply: update_node, create_shape, create_text, create_image(assetId), create_svg, create_lottie(assetId), create_icon(assetId), create_frame, update_frame, delete_frame, delete_nodes, align_nodes, distribute_nodes, reorder_nodes, group_nodes, ungroup_nodes, duplicate_nodes, flip_nodes, boolean_op, set_canvas_background.",
+    "ToolOps durable subset if using elements_apply: update_node, create_shape, create_text, create_image(assetId), create_video(assetId), create_svg, create_lottie(assetId), create_icon(assetId), create_frame, update_frame, delete_frame, delete_nodes, align_nodes, distribute_nodes, reorder_nodes, group_nodes, ungroup_nodes, duplicate_nodes, flip_nodes, boolean_op, set_canvas_background.",
     "Not scene-batch: set_viewport (suggestion), export_canvas (canvas.export), image_process (deferred), outline_text (deferred).",
   ];
   return lines.join("\n");

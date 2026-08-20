@@ -36,6 +36,7 @@ import {
   CanvasUngroupNodesCommandSchema,
   CanvasUpdateFrameCommandSchema,
   CanvasUpdateNodeCommandSchema,
+  CanvasVideoGenerateCommandSchema,
   ChecklistClearCommandSchema,
   ChecklistUpsertCommandSchema,
   ContextCheckCommandSchema,
@@ -341,6 +342,12 @@ export async function handleTurnGateway(
       const body = CanvasSetCanvasBackgroundCommandSchema.parse(await readGatewayJson(req));
       const { claims } = authorize(req, "canvas.write");
       sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasSetCanvasBackground(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/video_generate" && method === "POST") {
+      const body = CanvasVideoGenerateCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasVideoGenerate(claims, body) });
       return true;
     }
     if (url.pathname === "/agent-gateway/canvas/export" && method === "POST") {

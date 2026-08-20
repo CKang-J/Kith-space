@@ -46,6 +46,30 @@ test("Composer Canvas payload submits every pending selection in order and binds
   assert.deepEqual(buildCanvasComposerPayload({ canvasContexts: [], executorAgentId: "agent-1" }), {});
 });
 
+test("Composer Canvas payload carries marked regions for Agent context, not as chat text", () => {
+  const marked = pending("image-1");
+  marked.markedRegions = [{
+    nodeId: "image-1",
+    label: "1 区域",
+    kind: "manual",
+    nx: 0.1,
+    ny: 0.2,
+    nw: 0.3,
+    nh: 0.4,
+  }];
+  assert.deepEqual(buildCanvasComposerPayload({
+    canvasContexts: [marked],
+    dmAgent: { id: "peer" },
+    executorAgentId: "",
+  }), {
+    canvasSelections: [{
+      canvasId: "canvas-a",
+      selectedIds: ["image-1"],
+      markedRegions: marked.markedRegions,
+    }],
+  });
+});
+
 test("Composer Canvas validation blocks task send and missing channel executor", () => {
   assert.equal(validateCanvasComposerSend({
     canvasContexts: [pending("one")],

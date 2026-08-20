@@ -113,6 +113,7 @@ import {
 } from '@recombyn-native/components/rcb/scene/document/fontCatalog';
 import { TbVectorBezier } from 'react-icons/tb';
 import { message } from '@recombyn-native/components/base';
+import { unsupportedImageProcessKindMessage } from '@recombyn-native/service/imageTools';
 import { cn } from '@recombyn-native/utils/classnames';
 import type { SceneDocument, SceneNode, SceneNodeInput } from '@recombyn-native/components/rcb/sceneNode';
 
@@ -203,7 +204,10 @@ function SelectionContextToolbar(props: Props): ReactNode {
       imageToolPanel?.kind === 'replaceText' ||
       imageToolPanel?.kind === 'multiAngle' ||
       imageToolPanel?.kind === 'adjust' ||
-      imageToolPanel?.kind === 'mark');
+      imageToolPanel?.kind === 'mark' ||
+      imageToolPanel?.kind === 'upscale' ||
+      imageToolPanel?.kind === 'expand' ||
+      imageToolPanel?.kind === 'crop');
   const [mdOpen, setMdOpen] = useState(false);
   const [fontCatalogTick, setFontCatalogTick] = useState(0);
   const style = useMemo(
@@ -356,8 +360,7 @@ function SelectionContextToolbar(props: Props): ReactNode {
         <>
           <button
             type="button"
-            disabled
-            className={cn(imageToolBtn, 'cursor-not-allowed opacity-50')}
+            className={imageToolBtn}
             onClick={() => dispatch(openImageToolPanel({ nodeId, kind: 'quickEdit' }))}
           >
             <HiOutlineSparkles className="h-4 w-4" strokeWidth={2} />
@@ -365,7 +368,6 @@ function SelectionContextToolbar(props: Props): ReactNode {
           </button>
           <ImageToolSep />
           <ImageToolbarEditTools
-            disabled
             onUpscale={() => dispatch(openImageToolPanel({ nodeId, kind: 'upscale' }))}
             onRemoveBg={(mode) =>
               runImageProcess(
@@ -382,12 +384,9 @@ function SelectionContextToolbar(props: Props): ReactNode {
                 ? () => dispatch(openImageToolPanel({ nodeId, kind: 'replaceText' }))
                 : undefined
             }
-            onEditElements={() =>
-              runImageProcess(
-                'editElements',
-                t('editor.imageToolbar.processingEditElements')
-              )
-            }
+            onEditElements={() => {
+              message.error(unsupportedImageProcessKindMessage('editElements'));
+            }}
             onMultiAngle={() =>
               dispatch(openImageToolPanel({ nodeId, kind: 'multiAngle' }))
             }

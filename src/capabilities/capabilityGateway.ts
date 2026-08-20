@@ -37,6 +37,7 @@ import type {
   CanvasUngroupNodesCommand,
   CanvasUpdateFrameCommand,
   CanvasUpdateNodeCommand,
+  CanvasVideoGenerateCommand,
   ChecklistClearCommand,
   ChecklistUpsertCommand,
   ConversationReadCommand,
@@ -68,9 +69,10 @@ import {
   executeCanvasSkillList,
   executeCanvasSnapshotGet,
   executeCanvasTypedMutation,
+  executeCanvasVideoGenerate,
   mapCanvasToolError,
 } from "../canvas/canvasGatewayTools.js";
-import type { CanvasMutationFeedback } from "../canvas/canvasMutationFeedback.js";
+import type { CanvasMutationFeedback, CanvasGenerationJobFeedback } from "../canvas/canvasMutationFeedback.js";
 import {
   CANVAS_LAST_ERROR_KEY,
   CANVAS_LAST_ERROR_TOOL,
@@ -598,7 +600,10 @@ export class CapabilityGateway {
     return this.canvasTypedWrite(claims, "canvas.create_shape", command);
   }
 
-  canvasCreateImage(claims: TurnCapabilityClaims, command: CanvasCreateImageCommand): CanvasMutationFeedback {
+  canvasCreateImage(claims: TurnCapabilityClaims, command: CanvasCreateImageCommand & { genPrompt: string }): CanvasGenerationJobFeedback;
+  canvasCreateImage(claims: TurnCapabilityClaims, command: CanvasCreateImageCommand & { assetId: string }): CanvasMutationFeedback;
+  canvasCreateImage(claims: TurnCapabilityClaims, command: CanvasCreateImageCommand): CanvasMutationFeedback | CanvasGenerationJobFeedback;
+  canvasCreateImage(claims: TurnCapabilityClaims, command: CanvasCreateImageCommand): CanvasMutationFeedback | CanvasGenerationJobFeedback {
     return this.canvasTypedWrite(claims, "canvas.create_image", command);
   }
 
@@ -650,11 +655,36 @@ export class CapabilityGateway {
     return this.canvasTypedWrite(claims, "canvas.set_canvas_background", command);
   }
 
-  private canvasTypedWrite(
+  canvasVideoGenerate(claims: TurnCapabilityClaims, command: CanvasVideoGenerateCommand): CanvasGenerationJobFeedback {
+    try {
+      const result = this.operation(
+        claims,
+        "canvas.video_generate",
+        command.idempotencyKey,
+        command,
+        "canvas:generate",
+        "canvas.write",
+        (tx, operationId) => executeCanvasVideoGenerate(
+          tx,
+          claims,
+          command,
+          operationId,
+          this.now(),
+        ) as OperationResult,
+      ) as CanvasGenerationJobFeedback;
+      this.clearCanvasLastError(claims);
+      return result;
+    } catch (error) {
+      this.recordCanvasLastError(claims, error);
+      mapCanvasToolError(error);
+    }
+  }
+
+  private canvasTypedWrite<T extends CanvasMutationFeedback | CanvasGenerationJobFeedback = CanvasMutationFeedback>(
     claims: TurnCapabilityClaims,
     toolName: CanvasTypedMutationToolName,
     command: CanvasTypedMutationCommand,
-  ): CanvasMutationFeedback {
+  ): T {
     try {
       const result = this.operation(
         claims,
@@ -673,11 +703,11 @@ export class CapabilityGateway {
           operationId,
           this.now(),
         ) as OperationResult,
-      ) as CanvasMutationFeedback;
+      ) as T;
       this.clearCanvasLastError(claims);
 
       // Publish realtime event so frontend updates immediately
-      if (result.canvasId && result.sequence !== undefined) {
+      if ("sequence" in result && result.canvasId && result.sequence !== undefined) {
         void publish(this.spaceId, {
           type: "canvas:changed",
           canvasId: result.canvasId,

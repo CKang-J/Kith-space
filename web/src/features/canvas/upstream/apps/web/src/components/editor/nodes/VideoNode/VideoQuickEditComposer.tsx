@@ -35,7 +35,6 @@ import ModelPickerPanel, { ModelBrandIcon } from '@recombyn-native/components/ed
 import {
   buildByokAwareModelList,
   cloudVideoFallbackId,
-  DEFAULT_CLOUD_VIDEO_MODEL_ID,
 } from '@recombyn-native/components/editor/panels/agent/llmModelMeta';
 import { customProvidersAsModels } from '@recombyn-native/components/editor/panels/agent/customLlmProviders';
 import {
@@ -54,11 +53,14 @@ import { cn } from '@recombyn-native/utils/classnames';
 import { isDesktopLocal } from '@recombyn-native/utils/apiBase';
 import { estimateVideoCredits } from '@recombyn-native/utils/imageCredits';
 import { readFileAsDataUrl } from '@/features/canvas/adapters/recombynLocalMedia';
+import { firstReferenceAssetId, runCanvasMediaGeneration } from '@/features/canvas/adapters/recombynGeneration';
+import { DEFAULT_KITH_VIDEO_MODEL_ID, clampToVideoLimits, kithVideoModels, videoLimitsForModel } from '@/features/canvas/adapters/arkModelCatalog';
 import store from '@recombyn-native/store';
 
 type SceneBox = { left: number; top: number; width: number; height: number };
 
 const VIDEO_ASPECTS = ['16:9', '9:16', '1:1'] as const;
+const VIDEO_RESOLUTIONS = ['480p', '720p', '1080p'] as const;
 const VIDEO_DURATIONS = [5, 10] as const;
 const DEFAULT_ASPECT = '16:9';
 const DEFAULT_DURATION = 5;
@@ -75,7 +77,7 @@ function buildVideoModelList(res?: {
   videoModels?: LlmModel[] | null;
 }): LlmModel[] {
   return buildByokAwareModelList({
-    byok: customProvidersAsModels(),
+    byok: [...kithVideoModels(), ...customProvidersAsModels()],
     catalogs: [res?.models, res?.videoModels],
     filter: (m) => modelIsVideo(m),
   });
@@ -105,14 +107,16 @@ function VideoQuickEditComposer({
   const [prompt, setPrompt] = useState(savedPrompt);
   const [contexts, setContexts] = useState<ComposerContext[]>([]);
   const [sending, setSending] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [models, setModels] = useState<LlmModel[]>([]);
   const [modelId, setModelId] = useState(
-    () => cloudVideoFallbackId() || DEFAULT_CLOUD_VIDEO_MODEL_ID
+    () => cloudVideoFallbackId() || DEFAULT_KITH_VIDEO_MODEL_ID
   );
   const [aspectRatio, setAspectRatio] = useState(DEFAULT_ASPECT);
   const [duration, setDuration] = useState(DEFAULT_DURATION);
+  const [resolution, setResolution] = useState(DEFAULT_RESOLUTION);
 
   useEffect(() => {
     setPrompt(savedPrompt);
@@ -126,16 +130,29 @@ function VideoQuickEditComposer({
   useEffect(() => {
     const localModels = buildVideoModelList(null);
     setModels(localModels);
-    if (localModels.length && !localModels.some((model) => model.id === modelId)) setModelId(localModels[0]!.id);
+    if (localModels.length && !localModels.some((model) => model.id === modelId)) {
+      setModelId(localModels.find((model) => model.id === DEFAULT_KITH_VIDEO_MODEL_ID)?.id || localModels[0]!.id);
+    }
     // Stage 1 never requests the Recombyn model catalog.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
+
   const attachments = contexts.filter((c) => c.kind === 'attachment');
   const inlineContexts = contexts.filter((c) => c.kind !== 'attachment');
   const selectedModel = models.find((m) => m.id === modelId);
+  const videoLimits = videoLimitsForModel(selectedModel);
   const creditCost = estimateVideoCredits(selectedModel);
-  const settingsSummary = `${DEFAULT_RESOLUTION} · ${aspectRatio} · ${duration}s`;
+  const settingsSummary = `${resolution} · ${aspectRatio} · ${duration}s`;
+
+  useEffect(() => {
+    const next = clampToVideoLimits(videoLimits, { resolution, duration, aspectRatio });
+    if (next.resolution !== resolution) setResolution(next.resolution);
+    if (next.duration !== duration) setDuration(next.duration);
+    if (next.aspectRatio !== aspectRatio) setAspectRatio(next.aspectRatio);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId, videoLimits]);
 
   const subjectChip = useMemo(
     () =>
@@ -197,8 +214,51 @@ function VideoQuickEditComposer({
     if (next.length) setContexts((prev) => [...prev, ...next]);
   };
 
-  const onGenerate = () => {
-    message.warning(t('editor.tools.stageOneGenerationUnavailable', { defaultValue: 'Kith Media Job 尚未实现，Stage 1 暂不支持生成' }));
+  const onGenerate = async () => {
+    const text = prompt.trim();
+    if (!text || sending || !node) return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setSending(true);
+    dispatch(
+      patchDocumentNode({
+        nodeId,
+        patch: {
+          attrs: {
+            processStatus: 'running',
+            processKind: 'generate',
+            processLabel: t('editor.tools.videoGenerating'),
+            genPrompt: text,
+          },
+        },
+      })
+    );
+    try {
+      await runCanvasMediaGeneration({
+        jobType: 'video',
+        genPrompt: text,
+        targetNodeId: nodeId,
+        node,
+        aspectRatio,
+        duration,
+        model: modelId,
+        resolution,
+        referenceAssetId: firstReferenceAssetId(contexts, src)
+          || (typeof node.assetId === 'string' && node.assetId.trim())
+          || (typeof node.attrs?.assetId === 'string' && node.attrs.assetId.trim())
+          || undefined,
+        signal: ac.signal,
+      });
+    } catch (err: any) {
+      if (ac.signal.aborted || err?.name === 'AbortError') return;
+      const doc = (store.getState() as any).editor?.document;
+      if (doc) dispatch(setDocumentFromCanvas(clearImageProcessAttrs(doc, nodeId)));
+      message.error(String(err?.message || t('editor.tools.videoGenFail')));
+    } finally {
+      if (abortRef.current === ac) abortRef.current = null;
+      setSending(false);
+    }
   };
 
   if (!node || !src) return null;
@@ -303,8 +363,9 @@ function VideoQuickEditComposer({
                       <button
                         key={a}
                         type="button"
+                        disabled={sending || !videoLimits.aspectRatios.includes(a)}
                         className={cn(
-                          'h-7 rounded-lg px-2.5 text-[12px]',
+                          'h-7 rounded-lg px-2.5 text-[12px] disabled:opacity-40',
                           aspectRatio === a
                             ? 'bg-[var(--ink)] text-[var(--on-brand)]'
                             : 'bg-[var(--accent-soft)] text-[var(--ink)]'
@@ -318,6 +379,29 @@ function VideoQuickEditComposer({
                 </div>
                 <div>
                   <p className="mb-1.5 text-[12px] font-medium text-[var(--ink)]">
+                    {t('agent.chooseResolution', { defaultValue: '分辨率' })}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {VIDEO_RESOLUTIONS.map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        disabled={sending || !videoLimits.resolutions.includes(item)}
+                        className={cn(
+                          'h-7 rounded-lg px-2.5 text-[12px] disabled:opacity-40',
+                          resolution === item
+                            ? 'bg-[var(--ink)] text-[var(--on-brand)]'
+                            : 'bg-[var(--accent-soft)] text-[var(--ink)]'
+                        )}
+                        onClick={() => setResolution(item)}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-1.5 text-[12px] font-medium text-[var(--ink)]">
                     {t('editor.tools.videoGenDuration', { defaultValue: '时长' })}
                   </p>
                   <div className="flex flex-wrap gap-1.5">
@@ -325,8 +409,9 @@ function VideoQuickEditComposer({
                       <button
                         key={d}
                         type="button"
+                        disabled={sending || !videoLimits.durations.includes(d)}
                         className={cn(
-                          'h-7 rounded-lg px-2.5 text-[12px] tabular-nums',
+                          'h-7 rounded-lg px-2.5 text-[12px] tabular-nums disabled:opacity-40',
                           duration === d
                             ? 'bg-[var(--ink)] text-[var(--on-brand)]'
                             : 'bg-[var(--accent-soft)] text-[var(--ink)]'
@@ -356,7 +441,7 @@ function VideoQuickEditComposer({
 
           <div className="flex-1" />
 
-          {!isDesktopLocal() && models.length > 0 ? (
+          {models.length > 0 ? (
             <Dropdown
               trigger="click"
               placement="top-end"

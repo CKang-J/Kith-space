@@ -69,3 +69,43 @@ export function canvasMutationFeedback(input: {
     nextSuggestedAction: nextCanvasMutationAction({ status, createdIds, updatedIds, deletedIds }),
   };
 }
+
+export type CanvasGenerationJobFeedback = {
+  kind: "canvas_generation_job";
+  status: "queued";
+  jobId: string;
+  jobType: "image" | "video";
+  jobStatus: "pending";
+  estimatedTime: number;
+  message: string;
+  canvasId: string;
+  snapshotId: string;
+  operationId: string;
+  nextSuggestedAction: string;
+};
+
+export function canvasGenerationJobFeedback(input: {
+  operationId: string;
+  canvasId: string;
+  snapshotId: string;
+  jobId: string;
+  jobType: "image" | "video";
+  estimatedTime?: number;
+}): CanvasGenerationJobFeedback {
+  const estimatedTime = input.estimatedTime ?? (input.jobType === "video" ? 120 : 30);
+  return {
+    kind: "canvas_generation_job",
+    status: "queued",
+    jobId: input.jobId,
+    jobType: input.jobType,
+    jobStatus: "pending",
+    estimatedTime,
+    message: input.jobType === "video"
+      ? "Video generation queued. The video node will appear when ready (about 1–5 minutes)."
+      : "Image generation queued. The image will appear on the canvas when ready (about 10–60 seconds).",
+    canvasId: input.canvasId,
+    snapshotId: input.snapshotId,
+    operationId: input.operationId,
+    nextSuggestedAction: `Queued; do not claim the ${input.jobType} exists yet. Call canvas.scene_summary after ~${estimatedTime}s. Do not turn.reply with a canvas_mutation outputRef until a mutation actually commits.`,
+  };
+}

@@ -81,6 +81,16 @@ export function resolveChatFlyTarget(opts?: { landId?: string | null }): Point {
   );
   if (agentLand) return agentLand;
 
+  const kithChatLand = pointFromEl(
+    (landId
+      ? (globalThis.document.querySelector(
+          `[data-fly-land="${landId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`
+        ) as HTMLElement | null)
+      : null) ||
+      (globalThis.document.querySelector('[data-fly-land^="kith-chat:"]') as HTMLElement | null)
+  );
+  if (kithChatLand) return kithChatLand;
+
   const dock =
     (globalThis.document.querySelector('[data-tour="editor-agent"]') as HTMLElement | null) ||
     (globalThis.document.querySelector('aside[data-tour]') as HTMLElement | null);
@@ -98,8 +108,8 @@ export function resolveChatFlyTarget(opts?: { landId?: string | null }): Point {
     }
   }
   return {
-    x: Math.max(120, window.innerWidth - 220),
-    y: Math.max(120, window.innerHeight * 0.62),
+    x: Math.min(180, Math.max(48, window.innerWidth * 0.16)),
+    y: Math.max(120, window.innerHeight * 0.72),
   };
 }
 

@@ -21,17 +21,18 @@ import { rcbSceneToScreen, useRcbCamera } from '@recombyn-native/components/rcb'
 import { nodeLeftTop } from '@recombyn-native/components/rcb/scene/paint/sceneToSvg';
 import {
   closeImageToolPanel,
-  enqueueAgentContexts,
 } from '@recombyn-native/store/modules/editor';
 import { CONTEXT_CHIP_PILL_CLASS } from '@recombyn-native/components/editor/panels/AgentComposerInput';
 import { resolveChatFlyTarget } from '@recombyn-native/components/editor/panels/agent/flyToChat';
+import { message } from '@recombyn-native/components/base';
 import { getHttpErrorMessage } from '@recombyn-native/service/client';
 import {
-  processImageTool,
   type ImageDecomposeLayer,
 } from '@recombyn-native/service/imageTools';
 import { imageSrcToFile } from '@recombyn-native/utils/uploadImage';
 import { cn } from '@recombyn-native/utils/classnames';
+import { kithChatFlyLandId, sendMarkedImageRegionToChat } from '@/features/canvas/adapters/recombynMarkToChat';
+import { useCanvasSelectionSourceId } from '@/features/canvas/host/canvasSelectionSource';
 import MarkRegionOverlay, {
   type MarkRect,
   type MarkRegion,
@@ -164,36 +165,18 @@ async function cropMarkRegionDataUrl(
   }
 }
 
-function buildMarkChipPayload(
-  nodeId: string,
-  region: MarkRegion,
-  nodeW: number,
-  nodeH: number
-): string {
-  const nx = (region.x / nodeW).toFixed(3);
-  const ny = (region.y / nodeH).toFixed(3);
-  const nw = (region.w / nodeW).toFixed(3);
-  const nh = (region.h / nodeH).toFixed(3);
-  const tag = region.kind === 'text' ? 'text' : 'subject';
-  return [
-    '[Marked image region — edit this area on the referenced image]',
-    `node_id: ${nodeId}`,
-    `region: #${region.index}(${tag}@${nx},${ny},${nw}x${nh})`,
-    `label: ${region.label || `区域 ${region.index}`}`,
-  ].join('\n');
-}
-
-/** Landing point inside the right Agent composer (fallback: dock / viewport). */
+/** Landing point inside the left Kith Composer (fallback: left viewport). */
 function resolveMarkChatFlyTarget(): { x: number; y: number } {
-  return resolveChatFlyTarget({ landId: 'agent' });
+  return resolveChatFlyTarget({ landId: kithChatFlyLandId() });
 }
 
 /**
  * Mark tool session: auto subject/text proposals + manual box select.
- * Selecting a region flies an @ chip into the right AgentDock chat.
+ * Selecting a region flies a chip into the left Kith Chat composer.
  */
 function MarkSessionHost({ document }: { document: SceneDocument }): ReactNode {
   const dispatch = useDispatch();
+  const canvasId = useCanvasSelectionSourceId();
   const camera = useRcbCamera();
   const panel = useSelector(
     (s: any) =>
@@ -248,55 +231,13 @@ function MarkSessionHost({ document }: { document: SceneDocument }): ReactNode {
   }, [active]);
 
   useEffect(() => {
-    if (!active || !src || !box) return;
+    if (!active) return;
     setRegions([]);
     setDraft(null);
     setFlies([]);
-    const gen = ++detectGenRef.current;
-    setDetecting(true);
+    setDetecting(false);
     abortRef.current?.abort();
-    const ac = new AbortController();
-    abortRef.current = ac;
-
-    async function runDetect() {
-      try {
-        const res = await processImageTool(
-          { kind: 'detectRegions', image: src },
-          { signal: ac.signal }
-        );
-        if (gen !== detectGenRef.current) return;
-        const nw = Math.max(1, Number(res.width) || box!.width);
-        const nh = Math.max(1, Number(res.height) || box!.height);
-        const next = layersToRegions(
-          res.layers || [],
-          nw,
-          nh,
-          box!.width,
-          box!.height
-        ).map((r, i) => ({
-          ...r,
-          index: i + 1,
-          selected: false,
-        }));
-        setRegions(next);
-        if (res.warnings?.length) {
-          console.info('[mark] detect warnings', res.warnings);
-        }
-      } catch (err: unknown) {
-        if (ac.signal.aborted || gen !== detectGenRef.current) return;
-        const msg = getHttpErrorMessage(err, '');
-        if (msg && !/unsupported kind|detectRegions/i.test(msg)) {
-          console.info('[mark] detect failed', msg);
-        }
-      } finally {
-        if (gen === detectGenRef.current) setDetecting(false);
-      }
-    }
-    void runDetect();
-
-    return () => {
-      ac.abort();
-    };
+    // Auto subject detection needs Recombyn's vision decompose API; keep manual drag-select.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, src]);
 
@@ -375,19 +316,23 @@ function MarkSessionHost({ document }: { document: SceneDocument }): ReactNode {
       )
     );
 
-    // Insert into chat as the tag arrives so it feels continuous.
+    // Insert into the left Kith Chat as the tag arrives so it feels continuous.
     window.setTimeout(() => {
-      dispatch(
-        enqueueAgentContexts([
-          {
-            key: `mark:${active}:${region.id}`,
-            label: region.label || `区域 ${region.index}`,
-            kind: 'image',
-            payload: buildMarkChipPayload(active, region, box.width, box.height),
-            ...(thumb ? { dataUrl: thumb, thumbUrl: thumb } : {}),
-          },
-        ])
-      );
+      sendMarkedImageRegionToChat({
+        canvasId,
+        nodeId: active,
+        label: region.label || `区域 ${region.index}`,
+        region: {
+          x: region.x,
+          y: region.y,
+          w: region.w,
+          h: region.h,
+          kind: region.kind,
+        },
+        nodeWidth: box.width,
+        nodeHeight: box.height,
+        dataUrl: thumb,
+      });
     }, Math.round(FLY_MS * 0.78));
 
     window.setTimeout(() => {
@@ -457,6 +402,7 @@ function MarkSessionHost({ document }: { document: SceneDocument }): ReactNode {
         onDraftChange={setDraft}
         onCommitDraft={onCommitDraft}
         onSelectRegion={onSelectRegion}
+        onClickWithoutDrag={() => message.warning('请按住拖选要标记的区域')}
       />
       {flies.length
         ? createPortal(

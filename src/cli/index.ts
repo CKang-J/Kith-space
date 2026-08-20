@@ -314,7 +314,10 @@ canvas.command("create-shape").requiredOption("--expected-revision <n>")
       idempotencyKey: opts.idempotencyKey,
     }), null, 2));
   });
-canvas.command("create-image").requiredOption("--expected-revision <n>").requiredOption("--asset-id <id>")
+canvas.command("create-image").requiredOption("--expected-revision <n>")
+  .option("--asset-id <id>").option("--gen-prompt <text>")
+  .option("--lettering-text <text>").option("--remove-bg").option("--cutout-mode <mode>")
+  .option("--aspect-ratio <ratio>").option("--style-preset <preset>")
   .requiredOption("--x <n>").requiredOption("--y <n>").requiredOption("--width <n>").requiredOption("--height <n>")
   .option("--parent-id <id>").option("--frame-id <id>").option("--name <name>").option("--id <id>")
   .option("--canvas-id <id>").option("--snapshot-id <id>")
@@ -324,7 +327,38 @@ canvas.command("create-image").requiredOption("--expected-revision <n>").require
       ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
       ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
       expectedRevision: Number(opts.expectedRevision),
-      assetId: opts.assetId, x: Number(opts.x), y: Number(opts.y),
+      ...(opts.assetId ? { assetId: opts.assetId } : {}),
+      ...(opts.genPrompt ? { genPrompt: opts.genPrompt } : {}),
+      ...(opts.letteringText ? { letteringText: opts.letteringText } : {}),
+      ...(opts.removeBg ? { removeBg: true } : {}),
+      ...(opts.cutoutMode ? { cutoutMode: opts.cutoutMode } : {}),
+      ...(opts.aspectRatio ? { aspectRatio: opts.aspectRatio } : {}),
+      ...(opts.stylePreset ? { stylePreset: opts.stylePreset } : {}),
+      x: Number(opts.x), y: Number(opts.y),
+      width: Number(opts.width), height: Number(opts.height),
+      ...(opts.parentId ? { parentId: opts.parentId } : {}),
+      ...(opts.frameId ? { frameId: opts.frameId } : {}),
+      ...(opts.name ? { name: opts.name } : {}),
+      ...(opts.id ? { id: opts.id } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("video-generate").requiredOption("--expected-revision <n>").requiredOption("--gen-prompt <text>")
+  .requiredOption("--x <n>").requiredOption("--y <n>").requiredOption("--width <n>").requiredOption("--height <n>")
+  .option("--reference-image-asset-id <id>").option("--duration <n>").option("--aspect-ratio <ratio>")
+  .option("--parent-id <id>").option("--frame-id <id>").option("--name <name>").option("--id <id>")
+  .option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:video_generate")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/video_generate", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      genPrompt: opts.genPrompt,
+      ...(opts.referenceImageAssetId ? { referenceImageAssetId: opts.referenceImageAssetId } : {}),
+      ...(opts.duration ? { duration: Number(opts.duration) } : {}),
+      ...(opts.aspectRatio ? { aspectRatio: opts.aspectRatio } : {}),
+      x: Number(opts.x), y: Number(opts.y),
       width: Number(opts.width), height: Number(opts.height),
       ...(opts.parentId ? { parentId: opts.parentId } : {}),
       ...(opts.frameId ? { frameId: opts.frameId } : {}),

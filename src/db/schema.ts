@@ -924,3 +924,33 @@ export const turnOutputArtifacts = sqliteTable("turn_output_artifacts", {
   outputKindArtifactUniq: uniqueIndex("turn_output_artifacts_output_kind_artifact_uniq").on(t.outputId, t.kind, t.artifactId),
   byArtifact: index("turn_output_artifacts_artifact_idx").on(t.kind, t.artifactId),
 }));
+
+export const canvasGenerationJobs = sqliteTable("canvas_generation_jobs", {
+  id: id("id").primaryKey(),
+  canvasId: text("canvas_id").notNull().references(() => canvasDocuments.id, { onDelete: "cascade" }),
+  jobType: text("job_type").$type<"image" | "video">().notNull(),
+  status: text("status").$type<"pending" | "processing" | "completed" | "failed" | "cancelled">().notNull(),
+  genPrompt: text("gen_prompt").notNull(),
+  configJson: text("config_json"),
+  placementJson: text("placement_json").notNull(),
+  provider: text("provider").$type<"doubao" | "seedream" | "stability" | "runway" | "dalle" | "pika">().notNull(),
+  providerJobId: text("provider_job_id"),
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").default(0).notNull(),
+  resultAssetId: text("result_asset_id").references(() => canvasAssets.id, { onDelete: "set null" }),
+  resultNodeId: text("result_node_id"),
+  turnId: text("turn_id"),
+  idempotencyKey: text("idempotency_key").notNull(),
+  expectedRevision: integer("expected_revision").notNull(),
+  createdAt: timestamp("created_at").notNull(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  updatedAt: timestamp("updated_at").notNull(),
+}, (t) => ({
+  byCanvas: index("canvas_generation_jobs_canvas_idx").on(t.canvasId),
+  byStatus: index("canvas_generation_jobs_status_idx").on(t.status),
+  idempotencyUniq: uniqueIndex("canvas_generation_jobs_idempotency_uniq").on(t.canvasId, t.idempotencyKey),
+  jobTypeCheck: check("canvas_generation_jobs_job_type_check", sql`${t.jobType} in ('image', 'video')`),
+  statusCheck: check("canvas_generation_jobs_status_check", sql`${t.status} in ('pending', 'processing', 'completed', 'failed', 'cancelled')`),
+  providerCheck: check("canvas_generation_jobs_provider_check", sql`${t.provider} in ('doubao', 'seedream', 'stability', 'runway', 'dalle', 'pika')`),
+}));

@@ -15,6 +15,7 @@ import type {
   CanvasElementProjection,
   CanvasFrameProjection,
   CanvasJson,
+  CanvasMarkedRegion,
   CanvasSelectionInput,
   CanvasSelectionProjection,
   FrozenCanvasSelectionSnapshot,
@@ -22,8 +23,10 @@ import type {
 
 export const CANVAS_SELECTION_SNAPSHOT_REF_TYPE = "canvas_selection_snapshot";
 export const MAX_CANVAS_SELECTION_IDS = 80;
+export const MAX_CANVAS_MARKED_REGIONS = 8;
 const MAX_TEXT = 240;
 const FRAME_PREFIX = "frame:";
+const MARKED_REGION_KINDS = new Set(["manual", "image", "text", "subject"]);
 
 function asRecord(value: unknown): Record<string, CanvasJson> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -55,6 +58,42 @@ function parseSelectedIds(raw: unknown): string[] {
     if (ids.length >= MAX_CANVAS_SELECTION_IDS) break;
   }
   return ids;
+}
+
+function unit01(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  if (value < 0 || value > 1) return null;
+  return Number(value.toFixed(4));
+}
+
+export function parseCanvasMarkedRegions(raw: unknown, selectedIds: readonly string[]): CanvasMarkedRegion[] {
+  if (!Array.isArray(raw)) return [];
+  const allowed = new Set(selectedIds.filter((id) => id && !id.startsWith(FRAME_PREFIX)));
+  const out: CanvasMarkedRegion[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const rec = entry as Record<string, unknown>;
+    const nodeId = typeof rec.nodeId === "string" ? rec.nodeId.trim() : "";
+    if (!nodeId || nodeId.length > 256) continue;
+    if (allowed.size && !allowed.has(nodeId)) continue;
+    const nx = unit01(rec.nx);
+    const ny = unit01(rec.ny);
+    const nw = unit01(rec.nw);
+    const nh = unit01(rec.nh);
+    if (nx == null || ny == null || nw == null || nh == null) continue;
+    if (nw < 0.001 || nh < 0.001) continue;
+    if (nx + nw > 1.001 || ny + nh > 1.001) continue;
+    const kindRaw = typeof rec.kind === "string" ? rec.kind.trim() : "manual";
+    const kind = MARKED_REGION_KINDS.has(kindRaw) ? kindRaw : "manual";
+    const label = stringOrNull(typeof rec.label === "string" ? rec.label : null, 80) || "marked region";
+    const key = `${nodeId}:${nx}:${ny}:${nw}:${nh}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ nodeId, label, kind, nx, ny, nw, nh });
+    if (out.length >= MAX_CANVAS_MARKED_REGIONS) break;
+  }
+  return out;
 }
 
 function nodeKey(node: Record<string, CanvasJson>): string | null {
@@ -115,7 +154,13 @@ export function parseCanvasSelectionInput(value: unknown): CanvasSelectionInput 
   const raw = value as Record<string, unknown>;
   const canvasId = typeof raw.canvasId === "string" ? raw.canvasId.trim() : "";
   if (!canvasId || canvasId.length > 128) return null;
-  return { canvasId, selectedIds: parseSelectedIds(raw.selectedIds) };
+  const selectedIds = parseSelectedIds(raw.selectedIds);
+  const markedRegions = parseCanvasMarkedRegions(raw.markedRegions, selectedIds);
+  return {
+    canvasId,
+    selectedIds,
+    ...(markedRegions.length ? { markedRegions } : {}),
+  };
 }
 
 export function freezeCanvasSelectionInTransaction(
@@ -207,6 +252,8 @@ export function freezeCanvasSelectionInTransaction(
     truncated,
     wholeCanvas,
   };
+  const liveMarked = parseCanvasMarkedRegions(input.markedRegions, limitedNodes);
+  if (liveMarked.length) projection.markedRegions = liveMarked;
   const selectedElements = limitedNodes.map((id) => ({
     id,
     revision: readEntityRevision(nodes[id], 0),

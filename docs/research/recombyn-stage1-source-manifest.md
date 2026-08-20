@@ -91,7 +91,7 @@ Kith 新写代码只位于 host/adapters/state：
 | 图片/视频/音频导入与替换 | local-only | 浏览器 FileReader 形成 data URL 并进入内存/开发态文档投影；无对象存储或 Recombyn upload 请求 |
 | OCR / image-to-scene | disabled/defer | 未接模型、job 或安全边界 |
 | AI 资产/图片/视频/音频生成 | disabled/defer | 不调用 Recombyn API/runtime |
-| remove-bg/upscale/eraser/mark/分层/多角度 | disabled/defer | 图片上下文工具条结构保留并明确 disabled |
+| remove-bg/upscale/eraser/mark/分层/多角度 | Stage 1 曾 disabled；当前 Human 工具条已启用放大/去背景/橡皮/标记/多角度（Kith Job / 本地），分层仍 defer | 见 `docs/progress.md` |
 | PNG/JPEG/SVG/JSON 导出 | disabled/defer | 原菜单保留，Frame/Canvas 文案适配；不触发下载/Tauri |
 | Canvas selection-to-chat | active seam | 只派发本地 host event；无 AgentDock、Agent runtime、上传或写回 |
 

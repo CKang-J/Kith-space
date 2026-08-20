@@ -5,6 +5,7 @@ import {
   FolderCog,
   MonitorCog,
   Palette,
+  Image,
   SlidersHorizontal,
   Sparkles,
   Star,
@@ -28,6 +29,7 @@ import { MemoryAdvisorSettings } from "./advisor-provider/MemoryAdvisorSettings.
 import { ModelProviderSettings } from "./model-settings/ModelProviderSettings.tsx";
 import { RuntimeSettings } from "./model-settings/RuntimeSettings.tsx";
 import { AppearanceSettings } from "./appearance-settings/AppearanceSettings.tsx";
+import { GenerationProviderSettings } from "./generation-settings/GenerationProviderSettings.tsx";
 import { cn } from "@/lib/utils";
 
 interface TasksProps {
@@ -258,6 +260,7 @@ export function Search() {
 const SETTINGS: [string, string][] = [
   ["human", "misc.settingsNavHuman"],
   ["appearance", "misc.settingsNavAppearance"],
+  ["generation", "misc.settingsNavGeneration"],
   ["space", "misc.settingsNavSpace"],
   ["models", "misc.settingsNavModels"],
   ["runtimes", "misc.settingsNavRuntimes"],
@@ -267,6 +270,7 @@ const SETTINGS: [string, string][] = [
 const SETTINGS_ICONS: Record<string, LucideIcon> = {
   human: UserRound,
   appearance: Palette,
+  generation: Image,
   space: FolderCog,
   models: Sparkles,
   runtimes: MonitorCog,
@@ -289,7 +293,7 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
   const curLabel = t(settingsEntries.find((s) => s[0] === cur)?.[1] || cur);
   const pageColumnClass = cur === "human" || cur === "space"
     ? "max-w-[520px]"
-    : cur === "appearance"
+    : cur === "appearance" || cur === "generation"
       ? "max-w-3xl"
       : "";
   useEffect(() => {
@@ -348,6 +352,8 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
               ? <HumanSettings api={api} />
               : cur === "appearance"
                 ? <AppearanceSettings api={api} />
+                : cur === "generation"
+                  ? <GenerationProviderSettings api={api} />
                 : cur === "space"
                   ? <SpaceSettings api={api} spaceId={spaceId} />
                 : cur === "models"

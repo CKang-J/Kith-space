@@ -1,5 +1,5 @@
 import { pendingSelectionSummaryParts, type CanvasSelectionSummaryParts } from "./canvasSelectionCopy";
-import { CANVAS_SELECTION_TO_CHAT_EVENT, type CanvasSelectionToChatDetail, type CanvasSelectionToChatTarget } from "../adapters/recombynSelectionToChat";
+import { CANVAS_SELECTION_TO_CHAT_EVENT, type CanvasSelectionToChatDetail, type CanvasSelectionToChatTarget, type CanvasMarkedRegionInput } from "../adapters/recombynSelectionToChat";
 
 export interface PendingCanvasChatContext {
   id: string;
@@ -10,6 +10,7 @@ export interface PendingCanvasChatContext {
   previewDocument: unknown;
   documentRevision?: number;
   surfaceId: string;
+  markedRegions?: CanvasMarkedRegionInput[];
 }
 
 export type PendingCanvasChatContextInput = Omit<PendingCanvasChatContext, "id" | "surfaceId" | "summaryParts"> & {
@@ -104,6 +105,28 @@ export function parseCanvasSelectionTarget(target: CanvasSelectionToChatTarget |
   return ids;
 }
 
+function markedRegionKey(region: CanvasMarkedRegionInput): string {
+  return `${region.nodeId}:${region.nx.toFixed(3)}:${region.ny.toFixed(3)}:${region.nw.toFixed(3)}:${region.nh.toFixed(3)}`;
+}
+
+export function mergeCanvasMarkedRegions(
+  existing: readonly CanvasMarkedRegionInput[] | undefined,
+  incoming: readonly CanvasMarkedRegionInput[] | undefined,
+  limit = 8,
+): CanvasMarkedRegionInput[] | undefined {
+  const out: CanvasMarkedRegionInput[] = [];
+  const seen = new Set<string>();
+  for (const region of [...(existing ?? []), ...(incoming ?? [])]) {
+    if (!region?.nodeId) continue;
+    const key = markedRegionKey(region);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(region);
+    if (out.length >= limit) break;
+  }
+  return out.length ? out : undefined;
+}
+
 function listFor(surfaceId: string): PendingCanvasChatContext[] {
   return pendingBySurface.get(surfaceId) ?? [];
 }
@@ -145,8 +168,18 @@ export function appendPendingCanvasChatContext(
   const next = hydratePending(value, key);
   const current = listFor(key);
   const identity = pendingCanvasSelectionKey(next.canvasId, next.selectedIds);
-  const existing = current.find((item) => pendingCanvasSelectionKey(item.canvasId, item.selectedIds) === identity);
-  if (existing) return existing;
+  const existingIndex = current.findIndex((item) => pendingCanvasSelectionKey(item.canvasId, item.selectedIds) === identity);
+  if (existingIndex >= 0) {
+    const existing = current[existingIndex]!;
+    const markedRegions = mergeCanvasMarkedRegions(existing.markedRegions, next.markedRegions);
+    if (markedRegions === existing.markedRegions) return existing;
+    const merged: PendingCanvasChatContext = { ...existing, markedRegions };
+    const copy = [...current];
+    copy[existingIndex] = merged;
+    pendingBySurface.set(key, copy);
+    notify();
+    return merged;
+  }
   pendingBySurface.set(key, [...current, next]);
   notify();
   return next;
@@ -252,6 +285,7 @@ export function bindCanvasSelectionToChat(input: {
       selectedIds: parseCanvasSelectionTarget(detail.target),
       previewDocument: livePreview ?? source.previewDocument,
       documentRevision: source.documentRevision,
+      markedRegions: Array.isArray(detail.markedRegions) ? detail.markedRegions : undefined,
     });
   };
   window.addEventListener(CANVAS_SELECTION_TO_CHAT_EVENT, onSelection);

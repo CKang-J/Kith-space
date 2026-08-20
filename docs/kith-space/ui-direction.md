@@ -50,7 +50,7 @@ Chat 顶栏的频道名称、消息中栏标题及其中的“已保存”、频
 - Search 位于图标栏，通过图标按钮和 `Cmd/Ctrl + K` 进入；消息中栏不重复放置搜索框。
 - Chat 始终保留在中心工作面，并可附带当前会话聚合面板；业务模块在右侧标签工作区显示，不卸载 Chat。
 - Chat 与右侧模块工作区使用连续边界和语义背景。模块内部已有对象侧栏可以保留，但不能再创建底部导航或另一套顶层壳。
-- Settings 不占用主卡片路由槽位，而是在 Chat 上方打开最大宽度960px、最大高度790px的模态层；小视口继续保留20px安全边距。右侧页标题与内容根节点复用同一个居中内容列和左基线：Human/空间资料使用520px列，外观使用3xl列，其余复杂设置保持可用全宽。关闭、遮罩点击和 Esc 都返回原 Chat，设置分区切换使用 replace history，避免关闭后浏览器返回立即重开弹窗。
+- Settings 不占用主卡片路由槽位，而是在 Chat 上方打开最大宽度960px、最大高度790px的模态层；小视口继续保留20px安全边距。右侧页标题与内容根节点复用同一个居中内容列和左基线：Human/空间资料使用520px列，外观与图像/视频生成使用3xl列，其余复杂设置保持可用全宽。关闭、遮罩点击和 Esc 都返回原 Chat，设置分区切换使用 replace history，避免关闭后浏览器返回立即重开弹窗。
 
 当前 Space 的频道或 Human-Agent DM 由规范会话 pathname 表达；聚焦业务标签时在同一 URL 上增加 `?module=<id>`，Settings 使用 `?module=settings&settings=<section>`。Tasks 使用 `taskScope`，Agents 使用 `agent` 与 `agentTab` 表达自己的资源；不属于当前模块的资源参数会被清除。URL 表达当前聚焦标签，完整标签集合与激活项按 Space 使用版本化本地状态恢复。
 
@@ -89,9 +89,10 @@ Settings   = Chat 保持挂载 + Settings 模态层
 
 ### 3.3 Settings 模态层
 
-- Settings 复用既有 Human、外观、Space、模型与供应商、运行器、自动整理记忆和 Desktop 内容，不复制第二套设置表单。
+- Settings 复用既有 Human、外观、图像与视频生成、Space、模型与供应商、运行器、自动整理记忆和 Desktop 内容，不复制第二套设置表单。
 - Settings 模态层以单张浮动面板呈现：外层使用较大的统一圆角、浅边界、柔和阴影与半透明遮罩；左侧为带图标的设置导航，当前项以低对比圆角胶囊标识。右侧只显示当前分区名称，不绘制标题栏底线；内容按留白和少量圆角分组组织，避免把每一层都画成方框。
 - “外观”是跨 Space 的安装级分区。第一版管理 UI字号及字体：UI字号、界面、消息与文档、代码均使用 shadcn Select；变更即时预览并持久化，保存失败回滚到此前值，提供恢复默认组合。任意本机字体名称和上传字体不在第一版范围，避免 Desktop 与可选浏览器入口出现不可复现的字体差异。
+- “图像与视频”是跨 Space 的安装级分区，用于配置火山方舟共用 API Key 与端点（图像 Seedream 与视频 Seedance 同一密钥）。GET 返回合并后的 `ark` 视图（`hasApiKey` 与 hint，不回明文）；PATCH `name=ark` 同时写入 `doubao`/`seedream` 两行。写 Key 要求 Desktop trust 或本机 loopback。
 - 模态层有明确标题、关闭按钮、遮罩关闭、Esc、焦点圈定和底层 `inert`；二级供应商弹窗打开时，Esc 只关闭最上层。
 - 桌面宽度使用左侧设置分区导航和右侧内容；小于 640px 时分区导航改为顶部横向滚动列表，内容保持可读。
 - 设置分区切换替换当前 history entry；关闭弹窗同样替换为 Chat URL，浏览器返回不会重新打开刚关闭的设置。
@@ -173,7 +174,7 @@ H4 已复用 H3 领域/API 能力交付本节：Home Spaces 提供卡片网格�
 
 ### 5.2 Canvas Workspace（阶段 3 Chat 上下文联动已实现）
 
-阶段 1 的固定 Recombyn `EditorPage`/RCB/nodes/chrome/panels 与原生观感保持不变。阶段2已从正式左侧 Canvas 入口打开 Canvas Library；新建/受限 JSON 导入后形成独立 resource tab，同一 Canvas 去重，不同 Canvas 可多开并按 Space 隔离恢复。实际 Canvas 继续使用原生工具栏、节点、Frame、选择/变换、结构和导出 UI；嵌入宿主时 editor island 高度严格跟随 workspace surface，不再按 browser viewport 溢出并裁掉底部工具栏。媒体按钮在相同原生位置经可复现 host materializer 恢复，先写入 Canvas-local durable asset，再把受控 resolver URL 提交 Core；AssetPanel 显示同 Canvas 本地资产。上游产品壳的 Home 与账户按钮在正式 Kith Canvas 中移除，标题、导出与分享保留。`⌘/Ctrl+Z`、`⌘⇧Z`/`Ctrl+Y` 由宿主捕获后调用 Core undo/redo。OCR、AI处理和真实图片/视频生成明确 unavailable；没有 AgentDock、第二套画布 UI 或 Page。阶段3在原生选区浮动工具栏最右侧提供描边胶囊“发送到 Chat”动作（单选、多选和 Frame；右键 Add to Chat 仍保留），点击后走已有 `kith:canvas-selection-to-chat` seam；事件必须携带来源 `canvasId`，bridge 按事件来源写入对应 Canvas 的 pending，飞入反馈由 Kith 自有 `canvasFlyToChat` 适配模块完成，不再 import Recombyn AgentDock/`flyToChat`。发送目标跟随当前 DM/频道/话题 surface，也不新增第二套 Chat 面板。打开右侧 Canvas 不会自动授权；用户从 Composer“+”菜单选择“画布”后，才在“+”旁挂一条轻量整板授权胶囊（图标+「画布: 标题」，无实时缩略图）。用户圈选发送进入附件区并带冻结缩略图，可与整板授权并存；关闭 Canvas 标签不自动移除授权胶囊。
+阶段 1 的固定 Recombyn `EditorPage`/RCB/nodes/chrome/panels 与原生观感保持不变。阶段2已从正式左侧 Canvas 入口打开 Canvas Library；新建/受限 JSON 导入后形成独立 resource tab，同一 Canvas 去重，不同 Canvas 可多开并按 Space 隔离恢复。实际 Canvas 继续使用原生工具栏、节点、Frame、选择/变换、结构和导出 UI；嵌入宿主时 editor island 高度严格跟随 workspace surface，不再按 browser viewport 溢出并裁掉底部工具栏。媒体按钮在相同原生位置经可复现 host materializer 恢复，先写入 Canvas-local durable asset，再把受控 resolver URL 提交 Core；AssetPanel 显示同 Canvas 本地资产。上游产品壳的 Home 与账户按钮在正式 Kith Canvas 中移除，标题、导出与分享保留。`⌘/Ctrl+Z`、`⌘⇧Z`/`Ctrl+Y` 由宿主捕获后调用 Core undo/redo。工具栏「图像生成器 (A)」「视频生成器 (Shift+A)」与媒体快速编辑走 Kith `canvas_generation_jobs`（Doubao 图像 / Seedance 视频），结果就地替换生成板；选中图片工具条的放大/去背景/多角度走同一 Job 的图生图，橡皮为本地擦除上传，标记为按住拖拽框选后飞入**左侧** Chat Composer（裁切附件 + 图片节点 Canvas 选区；框选说明只进 Agent 上下文，不进输入框/聊天气泡；开启后图上不叠说明，十字光标旁跟「按住拖选」；拖选坐标按 overlay 屏幕矩形换算，避免左侧 Chat 把画布推离原点后点不到图），去背景模式菜单留在选区工具条内，图片分层仍明确 unavailable。OCR 与 image-to-scene 仍延后。没有 AgentDock、第二套画布 UI 或 Page。阶段3在原生选区浮动工具栏最右侧提供描边胶囊“发送到 Chat”动作（单选、多选和 Frame；右键 Add to Chat 仍保留），点击后走已有 `kith:canvas-selection-to-chat` seam；事件必须携带来源 `canvasId`，bridge 按事件来源写入对应 Canvas 的 pending，飞入反馈由 Kith 自有 `canvasFlyToChat` 适配模块完成，不再 import Recombyn AgentDock/`flyToChat`。发送目标跟随当前 DM/频道/话题 surface，也不新增第二套 Chat 面板。打开右侧 Canvas 不会自动授权；用户从 Composer“+”菜单选择“画布”后，才在“+”旁挂一条轻量整板授权胶囊（图标+「画布: 标题」，无实时缩略图）。用户圈选发送进入附件区并带冻结缩略图，可与整板授权并存；关闭 Canvas 标签不自动移除授权胶囊。
 
 - 规范 module id 为 `canvas`；实际 Canvas 使用当前会话 pathname 上的 `?module=canvas&canvas=<canvasId>`。`canvasId` 同时是 `WorkspaceTab.resourceId`，同一 Canvas 只聚焦一个 tab，不同 Canvas 可多开。
 - `resourceId = null` 是 Canvas Library，用于新建、导入、打开和软删除当前 Space Canvas；它不是 Canvas Page。Library 使用中文缩略图网格：首卡始终是“新建画布”，其余卡片从 Core canonical document 只读绘制轻量 SVG 预览，并显示中文标题与更新时间；网格按 Workspace 实际可用宽度自动从一列扩展到四列。标题在原生编辑器内修改后经 `metadata.rename` 持久化，并同步 Workspace tab、URL 与 SQLite；删除会关闭对应 tab，活动项退回 Library，重启后仍保持删除态。每个实际 Canvas 永远是一个独立无限平面，产品不增加 Page 导航或层级。

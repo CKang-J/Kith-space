@@ -58,6 +58,9 @@ test("stage-one runtime seams stay hard-disabled and production-gated", () => {
   const videoGenerator = readFileSync(path.join(repoRoot, "web/src/features/canvas/upstream/apps/web/src/components/editor/nodes/VideoGeneratorNode/VideoGeneratorCard.tsx"), "utf8");
   const imageQuickEdit = readFileSync(path.join(repoRoot, "web/src/features/canvas/upstream/apps/web/src/components/editor/nodes/ImageNode/ImageQuickEditComposer.tsx"), "utf8");
   const videoQuickEdit = readFileSync(path.join(repoRoot, "web/src/features/canvas/upstream/apps/web/src/components/editor/nodes/VideoNode/VideoQuickEditComposer.tsx"), "utf8");
+  const markHost = readFileSync(path.join(repoRoot, "web/src/features/canvas/upstream/apps/web/src/components/editor/nodes/ImageNode/mark/MarkSessionHost.tsx"), "utf8");
+  const markOverlay = readFileSync(path.join(repoRoot, "web/src/features/canvas/upstream/apps/web/src/components/editor/nodes/ImageNode/mark/MarkRegionOverlay.tsx"), "utf8");
+  const removeBgMenu = readFileSync(path.join(repoRoot, "web/src/features/canvas/upstream/apps/web/src/components/editor/nodes/ImageNode/ImageRemoveBgMenu.tsx"), "utf8");
   const localUploadBoundary = readFileSync(path.join(repoRoot, "web/src/features/canvas/upstream/apps/web/src/utils/uploadImage.ts"), "utf8");
   const sharedChatService = readFileSync(path.join(repoRoot, "web/src/features/canvas/upstream/apps/web/src/service/chat.ts"), "utf8");
   const composer = readFileSync(path.join(repoRoot, "web/src/features/canvas/upstream/apps/web/src/components/editor/panels/AgentComposerInput.tsx"), "utf8");
@@ -70,16 +73,34 @@ test("stage-one runtime seams stay hard-disabled and production-gated", () => {
   assert.match(toolStrip, /onClick=\{spawnVideoGeneratorAtView\}/);
   assert.match(toolStrip, /imageGenerator} \(A\)/);
   assert.match(toolStrip, /videoGenerator} \(Shift\+A\)/);
-  assert.match(imageGenerator, /const onGenerate = \(\) => \{\s+message\.warning/);
-  assert.match(videoGenerator, /const onGenerate = \(\) => \{\s+message\.warning/);
+  assert.match(imageGenerator, /runCanvasMediaGeneration/);
+  assert.match(videoGenerator, /runCanvasMediaGeneration/);
+  assert.match(imageGenerator, /kithImageModels/);
+  assert.match(videoGenerator, /kithVideoModels/);
   assert.doesNotMatch(composer, /runDesignAgent|utils\/uploadImage|\/api\/v1\/uploads/);
   assert.match(composer, /recombynComposerSceneContext|recombynLocalMedia/);
+  assert.match(markHost, /sendMarkedImageRegionToChat/);
+  assert.doesNotMatch(markHost, /enqueueAgentContexts/);
+  assert.match(markHost, /kithChatFlyLandId/);
+  assert.doesNotMatch(markHost, /payload: buildMarkChipPayload/);
+  assert.doesNotMatch(markHost, /function buildMarkChipPayload/);
+  assert.doesNotMatch(markHost, /Marked image region/);
+  assert.match(markHost, /nodeWidth: box\.width/);
+  assert.match(markOverlay, /markLocalFromClientRect/);
+  assert.doesNotMatch(markOverlay, /clientX - origin\.x/);
+  assert.doesNotMatch(markOverlay, /按住拖拽框选区域/);
+  assert.match(markOverlay, /data-mark-cursor-hint/);
+  assert.match(markHost, /message\.warning\('请按住拖选要标记的区域'\)/);
+  assert.doesNotMatch(markHost, /message\.info/);
+  assert.match(removeBgMenu, /Stay inside the selection toolbar chrome/);
+  assert.doesNotMatch(removeBgMenu, /FloatingPortal|useFloating/);
   for (const source of [imageGenerator, videoGenerator, imageQuickEdit, videoQuickEdit]) {
     assert.doesNotMatch(
       source,
       /generateImage|generateVideo|uploadComposerAttachment|service\/chat|utils\/uploadImage|\/api\/v1\/(?:chat\/)?(?:image|video|uploads)/,
     );
-    assert.match(source, /const onGenerate = \(\) => \{\s+message\.warning/);
+    assert.match(source, /runCanvasMediaGeneration/);
+    assert.doesNotMatch(source, /stageOneGenerationUnavailable|Kith Media Job 尚未实现/);
   }
   assert.doesNotMatch(localUploadBoundary, /service\/upload|utils\/apiBase|utils\/token|\/api\/v1\/uploads|uploadFiles|deleteUploadedFileApi/);
   assert.match(localUploadBoundary, /Stage 1 accepts local media references only/);

@@ -20,6 +20,7 @@ import { messageContextSnapshot } from "../messageContextSnapshot.ts";
 import { ConversationActivityStatus } from "./ConversationActivityStatus.tsx";
 import { useComposerCanvasContext } from "./composer/useComposerCanvasContext.ts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { KITH_COMPOSER_ATTACH_FILE_EVENT, type ComposerAttachFileDetail } from "@/features/canvas/adapters/recombynMarkToChat";
 
 // Shared message composer for channels, DMs, and threads. Owns text, attachment upload
 // (button / paste / drag-drop, with per-file progress), @mention autocomplete, and send.
@@ -171,6 +172,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       }
     } finally { setUploading(false); }
   };
+  const addFilesRef = useRef(addFiles);
+  addFilesRef.current = addFiles;
+  useEffect(() => {
+    const onAttach = (event: Event) => {
+      const detail = (event as CustomEvent<ComposerAttachFileDetail>).detail;
+      const surface = typeof detail?.surfaceId === "string" ? detail.surfaceId.trim() : "";
+      if (!surface || surface !== channelId) return;
+      if (detail?.file instanceof File) void addFilesRef.current([detail.file]);
+      const caption = String(detail?.caption || "").trim();
+      if (caption) setText((prev) => (prev.trim() ? prev : caption));
+      setTimeout(() => inputRef.current?.focus(), 0);
+    };
+    window.addEventListener(KITH_COMPOSER_ATTACH_FILE_EVENT, onAttach);
+    return () => window.removeEventListener(KITH_COMPOSER_ATTACH_FILE_EVENT, onAttach);
+  }, [channelId]);
   const onPaste = (e: RClipboardEvent) => { const imgs = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/")).map((f, i) => new File([f], `pasted-${Date.now()}${i ? "-" + i : ""}.${f.type.split("/")[1] || "png"}`, { type: f.type })); if (imgs.length) { e.preventDefault(); addFiles(imgs); } };
   const onDrop = (e: RDragEvent) => { const fs = Array.from(e.dataTransfer?.files ?? []); if (fs.length) { e.preventDefault(); addFiles(fs); } };
 

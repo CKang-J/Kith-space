@@ -7,7 +7,7 @@
 
 User asks for a landing page, homepage hero, marketing site, SaaS splash, or 落地页. Load `design_brief`. Do not use this for a single event poster (`poster_craft`) or a one-claim strip (`banner_ad`).
 
-Image generation is not available this turn. Use frames, type, shapes, and existing Canvas `assetId` images.
+Atmosphere photos and product stills may use `canvas.create_image(genPrompt)`. Keep UI chrome, type, and layout in frames/shapes/text. Existing Canvas `assetId` images remain valid.
 
 ## Process overview
 

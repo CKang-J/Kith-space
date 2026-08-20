@@ -37,12 +37,13 @@ export function buildCanvasComposerPayload(input: {
   canvasContexts: PendingCanvasChatContext[];
   dmAgent?: { id: string } | null;
   executorAgentId: string;
-}): { canvasSelections: Array<{ canvasId: string; selectedIds: string[] }>; executionBinding?: { executorAgentId: string; mode: "required" } } | Record<string, never> {
+}): { canvasSelections: Array<{ canvasId: string; selectedIds: string[]; markedRegions?: PendingCanvasChatContext["markedRegions"] }>; executionBinding?: { executorAgentId: string; mode: "required" } } | Record<string, never> {
   if (!input.canvasContexts.length) return {};
   return {
     canvasSelections: input.canvasContexts.map((item) => ({
       canvasId: item.canvasId,
       selectedIds: item.selectedIds,
+      ...(item.markedRegions?.length ? { markedRegions: item.markedRegions } : {}),
     })),
     ...(input.dmAgent ? {} : { executionBinding: { executorAgentId: input.executorAgentId, mode: "required" as const } }),
   };

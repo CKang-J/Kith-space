@@ -25,6 +25,7 @@ export default defineConfig({
     alias: [
       { find: "@kith-canvas-fonts", replacement: fileURLToPath(new URL("../src/canvas/fonts/fontsCatalog.ts", import.meta.url)) },
       { find: "@recombyn-native/utils/uploadImage", replacement: fileURLToPath(new URL("./src/features/canvas/adapters/recombynDurableMedia.ts", import.meta.url)) },
+      { find: "@recombyn-native/service/imageTools", replacement: fileURLToPath(new URL("./src/features/canvas/adapters/recombynImageProcess.ts", import.meta.url)) },
       { find: /^@recombyn-native\/i18n$/, replacement: fileURLToPath(new URL("./src/features/canvas/adapters/recombynEmbeddedI18n.ts", import.meta.url)) },
       { find: "@", replacement: fileURLToPath(new URL("./src", import.meta.url)) },
       { find: "@recombyn-native", replacement: fileURLToPath(new URL("./src/features/canvas/upstream/apps/web/src", import.meta.url)) },

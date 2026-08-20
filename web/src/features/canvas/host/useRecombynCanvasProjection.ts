@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { applyCollabDocument, renameTemplate, setSelectedNodeIds } from "@recombyn-native/store/modules/editor";
 import { store } from "@recombyn-native/store";
-import type { CanvasCoreClient, CanvasLibraryItem } from "@/features/canvas/adapters/canvasCoreApi";
+import { hydrateCanvasSnapshotMediaSrc, type CanvasCoreClient, type CanvasLibraryItem } from "@/features/canvas/adapters/canvasCoreApi";
 import { connectRecombynCoreProjection, type RecombynCoreProjectionConnection } from "@/features/canvas/adapters/recombynCoreProjection";
 import { survivingNodeSelection } from "@/features/canvas/adapters/recombynSelectionProjection";
 
@@ -20,10 +20,12 @@ export function useRecombynCanvasProjection(input: {
     // connection; the Stage1 harness can leave a template with the same id/name shape.
     store.dispatch(renameTemplate(snapshot.title));
     let pointerActive = false;
-    const connection = connectRecombynCoreProjection(store, snapshot, {
-      apply: (operation) => client.apply(canvasId, operation),
-      reload: () => client.read(canvasId),
-      history: (kind, operationId, expectedRevision) => client[kind](canvasId, operationId, expectedRevision),
+    const connection = connectRecombynCoreProjection(store, hydrateCanvasSnapshotMediaSrc(snapshot, snapshot.spaceId), {
+      apply: async (operation) => hydrateCanvasSnapshotMediaSrc(await client.apply(canvasId, operation), snapshot.spaceId),
+      reload: async () => hydrateCanvasSnapshotMediaSrc(await client.read(canvasId), snapshot.spaceId),
+      history: async (kind, operationId, expectedRevision) => (
+        hydrateCanvasSnapshotMediaSrc(await client[kind](canvasId, operationId, expectedRevision), snapshot.spaceId)
+      ),
       project: (latest) => {
         const editor = (store.getState() as { editor?: { selectedNodeIds?: string[] } }).editor;
         const selectedNodeIds = survivingNodeSelection(editor?.selectedNodeIds ?? [], latest.document);

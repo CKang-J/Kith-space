@@ -19,6 +19,7 @@ import {
   useRcbCamera,
   rcbSceneToScreen,
 } from '@recombyn-native/components/rcb';
+import { markLocalFromClientRect } from '@/features/canvas/adapters/recombynMarkOverlay';
 
 /** Mark rect in image-local coords (origin = image top-left). */
 export type MarkRect = { x: number; y: number; w: number; h: number };
@@ -99,10 +100,13 @@ type Props = {
   onDraftChange: (rect: MarkRect | null) => void;
   onCommitDraft: (rect: MarkRect) => void;
   onSelectRegion: (id: string, additive: boolean) => void;
+  onClickWithoutDrag?: () => void;
 };
 
 /**
  * On-image mark overlay: crosshair cursor, drag-to-box, dashed region badges.
+ * Mode hint follows the pointer in the gutter next to the cursor — never a
+ * static caption on the photo.
  */
 function MarkRegionOverlay({
   imageBox,
@@ -112,6 +116,7 @@ function MarkRegionOverlay({
   onDraftChange,
   onCommitDraft,
   onSelectRegion,
+  onClickWithoutDrag,
 }: Props): ReactNode {
   const camera = useRcbCamera();
   const z = Math.max(0.05, camera.zoom || 1);
@@ -124,30 +129,33 @@ function MarkRegionOverlay({
     moved: boolean;
   } | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const onDraftChangeRef = useRef(onDraftChange);
   const onCommitDraftRef = useRef(onCommitDraft);
   const onSelectRegionRef = useRef(onSelectRegion);
+  const onClickWithoutDragRef = useRef(onClickWithoutDrag);
   onDraftChangeRef.current = onDraftChange;
   onCommitDraftRef.current = onCommitDraft;
   onSelectRegionRef.current = onSelectRegion;
+  onClickWithoutDragRef.current = onClickWithoutDrag;
 
   const origin = rcbSceneToScreen(camera, imageBox.left, imageBox.top);
   const stageW = Math.max(1, imageBox.width * z);
   const stageH = Math.max(1, imageBox.height * z);
   const cw = imageBox.width;
   const ch = imageBox.height;
+  const overlayRef = useRef<HTMLDivElement | null>(null);
 
   const localFromClient = useCallback(
-    (clientX: number, clientY: number) => {
-      const lx = (clientX - origin.x) / z;
-      const ly = (clientY - origin.y) / z;
-      return {
-        x: Math.max(0, Math.min(cw, lx)),
-        y: Math.max(0, Math.min(ch, ly)),
-        inside: lx >= 0 && ly >= 0 && lx <= cw && ly <= ch,
-      };
-    },
-    [origin.x, origin.y, z, cw, ch]
+    (clientX: number, clientY: number) =>
+      markLocalFromClientRect(
+        clientX,
+        clientY,
+        overlayRef.current?.getBoundingClientRect(),
+        cw,
+        ch
+      ),
+    [cw, ch]
   );
 
   useEffect(() => {
@@ -175,6 +183,7 @@ function MarkRegionOverlay({
       const box = normalizeDragBox(drag.x0, drag.y0, p.x, p.y, cw, ch);
       onDraftChangeRef.current(null);
       if (box) onCommitDraftRef.current(box);
+      else if (!drag.moved) onClickWithoutDragRef.current?.();
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -192,7 +201,7 @@ function MarkRegionOverlay({
     top: origin.y,
     width: stageW,
     height: stageH,
-    zIndex: 34,
+    zIndex: 80,
     cursor: 'crosshair',
     touchAction: 'none',
   };
@@ -279,6 +288,7 @@ function MarkRegionOverlay({
   return (
     <RcbOverlayPortal>
       <div
+        ref={overlayRef}
         data-image-tool-panel
         data-mark-overlay
         className="pointer-events-auto absolute"
@@ -301,6 +311,7 @@ function MarkRegionOverlay({
             moved: false,
           };
           onDraftChange(null);
+          setCursor(null);
           (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
         }}
         onPointerMove={(e) => {
@@ -308,13 +319,18 @@ function MarkRegionOverlay({
           const p = localFromClient(e.clientX, e.clientY);
           if (!p.inside) {
             setHoverId(null);
+            setCursor(null);
             return;
           }
           const hit = [...regions].reverse().find((r) => pointInRect(p.x, p.y, r));
           setHoverId(hit?.id ?? null);
+          setCursor({ x: p.x * z, y: p.y * z });
         }}
         onPointerLeave={() => {
-          if (!dragRef.current) setHoverId(null);
+          if (!dragRef.current) {
+            setHoverId(null);
+            setCursor(null);
+          }
         }}
       >
         {detecting ? (
@@ -323,6 +339,19 @@ function MarkRegionOverlay({
               识别主题中…
             </span>
           </div>
+        ) : !draft && cursor ? (
+          <span
+            role="status"
+            data-mark-cursor-hint
+            className="pointer-events-none absolute z-10 whitespace-nowrap rounded-md bg-[var(--ink)]/80 px-2 py-0.5 text-[11px] font-medium text-white shadow-sm"
+            style={{
+              // Runtime pointer offset — cannot be a static Tailwind class.
+              left: Math.min(cursor.x + 14, Math.max(8, stageW - 72)),
+              top: Math.min(cursor.y + 18, Math.max(8, stageH - 24)),
+            }}
+          >
+            按住拖选
+          </span>
         ) : null}
         {regions.map((r) =>
           renderBox(r, {

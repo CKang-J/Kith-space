@@ -120,10 +120,16 @@ export const CanvasCreateShapeCommandSchema = z.object({
   id: CustomId.optional(),
 }).strict();
 
-/** AssetId-only. url / dataUrl / genPrompt are rejected as unknown fields by `.strict()`. */
+/** AssetId XOR genPrompt. url / dataUrl / src remain unknown fields rejected by `.strict()`. */
 export const CanvasCreateImageCommandSchema = z.object({
   ...WriteLocator,
-  assetId: Id,
+  assetId: Id.optional(),
+  genPrompt: z.string().min(10).max(2000).optional(),
+  letteringText: z.string().max(200).optional(),
+  removeBg: z.boolean().optional(),
+  cutoutMode: z.enum(["product", "hair"]).optional(),
+  aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4"]).optional(),
+  stylePreset: z.string().max(100).optional(),
   x: z.number().finite(),
   y: z.number().finite(),
   width: z.number().finite().positive(),
@@ -250,6 +256,22 @@ export const CanvasSetCanvasBackgroundCommandSchema = z.object({
   opacity: z.number().finite().optional(),
 }).strict();
 
+export const CanvasVideoGenerateCommandSchema = z.object({
+  ...WriteLocator,
+  genPrompt: z.string().min(10).max(2000),
+  referenceImageAssetId: Id.optional(),
+  duration: z.number().int().min(2).max(12).optional(),
+  aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4"]).optional(),
+  x: z.number().finite(),
+  y: z.number().finite(),
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive(),
+  parentId: Id.optional(),
+  frameId: Id.optional(),
+  name: NameString.optional(),
+  id: CustomId.optional(),
+}).strict();
+
 export type CanvasSceneSummaryCommand = z.infer<typeof CanvasSceneSummaryCommandSchema>;
 export type CanvasSkillListCommand = z.infer<typeof CanvasSkillListCommandSchema>;
 export type CanvasSkillGetCommand = z.infer<typeof CanvasSkillGetCommandSchema>;
@@ -269,6 +291,7 @@ export type CanvasDuplicateNodesCommand = z.infer<typeof CanvasDuplicateNodesCom
 export type CanvasFlipNodesCommand = z.infer<typeof CanvasFlipNodesCommandSchema>;
 export type CanvasBooleanOpCommand = z.infer<typeof CanvasBooleanOpCommandSchema>;
 export type CanvasSetCanvasBackgroundCommand = z.infer<typeof CanvasSetCanvasBackgroundCommandSchema>;
+export type CanvasVideoGenerateCommand = z.infer<typeof CanvasVideoGenerateCommandSchema>;
 
 export type CanvasTypedMutationCommand =
   | CanvasCreateFrameCommand
@@ -313,12 +336,12 @@ export function isCanvasMutationToolName(name: string): name is CanvasMutationTo
   return (CANVAS_MUTATION_TOOL_NAMES as readonly string[]).includes(name);
 }
 
-/** Later slice: durable media generation job. This turn does not accept URL/data URL/genPrompt. */
+/** Durable media generation is accepted on create_image(genPrompt) and canvas.video_generate. Remote URL/data URL remain rejected. */
 export const CANVAS_MEDIA_GENERATE_SEAM = {
-  status: "deferred" as const,
-  acceptedInput: "assetId",
-  rejectedInput: ["url", "dataUrl", "src", "genPrompt"] as const,
-  nextTool: "canvas.asset_import then canvas.create_image",
+  status: "accepted" as const,
+  acceptedInput: ["assetId", "genPrompt"] as const,
+  rejectedInput: ["url", "dataUrl", "src"] as const,
+  nextTool: "canvas.create_image(assetId|genPrompt) or canvas.video_generate",
 };
 
 export const CANVAS_TYPED_TOOL_DESCRIPTIONS = {
@@ -333,7 +356,17 @@ export const CANVAS_TYPED_TOOL_DESCRIPTIONS = {
     "Only use create_svg for complex single-path marks that can't be built from 2-4 primitives. " +
     "**Never use emoji (🏠🔍❤️) in create_text as icons**. " +
     "strokeAlign=center|inside|outside (default center — ink + selection indicator sit on stroke mid-band; outside/inside shift the band). Fills: solid → fill=#RRGGBB|rgba(…); gradient → fillType=linear|radial|angular|diffuse + fill + fillEnd + gradientAngle? (example vignette: fillType=linear fill=rgba(0,0,0,0) fillEnd=rgba(0,0,0,0.35) gradientAngle=90). NEVER put CSS linear-gradient()/radial-gradient()/conic-gradient() in fill — rejected by host. Diffuse may pass meshSize/meshPoints. Optional: strokeStyle, strokeLinecap, strokeLinejoin, strokeOpacity, cornerRadius, rotation, blendMode, opacity, flipX, flipY. Pen=pen+path (icons: closed path for filled silhouettes). Brush/板绘=pencil tip-stamp: path (M/L only)+pathPressure (csv 0.05-1, same length as points)+brushStyle tip id (solid|pencil-hb|soft|fountain|calligraphy|brushpen|marker|highlighter|chalk|charcoal|bristle|airbrush|watercolor|needle|bold)+optional brushHardness 0-100 (soft→hard tip, default ~80)+optional pressureEnabled true|false (default true when pathPressure set); stroke-only. Line/arrow are open center strokes (full arrow path includes head). For Q-illustration / pencil sketch do NOT collage with circles — use multiple pencil strokes with pressure. Prefer frameId from the selected Frame; never delete+recreate the same object to restyle it. 形状/填充/描边/渐变/禁止 CSS gradient",
-  "canvas.create_image": "Create an image node from an existing Canvas assetId that already belongs to this Canvas. Missing or cross-canvas assets are rejected. Remote URLs, data URLs, and genPrompt are rejected — do not pass src|url|attachmentIndex|genPrompt. Import a turn-bound local attachment with canvas.asset_import first. Image generation jobs are not available in this turn. Optional letteringText/removeBg/cutoutMode from Recombyn are not accepted here. Atmosphere/poster heroes: keep titles/dates/logos in create_text, not baked into the image. 图片/只用 assetId/禁止 URL 与 genPrompt",
+  "canvas.create_image": "Create an image node. " +
+    "Args: assetId (existing Canvas asset) OR genPrompt (AI image generation, queued job). " +
+    "When using genPrompt: " +
+    "- Atmosphere/backgrounds: describe SCENE ONLY, no baked titles/dates/logos; put copy in create_text layers. " +
+    "- Hero lettering: use genPrompt + letteringText for calligraphy/decorative titles beyond Available fonts. " +
+    "- Products/portraits: describe subject, lighting, materials; use removeBg=true for cutouts. " +
+    "Optional: letteringText (visible text in the image), removeBg=true (auto-cutout), " +
+    "cutoutMode=product|hair, aspectRatio (1:1|16:9|9:16|4:3|3:4), stylePreset. " +
+    "Generation is async: tool returns jobId, image appears when ready (10-60s). " +
+    "Remote URLs and data URLs are still rejected. Missing or cross-canvas assetId is rejected. " +
+    "图片/assetId 或 genPrompt 生成/可选抠图和风格",
   "canvas.update_node": "Patch an existing node by nodeId|id (keeps z-order). Geometry: x,y,width,height. Morph shape: shapeType|type=rect|ellipse|circle|triangle|polygon|star|line|arrow|… (rect→circle = update_node shapeType=circle on same id — NEVER delete+create_shape). Style: fill (solid hex/rgba only — NEVER CSS linear-gradient()/radial-gradient()), fillType=solid|linear|radial|angular|diffuse|image?, fillEnd?, gradientAngle?, stroke,borderWidth,strokeAlign=center|inside|outside (default center; selection chrome sits on mid of stroke band), strokeStyle, strokeLinecap, strokeLinejoin, strokeOpacity, opacity,cornerRadius,rotation,blendMode,name, flipX/flipY, fontSize, fontWeight, fontFamily, text styles…. Gradients: fillType=linear|radial|angular|diffuse + fill + fillEnd (+ gradientAngle?). Pencil tip edits: brushStyle (tip id), brushHardness 0-100, pathPressure csv, pressureEnabled. Visibility/edit: hidden, locked (boolean). Keep the same id; do not delete+create to change type or style. 改节点/改填充/改字号/禁止删除重建",
   "canvas.delete_nodes": "Remove nodes by id. Args: ids|nodeIds (string[]). Only when user asked to delete. Destructive: confirmDestructive must be true. Never put ids in the chat reply. 删除节点/需确认",
   "canvas.update_frame": "Update frame size/name/background/lock. Args: frameId|id (must match FOCUS_FRAME_ID when set), width?, height?, name?, backgroundColor?, locked? (boolean — prevent moving/resizing the artboard). When FOCUS_FRAME_ID is present, always use that id — never retarget by name. 改画框/改画板背景",
@@ -354,6 +387,13 @@ export const CANVAS_TYPED_TOOL_DESCRIPTIONS = {
     "Args: nodeIds (2+ from SCENE), mode=union|subtract|intersect|exclude, confirmDestructive=true. " +
     "Operands are replaced. 布尔运算/挖空/合并/构建复杂图标",
   "canvas.set_canvas_background": "Set infinite-canvas stage background (not artboard fill). Args: color|fill|backgroundColor (solid hex/rgba — never CSS gradient()), fillType?=solid|linear|radial|angular|diffuse|image, fillEnd?, gradientAngle?, opacity?. Do not use a full-bleed rect as the canvas stage background. 画布背景/不是画板填充",
+  "canvas.video_generate": "Generate a short video (2-12s) and place it as a video node. " +
+    "Args: genPrompt (scene description), optional referenceImageAssetId (image-to-video from an existing Canvas asset), " +
+    "duration (seconds, default 5, 2-12), aspectRatio (1:1|16:9|9:16|4:3|3:4), x/y/width/height/frameId (placement). " +
+    "Prompts should describe motion/camera: 'camera slowly pans right across neon cityscape' / " +
+    "'product rotates 360 degrees on white surface'. " +
+    "Generation is async: returns jobId, video appears when ready (60-300s). " +
+    "视频生成/基于图片或纯提示词/异步任务",
 } as const;
 
 export type CanvasTypedToolName = keyof typeof CANVAS_TYPED_TOOL_DESCRIPTIONS;
@@ -364,7 +404,14 @@ export const CANVAS_TYPED_READ_TOOL_NAMES = [
   "canvas.skill_get",
 ] as const;
 export type CanvasTypedReadToolName = (typeof CANVAS_TYPED_READ_TOOL_NAMES)[number];
-export type CanvasTypedMutationToolName = Exclude<CanvasTypedToolName, CanvasTypedReadToolName>;
+export const CANVAS_GENERATION_TOOL_NAMES = [
+  "canvas.video_generate",
+] as const;
+export type CanvasGenerationToolName = (typeof CANVAS_GENERATION_TOOL_NAMES)[number];
+export type CanvasTypedMutationToolName = Exclude<
+  CanvasTypedToolName,
+  CanvasTypedReadToolName | CanvasGenerationToolName
+>;
 
 export const CANVAS_AGENT_GATEWAY_PATHS = {
   "canvas.scene_summary": "/agent-gateway/canvas/scene_summary",
@@ -386,6 +433,7 @@ export const CANVAS_AGENT_GATEWAY_PATHS = {
   "canvas.flip_nodes": "/agent-gateway/canvas/flip_nodes",
   "canvas.boolean_op": "/agent-gateway/canvas/boolean_op",
   "canvas.set_canvas_background": "/agent-gateway/canvas/set_canvas_background",
+  "canvas.video_generate": "/agent-gateway/canvas/video_generate",
 } as const;
 
 function compactAttrs(record: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -409,6 +457,28 @@ export function defaultCreateParentId(grant: CanvasAccessGrantRow): string | und
 export function defaultCreateFrameId(grant: CanvasAccessGrantRow): string | undefined {
   if (grant.objectScope.emptySelection) return undefined;
   return grant.objectScope.frameIds.length === 1 ? grant.objectScope.frameIds[0] : undefined;
+}
+
+export function resolveCreatePlacement(
+  grant: CanvasAccessGrantRow,
+  input: { parentId?: string; frameId?: string },
+): { parentId: string | undefined; frameId: string | undefined } {
+  let parentId = input.parentId ?? defaultCreateParentId(grant);
+  let frameId = input.frameId ?? defaultCreateFrameId(grant);
+  if (parentId && grant.objectScope.frameIds.includes(parentId)) {
+    frameId = frameId ?? parentId;
+    parentId = "ROOT";
+  }
+  return { parentId, frameId };
+}
+
+export function assertCreateImageSource(command: CanvasCreateImageCommand): "asset" | "generate" {
+  const hasAsset = Boolean(command.assetId);
+  const hasPrompt = Boolean(command.genPrompt);
+  if (hasAsset === hasPrompt) {
+    throw new CanvasValidationError("create_image requires exactly one of assetId or genPrompt");
+  }
+  return hasPrompt ? "generate" : "asset";
 }
 
 export function typedCanvasCommandToToolOp(
@@ -501,6 +571,9 @@ export function typedCanvasCommandToToolOp(
   }
   if (toolName === "canvas.create_image") {
     const input = command as CanvasCreateImageCommand;
+    if (!input.assetId) {
+      throw new CanvasValidationError("create_image mutation path requires assetId");
+    }
     return {
       op: "create_image",
       id: input.id,

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { canvasAssetUrl, type CanvasCoreClient } from "@/features/canvas/adapters/canvasCoreApi";
 import { configureRecombynDurableMediaBridge } from "@/features/canvas/adapters/recombynDurableMedia";
+import { configureRecombynGenerationBridge } from "@/features/canvas/adapters/recombynGeneration";
 import { configureRecombynCanvasAssetBridge, queryClient } from "@/features/canvas/adapters/recombynStageOneServices";
 
 export function useCanvasAssetBridges(client: CanvasCoreClient, canvasId: string, spaceId: string, resourceKey: string) {
@@ -12,6 +13,10 @@ export function useCanvasAssetBridges(client: CanvasCoreClient, canvasId: string
     },
     delete: async (assetId) => { await client.deleteAsset(canvasId, assetId); },
   }), [canvasId, client, resourceKey, spaceId]);
+  useEffect(() => configureRecombynGenerationBridge({
+    createJob: (body) => client.createGenerationJob(canvasId, body),
+    getJob: (jobId) => client.getGenerationJob(canvasId, jobId),
+  }), [canvasId, client]);
   useEffect(() => configureRecombynCanvasAssetBridge({
     queryKey: ["canvas-local-assets", resourceKey],
     list: async () => (await client.listAssets(canvasId)).assets.map((asset) => ({

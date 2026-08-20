@@ -173,6 +173,7 @@ export {
   CanvasUngroupNodesCommandSchema,
   CanvasUpdateFrameCommandSchema,
   CanvasUpdateNodeCommandSchema,
+  CanvasVideoGenerateCommandSchema,
 } from "../canvas/canvasAgentTools.js";
 export type {
   CanvasAlignNodesCommand,
@@ -194,6 +195,7 @@ export type {
   CanvasUngroupNodesCommand,
   CanvasUpdateFrameCommand,
   CanvasUpdateNodeCommand,
+  CanvasVideoGenerateCommand,
 } from "../canvas/canvasAgentTools.js";
 export type ContextCheckCommand = z.infer<typeof ContextCheckCommandSchema>;
 export type CanvasSnapshotGetCommand = z.infer<typeof CanvasSnapshotGetCommandSchema>;

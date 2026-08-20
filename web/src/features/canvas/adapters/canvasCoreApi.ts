@@ -11,10 +11,75 @@ export const canvasAssetUrl = (spaceId: string, canvasId: string, assetId: strin
   `/api/canvas-assets/${encodeURIComponent(spaceId)}/${encodeURIComponent(canvasId)}/${encodeURIComponent(assetId)}`
 );
 
+const MEDIA_NODE_KEYS = new Set(["image", "video", "lottie", "icon"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function mediaAssetId(node: Record<string, unknown>): string {
+  if (typeof node.assetId === "string" && node.assetId.trim()) return node.assetId.trim();
+  const attrs = isRecord(node.attrs) ? node.attrs : {};
+  return typeof attrs.assetId === "string" ? attrs.assetId.trim() : "";
+}
+
+/** Fill empty attrs.src from a durable assetId so Agent-created nodes paint like toolbar uploads. */
+export function hydrateCanvasDocumentMediaSrc(
+  document: unknown,
+  spaceId: string,
+  canvasId: string,
+): unknown {
+  if (!isRecord(document) || !isRecord(document.deltaSetLike)) return document;
+  let changed = false;
+  const nextDelta: Record<string, unknown> = {};
+  for (const [id, value] of Object.entries(document.deltaSetLike)) {
+    if (!isRecord(value) || !MEDIA_NODE_KEYS.has(String(value.key || ""))) {
+      nextDelta[id] = value;
+      continue;
+    }
+    const assetId = mediaAssetId(value);
+    const attrs = isRecord(value.attrs) ? { ...value.attrs } : {};
+    const src = typeof attrs.src === "string" ? attrs.src.trim() : "";
+    if (!assetId || src) {
+      nextDelta[id] = value;
+      continue;
+    }
+    attrs.src = canvasAssetUrl(spaceId, canvasId, assetId);
+    if (typeof attrs.uploadKey !== "string" || !attrs.uploadKey.trim()) attrs.uploadKey = assetId;
+    nextDelta[id] = { ...value, attrs };
+    changed = true;
+  }
+  return changed ? { ...document, deltaSetLike: nextDelta } : document;
+}
+
+export function hydrateCanvasSnapshotMediaSrc<T extends { id: string; document: unknown }>(
+  snapshot: T,
+  spaceId: string,
+): T {
+  return {
+    ...snapshot,
+    document: hydrateCanvasDocumentMediaSrc(snapshot.document, spaceId, snapshot.id),
+  };
+}
+
 export interface CanvasLibraryItem extends CanvasCoreSnapshot {
   spaceId: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CanvasGenerationJob {
+  id: string;
+  canvasId: string;
+  jobType: "image" | "video";
+  status: "pending" | "processing" | "completed" | "failed" | "cancelled";
+  genPrompt: string;
+  resultAssetId: string | null;
+  resultNodeId: string | null;
+  resultSrc?: string | null;
+  errorMessage: string | null;
+  createdAt: number;
+  completedAt: number | null;
 }
 
 export const canvasCoreApi = (api: KithApi) => {
@@ -26,9 +91,14 @@ export const canvasCoreApi = (api: KithApi) => {
     return result as T;
   };
   return {
-  list: async (): Promise<CanvasLibraryItem[]> => (await call<{ canvases?: CanvasLibraryItem[] }>("GET", "/api/canvases"))?.canvases ?? [],
+  list: async (): Promise<CanvasLibraryItem[]> => ((await call<{ canvases?: CanvasLibraryItem[] }>("GET", "/api/canvases"))?.canvases ?? []).map((item) => (
+    item.spaceId ? hydrateCanvasSnapshotMediaSrc(item, item.spaceId) : item
+  )),
   create: (title: string, document: unknown): Promise<CanvasLibraryItem> => call("POST", "/api/canvases", { title, document, canvasId: crypto.randomUUID(), operationId: crypto.randomUUID() }),
-  read: (canvasId: string): Promise<CanvasLibraryItem> => call("GET", `/api/canvases/${encodeURIComponent(canvasId)}`),
+  read: async (canvasId: string): Promise<CanvasLibraryItem> => {
+    const item = await call<CanvasLibraryItem>("GET", `/api/canvases/${encodeURIComponent(canvasId)}`);
+    return item.spaceId ? hydrateCanvasSnapshotMediaSrc(item, item.spaceId) : item;
+  },
   apply: (canvasId: string, input: unknown): Promise<CanvasLibraryItem> => call("POST", `/api/canvases/${encodeURIComponent(canvasId)}/operations`, input),
   undo: (canvasId: string, operationId: string, expectedRevision: number): Promise<CanvasLibraryItem> => call("POST", `/api/canvases/${encodeURIComponent(canvasId)}/undo`, { operationId, expectedRevision }),
   redo: (canvasId: string, operationId: string, expectedRevision: number): Promise<CanvasLibraryItem> => call("POST", `/api/canvases/${encodeURIComponent(canvasId)}/redo`, { operationId, expectedRevision }),
@@ -50,6 +120,34 @@ export const canvasCoreApi = (api: KithApi) => {
   importScene: (title: string, scene: unknown): Promise<CanvasLibraryItem> => call("POST", "/api/canvases/import", { title, scene, canvasId: crypto.randomUUID(), operationId: crypto.randomUUID() }),
   exportScene: (canvasId: string): Promise<{ format: "kith-canvas-scene"; version: 1; title: string; scene: unknown }> => call("GET", `/api/canvases/${encodeURIComponent(canvasId)}/export`),
   deleteCanvas: (canvasId: string, expectedRevision: number): Promise<{ ok: true; deleted: boolean }> => call("DELETE", `/api/canvases/${encodeURIComponent(canvasId)}`, { operationId: crypto.randomUUID(), expectedRevision }),
+  createGenerationJob: (canvasId: string, body: {
+    jobType: "image" | "video";
+    genPrompt: string;
+    placement: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      frameId?: string;
+      parentId?: string;
+      name?: string;
+      targetNodeId?: string;
+      skipNodeCreate?: boolean;
+    };
+    config?: {
+      aspectRatio?: "smart" | "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "3:2" | "2:3" | "21:9";
+      duration?: number;
+      referenceAssetId?: string;
+      model?: string;
+      resolution?: string;
+      removeBg?: boolean;
+      cutoutMode?: "product" | "hair";
+    };
+    idempotencyKey: string;
+  }): Promise<CanvasGenerationJob> => call("POST", `/api/canvases/${encodeURIComponent(canvasId)}/generation-jobs`, body),
+  getGenerationJob: (canvasId: string, jobId: string): Promise<CanvasGenerationJob> => (
+    call("GET", `/api/canvases/${encodeURIComponent(canvasId)}/generation-jobs/${encodeURIComponent(jobId)}`)
+  ),
   };
 };
 export type CanvasCoreClient = ReturnType<typeof canvasCoreApi>;

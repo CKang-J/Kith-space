@@ -991,9 +991,11 @@
         "rewrite repository-local import aliases",
         "add host-project typecheck boundary",
         "route Floating UI portals through the Stage 1 island portal adapter",
-        "make Stage 1 image generation a short unavailable action with local-only references and no upstream job client"
+        "route image generator submit through the Kith Canvas generation job host seam",
+        "inject Kith Ark Seedream catalog and pass selected model/resolution on generate",
+        "always clear the generating overlay on abort or error"
       ],
-      "targetSha256": "615c186968878d5eeea57b8ee3085203cbf1e5b0d671b61a0e438e14921425f9"
+      "targetSha256": "dde2ce4eb373c85101eb3ee5eaa47b9bab30210a14e5b4ce96b9d319ca55f829"
     },
     {
       "source": "apps/web/src/components/editor/nodes/ImageGeneratorNode/ImageGeneratorOverlay.tsx",
@@ -1087,9 +1089,12 @@
       "changes": [
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
-        "add host-project typecheck boundary"
+        "add host-project typecheck boundary",
+        "keep durable canvas-asset URLs instead of re-uploading process results",
+        "do not abort in-flight process jobs on watcher remount",
+        "surface i2i timeout as a processing error, not a layering error"
       ],
-      "targetSha256": "e7a96692f1c2f2168d97402122f0a55f7c2098c064bf4a27c873ce740c6587bb"
+      "targetSha256": "bea76b770d989628de22c20011b01cd62fa0ca30a47eaa10870b6d8a48ce15bc"
     },
     {
       "source": "apps/web/src/components/editor/nodes/ImageNode/ImageQuickEditComposer.tsx",
@@ -1100,9 +1105,12 @@
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
         "add host-project typecheck boundary",
-        "make Stage 1 image quick-edit explicit unavailable with local-only references and no job client"
+        "route image quick-edit generate through the Kith Canvas generation job host seam",
+        "always allow Ark model pick and pass selected model/resolution on generate",
+        "apply generation resultSrc locally and always clear the generating overlay",
+        "clear leftover generating overlay and surface a wait toast for slow i2i"
       ],
-      "targetSha256": "3bf9422eb013a01d7c5291c4a119d56fd9c7d00ad86974cf366865bc46b9d557"
+      "targetSha256": "aff6f8587a4faff102e870206c0a57485965f6c3db53408ed590e3b91848b62c"
     },
     {
       "source": "apps/web/src/components/editor/nodes/ImageNode/ImageRemoveBgMenu.tsx",
@@ -1114,9 +1122,10 @@
         "rewrite repository-local import aliases",
         "add host-project typecheck boundary",
         "route Floating UI portals through the Stage 1 island portal adapter",
-        "accept disabled state for unavailable Stage 1 background-removal action"
+        "accept disabled state for unavailable background-removal action",
+        "keep remove-bg mode menu inside the selection toolbar instead of a Floating UI portal"
       ],
-      "targetSha256": "bd1ffaea4ec4c6721c4bb88f12c9e5e76667b9b1db0b61d94e4a2b896cbeb776"
+      "targetSha256": "eb38766d7f2f72a1c36743b9d640e57553e4673b79b2a14734b21e50d7925907"
     },
     {
       "source": "apps/web/src/components/editor/nodes/ImageNode/ImageReplaceUploadControl.tsx",
@@ -1139,7 +1148,7 @@
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
         "add host-project typecheck boundary",
-        "accept disabled state for unavailable Stage 1 image-processing actions"
+        "accept optional disabled state for image-processing actions"
       ],
       "targetSha256": "3729b4d6fa6499e08244551dbaa857a2994ab108c75004c96d363a59654749b2"
     },
@@ -1187,9 +1196,12 @@
       "changes": [
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
-        "add host-project typecheck boundary"
+        "add host-project typecheck boundary",
+        "hint drag-to-mark and toast clicks that are too small to commit",
+        "map mark drag from the overlay screen rect, not stage-local origin minus clientX",
+        "follow the pointer with a short drag hint instead of a caption on the photo"
       ],
-      "targetSha256": "bb152d406c8924aab068036fe455b0cd13d33387a8268aa5c86aaadfc6d741ee"
+      "targetSha256": "c70c3827db14ef8b9e93f31f58247e2d70b24d5bbd3fcd3c697088799f509aa0"
     },
     {
       "source": "apps/web/src/components/editor/nodes/ImageNode/mark/MarkSessionHost.tsx",
@@ -1200,9 +1212,13 @@
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
         "add host-project typecheck boundary",
-        "route body-targeted React portals through the Stage 1 island portal adapter"
+        "route body-targeted React portals through the Stage 1 island portal adapter",
+        "skip Recombyn detectRegions auto-detect and keep manual drag-to-chat",
+        "send marked crops into the left Kith Chat composer instead of AgentDock",
+        "freeze marked image regions onto the Canvas snapshot instead of composer caption",
+        "drop the Recombyn visible @-chip payload builder"
       ],
-      "targetSha256": "1606ca212e0fb8d0eaf80815355dabe9398771742091711d69abd291e6b27f38"
+      "targetSha256": "74028598af0e7bab068582686ee68984d7c8267d9aa1416dcc6c4609b6ad47ae"
     },
     {
       "source": "apps/web/src/components/editor/nodes/ImageNode/toolPanels/AdjustToolPanel.tsx",
@@ -1573,9 +1589,10 @@
         "rewrite repository-local import aliases",
         "add host-project typecheck boundary",
         "route Floating UI portals through the Stage 1 island portal adapter",
-        "make Stage 1 video generation a short unavailable action with local-only references and no upstream job/upload client"
+        "route video generator submit through the Kith Canvas generation job host seam",
+        "inject Kith Ark Seedance catalog and disable unsupported resolution/duration"
       ],
-      "targetSha256": "a11bf033b07c676acf5b5ccaedf3b55c302d563e4cf66004f0859482eba73588"
+      "targetSha256": "14ac670e220f4c56822f75bd69c74c0be4937408faa5f95ccb497618061ca18c"
     },
     {
       "source": "apps/web/src/components/editor/nodes/VideoGeneratorNode/VideoGeneratorOverlay.tsx",
@@ -1693,9 +1710,10 @@
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
         "add host-project typecheck boundary",
-        "make Stage 1 video quick-edit explicit unavailable with local-only references and no job client"
+        "route video quick-edit generate through the Kith Canvas generation job host seam",
+        "inject Kith Ark Seedance catalog and disable unsupported resolution/duration"
       ],
-      "targetSha256": "66e00ea5fdf310bb78049159614a2da19c32b0e059751031d918af853eac956b"
+      "targetSha256": "c69f6ca5b33a1f40260959f06ff844b99b4954c4dc69fb287cfccc8235fc9166"
     },
     {
       "source": "apps/web/src/components/editor/nodes/VideoNode/VideoReplaceCornerButton.tsx",
@@ -1867,9 +1885,10 @@
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
         "add host-project typecheck boundary",
-        "mount selection-to-chat transition chrome inside the Stage 1 island root"
+        "mount selection-to-chat transition chrome inside the Stage 1 island root",
+        "land fly chips on the Kith left Chat composer instead of Recombyn's right AgentDock"
       ],
-      "targetSha256": "418747eb61b9e943e38bbee3a7254a93b878e2aeb56053c15a546f6fe7874c52"
+      "targetSha256": "f2051226a0b1cbea996adc768cdd34f7861950fed7ef795a802c03e85317374c"
     },
     {
       "source": "apps/web/src/components/editor/panels/agent/ImageAspectRatioPicker.tsx",
@@ -2942,10 +2961,12 @@
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
         "add host-project typecheck boundary",
-        "disable unavailable Stage 1 image-processing actions while retaining native toolbar structure",
-        "add native Send to Chat selection-toolbar action"
+        "enable image-processing toolbar actions via Kith generation jobs",
+        "add native Send to Chat selection-toolbar action",
+        "hide selection pill during upscale/expand/crop sessions",
+        "keep image layering honestly unavailable instead of spawning a failing clone"
       ],
-      "targetSha256": "2d91fecdc9cd3752f4265e7fe8ee4a266d179e2404d6818d4ce307d3efdb2671"
+      "targetSha256": "dab51af5f69ec4e6c4c56923d3f6c01a467ffcbb863250cb8f0cd6c4707207cd"
     },
     {
       "source": "apps/web/src/components/rcb/selection/chrome/SelectionToolbarShell.tsx",
