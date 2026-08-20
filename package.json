@@ -39,6 +39,8 @@
     "server": "tsx watch src/server/index.ts",
     "start": "tsx src/server/index.ts",
     "web:build": "pnpm --dir web run build",
+    "canvas:stage1:materialize": "node scripts/audit-recombyn-stage1-closure.mjs && node scripts/materialize-recombyn-stage1-native.mjs && node scripts/build-recombyn-stage1-css.mjs",
+    "canvas:stage1:build": "node scripts/build-recombyn-stage1-harness.mjs",
     "stop": "node scripts/stop-dev.mjs",
     "daemon": "tsx src/daemon/index.ts",
     "cli": "tsx src/cli/index.ts",
@@ -86,6 +88,20 @@
         "to": "drizzle",
         "filter": [
           "**/*"
+        ]
+      },
+      {
+        "from": "src/canvas/skills/foundation",
+        "to": "canvas-skills/foundation",
+        "filter": [
+          "**/*.md"
+        ]
+      },
+      {
+        "from": "src/canvas/skills/domains",
+        "to": "canvas-skills/domains",
+        "filter": [
+          "**/*.md"
         ]
       },
       "LICENSE",

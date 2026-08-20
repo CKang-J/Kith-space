@@ -38,8 +38,12 @@ test("message density tokens match the reference-driven split bubble design", ()
   assert.match(messageCss, /--chat-message-avatar:\s*36px/);
   assert.match(messageCss, /--chat-message-font-size:\s*var\(--font-size-base\)/);
   assert.match(messageCss, /--chat-message-line-height:\s*var\(--line-height-reading\)/);
-  assert.match(messageCss, /--chat-message-human-bg:\s*#e7f0fe/i);
-  assert.match(messageCss, /--chat-message-agent-bg:\s*#f7f8fa/i);
+  assert.match(messageCss, /--chat-message-human-bg:\s*var\(--chat-human-bg\)/i);
+  assert.match(messageCss, /--chat-message-agent-bg:\s*var\(--chat-agent-bg\)/i);
+  assert.match(globalCss, /--chat-agent-bg:#f3f3f4/);
+  assert.match(globalCss, /--chat-human-bg:#dee8f5/);
+  assert.match(messageCss, /\.chat-message--human\{[\s\S]*?--chat-message-text:var\(--chat-human-foreground\)/);
+  assert.match(globalCss, /\.dark\s*\{[\s\S]*?--chat-human-bg:oklch\(0\.27 0\.035 255\)[\s\S]*?--chat-human-foreground:oklch\(0\.94 0\.012 255\)/);
   assert.match(messageCss, /grid-template-columns:\s*var\(--chat-message-avatar\) minmax\(0,1fr\)/);
   assert.match(messageCss, /\.chat-message--human\{[\s\S]*?grid-template-columns:minmax\(0,1fr\) var\(--chat-message-avatar\)/);
   assert.match(messageCss, /\.chat-message--human \.chat-message__content\{[\s\S]*?justify-self:end;[\s\S]*?align-items:flex-end/);
@@ -47,12 +51,29 @@ test("message density tokens match the reference-driven split bubble design", ()
   assert.match(messageCss, /width:\s*fit-content/);
   assert.match(messageCss, /\.chat-message__bubble\{[\s\S]*?padding:\s*16px 18px/);
   assert.match(messageCss, /\.chat-message \.md\{[\s\S]*?--md-paragraph-gap:\.85em/);
-  assert.match(messageCss, /\.chat-message \.md h1\{font-size:18px\}/);
-  assert.match(messageCss, /\.chat-message \.md h2\{font-size:var\(--font-size-lg\)\}/);
+  assert.match(messageCss, /\.chat-message \.md h1,[\s\S]*?font-size:var\(--font-size-title\)[\s\S]*?font-weight:var\(--font-weight-strong\)/);
   assert.match(messageCss, /margin:\s*0 auto 26px/);
   assert.match(messageCss, /\.chat-message__footer-timestamp\s*\{[\s\S]*?margin-top:\s*6px/);
   assert.match(messageCss, /\.chat-message__bubble-wrap:hover>\.chat-message__toolbar-slot/);
   assert.match(messageCss, /\.chat-message__bubble-wrap:focus-within>\.chat-message__toolbar-slot/);
+  assert.doesNotMatch(messageCss, /chat-message-agent-bg-hover|chat-message-human-bg-hover/);
+});
+
+test("message metadata and system events use the shared auxiliary type scale", () => {
+  assert.match(messageCss, /\.chat-message__continuation-timestamp\{[^}]*font-size:var\(--font-size-meta\)!important/);
+  assert.match(messageCss, /\.chat-message__footer-timestamp\{[^}]*font-size:var\(--font-size-meta\)!important/);
+  assert.match(messageCss, /\.message-topic-preview__footer\{[^}]*font-size:var\(--font-size-meta\)!important/);
+  assert.match(messageCss, /\.message-topic-preview__reply\{[^}]*font-size:var\(--font-size-meta\)!important/);
+  assert.match(messageCss, /\.message-topic-preview__reply \*\{font-size:var\(--font-size-meta\)!important\}/);
+  assert.match(messageCss, /\.message-topic-preview__reply strong\{[^}]*color:var\(--chat-message-text\)[^}]*font-weight:400/);
+  assert.match(messageCss, /\.message-topic-preview__reply-text\{[^}]*color:var\(--muted-soft\)/);
+  assert.match(globalCss, /\.msg-sys,\.msg-sys \*\{font-size:var\(--font-size-meta\)!important\}/);
+  assert.match(globalCss, /\.task-pill\{[^}]*font-size:var\(--font-size-meta\)!important[^}]*font-weight:400/);
+});
+
+test("offscreen timeline rows skip layout and paint work during shell resizing", () => {
+  assert.match(messageCss, /\.chat-message\{[^}]*content-visibility:auto;[^}]*contain-intrinsic-size:auto 320px/);
+  assert.match(globalCss, /\.msg-sys\{[^}]*content-visibility:auto;[^}]*contain-intrinsic-size:auto 40px/);
 });
 
 test("legacy full-card width penalty and repeated agent description are removed", () => {
@@ -67,10 +88,13 @@ test("chat title, scroll reserve, and composer align to the shared stream", () =
   assert.match(globalCss, /\.chat-head\{[^}]*padding:\s*0 14px/);
   assert.match(globalCss, /\.chat-head__rail\{[^}]*max-width:\s*none[^}]*margin:\s*0/);
   assert.doesNotMatch(globalCss, /\.chat-head::after/);
-  assert.match(globalCss, /main\.content-col > \.scroll\{[^}]*padding-bottom:\s*var\(--chat-composer-reserve\)[^}]*scrollbar-gutter:\s*stable both-edges[^}]*overflow-x:\s*hidden/);
-  assert.match(globalCss, /--scrollbar-gutter:10px/);
+  assert.match(globalCss, /main\.content-col > \.scroll,[\s\S]*?\.thread-panel > \.scroll\{[^}]*padding-right:\s*max\(0px,calc\(var\(--chat-stream-gutter,20px\) - var\(--chat-scrollbar-width,0px\)\)\)[^}]*padding-bottom:\s*var\(--chat-composer-reserve\)[^}]*scrollbar-gutter:\s*stable[^}]*overflow-x:\s*hidden/);
+  assert.doesNotMatch(globalCss, /--scrollbar-gutter:10px/);
   assert.match(globalCss, /\.date-divider\{[^}]*max-width:\s*var\(--chat-stream-max\)[^}]*margin:\s*18px auto 24px/);
   assert.match(globalCss, /\.composer-box\{[^}]*max-width:\s*var\(--chat-stream-max\)[^}]*margin:\s*0 auto/);
+  assert.match(chatSrc, /className="jump-bottom" type="button" aria-label=\{t\("chat\.backToBottom"\)\} title=\{t\("chat\.backToBottom"\)\}/);
+  assert.doesNotMatch(chatSrc, /<ArrowDown size=\{14\} \/> \{t\("chat\.backToBottom"\)\}/);
+  assert.match(globalCss, /\.jump-bottom\{[^}]*overflow:hidden[^}]*padding:0[^}]*\}/);
 });
 
 test("topic replies render as a separate reference-style card and preserve relative recency", () => {
@@ -79,10 +103,10 @@ test("topic replies render as a separate reference-style card and preserve relat
   assert.match(chatSrc, /afterBubble=\{tm\?\.replyCount \? <MessageTopicPreview/);
   assert.match(itemSrc, /className="chat-message__after-bubble"/);
   const previewBlock = messageCss.match(/\.message-topic-preview\{([^}]*)\}/)?.[1] ?? "";
-  assert.match(previewBlock, /border:1px solid #ededed/);
+  assert.match(previewBlock, /border:1px solid var\(--border\)/);
   assert.match(previewBlock, /border-radius:16px/);
-  assert.match(previewBlock, /background:#fff/);
-  assert.match(messageCss, /\.message-topic-preview:hover\{border-color:#e4e4e4;background:#f7f7f7\}/);
+  assert.match(previewBlock, /background:var\(--card\)/);
+  assert.match(messageCss, /\.message-topic-preview:hover\{border-color:var\(--border\);background:var\(--muted\)\}/);
   assert.match(topicPreviewSrc, /meta\.previews/);
   assert.match(topicPreviewSrc, /relativeTimeLabel\(meta\.lastReplyAt,\s*t\)/);
   assert.match(topicPreviewSrc, /message-topic-preview__footer/);

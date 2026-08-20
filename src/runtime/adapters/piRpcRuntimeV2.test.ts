@@ -109,6 +109,61 @@ test("Pi RPC uses strict LF framing, correlated admission, and agent_settled as 
   await session.close("shutdown");
 });
 
+test("Pi RPC keeps tool-call JSON out of assistant text and preserves correlated tool details", async () => {
+  const fake = new FakePi();
+  const root = mkdtempSync(path.join(os.tmpdir(), "kith-pi-tools-"));
+  const session = await createPiRpcRuntimeV2(() => fake as unknown as ChildProcess).openSession(options(root));
+  const events: any[] = [];
+  const result = session.runTurn({
+    turnId: "turn", attemptId: "attempt", context: "Use a tool", capabilityActivationId: "activation",
+    deadlineAt: Date.now() + 30_000,
+  }, { emit: async (event) => { events.push(event); } });
+  await waitForCommand(fake, "prompt");
+
+  fake.line({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "先检查。" } });
+  fake.line({
+    type: "message_end",
+    message: { role: "assistant", content: [{ type: "text", text: "先检查。" }] },
+  });
+  fake.line({ type: "message_update", assistantMessageEvent: { type: "toolcall_delta", delta: "9}" } });
+  fake.line({
+    type: "tool_execution_start",
+    toolCallId: "call-1",
+    toolName: "bash",
+    args: { command: "printf '完成'" },
+  });
+  fake.line({
+    type: "tool_execution_end",
+    toolCallId: "call-1",
+    toolName: "bash",
+    result: { content: [{ type: "text", text: "完成" }] },
+    isError: false,
+  });
+  fake.line({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "结论" } });
+  fake.line({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "结论完整。" }],
+    },
+  });
+  fake.line({ type: "agent_settled" });
+
+  assert.equal((await result).outcome, "completed");
+  assert.deepEqual(
+    events.filter((event) => event.kind === "text_preview").map((event) => event.payload.text),
+    ["先检查。", "结论", "完整。"],
+  );
+  const started = events.find((event) => event.kind === "tool_started");
+  assert.equal(started?.payload.toolCallId, "call-1");
+  assert.equal(started?.payload.toolName, "bash");
+  assert.match(started?.payload.toolInput, /printf '完成'/);
+  const completed = events.find((event) => event.kind === "tool_completed");
+  assert.equal(completed?.payload.toolCallId, "call-1");
+  assert.match(completed?.payload.toolOutput, /完成/);
+  await session.close("shutdown");
+});
+
 test("Pi RPC cancel waits for correlated abort response and settled terminal", async () => {
   const fake = new FakePi();
   const root = mkdtempSync(path.join(os.tmpdir(), "kith-pi-abort-"));
@@ -131,16 +186,29 @@ test("Pi RPC keeps model errors non-terminal while auto retry can recover before
   const fake = new FakePi();
   const root = mkdtempSync(path.join(os.tmpdir(), "kith-pi-retry-"));
   const session = await createPiRpcRuntimeV2(() => fake as unknown as ChildProcess).openSession(options(root));
+  const events: any[] = [];
   const result = session.runTurn({
     turnId: "turn", attemptId: "attempt", context: "Retry", capabilityActivationId: "activation",
     deadlineAt: Date.now() + 30_000,
-  }, { emit: async () => {} });
+  }, { emit: async (event) => { events.push(event); } });
   await waitForCommand(fake, "prompt");
-  fake.line({ type: "message_end", message: { role: "assistant", stopReason: "error" } });
+  fake.line({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "旧答" } });
+  fake.line({
+    type: "message_end",
+    message: { role: "assistant", stopReason: "error", content: [{ type: "text", text: "旧答" }] },
+  });
   fake.line({ type: "auto_retry_start" });
-  fake.line({ type: "message_end", message: { role: "assistant", stopReason: "stop" } });
+  fake.line({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "新答" } });
+  fake.line({
+    type: "message_end",
+    message: { role: "assistant", stopReason: "stop", content: [{ type: "text", text: "新答完整" }] },
+  });
   fake.line({ type: "agent_settled" });
   assert.equal((await result).outcome, "completed");
+  assert.deepEqual(
+    events.filter((event) => event.kind === "text_preview").map((event) => event.payload.text),
+    ["旧答", "新答", "完整"],
+  );
   await session.close("shutdown");
 });
 
@@ -155,4 +223,32 @@ test("Pi RPC safely reopens the same generation directory during Desktop recover
   const snapshot = await secondSession.snapshot();
   assert.equal(snapshot.payload.engineSessionId, "pi-session-1");
   await secondSession.close("shutdown");
+});
+
+test("unmanaged Pi RPC does not isolate PI_CODING_AGENT_DIR onto the generation root", async () => {
+  const fake = new FakePi();
+  const root = mkdtempSync(path.join(os.tmpdir(), "kith-pi-unmanaged-env-"));
+  let spawnedEnv: NodeJS.ProcessEnv | undefined;
+  const session = await createPiRpcRuntimeV2((_command, _args, spawnOptions) => {
+    spawnedEnv = spawnOptions.env;
+    return fake as unknown as ChildProcess;
+  }).openSession(options(root));
+  await waitForCommand(fake, "get_state");
+  assert.equal(spawnedEnv?.PI_CODING_AGENT_DIR, undefined);
+  assert.ok(spawnedEnv?.PI_CODING_AGENT_SESSION_DIR?.includes("sessions"));
+  assert.equal(spawnedEnv?.PI_TELEMETRY, "0");
+  await session.close("shutdown");
+});
+
+test("managed Pi RPC keeps compiler-provided PI_CODING_AGENT_DIR", async () => {
+  const fake = new FakePi();
+  const root = mkdtempSync(path.join(os.tmpdir(), "kith-pi-managed-env-"));
+  let spawnedEnv: NodeJS.ProcessEnv | undefined;
+  const session = await createPiRpcRuntimeV2((_command, _args, spawnOptions) => {
+    spawnedEnv = spawnOptions.env;
+    return fake as unknown as ChildProcess;
+  }).openSession({ ...options(root), env: { PI_CODING_AGENT_DIR: "/managed/pi-home" } });
+  await waitForCommand(fake, "get_state");
+  assert.equal(spawnedEnv?.PI_CODING_AGENT_DIR, "/managed/pi-home");
+  await session.close("shutdown");
 });

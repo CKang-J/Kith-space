@@ -93,6 +93,7 @@ turn.command("reply").description("commit one server-targeted reply; body is rea
   .requiredOption("--input <ids>", "handled delivery input ids, comma-separated")
   .option("--attach <ids>", "temporary attachment ids, comma-separated")
   .option("--source-ref <json...>", "audited source refs as JSON objects")
+  .option("--output-ref <json...>", "committed output artifacts such as {\"kind\":\"canvas_mutation\",\"artifactId\":\"...\"}")
   .option("--disclosure-grant <id>", "Human-issued one-shot disclosure grant")
   .option("--idempotency-key <key>", "stable retry key", "reply:primary")
   .action(async (opts) => {
@@ -100,11 +101,13 @@ turn.command("reply").description("commit one server-targeted reply; body is rea
     const handledInputIds = String(opts.input).split(",").map((value) => value.trim()).filter(Boolean);
     const attachmentIds = opts.attach ? String(opts.attach).split(",").map((value) => value.trim()).filter(Boolean) : [];
     const sourceRefs = (opts.sourceRef ?? []).map((value: string) => JSON.parse(value));
+    const outputRefs = (opts.outputRef ?? []).map((value: string) => JSON.parse(value));
     const data = await brokerApi("POST", "/agent-gateway/turn/reply", {
       schemaVersion: 1,
       body,
       attachmentIds,
       sourceRefs,
+      outputRefs,
       ...(opts.disclosureGrant ? { disclosureGrantId: opts.disclosureGrant } : {}),
       handledInputIds,
       operationKey: opts.idempotencyKey,
@@ -134,6 +137,436 @@ turn.command("progress").description("record bounded progress for the active tur
 turn.command("get").description("inspect the active turn, Context, Steps, Usage and Outcome").action(async () => {
   console.log(JSON.stringify(await brokerApi("GET", "/agent-gateway/turn/get"), null, 2));
 });
+
+const canvas = program.command("canvas").description("authorized Canvas Access Grant tools for the active turn");
+canvas.command("snapshot-get").requiredOption("--snapshot-id <id>").option("--canvas-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:snapshot_get")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/snapshot_get", {
+      snapshotId: opts.snapshotId,
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("elements-get").option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--element-ids <ids>", "comma-separated element ids")
+  .option("--frame-ids <ids>", "comma-separated frame ids")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:elements_get")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/elements_get", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      ...(opts.elementIds ? { elementIds: String(opts.elementIds).split(",").map((value: string) => value.trim()).filter(Boolean) } : {}),
+      ...(opts.frameIds ? { frameIds: String(opts.frameIds).split(",").map((value: string) => value.trim()).filter(Boolean) } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("elements-apply").requiredOption("--expected-revision <n>")
+  .requiredOption("--operations <json>", "JSON array of Recombyn ToolOps")
+  .option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--confirm-destructive")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:elements_apply")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/elements_apply", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      operations: JSON.parse(opts.operations),
+      ...(opts.confirmDestructive ? { confirmDestructive: true } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("export").requiredOption("--snapshot-id <id>").option("--canvas-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:export")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/export", {
+      snapshotId: opts.snapshotId,
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("context-bundle-create").requiredOption("--snapshot-id <id>").option("--canvas-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:context_bundle_create")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/context_bundle_create", {
+      snapshotId: opts.snapshotId,
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("asset-import")
+  .option("--attachment-id <id>", "turn-bound or message-bound local attachment id")
+  .option("--asset-id <id>", "alias for --attachment-id")
+  .option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:asset_import")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/asset_import", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      ...(opts.attachmentId ? { attachmentId: opts.attachmentId } : {}),
+      ...(opts.assetId ? { assetId: opts.assetId } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("scene-summary").option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:scene_summary")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/scene_summary", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("skill-list").option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:skill_list")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/skill_list", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("skill-get").argument("<skillKey>", "skill key from skill-list")
+  .option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:skill_get")
+  .action(async (skillKey, opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/skill_get", {
+      skillKey,
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("create-frame").requiredOption("--expected-revision <n>")
+  .requiredOption("--x <n>").requiredOption("--y <n>").requiredOption("--width <n>").requiredOption("--height <n>")
+  .option("--name <name>").option("--id <id>").option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:create_frame")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/create_frame", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      x: Number(opts.x), y: Number(opts.y), width: Number(opts.width), height: Number(opts.height),
+      ...(opts.name ? { name: opts.name } : {}),
+      ...(opts.id ? { id: opts.id } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("create-text").requiredOption("--expected-revision <n>")
+  .requiredOption("--text <text>").requiredOption("--x <n>").requiredOption("--y <n>")
+  .option("--width <n>").option("--height <n>").option("--parent-id <id>").option("--frame-id <id>")
+  .option("--font-size <n>").option("--fill <color>").option("--font-weight <weight>").option("--font-family <name>")
+  .option("--rotation <n>").option("--opacity <n>").option("--blend-mode <mode>")
+  .option("--name <name>").option("--id <id>").option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:create_text")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/create_text", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      text: opts.text, x: Number(opts.x), y: Number(opts.y),
+      ...(opts.width ? { width: Number(opts.width) } : {}),
+      ...(opts.height ? { height: Number(opts.height) } : {}),
+      ...(opts.parentId ? { parentId: opts.parentId } : {}),
+      ...(opts.frameId ? { frameId: opts.frameId } : {}),
+      ...(opts.fontSize ? { fontSize: Number(opts.fontSize) } : {}),
+      ...(opts.fill ? { fill: opts.fill } : {}),
+      ...(opts.fontWeight ? { fontWeight: Number.isFinite(Number(opts.fontWeight)) ? Number(opts.fontWeight) : opts.fontWeight } : {}),
+      ...(opts.fontFamily ? { fontFamily: opts.fontFamily } : {}),
+      ...(opts.rotation ? { rotation: Number(opts.rotation) } : {}),
+      ...(opts.opacity ? { opacity: Number(opts.opacity) } : {}),
+      ...(opts.blendMode ? { blendMode: opts.blendMode } : {}),
+      ...(opts.name ? { name: opts.name } : {}),
+      ...(opts.id ? { id: opts.id } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("create-shape").requiredOption("--expected-revision <n>")
+  .requiredOption("--x <n>").requiredOption("--y <n>").requiredOption("--width <n>").requiredOption("--height <n>")
+  .option("--shape-type <type>", "rect|ellipse|circle|…", "rect")
+  .option("--fill <color>").option("--fill-type <type>").option("--fill-end <color>").option("--gradient-angle <n>")
+  .option("--stroke <color>").option("--border-width <n>").option("--stroke-align <align>").option("--corner-radius <n>")
+  .option("--rotation <n>").option("--opacity <n>")
+  .option("--parent-id <id>").option("--frame-id <id>").option("--name <name>").option("--id <id>")
+  .option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:create_shape")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/create_shape", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      shapeType: opts.shapeType, x: Number(opts.x), y: Number(opts.y),
+      width: Number(opts.width), height: Number(opts.height),
+      ...(opts.fill ? { fill: opts.fill } : {}),
+      ...(opts.fillType ? { fillType: opts.fillType } : {}),
+      ...(opts.fillEnd ? { fillEnd: opts.fillEnd } : {}),
+      ...(opts.gradientAngle ? { gradientAngle: Number(opts.gradientAngle) } : {}),
+      ...(opts.stroke ? { stroke: opts.stroke } : {}),
+      ...(opts.borderWidth ? { borderWidth: Number(opts.borderWidth) } : {}),
+      ...(opts.strokeAlign ? { strokeAlign: opts.strokeAlign } : {}),
+      ...(opts.cornerRadius ? { cornerRadius: Number(opts.cornerRadius) } : {}),
+      ...(opts.rotation ? { rotation: Number(opts.rotation) } : {}),
+      ...(opts.opacity ? { opacity: Number(opts.opacity) } : {}),
+      ...(opts.parentId ? { parentId: opts.parentId } : {}),
+      ...(opts.frameId ? { frameId: opts.frameId } : {}),
+      ...(opts.name ? { name: opts.name } : {}),
+      ...(opts.id ? { id: opts.id } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("create-image").requiredOption("--expected-revision <n>")
+  .option("--asset-id <id>").option("--gen-prompt <text>")
+  .option("--lettering-text <text>").option("--remove-bg").option("--cutout-mode <mode>")
+  .option("--aspect-ratio <ratio>").option("--style-preset <preset>")
+  .requiredOption("--x <n>").requiredOption("--y <n>").requiredOption("--width <n>").requiredOption("--height <n>")
+  .option("--parent-id <id>").option("--frame-id <id>").option("--name <name>").option("--id <id>")
+  .option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:create_image")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/create_image", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      ...(opts.assetId ? { assetId: opts.assetId } : {}),
+      ...(opts.genPrompt ? { genPrompt: opts.genPrompt } : {}),
+      ...(opts.letteringText ? { letteringText: opts.letteringText } : {}),
+      ...(opts.removeBg ? { removeBg: true } : {}),
+      ...(opts.cutoutMode ? { cutoutMode: opts.cutoutMode } : {}),
+      ...(opts.aspectRatio ? { aspectRatio: opts.aspectRatio } : {}),
+      ...(opts.stylePreset ? { stylePreset: opts.stylePreset } : {}),
+      x: Number(opts.x), y: Number(opts.y),
+      width: Number(opts.width), height: Number(opts.height),
+      ...(opts.parentId ? { parentId: opts.parentId } : {}),
+      ...(opts.frameId ? { frameId: opts.frameId } : {}),
+      ...(opts.name ? { name: opts.name } : {}),
+      ...(opts.id ? { id: opts.id } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("video-generate").requiredOption("--expected-revision <n>").requiredOption("--gen-prompt <text>")
+  .requiredOption("--x <n>").requiredOption("--y <n>").requiredOption("--width <n>").requiredOption("--height <n>")
+  .option("--reference-image-asset-id <id>").option("--duration <n>").option("--aspect-ratio <ratio>")
+  .option("--parent-id <id>").option("--frame-id <id>").option("--name <name>").option("--id <id>")
+  .option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:video_generate")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/video_generate", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      genPrompt: opts.genPrompt,
+      ...(opts.referenceImageAssetId ? { referenceImageAssetId: opts.referenceImageAssetId } : {}),
+      ...(opts.duration ? { duration: Number(opts.duration) } : {}),
+      ...(opts.aspectRatio ? { aspectRatio: opts.aspectRatio } : {}),
+      x: Number(opts.x), y: Number(opts.y),
+      width: Number(opts.width), height: Number(opts.height),
+      ...(opts.parentId ? { parentId: opts.parentId } : {}),
+      ...(opts.frameId ? { frameId: opts.frameId } : {}),
+      ...(opts.name ? { name: opts.name } : {}),
+      ...(opts.id ? { id: opts.id } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("update-node").requiredOption("--expected-revision <n>").requiredOption("--node-id <id>")
+  .option("--x <n>").option("--y <n>").option("--width <n>").option("--height <n>").option("--text <text>")
+  .option("--fill <color>").option("--fill-type <type>").option("--fill-end <color>").option("--gradient-angle <n>")
+  .option("--stroke <color>").option("--border-width <n>").option("--corner-radius <n>")
+  .option("--name <name>").option("--shape-type <type>").option("--font-size <n>").option("--font-family <name>")
+  .option("--opacity <n>").option("--rotation <n>").option("--hidden").option("--locked")
+  // MCP/Gateway also accept nested `patch`; CLI does not parse JSON patch objects.
+  .option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:update_node")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/update_node", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      nodeId: opts.nodeId,
+      ...(opts.x ? { x: Number(opts.x) } : {}),
+      ...(opts.y ? { y: Number(opts.y) } : {}),
+      ...(opts.width ? { width: Number(opts.width) } : {}),
+      ...(opts.height ? { height: Number(opts.height) } : {}),
+      ...(opts.text ? { text: opts.text } : {}),
+      ...(opts.fill ? { fill: opts.fill } : {}),
+      ...(opts.fillType ? { fillType: opts.fillType } : {}),
+      ...(opts.fillEnd ? { fillEnd: opts.fillEnd } : {}),
+      ...(opts.gradientAngle ? { gradientAngle: Number(opts.gradientAngle) } : {}),
+      ...(opts.stroke ? { stroke: opts.stroke } : {}),
+      ...(opts.borderWidth ? { borderWidth: Number(opts.borderWidth) } : {}),
+      ...(opts.cornerRadius ? { cornerRadius: Number(opts.cornerRadius) } : {}),
+      ...(opts.fontSize ? { fontSize: Number(opts.fontSize) } : {}),
+      ...(opts.fontFamily ? { fontFamily: opts.fontFamily } : {}),
+      ...(opts.name ? { name: opts.name } : {}),
+      ...(opts.shapeType ? { shapeType: opts.shapeType } : {}),
+      ...(opts.opacity ? { opacity: Number(opts.opacity) } : {}),
+      ...(opts.rotation ? { rotation: Number(opts.rotation) } : {}),
+      ...(opts.hidden ? { hidden: true } : {}),
+      ...(opts.locked ? { locked: true } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("delete-nodes").requiredOption("--expected-revision <n>").requiredOption("--ids <ids>", "comma-separated node ids")
+  .option("--confirm-destructive").option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:delete_nodes")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/delete_nodes", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      ids: String(opts.ids).split(",").map((value: string) => value.trim()).filter(Boolean),
+      ...(opts.confirmDestructive ? { confirmDestructive: true } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("update-frame").requiredOption("--expected-revision <n>").requiredOption("--frame-id <id>")
+  .option("--width <n>").option("--height <n>").option("--name <name>").option("--background-color <color>")
+  .option("--locked").option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:update_frame")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/update_frame", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      frameId: opts.frameId,
+      ...(opts.width ? { width: Number(opts.width) } : {}),
+      ...(opts.height ? { height: Number(opts.height) } : {}),
+      ...(opts.name ? { name: opts.name } : {}),
+      ...(opts.backgroundColor ? { backgroundColor: opts.backgroundColor } : {}),
+      ...(opts.locked ? { locked: true } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("align-nodes").requiredOption("--expected-revision <n>").requiredOption("--node-ids <ids>", "comma-separated node ids")
+  .requiredOption("--mode <mode>", "left|centerX|right|top|middle|bottom")
+  .option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:align_nodes")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/align_nodes", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      nodeIds: String(opts.nodeIds).split(",").map((value: string) => value.trim()).filter(Boolean),
+      mode: opts.mode,
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("distribute-nodes").requiredOption("--expected-revision <n>").requiredOption("--node-ids <ids>", "comma-separated node ids")
+  .requiredOption("--axis <axis>", "h|v")
+  .option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:distribute_nodes")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/distribute_nodes", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      nodeIds: String(opts.nodeIds).split(",").map((value: string) => value.trim()).filter(Boolean),
+      axis: opts.axis,
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("reorder-nodes").requiredOption("--expected-revision <n>").requiredOption("--node-ids <ids>", "comma-separated node ids")
+  .requiredOption("--action <action>", "front|back|forward|backward")
+  .option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:reorder_nodes")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/reorder_nodes", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      nodeIds: String(opts.nodeIds).split(",").map((value: string) => value.trim()).filter(Boolean),
+      action: opts.action,
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("group-nodes").requiredOption("--expected-revision <n>").requiredOption("--node-ids <ids>", "comma-separated node ids")
+  .option("--id <id>").option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:group_nodes")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/group_nodes", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      nodeIds: String(opts.nodeIds).split(",").map((value: string) => value.trim()).filter(Boolean),
+      ...(opts.id ? { id: opts.id } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("ungroup-nodes").requiredOption("--expected-revision <n>").requiredOption("--node-ids <ids>", "comma-separated group ids")
+  .option("--confirm-destructive").option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:ungroup_nodes")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/ungroup_nodes", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      nodeIds: String(opts.nodeIds).split(",").map((value: string) => value.trim()).filter(Boolean),
+      ...(opts.confirmDestructive ? { confirmDestructive: true } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("duplicate-nodes").requiredOption("--expected-revision <n>").requiredOption("--node-ids <ids>", "comma-separated node ids")
+  .option("--offset-x <n>").option("--offset-y <n>").option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:duplicate_nodes")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/duplicate_nodes", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      nodeIds: String(opts.nodeIds).split(",").map((value: string) => value.trim()).filter(Boolean),
+      ...(opts.offsetX ? { offsetX: Number(opts.offsetX) } : {}),
+      ...(opts.offsetY ? { offsetY: Number(opts.offsetY) } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("flip-nodes").requiredOption("--expected-revision <n>").requiredOption("--node-ids <ids>", "comma-separated node ids")
+  .option("--flip-x").option("--flip-y").option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:flip_nodes")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/flip_nodes", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      nodeIds: String(opts.nodeIds).split(",").map((value: string) => value.trim()).filter(Boolean),
+      ...(opts.flipX ? { flipX: true } : {}),
+      ...(opts.flipY ? { flipY: true } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("boolean-op").requiredOption("--expected-revision <n>").requiredOption("--node-ids <ids>", "comma-separated node ids")
+  .requiredOption("--mode <mode>", "union|subtract|intersect|exclude")
+  .option("--confirm-destructive").option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:boolean_op")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/boolean_op", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      nodeIds: String(opts.nodeIds).split(",").map((value: string) => value.trim()).filter(Boolean),
+      mode: opts.mode,
+      ...(opts.confirmDestructive ? { confirmDestructive: true } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
+canvas.command("set-canvas-background").requiredOption("--expected-revision <n>")
+  .option("--color <color>").option("--fill <color>").option("--background-color <color>")
+  .option("--fill-type <type>").option("--fill-end <color>").option("--gradient-angle <n>").option("--opacity <n>")
+  .option("--canvas-id <id>").option("--snapshot-id <id>")
+  .option("--idempotency-key <key>", "stable retry key", "canvas:set_canvas_background")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/set_canvas_background", {
+      ...(opts.canvasId ? { canvasId: opts.canvasId } : {}),
+      ...(opts.snapshotId ? { snapshotId: opts.snapshotId } : {}),
+      expectedRevision: Number(opts.expectedRevision),
+      ...(opts.color ? { color: opts.color } : {}),
+      ...(opts.fill ? { fill: opts.fill } : {}),
+      ...(opts.backgroundColor ? { backgroundColor: opts.backgroundColor } : {}),
+      ...(opts.fillType ? { fillType: opts.fillType } : {}),
+      ...(opts.fillEnd ? { fillEnd: opts.fillEnd } : {}),
+      ...(opts.gradientAngle ? { gradientAngle: Number(opts.gradientAngle) } : {}),
+      ...(opts.opacity ? { opacity: Number(opts.opacity) } : {}),
+      idempotencyKey: opts.idempotencyKey,
+    }), null, 2));
+  });
 
 const context = program.command("context").description("authoritative Harness v2 context");
 context.command("check").option("--refresh").action(async (opts) => printTurnContext(!!opts.refresh));

@@ -1,5 +1,7 @@
 import type { schema } from "../db/index.js";
 import type { MessageMention } from "../channels/channelAllMention.js";
+import { presentCanvasContext, presentCanvasContexts } from "../canvas/canvasChatPresentation.js";
+import type { FrozenCanvasSelectionSnapshot } from "../canvas/canvasTypes.js";
 
 export interface ReactionAggregate {
   emoji: string;
@@ -23,7 +25,9 @@ export function serializeMessage(
   mentions: MessageMention[],
   attachments: (typeof schema.attachments.$inferSelect)[] = [],
   reactions: ReactionAggregate[] = [],
+  canvasContexts: FrozenCanvasSelectionSnapshot[] = [],
 ) {
+  const presented = presentCanvasContexts(canvasContexts);
   return {
     id: message.id,
     seq: message.seq,
@@ -56,6 +60,8 @@ export function serializeMessage(
     })),
     mentions: mentions.map((mention) => ({ type: mention.type, id: mention.id, name: mention.name })),
     reactions,
+    canvasContext: presentCanvasContext(canvasContexts[0]),
+    canvasContexts: presented,
     createdAt: message.createdAt,
     updatedAt: message.updatedAt,
   };

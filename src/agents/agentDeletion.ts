@@ -1,4 +1,5 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { revokeCanvasAccessGrantsForAgentInTransaction } from "../canvas/canvasAccessGrant.js";
 import { dbForSpace, purgeDeletedSpaceContent, schema } from "../db/index.js";
 import { deleteObject } from "../files/localObjectStorage.js";
 import { clearAgentPrivateMemoryInTransaction } from "../memory/memoryLifecycle.js";
@@ -27,6 +28,7 @@ export async function deleteAgentAndPrivateConversations(spaceId: string, agentI
       .map((row) => row.channelId);
     const dmChannelIds = [...new Set([...humanDmChannelIds, ...agentDmChannelIds])];
     clearAgentPrivateMemoryInTransaction(tx, agentId, "agent_deleted");
+    revokeCanvasAccessGrantsForAgentInTransaction(tx, agentId);
     tx.delete(schema.channelAgentMembers).where(eq(schema.channelAgentMembers.agentId, agentId)).run();
     tx.update(schema.agents).set({
       deletedAt: new Date(),

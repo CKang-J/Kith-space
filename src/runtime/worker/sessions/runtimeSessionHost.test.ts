@@ -400,7 +400,7 @@ test("session host truncates preview count once while preserving reserved critic
   await host.closeAll();
 });
 
-test("session host coalesces each preview kind without delaying adapter emit and flushes before critical events", async () => {
+test("session host coalesces preview deltas without dropping text and flushes before critical events", async () => {
   const forwarded: RuntimeEventEnvelope[] = [];
   const runtime: RuntimeV2 = {
     name: "claude",
@@ -443,7 +443,11 @@ test("session host coalesces each preview kind without delaying adapter emit and
   const host = new RuntimeSessionHost(() => runtime, { previewCoalesceMs: 250 });
   await host.runTurn(request(record("session-coalesced"), "coalesced", (event) => { forwarded.push(event); }));
   assert.deepEqual(forwarded.map((event) => event.kind), ["text_preview", "thinking_summary", "activity", "tool_started", "turn_completed"]);
-  assert.deepEqual(forwarded.slice(0, 3).map((event) => event.payload.text), ["text_preview-9", "thinking_summary-9", "activity-9"]);
+  assert.deepEqual(forwarded.slice(0, 3).map((event) => event.payload.text), [
+    Array.from({ length: 10 }, (_, index) => `text_preview-${index}`).join(""),
+    Array.from({ length: 10 }, (_, index) => `thinking_summary-${index}`).join(""),
+    "activity-9",
+  ]);
   assert.deepEqual(forwarded.map((event) => event.ordinal), [0, 1, 2, 3, 4]);
   assert.equal(forwarded.at(-1)?.eventId, "terminal");
   await host.closeAll();
@@ -480,7 +484,7 @@ test("session host emits at most one preview per kind in each short window and f
   });
   const successHost = new RuntimeSessionHost(() => makeRuntime(false), { previewCoalesceMs: 20 });
   await successHost.runTurn(request(record("session-windows"), "windows", (event) => { forwarded.push(event); }));
-  assert.deepEqual(forwarded.map((event) => event.payload.text), ["window-one-b", "window-two-a"]);
+  assert.deepEqual(forwarded.map((event) => event.payload.text), ["window-one-awindow-one-b", "window-two-a"]);
   assert.deepEqual(forwarded.map((event) => event.ordinal), [0, 1]);
   await successHost.closeAll();
 

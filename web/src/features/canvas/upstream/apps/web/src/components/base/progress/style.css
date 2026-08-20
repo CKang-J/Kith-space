@@ -1,0 +1,77 @@
+.rcb-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.rcb-progress__track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
+.rcb-progress__fill {
+  position: relative;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ink);
+  transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 对齐 antd Progress status=active 的扫光 */
+.rcb-progress__fill--active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.38) 40%,
+    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 255, 255, 0.38) 60%,
+    transparent 100%
+  );
+  background-size: 60% 100%;
+  background-repeat: no-repeat;
+  animation: rcb-progress-shine 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes rcb-progress-shine {
+  0% {
+    background-position: -80% 0;
+    opacity: 0.35;
+  }
+  40% {
+    opacity: 1;
+  }
+  100% {
+    background-position: 180% 0;
+    opacity: 0.35;
+  }
+}
+
+.rcb-progress__info {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rcb-progress__fill {
+    transition: none;
+  }
+  .rcb-progress__fill--active::after {
+    animation: none;
+    opacity: 0;
+  }
+}

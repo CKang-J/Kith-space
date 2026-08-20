@@ -3,12 +3,30 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, Check, FolderKanban } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SpaceFolderForm } from "./spaces/SpaceFolderForm.tsx";
 import { useStore, type SpaceInfo } from "./store.tsx";
 
 type SwitcherFlow = "relocate" | null;
 
-export function SpaceSwitcher({ targetPathForSlug }: { targetPathForSlug?: (slug: string) => string } = {}) {
+interface SpaceSwitcherProps {
+  targetPathForSlug?: (slug: string) => string;
+  onMenuOpenChange?(open: boolean): void;
+}
+
+export function SpaceSwitcher({
+  targetPathForSlug,
+  onMenuOpenChange,
+}: SpaceSwitcherProps = {}) {
   const { t } = useTranslation();
   const nav = useNavigate();
   const { spaces, slug, spaceAvatar, relocateSpace, refreshSpaces } = useStore();
@@ -27,17 +45,21 @@ export function SpaceSwitcher({ targetPathForSlug }: { targetPathForSlug?: (slug
   };
   const close = () => {
     setOpen(false);
+    onMenuOpenChange?.(false);
     resetFlow();
   };
-  const toggleOpen = async () => {
-    if (open) return close();
-    setOpen(true);
-    setError("");
-    try {
-      await refreshSpaces();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("space.operationFailed"));
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      close();
+      return;
     }
+    if (open) return;
+    setOpen(true);
+    onMenuOpenChange?.(true);
+    setError("");
+    void refreshSpaces().catch((cause: unknown) => {
+      setError(cause instanceof Error ? cause.message : t("space.operationFailed"));
+    });
   };
   const go = (space: SpaceInfo) => {
     if (space.status !== "ready") {
@@ -74,55 +96,75 @@ export function SpaceSwitcher({ targetPathForSlug }: { targetPathForSlug?: (slug
   };
 
   return (
-    <div className="sw-wrap" data-menu-open={open || undefined}>
-      <button
-        className="brand"
-        aria-label={t("space.switchAriaLabel")}
-        aria-expanded={open}
-        onClick={toggleOpen}
+    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+      <DropdownMenuTrigger asChild>
+        <button className="brand" aria-label={t("space.switchAriaLabel")}>
+          {spaceAvatar ? <img className="brand-img" src={spaceAvatar} alt="" /> : (cur?.name?.[0]?.toUpperCase() || "K")}
+          <span className="dot" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        side="right"
+        sideOffset={10}
+        className="w-80 min-w-80 max-w-[calc(100vw-1rem)] p-1.5"
       >
-        {spaceAvatar ? <img className="brand-img" src={spaceAvatar} alt="" /> : (cur?.name?.[0]?.toUpperCase() || "K")}
-        <span className="dot" />
-      </button>
-      {open && (<>
-        <div className="sw-backdrop" onClick={close} />
-        <div className="sw-pop">
-          <div className="sw-title">{t("space.menuTitle")}</div>
+        <DropdownMenuLabel>{t("space.menuTitle")}</DropdownMenuLabel>
+        <DropdownMenuGroup>
           {spaces.map((space) => {
             const unavailable = space.status !== "ready";
+            const active = space.slug === slug;
             return (
-              <button
+              <DropdownMenuItem
                 key={space.id}
-                className={`sw-item${space.slug === slug ? " on" : ""}${unavailable ? " unavailable" : ""}`}
-                onClick={() => go(space)}
+                className={cn(
+                  "h-auto min-h-10 gap-2.5 px-2 py-1.5",
+                  active && "bg-accent font-medium text-accent-foreground focus:bg-accent",
+                  unavailable && "text-muted-foreground",
+                )}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  go(space);
+                }}
                 title={space.rootPath}
               >
-                <span className="sw-ava">{(space.name?.[0] || "?").toUpperCase()}</span>
-                <span className="sw-item-copy">
-                  <span className="sw-name">{space.name}</span>
-                  {unavailable && <span className="sw-state">{space.rootError || t(space.status === "missing" ? "space.rootMissing" : "space.rootError")}</span>}
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-sm text-foreground">
+                  {(space.name?.[0] || "?").toUpperCase()}
                 </span>
-                {unavailable ? <AlertTriangle size={14} className="sw-warning" /> : space.slug === slug && <Check size={14} className="sw-check" />}
-              </button>
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate">{space.name}</span>
+                  {unavailable ? (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {space.rootError || t(space.status === "missing" ? "space.rootMissing" : "space.rootError")}
+                    </span>
+                  ) : null}
+                </span>
+                {unavailable ? <AlertTriangle className="ml-auto text-destructive" aria-hidden="true" /> : null}
+                {active && !unavailable ? <Check className="ml-auto" aria-hidden="true" /> : null}
+              </DropdownMenuItem>
             );
           })}
+        </DropdownMenuGroup>
 
-          {flow === "relocate" && <SpaceFolderForm intent="relocate" busy={busy} error={error} onCancel={resetFlow} onSubmit={submit} />}
-          {flow === null && (
-            <>
-              {error && <div className="sw-form-error" role="alert">{error}</div>}
-              <button
-                type="button"
-                className="sw-manage"
-                disabled={!home || home.status !== "ready"}
-                onClick={manageSpaces}
-              >
-                <FolderKanban size={14} /> {t("space.manageSpaces")}
-              </button>
-            </>
-          )}
-        </div>
-      </>)}
-    </div>
+        {flow === "relocate" ? (
+          <SpaceFolderForm intent="relocate" busy={busy} error={error} onCancel={resetFlow} onSubmit={submit} />
+        ) : (
+          <>
+            {error ? <div className="sw-form-error" role="alert">{error}</div> : null}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={!home || home.status !== "ready"}
+              onSelect={(event) => {
+                event.preventDefault();
+                manageSpaces();
+              }}
+            >
+              <FolderKanban data-icon="inline-start" aria-hidden="true" />
+              {t("space.manageSpaces")}
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

@@ -1,0 +1,81 @@
+{
+  "capturedAt": "2026-08-15",
+  "captureMethod": "Codex in-app Chromium Browser DOM, screenshot-grounded pointer interaction, CDP Network/Runtime/Log events, reload comparison, and checked-in viewport screenshot",
+  "upstreamBaseline": {
+    "source": "docs/research/recombyn-stage1-upstream-live-baseline.md",
+    "commit": "abd81983716b41c7fc6e2f591c23e6d9bb9c4643",
+    "note": "The upstream AgentDock baseline is historical comparison evidence only; it is not part of the corrected Kith composition."
+  },
+  "kith": {
+    "url": "http://127.0.0.1:5273/?__canvas_stage1=1",
+    "baseCommit": "8ec8a48791e8c9fdf252fdb3039fd873ae89686a",
+    "viewport": {
+      "interaction": { "width": 1512, "height": 1000, "deviceScaleFactor": 1 },
+      "finalScreenshot": { "width": 1107, "height": 807, "devicePixelRatio": 2 }
+    },
+    "composition": {
+      "agentDockPresent": false,
+      "agentDockTogglePresent": false,
+      "agentDockPlaceholderPresent": false,
+      "nativeChromePreserved": true,
+      "imageGeneratorButton": { "accessibleName": "图像生成器 (A)", "enabled": true },
+      "videoGeneratorButton": { "accessibleName": "视频生成器 (Shift+A)", "enabled": true }
+    },
+    "interaction": {
+      "createdImageGeneratorNodeId": "IlserxnUQs",
+      "createdVideoGeneratorNodeId": "TbYN1B-kSK",
+      "imageGeneratorSelected": true,
+      "imageGeneratorDrag": {
+        "from": { "x": 511.5, "y": 232 },
+        "to": { "x": 633, "y": 292 },
+        "delta": { "x": 121.5, "y": 60 }
+      },
+      "imagePromptChangedTo": "阶段一验收：海边灯塔",
+      "canvasReferenceAttachment": {
+        "attached": true,
+        "sourceScheme": "data:image/svg+xml",
+        "remoteUpload": false
+      },
+      "imageUnavailableMessage": "Kith Media Job 尚未实现，Stage 1 暂不支持生成",
+      "videoPromptChangedTo": "阶段一验收：镜头缓慢推近灯塔",
+      "videoUnavailableMessage": "Kith Media Job 尚未实现，Stage 1 暂不支持生成",
+      "nodeIdsBeforeReload": 19,
+      "nodeIdsAfterReload": 19,
+      "nodeIdSetsEqualAfterReload": true,
+      "imageNodeRestored": true,
+      "videoNodeRestored": true
+    },
+    "network": {
+      "capture": "CDP Network.requestWillBeSent from before node creation through image reference attachment, image/video unavailable submits, and reload",
+      "forbiddenPatterns": [
+        "/api/v1/chat/image/jobs",
+        "/api/v1/chat/video/jobs",
+        "/api/v1/chat/audio/jobs",
+        "/api/v1/uploads"
+      ],
+      "requestsDuringGeneratorChecks": [
+        "data:image/svg+xml"
+      ],
+      "matchingRequests": []
+    },
+    "console": {
+      "runtimeExceptions": [],
+      "logErrors": [],
+      "knownWarnings": [
+        "React Router future warning: v7_startTransition",
+        "React Router future warning: v7_relativeSplatPath"
+      ]
+    },
+    "screenshot": {
+      "path": "docs/research/recombyn-stage1-native-baseline/kith-native-corrected-final.jpg",
+      "sha256": "769840067e1ba8d881958e51715d48fa6a08e369a580e3f0c5675871a7d84a93",
+      "width": 1107,
+      "height": 807,
+      "visibleFacts": "No right-side Dock or blank reservation; native chrome remains; image and video generator buttons and media plates are visible."
+    }
+  },
+  "limitations": [
+    "Current real-browser coverage is macOS Chromium; Windows and Linux remain CI or future smoke coverage.",
+    "The screenshot is visual evidence for the corrected composition; interaction and network assertions are recorded in the structured fields above."
+  ]
+}

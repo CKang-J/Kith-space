@@ -7,7 +7,13 @@ web/dist/
 *.log
 logs/
 .DS_Store
-.claude/settings.local.json
+
+# AI tool local config — machine/personal, never published
+.claude/
+.cursor/
+.gemini/
+.mcp.json
+opencode.jsonc
 
 # personal / machine-local dev context — never published
 CLAUDE.local.md
@@ -19,6 +25,7 @@ _vendor/
 
 # screenshots / browser-verification captures — local only
 .shots/
+artifacts/
 
 # SQLite runtime data — workspace/registry databases are user data, never in the repo.
 # (drizzle/ migrations ARE tracked — they are the schema source of truth.)

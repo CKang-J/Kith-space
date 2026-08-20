@@ -11,6 +11,32 @@ import { deleteObject } from "../../files/localObjectStorage.js";
 import { TEMPORARY_ATTACHMENT_TTL_MS, cleanupTemporaryAttachments } from "../../files/temporaryAttachmentCleanup.js";
 import { assertAgentSurfaceAccessInTransaction } from "../../channels/agentSurfaceAccess.js";
 import {
+  CanvasAlignNodesCommandSchema,
+  CanvasAssetImportCommandSchema,
+  CanvasBooleanOpCommandSchema,
+  CanvasContextBundleCreateCommandSchema,
+  CanvasCreateFrameCommandSchema,
+  CanvasCreateImageCommandSchema,
+  CanvasCreateShapeCommandSchema,
+  CanvasCreateTextCommandSchema,
+  CanvasDeleteNodesCommandSchema,
+  CanvasDistributeNodesCommandSchema,
+  CanvasDuplicateNodesCommandSchema,
+  CanvasFlipNodesCommandSchema,
+  CanvasGroupNodesCommandSchema,
+  CanvasReorderNodesCommandSchema,
+  CanvasElementsApplyCommandSchema,
+  CanvasElementsGetCommandSchema,
+  CanvasExportCommandSchema,
+  CanvasSceneSummaryCommandSchema,
+  CanvasSkillGetCommandSchema,
+  CanvasSkillListCommandSchema,
+  CanvasSetCanvasBackgroundCommandSchema,
+  CanvasSnapshotGetCommandSchema,
+  CanvasUngroupNodesCommandSchema,
+  CanvasUpdateFrameCommandSchema,
+  CanvasUpdateNodeCommandSchema,
+  CanvasVideoGenerateCommandSchema,
   ChecklistClearCommandSchema,
   ChecklistUpsertCommandSchema,
   ContextCheckCommandSchema,
@@ -176,6 +202,7 @@ export async function handleTurnGateway(
         body: body.body,
         attachmentIds: body.attachmentIds,
         sourceRefs: body.sourceRefs,
+        outputRefs: body.outputRefs,
         disclosureGrantId: body.disclosureGrantId,
         allowedDisclosureGrantIds: claims.disclosureGrantIds,
         attachmentActivationId: claims.activationId,
@@ -183,6 +210,162 @@ export async function handleTurnGateway(
         writePrecondition: capabilityGateway(claims.spaceId).writePrecondition(claims, "turn.reply"),
       });
       sendJson(res, 200, { ok: true, messageId: message.id, seq: message.seq, channelId: message.channelId });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/snapshot_get" && method === "POST") {
+      const body = CanvasSnapshotGetCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.read");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasSnapshotGet(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/elements_get" && method === "POST") {
+      const body = CanvasElementsGetCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.read");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasElementsGet(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/elements_apply" && method === "POST") {
+      const body = CanvasElementsApplyCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasElementsApply(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/scene_summary" && method === "POST") {
+      const body = CanvasSceneSummaryCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.read");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasSceneSummary(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/skill_list" && method === "POST") {
+      const body = CanvasSkillListCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.read");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasSkillList(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/skill_get" && method === "POST") {
+      const body = CanvasSkillGetCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.read");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasSkillGet(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/create_frame" && method === "POST") {
+      const body = CanvasCreateFrameCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasCreateFrame(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/create_text" && method === "POST") {
+      const body = CanvasCreateTextCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasCreateText(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/create_shape" && method === "POST") {
+      const body = CanvasCreateShapeCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasCreateShape(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/create_image" && method === "POST") {
+      const body = CanvasCreateImageCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasCreateImage(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/update_node" && method === "POST") {
+      const body = CanvasUpdateNodeCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasUpdateNode(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/delete_nodes" && method === "POST") {
+      const body = CanvasDeleteNodesCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasDeleteNodes(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/update_frame" && method === "POST") {
+      const body = CanvasUpdateFrameCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasUpdateFrame(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/align_nodes" && method === "POST") {
+      const body = CanvasAlignNodesCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasAlignNodes(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/distribute_nodes" && method === "POST") {
+      const body = CanvasDistributeNodesCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasDistributeNodes(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/reorder_nodes" && method === "POST") {
+      const body = CanvasReorderNodesCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasReorderNodes(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/group_nodes" && method === "POST") {
+      const body = CanvasGroupNodesCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasGroupNodes(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/ungroup_nodes" && method === "POST") {
+      const body = CanvasUngroupNodesCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasUngroupNodes(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/duplicate_nodes" && method === "POST") {
+      const body = CanvasDuplicateNodesCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasDuplicateNodes(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/flip_nodes" && method === "POST") {
+      const body = CanvasFlipNodesCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasFlipNodes(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/boolean_op" && method === "POST") {
+      const body = CanvasBooleanOpCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasBooleanOp(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/set_canvas_background" && method === "POST") {
+      const body = CanvasSetCanvasBackgroundCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasSetCanvasBackground(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/video_generate" && method === "POST") {
+      const body = CanvasVideoGenerateCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasVideoGenerate(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/export" && method === "POST") {
+      const body = CanvasExportCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.export");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasExport(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/context_bundle_create" && method === "POST") {
+      const body = CanvasContextBundleCreateCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.read");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasContextBundleCreate(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/asset_import" && method === "POST") {
+      const body = CanvasAssetImportCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.import");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasAssetImport(claims, body));
       return true;
     }
     if (url.pathname === "/agent-gateway/turn/progress" && method === "POST") {

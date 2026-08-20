@@ -7,6 +7,8 @@
 import { eq } from "drizzle-orm";
 import { integrationDatabase } from "./helpers/workspace.ts";
 import { pruneAgentActivityLog, logActivity, ACTIVITY_LOG_CAP } from "../src/server/ws.ts";
+import { loadAgentActivitySources } from "../src/server/agentActivityPresentation.ts";
+import { listConversationActivityHistory } from "../src/server/conversationActivityHistory.ts";
 
 const ts = Date.now();
 const fixture = integrationDatabase("activity-log-prune");
@@ -62,6 +64,101 @@ async function main() {
   );
   await pruneAgentActivityLog(spaceId, agentId); // prune agent A again
   check("other agent's 20 rows untouched by A's prune", (await countFor(otherAgentId)) === 20);
+
+  console.log("\n[4] activity history keeps and presents its channel / DM source");
+  const [channel] = await db.insert(schema.channels).values({
+    spaceId,
+    name: "research",
+    type: "channel",
+  }).returning();
+  const [dm] = await db.insert(schema.channels).values({
+    spaceId,
+    name: `dm:${agentId}`,
+    type: "dm",
+  }).returning();
+  const [threadParent] = await db.insert(schema.messages).values({
+    spaceId,
+    channelId: channel!.id,
+    seq: 1,
+    senderType: "human",
+    senderId: fixture.human.id,
+    senderName: fixture.human.name,
+    content: "Compare local-first runtime designs",
+  }).returning();
+  const [thread] = await db.insert(schema.channels).values({
+    spaceId,
+    name: `thread:${threadParent!.id}`,
+    type: "thread",
+    parentMessageId: threadParent!.id,
+  }).returning();
+  await db.insert(schema.channelAgentMembers).values({ channelId: dm!.id, agentId });
+  await db.insert(schema.humanChannelStates).values({ channelId: dm!.id, dmAgentId: agentId });
+  await logActivity(spaceId, agentId, {
+    kind: "turn_started",
+    activity: "working",
+    channelId: channel!.id,
+    conversationId: channel!.id,
+    streamId: "turn-channel",
+  });
+  await logActivity(spaceId, agentId, {
+    kind: "turn_started",
+    activity: "working",
+    channelId: dm!.id,
+    conversationId: dm!.id,
+    streamId: "turn-dm",
+  });
+  await logActivity(spaceId, agentId, {
+    kind: "turn_started",
+    activity: "working",
+    channelId: thread!.id,
+    conversationId: channel!.id,
+    streamId: "turn-thread",
+  });
+  const scopedRows = await db.select().from(schema.agentActivityLog)
+    .where(eq(schema.agentActivityLog.agentId, agentId));
+  const sourceByRow = await loadAgentActivitySources(db, scopedRows);
+  const channelRow = scopedRows.find((row) => row.streamId === "turn-channel")!;
+  const dmRow = scopedRows.find((row) => row.streamId === "turn-dm")!;
+  const threadRow = scopedRows.find((row) => row.streamId === "turn-thread")!;
+  check("channel scope persists its stable ids", channelRow.channelId === channel!.id && channelRow.conversationId === channel!.id);
+  check("channel source resolves a human-readable channel name", sourceByRow.get(channelRow.id)?.kind === "channel" && sourceByRow.get(channelRow.id)?.name === "research");
+  check("DM source resolves the Human peer without exposing the internal dm key", sourceByRow.get(dmRow.id)?.kind === "dm" && sourceByRow.get(dmRow.id)?.name === fixture.human.name);
+  check(
+    "thread source resolves its parent channel and deep-link metadata",
+    sourceByRow.get(threadRow.id)?.kind === "thread"
+      && sourceByRow.get(threadRow.id)?.name === "research"
+      && sourceByRow.get(threadRow.id)?.parentMessageId === threadParent!.id
+      && sourceByRow.get(threadRow.id)?.parentPreview === "Compare local-first runtime designs",
+  );
+
+  console.log("\n[5] conversation history restores every agent in one base conversation");
+  await logActivity(spaceId, otherAgentId, {
+    kind: "text_preview",
+    text: "another agent",
+    channelId: thread!.id,
+    conversationId: channel!.id,
+    streamId: "turn-other",
+  });
+  const conversationHistory = await listConversationActivityHistory(
+    db,
+    spaceId,
+    channel!.id,
+    300,
+  );
+  check(
+    "base conversation includes direct and thread activity from both agents",
+    conversationHistory.some((row) => row.streamId === "turn-channel")
+      && conversationHistory.some((row) => row.streamId === "turn-thread")
+      && conversationHistory.some((row) => row.streamId === "turn-other"),
+  );
+  check(
+    "conversation history resolves persisted agent names",
+    conversationHistory.find((row) => row.streamId === "turn-other")?.name === `agent2_${ts}`,
+  );
+  check(
+    "unrelated DM activity is excluded",
+    !conversationHistory.some((row) => row.streamId === "turn-dm"),
+  );
 }
 
 main()

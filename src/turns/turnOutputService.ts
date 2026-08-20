@@ -25,6 +25,10 @@ import { disclosureActionDigest } from "../memory/disclosureGrantService.js";
 import { EpisodicMemoryService } from "../memory/episodicMemoryService.js";
 import { UserGlobalMemoryService } from "../memory/userGlobalMemoryService.js";
 import { enqueueMemoryAdvisorJobInTransaction } from "../memory/memoryAdvisorService.js";
+import {
+  bindCanvasMutationOutputArtifactsInTransaction,
+  type CanvasMutationOutputRef,
+} from "../canvas/canvasOutputArtifacts.js";
 
 export interface TurnOutputEventSink {
   publish(spaceId: string, event: unknown): Promise<void>;
@@ -70,6 +74,7 @@ export class TurnOutputService {
     attachmentIds?: string[];
     attachmentActivationId?: string;
     sourceRefs?: DisclosureSourceRef[];
+    outputRefs?: CanvasMutationOutputRef[];
     disclosureGrantId?: string;
     allowedDisclosureGrantIds?: string[];
     handledInputIds: string[];
@@ -78,10 +83,18 @@ export class TurnOutputService {
     const handledInputIds = [...new Set(input.handledInputIds)];
     const attachmentIds = [...new Set(input.attachmentIds ?? [])];
     const sourceRefs = input.sourceRefs ?? [];
+    const outputRefs = input.outputRefs ?? [];
     const body = input.body.trim();
     if (!body && !attachmentIds.length) throw new HarnessError("output_missing", "reply body or attachments are required");
     if (!handledInputIds.length) throw new HarnessError("required_input_unresolved", "reply must identify handled inputs");
-    const hash = requestHash({ body, attachmentIds, handledInputIds, sourceRefs, disclosureGrantId: input.disclosureGrantId ?? null });
+    const hash = requestHash({
+      body,
+      attachmentIds,
+      handledInputIds,
+      sourceRefs,
+      outputRefs,
+      disclosureGrantId: input.disclosureGrantId ?? null,
+    });
     const existing = this.existingReply(input.turnId, input.idempotencyKey, hash);
     if (existing) {
       await this.runPostCommit("recover legacy mentions", () => this.events.recoverLegacyMentions?.(this.spaceId) ?? Promise.resolve());
@@ -373,6 +386,12 @@ export class TurnOutputService {
         outputKind: "reply",
         messageId: created.id,
       }).returning().get();
+      bindCanvasMutationOutputArtifactsInTransaction(tx, {
+        spaceId: this.spaceId,
+        turnId: turn.id,
+        outputId: output.id,
+        outputRefs,
+      });
       tx.insert(schema.turnOutputInputs).values(deliveries.map((delivery) => ({
         outputId: output.id,
         deliveryItemId: delivery.id,
@@ -385,6 +404,7 @@ export class TurnOutputService {
           outputId: output.id,
           messageId: created.id,
           sourceRefs,
+          outputRefs,
           disclosureGrantId: input.disclosureGrantId ?? null,
         },
         updatedAt: now,

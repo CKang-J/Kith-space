@@ -1,6 +1,20 @@
 import { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Star, Bookmark, Lock, MessageCircle } from "lucide-react";
+import {
+  BrainCircuit,
+  FolderCog,
+  MonitorCog,
+  Palette,
+  Image,
+  SlidersHorizontal,
+  Sparkles,
+  Star,
+  UserRound,
+  Bookmark,
+  Lock,
+  MessageCircle,
+  type LucideIcon,
+} from "lucide-react";
 import { useStore } from "../store.tsx";
 import { fmtDateTime } from "../format";
 import { ChatSidebar } from "./ChatSidebar.tsx";
@@ -15,6 +29,8 @@ import { MemoryAdvisorSettings } from "./advisor-provider/MemoryAdvisorSettings.
 import { ModelProviderSettings } from "./model-settings/ModelProviderSettings.tsx";
 import { RuntimeSettings } from "./model-settings/RuntimeSettings.tsx";
 import { AppearanceSettings } from "./appearance-settings/AppearanceSettings.tsx";
+import { GenerationProviderSettings } from "./generation-settings/GenerationProviderSettings.tsx";
+import { cn } from "@/lib/utils";
 
 interface TasksProps {
   channelIdOverride?: string | null;
@@ -244,11 +260,24 @@ export function Search() {
 const SETTINGS: [string, string][] = [
   ["human", "misc.settingsNavHuman"],
   ["appearance", "misc.settingsNavAppearance"],
+  ["generation", "misc.settingsNavGeneration"],
   ["space", "misc.settingsNavSpace"],
   ["models", "misc.settingsNavModels"],
   ["runtimes", "misc.settingsNavRuntimes"],
   ["advisor", "misc.settingsNavAdvisor"],
 ];
+
+const SETTINGS_ICONS: Record<string, LucideIcon> = {
+  human: UserRound,
+  appearance: Palette,
+  generation: Image,
+  space: FolderCog,
+  models: Sparkles,
+  runtimes: MonitorCog,
+  advisor: BrainCircuit,
+  desktop: SlidersHorizontal,
+};
+
 export function Settings({ sectionOverride }: { sectionOverride?: string } = {}) {
   const section = sectionOverride;
   const { spaceId, api } = useStore();
@@ -262,6 +291,11 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
     ? [...SETTINGS, ["desktop", "misc.settingsNavDesktop"]]
     : SETTINGS;
   const curLabel = t(settingsEntries.find((s) => s[0] === cur)?.[1] || cur);
+  const pageColumnClass = cur === "human" || cur === "space"
+    ? "max-w-[520px]"
+    : cur === "appearance" || cur === "generation"
+      ? "max-w-3xl"
+      : "";
   useEffect(() => {
     if (requestedSection === cur) return;
     nav(workspaceLocationForModule(
@@ -272,30 +306,66 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
   }, [cur, location.pathname, location.search, nav, requestedSection]);
   return (
     <>
-      <aside className="sidebar">
-        <div className="sb-scroll">
-        <div className="sb-title">{t("nav.settings")}</div>
-        <div className="settings-nav">{settingsEntries.map(([k, labelKey]) => <button key={k} className={"item" + (cur === k ? " active" : "")} onClick={() => nav(workspaceLocationForModule(location.pathname, location.search, { moduleId: "settings", settings: k }), { replace: true })}>{t(labelKey)}</button>)}</div>
+      <aside className="flex min-h-0 w-full flex-none flex-col border-b border-border/50 bg-muted/45 sm:w-[232px] sm:border-r sm:border-b-0">
+        <div className="min-h-0 flex-1 overflow-auto px-[14px] pt-[14px] pb-[10px] sm:px-4 sm:py-5">
+          <div data-slot="settings-sidebar-title" className="mx-3 mb-4 text-base font-normal tracking-[-0.3px] text-foreground sm:hidden">
+            {t("nav.settings")}
+          </div>
+          <nav className="flex gap-1.5 overflow-x-auto sm:flex-col" aria-label={t("nav.settings")}>
+            {settingsEntries.map(([key, labelKey]) => {
+              const Icon = SETTINGS_ICONS[key] ?? SlidersHorizontal;
+              return (
+                <button
+                  key={key}
+                  className={cn(
+                    "flex min-h-[46px] w-full shrink-0 appearance-none items-center gap-2.5 rounded-[14px] border-0 bg-transparent px-[13px] text-left text-[15px] font-normal text-foreground/80 shadow-none transition-colors hover:bg-card/70 hover:text-foreground focus-visible:bg-card/70 focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:shrink",
+                    cur === key && "bg-card text-foreground ring-1 ring-border/50",
+                  )}
+                  type="button"
+                  aria-current={cur === key ? "page" : undefined}
+                  onClick={() => nav(workspaceLocationForModule(
+                    location.pathname,
+                    location.search,
+                    { moduleId: "settings", settings: key },
+                  ), { replace: true })}
+                >
+                  <Icon className="size-[18px] shrink-0 stroke-[1.8]" aria-hidden="true" />
+                  <span>{t(labelKey)}</span>
+                </button>
+              );
+            })}
+          </nav>
         </div>
       </aside>
-      <main className="content-col">
-        <div className="head"><h1>{t("misc.settingsTitle", { section: curLabel })}</h1></div>
-        <div className="scroll">
-          {cur === "human"
-            ? <HumanSettings api={api} />
-            : cur === "appearance"
-              ? <AppearanceSettings api={api} />
-              : cur === "space"
-                ? <SpaceSettings api={api} spaceId={spaceId} />
-              : cur === "models"
-                ? <ModelProviderSettings api={api} />
-              : cur === "runtimes"
-                ? <RuntimeSettings api={api} />
-              : cur === "advisor"
-                ? <MemoryAdvisorSettings api={api} />
-              : cur === "desktop" && desktopBridge
-                ? <DesktopSettings bridge={desktopBridge} />
-                : <div className="empty">{t("misc.settingsWip", { section: cur })}</div>}
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-card">
+        <header className="flex min-h-[52px] items-center border-b border-border/40 px-5 pr-14 sm:px-10">
+          <div data-slot="settings-page-header" className={cn("mx-auto w-full", pageColumnClass)}>
+            <h1 className="m-0 text-base font-normal tracking-[-0.45px] text-foreground">{curLabel}</h1>
+          </div>
+        </header>
+        <div
+          data-slot="settings-content"
+          className="min-h-0 flex-1 overflow-auto bg-card px-5 pb-7 sm:px-10 sm:pb-14"
+        >
+          <div data-slot="settings-page-content" className={cn("mx-auto w-full", pageColumnClass)}>
+            {cur === "human"
+              ? <HumanSettings api={api} />
+              : cur === "appearance"
+                ? <AppearanceSettings api={api} />
+                : cur === "generation"
+                  ? <GenerationProviderSettings api={api} />
+                : cur === "space"
+                  ? <SpaceSettings api={api} spaceId={spaceId} />
+                : cur === "models"
+                  ? <ModelProviderSettings api={api} />
+                : cur === "runtimes"
+                  ? <RuntimeSettings api={api} />
+                : cur === "advisor"
+                  ? <MemoryAdvisorSettings api={api} />
+                : cur === "desktop" && desktopBridge
+                  ? <DesktopSettings bridge={desktopBridge} />
+                  : <div className="empty">{t("misc.settingsWip", { section: cur })}</div>}
+          </div>
         </div>
       </main>
     </>

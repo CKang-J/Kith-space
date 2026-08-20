@@ -1,0 +1,13 @@
+{
+  "id": "canvas-watermark",
+  "name": "Watermark",
+  "version": "1.0.0",
+  "author": "recombyn",
+  "enabled": true,
+  "mounts": ["toolbar"],
+  "permissions": ["insert_nodes"],
+  "locales": {
+    "zh-CN": { "name": "水印", "tip": "插入半透明水印文字" },
+    "en": { "name": "Watermark", "tip": "Insert a translucent watermark" }
+  }
+}

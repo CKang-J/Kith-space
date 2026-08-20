@@ -1,6 +1,6 @@
 // Local-only attachment object storage, rooted inside each registered Space.
 import { randomUUID } from "node:crypto";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, readFileSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type { Readable } from "node:stream";
@@ -45,6 +45,11 @@ export async function saveObject(spaceId: string, filename: string, stream: Read
 
 export async function readObject(spaceId: string, key: string): Promise<Buffer> {
   return readFile(localObjectPath(spaceId, key));
+}
+
+/** Sync read for Gateway/Canvas paths that already run inside a SQLite transaction. */
+export function readObjectSync(spaceId: string, key: string): Buffer {
+  return readFileSync(localObjectPath(spaceId, key));
 }
 
 export async function deleteObject(spaceId: string, key: string): Promise<void> {

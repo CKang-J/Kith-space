@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
@@ -7,15 +7,6 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 try { process.loadEnvFile?.(path.join(root, ".env")); } catch { /* optional developer environment */ }
 
 const viteCli = path.join(root, "web", "node_modules", "vite", "bin", "vite.js");
-const webDirectory = path.join(root, "web");
-const webBuild = spawnSync(process.execPath, [viteCli, "build"], {
-  cwd: webDirectory,
-  env: process.env,
-  stdio: "inherit",
-  windowsHide: false,
-});
-if (webBuild.error) throw webBuild.error;
-if (webBuild.status !== 0) process.exit(webBuild.status ?? 1);
 
 const child = spawn(electronPath, [root, ...process.argv.slice(2)], {
   cwd: root,

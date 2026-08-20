@@ -1,6 +1,6 @@
 export const CHAT_PANE_ABSOLUTE_MIN = 568;
 export const CHAT_PANE_MIN_RATIO = 0.25;
-export const WORKSPACE_PANE_GAP = 10;
+export const WORKSPACE_PANE_GAP = 0;
 export const AGGREGATE_PANE_WIDTH = 300;
 
 export interface AggregatePaneConstraints {

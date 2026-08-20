@@ -16,6 +16,14 @@ import { requireWritableChannel } from "../channels/channelLifecycle.js";
 import { nextSeq, type SpaceTransaction } from "../counters.js";
 import type { MessageContextSnapshot } from "../context/contracts.js";
 import { dbForSpace, schema } from "../db/index.js";
+import { freezeCanvasSelectionInTransaction, attachCanvasSelectionToMessage, CANVAS_SELECTION_SNAPSHOT_REF_TYPE, loadCanvasContextsForMessages } from "../canvas/canvasSelectionSnapshot.js";
+import type { CanvasSelectionInput } from "../canvas/canvasTypes.js";
+import {
+  resolveExecutionBindingInTransaction,
+  MessageExecutionBindingError,
+  type MessageExecutionBindingInput,
+  type StructuredAgentMention,
+} from "./messageExecutionBinding.js";
 import { getHumanIdentity } from "../human/humanIdentity.js";
 import { humanChannelState } from "../human/humanChannelState.js";
 import { createLogger } from "../log.js";
@@ -70,6 +78,10 @@ export type PostMessageCommand =
       context: MessageContext;
       content: string;
       attachmentIds?: string[];
+      canvasSelection?: CanvasSelectionInput;
+      canvasSelections?: CanvasSelectionInput[];
+      executionBinding?: MessageExecutionBindingInput | null;
+      structuredMentions?: StructuredAgentMention[];
     }
   | {
       kind: "agent-introduction";
@@ -202,6 +214,8 @@ export interface DurableDeliveryJournalPort {
     targetSurface?: { kind: "channel" | "private" | "dm" | "thread"; id: string };
     forceObserveAgentIds?: string[];
     forceObserveReason?: string;
+    forceRequiredAgentIds?: string[];
+    forceRequiredReason?: string;
   }): number;
   persistChannelMessageInTransaction?(tx: SpaceTransaction, spaceId: string, message: typeof schema.messages.$inferSelect): number;
   schedulePending?(spaceId: string): Promise<void>;
@@ -246,6 +260,10 @@ type WriteInput = {
   messageType: "chat" | "action";
   actionMetadata?: unknown;
   introductionProof?: { agentId: string; token: string };
+  canvasSelection?: CanvasSelectionInput;
+  canvasSelections?: CanvasSelectionInput[];
+  executionBinding?: MessageExecutionBindingInput | null;
+  structuredMentions?: StructuredAgentMention[];
   task?: { messageId?: string; writePrecondition?: (tx: SpaceTransaction, channelId: string) => void; executionMode: "autopilot" | "plan-first"; parentTaskId?: string | null };
 };
 
@@ -265,6 +283,30 @@ interface DurableWriteResult {
 }
 
 const log = createLogger("messages:posting");
+
+function canvasMessageContextSnapshot(
+  spaceId: string,
+  snapshots: Array<{ snapshotId: string; documentRevision: number }>,
+  capturedAt: number,
+): MessageContextSnapshot {
+  return {
+    spaceId,
+    module: "canvas",
+    routeId: "canvas.document",
+    openObjectRefs: snapshots.map((snapshot) => ({
+      type: CANVAS_SELECTION_SNAPSHOT_REF_TYPE,
+      id: snapshot.snapshotId,
+      revision: snapshot.documentRevision,
+    })),
+    focusedRef: snapshots[0] ? { type: CANVAS_SELECTION_SNAPSHOT_REF_TYPE, id: snapshots[0].snapshotId } : undefined,
+    capturedAt,
+  };
+}
+
+function requestedCanvasSelections(input: { canvasSelections?: CanvasSelectionInput[]; canvasSelection?: CanvasSelectionInput }): CanvasSelectionInput[] {
+  if (input.canvasSelections?.length) return input.canvasSelections;
+  return input.canvasSelection ? [input.canvasSelection] : [];
+}
 
 function ensureDispatchChainInTransaction(
   tx: SpaceTransaction,
@@ -590,6 +632,7 @@ export function createConversationModules(dependencies: ConversationModuleDepend
           member.type === "agent"
           && member.id !== context.sender.id
           && (!directMentionThread || mentionedAgents.has(member.id))
+          && !requestedCanvasSelections(write).length
           && !deliveryJournal?.usesV2(context.spaceId, member.id));
     if (!candidateAgents.length) return [];
     const dispatchSettings = await resolveAgentDispatchSettings(
@@ -898,7 +941,26 @@ export function createConversationModules(dependencies: ConversationModuleDepend
       senderId: context.sender.id,
       taskMessageId,
     });
-    const messageValues = {
+    const canvasSelections = requestedCanvasSelections(input);
+    if (input.executionBinding && !canvasSelections.length) {
+      throw new MessageExecutionBindingError(
+        "INVALID_ARGUMENT",
+        "executionBinding requires canvasSelection or canvasSelections",
+      );
+    }
+    if (canvasSelections.length) {
+      if (input.task || input.messageType !== "chat") {
+        throw new MessageExecutionBindingError("INVALID_ARGUMENT", "Canvas context can only be attached to an ordinary Chat message");
+      }
+      if (context.sender.type !== "human" || !context.sender.id) {
+        throw new MessageExecutionBindingError("INVALID_ARGUMENT", "only the Human can attach Canvas context");
+      }
+      const canvasIds = new Set(canvasSelections.map((selection) => selection.canvasId));
+      if (canvasIds.size !== 1) {
+        throw new MessageExecutionBindingError("INVALID_ARGUMENT", "Canvas context MVP is limited to one Canvas write domain");
+      }
+    }
+    let messageValues = {
       id: messageId,
       seq,
       spaceId: context.spaceId,
@@ -952,11 +1014,13 @@ export function createConversationModules(dependencies: ConversationModuleDepend
         )
       : ordinaryMentions;
     const directlyMentionedAgents = mentions.filter((mention) => mention.type === "agent");
+    const hasCanvasSelectionBinding = canvasSelections.length > 0;
     const shouldCreateDirectThread = !input.task
       && input.messageType === "chat"
       && (context.sender.type === "human" || context.sender.type === "agent")
       && (prepared.channel.type === "channel" || prepared.channel.type === "private")
       && !prepared.channelAllScope
+      && !hasCanvasSelectionBinding
       && directlyMentionedAgents.length > 0;
     const directThreadId = shouldCreateDirectThread ? randomUUID() : null;
     if (directThreadId) messageValues.threadId = directThreadId;
@@ -1005,6 +1069,31 @@ export function createConversationModules(dependencies: ConversationModuleDepend
               name: `thread-${messageId.slice(0, 8)}`,
             }).returning().get()
           : null;
+        let executionBinding: ReturnType<typeof resolveExecutionBindingInTransaction> | null = null;
+        let frozenCanvases: Array<ReturnType<typeof freezeCanvasSelectionInTransaction>> = [];
+        if (canvasSelections.length && context.sender.id) {
+          executionBinding = resolveExecutionBindingInTransaction(tx, {
+            spaceId: context.spaceId,
+            channel: prepared.channel,
+            requested: input.executionBinding ?? null,
+            structuredMentions: input.structuredMentions,
+            content: input.content,
+          });
+          frozenCanvases = canvasSelections.map((selection) => freezeCanvasSelectionInTransaction(
+            tx,
+            context.spaceId,
+            selection,
+            context.sender.id!,
+          ));
+          messageValues = {
+            ...messageValues,
+            contextSnapshot: canvasMessageContextSnapshot(
+              context.spaceId,
+              frozenCanvases,
+              Date.now(),
+            ),
+          };
+        }
         const message = input.task
           ? createTaskRecordInTransaction(tx, {
               spaceId: context.spaceId,
@@ -1014,6 +1103,17 @@ export function createConversationModules(dependencies: ConversationModuleDepend
               assigneeId: prepared.taskAssigneeId,
             })
           : tx.insert(schema.messages).values(messageValues).returning().get();
+        for (const frozenCanvas of frozenCanvases) {
+          attachCanvasSelectionToMessage(tx, frozenCanvas.snapshotId, message.id);
+        }
+        if (executionBinding) {
+          tx.insert(schema.messageExecutionBindings).values({
+            messageId: message.id,
+            executorAgentId: executionBinding.executorAgentId,
+            mode: executionBinding.mode,
+            bindingSource: executionBinding.bindingSource,
+          }).run();
+        }
         ensureDispatchChainInTransaction(tx, {
           spaceId: context.spaceId,
           dispatch,
@@ -1131,6 +1231,22 @@ export function createConversationModules(dependencies: ConversationModuleDepend
               forceObserveAgentIds: observers,
               forceObserveReason: "direct_mention_not_targeted",
             });
+          }
+        } else if (executionBinding) {
+          const written = deliveryJournal?.persistMessageInTransaction(tx, {
+            spaceId: context.spaceId,
+            channel: prepared.channel,
+            message,
+            senderType: context.sender.type,
+            senderId: context.sender.id,
+            candidateAgentIds: [executionBinding.executorAgentId],
+            mentions,
+            forceRequiredAgentIds: [executionBinding.executorAgentId],
+            forceRequiredReason: "execution_binding",
+            targetSurface: { kind: prepared.channel.type as "channel" | "private" | "dm" | "thread", id: prepared.channel.id },
+          }) ?? 0;
+          if (written < 1) {
+            throw new MessageExecutionBindingError("EXECUTOR_INELIGIBLE", "executor required delivery could not be persisted");
           }
         } else {
           deliveryJournal?.persistMessageInTransaction(tx, {
@@ -1268,7 +1384,13 @@ export function createConversationModules(dependencies: ConversationModuleDepend
       type: "message",
       channelId: context.channelId,
       message: {
-        ...serializeMessage(durable.message, durable.mentions, durable.attachments),
+        ...serializeMessage(
+          durable.message,
+          durable.mentions,
+          durable.attachments,
+          [],
+          loadCanvasContextsForMessages(db, context.spaceId, [durable.message.id]).get(durable.message.id) ?? [],
+        ),
         channelType: prepared.channel.type,
       },
     }));
@@ -1380,6 +1502,10 @@ export function createConversationModules(dependencies: ConversationModuleDepend
         attachmentIds: "attachmentIds" in command ? command.attachmentIds : undefined,
         messageType: "chat",
         introductionProof: command.kind === "agent-introduction" ? command.proof : undefined,
+        canvasSelection: command.kind === "chat" ? command.canvasSelection : undefined,
+        canvasSelections: command.kind === "chat" ? command.canvasSelections : undefined,
+        executionBinding: command.kind === "chat" ? command.executionBinding : undefined,
+        structuredMentions: command.kind === "chat" ? command.structuredMentions : undefined,
       });
     },
   };

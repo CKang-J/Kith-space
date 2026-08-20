@@ -52,6 +52,7 @@ import {
 import { SessionModule } from "../sessions/sessionModule.js";
 import { DeliveryJournal } from "../deliveries/deliveryJournal.js";
 import { normalizeMessageContextSnapshot } from "../context/messageContextSnapshot.js";
+import { parseOptionalExecutionBinding, parseOptionalStructuredMentions, parseRequiredCanvasSelections } from "../messages/postMessageCommandParse.js";
 import { harnessTurnScheduler, scheduleV2Turns, turnCapabilityService } from "./harnessComposition.js";
 import { inboxSummary, type InboxSummary } from "../deliveries/inboxSummary.js";
 import { configureTaskGatewayPort } from "../capabilities/taskGatewayPort.js";
@@ -341,6 +342,10 @@ export interface CreateMessageOptions {
   actionMetadata?: unknown;
   contextSnapshot?: unknown;
   memoryPolicy?: "eligible" | "exclude";
+  canvasSelection?: unknown;
+  canvasSelections?: unknown;
+  executionBinding?: unknown;
+  structuredMentions?: unknown;
 }
 
 const conversationEventSink: ConversationEventSink = { publish };
@@ -589,6 +594,9 @@ export async function createMessage(options: CreateMessageOptions) {
       context,
       content: options.content,
       attachmentIds: options.attachmentIds,
+      canvasSelections: parseRequiredCanvasSelections(options.canvasSelections ?? options.canvasSelection),
+      executionBinding: parseOptionalExecutionBinding(options.executionBinding),
+      structuredMentions: parseOptionalStructuredMentions(options.structuredMentions),
     };
   }
   return modules.messagePosting.post(command);

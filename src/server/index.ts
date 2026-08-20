@@ -22,8 +22,14 @@ import { browserOriginAllowed, requestPeerIsLoopback } from "./browserSessionHtt
 import { resolveCorePort } from "./localEndpoint.js";
 import { ChannelLifecycleError } from "../channels/channelLifecycle.js";
 import { handleTurnGateway } from "./turn-gateway/routes.js";
+import {
+  attachViteDevProxyUpgrade,
+  proxyHttpToViteDev,
+  resolveViteDevProxyOrigin,
+} from "./viteDevProxy.js";
 import { startMemoryAdvisorScheduler } from "../memory/memoryAdvisorService.js";
 import { startDurableTurnRecovery } from "./harnessComposition.js";
+import { startGenerationSupervisor } from "../canvas/generation/generationSupervisor.js";
 import { AdvisorProviderSettingsService } from "../advisor-provider/advisorProviderSettingsService.js";
 import { handleRuntimeCredentialRedemption } from "./runtimeCredentialRedemption.js";
 import { RuntimeProfileService } from "../model-control/runtimeProfileService.js";
@@ -61,6 +67,7 @@ const WEBDIST = path.resolve(
     ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist"),
 );
 const log = createLogger("server");
+const viteDevOrigin = resolveViteDevProxyOrigin();
 initRealtime();
 
 const CTYPE: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2", ".map": "application/json" };
@@ -123,6 +130,7 @@ const server = http.createServer(async (req, res) => {
     if (await handleApi(req, res, url, method)) return;
     const isRead = method === "GET" || method === "HEAD";
     if (isRead && !canServeProductShell(req)) return sendErr(res, 403, "browser access is disabled");
+    if (viteDevOrigin && isRead && await proxyHttpToViteDev(req, res, viteDevOrigin)) return;
     // Static frontend (web/dist) + SPA fallback (client-side routing /s/:space/*)
     if (method === "GET" && await serveStatic(res, url.pathname)) return;
     sendErr(res, 404, "not found");
@@ -135,12 +143,14 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+if (viteDevOrigin) attachViteDevProxyUpgrade(server, viteDevOrigin);
 attachSocketIO(server); // human-side realtime (socket.io, /socket.io/)
 attachWs(server);       // daemon control plane (raw ws, /daemon/connect)
 startReminderScheduler(); // reminder scheduler: fires at due time, wakes the author
 new AdvisorProviderSettingsService().recover();
 runtimeConfigurationEpochGate.open(new RuntimeProfileService().runtimeConfigurationEpoch());
 const stopMemoryAdvisorScheduler = startMemoryAdvisorScheduler();
+const stopGenerationSupervisor = startGenerationSupervisor();
 let stopDurableTurnRecovery = () => {};
 
 server.on("error", (error: NodeJS.ErrnoException) => {
@@ -171,6 +181,7 @@ const shutdown = () => {
   if (shutdownStarted) return;
   shutdownStarted = true;
   stopMemoryAdvisorScheduler();
+  stopGenerationSupervisor();
   stopDurableTurnRecovery();
   const forcedExit = setTimeout(() => process.exit(0), 3_000);
   forcedExit.unref();

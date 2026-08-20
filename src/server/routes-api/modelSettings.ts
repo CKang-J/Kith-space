@@ -18,6 +18,8 @@ import { preflightEgress } from "../../advisor-provider/egressPreflight.js";
 import { AdvisorProviderError } from "../../advisor-provider/contracts.js";
 import { RuntimeSetupError, RuntimeSetupService } from "../../local-runtime/runtimeSetupService.js";
 import { SETUP_RUNTIME_IDS, type SetupRuntimeId } from "../../local-runtime/runtimeSetupCatalog.js";
+import { availableSpaceDbs } from "../../db/index.js";
+import { scheduleV2Turns } from "../harnessComposition.js";
 
 const SECRET_SHAPED_KEY = /(api[_-]?key|token|secret|password|credential|authorization|cookie)/i;
 
@@ -390,6 +392,9 @@ export async function handleModelSettings(ctx: HumanCtx): Promise<boolean> {
     }
     if (runtimeMatch && ctx.method === "PATCH") {
       sendJson(ctx.res, 200, await runtimes.update(runtimeMatch[1] as any, RuntimeSchema.parse(await readJson(ctx.req))));
+      for (const { space } of availableSpaceDbs()) {
+        void scheduleV2Turns(space.id).catch(() => {});
+      }
       return true;
     }
     return false;

@@ -1,0 +1,40 @@
+# Recombyn 阶段二进度
+
+- 目标：把 Stage1 原样移植画布接入 Kith 壳、Canvas Core、SQLite 与本地资产，形成无 Agent 的 durable 本地产品。
+- 顺序 1：单 Canvas durable vertical（Core owner、schema migration、Human API、恢复、一个真实原生操作）。
+- 顺序 2：正式产品壳、多 Canvas、原生编辑能力、本地资产与窄导入导出。
+- 顺序 3：revision/冲突/Undo/Redo/realtime recovery、崩溃窗口、Smoke、终审与文档交付。
+- 最大风险：DB 与资产文件的双写崩溃窗口，以及 renderer 投影误成为 canonical owner。
+- 2026-08-15 任务 0：HEAD `78e96ca`、分支 `codex/recombyn-canvas-mvp`、工作区 clean；Stage1 audit/mapping SHA 均匹配。
+- 2026-08-15 基线：typecheck 通过；Canvas 契约 7/7；unit 仅复现既有 `personalAgentOsContract.test.ts:95` 失败。
+- 2026-08-15 任务 1 红→绿：`canvasCore.test.ts` 先因缺失 Core 模块 0/1 失败；实现 schema v12、operation/revision/幂等/冲突/Undo/Redo 后 3/3 通过。
+- 2026-08-15 durable DB 检查：Canvas + schema history + workspace DB 定向测试 6/6，typecheck 通过；Human API/realtime 路由已接入，renderer 投影接线待完成。
+- 2026-08-15 任务 1 大检查点：真实 Recombyn 节点变化转 Core 节点 patch；Core API、sequence 与 socket/reconnect snapshot 恢复完成，定向 4/4；开始第 1 次数据/恢复审查。
+- 2026-08-15 第 1 次审查完成：5 个 P1、3 个 P2；已修复独立 global/domain revisions、metadata 可逆历史、固定幂等结果、资源 generation 隔离、冻结 CAS 队列、Core 派生结构影响集、单飞 sequence catch-up 与 Core draft hydrate。
+- 2026-08-15 任务 1 修复后：Canvas/manifest/projection 定向 6/6，typecheck 通过；资产崩溃窗口按任务 2/3继续处理。
+- 2026-08-15 任务 2 壳层红→绿：Canvas resource URL/tab 测试 25/27→27/27；正式侧栏、Library、多 Canvas tab 与 title 已接入。
+- 2026-08-15 资产安全红→绿：缺失 store 0/1 红；SVG/Scene JSON 攻击与 DB/file crash recovery 实现后 2/2 绿；原生媒体经精确 alias 进入 Space-local asset bridge，upstream 未改。
+- 2026-08-15 构建：typecheck、web:build 通过；Vite 报告 Canvas 主 chunk 过大，已改 lazy seam，需复跑确认，不把告警计为通过。
+- 2026-08-15 任务 2/3 大检查点：正式 resource tab 浏览器 Smoke 创建两个 Canvas、同资源 tab 保持 2→2 去重；原生 Text 操作写入 Core rev/sequence 2，renderer 重载后 DB 节点与 mutation 均保留。
+- 2026-08-15 安全补证：`blob:` Scene JSON 故意红灯 2/3→修复后 3/3；跨 Space Core 隔离与两 Canvas 重启恢复加入自动验证，综合定向 37/37。
+- 2026-08-15 构建复验：lazy 后 shell 主 chunk 740.13 kB、Canvas 独立 chunk 3,501.49 kB；`web:build` 通过但 >500 kB 性能告警仍存在，不计为性能通过。
+- 2026-08-15 终审修复检查点：Canvas-local AssetPanel/resolver、transport error、CAS 队列取消、realtime 重试、资产目录持久化、创建幂等及原生菜单 Core Undo/Redo 已补齐；相关定向 75/75、typecheck 通过，等待独立终审复核与全量验收。
+- 2026-08-15 终审红→绿：同客户端 realtime publish 曾取消后一条本地 edit（测试仅调用 revision 0、缺 revision 1）；projection 保留待提交 intent 并区分冲突恢复后，7/7 通过。数组索引 remove 的 inverse 曾丢失移位项，改为恢复父数组后通过。
+- 2026-08-15 边界收口：Core 严格拒绝未知 operation/畸形 patch/title；正式宿主复用 Kith i18n，消除 `/zh/s/...` 重定向；底部 Upload 也改为 upload-first；完整 PNG magic-byte 探测回归均已红→绿。
+- 2026-08-15 真实浏览器资产 Smoke：从原生 Upload 选择 278757-byte PNG，canonical scene 与轻量 ledger 均无 `data:`，resolver 200/image/png，AssetPanel 可见；占用删除 409，未占用资产删除 200。恶意悬空节点与不存在 asset 导入均在 Library 显示错误，Canvas/asset 计数前后保持 3/1，无 orphan。
+- 2026-08-15 前轮独立审查：当时约定的只读审查已结束；随后主任务追加五项阻断修复，因此该记录不再代表阶段2最终结论。
+- 2026-08-15 最终自动验收：typecheck 通过；Canvas/迁移/壳层定向 88/88；integration 退出码 0；web:build、canvas:stage1:build、desktop:bundle 均通过。完整 unit 为 1045 tests、1032 pass、12 skip、1 fail，唯一失败仍是既有 `personalAgentOsContract.test.ts:95`。
+- 2026-08-15 不可变性：audit SHA `2af57bde12acebe032716c63af473e8db9e0bc9d935dce39d2b1a670edbe7383`、mapping SHA `dc57bca5e5449f4930f7d892cf47adde0bd195d0cccd0d808bf1a0af4cd93397`；`git diff --exit-code 78e96ca -- web/src/features/canvas/upstream` 与 `git diff --check 78e96ca` 均通过。未提交、未推送。
+- 2026-08-15 用户视觉修复红→绿：embedded island 被 scoped `100vh` 撑到 807px、超出 755px workspace 并裁掉底部工具栏；宿主 `!h-full` 后两者同为 755px，工具栏 bottom 783≤viewport 807。Stage2 materializer 移除无用 Home/账户按钮，保留标题/导出/分享；契约 5/7→7/7、typecheck/web:build 通过，1159×807 浏览器点击“文字”后 active 样式生效且 console 无 warn/error。
+- 2026-08-15 用户交互修复红→绿：嵌入态底栏曾相对 Kith split 工作区偏移，现由宿主按 Canvas root 实测边界定位，1159×807 浏览器复验 root/toolbar 中心差 `-0.004px`。对照原 Recombyn 后确认选中闪退来自 Core ACK/realtime 的额外 `importDocument` 清空 renderer selection；宿主只恢复新 canonical 文档中仍存在的节点 ID，定向测试 0/2→2/2、合并定向 10/10、typecheck/web:build 通过。
+- 2026-08-15 Frame/缩放回归红→绿：Frame 的 `selectedFrameIds/activeFrameId` 曾被 Core snapshot 二次 `importDocument` 清空，改用 Recombyn 原生 remote reducer 后，浏览器点击 Frame 并等待 1.5s realtime 回投仍保持控制框。floating portal 改为 Canvas root 下、React editor mount 外的兄弟节点；缩放 Dropdown 改为单一 click owner，真实点击显示 9 项列表并可从 100% 切到 50%。定向 10/12→12/12，加入缩放 seam 后 13/13；typecheck/web:build 通过。
+- 2026-08-15 资产栏/主题回归红→绿：底栏改为观察可见 `[data-canvas-stage]`，资产栏展开后舞台中心/工具栏中心均为 `920.95px`（差 `-0.004px`），关闭时均为 `800.95px`。正式 Canvas 监听 Kith `<html>.dark` 并同步 Recombyn root `data-theme`；真实深色态下 `--canvas=#1e1e1e`、stage `rgb(30,30,30)`。新增主题与布局契约 0/2→2/2，合并定向 13/13、typecheck/web:build 通过。
+- 2026-08-15 阶段2收尾：资产路径逐段拒绝 symlink/junction/reparse-style link并以 realpath/普通文件复核；Core 强制 asset ready 且 Canvas-local。细粒度 CAS 改由服务端派生 element/Frame/parent/root/order read/write set，允许不相交并发，旧无资源集 ledger 保守冲突；连续 pointer 变化 39 次合并为 1 次 Core apply。
+- 2026-08-15 Import/lifecycle 收尾：正式 envelope/schema 校验、全 ID 重映射、隐藏 root/Page 剥离、资产未重绑定即拒绝，并由 Core create+patch 单事务提交；标题走 metadata.rename 同步 editor/tab/URL/SQLite，正式 JSON export 等待 Core 下载结果，Canvas 软删除关闭 tab 并跨重启保持。
+- 2026-08-15 收尾浏览器 Smoke：原 Canvas 改名 `Stage2 Closing Smoke` 并重载恢复；正式 JSON export 成功，导入创建独立 Canvas 后删除并退出 tab/URL，重载 Library 不再出现；再建并重载 `Stage2 Second Canvas`，切回首 Canvas 内容/标题未串。最后一次 Core 启动后的浏览器 console 无新增错误。
+- 2026-08-15 前轮 Standards + Spec 审查：发现文件检查与 IO 间的 TOCTOU、节点 `frameId` 影响/导入重写、delete lifecycle/realtime、pointer 停顿落库、Strict Mode 测试证据与架构文档超前表述；该结论已被随后五项针对性收尾任务取代，不作为最终通过声明。
+- 2026-08-15 前轮审查后红→绿：新增 node `frameId`→索引 Frame stale 并发测试先失败，修正直接 membership 影响后 Core/资产定向 27/27；partial final + intact staging 恢复按 hash 重建。该轮 typecheck、integration、web:build、canvas:stage1:build、desktop:bundle 通过；unit 1074 tests、1061 pass、12 skip、1 fail，唯一失败仍是既有 `personalAgentOsContract.test.ts:95`。Canvas chunk 3,440.88 kB 与构建告警仍不计性能通过。
+- 2026-08-15 最后五项收尾红→绿：资产删除从 path unlink 改为 DB tombstone、未知 staging/不可达文件保留；每次 resolver 读取从同一 fd 校验 size + SHA-256。renderer 生成稳定 Frame ID patch，Core 允许不同 Frame 同 base 并对相交/增删重排/membership/order 冲突。Import 对 document/ROOT/node/Frame 采用 allowlist 并递归剥离 Core 保留状态。`/changes` 对同 Space 软删除返回 tombstone，离线客户端重连后关闭 tab、清 URL、回到 Library，跨 Space 404 与普通网络错误不误判。新增失败测试分别观察到 4 个资产失败、2 个 Frame 失败、1 个 Import 失败以及 tombstone helper/route 缺失，修复后合并定向 109/109、Canvas recovery integration 与完整 integration 退出码0、typecheck/web:build/canvas:stage1:build通过。完整 unit 1082 tests、1069 pass、12 skip、1 fail，唯一失败仍是既有 `personalAgentOsContract.test.ts:95`。该轮结束时未提交、未推送；后续最终复核已通过。
+- 2026-08-15 窄浏览器 Smoke：在当前代码的独立 7778 Core 创建临时 Canvas，CDP 断网后由另一 Core 实例软删除且不广播，恢复网络后 `/changes` 200 tombstone；URL 从带 `canvas=` 收敛为 `?module=canvas`，临时 resource tab 移除并回到 Canvas Library，console 0 warn/error。旧 7777 进程仍运行修改前代码，首次 smoke 返回404且保留 tab，证明普通失败没有被误判为删除；未重启用户进程。
+- 2026-08-15 最后三项针对性红→绿：跨资源的 structure 操作曾因只比较 read/write set 而从同一 base 同时提交，现所有服务端派生 structure 影响共享冲突域，同时保留不同 Frame 纯属性并发；Import allowlist 曾只递归清理 `attrs`，现对每个保留值递归剥离保留状态；partial final 曾在验证 staging 前阻断恢复，现分别验证两份内容并以新 O_EXCL sibling 恢复、保留旧 partial/staging，双损坏继续 fail closed。Canvas/Workspace 定向 113/113、typecheck、完整 integration、web:build、固定点 diff/check 与 Stage1 SHA 均通过；unit 仍仅有既有 `personalAgentOsContract.test.ts:95` 失败。该轮后继续等待最终复核，后续已通过。
+- 2026-08-15 最终复审两项续修红→绿：approved document 字段曾在 Import 前置 root allowlist 漂移，现由单一集合派生并覆盖视觉字段 export→import，`backgroundImageSrc` 明确经过 URL/asset rebinding 门禁；recovery 的 DB 更新曾漏掉旧 state，独立 Worker/SQLite 连接可在 sibling 验证后把 row 改为 deleting 并被错误复活，现三个状态推进分支统一以 id/storageKey/state/deletedAt CAS，竞争失败只保留安全 orphan。Canvas/Workspace 定向 115/115、typecheck、完整 integration 与 web:build 通过；提交前完整 unit 为 1086 tests、1073 pass、12 skip、1 fail，唯一失败仍是阶段2固定点已有的 `personalAgentOsContract.test.ts:95` 侧栏源码格式正则。主任务最终复核已通过。

@@ -1,0 +1,96 @@
+/* Display — Noto Sans SC (hero Heiti) + Noto Serif / Cormorant (legacy editorial) */
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600;1,700&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600;700&display=swap');
+
+/* 阿里巴巴普惠体 3.0 — jsDelivr CDN (c1-alibaba-puhui-ti)
+ * Register both English + Chinese family names so CSS stacks and local installs match. */
+
+@font-face {
+  font-family: 'Alibaba PuHuiTi';
+  src: url('https://cdn.jsdelivr.net/npm/c1-alibaba-puhui-ti@1.0.0/fonts/AlibabaPuHuiTi-3-35-Thin.woff2')
+    format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '阿里巴巴普惠体';
+  src: url('https://cdn.jsdelivr.net/npm/c1-alibaba-puhui-ti@1.0.0/fonts/AlibabaPuHuiTi-3-35-Thin.woff2')
+    format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Alibaba PuHuiTi';
+  src: url('https://cdn.jsdelivr.net/npm/c1-alibaba-puhui-ti@1.0.0/fonts/AlibabaPuHuiTi-3-55-Regular.woff2')
+    format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '阿里巴巴普惠体';
+  src: url('https://cdn.jsdelivr.net/npm/c1-alibaba-puhui-ti@1.0.0/fonts/AlibabaPuHuiTi-3-55-Regular.woff2')
+    format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Map medium weights to Regular so UI font-medium still hits a face */
+@font-face {
+  font-family: 'Alibaba PuHuiTi';
+  src: url('https://cdn.jsdelivr.net/npm/c1-alibaba-puhui-ti@1.0.0/fonts/AlibabaPuHuiTi-3-55-Regular.woff2')
+    format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '阿里巴巴普惠体';
+  src: url('https://cdn.jsdelivr.net/npm/c1-alibaba-puhui-ti@1.0.0/fonts/AlibabaPuHuiTi-3-55-Regular.woff2')
+    format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Alibaba PuHuiTi';
+  src: url('https://cdn.jsdelivr.net/npm/c1-alibaba-puhui-ti@1.0.0/fonts/AlibabaPuHuiTi-3-85-Bold.woff2')
+    format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '阿里巴巴普惠体';
+  src: url('https://cdn.jsdelivr.net/npm/c1-alibaba-puhui-ti@1.0.0/fonts/AlibabaPuHuiTi-3-85-Bold.woff2')
+    format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Alibaba PuHuiTi';
+  src: url('https://cdn.jsdelivr.net/npm/c1-alibaba-puhui-ti@1.0.0/fonts/AlibabaPuHuiTi-3-85-Bold.woff2')
+    format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '阿里巴巴普惠体';
+  src: url('https://cdn.jsdelivr.net/npm/c1-alibaba-puhui-ti@1.0.0/fonts/AlibabaPuHuiTi-3-85-Bold.woff2')
+    format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}

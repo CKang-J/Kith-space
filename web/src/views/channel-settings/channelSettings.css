@@ -40,7 +40,7 @@
   border: 0;
   border-radius: 9px;
   background: transparent;
-  color: var(--muted);
+  color: var(--legacy-muted);
   cursor: pointer;
 }
 
@@ -134,7 +134,7 @@
 .channel-settings__radio-row small,
 .channel-settings-member__identity small {
   overflow: hidden;
-  color: var(--muted);
+  color: var(--legacy-muted);
   font-size: 11px;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -145,7 +145,7 @@
   margin: 0;
   border-radius: 9px;
   background: var(--surface-strong);
-  color: var(--muted);
+  color: var(--legacy-muted);
   padding: 9px 10px;
   font-size: 12px;
   line-height: 1.5;
@@ -169,7 +169,7 @@
   border: 0;
   border-bottom: 1px solid var(--hair);
   background: transparent;
-  color: var(--muted);
+  color: var(--legacy-muted);
   cursor: pointer;
   text-align: left;
 }
@@ -224,7 +224,7 @@
 .channel-settings__field input:disabled,
 .channel-settings__field textarea:disabled {
   background: var(--surface-strong);
-  color: var(--muted);
+  color: var(--legacy-muted);
   cursor: not-allowed;
 }
 
@@ -347,7 +347,7 @@
 
 .channel-settings__empty {
   padding: 14px 8px;
-  color: var(--muted);
+  color: var(--legacy-muted);
   font-size: 12px;
   text-align: center;
 }
@@ -361,7 +361,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  color: var(--muted);
+  color: var(--legacy-muted);
   font-size: 12px;
 }
 
@@ -378,7 +378,7 @@
 
 .channel-settings-members__picker h3 {
   margin: 2px 5px 5px;
-  color: var(--muted);
+  color: var(--legacy-muted);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -420,7 +420,7 @@
   flex: none;
   border-radius: 999px;
   background: var(--surface-strong);
-  color: var(--muted);
+  color: var(--legacy-muted);
   padding: 1px 6px;
   font-size: 10px;
   font-weight: 600;
@@ -435,7 +435,7 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--muted);
+  color: var(--legacy-muted);
   padding: 5px 7px;
   font-size: 11px;
   cursor: pointer;
@@ -490,7 +490,7 @@
 
 .channel-settings-member-dialog > p {
   margin: -8px 0 2px;
-  color: var(--muted);
+  color: var(--legacy-muted);
   font-size: 12px;
 }
 
@@ -541,7 +541,7 @@
 }
 
 .channel-settings-member-dialog__option small {
-  color: var(--muted);
+  color: var(--legacy-muted);
   font-size: 11px;
 }
 

@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { lazy, Suspense, useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
 import { StoreProvider, useStore } from "./store.tsx";
@@ -13,11 +13,20 @@ import { parseWorkspaceRoute, SPACE_ROUTE_PATTERN } from "./shell/workspaceRoute
 import { readySpace, routeSpaceAvailability } from "./spaces/spaceAvailability.ts";
 import { SpaceRecovery } from "./spaces/SpaceRecovery.tsx";
 import { AppearanceFontSync } from "./AppearanceFontSync.tsx";
+import { getDesktopBridge } from "./desktopBridge.ts";
 import "./i18n";
 import "./styles.css";
 import "./components/SlidingTabs.css";
 import "./views/chat-message/chatMessage.css";
 import "./scrollbar";
+
+const canvasStageOneBuild = import.meta.env.DEV || import.meta.env.MODE === "canvas-stage1";
+const CanvasStageOneHarness = canvasStageOneBuild
+  ? lazy(() => import("./features/canvas/host/NativeRecombynCanvasHarness.tsx").then((module) => ({ default: module.NativeRecombynCanvasHarness })))
+  : null;
+
+const desktopPlatform = getDesktopBridge()?.platform;
+if (desktopPlatform) document.documentElement.dataset.kithDesktopPlatform = desktopPlatform;
 
 // Home waits for the HttpOnly Cookie session bootstrap. Anonymous browser clients see the Access
 // Token gate; authenticated clients go straight to their Space without flashing the gate.
@@ -69,6 +78,11 @@ function WorkspaceRoute() {
 }
 
 function ProductRoot() {
+  const canvasHarnessRequested = canvasStageOneBuild
+    && new URLSearchParams(window.location.search).get("__canvas_stage1") === "1";
+  if (canvasHarnessRequested && CanvasStageOneHarness) {
+    return <Suspense fallback={<div aria-label="Loading Canvas harness" />}><CanvasStageOneHarness /></Suspense>;
+  }
   return (
     <StoreProvider>
       <AppearanceFontSync />

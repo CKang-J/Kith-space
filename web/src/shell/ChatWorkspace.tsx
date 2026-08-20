@@ -1,7 +1,6 @@
-import { useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { memo, useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { useLocation } from "react-router-dom";
 import { Chat } from "../views/Chat.tsx";
-import { ChatSidebar } from "../views/ChatSidebar.tsx";
 import { Saved } from "../views/misc.tsx";
 
 interface ChatWorkspaceProps {
@@ -13,6 +12,9 @@ interface ChatWorkspaceProps {
   onOpenTasks(conversationId: string): void;
   onOpenChannelSettings(channelId: string, trigger?: HTMLButtonElement): void;
   onNavigateConversation(target: string): void;
+  headerTrailingAction?: ReactNode;
+  aggregateDrawer?: ReactNode;
+  aggregateDrawerOpen?: boolean;
   settingsDrawer?: ReactNode;
   settingsDrawerOpen?: boolean;
   style?: CSSProperties;
@@ -28,6 +30,7 @@ interface ChatSurfaceProps {
   onOpenTasks(conversationId: string): void;
   onOpenChannelSettings(channelId: string, trigger?: HTMLButtonElement): void;
   onNavigateConversation(target: string): void;
+  headerTrailingAction?: ReactNode;
 }
 
 function ChatSurface({
@@ -40,6 +43,7 @@ function ChatSurface({
   onOpenTasks,
   onOpenChannelSettings,
   onNavigateConversation,
+  headerTrailingAction,
 }: ChatSurfaceProps) {
   if (/\/saved\/?$/.test(pathname)) return <Saved embedded />;
   return (
@@ -55,11 +59,12 @@ function ChatSurface({
       onOpenTasks={onOpenTasks}
       onOpenChannelSettings={onOpenChannelSettings}
       onNavigateConversation={onNavigateConversation}
+      headerTrailingAction={headerTrailingAction}
     />
   );
 }
 
-export function ChatWorkspace({
+export const ChatWorkspace = memo(function ChatWorkspace({
   channelId,
   aggregateOpen,
   aggregateAvailable,
@@ -68,13 +73,20 @@ export function ChatWorkspace({
   onOpenTasks,
   onOpenChannelSettings,
   onNavigateConversation,
+  headerTrailingAction,
+  aggregateDrawer,
+  aggregateDrawerOpen = false,
   settingsDrawer,
   settingsDrawerOpen = false,
   style,
 }: ChatWorkspaceProps) {
   const { pathname } = useLocation();
+  const aggregateLayerRef = useRef<HTMLDivElement>(null);
   const settingsLayerRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    aggregateLayerRef.current?.toggleAttribute("inert", !aggregateDrawerOpen);
+  }, [aggregateDrawerOpen]);
   useEffect(() => {
     settingsLayerRef.current?.toggleAttribute("inert", !settingsDrawerOpen);
   }, [settingsDrawerOpen]);
@@ -84,13 +96,10 @@ export function ChatWorkspace({
 
   return (
     <section
-      className="shell-chat-workspace shell-chat-workspace--full"
+      className="shell-chat-workspace"
       style={style}
       aria-label="Chat 工作区"
     >
-      <div className="shell-work-panel shell-chat-conversations" aria-label="会话列表">
-        <ChatSidebar channelIdOverride={channelId ?? undefined} onNavigate={onNavigateConversation} />
-      </div>
       <section className="shell-work-panel shell-primary-workspace-card shell-chat-main-card" aria-label="当前会话">
         <div className="shell-chat-surface">
           <ChatSurface
@@ -103,9 +112,26 @@ export function ChatWorkspace({
             onOpenTasks={onOpenTasks}
             onOpenChannelSettings={openChannelSettings}
             onNavigateConversation={onNavigateConversation}
+            headerTrailingAction={headerTrailingAction}
           />
         </div>
       </section>
+      <div
+        ref={aggregateLayerRef}
+        className="shell-chat-aggregate-layer"
+        data-open={aggregateDrawerOpen ? "true" : undefined}
+        aria-hidden={!aggregateDrawerOpen}
+      >
+        <aside
+          className="shell-chat-aggregate-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="聚合面板"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <div className="shell-chat-aggregate-drawer__content">{aggregateDrawer}</div>
+        </aside>
+      </div>
       <div
         ref={settingsLayerRef}
         className="shell-chat-settings-layer"
@@ -124,4 +150,4 @@ export function ChatWorkspace({
       </div>
     </section>
   );
-}
+});

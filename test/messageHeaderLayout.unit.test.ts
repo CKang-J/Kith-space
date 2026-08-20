@@ -60,8 +60,8 @@ test("message density tokens match the accepted design", () => {
   assert.match(messageCss, /--chat-message-avatar:36px/);
   assert.match(messageCss, /--chat-message-font-size:var\(--font-size-base\)/);
   assert.match(messageCss, /--chat-message-line-height:var\(--line-height-reading\)/);
-  assert.match(messageCss, /--chat-message-agent-bg:#f7f8fa/i);
-  assert.match(messageCss, /--chat-message-human-bg:#e7f0fe/i);
+  assert.match(messageCss, /--chat-message-agent-bg:var\(--chat-agent-bg\)/i);
+  assert.match(messageCss, /--chat-message-human-bg:var\(--chat-human-bg\)/i);
   assert.match(messageCss, /--chat-composer-reserve:88px/);
 
   const avatar = messageRuleBody(".chat-message .msg-av");
@@ -91,7 +91,7 @@ test("agent identity remains compact while Human messages move to the right with
   assert.match(timestamp, /margin-top\s*:\s*6px/);
   assert.match(timestamp, /margin-left\s*:\s*0/);
   assert.doesNotMatch(timestamp, /padding-left/);
-  assert.match(timestamp, /font-size\s*:\s*12px/);
+  assert.match(timestamp, /font-size\s*:\s*var\(--font-size-meta\)!important/);
   assert.match(timestamp, /font-weight\s*:\s*400/);
   assert.match(timestamp, /line-height\s*:\s*16px/);
   assert.match(timestamp, /opacity\s*:\s*0/);
@@ -110,6 +110,7 @@ test("chat chrome is compact while non-chat page headings keep their existing ty
   const chatHead = ruleBody(".chat-head");
   assert.match(chatHead, /height\s*:\s*52px/);
   assert.match(chatHead, /padding\s*:\s*0 14px/);
+  assert.match(chatHead, /align-items\s*:\s*center/);
   assert.match(chatHead, /border-bottom\s*:\s*1px solid var\(--hair\)/);
   const rail = ruleBody(".chat-head__rail");
   assert.match(rail, /max-width\s*:\s*none/);
@@ -117,8 +118,7 @@ test("chat chrome is compact while non-chat page headings keep their existing ty
   assert.match(rail, /gap\s*:\s*8px/);
   const title = ruleBody(".chat-head__rail>h1");
   assert.match(title, /font-family\s*:\s*var\(--sans\)/);
-  assert.match(title, /font-size\s*:\s*20px/);
-  assert.match(title, /font-weight\s*:\s*600/);
+  assert.match(css, /body :where\(h1,h2,h3,h4,h5,h6\)\{font-size:var\(--font-size-title\)!important;font-weight:400!important\}/);
   assert.doesNotMatch(css, /\.chat-head::after\s*\{/);
 });
 
@@ -149,7 +149,7 @@ test("avatar and generic status dots use the quiet sleeping gray while keeping a
   assert.match(css, /\.av-status\.working,\.av-status\.thinking\{background:var\(--status-orange\)\}/);
   assert.match(ruleBody(".av-status.working::after"), /animation\s*:\s*lb-ping/);
   assert.doesNotMatch(css, /\.av-status\.thinking::after|\.av-status\.sleeping::after/);
-  assert.match(ruleBody(".dot.working:not(.live-bar__pip)::after"), /animation\s*:\s*lb-ping/);
+  assert.match(ruleBody(".dot.working::after"), /animation\s*:\s*lb-ping/);
   assert.doesNotMatch(css, /\.dot\.thinking::after/);
 });
 
@@ -174,8 +174,7 @@ test("message rows use avatar status dots without a duplicate activity label", (
 test("sender surfaces and hover states stay on the content bubble", () => {
   assert.match(messageCss, /\.chat-message--agent \.chat-message__bubble,\.chat-message--action \.chat-message__bubble\{background:var\(--chat-message-agent-bg\)\}/);
   assert.match(messageCss, /\.chat-message--human \.chat-message__bubble\{background:var\(--chat-message-human-bg\)\}/);
-  assert.match(messageCss, /\.chat-message--agent \.chat-message__bubble-wrap:hover \.chat-message__bubble,\.chat-message--action \.chat-message__bubble-wrap:hover \.chat-message__bubble\{background:var\(--chat-message-agent-bg-hover\)\}/);
-  assert.match(messageCss, /\.chat-message--human \.chat-message__bubble-wrap:hover \.chat-message__bubble\{background:var\(--chat-message-human-bg-hover\)\}/);
+  assert.doesNotMatch(messageCss, /\.chat-message--(?:agent|human|action) \.chat-message__bubble-wrap:hover \.chat-message__bubble/);
   assert.doesNotMatch(css, /\.msg:hover\s*\{/);
 });
 
@@ -190,19 +189,25 @@ test("message toolbar exposes reaction, topic, copy, and more from the bubble", 
   assert.match(toolbarSlot, /opacity\s*:\s*0/);
   assert.doesNotMatch(toolbarSlot, /visibility\s*:\s*hidden/, "hidden visibility would remove toolbar buttons from keyboard navigation");
   assert.match(itemSrc, /const sideSpace = isHuman[\s\S]*?\? bubbleRect\.left - leftBoundary[\s\S]*?: rightBoundary - bubbleRect\.right/);
-  assert.match(itemSrc, /sideSpace >= toolbarWidth \+ 8 \? "side" : "above"/);
+  assert.match(itemSrc, /const bottomSpace = bottomBoundary - bubbleRect\.bottom/);
+  assert.match(itemSrc, /sideSpace >= toolbarRect\.width \+ 8[\s\S]*?\? "side"[\s\S]*?topSpace >= toolbarRect\.height \+ toolbarGap[\s\S]*?\? "above"[\s\S]*?bottomSpace >= toolbarRect\.height \+ toolbarGap[\s\S]*?\? "below"[\s\S]*?topSpace >= bottomSpace \? "above" : "below"/);
+  assert.match(itemSrc, /const observer = new ResizeObserver\(schedulePlacementUpdate\)/);
+  assert.match(itemSrc, /observer\.observe\(scroll\)/);
+  assert.match(itemSrc, /onPointerLeave=\{handleBubblePointerLeave\}/);
+  assert.match(itemSrc, /onBlurCapture=\{handleBubbleBlur\}/);
   assert.match(messageCss, /\.chat-message--human \.chat-message__toolbar-slot--side\{right:calc\(100% \+ 8px\);left:auto\}/);
   assert.match(messageCss, /\.chat-message__bubble-wrap:hover>\.chat-message__toolbar-slot/);
+  assert.match(messageCss, /\.chat-message:hover,\.chat-message:focus-within\{[^}]*z-index:10[^}]*content-visibility:visible/s);
   const button = messageRuleBody(".chat-message__toolbar button");
   assert.match(button, /width\s*:\s*30px/);
   assert.match(button, /height\s*:\s*30px/);
   const toolbar = messageRuleBody(".chat-message__toolbar");
-  assert.match(toolbar, /border\s*:\s*1px solid #f0f0f0/);
+  assert.match(toolbar, /border\s*:\s*1px solid var\(--border\)/);
   assert.match(toolbar, /border-radius\s*:\s*12px/);
-  assert.match(toolbar, /background\s*:\s*#fff/);
-  assert.match(toolbar, /box-shadow\s*:\s*0 8px 24px rgba\(15,23,42,.12\)/);
-  assert.match(css, /\.ctx-menu\{[^}]*background:#fff[^}]*border:1px solid #f0f0f0[^}]*border-radius:12px[^}]*box-shadow:0 8px 24px rgba\(15,23,42,.12\)/);
-  assert.match(css, /\.ctx-item:hover\{background:#f5f5f5\}/);
+  assert.match(toolbar, /background\s*:\s*var\(--popover\)/);
+  assert.match(toolbar, /box-shadow\s*:\s*0 2px 10px color-mix\(in oklch,var\(--foreground\) 8%,transparent\)/);
+  assert.match(css, /\.ctx-menu\{[^}]*background:var\(--popover\)[^}]*border:1px solid var\(--border\)[^}]*border-radius:12px[^}]*box-shadow:0 8px 24px rgba\(15,23,42,.12\)/);
+  assert.match(css, /\.ctx-item:hover\{background:var\(--muted\)\}/);
 });
 
 test("reaction add moves into the toolbar without creating empty message meta", () => {
@@ -215,11 +220,12 @@ test("reaction add moves into the toolbar without creating empty message meta", 
 });
 
 test("composer, scroll reserve, and date divider align with the message stream", () => {
-  const scroll = ruleBody("main.content-col > .scroll");
+  const scroll = ruleBody("main.content-col > .scroll,.thread-panel > .scroll");
   assert.match(scroll, /padding-bottom\s*:\s*var\(--chat-composer-reserve\)/);
-  assert.match(scroll, /scrollbar-gutter\s*:\s*stable both-edges/);
+  assert.match(scroll, /padding-right\s*:\s*max\(0px,calc\(var\(--chat-stream-gutter,20px\) - var\(--chat-scrollbar-width,0px\)\)\)/);
+  assert.match(scroll, /scrollbar-gutter\s*:\s*stable/);
   assert.match(scroll, /overflow-x\s*:\s*hidden/);
-  assert.match(css, /--scrollbar-gutter:10px/);
+  assert.doesNotMatch(css, /--scrollbar-gutter:10px/);
   assert.match(css, /\*::-webkit-scrollbar\{width:10px;height:10px\}/);
   const dateDivider = ruleBody(".date-divider");
   assert.match(dateDivider, /max-width\s*:\s*var\(--chat-stream-max\)/);
@@ -229,9 +235,10 @@ test("composer, scroll reserve, and date divider align with the message stream",
   const composer = ruleBody(".composer");
   assert.match(composer, /padding\s*:\s*4px var\(--chat-stream-gutter,20px\) 14px/);
   assert.match(composer, /border-top\s*:\s*0/);
-  const composerRail = ruleBody("main.content-col > .composer");
-  assert.match(composerRail, /left\s*:\s*var\(--scrollbar-gutter\)/);
-  assert.match(composerRail, /right\s*:\s*var\(--scrollbar-gutter\)/);
+  const composerRail = ruleBody("main.content-col > .composer,.thread-panel > .composer");
+  assert.match(composerRail, /left\s*:\s*0/);
+  assert.match(composerRail, /right\s*:\s*var\(--chat-scrollbar-width,0px\)/);
+  assert.match(composerRail, /padding-right\s*:\s*max\(0px,calc\(var\(--chat-stream-gutter,20px\) - var\(--chat-scrollbar-width,0px\)\)\)/);
   const composerBox = ruleBody(".composer-box");
   assert.match(composerBox, /max-width\s*:\s*var\(--chat-stream-max\)/);
   assert.match(composerBox, /margin\s*:\s*0 auto/);
@@ -253,7 +260,7 @@ test("system task events share the centered message rail", () => {
 });
 
 test("hidden message toolbars do not widen the chat scroll surface", () => {
-  assert.match(itemSrc, /useState<"side" \| "above">\("side"\)/);
+  assert.match(itemSrc, /useState<"side" \| "above" \| "below">\("below"\)/);
   assert.match(messageCss, /\.chat-message__toolbar-slot\{[^}]*position:absolute[^}]*opacity:0/s);
 });
 
@@ -268,7 +275,11 @@ test("thread panel starts below the conversation header and shares message edge 
   assert.match(css, /\.tp-link,\.tp-close\{[^}]*width:28px[^}]*height:28px[^}]*padding:0/);
   assert.match(css, /\.thread-parent\{margin-bottom:6px\}/);
   assert.doesNotMatch(css, /\.thread-parent\{[^}]*background/);
+  assert.match(css, /\.thread-panel > \.scroll\{[^}]*padding-bottom:var\(--chat-composer-reserve\)[^}]*scrollbar-gutter:stable/);
+  assert.match(css, /\.thread-panel\{[^}]*--chat-stream-gutter:16px/);
+  assert.match(css, /\.thread-panel > \.composer\{[^}]*position:absolute[^}]*left:0[^}]*right:var\(--chat-scrollbar-width,0px\)[^}]*bottom:0/);
   assert.match(messageCss, /\.thread-panel \.chat-message--agent \.chat-message__content\{max-width:none\}/);
+  assert.match(messageCss, /\.thread-panel \.chat-message--human \.chat-message__content\{max-width:none\}/);
   assert.match(messageCss, /\.thread-panel \.chat-message--agent \.chat-message__bubble-wrap,[\s\S]*?\.thread-panel \.chat-message--agent \.chat-message__bubble\{width:100%\}/);
 });
 

@@ -5,6 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Kith-space</title>
 <meta name="description" content="A desktop-first Personal AgentOS for one Human and local AI agents." />
+<script>
+  (() => {
+    const root = document.documentElement;
+    let mode = "system";
+    try {
+      const stored = window.localStorage.getItem("kith-space.color-mode");
+      if (stored === "light" || stored === "dark" || stored === "system") mode = stored;
+    } catch {
+      // Storage can be unavailable in privacy-restricted browser contexts.
+    }
+    const isDark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    root.dataset.colorMode = mode;
+    root.classList.toggle("dark", isDark);
+  })();
+</script>
 <link rel="icon" href="/icons/kith-space-256.png" type="image/png" sizes="256x256" />
 <link rel="icon" href="/favicon.ico" sizes="16x16 24x24 32x32 48x48 64x64 128x128 256x256" />
 </head>

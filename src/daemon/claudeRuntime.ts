@@ -4,14 +4,15 @@ import { writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Runtime, StartOpts, RuntimeCallbacks, RuntimeSession, TrajectoryEntry } from "./runtime.js";
 import { spawnRuntimeProcess, terminateRuntimeProcess } from "./runtimeProcess.js";
+import { createClaudeTrajectoryState, parseClaudeTrajectoryEvent } from "./claudeTrajectory.js";
 
-const MAX = 2000;
+const MAX = 16_000;
 const clip = (s: unknown) => String(s ?? "").slice(0, MAX);
-function summarize(tool: string, input: any): string {
-  if (!input || typeof input !== "object") return "";
-  if (tool === "Bash") return clip(input.command).slice(0, 120);
-  if (["Read", "Write", "Edit"].includes(tool)) return input.file_path ?? input.path ?? "";
-  return "";
+function activityDetail(tool: string, input: any): string {
+  if (!input || typeof input !== "object") return tool;
+  if (tool === "Bash") return clip(input.command).slice(0, 240) || tool;
+  if (["Read", "Write", "Edit"].includes(tool)) return clip(input.file_path ?? input.path ?? tool);
+  return tool;
 }
 
 // Effort levels the claude CLI accepts (`claude --help`: --effort <low|medium|high|xhigh|max>).
@@ -88,6 +89,7 @@ export const claudeRuntime: Runtime = {
     writeUser(opts.initialPrompt);
 
     let buf = "";
+    const trajectoryState = createClaudeTrajectoryState();
     proc.stdout?.on("data", (c: Buffer) => {
       buf += c.toString(); const lines = buf.split("\n"); buf = lines.pop() ?? "";
       for (const ln of lines) { if (ln.trim()) parseLine(ln); }
@@ -123,16 +125,20 @@ export const claudeRuntime: Runtime = {
         const failed = e.is_error === true || (typeof e.subtype === "string" && e.subtype !== "success");
         cb.onActivity(failed ? "error" : "online", failed ? clip(e.result || e.subtype || "claude turn failed") : "");
         cb.onTurnResult?.({ outcome: failed ? "failed" : "completed", ...(failed ? { errorCode: `claude_${e.subtype || "error"}` } : {}) });
-      } else if (e.type === "assistant") {
-        const content = e.message?.content; const traj: TrajectoryEntry[] = []; let activity = "thinking", detail = "";
-        if (Array.isArray(content)) {
-          for (const b of content) {
-            if (b.type === "thinking" && b.thinking) traj.push({ kind: "thinking", text: clip(b.thinking) });
-            else if (b.type === "text" && b.text) traj.push({ kind: "text", text: clip(b.text) });
-            else if (b.type === "tool_use") traj.push({ kind: "tool", toolName: b.name, toolInput: summarize(b.name, b.input) });
-          }
+      } else if (e.type === "assistant" || e.type === "user") {
+        const content = e.message?.content;
+        const traj: TrajectoryEntry[] = parseClaudeTrajectoryEvent(e, trajectoryState);
+        let activity = e.type === "assistant" ? "thinking" : "working";
+        let detail = "";
+        if (e.type === "assistant" && Array.isArray(content)) {
           const tools = content.filter((c: any) => c.type === "tool_use");
-          if (tools.length) { activity = "working"; detail = summarize(tools[tools.length - 1].name, tools[tools.length - 1].input) || tools[tools.length - 1].name; }
+          if (tools.length) {
+            activity = "working";
+            const latest = tools[tools.length - 1];
+            detail = activityDetail(latest.name, latest.input);
+          }
+        } else if (e.type === "user" && traj.length) {
+          detail = traj.at(-1)?.toolName ?? "";
         }
         cb.onActivity(activity, detail);
         if (traj.length) cb.onTrajectory(traj);

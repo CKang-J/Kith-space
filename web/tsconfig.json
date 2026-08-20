@@ -14,7 +14,12 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@kith-canvas-fonts": ["../src/canvas/fonts/fontsCatalog.ts"],
+      "@recombyn-native/utils/uploadImage": ["./src/features/canvas/adapters/recombynDurableMedia.ts"],
+      "@recombyn-native/service/imageTools": ["./src/features/canvas/adapters/recombynImageProcess.ts"],
+      "@recombyn-native/*": ["./src/features/canvas/upstream/apps/web/src/*"],
+      "@recombyn-canvas-plugins/*": ["./src/features/canvas/upstream/plugins/canvas/*"]
     }
   },
   "include": ["src", "vite.config.ts"]

@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { Agent } from "node:http";
 import { fileURLToPath } from "node:url";
+import { materializeRecombynStageTwoHostSeams } from "./src/features/canvas/manifests/recombynStageTwoMaterializer";
 
 // Load ports and proxy target from the root .env so parallel worktrees can use distinct ports.
 // Vite runs from web/, and loadEnvFile intentionally preserves values already exported by the shell.
@@ -12,15 +13,29 @@ if (process.env.KITH_SPACE_DESKTOP_MANAGED !== "1") {
 const API = `http://127.0.0.1:${process.env.PORT ?? 7777}`;
 const coreProxyAgent = new Agent({ keepAlive: true });
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  resolve: {
-    alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url)),
+  plugins: [{
+    name: "kith-recombyn-stage2-materializer",
+    enforce: "pre",
+    transform(source, id) {
+      const transformed = materializeRecombynStageTwoHostSeams(source, id);
+      return transformed === source ? null : { code: transformed, map: null };
     },
+  }, react(), tailwindcss()],
+  resolve: {
+    alias: [
+      { find: "@kith-canvas-fonts", replacement: fileURLToPath(new URL("../src/canvas/fonts/fontsCatalog.ts", import.meta.url)) },
+      { find: "@recombyn-native/utils/uploadImage", replacement: fileURLToPath(new URL("./src/features/canvas/adapters/recombynDurableMedia.ts", import.meta.url)) },
+      { find: "@recombyn-native/service/imageTools", replacement: fileURLToPath(new URL("./src/features/canvas/adapters/recombynImageProcess.ts", import.meta.url)) },
+      { find: /^@recombyn-native\/i18n$/, replacement: fileURLToPath(new URL("./src/features/canvas/adapters/recombynEmbeddedI18n.ts", import.meta.url)) },
+      { find: "@", replacement: fileURLToPath(new URL("./src", import.meta.url)) },
+      { find: "@recombyn-native", replacement: fileURLToPath(new URL("./src/features/canvas/upstream/apps/web/src", import.meta.url)) },
+      { find: "@recombyn-canvas-plugins", replacement: fileURLToPath(new URL("./src/features/canvas/upstream/plugins/canvas", import.meta.url)) },
+    ],
   },
   server: {
     port: Number(process.env.VITE_PORT ?? 5273),
     strictPort: true,
+    fs: { allow: [fileURLToPath(new URL("..", import.meta.url))] },
     proxy: {
       // Preserve the browser-visible Host so Core can compare it with Origin for browser-session CSRF checks.
       "/api": { target: API, changeOrigin: false, agent: coreProxyAgent },

@@ -1,4 +1,8 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
+import { listTurnOutputArtifactsInTransaction } from "../canvas/canvasOutputArtifacts.js";
+import { isCanvasMutationToolName } from "../canvas/canvasAgentTools.js";
+import { listCanvasAccessGrantsInTransaction } from "../canvas/canvasAccessGrant.js";
+import { classifyCanvasTurnIntent, inspectCanvasReplyCompletion } from "../canvas/canvasIntentGate.js";
 import { dbForSpace, schema, type SpaceDb } from "../db/index.js";
 import { ContextEnvelopeSchema } from "../context/contracts.js";
 
@@ -30,6 +34,14 @@ export class TurnInspector {
     const outputIds = outputs.map((output) => output.id);
     const outputInputs = outputIds.length ? this.db.select().from(schema.turnOutputInputs)
       .where(inArray(schema.turnOutputInputs.outputId, outputIds)).all() : [];
+    const outputArtifacts = listTurnOutputArtifactsInTransaction(this.db, turn.id);
+    const mutationIds = outputArtifacts
+      .filter((artifact) => artifact.kind === "canvas_mutation")
+      .map((artifact) => artifact.artifactId);
+    const mutations = mutationIds.length
+      ? this.db.select().from(schema.canvasMutations).where(inArray(schema.canvasMutations.id, mutationIds)).all()
+      : [];
+    const mutationById = new Map(mutations.map((mutation) => [mutation.id, mutation]));
     const outputMessages = outputs.some((output) => output.messageId)
       ? this.db.select().from(schema.messages).where(inArray(schema.messages.id, outputs.flatMap((output) => output.messageId ? [output.messageId] : []))).all()
       : [];
@@ -45,6 +57,36 @@ export class TurnInspector {
       .where(inArray(schema.messages.id, sourceMessageIds)).all() : [];
     const sourceMessageById = new Map(sourceMessages.map((message) => [message.id, message]));
     const parsedEnvelope = turn.contextEnvelope ? ContextEnvelopeSchema.safeParse(turn.contextEnvelope) : null;
+    const canvasOps = operations.filter((operation) => isCanvasMutationToolName(operation.toolName));
+    const canvasOpIds = canvasOps.map((operation) => operation.id);
+    const mutationsByOperationId = new Map(
+      (canvasOpIds.length
+        ? this.db.select().from(schema.canvasMutations)
+          .where(inArray(schema.canvasMutations.operationId, canvasOpIds)).all()
+        : []
+      ).map((mutation) => [mutation.operationId, mutation]),
+    );
+    const unattachedMutations = canvasOps.flatMap((operation) => {
+      const mutation = mutationsByOperationId.get(operation.id);
+      if (!mutation) return [];
+      const bound = outputArtifacts.some((artifact) =>
+        artifact.kind === "canvas_mutation" && artifact.artifactId === mutation.id);
+      return bound ? [] : [{
+        mutationId: mutation.id,
+        canvasId: mutation.canvasId,
+        operationId: operation.id,
+        sequence: mutation.sequence,
+        status: "committed_unattached" as const,
+      }];
+    });
+    const grants = this.db.transaction((tx) => listCanvasAccessGrantsInTransaction(tx, turn.id, turn.agentId));
+    const canvasEditCompletion = grants.length
+      ? inspectCanvasReplyCompletion({
+        intent: classifyCanvasTurnIntent(),
+        grants,
+        committedMutationCount: mutationsByOperationId.size,
+      })
+      : null;
     return {
       turn: {
         id: turn.id,
@@ -155,8 +197,30 @@ export class TurnInspector {
         message: output.messageId ? outputMessageById.get(output.messageId) ?? null : null,
         sourceState: !output.messageId ? "none" : outputMessageById.has(output.messageId) ? "available" : "tombstone",
         handledInputIds: outputInputs.filter((mapping) => mapping.outputId === output.id).map((mapping) => mapping.deliveryItemId),
+        artifacts: outputArtifacts.filter((artifact) => artifact.outputId === output.id).map((artifact) => {
+          const mutation = artifact.kind === "canvas_mutation" ? mutationById.get(artifact.artifactId) : null;
+          return {
+            kind: artifact.kind,
+            artifactId: artifact.artifactId,
+            mutation: mutation ? {
+              id: mutation.id,
+              canvasId: mutation.canvasId,
+              operationId: mutation.operationId,
+              sequence: mutation.sequence,
+            } : null,
+          };
+        }),
         createdAt: output.createdAt,
       })),
+      canvasArtifacts: {
+        bound: outputArtifacts.filter((artifact) => artifact.kind === "canvas_mutation").map((artifact) => ({
+          outputId: artifact.outputId,
+          mutationId: artifact.artifactId,
+          mutation: mutationById.get(artifact.artifactId) ?? null,
+        })),
+        unattachedCommitted: unattachedMutations,
+        editCompletion: canvasEditCompletion,
+      },
     };
   }
 }

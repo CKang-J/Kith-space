@@ -1,4 +1,3 @@
-import { LiveAgentBar } from "./LiveAgentBar.tsx";
 import { ConversationListContent } from "./ConversationListContent.tsx";
 import { useTranslation } from "react-i18next";
 
@@ -27,7 +26,6 @@ export function ChatSidebar({
           onNavigate={onNavigate}
         />
       </div>
-      <LiveAgentBar />
     </aside>
   );
 }

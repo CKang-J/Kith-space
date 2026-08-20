@@ -21,6 +21,8 @@ export interface PersistDeliveryInput {
   targetSurface?: { kind: "channel" | "private" | "dm" | "thread"; id: string };
   forceObserveAgentIds?: string[];
   forceObserveReason?: string;
+  forceRequiredAgentIds?: string[];
+  forceRequiredReason?: string;
 }
 
 /** Writes the durable v2 inbox inside the caller's message transaction. */
@@ -47,6 +49,7 @@ export class DeliveryJournal {
     const settingByAgent = new Map(settings.map((setting) => [setting.responseMode.agentId, setting]));
     const mentioned = new Set(input.mentions.filter((mention) => mention.type === "agent").map((mention) => mention.id));
     const forceObserve = new Set(input.forceObserveAgentIds ?? []);
+    const forceRequired = new Set(input.forceRequiredAgentIds ?? []);
     const parentTask = input.channel.type === "thread" && input.channel.parentMessageId
       ? tx.select({ taskAssigneeId: schema.messages.taskAssigneeId, taskStatus: schema.messages.taskStatus })
           .from(schema.messages).where(eq(schema.messages.id, input.channel.parentMessageId)).get()
@@ -73,7 +76,9 @@ export class DeliveryJournal {
         mentionWakeAfterSeq: responseMode.mentionWakeAfterSeq,
       });
       const ambientScopeDenied = decision.deliveryClass === "ambient" && !agentHasScope(setting.scopes, "inbox:receive");
-      const directive = forceObserve.has(agentId) || isSelf || !decision.wake || ambientScopeDenied ? "observe" : decision.directive;
+      const directive = forceRequired.has(agentId)
+        ? "required"
+        : forceObserve.has(agentId) || isSelf || !decision.wake || ambientScopeDenied ? "observe" : decision.directive;
       const disposition = directive === "observe" ? "observed" : "pending";
       values.push({
         spaceId: input.spaceId,
@@ -85,7 +90,9 @@ export class DeliveryJournal {
         targetSurfaceKind: input.targetSurface?.kind ?? input.channel.type as "channel" | "private" | "dm" | "thread",
         targetSurfaceId: input.targetSurface?.id ?? input.channel.id,
         directive,
-        reason: forceObserve.has(agentId) ? (input.forceObserveReason ?? "task_not_assigned") : isSelf ? "self_message" : ambientScopeDenied ? "ambient_scope_denied" : decision.reason,
+        reason: forceRequired.has(agentId)
+          ? (input.forceRequiredReason ?? "execution_binding")
+          : forceObserve.has(agentId) ? (input.forceObserveReason ?? "task_not_assigned") : isSelf ? "self_message" : ambientScopeDenied ? "ambient_scope_denied" : decision.reason,
         policySnapshot: {
           defaultResponseMode: responseMode.defaultResponseMode,
           responseModeOverride: responseMode.responseModeOverride,

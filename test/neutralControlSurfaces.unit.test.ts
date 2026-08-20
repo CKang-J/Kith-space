@@ -19,7 +19,7 @@ test("file filters and the shared search pill use their approved neutral surface
   assert.doesNotMatch(aggregateCss, /\.conversation-files__search-field/);
 });
 
-test("conversation aggregate panel keeps a visible neutral divider on its left edge", () => {
-  assert.match(aggregateCss, /\.conversation-aggregate\s*\{[^}]*border-left:\s*1px solid #e5e5e5/s);
-  assert.doesNotMatch(shellCss, /\.shell-conversation-aggregate > \.conversation-aggregate\s*\{[^}]*border-left:\s*0/s);
+test("conversation aggregate panel shares the Chat boundary divider instead of drawing a second line", () => {
+  assert.match(shellCss, /\.shell-chat-workspace\s*\{[^}]*border-right:\s*1px solid var\(--shell-border\)/s);
+  assert.doesNotMatch(aggregateCss, /\.conversation-aggregate\s*\{[^}]*border-left:/s);
 });

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
 import { SpaceFolderForm, type SpaceFolderIntent } from "./SpaceFolderForm.tsx";
 
 export function SpaceFolderDialog({
@@ -37,7 +38,10 @@ export function SpaceFolderDialog({
     >
       <section
         ref={dialogRef}
-        className="spaces-module__dialog"
+        className={cn(
+          "spaces-module__dialog flex min-h-0 flex-col overflow-hidden",
+          intent === "default" ? "spaces-module__dialog--compact" : "spaces-module__dialog--folder",
+        )}
         role="dialog"
         aria-modal="true"
         aria-label={t(`space.${intent}Title`)}

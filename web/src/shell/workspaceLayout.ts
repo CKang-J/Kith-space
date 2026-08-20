@@ -3,13 +3,14 @@ export type WorkspaceModuleId =
   | "inbox"
   | "tasks"
   | "agents"
+  | "canvas"
   | "settings"
   | "search";
 
 export type SidebarModuleId = Exclude<WorkspaceModuleId, "search">;
 export type ContentModuleId = Exclude<WorkspaceModuleId, "settings">;
 
-export type WorkspaceMode = "chat-only" | "module-only";
+export type WorkspaceMode = "chat-only" | "split";
 
 export type WorkspaceLayoutState =
   | { activeModule: null; chatVisible: true }
@@ -27,7 +28,7 @@ export function workspaceLayoutForSpace(state: WorkspaceLayoutState, isHome: boo
 export function deriveWorkspaceMode(state: WorkspaceLayoutState): WorkspaceMode {
   return state.activeModule === null || state.activeModule === "settings"
     ? "chat-only"
-    : "module-only";
+    : "split";
 }
 
 export function selectWorkspaceModule(
@@ -35,12 +36,12 @@ export function selectWorkspaceModule(
   moduleId: WorkspaceModuleId,
 ): WorkspaceLayoutState {
   if (state.activeModule === moduleId) return INITIAL_WORKSPACE_LAYOUT;
-  return { activeModule: moduleId, chatVisible: moduleId === "settings" };
+  return { activeModule: moduleId, chatVisible: true };
 }
 
 export function openRouteModule(
   moduleId: WorkspaceModuleId,
-  options: { chatVisible: boolean },
+  _options: { chatVisible: boolean },
 ): WorkspaceLayoutState {
-  return { activeModule: moduleId, chatVisible: options.chatVisible };
+  return { activeModule: moduleId, chatVisible: true };
 }

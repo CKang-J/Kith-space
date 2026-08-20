@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 const bridge = Object.freeze({
+  platform: process.platform,
   pickSpaceDirectory: () => ipcRenderer.invoke("desktop:spaces:pick-directory"),
   revealSpaceDirectory: (rootPath: string) => ipcRenderer.invoke("desktop:spaces:reveal-directory", rootPath),
   getSettings: () => ipcRenderer.invoke("desktop:settings:get"),

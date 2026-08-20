@@ -28,6 +28,7 @@ import {
   setChannelAgentResponseModeOverride,
 } from "../../agents/agentResponseSettings.js";
 import { revokeChannelAgentAccess } from "../channelAccessRevocation.js";
+import { listConversationActivityHistory } from "../conversationActivityHistory.js";
 
 const notSentBy = (humanId: string) => or(isNull(schema.messages.senderId), ne(schema.messages.senderId, humanId));
 
@@ -71,6 +72,19 @@ async function unreadMapForHuman(spaceId: string, humanId: string): Promise<Reco
 export async function handleChannels(ctx: SpaceCtx): Promise<boolean> {
   const { req, res, url, method, p, humanId, spaceId } = ctx;
   const db = dbForSpace(spaceId);
+  const activityLog = /^\/api\/channels\/([^/]+)\/activity-log$/.exec(p);
+  if (activityLog && method === "GET") {
+    const conversationId = activityLog[1]!;
+    if (!(await canHumanReadChannel(spaceId, conversationId))) {
+      return (sendErr(res, 404, "channel not found"), true);
+    }
+    const requestedLimit = Number(url.searchParams.get("limit") ?? 300);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 300)
+      : 300;
+    const rows = await listConversationActivityHistory(db, spaceId, conversationId, limit);
+    return (sendJson(res, 200, rows), true);
+  }
   // ── Threads: a thread is a channel with type=thread (and a parentMessageId); there is no separate /api/threads endpoint ──
   if (p === "/api/channels/threads/followed" && method === "GET") {
     const cms = await db.select().from(schema.humanChannelStates).where(isNotNull(schema.humanChannelStates.threadFollowedAt));

@@ -7,6 +7,12 @@ import {
   appendConversationTrajectory,
   type TrajectoryBuckets,
 } from "./trajBuffer.ts";
+import {
+  conversationActivityUpdateFromSocket,
+  removeConversationActivity,
+  upsertConversationActivity,
+  type ConversationActivityBuckets,
+} from "./conversationActivity.ts";
 import { messageUnreadDelta, threadUnreadDelta } from "./threadUnread";
 import { initialAuthState, type AuthState } from "./routing.ts";
 import { initialReadySpace } from "./spaces/spaceAvailability.ts";
@@ -22,7 +28,29 @@ export interface Me { id: string; name: string; email?: string | null; descripti
 export interface Att { id: string; filename: string; mimeType?: string; sizeBytes?: number }
 export interface Reaction { emoji: string; count: number; reactorIds: string[]; reactorNames: string[] }
 export interface ActionMeta { kind: string; state: "prepared" | "executed"; action: { type: string; name: string; description?: string | null; visibility?: string; initialAgents?: string[] }; executedByUserName?: string | null; result?: { kind: string; id: string; name: string } | null }
-export interface Msg { id: string; seq: number; channelId: string; senderType: string; senderId?: string | null; senderName: string; senderDeleted?: boolean; content: string; messageType?: string; actionMetadata?: ActionMeta | null; createdAt?: string; taskStatus?: string | null; taskNumber?: number | null; taskAssigneeType?: string | null; taskAssigneeId?: string | null; producedByTurnId?: string | null; mentions?: { type?: string; id?: string; name: string }[]; attachments?: Att[]; reactions?: Reaction[] }
+export interface CanvasMessageContextView {
+  snapshotId: string;
+  canvasId: string;
+  canvasTitle: string;
+  documentRevision: number;
+  structureRevision?: number | null;
+  selectedElements?: Array<{ id: string; revision: number }>;
+  selectedFrames?: Array<{ id: string; revision: number }>;
+  selectedIds?: string[];
+  summary: string;
+  summaryParts?: {
+    canvasTitle: string;
+    wholeCanvas: boolean;
+    elementCount: number;
+    frameCount: number;
+    truncated: boolean;
+    documentRevision: number;
+  };
+  projection?: unknown;
+  canvasAvailable: boolean;
+  deepLink?: { canvas?: string };
+}
+export interface Msg { id: string; seq: number; channelId: string; senderType: string; senderId?: string | null; senderName: string; senderDeleted?: boolean; content: string; messageType?: string; actionMetadata?: ActionMeta | null; createdAt?: string; taskStatus?: string | null; taskNumber?: number | null; taskAssigneeType?: string | null; taskAssigneeId?: string | null; producedByTurnId?: string | null; mentions?: { type?: string; id?: string; name: string }[]; attachments?: Att[]; reactions?: Reaction[]; canvasContext?: CanvasMessageContextView | null; canvasContexts?: CanvasMessageContextView[] }
 type Ev = { type: string; [k: string]: any };
 
 interface Store {
@@ -41,6 +69,7 @@ interface Store {
   agents: Agent[];        // all persisted agent identities, including system-owned records needed for attribution
   visibleAgents: Agent[]; // interactive agents available to rosters, pickers, and @mention reachability
   trajByConversation: TrajectoryBuckets;                          // per-base-conversation live trace buffers; each bucket is independently bounded
+  conversationActivity: ConversationActivityBuckets;              // concise current-turn activity keyed by exact channel/DM/thread surface
   api: (m: string, p: string, b?: unknown) => Promise<any>;
   reload: () => Promise<void>;
   onEvent: (cb: (e: Ev) => void) => () => void;
@@ -82,8 +111,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [unread, setUnread] = useState<Record<string, number>>({});
   const [agents, setAgents] = useState<Agent[]>([]);
   const [trajByConversation, setTrajByConversation] = useState<TrajectoryBuckets>({});
+  const [conversationActivity, setConversationActivity] = useState<ConversationActivityBuckets>({});
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
-  const [agentPanelReq, setAgentPanelReq] = useState<string | null>(null); // cross-component signal: LiveAgentBar (sidebar) → Chat view opens the agent profile panel
+  const [agentPanelReq, setAgentPanelReq] = useState<string | null>(null); // cross-component signal: conversation activity summary → Chat opens the Agent activity page
   const [activeSpaceId, setActiveSpaceId] = useState(""); // id of the Space to activate; changing it drives the activation effect (initial pick + every client-side switch)
   const csrfRef = useRef("");
   const spaceIdRef = useRef("");
@@ -261,7 +291,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
   const react = async (messageId: string, emoji: string, remove = false) => { await api(remove ? "DELETE" : "POST", `/api/messages/${messageId}/reactions`, { emoji }); };
   const openThread = async (parentChannelId: string, parentMessageId: string) => { const r = await api("POST", `/api/channels/${parentChannelId}/threads`, { parentMessageId }); return r?.threadChannelId ?? null; };
-  const openAgentPanel = (agentId: string) => setAgentPanelReq(agentId); // LiveAgentBar → Chat: open the agent profile panel (Activity tab); Chat consumes & clears
+  const openAgentPanel = (agentId: string) => setAgentPanelReq(agentId); // conversation activity summary → Chat: open the Agent Activity tab
   const clearAgentPanelReq = () => setAgentPanelReq(null);
   // Saved messages: private bookmarks, optimistically update savedIds.
   const saveMsg = async (messageId: string) => { setSavedIds((s) => new Set(s).add(messageId)); await api("POST", "/api/channels/saved", { messageId }); };
@@ -312,6 +342,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // switch) before the socket connects, the flag ensures the late connection is closed immediately.
     let cancelled = false;
     const dispatch = (d: Ev) => listeners.current.forEach((cb) => cb(d));
+    const conversationActivityTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    const updateConversationActivity = (event: any) => {
+      const update = conversationActivityUpdateFromSocket(event);
+      if (!update) return;
+      const timerKey = `${update.surfaceId}:${update.entry.agentId}`;
+      const previousTimer = conversationActivityTimers.get(timerKey);
+      if (previousTimer) clearTimeout(previousTimer);
+      conversationActivityTimers.delete(timerKey);
+      setConversationActivity((previous) => upsertConversationActivity(previous, update));
+      if (update.terminalDelayMs) {
+        const streamId = update.entry.streamId;
+        conversationActivityTimers.set(timerKey, setTimeout(() => {
+          conversationActivityTimers.delete(timerKey);
+          setConversationActivity((previous) => removeConversationActivity(
+            previous,
+            update.surfaceId,
+            update.entry.agentId,
+            streamId,
+          ));
+        }, update.terminalDelayMs));
+      }
+    };
     // Unread badge correction: optimistic ++ gives instant feedback; after each incoming message a debounced
     // re-fetch of /channels/unread overwrites store.unread with the DB truth, fixing badge drift caused by
     // cross-view messages or reconnect catch-up double-counting.
@@ -323,7 +375,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setReady(false);
     spaceIdRef.current = cur.id; setSpaceId(cur.id); setSlug(cur.slug || "kith-space");
     setSpaceAvatar(cur.avatarUrl || null);
-    setChannels([]); setArchivedChannels([]); setDms([]); setUnread({}); setAgents([]); setTrajByConversation({}); setSavedIds(new Set()); setAgentPanelReq(null);
+    setChannels([]); setArchivedChannels([]); setDms([]); setUnread({}); setAgents([]); setTrajByConversation({}); setConversationActivity({}); setSavedIds(new Set()); setAgentPanelReq(null);
     subscribedRef.current = new Set(); // the previous workspace's view-subscriptions don't carry over
     sockRef.current = null; // the previous socket is closed by this effect's cleanup; drop the stale ref until the new one connects
     let lastSeq = 0;
@@ -368,6 +420,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "message", channelId: msg.channelId, message: msg }); // normalize to internal event bus shape; views stay unchanged
       });
       sock.on("agent:activity", (p: any) => {
+        updateConversationActivity(p);
         if (p?.entries) {
           dispatch({ type: "trajectory", agentId: p.agentId, name: p.name, entries: p.entries, scope: p.scope, channelId: p.channelId, conversationId: p.conversationId, streamId: p.streamId });
           if (p.scope === "scoped" && typeof p.conversationId === "string" && p.conversationId) {
@@ -378,7 +431,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 agentId: p.agentId,
                 name: p.name,
                 streamId: p.streamId,
+                kind: x.kind === "thinking" ? "thinking" : x.kind === "tool" || x.toolName ? "tool" : "text",
+                eventKind: x.eventKind,
+                createdAt: x.createdAt,
                 tool: !!x.toolName,
+                toolName: x.toolName,
+                toolCallId: x.toolCallId,
+                toolInput: x.toolInput,
+                toolOutput: x.toolOutput,
+                toolState: x.toolState,
                 text: x.text || (x.toolName ? `${x.toolName}${x.toolInput ? " — " + x.toolInput : ""}` : "") || x.detail || "",
               })),
             ));
@@ -388,15 +449,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setAgents((as) => as.map((a) => (a.id === p.agentId ? { ...a, status: p.status ?? a.status, activity: p.activity ?? a.activity, activityDetail: p.detail ?? a.activityDetail } : a))); // real-time status dot + activity text used by header and sidebar
           // A terminal activity closes only the matching scoped turn. Unscoped/ambiguous status
           // updates still feed the Agent activity page but never create a conversation marker.
+          const retryBoundary = p.eventKind === "activity" && p.detail === "retry";
           if (p.scope === "scoped" && typeof p.conversationId === "string" && p.conversationId
-            && p.activity && p.activity !== "working" && p.activity !== "thinking") {
+            && (retryBoundary || (p.activity && p.activity !== "working" && p.activity !== "thinking"))) {
             setTrajByConversation((prev) => appendConversationBoundary(prev, p.conversationId, {
               agentId: p.agentId,
               name: p.name,
               streamId: p.streamId,
             }));
           }
-          dispatch({ type: "agent", id: p.agentId, name: p.name, activity: p.activity, status: p.status, detail: p.detail, scope: p.scope, channelId: p.channelId, conversationId: p.conversationId, streamId: p.streamId });
+          dispatch({ type: "agent", id: p.agentId, name: p.name, activity: p.activity, status: p.status, detail: p.detail, eventKind: p.eventKind, scope: p.scope, channelId: p.channelId, conversationId: p.conversationId, streamId: p.streamId });
         }
       });
       sock.on("agent:reply", (p: any) => dispatch({ type: "agent:reply", ...p }));
@@ -421,10 +483,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "thread:updated", ...p });
       });
     })();
-    return () => { cancelled = true; sock?.close(); sockRef.current = null; if (unreadTimer) clearTimeout(unreadTimer); };
+    return () => {
+      cancelled = true;
+      sock?.close();
+      sockRef.current = null;
+      if (unreadTimer) clearTimeout(unreadTimer);
+      for (const timer of conversationActivityTimers.values()) clearTimeout(timer);
+      conversationActivityTimers.clear();
+    };
   }, [activeSpaceId]);
 
   // System-owned identities remain available for historical attribution but are never interactive members.
   const visibleAgents = agents.filter((a) => a.creatorType !== "system");
-  return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, spaceAvatar, spaces, createSpace, relocateSpace, renameSpace, removeSpace, refreshSpaces, switchSpace, clearBrowserAccess, uploadSpaceAvatar, uploadAgentAvatar, channels, archivedChannels, dms, unread, agents, visibleAgents, trajByConversation, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ ready, authState, spaceId, slug, me, spaceAvatar, spaces, createSpace, relocateSpace, renameSpace, removeSpace, refreshSpaces, switchSpace, clearBrowserAccess, uploadSpaceAvatar, uploadAgentAvatar, channels, archivedChannels, dms, unread, agents, visibleAgents, trajByConversation, conversationActivity, api, reload, onEvent, subscribeChannel, createChannel, markActionExecuted, createTasks, openAgentDM, markRead, uploadFiles, uploadOne, attachmentUrl, react, openThread, openAgentPanel, agentPanelReq, clearAgentPanelReq, savedIds, saveMsg, unsaveMsg, listSaved }}>{children}</Ctx.Provider>;
 }

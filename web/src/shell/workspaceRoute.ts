@@ -25,22 +25,25 @@ const MODULE_IDS = new Set<WorkspaceModuleId>([
   "inbox",
   "tasks",
   "agents",
+  "canvas",
   "settings",
   "search",
 ]);
 
-type WorkspaceResourceModuleId = "tasks" | "agents" | "settings";
-type WorkspaceModuleResourceParam = "taskScope" | "agent" | "settings";
+type WorkspaceResourceModuleId = "tasks" | "agents" | "canvas" | "settings";
+type WorkspaceModuleResourceParam = "taskScope" | "agent" | "canvas" | "settings";
 
 const RESOURCE_PARAM_BY_MODULE: Record<WorkspaceResourceModuleId, WorkspaceModuleResourceParam> = {
   tasks: "taskScope",
   agents: "agent",
+  canvas: "canvas",
   settings: "settings",
 };
 
 const RESOURCE_PARAMS_BY_MODULE: Partial<Record<WorkspaceModuleId, readonly string[]>> = {
   tasks: ["taskScope"],
   agents: ["agent", "agentTab"],
+  canvas: ["canvas", "canvasTitle"],
   settings: ["settings"],
 };
 
@@ -50,6 +53,7 @@ export type WorkspaceModuleTarget =
   | { moduleId: "spaces" | "inbox" | "search" }
   | { moduleId: "tasks"; taskScope?: string | null }
   | { moduleId: "agents"; agent?: string | null; agentTab?: string | null }
+  | { moduleId: "canvas"; canvas?: string | null; canvasTitle?: string | null }
   | { moduleId: "settings"; settings?: string | null };
 
 const decodeSegment = (value: string | undefined) => {
@@ -88,7 +92,7 @@ export function workspaceLayoutFromRoute(route: WorkspaceRouteMatch, search: str
   if (moduleId === null) return INITIAL_WORKSPACE_LAYOUT;
   return {
     activeModule: moduleId,
-    chatVisible: moduleId === "settings",
+    chatVisible: true,
   };
 }
 
@@ -104,7 +108,6 @@ export function workspaceSearchForLayout(search: string, state: WorkspaceLayoutS
   });
   if (state.activeModule !== null) {
     params.set("module", state.activeModule);
-    if (state.activeModule !== "settings") params.set("chat", "0");
   }
   const encoded = params.toString();
   return encoded ? `?${encoded}` : "";
@@ -125,7 +128,7 @@ export function workspaceSearchForShellState(search: string, state: WorkspaceLay
 }
 
 export function workspaceModuleResourceFromSearch(search: string, moduleId: WorkspaceModuleId) {
-  if (moduleId !== "tasks" && moduleId !== "agents" && moduleId !== "settings") return null;
+  if (moduleId !== "tasks" && moduleId !== "agents" && moduleId !== "canvas" && moduleId !== "settings") return null;
   return new URLSearchParams(search).get(RESOURCE_PARAM_BY_MODULE[moduleId]);
 }
 
@@ -136,7 +139,7 @@ const setOptionalParam = (params: URLSearchParams, key: string, value: string | 
 
 const normalizeSettingsResource = (value: string | null | undefined) => {
   if (value === null || value === undefined) return value;
-  return value === "human" || value === "appearance" || value === "space" || value === "models" || value === "runtimes"
+  return value === "human" || value === "appearance" || value === "generation" || value === "space" || value === "models" || value === "runtimes"
     || value === "advisor" || value === "desktop" ? value : "human";
 };
 
@@ -148,7 +151,7 @@ export function workspaceLocationForModule(
 ) {
   const nextSearch = workspaceSearchForLayout(search, {
     activeModule: target.moduleId,
-    chatVisible: options.chatVisible ?? target.moduleId === "settings",
+    chatVisible: options.chatVisible ?? true,
   });
   const params = new URLSearchParams(nextSearch);
 
@@ -157,6 +160,9 @@ export function workspaceLocationForModule(
   } else if (target.moduleId === "agents") {
     setOptionalParam(params, "agent", target.agent);
     setOptionalParam(params, "agentTab", target.agentTab);
+  } else if (target.moduleId === "canvas") {
+    setOptionalParam(params, "canvas", target.canvas);
+    setOptionalParam(params, "canvasTitle", target.canvasTitle?.slice(0, 160));
   } else if (target.moduleId === "settings") {
     setOptionalParam(params, "settings", normalizeSettingsResource(target.settings));
   }

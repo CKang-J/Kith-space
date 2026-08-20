@@ -214,6 +214,22 @@ export class RuntimeSessionHost {
     let stopped = false;
     const pendingPreviews = new Map<RuntimeEventEnvelope["kind"], RuntimeEventEnvelope>();
     const isPreview = (event: RuntimeEventEnvelope) => event.kind === "activity" || event.kind === "thinking_summary" || event.kind === "text_preview";
+    const mergePreview = (
+      previous: RuntimeEventEnvelope | undefined,
+      event: RuntimeEventEnvelope,
+    ): RuntimeEventEnvelope => {
+      if (!previous || event.kind === "activity") return event;
+      const previousText = typeof previous.payload.text === "string" ? previous.payload.text : "";
+      const nextText = typeof event.payload.text === "string" ? event.payload.text : "";
+      if (!previousText || !nextText) return event;
+      return {
+        ...event,
+        // Preserve the first fragment's position so text and reasoning keep their original
+        // relative order when a coalescing window is flushed.
+        ordinal: previous.ordinal,
+        payload: { ...event.payload, text: `${previousText}${nextText}` },
+      };
+    };
     const clearPreviewTimer = () => {
       if (!previewTimer) return;
       clearTimeout(previewTimer);
@@ -303,7 +319,7 @@ export class RuntimeSessionHost {
         expectedOrdinal += 1;
         if (isPreview(event) && this.previewCoalesceMs > 0) {
           if (previewsTruncated) return;
-          pendingPreviews.set(event.kind, event);
+          pendingPreviews.set(event.kind, mergePreview(pendingPreviews.get(event.kind), event));
           armPreviewTimer();
           return;
         }

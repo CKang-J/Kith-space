@@ -41,6 +41,10 @@ import { handleDisclosureGrants } from "./disclosureGrants.js";
 import { handleAdvisorProvider } from "./advisorProvider.js";
 import { handleModelSettings } from "./modelSettings.js";
 import { handleAppearanceSettings } from "./appearanceSettings.js";
+import { handleGenerationProviderSettings } from "./generationProviderSettings.js";
+import { handleCanvas, handleCanvasAssetResolver } from "./canvas.js";
+import { handleCanvasChat } from "./canvasChat.js";
+import { handleCanvasGenerationJobs } from "./canvasGenerationJobs.js";
 
 export async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, method: string): Promise<boolean> {
   const p = url.pathname;
@@ -68,8 +72,10 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (await handleLocalRuntimeHumanScope(humanCtx)) return true;
   if (await handleSpacesHumanScope(humanCtx)) return true;
   if (await handleAppearanceSettings(humanCtx)) return true;
+  if (await handleGenerationProviderSettings(humanCtx)) return true;
   if (await handleAdvisorProvider(humanCtx)) return true;
   if (await handleModelSettings(humanCtx)) return true;
+  if (handleCanvasAssetResolver(humanCtx)) return true;
 
   // ---- gate 2: require a registered local Space context ----
   const spaceId = spaceIdHeader(req);
@@ -84,6 +90,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (await handleMemoryAdvisor(spaceCtx)) return true;
   if (await handleReminders(spaceCtx)) return true;
   if (await handleChannels(spaceCtx)) return true;
+  if (await handleCanvasChat(spaceCtx)) return true;
   if (await handleMessages(spaceCtx)) return true;
   if (await handleTurns(spaceCtx)) return true;
   if (await handleDisclosureGrants(spaceCtx)) return true;
@@ -92,6 +99,8 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (await handleSpacePreferences(spaceCtx)) return true;
   if (await handleDispatch(spaceCtx)) return true;
   if (await handleTasks(spaceCtx)) return true;
+  if (await handleCanvas(spaceCtx)) return true;
+  if (await handleCanvasGenerationJobs(spaceCtx)) return true;
 
   return (sendErr(res, 404, "not found"), true);
 }

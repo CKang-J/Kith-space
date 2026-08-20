@@ -48,6 +48,16 @@ test("toolCall arguments object is summarized; text/toolCall blocks mapped", () 
   assert.equal(emit.trajectory[1]?.kind, "text");
 });
 
+test("assistant text is not truncated at the legacy 2k boundary", () => {
+  const text = "长回复".repeat(1_000);
+  const emit = handlePiEvent({
+    type: "message_end",
+    message: { role: "assistant", content: [{ type: "text", text }] },
+  });
+
+  assert.equal(emit.trajectory[0]?.text, text);
+});
+
 test("user echo and non-message events produce no trajectory (no double-count with agent_end)", () => {
   assert.equal(handlePiEvent({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "hi" }] } }).trajectory.length, 0);
   assert.equal(handlePiEvent({ type: "agent_end", messages: [{ role: "assistant", content: [{ type: "text", text: "PONG" }] }] }).trajectory.length, 0);

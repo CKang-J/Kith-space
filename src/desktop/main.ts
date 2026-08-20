@@ -14,6 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import { generateInternalProcessCredentials } from "../local-runtime/internalCredentials.js";
 import { DesktopCoreClient } from "./coreClient.js";
+import { desktopWindowAppearance } from "./windowAppearance.js";
 import { resolveDesktopIconPath } from "./desktopIcon.js";
 import { parseBrowserAccessUpdate, parseLifecycleUpdate } from "./ipcValidation.js";
 import { isPortAvailable } from "./portAvailability.js";
@@ -274,6 +275,7 @@ async function createMainWindow(desktopSession: Electron.Session): Promise<void>
     minHeight: 640,
     show: false,
     backgroundColor: "#f3f2ef",
+    ...desktopWindowAppearance(process.platform),
     webPreferences: {
       session: desktopSession,
       preload: path.join(__dirname, "preload.cjs"),

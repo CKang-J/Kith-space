@@ -162,7 +162,7 @@ export function SpaceCardMenu({ spaceName, ...actions }: SpaceCardMenuProps) {
 
   return (
     <div
-      className="spaces-module__card-menu absolute top-[13px] right-3 z-[3]"
+      className="spaces-module__card-menu absolute top-3.5 right-3 z-[3]"
       onContextMenu={(event) => event.stopPropagation()}
     >
       <DropdownMenu>
@@ -171,7 +171,7 @@ export function SpaceCardMenu({ spaceName, ...actions }: SpaceCardMenuProps) {
             type="button"
             variant="ghost"
             size="icon"
-            className="size-[30px] rounded-lg bg-transparent text-[var(--muted)] hover:bg-[var(--canvas-soft)] hover:text-[var(--ink)] data-[state=open]:bg-[var(--canvas-soft)] data-[state=open]:text-[var(--ink)]"
+            className="size-7 rounded-lg bg-background/70 text-muted-foreground backdrop-blur-[2px] hover:bg-muted hover:text-foreground data-[state=open]:bg-muted data-[state=open]:text-foreground"
             aria-label={t("spacesModule.menuLabel", { name: spaceName })}
             title={t("spacesModule.menuLabel", { name: spaceName })}
           >
