@@ -1,0 +1,915 @@
+[
+  {
+    "family": "Alibaba PuHuiTi",
+    "displayName": "阿里巴巴普惠体",
+    "children": [
+      {
+        "family": "Alibaba PuHuiTi Thin",
+        "displayName": "Thin",
+        "weight": 300,
+        "url": "https://cdn.jsdelivr.net/npm/c1-alibaba-puhui-ti@1.0.0/fonts/AlibabaPuHuiTi-3-35-Thin.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Alibaba PuHuiTi",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/c1-alibaba-puhui-ti@1.0.0/fonts/AlibabaPuHuiTi-3-55-Regular.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Alibaba PuHuiTi Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/c1-alibaba-puhui-ti@1.0.0/fonts/AlibabaPuHuiTi-3-85-Bold.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Noto Sans SC",
+    "displayName": "Noto Sans SC",
+    "children": [
+      {
+        "family": "Noto Sans SC Light",
+        "displayName": "Light",
+        "weight": 300,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5.2.5/files/noto-sans-sc-chinese-simplified-300-normal.woff",
+        "format": "woff"
+      },
+      {
+        "family": "Noto Sans SC",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5.2.5/files/noto-sans-sc-chinese-simplified-400-normal.woff",
+        "format": "woff"
+      },
+      {
+        "family": "Noto Sans SC Medium",
+        "displayName": "Medium",
+        "weight": 500,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5.2.5/files/noto-sans-sc-chinese-simplified-500-normal.woff",
+        "format": "woff"
+      },
+      {
+        "family": "Noto Sans SC Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5.2.5/files/noto-sans-sc-chinese-simplified-700-normal.woff",
+        "format": "woff"
+      }
+    ]
+  },
+  {
+    "family": "Noto Serif SC",
+    "displayName": "Noto Serif SC",
+    "children": [
+      {
+        "family": "Noto Serif SC",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/noto-serif-sc@5.2.5/files/noto-serif-sc-chinese-simplified-400-normal.woff",
+        "format": "woff"
+      },
+      {
+        "family": "Noto Serif SC SemiBold",
+        "displayName": "SemiBold",
+        "weight": 600,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/noto-serif-sc@5.2.5/files/noto-serif-sc-chinese-simplified-600-normal.woff",
+        "format": "woff"
+      },
+      {
+        "family": "Noto Serif SC Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/noto-serif-sc@5.2.5/files/noto-serif-sc-chinese-simplified-700-normal.woff",
+        "format": "woff"
+      }
+    ]
+  },
+  {
+    "family": "LXGW WenKai",
+    "displayName": "霞鹜文楷",
+    "children": [
+      {
+        "family": "LXGW WenKai Light",
+        "displayName": "Light",
+        "weight": 300,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/lxgw-wenkai@5.2.5/files/lxgw-wenkai-latin-300-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "LXGW WenKai",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/lxgw-wenkai@5.2.5/files/lxgw-wenkai-latin-500-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "LXGW WenKai Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/lxgw-wenkai@5.2.5/files/lxgw-wenkai-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "ZCOOL XiaoWei",
+    "displayName": "站酷小薇",
+    "children": [
+      {
+        "family": "ZCOOL XiaoWei",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/zcool-xiaowei@5.2.5/files/zcool-xiaowei-chinese-simplified-400-normal.woff",
+        "format": "woff"
+      }
+    ]
+  },
+  {
+    "family": "ZCOOL KuaiLe",
+    "displayName": "站酷快乐体",
+    "children": [
+      {
+        "family": "ZCOOL KuaiLe",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/zcool-kuaile@5.2.5/files/zcool-kuaile-chinese-simplified-400-normal.woff",
+        "format": "woff"
+      }
+    ]
+  },
+  {
+    "family": "ZCOOL QingKe HuangYou",
+    "displayName": "站酷庆科黄油体",
+    "children": [
+      {
+        "family": "ZCOOL QingKe HuangYou",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/zcool-qingke-huangyou@5.2.5/files/zcool-qingke-huangyou-chinese-simplified-400-normal.woff",
+        "format": "woff"
+      }
+    ]
+  },
+  {
+    "family": "Ma Shan Zheng",
+    "displayName": "马善政楷书",
+    "children": [
+      {
+        "family": "Ma Shan Zheng",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/ma-shan-zheng@5.2.5/files/ma-shan-zheng-chinese-simplified-400-normal.woff",
+        "format": "woff"
+      }
+    ]
+  },
+  {
+    "family": "Zhi Mang Xing",
+    "displayName": "志莽行书",
+    "children": [
+      {
+        "family": "Zhi Mang Xing",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/zhi-mang-xing@5.2.5/files/zhi-mang-xing-chinese-simplified-400-normal.woff",
+        "format": "woff"
+      }
+    ]
+  },
+  {
+    "family": "Long Cang",
+    "displayName": "龙藏体",
+    "children": [
+      {
+        "family": "Long Cang",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/long-cang@5.2.5/files/long-cang-chinese-simplified-400-normal.woff",
+        "format": "woff"
+      }
+    ]
+  },
+  {
+    "family": "Liu Jian Mao Cao",
+    "displayName": "刘建毛草",
+    "children": [
+      {
+        "family": "Liu Jian Mao Cao",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/liu-jian-mao-cao@5.2.5/files/liu-jian-mao-cao-chinese-simplified-400-normal.woff",
+        "format": "woff"
+      }
+    ]
+  },
+  {
+    "family": "Inter",
+    "displayName": "Inter",
+    "children": [
+      {
+        "family": "Inter",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/inter@5.2.5/files/inter-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Inter Medium",
+        "displayName": "Medium",
+        "weight": 500,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/inter@5.2.5/files/inter-latin-500-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Inter SemiBold",
+        "displayName": "SemiBold",
+        "weight": 600,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/inter@5.2.5/files/inter-latin-600-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Inter Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/inter@5.2.5/files/inter-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Roboto",
+    "displayName": "Roboto",
+    "children": [
+      {
+        "family": "Roboto",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.2.5/files/roboto-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Roboto Medium",
+        "displayName": "Medium",
+        "weight": 500,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.2.5/files/roboto-latin-500-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Roboto Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.2.5/files/roboto-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Open Sans",
+    "displayName": "Open Sans",
+    "children": [
+      {
+        "family": "Open Sans",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/open-sans@5.2.5/files/open-sans-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Open Sans SemiBold",
+        "displayName": "SemiBold",
+        "weight": 600,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/open-sans@5.2.5/files/open-sans-latin-600-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Open Sans Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/open-sans@5.2.5/files/open-sans-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Source Sans 3",
+    "displayName": "Source Sans 3",
+    "children": [
+      {
+        "family": "Source Sans 3",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/source-sans-3@5.2.5/files/source-sans-3-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Source Sans 3 Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/source-sans-3@5.2.5/files/source-sans-3-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "DM Sans",
+    "displayName": "DM Sans",
+    "children": [
+      {
+        "family": "DM Sans",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/dm-sans@5.2.5/files/dm-sans-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "DM Sans Medium",
+        "displayName": "Medium",
+        "weight": 500,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/dm-sans@5.2.5/files/dm-sans-latin-500-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "DM Sans Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/dm-sans@5.2.5/files/dm-sans-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Montserrat",
+    "displayName": "Montserrat",
+    "children": [
+      {
+        "family": "Montserrat",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/montserrat@5.2.5/files/montserrat-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Montserrat Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/montserrat@5.2.5/files/montserrat-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Poppins",
+    "displayName": "Poppins",
+    "children": [
+      {
+        "family": "Poppins",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/poppins@5.2.5/files/poppins-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Poppins Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/poppins@5.2.5/files/poppins-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Lato",
+    "displayName": "Lato",
+    "children": [
+      {
+        "family": "Lato",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/lato@5.2.5/files/lato-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Lato Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/lato@5.2.5/files/lato-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Nunito",
+    "displayName": "Nunito",
+    "children": [
+      {
+        "family": "Nunito",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/nunito@5.2.5/files/nunito-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Nunito Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/nunito@5.2.5/files/nunito-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Raleway",
+    "displayName": "Raleway",
+    "children": [
+      {
+        "family": "Raleway",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/raleway@5.2.5/files/raleway-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Raleway Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/raleway@5.2.5/files/raleway-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Oswald",
+    "displayName": "Oswald",
+    "children": [
+      {
+        "family": "Oswald",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/oswald@5.2.5/files/oswald-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Oswald Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/oswald@5.2.5/files/oswald-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Work Sans",
+    "displayName": "Work Sans",
+    "children": [
+      {
+        "family": "Work Sans",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/work-sans@5.2.5/files/work-sans-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Work Sans Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/work-sans@5.2.5/files/work-sans-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Manrope",
+    "displayName": "Manrope",
+    "children": [
+      {
+        "family": "Manrope",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/manrope@5.2.5/files/manrope-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Manrope Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/manrope@5.2.5/files/manrope-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Rubik",
+    "displayName": "Rubik",
+    "children": [
+      {
+        "family": "Rubik",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/rubik@5.2.5/files/rubik-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Rubik Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/rubik@5.2.5/files/rubik-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Cabin",
+    "displayName": "Cabin",
+    "children": [
+      {
+        "family": "Cabin",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/cabin@5.2.5/files/cabin-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Cabin Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/cabin@5.2.5/files/cabin-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Noto Sans",
+    "displayName": "Noto Sans",
+    "children": [
+      {
+        "family": "Noto Sans",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.2.5/files/noto-sans-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Noto Sans Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.2.5/files/noto-sans-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "IBM Plex Sans",
+    "displayName": "IBM Plex Sans",
+    "children": [
+      {
+        "family": "IBM Plex Sans",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5.2.5/files/ibm-plex-sans-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "IBM Plex Sans Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5.2.5/files/ibm-plex-sans-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Space Grotesk",
+    "displayName": "Space Grotesk",
+    "children": [
+      {
+        "family": "Space Grotesk",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/space-grotesk@5.2.5/files/space-grotesk-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Space Grotesk Medium",
+        "displayName": "Medium",
+        "weight": 500,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/space-grotesk@5.2.5/files/space-grotesk-latin-500-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Space Grotesk Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/space-grotesk@5.2.5/files/space-grotesk-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Playfair Display",
+    "displayName": "Playfair Display",
+    "children": [
+      {
+        "family": "Playfair Display",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/playfair-display@5.2.5/files/playfair-display-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Playfair Display Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/playfair-display@5.2.5/files/playfair-display-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Merriweather",
+    "displayName": "Merriweather",
+    "children": [
+      {
+        "family": "Merriweather",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/merriweather@5.2.5/files/merriweather-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Merriweather Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/merriweather@5.2.5/files/merriweather-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Libre Baskerville",
+    "displayName": "Libre Baskerville",
+    "children": [
+      {
+        "family": "Libre Baskerville",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/libre-baskerville@5.2.5/files/libre-baskerville-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Libre Baskerville Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/libre-baskerville@5.2.5/files/libre-baskerville-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Cormorant Garamond",
+    "displayName": "Cormorant Garamond",
+    "children": [
+      {
+        "family": "Cormorant Garamond",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/cormorant-garamond@5.2.5/files/cormorant-garamond-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Cormorant Garamond Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/cormorant-garamond@5.2.5/files/cormorant-garamond-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Source Serif 4",
+    "displayName": "Source Serif 4",
+    "children": [
+      {
+        "family": "Source Serif 4",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/source-serif-4@5.2.5/files/source-serif-4-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Source Serif 4 Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/source-serif-4@5.2.5/files/source-serif-4-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Noto Serif",
+    "displayName": "Noto Serif",
+    "children": [
+      {
+        "family": "Noto Serif",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/noto-serif@5.2.5/files/noto-serif-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Noto Serif Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/noto-serif@5.2.5/files/noto-serif-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Bebas Neue",
+    "displayName": "Bebas Neue",
+    "children": [
+      {
+        "family": "Bebas Neue",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/bebas-neue@5.2.5/files/bebas-neue-latin-400-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Lobster",
+    "displayName": "Lobster",
+    "children": [
+      {
+        "family": "Lobster",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/lobster@5.2.5/files/lobster-latin-400-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Pacifico",
+    "displayName": "Pacifico",
+    "children": [
+      {
+        "family": "Pacifico",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/pacifico@5.2.5/files/pacifico-latin-400-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Dancing Script",
+    "displayName": "Dancing Script",
+    "children": [
+      {
+        "family": "Dancing Script",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/dancing-script@5.2.5/files/dancing-script-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Dancing Script Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/dancing-script@5.2.5/files/dancing-script-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Great Vibes",
+    "displayName": "Great Vibes",
+    "children": [
+      {
+        "family": "Great Vibes",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/great-vibes@5.2.5/files/great-vibes-latin-400-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Caveat",
+    "displayName": "Caveat",
+    "children": [
+      {
+        "family": "Caveat",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/caveat@5.2.5/files/caveat-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Caveat Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/caveat@5.2.5/files/caveat-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Press Start 2P",
+    "displayName": "Press Start 2P",
+    "children": [
+      {
+        "family": "Press Start 2P",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/press-start-2p@5.2.5/files/press-start-2p-latin-400-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "JetBrains Mono",
+    "displayName": "JetBrains Mono",
+    "children": [
+      {
+        "family": "JetBrains Mono",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5.2.5/files/jetbrains-mono-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "JetBrains Mono Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5.2.5/files/jetbrains-mono-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Fira Code",
+    "displayName": "Fira Code",
+    "children": [
+      {
+        "family": "Fira Code",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/fira-code@5.2.5/files/fira-code-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Fira Code Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/fira-code@5.2.5/files/fira-code-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "Source Code Pro",
+    "displayName": "Source Code Pro",
+    "children": [
+      {
+        "family": "Source Code Pro",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/source-code-pro@5.2.5/files/source-code-pro-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "Source Code Pro Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/source-code-pro@5.2.5/files/source-code-pro-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  },
+  {
+    "family": "IBM Plex Mono",
+    "displayName": "IBM Plex Mono",
+    "children": [
+      {
+        "family": "IBM Plex Mono",
+        "displayName": "Regular",
+        "weight": 400,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-mono@5.2.5/files/ibm-plex-mono-latin-400-normal.woff2",
+        "format": "woff2"
+      },
+      {
+        "family": "IBM Plex Mono Bold",
+        "displayName": "Bold",
+        "weight": 700,
+        "url": "https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-mono@5.2.5/files/ibm-plex-mono-latin-700-normal.woff2",
+        "format": "woff2"
+      }
+    ]
+  }
+]

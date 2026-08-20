@@ -230,3 +230,60 @@ test("a stored provider credential cannot follow an edited execution identity wi
   });
   assert.equal(redirected.revision.canonicalOrigin, "https://example.com");
 });
+
+test("runtime default change confirms never-bound follow-default Agents and holds confirmed destinations", async () => {
+  const { AgentModelBindingService } = await import("./agentModelBindingService.js");
+  const { eq } = await import("drizzle-orm");
+  const runtimes = new RuntimeProfileService();
+  const spaceId = randomUUID();
+  const unconfirmedId = randomUUID();
+  const confirmedId = randomUUID();
+  registerSpace({
+    id: spaceId,
+    name: "Runtime default sync",
+    slug: `runtime-default-${spaceId}`,
+    rootPath: path.join(root, "spaces", spaceId),
+  });
+  const db = dbForSpace(spaceId);
+  try {
+    const unset = new AgentModelBindingService().resolve("claude", { mode: "runtime_default" });
+    assert.equal(unset.modelBindingState, "setup_required");
+    assert.equal(unset.modelBindingFingerprint, null);
+    db.insert(schema.agents).values({
+      id: unconfirmedId, spaceId, name: "unconfirmed-claude", displayName: "Unconfirmed",
+      runtime: "claude", status: "active", ...unset,
+    }).run();
+    db.insert(schema.agents).values({
+      id: confirmedId, spaceId, name: "confirmed-claude", displayName: "Confirmed",
+      runtime: "claude", status: "active",
+      modelBindingMode: "runtime_default",
+      modelBindingFingerprint: "previous-destination",
+      modelBindingLabelSnapshot: "CLI 自有账户/默认供应商",
+      modelBindingState: "ready",
+      runtimeRestartRequired: false,
+    }).run();
+
+    await runtimes.update("claude", {
+      enabled: true,
+      defaultBinding: {
+        mode: "unmanaged_cli_native",
+        modelConfigurationId: null,
+        modelConfigurationRevision: null,
+      },
+    });
+
+    const expected = new AgentModelBindingService().resolve("claude", { mode: "runtime_default" });
+    const unconfirmed = db.select().from(schema.agents).where(eq(schema.agents.id, unconfirmedId)).get()!;
+    const confirmed = db.select().from(schema.agents).where(eq(schema.agents.id, confirmedId)).get()!;
+    assert.equal(expected.modelBindingState, "ready");
+    assert.equal(unconfirmed.modelBindingState, "ready");
+    assert.equal(unconfirmed.runtimeRestartRequired, false);
+    assert.equal(unconfirmed.modelBindingFingerprint, expected.modelBindingFingerprint);
+    assert.equal(confirmed.modelBindingState, "restart_required");
+    assert.equal(confirmed.runtimeRestartRequired, true);
+    assert.equal(confirmed.modelBindingFingerprint, "previous-destination");
+  } finally {
+    closeSpaceDb(spaceId);
+    unregisterSpace(spaceId);
+  }
+});

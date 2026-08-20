@@ -412,6 +412,7 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
   const [bindingMode, setBindingMode] = useState<"runtime_default" | "pinned">("runtime_default");
   const [modelConfigurations, setModelConfigurations] = useState<any[]>([]);
   const [modelConfigurationId, setModelConfigurationId] = useState("");
+  const [runtimeDefaultUnset, setRuntimeDefaultUnset] = useState(false);
   const {
     runtime, setRuntime, runtimeOptions, runtimesLoading, runtimeError, runtimeInstalled,
   } = useRuntimeDiscovery(api, false);
@@ -422,6 +423,16 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
       ))
       .catch(() => setModelConfigurations([]));
   }, [api]);
+  useEffect(() => {
+    if (!runtime) { setRuntimeDefaultUnset(false); return; }
+    let cancelled = false;
+    void api("GET", `/api/settings/runtimes/${encodeURIComponent(runtime)}`)
+      .then((result: any) => {
+        if (!cancelled) setRuntimeDefaultUnset(result?.defaultBinding?.mode === "unset");
+      })
+      .catch(() => { if (!cancelled) setRuntimeDefaultUnset(false); });
+    return () => { cancelled = true; };
+  }, [api, runtime]);
   useEffect(() => {
     const saved = sessionStorage.getItem("kith-agent-create-draft");
     if (!saved) return;
@@ -444,6 +455,7 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
     if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(nm) || nm.length > 64) { setErr(t("members.nameInvalid")); return; } // @mention handle must be token-safe; keep regex + length 64 in sync with core.ts AGENT_NAME_RE / MAX_AGENT_NAME
     if (!runtimeInstalled) { setErr(t("members.runtimeUnavailable")); return; }
     if (bindingMode === "pinned" && !modelConfigurationId) { setErr("请选择 Kith 模型配置"); return; }
+    if (bindingMode === "runtime_default" && runtimeDefaultUnset) { setErr(t("members.runtimeDefaultUnset")); return; }
     setBusy(true); setErr("");
     try {
       const selectedConfiguration = modelConfigurations.find((item) => item.id === modelConfigurationId);
@@ -455,7 +467,10 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
           : { mode: "runtime_default" },
         reasoning: null, fastMode: fast,
       });
-      if (r?.error) { setErr(r.error); return; }
+      if (r?.error) {
+        setErr(r.code === "model_binding_setup_required" ? t("members.modelBindingSetupRequired") : r.error);
+        return;
+      }
       await reload();
       if (r?.id) { if (r.started === false) toast.info(t("members.agentCreatedOffline")); onCreated?.({ id: r.id, name: r.name ?? nm }); }
       sessionStorage.removeItem("kith-agent-create-draft");
@@ -485,10 +500,10 @@ export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () 
             options={modelConfigurations.filter((item) => item.compatibility?.[runtime]?.supported)
               .map((item) => ({ value: item.id, label: `${item.displayName} · ${item.provider.displayName}` }))}
             placeholder="请先在“设置 → 模型与供应商”创建兼容配置" />
-        </> : null}
+        </> : runtimeDefaultUnset ? <div className="form-err">{t("members.runtimeDefaultUnset")}</div> : null}
         <label className="ck-row"><input type="checkbox" checked={fast} onChange={(e) => setFast(e.target.checked)} /><span>{t("members.fastMode")}</span></label>
         {err && <div className="form-err">{err}</div>}
-        <div className="acts"><button className="cancel" onClick={onClose}>{t("members.cancel")}</button><button className="ok" onClick={create} disabled={busy || runtimesLoading || !runtimeInstalled || (bindingMode === "pinned" && !modelConfigurationId)}>{busy ? t("members.creating") : t("members.create")}</button></div>
+        <div className="acts"><button className="cancel" onClick={onClose}>{t("members.cancel")}</button><button className="ok" onClick={create} disabled={busy || runtimesLoading || !runtimeInstalled || (bindingMode === "pinned" && !modelConfigurationId) || (bindingMode === "runtime_default" && runtimeDefaultUnset)}>{busy ? t("members.creating") : t("members.create")}</button></div>
       </div>
     </div>
   );

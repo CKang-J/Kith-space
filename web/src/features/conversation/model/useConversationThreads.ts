@@ -287,13 +287,20 @@ export function useThreadPanelModel(
   const streamingPreviewActive = hasStreamingAgentReplyPreview(messages);
   useEffect(() => {
     if (!streamingPreviewActive) return;
-    const timer = window.setInterval(() => {
-      setMessages((current) => {
-        const tick = tickAgentReplyPreviews(current);
-        return tick.changed ? tick.messages : current;
-      });
-    }, AGENT_REPLY_STREAM_TICK_MS);
-    return () => window.clearInterval(timer);
+    let frameId: number;
+    let lastTickTime = 0;
+    const tick = (now: number) => {
+      if (now - lastTickTime >= AGENT_REPLY_STREAM_TICK_MS) {
+        lastTickTime = now;
+        setMessages((current) => {
+          const result = tickAgentReplyPreviews(current);
+          return result.changed ? result.messages : current;
+        });
+      }
+      frameId = window.requestAnimationFrame(tick);
+    };
+    frameId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frameId);
   }, [streamingPreviewActive]);
 
   useEffect(() => {

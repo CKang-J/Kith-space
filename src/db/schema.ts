@@ -796,3 +796,161 @@ export const memoryRecallObservations = sqliteTable("memory_recall_observations"
   pk: primaryKey({ columns: [t.memoryId, t.agentId] }),
   byAgent: index("memory_recall_observations_agent_idx").on(t.agentId, t.recalledAt),
 }));
+
+export const canvasDocuments = sqliteTable("canvas_documents", {
+  id: id("id").primaryKey(),
+  spaceId: text("space_id").notNull().references(() => spaces.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  document: text("document_json", { mode: "json" }).$type<unknown>().notNull(),
+  revision: integer("revision").default(0).notNull(),
+  metadataRevision: integer("metadata_revision").default(0).notNull(),
+  documentRevision: integer("document_revision").default(0).notNull(),
+  elementRevision: integer("element_revision").default(0).notNull(),
+  frameRevision: integer("frame_revision").default(0).notNull(),
+  structureRevision: integer("structure_revision").default(0).notNull(),
+  realtimeSequence: integer("realtime_sequence").default(0).notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+  updatedAt: timestamp("updated_at").default(now).notNull(),
+  deletedAt: timestamp("deleted_at"),
+}, (t) => ({
+  bySpaceUpdated: index("canvas_documents_space_updated_idx").on(t.spaceId, t.updatedAt),
+}));
+
+export const canvasMutations = sqliteTable("canvas_mutations", {
+  id: id("id").primaryKey(),
+  canvasId: text("canvas_id").notNull().references(() => canvasDocuments.id, { onDelete: "cascade" }),
+  operationId: text("operation_id").notNull(),
+  sequence: integer("sequence").notNull(),
+  kind: text("kind").$type<"create" | "edit" | "undo" | "redo" | "delete">().notNull(),
+  sourceMutationId: text("source_mutation_id"),
+  expectedRevision: integer("expected_revision").notNull(),
+  requestHash: text("request_hash").notNull(),
+  operation: text("operation_json", { mode: "json" }).$type<unknown>().notNull(),
+  beforeTitle: text("before_title").notNull(),
+  afterTitle: text("after_title").notNull(),
+  beforeDocument: text("before_document_json", { mode: "json" }).$type<unknown>().notNull(),
+  afterDocument: text("after_document_json", { mode: "json" }).$type<unknown>().notNull(),
+  impact: text("impact_json", { mode: "json" }).$type<unknown>().notNull(),
+  result: text("result_json", { mode: "json" }).$type<unknown>().notNull(),
+  state: text("state").$type<"applied" | "reverted" | "discarded">().default("applied").notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+}, (t) => ({
+  operationUniq: uniqueIndex("canvas_mutations_operation_uniq").on(t.canvasId, t.operationId),
+  sequenceUniq: uniqueIndex("canvas_mutations_sequence_uniq").on(t.canvasId, t.sequence),
+  history: index("canvas_mutations_history_idx").on(t.canvasId, t.kind, t.state, t.sequence),
+}));
+
+export const canvasAssets = sqliteTable("canvas_assets", {
+  id: id("id").primaryKey(),
+  canvasId: text("canvas_id").notNull().references(() => canvasDocuments.id, { onDelete: "cascade" }),
+  storageKey: text("storage_key").notNull(),
+  filename: text("filename").notNull(),
+  mimeType: text("mime_type").notNull(),
+  sha256: text("sha256").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  state: text("state").$type<"staged" | "ready" | "deleting">().default("staged").notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+  deletedAt: timestamp("deleted_at"),
+}, (t) => ({
+  storageUniq: uniqueIndex("canvas_assets_storage_uniq").on(t.canvasId, t.storageKey),
+  byCanvasState: index("canvas_assets_canvas_state_idx").on(t.canvasId, t.state),
+}));
+
+export const canvasSelectionSnapshots = sqliteTable("canvas_selection_snapshots", {
+  id: id("id").primaryKey(),
+  spaceId: text("space_id").notNull().references(() => spaces.id, { onDelete: "cascade" }),
+  canvasId: text("canvas_id").notNull().references(() => canvasDocuments.id, { onDelete: "no action" }),
+  messageId: text("message_id").references(() => messages.id, { onDelete: "cascade" }),
+  documentRevision: integer("document_revision").notNull(),
+  structureRevision: integer("structure_revision"),
+  selectedElements: text("selected_elements_json", { mode: "json" }).$type<Array<{ id: string; revision: number }>>().notNull(),
+  selectedFrames: text("selected_frames_json", { mode: "json" }).$type<Array<{ id: string; revision: number }>>().notNull(),
+  projection: text("projection_json", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  previewAssetId: text("preview_asset_id").references(() => canvasAssets.id, { onDelete: "set null" }),
+  selectionHash: text("selection_hash").notNull(),
+  summary: text("summary").notNull(),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+}, (t) => ({
+  byMessage: index("canvas_selection_snapshots_message_idx").on(t.messageId),
+  byCanvas: index("canvas_selection_snapshots_canvas_idx").on(t.canvasId, t.createdAt),
+}));
+
+export const messageExecutionBindings = sqliteTable("message_execution_bindings", {
+  messageId: text("message_id").primaryKey().references(() => messages.id, { onDelete: "cascade" }),
+  executorAgentId: text("executor_agent_id").notNull().references(() => agents.id, { onDelete: "no action" }),
+  mode: text("mode").$type<"required">().notNull(),
+  bindingSource: text("binding_source").$type<"dm_peer" | "explicit_picker" | "structured_mention">().default("explicit_picker").notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+}, (t) => ({
+  byExecutor: index("message_execution_bindings_executor_idx").on(t.executorAgentId),
+}));
+
+export const canvasAccessGrants = sqliteTable("canvas_access_grants", {
+  id: id("id").primaryKey(),
+  spaceId: text("space_id").notNull().references(() => spaces.id, { onDelete: "cascade" }),
+  messageId: text("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
+  snapshotId: text("snapshot_id").notNull().references(() => canvasSelectionSnapshots.id, { onDelete: "no action" }),
+  deliveryId: text("delivery_id").notNull().references(() => agentDeliveryItems.id, { onDelete: "cascade" }),
+  turnId: text("turn_id").notNull().references(() => agentTurns.id, { onDelete: "cascade" }),
+  executorAgentId: text("executor_agent_id").notNull().references(() => agents.id, { onDelete: "no action" }),
+  canvasId: text("canvas_id").notNull().references(() => canvasDocuments.id, { onDelete: "no action" }),
+  objectScope: text("object_scope_json", { mode: "json" }).$type<{
+    snapshotId: string;
+    canvasId: string;
+    elementIds: string[];
+    frameIds: string[];
+    emptySelection: boolean;
+    createParents: string[];
+  }>().notNull(),
+  actions: text("actions_json", { mode: "json" }).$type<string[]>().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").default(now).notNull(),
+}, (t) => ({
+  turnSnapshotUniq: uniqueIndex("canvas_access_grants_turn_snapshot_uniq").on(t.turnId, t.snapshotId),
+  byTurn: index("canvas_access_grants_turn_idx").on(t.turnId, t.executorAgentId),
+  byDelivery: index("canvas_access_grants_delivery_idx").on(t.deliveryId),
+}));
+
+export const turnOutputArtifacts = sqliteTable("turn_output_artifacts", {
+  id: id("id").primaryKey(),
+  outputId: text("output_id").notNull().references(() => turnOutputs.id, { onDelete: "cascade" }),
+  turnId: text("turn_id").notNull().references(() => agentTurns.id, { onDelete: "cascade" }),
+  kind: text("kind").$type<"canvas_mutation">().notNull(),
+  artifactId: text("artifact_id").notNull(),
+  createdAt: timestamp("created_at").default(now).notNull(),
+}, (t) => ({
+  outputKindArtifactUniq: uniqueIndex("turn_output_artifacts_output_kind_artifact_uniq").on(t.outputId, t.kind, t.artifactId),
+  byArtifact: index("turn_output_artifacts_artifact_idx").on(t.kind, t.artifactId),
+}));
+
+export const canvasGenerationJobs = sqliteTable("canvas_generation_jobs", {
+  id: id("id").primaryKey(),
+  canvasId: text("canvas_id").notNull().references(() => canvasDocuments.id, { onDelete: "cascade" }),
+  jobType: text("job_type").$type<"image" | "video" | "audio">().notNull(),
+  status: text("status").$type<"pending" | "processing" | "completed" | "failed" | "cancelled">().notNull(),
+  genPrompt: text("gen_prompt").notNull(),
+  configJson: text("config_json"),
+  placementJson: text("placement_json").notNull(),
+  provider: text("provider").$type<"doubao" | "seedream" | "openrouter" | "stability" | "runway" | "dalle" | "pika">().notNull(),
+  providerJobId: text("provider_job_id"),
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").default(0).notNull(),
+  resultAssetId: text("result_asset_id").references(() => canvasAssets.id, { onDelete: "set null" }),
+  resultNodeId: text("result_node_id"),
+  turnId: text("turn_id"),
+  idempotencyKey: text("idempotency_key").notNull(),
+  expectedRevision: integer("expected_revision").notNull(),
+  createdAt: timestamp("created_at").notNull(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  updatedAt: timestamp("updated_at").notNull(),
+}, (t) => ({
+  byCanvas: index("canvas_generation_jobs_canvas_idx").on(t.canvasId),
+  byStatus: index("canvas_generation_jobs_status_idx").on(t.status),
+  idempotencyUniq: uniqueIndex("canvas_generation_jobs_idempotency_uniq").on(t.canvasId, t.idempotencyKey),
+  jobTypeCheck: check("canvas_generation_jobs_job_type_check", sql`${t.jobType} in ('image', 'video', 'audio')`),
+  statusCheck: check("canvas_generation_jobs_status_check", sql`${t.status} in ('pending', 'processing', 'completed', 'failed', 'cancelled')`),
+  providerCheck: check("canvas_generation_jobs_provider_check", sql`${t.provider} in ('doubao', 'seedream', 'openrouter', 'stability', 'runway', 'dalle', 'pika')`),
+}));

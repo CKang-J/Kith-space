@@ -12,6 +12,7 @@ KITH_SPACE_HOME=C:/path/to/kith-space-data
 KITH_SPACE_SPACES_DIR=C:/path/to/kith-space-spaces
 KITH_SPACE_DESKTOP_TOKEN=<独立随机值>
 KITH_SPACE_WORKER_TOKEN=<另一个独立随机值>
+KITH_CANVAS_AGENT_EXECUTION=1
 ```
 
 - `PORT`：手动 Core Service 端口，默认 `7777`。
@@ -19,6 +20,7 @@ KITH_SPACE_WORKER_TOKEN=<另一个独立随机值>
 - `KITH_SPACE_SPACES_DIR`：开发/测试专用的默认 Space 容器覆盖，正式默认值为 `~/Kith-space`。隔离验收时应与 `KITH_SPACE_HOME` 一起指向临时 profile 的不同子目录。
 - `KITH_SPACE_DESKTOP_TOKEN`：手动开发管理请求到 Core 的内部凭据。
 - `KITH_SPACE_WORKER_TOKEN`：Worker 控制 WebSocket 的独立凭据。
+- `KITH_CANVAS_AGENT_EXECUTION`：Canvas Agent Gateway/MCP/CLI 执行入口。设为 `1`/`true`/`on` 时，`TurnCapabilityService.prepare()` 才会从 binding+bound required delivery+frozen Selection Snapshot 派生 Access Grant 并把对应 `canvas.*` scopes 写入 activation claims；`0`/`false`/`off` 或未设置时生产路径 fail-closed（测试 runner 默认开启）。`pnpm run desktop:dev` 已为 Core/Worker 自动注入 `1`；手动分进程、打包产物或独立 `server`/`daemon` 调试若要做 Canvas Agent smoke，必须在 Core（以及需要时 Worker）进程环境显式设置，且新 turn/重启后才生效，旧 activation 不会被静默升级。
 
 路径职责固定为：主要 runtime 的 cwd 是 registry 中所属 Space 的 rootPath；Agent Memory 位于 `<space>/.kith/agents/<agentId>`；prompt、turn 文件等 runtime 临时状态位于 `$KITH_SPACE_HOME/runtime/<spaceId>/<agentId>`。普通 reset 只清 session/runtime state，完整 reset 额外清当前 Agent Memory；两者都不会删除共享 Space 文件，同 agent 的 reset/start 会在 Worker 内串行。OpenCode system prompt 只通过 child env 的 inline execution agent 注入，不写 Space 的 `AGENTS.md`。Copilot/Kimi/Cursor 仍为 experimental adapter，因其会向 cwd 写 `AGENTS.md`，暂时使用 runtime state cwd。
 
@@ -49,6 +51,8 @@ pnpm run browser-access:dev lan --port 7777 --token "a-custom-token-at-least-16-
 完整Desktop/Web验收必须从产品正常流程开始：用`pnpm run desktop:dev`启动fresh profile，在Desktop首次创建Human，再进入“Settings → Desktop & Web”，把模式切到“Local only”，点击生成或轮换Token；模式改变后重启Desktop/Core，再在7777输入这次界面显示的一次性Token。Token只应临时保存在测试进程内存，不得写入源码、fixture、环境示例、快照、日志说明或验收文档。
 
 需要检查Electron渲染DOM时，开发脚本允许把参数转发给Electron：`pnpm run desktop:dev --remote-debugging-port=9222`。只可在本机隔离profile使用并在验收后停止进程；不要给LAN地址开放该端口，也不要从DevTools输出一次性Token。production bundle/pack不会自动启用调试端口。
+
+Recombyn Canvas 阶段 1 harness 只在 Vite 开发环境提供：启动 `pnpm --dir web run dev` 后访问 `http://127.0.0.1:5173/?__canvas_stage1=1`。该查询参数加载原生导出内存 fixture 与隔离 UI Island，不注册正式 Canvas 模块、不访问 Core/SQLite，也不会写回 Agent；production build 静态排除该入口。`pnpm run canvas:stage1:materialize` 对 clean、固定 commit 的上游闭包重放来源/隔离转换，`pnpm run canvas:stage1:build` 在 OS 临时目录验证仅开发岛的完整 bundle，不污染 `web/dist`。该入口仍不是正式产品能力。固定视口、快捷键、computed-style、portal 与性能采集口径见 [`recombyn-stage1-visual-performance-baseline.md`](./research/recombyn-stage1-visual-performance-baseline.md)。
 
 ## 3. 数据库与调试数据
 

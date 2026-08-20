@@ -36,6 +36,8 @@ import { shouldGroupMessage } from "./chat-message/messageGrouping.ts";
 import { surfaceForSender } from "./chat-message/messagePresentation.ts";
 import { buildMessageImageGallery, isSingleImageMessage } from "./chat-message/messageImageGallery.ts";
 import { TurnDetailsButton } from "./chat-message/TurnDetailsButton.tsx";
+import { CanvasContextChip } from "./chat-message/CanvasContextChip.tsx";
+import { CanvasChip } from "./chat-message/CanvasChip.tsx";
 import type { LightboxImage } from "../Lightbox.tsx";
 import { useConversationApi } from "../features/conversation/data/conversationApi.ts";
 import { useTaskApi } from "../features/conversation/data/taskApi.ts";
@@ -67,6 +69,10 @@ function AgentReplyPreviewBody({ m }: { m: Msg }) {
 function AttCard({ a, url, gallery }: { a: Att; url: string; gallery: readonly LightboxImage[] }) {
   const image = !!a.mimeType?.startsWith("image/");
   return <AttachmentCard filename={a.filename} mimeType={a.mimeType} imageSrc={image ? url : undefined} imageId={image ? a.id : undefined} imageGallery={image ? gallery : undefined} href={image ? undefined : url} sizeLabel={fmtSize(a.sizeBytes)} />;
+}
+
+function messageCanvasContexts(m: Msg) {
+  return m.canvasContexts?.length ? m.canvasContexts : m.canvasContext ? [m.canvasContext] : [];
 }
 
 // Message emoji reactions: chip shows emoji×count (highlighted if the current user reacted), click to toggle; hovering the add button reveals a quick picker
@@ -230,6 +236,7 @@ interface ChatShellControls {
   onOpenTasks?(conversationId: string): void;
   onOpenChannelSettings?(channelId: string, trigger?: HTMLButtonElement): void;
   onNavigateConversation?(target: string): void;
+  headerTrailingAction?: ReactNode;
 }
 interface ChatProps extends ChatShellControls {
   embedded?: boolean;
@@ -251,6 +258,7 @@ export function Chat({
   onOpenTasks,
   onOpenChannelSettings,
   onNavigateConversation,
+  headerTrailingAction,
 }: ChatProps) {
   const { t } = useTranslation();
   const { reload, channels, archivedChannels, dms, unread, agents, slug, me, attachmentUrl, react, openAgentDM, savedIds, saveMsg, unsaveMsg, agentPanelReq, clearAgentPanelReq } = useStore();
@@ -489,6 +497,7 @@ export function Chat({
           <MoreHorizontal size={17} />
         </button>
       ) : null}
+      {headerTrailingAction}
     </div>
   ) : null;
 
@@ -625,6 +634,30 @@ export function Chat({
                       ? <AgentReplyPreviewBody m={m} />
                       : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={messageChannels} nav={navToken} /></div>}
                     {!!m.attachments?.length && <div className={`msg-atts attachment-list${isSingleImageMessage(m.attachments) ? " attachment-list--single-image" : ""}`}>{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} gallery={messageImageGallery} />)}</div>}
+                    {(() => {
+                      const contexts = messageCanvasContexts(m);
+                      if (!contexts.length) return null;
+                      const selectionContexts = contexts.filter((ctx) => !ctx.summaryParts?.wholeCanvas && (ctx.selectedIds?.length || ctx.selectedElements?.length || ctx.selectedFrames?.length));
+                      const wholeCanvasContexts = contexts.filter((ctx) => ctx.summaryParts?.wholeCanvas || (!ctx.selectedIds?.length && !ctx.selectedElements?.length && !ctx.selectedFrames?.length));
+                      return (
+                        <>
+                          {selectionContexts.length > 0 && (
+                            <div className="mt-2 flex snap-x snap-mandatory gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                              {selectionContexts.map((context) => (
+                                <CanvasContextChip key={context.snapshotId || `${context.canvasId}-${context.documentRevision}`} compact context={context} />
+                              ))}
+                            </div>
+                          )}
+                          {wholeCanvasContexts.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {wholeCanvasContexts.map((context) => (
+                                <CanvasChip key={context.snapshotId || `${context.canvasId}-${context.documentRevision}`} canvas={{ canvasId: context.canvasId, canvasTitle: context.canvasTitle }} />
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     {hasInlineMeta ? <div className="msg-meta">
                         {m.taskStatus && (() => {
                           const TI = TASK_ICON[m.taskStatus] || Circle;
@@ -832,6 +865,30 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
           ? <AgentReplyPreviewBody m={m} />
           : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={[...channels, ...archivedChannels]} nav={navToken} /></div>}
         {!!m.attachments?.length && <div className={`msg-atts attachment-list${isSingleImageMessage(m.attachments) ? " attachment-list--single-image" : ""}`}>{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} gallery={threadImageGallery} />)}</div>}
+        {(() => {
+          const contexts = messageCanvasContexts(m);
+          if (!contexts.length) return null;
+          const selectionContexts = contexts.filter((ctx) => !ctx.summaryParts?.wholeCanvas && (ctx.selectedIds?.length || ctx.selectedElements?.length || ctx.selectedFrames?.length));
+          const wholeCanvasContexts = contexts.filter((ctx) => ctx.summaryParts?.wholeCanvas || (!ctx.selectedIds?.length && !ctx.selectedElements?.length && !ctx.selectedFrames?.length));
+          return (
+            <>
+              {selectionContexts.length > 0 && (
+                <div className="mt-2 flex snap-x snap-mandatory gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {selectionContexts.map((context) => (
+                    <CanvasContextChip key={context.snapshotId || `${context.canvasId}-${context.documentRevision}`} compact context={context} />
+                  ))}
+                </div>
+              )}
+              {wholeCanvasContexts.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {wholeCanvasContexts.map((context) => (
+                    <CanvasChip key={context.snapshotId || `${context.canvasId}-${context.documentRevision}`} canvas={{ canvasId: context.canvasId, canvasTitle: context.canvasTitle }} />
+                  ))}
+                </div>
+              )}
+            </>
+          );
+        })()}
         <Reactions m={m} mine={me?.id ?? ""} readOnly={readOnly} onReact={(emoji, remove) => react(m.id, emoji, remove)} />
       </ChatMessageItem>
     </Fragment>

@@ -224,3 +224,31 @@ test("Pi RPC safely reopens the same generation directory during Desktop recover
   assert.equal(snapshot.payload.engineSessionId, "pi-session-1");
   await secondSession.close("shutdown");
 });
+
+test("unmanaged Pi RPC does not isolate PI_CODING_AGENT_DIR onto the generation root", async () => {
+  const fake = new FakePi();
+  const root = mkdtempSync(path.join(os.tmpdir(), "kith-pi-unmanaged-env-"));
+  let spawnedEnv: NodeJS.ProcessEnv | undefined;
+  const session = await createPiRpcRuntimeV2((_command, _args, spawnOptions) => {
+    spawnedEnv = spawnOptions.env;
+    return fake as unknown as ChildProcess;
+  }).openSession(options(root));
+  await waitForCommand(fake, "get_state");
+  assert.equal(spawnedEnv?.PI_CODING_AGENT_DIR, undefined);
+  assert.ok(spawnedEnv?.PI_CODING_AGENT_SESSION_DIR?.includes("sessions"));
+  assert.equal(spawnedEnv?.PI_TELEMETRY, "0");
+  await session.close("shutdown");
+});
+
+test("managed Pi RPC keeps compiler-provided PI_CODING_AGENT_DIR", async () => {
+  const fake = new FakePi();
+  const root = mkdtempSync(path.join(os.tmpdir(), "kith-pi-managed-env-"));
+  let spawnedEnv: NodeJS.ProcessEnv | undefined;
+  const session = await createPiRpcRuntimeV2((_command, _args, spawnOptions) => {
+    spawnedEnv = spawnOptions.env;
+    return fake as unknown as ChildProcess;
+  }).openSession({ ...options(root), env: { PI_CODING_AGENT_DIR: "/managed/pi-home" } });
+  await waitForCommand(fake, "get_state");
+  assert.equal(spawnedEnv?.PI_CODING_AGENT_DIR, "/managed/pi-home");
+  await session.close("shutdown");
+});

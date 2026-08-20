@@ -16,7 +16,9 @@ import { LiveTrace } from "../views/LiveTrace.tsx";
 import { ChatWorkspace } from "./ChatWorkspace.tsx";
 import { ModuleWorkspace } from "./ModuleWorkspace.tsx";
 import { SettingsDialog } from "./SettingsDialog.tsx";
+import { WorkspaceModuleLauncher } from "./WorkspaceModuleLauncher.tsx";
 import { WorkspaceNavigationRail } from "./WorkspaceNavigationRail.tsx";
+import { WorkspacePanelToggle } from "./WorkspacePanelToggle.tsx";
 import { WorkspaceSplitPane } from "./WorkspaceSplitPane.tsx";
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx";
 import { isSidebarToggleShortcut } from "./sidebarKeyboardShortcut.ts";
@@ -43,12 +45,13 @@ import {
   type WorkspaceModuleTarget,
 } from "./workspaceRoute.ts";
 import {
-  EMPTY_WORKSPACE_TAB_STATE,
   activeWorkspaceTab,
   closeWorkspaceTab,
   createWorkspaceTab,
   openWorkspaceTab,
   persistWorkspaceTabState,
+  removeWorkspaceResourceTab,
+  renameWorkspaceResourceTab,
   restoreWorkspaceTabState,
   type WorkspaceTab,
   type WorkspaceTabState,
@@ -74,6 +77,7 @@ const localStorageOrNull = () => typeof window === "undefined" ? null : window.l
 const targetForTab = (tab: WorkspaceTab): WorkspaceModuleTarget => {
   if (tab.moduleId === "tasks") return { moduleId: "tasks", taskScope: tab.resourceId };
   if (tab.moduleId === "agents") return { moduleId: "agents", agent: tab.resourceId };
+  if (tab.moduleId === "canvas") return { moduleId: "canvas", canvas: tab.resourceId, canvasTitle: tab.title };
   return { moduleId: tab.moduleId };
 };
 
@@ -104,6 +108,7 @@ export function WorkspaceFrame() {
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [aggregateTransitioning, setAggregateTransitioning] = useState(false);
   const [sidebarTransitioning, setSidebarTransitioning] = useState(false);
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
   const commitWorkspaceTabs = useCallback((
     update: (state: WorkspaceTabState) => WorkspaceTabState,
   ) => {
@@ -150,6 +155,9 @@ export function WorkspaceFrame() {
     }, 420);
   }, []);
   const route = parseWorkspaceRoute(location.pathname);
+  const initialWorkspacePanelOpen = new URLSearchParams(location.search).get("module") !== null
+    && new URLSearchParams(location.search).get("module") !== "settings";
+  const [workspacePanelOpen, setWorkspacePanelOpen] = useState(initialWorkspacePanelOpen);
   const requestedLayoutState: WorkspaceLayoutState = workspaceLayoutFromRoute(route, location.search);
   const isHome = spaces.some((space) => space.id === spaceId && space.isHome);
   const layoutState = workspaceLayoutForSpace(requestedLayoutState, isHome);
@@ -170,8 +178,11 @@ export function WorkspaceFrame() {
       const channel = [...channels, ...archivedChannels].find((candidate) => candidate.id === resourceId);
       return channel ? `${channel.name} · ${t("nav.tasks")}` : null;
     }
+    if (moduleId === "canvas" && resourceId) {
+      return new URLSearchParams(location.search).get("canvasTitle");
+    }
     return null;
-  }, [archivedChannels, channels, t, visibleAgents]);
+  }, [archivedChannels, channels, location.search, t, visibleAgents]);
   const routeTab = routeContentModuleId
     ? createWorkspaceTab({
       moduleId: routeContentModuleId,
@@ -219,6 +230,14 @@ export function WorkspaceFrame() {
   );
 
   useEffect(() => {
+    if (!activeTab) setWorkspaceExpanded(false);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (routeTab) setWorkspacePanelOpen(true);
+  }, [routeTab?.id]);
+
+  useEffect(() => {
     const node = workspaceRef.current;
     if (!node) return;
     let settleTimer: number | null = null;
@@ -255,6 +274,33 @@ export function WorkspaceFrame() {
       title: routeTab.title,
     }));
   }, [commitWorkspaceTabs, routeTab?.id, routeTab?.title]);
+
+  useEffect(() => {
+    const renamed = (event: Event) => {
+      const detail = (event as CustomEvent<{ canvasId?: unknown; title?: unknown }>).detail;
+      if (typeof detail?.canvasId !== "string" || typeof detail.title !== "string") return;
+      commitWorkspaceTabs((state) => renameWorkspaceResourceTab(state, "canvas", detail.canvasId as string, detail.title as string));
+      if (routeContentModuleId === "canvas" && routeResourceId === detail.canvasId) {
+        navigate(workspaceLocationForModule(location.pathname, location.search, {
+          moduleId: "canvas", canvas: detail.canvasId, canvasTitle: detail.title,
+        }), { replace: true });
+      }
+    };
+    const deleted = (event: Event) => {
+      const canvasId = (event as CustomEvent<{ canvasId?: unknown }>).detail?.canvasId;
+      if (typeof canvasId !== "string") return;
+      commitWorkspaceTabs((state) => removeWorkspaceResourceTab(state, "canvas", canvasId));
+      if (routeContentModuleId === "canvas" && routeResourceId === canvasId) {
+        navigate(workspaceLocationForModule(location.pathname, location.search, { moduleId: "canvas", canvas: null }), { replace: true });
+      }
+    };
+    window.addEventListener("kith:canvas-renamed", renamed);
+    window.addEventListener("kith:canvas-deleted", deleted);
+    return () => {
+      window.removeEventListener("kith:canvas-renamed", renamed);
+      window.removeEventListener("kith:canvas-deleted", deleted);
+    };
+  }, [commitWorkspaceTabs, location.pathname, location.search, navigate, routeContentModuleId, routeResourceId]);
 
   useEffect(() => {
     const openQuickSwitcher = (event: KeyboardEvent) => {
@@ -315,10 +361,10 @@ export function WorkspaceFrame() {
     : INITIAL_WORKSPACE_LAYOUT;
   const layoutSearch = workspaceSearchForShellState(location.search, activeTabLayout);
   const aggregateEligible = route.isChannelRoute && currentChannelId !== null;
-  const mode = activeTab ? "split" : "chat-only";
+  const mode = workspacePanelOpen ? "split" : "chat-only";
   const contentWorkspaceWidth = workspaceWidth;
   const aggregateConstraints = aggregatePaneConstraints(contentWorkspaceWidth);
-  const aggregateAvailable = aggregateEligible && !activeTab;
+  const aggregateAvailable = aggregateEligible && !workspacePanelOpen;
   const aggregateInlineAvailable = aggregateAvailable && aggregateConstraints.canShow;
   const aggregateVisible = aggregateInlineAvailable && aggregateOpen;
   const aggregateWidth = aggregateVisible ? aggregateConstraints.width : 0;
@@ -328,7 +374,7 @@ export function WorkspaceFrame() {
     flexGrow: 0,
     flexShrink: 0,
   });
-  const chatPaneStyle = activeTab ? undefined : CHAT_ONLY_PANE_STYLE;
+  const chatPaneStyle = workspacePanelOpen ? undefined : CHAT_ONLY_PANE_STYLE;
   const unreadCount = Object.values(unread).reduce((total, count) => total + count, 0);
   const settingsChannel = settingsChannelId
     ? [...channels, ...archivedChannels].find((channel) => channel.id === settingsChannelId) ?? null
@@ -397,6 +443,7 @@ export function WorkspaceFrame() {
       title: workspaceTabTitle(contentModule, resourceId),
     });
     setAggregateOpen(false);
+    setWorkspacePanelOpen(true);
     commitWorkspaceTabs((state) => openWorkspaceTab(state, tab));
     navigateToTab(tab);
   }, [
@@ -417,11 +464,13 @@ export function WorkspaceFrame() {
       title: workspaceTabTitle("tasks", conversationId),
     });
     setAggregateOpen(false);
+    setWorkspacePanelOpen(true);
     commitWorkspaceTabs((state) => openWorkspaceTab(state, tab));
     navigateToTab(tab);
   }, [commitWorkspaceTabs, navigateToTab, requestSettingsExit, workspaceTabTitle]);
 
   const activateTab = (tab: WorkspaceTab) => {
+    setWorkspacePanelOpen(true);
     commitWorkspaceTabs((state) => openWorkspaceTab(state, tab));
     navigateToTab(tab);
   };
@@ -462,6 +511,13 @@ export function WorkspaceFrame() {
   const selectSidebarModule = useCallback((moduleId: SidebarModuleId) => {
     void selectModule(moduleId);
   }, [selectModule]);
+  const toggleWorkspaceExpanded = useCallback(() => {
+    setWorkspaceExpanded((expanded) => !expanded);
+  }, []);
+  const toggleWorkspacePanel = useCallback(() => {
+    setWorkspaceExpanded(false);
+    setWorkspacePanelOpen((open) => !open);
+  }, []);
 
   const updateConversationFocus = (key: "thread" | "msg", value: string) => {
     const params = new URLSearchParams(location.search);
@@ -524,7 +580,7 @@ export function WorkspaceFrame() {
       style={chatPaneStyle}
     />
   );
-  const tabWorkspace = activeTab && contentModuleId ? (
+  const workspaceContent = activeTab && contentModuleId ? (
     <WorkspaceTabs
       activeTabId={activeTab.id}
       isHome={isHome}
@@ -532,9 +588,16 @@ export function WorkspaceFrame() {
       onActivate={activateTab}
       onClose={closeTab}
       onOpenModule={(moduleId) => void selectModule(moduleId)}
+      workspaceExpanded={workspaceExpanded}
+      onToggleWorkspaceExpanded={toggleWorkspaceExpanded}
     >
       <ModuleWorkspace moduleId={contentModuleId} />
     </WorkspaceTabs>
+  ) : workspacePanelOpen ? (
+    <WorkspaceModuleLauncher
+      isHome={isHome}
+      onOpenModule={(moduleId) => void selectModule(moduleId)}
+    />
   ) : null;
 
   return (
@@ -576,6 +639,10 @@ export function WorkspaceFrame() {
         >
           <div ref={workspaceRef} className="shell-workspace-canvas">
             <SidebarTrigger className="shell-sidebar-trigger" />
+            <WorkspacePanelToggle
+              open={workspacePanelOpen}
+              onToggle={toggleWorkspacePanel}
+            />
             <WorkspaceSplitPane
               chat={(
                 <>
@@ -593,8 +660,10 @@ export function WorkspaceFrame() {
                   ) : null}
                 </>
               )}
-              workspace={tabWorkspace}
-              workspaceOpen={!!tabWorkspace}
+              workspace={workspaceContent}
+              workspaceOpen={workspacePanelOpen}
+              keepWorkspaceMounted={!!activeTab}
+              workspaceExpanded={workspaceExpanded}
             />
           </div>
           {settingsOpen ? (

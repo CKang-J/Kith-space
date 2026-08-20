@@ -1,10 +1,12 @@
 // Shared helpers used by ≥2 route modules — verbatim from the former routes-api.ts.
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { dbForSpace, schema } from "../../db/index.js";
+import { presentCanvasContext, presentCanvasContexts } from "../../canvas/canvasChatPresentation.js";
+import { loadCanvasContextsForMessages } from "../../canvas/canvasSelectionSnapshot.js";
 import { aggregateReactions } from "../core.js";
 
 export async function attachMentions(spaceId: string, msgs: (typeof schema.messages.$inferSelect)[]) {
-  if (!msgs.length) return msgs.map((m) => ({ ...m, senderDeleted: false, mentions: [] as any[], attachments: [] as any[], reactions: [] as any[] }));
+  if (!msgs.length) return msgs.map((m) => ({ ...m, senderDeleted: false, mentions: [] as any[], attachments: [] as any[], reactions: [] as any[], canvasContext: null, canvasContexts: [] }));
   const db = dbForSpace(spaceId);
   const ids = msgs.map((m) => m.id);
   const mts = await db.select().from(schema.messageMentions).where(inArray(schema.messageMentions.messageId, ids));
@@ -12,13 +14,19 @@ export async function attachMentions(spaceId: string, msgs: (typeof schema.messa
   const reactions = await aggregateReactions(spaceId, ids);
   const senderIds = [...new Set(msgs.filter((m) => m.senderType === "agent" && m.senderId).map((m) => m.senderId!))];
   const deletedSenderIds = deletedAgentIds(spaceId, senderIds);
-  return msgs.map((m) => ({
-    ...m,
-    senderDeleted: m.senderType === "agent" && !!m.senderId && deletedSenderIds.has(m.senderId),
-    mentions: mts.filter((x) => x.messageId === m.id).map((x) => ({ type: x.mentionType, id: x.mentionId, name: x.mentionName })),
-    attachments: atts.filter((a) => a.messageId === m.id).map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType, sizeBytes: a.sizeBytes })),
-    reactions: reactions.get(m.id) ?? [],
-  }));
+  const canvasContexts = loadCanvasContextsForMessages(db, spaceId, ids);
+  return msgs.map((m) => {
+    const canvas = canvasContexts.get(m.id) ?? [];
+    return {
+      ...m,
+      senderDeleted: m.senderType === "agent" && !!m.senderId && deletedSenderIds.has(m.senderId),
+      mentions: mts.filter((x) => x.messageId === m.id).map((x) => ({ type: x.mentionType, id: x.mentionId, name: x.mentionName })),
+      attachments: atts.filter((a) => a.messageId === m.id).map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType, sizeBytes: a.sizeBytes })),
+      reactions: reactions.get(m.id) ?? [],
+      canvasContext: presentCanvasContext(canvas[0]),
+      canvasContexts: presentCanvasContexts(canvas),
+    };
+  });
 }
 
 export function deletedAgentIds(spaceId: string, agentIds?: string[]): Set<string> {

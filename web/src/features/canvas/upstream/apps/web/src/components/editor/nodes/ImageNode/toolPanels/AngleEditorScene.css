@@ -1,0 +1,433 @@
+.rcb-angle-editor-scene {
+  /* Theme-aware wires / faces: dark used white-on-black; light needs ink-on-canvas. */
+  --mae-face-bg: color-mix(in srgb, var(--ink) 8%, var(--canvas));
+  --mae-face-edge: color-mix(in srgb, var(--ink) 28%, transparent);
+  --mae-face-edge-soft: color-mix(in srgb, var(--ink) 12%, transparent);
+  --mae-face-label: color-mix(in srgb, var(--ink) 38%, transparent);
+  --mae-wire: color-mix(in srgb, var(--ink) 28%, transparent);
+  --mae-wire-axis: color-mix(in srgb, var(--ink) 32%, transparent);
+  --mae-arrow: color-mix(in srgb, var(--ink) 55%, transparent);
+  --mae-arrow-hover-bg: color-mix(in srgb, var(--ink) 10%, transparent);
+  --mae-subject-border: color-mix(in srgb, var(--ink) 16%, transparent);
+  --mae-subject-bg: color-mix(in srgb, var(--ink) 6%, var(--canvas));
+  --mae-subject-shadow: 0 1px 8px color-mix(in srgb, var(--ink) 18%, transparent);
+
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  user-select: none;
+  background: var(--canvas, #141414);
+}
+
+/* Preserve the original dark-mode cube weight (near #1f1f1f). */
+html[data-theme='dark'] .rcb-angle-editor-scene {
+  --mae-face-bg: #1f1f1f;
+  --mae-subject-bg: #1a1a1a;
+  --mae-subject-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+}
+
+.rcb-angle-editor-scene .rcb-unified-scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  perspective: 1200px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.rcb-angle-editor-scene .rcb-unified-scene.rcb-mode-camera {
+  transform-style: preserve-3d;
+}
+
+.rcb-angle-editor-scene .rcb-unified-scene.rcb-is-dragging {
+  cursor: grabbing;
+}
+
+.rcb-angle-editor-scene .rcb-unified-scene-cube-container {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-scene-container {
+  perspective: 1200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-cube-wrapper {
+  transform-style: preserve-3d;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-cube {
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-cube-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  border: 1px solid var(--mae-face-edge-soft);
+  background: var(--mae-face-bg);
+  overflow: hidden;
+  backface-visibility: hidden;
+  color: var(--mae-face-label);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* Skybox: wireframe cube — inset shadows keep all 4 edges visible under 3D rotate. */
+.rcb-angle-editor-scene .rcb-mode-skybox .rcb-angle-editor-cube-face {
+  border: none;
+  /* Vertical edges especially get lost with border + rotateX; inset shadows stay painted. */
+  box-shadow:
+    inset 0 0 0 1px var(--mae-face-edge),
+    0 0 0 0.5px var(--mae-face-edge-soft);
+  background: var(--mae-face-bg);
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--mae-face-label);
+  /* Keep side faces (L / R) visible when nearly edge-on. */
+  backface-visibility: visible;
+}
+
+.rcb-angle-editor-scene .rcb-mode-skybox .rcb-angle-editor-cube-face.rcb-has-image {
+  border: none;
+  background: var(--mae-face-bg);
+  box-shadow:
+    inset 0 0 0 1px var(--mae-face-edge),
+    0 0 0 0.5px var(--mae-face-edge-soft);
+}
+
+.rcb-angle-editor-scene .rcb-mode-skybox .rcb-angle-editor-face-image-content {
+  width: 72%;
+  height: 72%;
+  object-fit: contain;
+  border-radius: 2px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-face-image-content {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Camera mode: fixed face-on subject (does not orbit; only scales). */
+.rcb-angle-editor-scene .rcb-angle-editor-fixed-subject {
+  position: relative;
+  /* Fallback before natural size loads — leave padding inside the orbit globe. */
+  width: 64px;
+  height: 64px;
+  max-width: 64px;
+  max-height: 64px;
+  transform-style: flat;
+  pointer-events: none;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-fixed-subject-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 2px;
+  border: 1px solid var(--mae-subject-border);
+  background: var(--mae-subject-bg);
+  box-shadow: var(--mae-subject-shadow);
+  user-select: none;
+  pointer-events: none;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-fixed-subject-placeholder {
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  border: 1px solid var(--mae-subject-border);
+  background: var(--mae-subject-bg);
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-face-front {
+  transform: translateZ(var(--angle-cube-half, 46px));
+}
+.rcb-angle-editor-scene .rcb-angle-editor-face-back {
+  transform: rotateY(180deg) translateZ(var(--angle-cube-half, 46px));
+}
+.rcb-angle-editor-scene .rcb-angle-editor-face-right {
+  transform: rotateY(90deg) translateZ(var(--angle-cube-half, 46px));
+}
+.rcb-angle-editor-scene .rcb-angle-editor-face-left {
+  transform: rotateY(-90deg) translateZ(var(--angle-cube-half, 46px));
+}
+.rcb-angle-editor-scene .rcb-angle-editor-face-top {
+  transform: rotateX(90deg) translateZ(var(--angle-cube-half, 46px));
+}
+.rcb-angle-editor-scene .rcb-angle-editor-face-bottom {
+  transform: rotateX(-90deg) translateZ(var(--angle-cube-half, 46px));
+}
+
+/* Camera-mode orbit wireframe (CSS 3D rings, not copied from third-party class names). */
+.rcb-angle-editor-scene .rcb-mae-orbit-globe {
+  --mae-globe-size: 150px;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.rcb-angle-editor-scene .rcb-mae-orbit-globe-core {
+  position: relative;
+  width: var(--mae-globe-size);
+  height: var(--mae-globe-size);
+  transform-style: preserve-3d;
+}
+
+.rcb-angle-editor-scene .rcb-mae-orbit-globe-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--mae-globe-size);
+  height: var(--mae-globe-size);
+  margin-left: calc(var(--mae-globe-size) / -2);
+  margin-top: calc(var(--mae-globe-size) / -2);
+  border: 1px solid var(--mae-wire);
+  border-radius: 50%;
+  box-sizing: border-box;
+  opacity: 0.55;
+  transform-style: preserve-3d;
+  backface-visibility: visible;
+}
+
+.rcb-angle-editor-scene .rcb-mae-orbit-globe-axis {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1px;
+  height: var(--mae-globe-size);
+  transform: translate(-50%, -50%);
+  background: var(--mae-wire-axis);
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.rcb-angle-editor-scene .rcb-mae-orbit-nav {
+  --mae-orbit-arrow-size: 18px;
+  --mae-orbit-arrow-gap: 10px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(
+    var(--mae-globe-size, 150px) + 2 * (var(--mae-orbit-arrow-gap) + var(--mae-orbit-arrow-size))
+  );
+  height: calc(
+    var(--mae-globe-size, 150px) + 2 * (var(--mae-orbit-arrow-gap) + var(--mae-orbit-arrow-size))
+  );
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-scene-camera {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Let orbit drag hit the scene; only arrow buttons capture clicks. */
+  pointer-events: none;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-pivot {
+  position: relative;
+  width: 1px;
+  height: 1px;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-position {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  transform-style: preserve-3d;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-body {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-style: preserve-3d;
+  background: #e8e4e4;
+  box-sizing: border-box;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-front,
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-back {
+  width: 22px;
+  height: 16px;
+  border-radius: 3px;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-front {
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-back {
+  background: #f3f0f0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-lens-outer {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  margin: 3px auto 0;
+  border-radius: 50%;
+  background: #b4b4b4;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-lens-inner {
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: #1f1f1f;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-screen {
+  position: absolute;
+  inset: 2px;
+  border-radius: 2px;
+  background-color: #111;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-top,
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-bottom {
+  width: 22px;
+  height: 16px;
+  border-radius: 2px;
+  background: #ddd8d8;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-side {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  background: #d8d3d3;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-shutter {
+  width: 6px;
+  height: 6px;
+  margin: 4px auto 0;
+  border-radius: 50%;
+  background: #9a9a9a;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-hotshoe {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-hotshoe-body {
+  width: 10px;
+  height: 4px;
+  margin-left: -5px;
+  border-radius: 1px;
+  background: #cfcaca;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-hotshoe-mount {
+  width: 6px;
+  height: 2px;
+  margin: 1px auto 0;
+  border-radius: 1px;
+  background: #aaa;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-camera-3d-line {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1px;
+  background: #9a9a9a;
+  opacity: 0.75;
+  transform-origin: top center;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-direction-btn {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--mae-arrow);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.rcb-angle-editor-scene .rcb-angle-editor-direction-btn:hover {
+  color: var(--ink);
+  background: var(--mae-arrow-hover-bg);
+}
+
+.rcb-angle-editor-scene .rcb-mae-orbit-nav .rcb-angle-editor-direction-btn-up {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.rcb-angle-editor-scene .rcb-mae-orbit-nav .rcb-angle-editor-direction-btn-down {
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.rcb-angle-editor-scene .rcb-mae-orbit-nav .rcb-angle-editor-direction-btn-left {
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.rcb-angle-editor-scene .rcb-mae-orbit-nav .rcb-angle-editor-direction-btn-right {
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.rcb-angle-editor-scene .rcb-mode-skybox .rcb-angle-editor-skybox-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  background: var(--canvas, #141414);
+  pointer-events: none;
+}

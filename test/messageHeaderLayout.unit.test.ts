@@ -110,6 +110,7 @@ test("chat chrome is compact while non-chat page headings keep their existing ty
   const chatHead = ruleBody(".chat-head");
   assert.match(chatHead, /height\s*:\s*52px/);
   assert.match(chatHead, /padding\s*:\s*0 14px/);
+  assert.match(chatHead, /align-items\s*:\s*center/);
   assert.match(chatHead, /border-bottom\s*:\s*1px solid var\(--hair\)/);
   const rail = ruleBody(".chat-head__rail");
   assert.match(rail, /max-width\s*:\s*none/);

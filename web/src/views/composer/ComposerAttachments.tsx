@@ -26,7 +26,7 @@ export function ComposerAttachments({ attachments, attachmentUrl, onRemove }: Co
   if (!attachments.length) return null;
 
   return (
-    <div className="composer-attachments attachment-list" aria-label={t("chat.pendingAttachments")} aria-live="polite">
+    <div className="attachment-list" aria-label={t("chat.pendingAttachments")} aria-live="polite">
       {attachments.map((attachment) => {
         const image = isImage(attachment.mimeType);
         const src = attachment.localUrl || (attachment.status !== "uploading" ? attachmentUrl(attachment.id) : "");

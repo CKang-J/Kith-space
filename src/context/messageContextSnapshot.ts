@@ -1,6 +1,6 @@
 import { MessageContextSnapshotSchema, type MessageContextSnapshot } from "./contracts.js";
 
-const SAFE_MODULES = new Set(["chat", "tasks", "agents", "settings", "spaces"]);
+const SAFE_MODULES = new Set(["chat", "tasks", "agents", "settings", "spaces", "canvas"]);
 const SAFE_TOKEN = /^[A-Za-z0-9._:-]+$/;
 
 function safeToken(value: unknown, max: number): string | null {

@@ -7,6 +7,7 @@ import { Inbox, Search, Tasks } from "../views/misc.tsx";
 import { getWorkspaceModule } from "./workspaceModules.tsx";
 import type { ContentModuleId } from "./workspaceLayout.ts";
 import { workspaceModuleResourceFromSearch } from "./workspaceRoute.ts";
+import { CanvasModule } from "../features/canvas/host/CanvasModule.tsx";
 
 interface ModuleWorkspaceProps {
   moduleId: ContentModuleId;
@@ -23,6 +24,7 @@ function ModuleContent({ moduleId }: { moduleId: ContentModuleId }) {
   if (moduleId === "agents") {
     return <Agents agentIdOverride={resourceId ?? undefined} />;
   }
+  if (moduleId === "canvas") return <CanvasModule canvasId={resourceId} />;
   if (moduleId === "search") return <Search />;
   return <Inbox />;
 }

@@ -31,7 +31,7 @@ test("Machine and Computers are absent from the frontend product surface", () =>
   assert.doesNotMatch(modules, /computers|Monitor/);
   assert.deepEqual(
     [...modules.matchAll(/\{ id: "([^"]+)",[^\n]+sidebar: true \}/g)].map((match) => match[1]),
-    ["spaces", "inbox", "tasks", "agents", "settings"],
+    ["spaces", "inbox", "tasks", "agents", "canvas", "settings"],
   );
   assert.match(modules, /\{ id: "search",[^\n]+sidebar: false \}/);
   assert.match(runtimeDiscovery, /\/api\/local-runtime\/models\/\$\{runtime\}/);

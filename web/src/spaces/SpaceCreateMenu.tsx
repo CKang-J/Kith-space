@@ -20,7 +20,7 @@ export function SpaceCreateMenu({ onSelect }: { onSelect: (intent: SpaceCreateIn
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
-            className="group/create h-[38px] w-full rounded-[10px] px-[13px] text-[13px] min-[821px]:w-auto"
+            className="group/create h-8 w-full rounded-[min(var(--radius-md),10px)] px-3 text-[13px] min-[821px]:w-auto"
           >
             <FolderPlus data-icon="inline-start" aria-hidden="true" />
             {t("spacesModule.createSpace")}

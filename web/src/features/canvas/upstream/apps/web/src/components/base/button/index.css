@@ -1,0 +1,156 @@
+.rcb-btn {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rcb-btn:disabled {
+  cursor: not-allowed;
+}
+
+.rcb-btn-disabled {
+  cursor: not-allowed !important;
+}
+
+.rcb-btn-small {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  height: 1.75rem; /* 28px — panel / dialog compact actions */
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+}
+
+.rcb-btn-medium {
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  height: 1.75rem; /* 28px — match panel reference height */
+  font-size: 12px;
+  line-height: 1rem;
+  font-weight: 500;
+}
+
+.rcb-btn-large {
+  padding-left: 1rem;
+  padding-right: 1rem;
+  height: 2rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+}
+
+/* Soft rectangle — matches account CTA (rounded-xl / 12px). */
+.rcb-btn-shape-default {
+  border-radius: 0.75rem;
+}
+
+.rcb-btn-shape-round {
+  border-radius: 9999px;
+}
+
+.rcb-btn-shape-circle {
+  border-radius: 9999px;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+}
+
+.rcb-btn-primary {
+  box-shadow:
+    0 1px 3px 0 rgb(0 0 0 / 0.1),
+    0 1px 2px -1px rgb(0 0 0 / 0.1);
+  background-color: var(--color-brand-base);
+  border: 1px solid var(--color-brand-base);
+  color: var(--color-text-on-button-base);
+}
+
+.rcb-btn-primary:hover:not(:disabled) {
+  background-color: var(--color-background-success-base-hover);
+  border-color: var(--color-background-success-base-hover);
+}
+
+.rcb-btn-primary.rcb-btn-destructive {
+  background-color: var(--color-background-error-base);
+  border-color: var(--color-background-error-base);
+  color: var(--color-text-on-button-base);
+}
+
+.rcb-btn-primary.rcb-btn-destructive:hover:not(:disabled) {
+  background-color: var(--color-background-error-base-hover);
+  border-color: var(--color-background-error-base-hover);
+}
+
+.rcb-btn-primary.rcb-btn-disabled,
+.rcb-btn-primary:disabled {
+  box-shadow: none;
+  background-color: var(--color-background-neutral-secondary);
+  border-color: var(--color-background-neutral-secondary);
+  color: var(--color-text-default-tertiary);
+}
+
+.rcb-btn-primary.rcb-btn-destructive.rcb-btn-disabled,
+.rcb-btn-primary.rcb-btn-destructive:disabled {
+  box-shadow: none;
+  background-color: var(--color-background-neutral-secondary);
+  border-color: var(--color-background-neutral-secondary);
+  color: var(--color-text-default-tertiary);
+}
+
+.rcb-btn-default {
+  border-width: 0.5px;
+  border-style: solid;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  background-color: var(--color-background-default-base);
+  border-color: var(--color-border-default-base);
+  color: var(--color-text-text-default-base);
+}
+
+.rcb-btn-default:hover:not(:disabled) {
+  background-color: var(--color-background-default-base-hover);
+  border-color: var(--color-border-default-base);
+}
+
+.rcb-btn-default.rcb-btn-disabled,
+.rcb-btn-default:disabled {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  background-color: var(--color-background-neutral-tertiary);
+  border-color: var(--color-background-neutral-tertiary);
+  color: var(--color-text-default-tertiary);
+}
+
+.rcb-btn-default.rcb-btn-destructive {
+  background-color: var(--color-background-error-base);
+  border-color: var(--color-background-error-base);
+  color: var(--color-text-on-button-base);
+}
+
+.rcb-btn-default.rcb-btn-destructive:hover:not(:disabled) {
+  background-color: var(--color-background-error-base-hover);
+  border-color: var(--color-background-error-base-hover);
+}
+
+.rcb-btn-default.rcb-btn-destructive.rcb-btn-disabled,
+.rcb-btn-default.rcb-btn-destructive:disabled {
+  background-color: var(--color-background-neutral-tertiary);
+  border-color: var(--color-background-neutral-tertiary);
+  color: var(--color-text-default-tertiary);
+}
+
+.rcb-btn-dark {
+  background-color: var(--color-icon-base-hover);
+  color: var(--color-text-solid);
+}
+
+.rcb-btn-dark:hover:not(:disabled) {
+  background-color: var(--color-icon-secondary-hover);
+}
+
+.rcb-btn-dark.rcb-btn-disabled,
+.rcb-btn-dark:disabled {
+  background-color: var(--color-background-neutral-tertiary);
+  color: var(--color-text-default-tertiary);
+}

@@ -37,6 +37,7 @@ const CONTENT_MODULE_IDS = new Set<ContentModuleId>([
   "inbox",
   "tasks",
   "agents",
+  "canvas",
   "search",
 ]);
 const MAX_TAB_TITLE_LENGTH = 160;
@@ -143,6 +144,27 @@ export function closeWorkspaceTab(state: WorkspaceTabState, tabId: string): Work
   if (current.activeTabId !== tabId) return { tabs, activeTabId: current.activeTabId };
   const adjacent = current.tabs[closedIndex + 1] ?? current.tabs[closedIndex - 1] ?? null;
   return { tabs, activeTabId: adjacent?.id ?? null };
+}
+
+export function renameWorkspaceResourceTab(
+  state: WorkspaceTabState,
+  moduleId: ContentModuleId,
+  resourceId: string,
+  title: string,
+): WorkspaceTabState {
+  const current = sanitizeWorkspaceTabState(state);
+  const id = workspaceTabId({ moduleId, resourceId });
+  const normalized = normalizeTitle(title);
+  if (normalized === null || !current.tabs.some((tab) => tab.id === id)) return current;
+  return { ...current, tabs: current.tabs.map((tab) => tab.id === id ? { ...tab, title: normalized } : tab) };
+}
+
+export function removeWorkspaceResourceTab(
+  state: WorkspaceTabState,
+  moduleId: ContentModuleId,
+  resourceId: string,
+): WorkspaceTabState {
+  return closeWorkspaceTab(state, workspaceTabId({ moduleId, resourceId }));
 }
 
 /** Returns the current tab only when it is still present in the state. */

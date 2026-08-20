@@ -1,11 +1,28 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte } from "drizzle-orm";
+import { prepareCanvasAccessGrantsInTransaction } from "../canvas/canvasAccessGrant.js";
 import { dbForSpace, schema, type SpaceDb } from "../db/index.js";
 import { HarnessError } from "../harness/errors.js";
 import { SessionCapabilityBroker } from "./sessionCapabilityBroker.js";
 import type { TurnCapabilityClaims } from "./contracts.js";
 import { requiredAgentScopes, type GatewayScope } from "./gatewayContracts.js";
 import { agentHasScope } from "../agents/agentScopes.js";
+
+function canvasScopesFromGrantActions(actions: readonly string[]): GatewayScope[] {
+  const scopes: GatewayScope[] = [];
+  if (actions.some((action) => action === "read_snapshot" || action === "read_live")) scopes.push("canvas.read");
+  if (actions.some((action) =>
+    action === "write_existing"
+    || action === "create"
+    || action === "delete_existing"
+    || action === "set_canvas_background"
+  )) {
+    scopes.push("canvas.write");
+  }
+  if (actions.includes("export")) scopes.push("canvas.export");
+  if (actions.includes("import")) scopes.push("canvas.import");
+  return scopes;
+}
 
 export interface PreparedTurnCapability {
   sessionHandle: string;
@@ -34,6 +51,14 @@ export class TurnCapabilityService {
       eq(schema.agentDeliveryItems.turnId, turn.id),
       eq(schema.agentDeliveryItems.disposition, "bound"),
     )).all();
+    const grants = this.db.transaction((tx) => prepareCanvasAccessGrantsInTransaction(tx, {
+      spaceId: turn.spaceId,
+      turnId: turn.id,
+      executorAgentId: turn.agentId,
+      deliveries,
+      expiresAt: attempt.leaseExpiresAt,
+    }));
+    const canvasScopes = [...new Set(grants.flatMap((grant) => canvasScopesFromGrantActions(grant.actions)))];
     const activationId = randomUUID();
     const canReply = agentHasScope(agent?.scopes, "message:send");
     if (turn.effectiveDirective === "required" && !canReply) {
@@ -67,6 +92,7 @@ export class TurnCapabilityService {
         ...(agentHasScope(agent?.scopes, "knowledge:read") ? ["memory.read"] as const : []),
         ...(agentHasScope(agent?.scopes, "task:read") ? ["task.read"] as const : []),
         ...(agentHasScope(agent?.scopes, "task:write") ? ["task.write"] as const : []),
+        ...canvasScopes,
       ],
       disclosureGrantIds: [],
       expiresAt: attempt.leaseExpiresAt.getTime(),
@@ -224,14 +250,25 @@ export class TurnCapabilityService {
     if (!handle) throw new HarnessError("capability_inactive", "runtime session broker handle is unavailable", { attemptId });
     const claims = this.broker.renew(handle, activation.id, expiresAt);
     const claimsDigest = createHash("sha256").update(JSON.stringify(claims)).digest("hex");
-    const updated = this.db.update(schema.turnCapabilityActivations).set({
-      expiresAt: new Date(expiresAt),
-      claimsDigest,
-    }).where(and(
-      eq(schema.turnCapabilityActivations.id, activation.id),
-      eq(schema.turnCapabilityActivations.status, "active"),
-    )).run();
-    if (!updated.changes) {
+    const leaseExpiresAt = new Date(expiresAt);
+    const updated = this.db.transaction((tx) => {
+      const activationUpdate = tx.update(schema.turnCapabilityActivations).set({
+        expiresAt: leaseExpiresAt,
+        claimsDigest,
+      }).where(and(
+        eq(schema.turnCapabilityActivations.id, activation.id),
+        eq(schema.turnCapabilityActivations.status, "active"),
+      )).run();
+      if (!activationUpdate.changes) return 0;
+      // Extend only still-live grants for this turn/executor. Revoked grants stay revoked.
+      tx.update(schema.canvasAccessGrants).set({ expiresAt: leaseExpiresAt }).where(and(
+        eq(schema.canvasAccessGrants.turnId, turn.id),
+        eq(schema.canvasAccessGrants.executorAgentId, turn.agentId),
+        isNull(schema.canvasAccessGrants.revokedAt),
+      )).run();
+      return activationUpdate.changes;
+    });
+    if (!updated) {
       this.broker.deactivate(handle, activation.id);
       throw new HarnessError("capability_inactive", "capability activation changed during renewal", { attemptId });
     }

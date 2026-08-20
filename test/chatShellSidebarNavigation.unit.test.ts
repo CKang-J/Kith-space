@@ -301,7 +301,7 @@ test("macOS integrates the native drag region into the interactive workspace hea
   assert.match(shellCss, /\[role="tablist"\][\s\S]*?\{\s*-webkit-app-region:\s*no-drag/);
   assert.match(
     shellCss,
-    /html\[data-kith-desktop-platform="darwin"\]\s+\.shell-sidebar-trigger\s*\{[^}]*position:\s*fixed;[^}]*left:\s*88px;[^}]*z-index:\s*60;[^}]*width:\s*26px;[^}]*height:\s*26px;[^}]*pointer-events:\s*auto;[^}]*-webkit-app-region:\s*no-drag/,
+    /html\[data-kith-desktop-platform="darwin"\]\s+\.shell-sidebar-trigger\s*\{[^}]*position:\s*fixed;[^}]*left:\s*88px;[^}]*z-index:\s*60;[^}]*width:\s*28px;[^}]*height:\s*28px;[^}]*pointer-events:\s*auto;[^}]*-webkit-app-region:\s*no-drag/,
   );
   assert.doesNotMatch(shellCss, /\.peer\[data-state="collapsed"\][^{]*\.shell-sidebar-trigger\s*\{/);
   assert.match(
@@ -310,11 +310,23 @@ test("macOS integrates the native drag region into the interactive workspace hea
   );
   assert.match(
     shellCss,
+    /\.shell-conversation-aggregate \.conversation-aggregate__topbar,[\s\S]*?\.shell-chat-settings-drawer \.channel-settings__header\s*\{[^}]*padding-right:\s*38px/,
+  );
+  assert.match(
+    shellCss,
     /html\[data-kith-desktop-platform="darwin"\]\s+\.shell-chat-main-card\s+\.chat-head__rail\s*\{[^}]*padding-left:\s*0;[^}]*transition:\s*padding-left var\(--shell-sidebar-motion-duration\) var\(--shell-sidebar-motion-easing\)/,
   );
   assert.match(
     shellCss,
     /\.peer\[data-state="collapsed"\]\s*~\s*\.shell-workspace-inset\s+\.shell-chat-main-card\s+\.chat-head__rail\s*\{[^}]*padding-left:\s*112px/,
+  );
+  assert.match(
+    shellCss,
+    /html\[data-kith-desktop-platform="darwin"\]\s+\.shell-workspace-tabs--expanded\s*\{[^}]*padding-left:\s*112px/,
+  );
+  assert.match(
+    shellCss,
+    /html\[data-kith-desktop-platform="darwin"\]\s+\.shell-workspace-tabs__list\s*\{[^}]*height:\s*28px;[^}]*padding:\s*0/,
   );
   assert.match(
     shellCss,

@@ -28,7 +28,29 @@ export interface Me { id: string; name: string; email?: string | null; descripti
 export interface Att { id: string; filename: string; mimeType?: string; sizeBytes?: number }
 export interface Reaction { emoji: string; count: number; reactorIds: string[]; reactorNames: string[] }
 export interface ActionMeta { kind: string; state: "prepared" | "executed"; action: { type: string; name: string; description?: string | null; visibility?: string; initialAgents?: string[] }; executedByUserName?: string | null; result?: { kind: string; id: string; name: string } | null }
-export interface Msg { id: string; seq: number; channelId: string; senderType: string; senderId?: string | null; senderName: string; senderDeleted?: boolean; content: string; messageType?: string; actionMetadata?: ActionMeta | null; createdAt?: string; taskStatus?: string | null; taskNumber?: number | null; taskAssigneeType?: string | null; taskAssigneeId?: string | null; producedByTurnId?: string | null; mentions?: { type?: string; id?: string; name: string }[]; attachments?: Att[]; reactions?: Reaction[] }
+export interface CanvasMessageContextView {
+  snapshotId: string;
+  canvasId: string;
+  canvasTitle: string;
+  documentRevision: number;
+  structureRevision?: number | null;
+  selectedElements?: Array<{ id: string; revision: number }>;
+  selectedFrames?: Array<{ id: string; revision: number }>;
+  selectedIds?: string[];
+  summary: string;
+  summaryParts?: {
+    canvasTitle: string;
+    wholeCanvas: boolean;
+    elementCount: number;
+    frameCount: number;
+    truncated: boolean;
+    documentRevision: number;
+  };
+  projection?: unknown;
+  canvasAvailable: boolean;
+  deepLink?: { canvas?: string };
+}
+export interface Msg { id: string; seq: number; channelId: string; senderType: string; senderId?: string | null; senderName: string; senderDeleted?: boolean; content: string; messageType?: string; actionMetadata?: ActionMeta | null; createdAt?: string; taskStatus?: string | null; taskNumber?: number | null; taskAssigneeType?: string | null; taskAssigneeId?: string | null; producedByTurnId?: string | null; mentions?: { type?: string; id?: string; name: string }[]; attachments?: Att[]; reactions?: Reaction[]; canvasContext?: CanvasMessageContextView | null; canvasContexts?: CanvasMessageContextView[] }
 type Ev = { type: string; [k: string]: any };
 
 interface Store {

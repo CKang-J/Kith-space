@@ -12,6 +12,7 @@ interface ChatWorkspaceProps {
   onOpenTasks(conversationId: string): void;
   onOpenChannelSettings(channelId: string, trigger?: HTMLButtonElement): void;
   onNavigateConversation(target: string): void;
+  headerTrailingAction?: ReactNode;
   aggregateDrawer?: ReactNode;
   aggregateDrawerOpen?: boolean;
   settingsDrawer?: ReactNode;
@@ -29,6 +30,7 @@ interface ChatSurfaceProps {
   onOpenTasks(conversationId: string): void;
   onOpenChannelSettings(channelId: string, trigger?: HTMLButtonElement): void;
   onNavigateConversation(target: string): void;
+  headerTrailingAction?: ReactNode;
 }
 
 function ChatSurface({
@@ -41,6 +43,7 @@ function ChatSurface({
   onOpenTasks,
   onOpenChannelSettings,
   onNavigateConversation,
+  headerTrailingAction,
 }: ChatSurfaceProps) {
   if (/\/saved\/?$/.test(pathname)) return <Saved embedded />;
   return (
@@ -56,6 +59,7 @@ function ChatSurface({
       onOpenTasks={onOpenTasks}
       onOpenChannelSettings={onOpenChannelSettings}
       onNavigateConversation={onNavigateConversation}
+      headerTrailingAction={headerTrailingAction}
     />
   );
 }
@@ -69,6 +73,7 @@ export const ChatWorkspace = memo(function ChatWorkspace({
   onOpenTasks,
   onOpenChannelSettings,
   onNavigateConversation,
+  headerTrailingAction,
   aggregateDrawer,
   aggregateDrawerOpen = false,
   settingsDrawer,
@@ -107,6 +112,7 @@ export const ChatWorkspace = memo(function ChatWorkspace({
             onOpenTasks={onOpenTasks}
             onOpenChannelSettings={openChannelSettings}
             onNavigateConversation={onNavigateConversation}
+            headerTrailingAction={headerTrailingAction}
           />
         </div>
       </section>

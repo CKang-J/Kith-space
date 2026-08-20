@@ -64,7 +64,9 @@ test("font tokens only reference loaded or system fonts", () => {
   for (const selector of [".act .act-t", ".act .act-x.mono", ".ws-row", ".ws-path", ".ws-content", ".ws-root", ".perm-key"]) {
     assertDecl(selector, "font-family", "var\\(--mono\\)");
   }
-  assert.match(spacesCss, /\.host-directory-picker__path,\s*\.host-directory-picker__selected\s*\{[^}]*font-family:\s*var\(--mono\)/);
+  const pickerUrl = new URL("../web/src/spaces/HostDirectoryPicker.tsx", import.meta.url);
+  const pickerSource = fs.readFileSync(pickerUrl, "utf8");
+  assert.match(pickerSource, /font-mono/);
 });
 
 test("chat Markdown styles cover rich GFM elements beyond paragraphs and code", () => {

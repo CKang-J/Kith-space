@@ -1,4 +1,4 @@
-import { Plus, X } from "lucide-react";
+import { Maximize2, Minimize2, Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../components/ui/button.tsx";
 import {
@@ -12,9 +12,16 @@ import {
   TabsList,
   TabsTrigger,
 } from "../components/ui/tabs.tsx";
-import { WORKSPACE_MODULES } from "./workspaceModules.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip.tsx";
+import { cn } from "../lib/utils.ts";
+import { WORKSPACE_MODULES, workspaceLaunchModulesForSpace } from "./workspaceModules.tsx";
 import type { ContentModuleId } from "./workspaceLayout.ts";
 import type { WorkspaceTab } from "./workspaceTabs.ts";
+import { WorkspaceTabPanel } from "./WorkspaceTabPanel.tsx";
 
 interface WorkspaceTabsProps {
   activeTabId: string;
@@ -24,6 +31,8 @@ interface WorkspaceTabsProps {
   onActivate(tab: WorkspaceTab): void;
   onClose(tabId: string): void;
   onOpenModule(moduleId: ContentModuleId): void;
+  workspaceExpanded: boolean;
+  onToggleWorkspaceExpanded(): void;
 }
 
 export function WorkspaceTabs({
@@ -34,13 +43,11 @@ export function WorkspaceTabs({
   onActivate,
   onClose,
   onOpenModule,
+  workspaceExpanded,
+  onToggleWorkspaceExpanded,
 }: WorkspaceTabsProps) {
   const { t } = useTranslation();
-  const availableModules = WORKSPACE_MODULES.filter((module) => (
-    module.id !== "settings"
-      && module.id !== "search"
-      && (module.id !== "spaces" || isHome)
-  ));
+  const availableModules = workspaceLaunchModulesForSpace(isHome);
 
   return (
     <Tabs
@@ -51,7 +58,10 @@ export function WorkspaceTabs({
         if (tab) onActivate(tab);
       }}
     >
-      <header className="shell-workspace-tabs">
+      <header className={cn(
+        "shell-workspace-tabs",
+        workspaceExpanded && "shell-workspace-tabs--expanded",
+      )}>
         <TabsList variant="line" className="shell-workspace-tabs__list">
           {tabs.map((tab) => {
             const module = WORKSPACE_MODULES.find((candidate) => candidate.id === tab.moduleId);
@@ -61,7 +71,7 @@ export function WorkspaceTabs({
               <div className="shell-workspace-tab" key={tab.id}>
                 <TabsTrigger value={tab.id} title={title} className="shell-workspace-tab__trigger">
                   {TabIcon ? <TabIcon data-icon="inline-start" /> : null}
-                  <span className="truncate">{title}</span>
+                  <span className="shell-workspace-tab__label">{title}</span>
                 </TabsTrigger>
                 <Button
                   type="button"
@@ -107,9 +117,28 @@ export function WorkspaceTabs({
             </div>
           </PopoverContent>
         </Popover>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={workspaceExpanded ? "恢复面板宽度" : "展开面板宽度"}
+                aria-pressed={workspaceExpanded}
+                onClick={onToggleWorkspaceExpanded}
+              >
+                {workspaceExpanded ? <Minimize2 /> : <Maximize2 />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {workspaceExpanded ? "恢复面板宽度" : "展开面板宽度"}
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </header>
       <TabsContent value={activeTabId} className="shell-workspace-tab__content">
-        {children}
+        <WorkspaceTabPanel tabId={activeTabId}>{children}</WorkspaceTabPanel>
       </TabsContent>
     </Tabs>
   );

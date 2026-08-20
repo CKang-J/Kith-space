@@ -15,7 +15,7 @@
 
 本轮 UI 实现、自动化验证与用户手动验收已结束。P-A9 桌面模块化单体架构收敛已完成 P-A9.0–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审，并已提交；继续保留 Electron/Core/Worker 拓扑与 TypeScript 主栈。真实存量数据随后暴露的 Runtime admission 队列饥饿、queued 假工作态与失败 wake 残留回复占位也已完成根因修复。
 
-基于 Helio Desktop 的本机实测，P-A10 Agent Harness v2 的P-A10.0–P-A10.7已完成代码、迁移、文档、自动化与全新Desktop/Web真实验收。当前具备Claude Code、Codex、OpenCode、Pi四家Runtime v2、per-surface session、durable delivery/turn、可审计Context Envelope、broker-backed MCP/CLI Gateway、revisioned episodic memory、restricted advisor、snapshot与compaction telemetry。workspace schema v11与app.db v10承载安装级模型供应商/模型配置/运行器控制面、三态默认绑定、Agent跨安装确认快照、runtime epoch屏障和三类全局字体设置、UI 字号及全局颜色模式。
+基于 Helio Desktop 的本机实测，P-A10 Agent Harness v2 的P-A10.0–P-A10.7已完成代码、迁移、文档、自动化与全新Desktop/Web真实验收。当前具备Claude Code、Codex、OpenCode、Pi四家Runtime v2、per-surface session、durable delivery/turn、可审计Context Envelope、broker-backed MCP/CLI Gateway、revisioned episodic memory、restricted advisor、snapshot与compaction telemetry。workspace schema v13在v12 Human-only Canvas document/mutation/asset 之上增加 Selection Snapshot 与 Message Execution Binding；app.db v10继续承载安装级模型供应商/模型配置/运行器控制面、三态默认绑定、Agent跨安装确认快照、runtime epoch屏障和外观设置。
 
 自动记忆提炼现已与聊天runtime解耦：新安装默认使用产品内置、精确锁版的Pi SDK Provider，Claude Code可显式切换；Provider与结构化记忆模型供应商/模型/凭据来源/数据目的地分别版本化，并支持Human显式、安全地导入本机Pi CLI全局模型配置。默认选择不等于默认外发，模型设置、能力探测与per-Agent consent未完成时保持setup；Claude Code、Codex、opencode聊天Agent在授权后可共用同一系统Provider。完整边界见[`系统级可替换Memory Advisor Provider方案`](./docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md)。
 
@@ -25,7 +25,7 @@ Kith 意为"你熟识信任的一圈自己人"——正是这些懂你（有记�
 
 ## 状态
 
-开发进行中。以 open-tag 为底座（Apache-2.0）二次开发，吸收 OpenLoaf 的界面气质与理念。已完成 SQLite（每 Space 独立 db）、编排护栏、三层记忆、任务后端和由左侧导航控制右侧主卡片切换的单窗口生产壳。
+开发进行中。以 open-tag 为底座（Apache-2.0）二次开发，吸收 OpenLoaf 的界面气质与理念。已完成 SQLite（每 Space 独立 db）、编排护栏、三层记忆、任务后端，以及 Chat 常驻、右侧资源标签按 Space 恢复的单窗口生产壳。
 
 共享前端当前使用 React 19.2.8 + TypeScript + Vite 5；自 2026-07-24 起，新增 UI 统一使用 Tailwind CSS v4 与 shadcn/ui，存量 CSS 按触达组件渐进迁移，不做一次性视觉重写。首批迁移已覆盖通用搜索、Space 新建/卡片菜单、Space 重命名和频道删除确认。开发约束见 [`AGENTS.md`](./AGENTS.md)，组件命令见 [`docs/dev-commands.md`](./docs/dev-commands.md)。
 
@@ -39,7 +39,9 @@ P-A8 Agent 频道响应模式与频道全体提及已实现并通过本轮用户
 
 聊天消息流继续复用统一 `ChatMessageItem` 表现层，主会话、话题、action card 与加载 Skeleton 共用头像、紧凑身份行和内容气泡；正文保持 `14.5px`，行高提高到 `1.68`，消息流与 Composer 沿用 `1040px` 居中上限。Human 使用右对齐 `#e7f0fe` 浅蓝气泡，Agent 使用左对齐 `#f7f8fa` 浅灰气泡；两类气泡统一使用 `16px 18px` 内距。头像统一为36px，频道 Agent 气泡顶部落在头像圆心、昵称使用常规字重，私聊隐藏重复昵称并与头像顶部平齐。Agent 时间只显示气泡下方的 `HH:mm`，仅在消息 hover/focus 时出现；悬浮工具栏与“更多”菜单共用白色表面、浅边线、圆角和投影，并分别优先显示在 Agent 气泡右侧或 Human 气泡左侧，空间不足时移到上方。日期、时间和话题最新回复统一为12px低对比元数据。Markdown 段落、列表和小型标题采用气泡内阅读尺度；行内代码使用低对比浅底，代码块使用带复制按钮的深色表面，引用与表格使用轻边界且表格只在气泡内部横向滚动。话题回复预览为气泡外独立 hover 卡片；展开话题不移动主标题栏右侧按钮，标题栏底部分割线保持连续，话题分栏从其下方开始并使用44px紧凑工具栏，父消息无重复背景且消息使用对称安全边距。普通链尾间距为26px，日期分隔为居中灰色胶囊。连续消息分组、Agent 状态点、归档只读、任务、附件、响应模式和深链契约保持不变。基础消息规格见 [`聊天消息流密度与交互重构设计`](./docs/superpowers/specs/2026-07-15-chat-message-ui-density-design.md)，最新覆盖见 [`图标导航栏与消息中栏设计`](./docs/superpowers/specs/2026-07-23-chat-icon-rail-message-pane-design.md)。
 
-Chat 壳层已按最新参考图收敛为三栏结构：最左侧常驻纯图标导航，并新增 Messages 入口和 hover/focus tooltip；Messages 激活时右侧显示按频道、私信分组的独立消息中栏，且不放搜索框。业务模块打开后只保留图标栏，并继续在唯一主工作区原位替换 Chat。聚合面板使用与 Chat 对齐的52px标题栏、圆形hover关闭按钮和无额外横线的“轨迹 / 话题 / 文件”分段控制器。Human 消息右对齐使用浅蓝气泡，Agent 消息左对齐使用浅灰气泡；Composer 保持不变。Settings 使用独立模态层，Dock、Split 第二工作面和案例展示继续保持退役。完整边界见 [`图标导航栏与消息中栏设计`](./docs/superpowers/specs/2026-07-23-chat-icon-rail-message-pane-design.md)。
+当前 Chat 壳层使用可折叠常驻侧栏、Chat 基础工作面和右侧 Workspace Tabs；业务模块通过资源标签与 Chat 并排，标签可关闭、聚焦并按 Space 恢复。聚合面板使用与 Chat 对齐的52px标题栏、圆形hover关闭按钮和无额外横线的“轨迹 / 话题 / 文件”分段控制器。Human 消息右对齐使用浅蓝气泡，Agent 消息左对齐使用浅灰气泡。Settings 使用独立模态层，Dock 和案例展示继续保持退役。完整边界见 [`Chat 壳层与侧栏模块导航设计`](./docs/superpowers/specs/2026-07-15-chat-shell-sidebar-module-navigation-design.md)。
+
+2026-08-19 Recombyn Canvas Workspace 阶段3–4已落地，并在阶段4之上补齐 Agent 原生 typed Canvas tools（`scene_summary` / `create_*` / `update_node` / `delete_nodes`；`elements_apply` 仍兼容）。自然语言意图由 Canvas skill/Agent 自己判断，服务端不把正则分类写成 `mutationRequired=yes`，`turn.reply` 尚无 finish 硬拦截。阶段3完成 Selection Snapshot 与 Chat 联动；阶段4完成 Canvas Access Grant、Gateway/MCP/CLI 对称 thin tools、ToolOps 写回、`turn_output_artifacts` 与双审查 P1/P2 收口。workspace schema 当前为 v14。Stage1 两个 SHA 和 `upstream/**` 字节保持不变。生产/packaged 入口仍受 `KITH_CANVAS_AGENT_EXECUTION` 保护（`desktop:dev` 为 Core/Worker 注入开发开关）；真实 Desktop/Web Agent smoke、阶段5硬化、retained history/asset reachability、物理资产 GC 与约3.5 MB Canvas chunk 仍是未通过的后续门禁。完整方案见 [`Recombyn Canvas Workspace 设计`](./docs/superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md)。
 
 P-A9 采用 Desktop 监督的模块化单体：保留 Core 作为 Desktop、授权浏览器和 Agent CLI 的本机权威，保留 Worker 隔离外部 runtime；`src/server/` 收窄为组合根与 Transport Adapter，业务按深 Module 与窄 Interface 收敛。P-A9.0 已冻结生产写入/Agent 端点/Worker transport 当前事实，P-A9.1a–P-A9.7 的实现与最终门禁已完成；当前 Core total 口径已切到 `admission ack`，P-A9.0 total 只止于 socket enqueue。持久 wake `get-or-reserve`、`RuntimeWorkerPort` admission ack、`capacity=4`、`queue=128`、`ttl=120s` 与 1/5/10/20 Agent Core、100/500/1000 消息 Chat 基线/回归都已落地；AgentManager 按实际消息合并批次使用既有 activity 终态判断空闲，完成会话仅在无排队压力时保温，有其他 Agent 等待时立即让出容量，同时保护尚未完成的批次不被误休眠。P-A9.6 的 20-Agent SQL 已从 260 降到 151 且 Core/Runtime/UI 绝对 SLO 通过。完整方案见 [`桌面模块化单体架构收敛设计`](./docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md)，冻结数据见 [`P-A9 性能基线`](./docs/performance/p-a9-baseline.md)。
 
@@ -81,6 +83,7 @@ pnpm run desktop:dist        # x64、per-user、assisted NSIS 安装器
 - 会话、上下文、记忆、工具与消息链路机制全景：[`agent-harness-v2-mechanisms.md`](./docs/kith-space/agent-harness-v2-mechanisms.md)
 - P-A10完整契约、ADR、失败模式与43场景：[`2026-07-19-agent-harness-session-context-memory-tools-design.md`](./docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md)
 - 内置Pi默认Advisor、Claude切换、独立模型设置与Pi CLI安全导入：[`2026-07-22-system-memory-advisor-provider-design.md`](./docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md)
+- Recombyn Canvas 移植、MVP、Agent/Context/Gateway 与后续路线：[`2026-08-15-recombyn-canvas-workspace-design.md`](./docs/superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md)
 - 日常开发命令（启动/测试/打包）：[`docs/dev-commands.md`](./docs/dev-commands.md)
 - 高级开发与调试（Token/Web/数据库/E2E）：[`docs/dev-debugging.md`](./docs/dev-debugging.md)
 - Windows/macOS/Linux 工程规则与已知缺口：[`docs/cross-platform-compatibility.md`](./docs/cross-platform-compatibility.md)

@@ -2,7 +2,7 @@
 
 ## 前言
 
-这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）；随后授权浏览器的目录选择收敛为受限主机目录浏览器（决策 24）。2026-07-14 又锁定会话聚合面板（决策 25）与 Agent 频道响应模式（决策 26）；2026-07-15 在该响应机制上补充 Human 专属的频道全体提及（决策 27），并把 ChatOnly 的模块导航迁入左侧栏、模块打开态继续使用 Dock，同时退役案例展示（决策 28）。2026-07-18 本轮 UI 验收结束后，项目锁定“保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，以模块化单体渐进收敛、性能证据驱动 Rust 决策”的工程路线（决策 29）；P-A10 的 Agent Harness v2 形成决策 30，2026-07-22 至 23 又形成并修订系统 Memory Advisor Provider、模型配置和快捷安装边界（决策 31–33）；2026-07-24 新增前端统一采用 Tailwind CSS v4 + shadcn/ui 的渐进迁移决策（决策 34）。当前结论以每条决策中的最新修正和决策 21–34 为准。
+这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）；随后授权浏览器的目录选择收敛为受限主机目录浏览器（决策 24）。2026-07-14 又锁定会话聚合面板（决策 25）与 Agent 频道响应模式（决策 26）；2026-07-15 在该响应机制上补充 Human 专属的频道全体提及（决策 27），并把 ChatOnly 的模块导航迁入左侧栏、模块打开态继续使用 Dock，同时退役案例展示（决策 28）。2026-07-18 本轮 UI 验收结束后，项目锁定“保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，以模块化单体渐进收敛、性能证据驱动 Rust 决策”的工程路线（决策 29）；P-A10 的 Agent Harness v2 形成决策 30，2026-07-22 至 23 又形成并修订系统 Memory Advisor Provider、模型配置和快捷安装边界（决策 31–33）；2026-07-24 新增前端统一采用 Tailwind CSS v4 + shadcn/ui 的渐进迁移决策（决策 34）。2026-08-15 又确认以 Recombyn RCB、既有 Workspace Tabs、Kith Harness 和 revisioned Canvas Module 交付 Canvas MVP（决策 38）。当前结论以每条决策中的最新修正为准。
 
 盘问的方式是一次给一个决策、每次给一个明确建议，让用户在 either/or 之间做取舍。会话过程中有几条决策被推翻或修正过（底座、runtime、Redis 的真实用途、聊天历史随文件夹走的成本），这些演化本身是理解项目为什么长成现在这样的关键，因此单列一节保留。
 
@@ -26,9 +26,9 @@
 | 10 | 角色模板 | 空白职责 + 少量可选起点模板，不绑定流程 |
 | 11 | UI 投入 | 信息架构现在定死，视觉学 OpenLoaf，豁免"去 AI 味"清单 |
 | 12 | 壳形态 | 单窗口工作区；普通冷启动进入 Home，旧双壳被推翻 |
-| 13 | Chat 地位 | Chat 是默认基础工作面；仅在模块已打开时可收起 |
+| 13 | Chat 地位 | Chat 是默认且常驻的基础工作面；业务资源在右侧标签显示（由决策 38 修正） |
 | 14 | 导航与模块 | Home 增加 Spaces；普通 Space 保持 `Inbox | Tasks | Agents | Settings`；左侧栏常驻 |
-| 15 | 布局能力 | 右侧单主卡片在 Chat/业务模块间切换；Settings 使用模态层 |
+| 15 | 布局能力 | 当前为 Chat 常驻 + 右侧资源标签；Settings 使用模态层（由决策 38 修正） |
 | 16 | 跨 Space 视角 | 不恢复薄总览壳；Home Spaces 先落真实目录，聚合能力渐进实现 |
 | 17 | 宿主形态 | Desktop 是唯一正式宿主，可选本机/LAN 浏览器入口 |
 | 18 | 数据层 | 迁移到 SQLite + 进程内替代 Redis |
@@ -41,13 +41,20 @@
 | 25 | 会话聚合面板 | 轨迹/话题/文件收敛为当前会话辅助面板，轨迹按 base conversation 隔离 |
 | 26 | Agent 频道响应模式 | Agent 默认值加频道成员覆盖；私聊与明确任务指派不受模式限制 |
 | 27 | 频道全体提及 | Human 的规范 token `@all` 快照当前频道 Agent；主动/被动必回，静音不唤醒 |
-| 28 | Chat 壳层导航 | 左侧纵向模块入口常驻；右侧主卡片在 Chat 与模块间切换；Settings 使用弹窗；Dock 与案例展示退役 |
+| 28 | Chat 壳层导航 | Dock 与案例展示退役；旧“模块替换 Chat”布局由决策 38 的 Workspace Tabs 修正 |
 | 29 | 代码架构与性能语言 | 保留 Desktop/Core/Worker 与 TypeScript 主栈；P-A9.0–P-A9.7 的实现、最终门禁与一次独立只读终审已完成，Rust 只由性能证据触发 |
 | 30 | Agent Harness v2 | per-surface session + durable delivery/logical turn/attempt + Context Envelope + revisioned episodic memory + restricted advisor + broker-backed MCP/CLI Gateway + snapshot/compaction telemetry；P-A10.0–P-A10.7 已完成 |
 | 31 | Memory Advisor Provider | 结构化记忆提炼使用安装级可替换 Provider，与聊天 runtime 解耦 |
 | 32 | 模型配置 | Kith 管理供应商、模型与运行器绑定；CLI 配置只读导入并按启动注入 |
 | 33 | Runtime 快捷安装 | 只安装和删除 Kith-owned 锁版副本，不接管系统 CLI |
 | 34 | 前端样式与组件基线 | 新增 UI 使用 Tailwind CSS v4 + shadcn/ui，存量 CSS 按触达范围渐进迁移 |
+| 35 | 全局字体设置 | 界面、消息与文档、代码使用三个安装级作用域和内置白名单 |
+| 36 | UI 字号与字重 | UI/消息正文共享 12–16px 安装级字号，标题和辅助字号保持稳定相对关系 |
+| 36 | 三端工程基线 | 发行保持 Windows-first，共享工程同时评估 Windows/macOS/Linux |
+| 37 | Agent 活动来源 | 活动历史持久保存来源渠道；会话聚合面板不重复显示来源 |
+| 38 | Recombyn Canvas Module | 保留 Recombyn 编辑器 UI，接入既有 Workspace Tabs 与 Kith Harness；Core revisioned command 是唯一真相源 |
+
+> 历史档案中“UI 字号与字重”和“三端工程基线”曾同时编号为决策 36；本轮保留原编号，避免改写既有引用。
 
 ---
 
@@ -207,7 +214,7 @@
 
 ## 决策 13：Chat 是默认基础工作面，但可在模块已打开时收起
 
-**当前结论（2026-07-10 修正）**：Chat 仍是产品心脏、应用默认主页和基础工作面。没有模块时 Chat 必须保持全宽，点击 Chat 按钮无操作；打开模块后，用户可以把 Chat 收为紧凑侧栏，也可以暂时隐藏 Chat 让模块全宽，再由 Chat 按钮恢复分屏。
+**历史结论（2026-07-10 修正，后由决策 38 再修正）**：Chat 仍是产品心脏、应用默认主页和基础工作面。该阶段曾允许模块打开后收起或隐藏 Chat；当前以决策 38 和既有 Workspace Tabs 为准，Chat 保持挂载并与右侧资源标签并排。
 
 **原决定**：曾锁定“群聊常驻 C 位，不可被替换”，随后又允许成员、机器、收件箱、搜索临时占据中间区。两次细化仍把布局理解成固定中心 + 右栏，不能表达用户最终确认的可切换工作姿态。
 
@@ -227,7 +234,7 @@
 
 ## 决策 15：主卡片在 Chat 与模块间切换
 
-**当前结论（2026-07-23 最新修正）**：工作区不再同时并排 Chat 与业务模块。最左侧图标导航保持稳定；Messages 激活时显示消息中栏与 Chat，业务模块激活时消息中栏退出并由唯一主工作区显示 Spaces/Inbox/Tasks/Agents 之一；Settings 作为模态层覆盖当前工作区。旧 Split 比例、拖拽分隔和 ModuleOnly→Split 恢复控制不再属于活跃产品壳。
+**历史结论（2026-07-23，后由决策 38 再修正）**：该阶段曾让业务模块原位替换 Chat；当前以决策 38 和 `WorkspaceTabs` 实现为准：Chat 保持挂载，业务资源在右侧标签工作区显示，Settings 继续作为模态层。
 
 **交互约束**：点击模块使主工作区切换到该模块；点击 Messages 返回当前 Chat；点击当前业务模块仍返回 Chat；点击其他模块原位替换内容。Settings 点击打开模态层，关闭后回到原 Chat 会话。图标栏始终保留唯一模块导航。
 
@@ -401,7 +408,7 @@
 
 ## 决策 28：侧栏统一控制主卡片切换，Dock 退役
 
-**结论（2026-07-26 最新修正）**：工作区最左侧常驻 `68px` 纯图标导航栏，顺序为 Messages、Search、Spaces（Home only）、Inbox、Tasks、Agents、Settings；每个入口通过 hover/focus tooltip 显示名称。Messages 是 Chat 的正式入口，激活时在图标栏右侧显示只含已保存、频道和私信的消息中栏，消息中栏不放搜索框或全局运行状态。当前频道、私聊或话题的 Agent 活动摘要改在对应 Composer 上方按精确 surface 展示，空闲时不占位；完整 thinking、工具调用、参数和历史仍留在 Agent 活动页。点击 Spaces、Inbox、Tasks 或 Agents 后图标栏不隐藏，消息中栏随 Chat 退出，右侧主工作区原位切换为对应模块；不再创建 Split 第二工作面，也不挂载横向 Dock。Settings 保留同一 URL/resource 契约，但以覆盖当前工作区的模态层呈现。
+**历史结论（2026-07-26，布局部分后由决策 38 再修正）**：该阶段锁定图标导航、会话分组、当前 surface 活动摘要、Dock 退役与 Settings 模态层；“业务模块原位替换 Chat”的部分已由决策 38 和当前 `WorkspaceTabs` 实现取代，现为 Chat 保持挂载、右侧资源标签显示业务模块。
 
 **视觉结论（2026-07-26 按用户最新反馈修正）**：采用参考图的连续三栏表面：最左图标栏使用 `#f5f5f5` 且不绘制右边线，白色消息中栏和白色 Chat 主区只用约 `#f0f0f0` 的必要细分隔线区分；消息中栏使用“消息 / 已保存 / 频道 / 私信”的清楚层级，不放搜索框。Human 消息右对齐并使用 `#e7f0fe` 气泡；Agent 消息左对齐并使用 `#f5f5f5` 气泡，消息头像统一为 `36px`。频道 Agent 保留常规字重昵称且气泡顶部落在头像圆心，私聊隐藏重复昵称并让气泡与头像顶部平齐。Agent 时间只显示气泡下方 `HH:mm`，仅在消息 hover/focus 时出现；hover 工具栏与“更多”菜单使用一致的白色表面、浅边线、圆角和投影，并按发送方向优先放在 Agent 气泡右侧或 Human 气泡左侧，空间不足时放到上方。话题回复预览从气泡分离为独立 hover 卡片；话题分栏从主标题栏下方开始，父消息无重复背景，头像和 Agent 气泡使用对称安全边距。日期使用居中灰色胶囊。Composer 上方的活动摘要使用辅助字号、单行截断和约300ms稳定延迟；完成短暂保留后隐藏，点击可进入对应 Agent 活动页。
 
@@ -409,7 +416,7 @@
 
 **背景与选择**：该决策先后经历了底部 Dock、单一“图标 + 文字”侧栏与最新双层左侧导航。最新参考图和用户反馈明确要求把模块入口收窄为纯图标，并把频道/私信迁入右侧独立消息中栏，同时补充 Messages 入口；输入框与消息中栏搜索不在本轮范围。
 
-**推理与权衡**：最左侧图标栏只回答“去哪个功能”，消息中栏只回答“打开哪个会话”，职责拆分后不会再把频道、私信和业务模块混在同一长列表。tooltip 与 `aria-label` 补足纯图标的识别和可访问性；模块继续同槽位替换，避免恢复 Dock 或第二工作面。Settings 信息密度和内部二级导航较高，继续使用独立模态层。完整规格见 `docs/superpowers/specs/2026-07-23-chat-icon-rail-message-pane-design.md`。
+**推理与权衡**：导航只回答“去哪个功能”，会话分组只回答“打开哪个会话”，职责拆分后不会再把频道、私信和业务模块混在同一长列表。tooltip 与 `aria-label` 补足识别和可访问性；Dock 不恢复。业务资源后来由 Workspace Tabs 承担，Settings 信息密度和内部二级导航较高，继续使用独立模态层。完整历史规格见 `docs/superpowers/specs/2026-07-23-chat-icon-rail-message-pane-design.md`，当前布局见决策 38。
 
 **实施状态**：2026-07-23 最新修正已实现。`WorkspaceNavigationRail` 组合 SpaceSwitcher 和纯图标 `SidebarModuleNavigation`；`ChatSidebar` 只在 Chat 中挂载消息中栏，业务模块态只保留图标栏。Settings 由独立 `SettingsDialog` 复用既有设置内容。URL 与模块 resource query 保持可恢复，`WorkspaceDock` 与案例展示继续保持退役。
 
@@ -590,6 +597,28 @@
 **降级边界**：workspace schema v11之前的历史没有稳定来源字段，显示“未记录渠道”；来源频道、私信或父话题已不可访问时显示“渠道不可用”并禁止跳转。实时活动在历史请求返回前使用同一Socket scope展示；缺少话题父消息ID时只能导航到父会话，待持久历史提供精确深链。无作用域或ambiguous事件仍可进入Agent活动流，但不能伪装成某个渠道。
 
 **推理与权衡**：把来源只保存在前端会造成刷新丢失，把展示名写入活动行会随重命名陈旧，也无法安全区分删除与同名；稳定ID加读取时批量解析能复用现有ACL和当前名称，代价是一轮受限批量查询及一次兼容迁移。聚合面板重复来源只会制造噪声，因此同一时间线组件按surface职责选择是否渲染来源。
+
+---
+
+## 决策 38：Canvas 直接移植 Recombyn RCB，接入既有 Workspace Tabs 与 Kith Harness
+
+**状态**：Accepted（2026-08-15；阶段 1–4 已实现并通过双审查 P1/P2 定向验收；生产入口仍受 `KITH_CANVAS_AGENT_EXECUTION` 保护；阶段 5 硬化与真实 Agent smoke 未宣称完成）。
+
+**结论**：保留 Recombyn RCB 无限画布编辑器内部的视觉、节点、工具栏、面板与原生交互。阶段1按本轮用户纠偏移除 AgentDock 视觉外壳、Dock 开关、占位和 resize/让位，只保留 selection-to-chat 的窄 host event seam；底栏以两个相邻原生按钮和 `A` / `Shift+A` 创建图片/视频生成器节点。生成提交是短小的显式 unavailable 实现，媒体文件只形成本地 data URL；三个 composer scene helper 已收敛到窄 Canvas adapter，`runDesignAgent`、`designTools`、`agentMemory`、`service/design` 与 `service/upload` 不进入物化闭包，共享 chat service 的媒体 Job transport 也被移除。Home/Auth/Billing/Share/Cloud、Tauri、Yjs 服务和 Python/LangGraph runtime 均不迁移。当前 `codex/development` 已有 Chat 常驻的右侧 Workspace Tabs；Canvas 直接以 `canvasId` 作为 resource tab 身份接入，每个 Canvas 是独立无限平面，产品不增加 Page 层级。该结论取代决策 28 中“业务模块继续同槽位替换、第二工作面退役”的旧布局描述，但不恢复正式产品 Dock，也不改变 Settings 模态层。
+
+**Agent 与数据边界**：Kith Harness 是唯一 Agent runtime。Recombyn 的 ToolOps、校验器、安全规则、prompt rules 和 design skills 适配为按需 Canvas capability/skills；普通 Agent 身份、模型、记忆与 session 不变。Human API、MCP 和 CLI 都调用同一个 Kith-owned Canvas Core Module，Core 使用 metadata/document/element/frame/structure revision、服务端派生 read/write set、atomic batch、既有 turn-operation 幂等域、mutation ledger 和 Space-local assets 成为唯一 durable truth；Renderer Redux 只作未提交手势和乐观交互投影，已提交 undo/redo 也必须通过 Core mutation。选区先冻结为不可变 Canvas Selection Snapshot，再由 Chat message 和注册式 Context Object resolver 引入 turn。
+
+**调用与完成语义**：Canvas 输入必须绑定真实私聊、频道或话题和一个 eligible Agent；它必须未删除、已处于 v2、具有当前 surface access 且实时拥有 `message:send`。server-owned `MessageExecutionBinding` 与 snapshot、message/ref、required delivery 在同一 MessagePosting transaction 写入；不能用正文 mention 代替，也不能给其他 active Agent optional wake。Canvas 工具权力来自由 binding + bound delivery 派生的 durable `CanvasAccessGrant`，逐调用按服务端真实影响集重验。mutation 关联既有 `turn_operations`，`turn.reply` 通过 strict `outputRefs` / `turn_output_artifacts` 关联已提交 mutation；`sourceRefs` 不承担输出 artifact 语义。operation 重试不得重复修改，同元素/Frame/structure revision 冲突不得静默覆盖。
+
+**草稿生命周期**：关闭 Canvas 标签只卸载画布视图，不清除已经由用户“发送到 Chat”附加到 Composer 的 pending 选区，也不清除加号菜单创建的整板授权 chip。pending 只在用户主动移除、消息发送成功或明确清空草稿时删除；若 Canvas 或元素在发送前失效，Core fail-closed 并要求重新选择。打开右侧 Canvas 不会自动授权；用户须从 Composer“+”菜单选择“画布”后，才在“+”旁挂一条空选中整板授权轻量胶囊（无实时缩略图）。用户圈选发送的卡片进入附件区，可与整板授权并存。
+
+**阶段 4 执行者选择**：DM executor 由服务端固定派生为私聊对端 Agent；频道、私密频道和话题必须绑定唯一 required executor。用户可通过 Composer 执行者选择器，或通过 Agent mention 菜单产生结构化 `@Agent` 指定执行者；普通正文 mention 不授予 Canvas 写权限。未指定、多个 mention、选择器与 mention 冲突或 `@all` 均拒绝发送。消息保持当前 surface，不自动创建话题；其他 Agent 只观察，不获得 optional wake。绑定记录 `bindingSource`，重试不自动改派；阶段4 MVP 先限制单 Canvas 写入域，破坏性操作需明确确认。
+
+**MVP**：先交付 Recombyn 原生编辑能力、多 Canvas tabs、选区发 Chat 和一个明确 Agent 的 revisioned 回写。便签、链接、任意文件/PDF/DOCX、语义思维导图/流程图、多 Agent 区域和并发写入、AI 视频/音频生成、原生跨栏拖放、Yjs 真人协作与 reviewer swarm 后置。
+
+**MCP 结论**：`2026-07-28` modern core 的无 `initialize/initialized` 与同版本 Streamable HTTP 的无 `Mcp-Session-Id` 对未来外部 host/多实例有价值，但不提供 Canvas 的身份、ACL、幂等、事务、revision、冲突或撤销。MVP 继续使用现有 broker-backed stdio MCP + CLI fallback；SDK v2 + dual-era 是独立后续，不作为 Canvas 前置。Kith 的 `x-kith-session-handle` 是 application-level broker handle，不是 MCP transport session；它单独无权，仍需当前 activation 与 worker generation 才能解析 turn claims。
+
+**许可与实施边界**：Recombyn 根仓 Apache-2.0 可移植，但首次复制前必须完成 source manifest、Kith NOTICE/修改声明、MIT skill 与 Paynter brush 完整 notice、图标/品牌资产及在线字体许可核验；拿不到完整 Paynter MIT notice 就不复制该笔刷。不得以全量复制后再收拾的方式绕过 UI island、Tailwind 3/Preflight/portal 隔离、Kith-owned SVG sanitizer 和视觉 golden 门。完整规格见 `docs/superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md`，架构决策见 `docs/adr/0038-adopt-recombyn-canvas-module.md`。
 
 ---
 

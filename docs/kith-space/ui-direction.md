@@ -50,7 +50,7 @@ Chat 顶栏的频道名称、消息中栏标题及其中的“已保存”、频
 - Search 位于图标栏，通过图标按钮和 `Cmd/Ctrl + K` 进入；消息中栏不重复放置搜索框。
 - Chat 始终保留在中心工作面，并可附带当前会话聚合面板；业务模块在右侧标签工作区显示，不卸载 Chat。
 - Chat 与右侧模块工作区使用连续边界和语义背景。模块内部已有对象侧栏可以保留，但不能再创建底部导航或另一套顶层壳。
-- Settings 不占用主卡片路由槽位，而是在 Chat 上方打开最大宽度960px、最大高度790px的模态层；小视口继续保留20px安全边距。右侧页标题与内容根节点复用同一个居中内容列和左基线：Human/空间资料使用520px列，外观使用3xl列，其余复杂设置保持可用全宽。关闭、遮罩点击和 Esc 都返回原 Chat，设置分区切换使用 replace history，避免关闭后浏览器返回立即重开弹窗。
+- Settings 不占用主卡片路由槽位，而是在 Chat 上方打开最大宽度960px、最大高度790px的模态层；小视口继续保留20px安全边距。右侧页标题与内容根节点复用同一个居中内容列和左基线：Human/空间资料使用520px列，外观与图像/视频生成使用3xl列，其余复杂设置保持可用全宽。关闭、遮罩点击和 Esc 都返回原 Chat，设置分区切换使用 replace history，避免关闭后浏览器返回立即重开弹窗。
 
 当前 Space 的频道或 Human-Agent DM 由规范会话 pathname 表达；聚焦业务标签时在同一 URL 上增加 `?module=<id>`，Settings 使用 `?module=settings&settings=<section>`。Tasks 使用 `taskScope`，Agents 使用 `agent` 与 `agentTab` 表达自己的资源；不属于当前模块的资源参数会被清除。URL 表达当前聚焦标签，完整标签集合与激活项按 Space 使用版本化本地状态恢复。
 
@@ -89,14 +89,15 @@ Settings   = Chat 保持挂载 + Settings 模态层
 
 ### 3.3 Settings 模态层
 
-- Settings 复用既有 Human、外观、Space、模型与供应商、运行器、自动整理记忆和 Desktop 内容，不复制第二套设置表单。
+- Settings 复用既有 Human、外观、图像、视频与音频生成、Space、模型与供应商、运行器、自动整理记忆和 Desktop 内容，不复制第二套设置表单。
 - Settings 模态层以单张浮动面板呈现：外层使用较大的统一圆角、浅边界、柔和阴影与半透明遮罩；左侧为带图标的设置导航，当前项以低对比圆角胶囊标识。右侧只显示当前分区名称，不绘制标题栏底线；内容按留白和少量圆角分组组织，避免把每一层都画成方框。
 - “外观”是跨 Space 的安装级分区。第一版管理 UI字号及字体：UI字号、界面、消息与文档、代码均使用 shadcn Select；变更即时预览并持久化，保存失败回滚到此前值，提供恢复默认组合。任意本机字体名称和上传字体不在第一版范围，避免 Desktop 与可选浏览器入口出现不可复现的字体差异。
+- “图像、视频与音频”是跨 Space 的安装级分区：方舟区配置火山方舟共用 API Key 与端点（图像 Seedream 与视频 Seedance 同一密钥）；OpenRouter 区单独配置语音合成 Key/端点。GET 返回合并后的 `ark` 视图与独立 `openrouter` 视图（`hasApiKey` 与 hint，不回明文）；PATCH `name=ark` 同时写入 `doubao`/`seedream` 两行，PATCH `name=openrouter` 只写音频行。写 Key 要求 Desktop trust 或本机 loopback。
 - 模态层有明确标题、关闭按钮、遮罩关闭、Esc、焦点圈定和底层 `inert`；二级供应商弹窗打开时，Esc 只关闭最上层。
 - 桌面宽度使用左侧设置分区导航和右侧内容；小于 640px 时分区导航改为顶部横向滚动列表，内容保持可读。
 - 设置分区切换替换当前 history entry；关闭弹窗同样替换为 Chat URL，浏览器返回不会重新打开刚关闭的设置。
 
-Spaces 只在 Home 出现；Agents 只显示当前 Space 的 agent 队伍；唯一 Human 的资料位于全局 Settings。Calendar、Canvas 等真实能力成熟后插入同一模块注册表；当前不展示无功能的空入口。
+Spaces 只在 Home 出现；Agents 只显示当前 Space 的 agent 队伍；唯一 Human 的资料位于全局 Settings。Canvas 已作为真实能力进入同一模块注册表；Calendar 等未实现能力不展示空入口。
 
 创建 Agent 时，Runtime 选择器读取 Local Runtime Worker 的实际 availability，而不是使用前端硬编码的可用状态。完整 runtime 目录始终展示：已安装项排序在前并标注“已安装”，未安装项排序在后、标注“未安装”且不可选择；默认选中第一个已安装项。OpenCode 模型选择器只展示 `opencode models` 返回并去重后的真实 `provider/model`；探测失败时显示错误、提供重试并禁止创建，不回退到虚假的 `Default`。
 
@@ -124,7 +125,7 @@ ChatOnly 由当前会话工作面和可独立收起的辅助面板组成：
 - 频道设置是聚合面板内的临时管理场景，不是第四个 Tab。进入后以同一面板承载设置首页及“常规 / 成员 / 通知”三个钻取页，并保持原聚合 Tab、文件筛选和搜索状态挂载；返回内容场景时恢复原状态。常规页显式保存名称、描述和公开/私密可见性；成员页以实际 Human 名称加“你”标识固定展示唯一 Human，agent 通过带搜索的单选弹窗添加，移除前要求二次确认；通知页即时持久化“所有消息 / 仅提及 / 不通知”。未保存常规修改在返回、关闭、切换频道、隐藏 Chat、刷新或浏览器历史后退前要求确认放弃；取消后保留当前 URL 和表单草稿。
 - **消息流表现（代码、自动化与真实浏览器测量已完成）**：主会话、话题、action card 与加载 Skeleton 继续复用同一消息骨架；外层消息行不绘制整行卡片。Human 使用右对齐 `#e7f0fe` 浅蓝气泡、头像置于右侧并隐藏重复的自己昵称/时间标题；Agent 使用左对齐 `#f7f8fa` 浅灰气泡，昵称为常规字重。头像统一为 `36px`，气泡统一为 `16px` 圆角和 `16px 18px` 内距；频道 Agent 通过 `18px` 紧凑昵称行让气泡顶部落在头像圆心，私聊隐藏重复昵称并让气泡与头像顶部平齐。正文使用 `14px / 1.5`，日期、气泡下时间、系统提示、任务生命周期事件和消息内任务状态胶囊统一使用辅助字号。Agent 时间默认隐藏并在消息 hover/focus 时出现；hover 工具栏和“更多”菜单共用白色表面、`#f0f0f0` 边线、`12px` 圆角与轻量投影。Agent 工具栏优先位于气泡右侧，Human 优先位于气泡左侧，各自空间不足时移到气泡上方。Markdown 使用气泡内标题尺度，段落和列表间距按紧凑阅读节奏收敛；粗体使用600字重并继承正文颜色。行内代码为轻灰底，代码块为带复制按钮的深色表面，引用为3px柔和竖线和浅底，表格只在气泡内部横向滚动。话题回复预览从消息气泡分离成独立白色描边卡片，预览昵称使用辅助字号和正文黑色，其余回复摘要、“回复话题”、回复数及相对最新时间均使用辅助字号和浅灰色；hover 不把这些元数据重新变黑。普通消息链尾间距为 26px；同一天相邻且同发送者的普通消息继续形成连续组，日期、发送者变化、系统消息和 action card 会打断分组。日期分隔使用居中灰色胶囊，不再画贯穿消息区的水平线。Agent mention 插入、身份卡片、状态点、reaction、归档只读限制、附件、任务与深链契约保持不变。Chat 标题栏、消息流与 Composer 继续共用既有可读内容轨道。基础消息尺寸见 `../superpowers/specs/2026-07-15-chat-message-ui-density-design.md`，最新方向与覆盖约定见 `../superpowers/specs/2026-07-23-chat-icon-rail-message-pane-design.md`。
 - **Agent 响应模式（已实现）**：Agent Profile 的基本信息后、Skills 前保留独立“响应模式”卡片，用三段式控件设置当前 Space 的主动/被动/静音默认值；私聊和明确指派的任务不受该默认值限制。消息昵称后的模式徽标与 hover 菜单已移除；点击 Agent 消息头像打开紧凑 Agent 卡片，显示头像、名称、运行状态、模型与“发消息”动作，“发消息”按钮固定使用 `#f7f7f7` 底色与 `#f0f0f0` hover。顶层频道及其话题中的当前成员 Agent 卡片额外显示“本频道响应模式”三段式控件，选择只写当前频道覆盖，并以弱提示显示 Agent 默认值；显式覆盖时可“恢复默认”。响应模式与聚合面板复用同一滑块分段组件，紧凑卡片使用 38px 规格和 240ms 平滑横移动画。这里不允许修改 Agent 默认值，默认值仍只在 Agent 页面管理。话题继承父频道；DM、已移除 Agent 不显示频道模式；归档频道只读。头像卡片仅由点击/键盘激活，点击外部、滚动、调整窗口或 `Escape` 关闭。完整交互见 `../superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
-- **Composer 输入与动作（已实现）**：空输入和未接近右侧控制安全区的单行短文本保持 `48px` 高的胶囊输入框；只有实测文本宽度用尽当前剩余安全区、出现显式换行或存在待发送附件时才展开为多行面板，删除内容后可重新收紧。左下角 `32×32` 圆形“+”与右下角 `32×32` 圆形上箭头发送按钮对齐；“+”图标为 `18px`、较粗描边，在 hover、键盘聚焦和菜单打开时仍使用同尺寸圆形底，焦点反馈不额外外扩黑色轮廓。菜单合并“添加照片和文件”并包含“指派任务”；启用后，任务胶囊出现在“+”右侧并与正文共享单行空间，不会自行增高输入框，但会按实际占位缩短正文可用安全宽度。任务文字与正文始终复用同一字号变量（桌面 `14px`，小屏防输入缩放时同步为 `16px`）；hover/聚焦时使用图标库的 X 图标和更小的 `14px` 圆底替换任务图标，外层占位不变，点击即可取消。图片缩略图与文件卡片显示在输入框内部正文上方，带独立移除按钮；不提供参考图中的速度和麦克风动作。
+- **Composer 输入与动作（已实现）**：空输入和未接近右侧控制安全区的单行短文本保持 `48px` 高的胶囊输入框；只有实测文本宽度用尽当前剩余安全区、出现显式换行或存在待发送附件时才展开为多行面板，删除内容后可重新收紧。左下角 `32×32` 圆形“+”与右下角 `32×32` 圆形上箭头发送按钮对齐；“+”图标为 `18px`、较粗描边，在 hover、键盘聚焦和菜单打开时仍使用同尺寸圆形底，焦点反馈不额外外扩黑色轮廓。菜单合并“添加照片和文件”，并包含“画布”与“指派任务”。打开右侧 Canvas 后，“画布”项可用；点击后才在“+”右侧显示轻量授权胶囊（Canvas 图标 +「画布: 标题」+ hover 移除），不渲染实时缩略图，也不把整板授权放进附件区；多个打开的画布在菜单中列出供选择。用户圈选“发送到 Chat”的选区才出现在附件区并带冻结缩略图，可与整板授权并存。关闭 Canvas 标签不自动移除授权胶囊。启用任务后，任务胶囊同样出现在“+”右侧并与正文共享单行空间，不会自行增高输入框，但会按实际占位缩短正文可用安全宽度。任务/画布文字与正文始终复用同一字号变量（桌面 `14px`，小屏防输入缩放时同步为 `16px`）；hover/聚焦时使用图标库的 X 图标和更小的 `14px` 圆底替换胶囊图标，外层占位不变，点击即可取消。图片缩略图与文件卡片显示在输入框内部正文上方，带独立移除按钮；不提供参考图中的速度和麦克风动作。
   “+”菜单以整个 Composer 外框为锚点，左边界和宽度与输入框对齐；只有输入框本身超过视口安全范围时，才按左右 `8px` 视口边距收缩。菜单使用上下 `4px`、左右 `5px` 内边距和 `16px` 外圆角；每个菜单项为 `30px` 高、`10px` 圆角和 `4px 10px` 内边距。菜单只靠浅色边框和圆角分层，不显示阴影。每次打开时首个可用项默认显示高亮；鼠标或键盘进入其他项后，高亮停留在最后经过的项，离开菜单项不回退。任务开关状态不使用常驻高亮或勾号表达，而是在“指派任务”后以淡色文案显示“开启指派任务 / 关闭指派任务”；实际 hover/键盘高亮仍与其他菜单项一致。`@` 候选菜单复用同一外框宽度、`16px` 外圆角、无阴影表面和 `30px`/`10px` 候选行；名称、`@handle`、范围说明与类型在一行内截断，首项及鼠标/键盘最后经过项沿用相同浅色高亮。
   展开态只增加上半部分正文/附件空间；下方控制区继续沿用紧凑态的 `48px` 视觉高度、左右 `10px` 控制内距、底部 `8px` 控制内距和 `24px` 底角，因此“+”和发送按钮在高低状态间不横向或纵向跳动。
   展开态附件与正文统一使用距输入框上、左边界各 `10px` 的内容基线；Composer 与主消息/话题消息复用 `components/AttachmentCard.tsx`，附件列表按可用宽度自动换行并以 `max-width: 100%` 防止溢出。输入框外侧底色在单行时从 Composer 高度中点开始不透明；多行或有附件的展开态则从输入框顶部圆角过渡为垂直边的位置（24px）开始不透明，防止消息内容透到输入框两侧。附件卡片使用 `13px` 圆角，hover/focus-within 以短过渡切换至 `#f7f7f7`，移除按钮为居中的 `16px` 圆形。非图片附件按 Markdown、PDF、文档、表格、演示、压缩包、代码/数据、音视频和文本显示缩写式文件图标及克制的无描边纯色底，不绘制折页线；聚合面板文件页复用同一类型图标。消息只有一个图片附件时使用保持原始比例、最大 `320px` 的大预览；多图或图片与文件混排时继续使用紧凑卡片。Composer 和消息中的图片点击后进入共享查看器：100% 状态完整适配视口安全区，放大后可在整个视口舞台拖动，不受内层卡片裁切；支持按钮、滚轮及 `+`/`-`/`0` 快捷键缩放/复位，`Escape`、关闭按钮或点击图片外区域关闭。消息图片还按当前私聊/频道已加载消息的顺序组成独立序列，话题按父消息加当前话题回复组成序列；查看器提供上一张/下一张按钮、左右方向键和当前位置，序列不会跨会话。主 Chat 使用 `ResizeObserver` 把 Composer 实际高度加 `12px` 消息间距写入滚动区底部预留；在用户原本位于底部时同步维持贴底，避免附件或多行正文展开后遮挡最后一条消息。
@@ -149,7 +150,7 @@ ChatOnly 由当前会话工作面和可独立收起的辅助面板组成：
 
 ## 5. 模块工作面与作用域
 
-- 当前业务模块包括 Inbox、Tasks、Agents；Home 另有 Spaces；Search 由左侧入口或快捷键打开；Settings 是模态层。Computers/Machines 不再是产品模块。
+- 当前已实现业务模块包括 Inbox、Tasks、Agents、Canvas；Home 另有 Spaces；Search 由左侧入口或快捷键打开；Settings 是模态层。Canvas Library 与实际 Canvas resource tab 已进入正式壳。Computers/Machines 不再是产品模块。
 - 可同时打开多个业务模块标签，但一次只激活并显示一个右侧模块；切换左侧入口会新增或聚焦对应标签。
 - Inbox、Tasks、Agents 和 Settings 只读取当前 Space 数据；Spaces 只读取 app.db registry 和真实摘要。切换 Space 时 Chat 与普通模块数据源一起切换。
 - Web Store 与路由状态只使用 `SpaceInfo/spaceId/spaces` 和 `/s/:slug`；请求只发送 `x-space-id`，不得在前端保留旧 Server 双命名。
@@ -171,6 +172,23 @@ H4 已复用 H3 领域/API 能力交付本节：Home Spaces 提供卡片网格�
 
 未来可在 Home 增加真正的跨 Space Inbox/Tasks/Calendar 聚合，但它们是后续真实能力，不恢复已移除的薄总览页。
 
+### 5.2 Canvas Workspace（阶段 3 Chat 上下文联动已实现）
+
+阶段 1 的固定 Recombyn `EditorPage`/RCB/nodes/chrome/panels 与原生观感保持不变。阶段2已从正式左侧 Canvas 入口打开 Canvas Library；新建/受限 JSON 导入后形成独立 resource tab，同一 Canvas 去重，不同 Canvas 可多开并按 Space 隔离恢复。实际 Canvas 继续使用原生工具栏、节点、Frame、选择/变换、结构和导出 UI；嵌入宿主时 editor island 高度严格跟随 workspace surface，不再按 browser viewport 溢出并裁掉底部工具栏。媒体按钮在相同原生位置经可复现 host materializer 恢复，先写入 Canvas-local durable asset，再把受控 resolver URL 提交 Core；AssetPanel 显示同 Canvas 本地资产。上游产品壳的 Home 与账户按钮在正式 Kith Canvas 中移除，标题、导出与分享保留。`⌘/Ctrl+Z`、`⌘⇧Z`/`Ctrl+Y` 由宿主捕获后调用 Core undo/redo。工具栏「图像生成器 (A)」「视频生成器 (Shift+A)」与媒体快速编辑走 Kith `canvas_generation_jobs`（Doubao 图像 / Seedance 视频），结果就地替换生成板；模型选择器行内显示供应商图标（Seedream/Seedance 豆包标，音频 Gemini/OpenRouter/Fish Audio），来自 Recombyn 同款 LobeHub 静态 SVG，不在线拉品牌图；选中图片工具条的放大/去背景/多角度走同一 Job 的图生图，橡皮为本地擦除上传，标记为按住拖拽框选后飞入**左侧** Chat Composer（裁切附件 + 图片节点 Canvas 选区；框选说明只进 Agent 上下文，不进输入框/聊天气泡；开启后图上不叠说明，十字光标旁跟「按住拖选」；拖选坐标按 overlay 屏幕矩形换算，避免左侧 Chat 把画布推离原点后点不到图），去背景模式菜单留在选区工具条内，图片分层仍明确 unavailable。OCR 与 image-to-scene 仍延后。没有 AgentDock、第二套画布 UI 或 Page。阶段3在原生选区浮动工具栏最右侧提供描边胶囊“发送到 Chat”动作（单选、多选和 Frame；右键 Add to Chat 仍保留），点击后走已有 `kith:canvas-selection-to-chat` seam；事件必须携带来源 `canvasId`，bridge 按事件来源写入对应 Canvas 的 pending，飞入反馈由 Kith 自有 `canvasFlyToChat` 适配模块完成，不再 import Recombyn AgentDock/`flyToChat`。发送目标跟随当前 DM/频道/话题 surface，也不新增第二套 Chat 面板。打开右侧 Canvas 不会自动授权；用户从 Composer“+”菜单选择“画布”后，才在“+”旁挂一条轻量整板授权胶囊（图标+「画布: 标题」，无实时缩略图）。用户圈选发送进入附件区并带冻结缩略图，可与整板授权并存；关闭 Canvas 标签不自动移除授权胶囊。
+
+- 规范 module id 为 `canvas`；实际 Canvas 使用当前会话 pathname 上的 `?module=canvas&canvas=<canvasId>`。`canvasId` 同时是 `WorkspaceTab.resourceId`，同一 Canvas 只聚焦一个 tab，不同 Canvas 可多开。
+- `resourceId = null` 是 Canvas Library，用于新建、导入、打开和软删除当前 Space Canvas；它不是 Canvas Page。Library 使用中文缩略图网格：首卡始终是“新建画布”，其余卡片从 Core canonical document 只读绘制轻量 SVG 预览，并显示中文标题与更新时间；网格按 Workspace 实际可用宽度自动从一列扩展到四列。标题在原生编辑器内修改后经 `metadata.rename` 持久化，并同步 Workspace tab、URL 与 SQLite；输入框允许清空草稿（空名用 `??` 而不是 `||` 回退成「未命名模板」），未提交的空白不会写入 Core（标题须 1–160 字符），失焦时若仍为空则恢复上次已保存标题；右键菜单快捷键在 Mac 上显示 `⌘`（不是 ASCII `?`），`<kbd>` 使用系统字体以免等宽栈缺字形；删除会关闭对应 tab，活动项退回 Library，重启后仍保持删除态。每个实际 Canvas 永远是一个独立无限平面，产品不增加 Page 导航或层级。
+- Canvas tab 与 Chat 并排，继续服从现有 split、相邻关闭、URL 活动项、按 Space 标签恢复和侧栏自动收起规则；不新增 Dock、第二套标签栏或全局壳。
+- 实际编辑器直接移植 Recombyn RCB 的画布、节点、工具栏、属性/图层/资产/导出面板视觉结构和交互，不为统一 Kith 视觉而重设计。资产面板改接 Kith Canvas-local asset library；上游 JSON 导出按钮经宿主 port 读取 Core canonical scene，等待实际下载结果后再报告成功。Library 的受限 JSON 导入会校验格式、重映射全部外部 ID、归一隐藏 root，并拒绝未重绑定资产和悬空结构；正式 URL/tab/DB 不暴露 Page。上游“Export All Pages/导出全部页面”等产品文案与动作必须替换为“导出全部画布内容/画板”等无 Page 语义，并登记为批准的 visual golden 例外。Kith 另提供标签宿主、Canvas Library、冲突/错误提示、导入导出窄桥，以及 Composer Canvas Context Chip 与频道/话题 executor 选择。
+- 嵌入态底部原生工具栏以当前可见编辑舞台（排除已展开的资产/图层侧栏，不按浏览器 viewport）为水平居中基准，并随 Workspace split 或内部侧栏 resize 重算。Core snapshot 回投只替换 canonical document；当前节点仍存在时保留 Recombyn renderer 的临时选中态，避免创建后选框闪退。
+- Recombyn floating UI portal 位于 Canvas island 内、React editor mount 外，既继承 Canvas scoped 样式又不被 React 首次提交清除；缩放菜单由按钮单独拥有开关事件，避免 focus 与 wrapper click 双重切换。
+- 正式 Canvas 不读取 Recombyn 自有主题偏好；Kith `<html>.dark` 是解析 light/dark/system 后的唯一事实源，Canvas root 实时同步 `data-theme`，继续复用 Recombyn 原生深浅色 token。
+- Recombyn Home/Auth/Billing/Share/Cloud/Tauri 与 AgentDock 产品壳不出现。阶段1保留的 selection-to-chat 窄 host event seam 在阶段3接到现有 Composer；Canvas Access Grant、Agent 写回和“让 Agent 处理”留给阶段4。
+- 圈选后的不可变 Canvas Selection Snapshot、Composer/消息 Canvas Context Chip（画布名、元素/Frame 摘要、缩略图、冻结 revision、en/zh、图标预览/查看选区）、选区预览/移除、打开并聚焦该条 snapshot 选区，以及 Turn Inspector 结构化 Canvas source 卡已在阶段3落地（卡片显示冻结 snapshot 投影出的来源会话/surface，不依赖 live Canvas）；Canvas 删除后历史 snapshot 仍可查看，live link fail-closed。pending 选区是按 Chat surface 隔离的可追加列表，同一 Canvas+同一选区去重，切换 DM/频道/话题时保留其他 surface 的 pending，切回后恢复卡片。发送成功后消息 chip 不可移除，也不随原画布后续修改而变。MVP 不做原生跨栏拖放。
+- Recombyn Tailwind 3 必须独立构建并加 Canvas 作用域，Preflight/`html/body/:root` 不得进入 Kith 全局；Kith 全局选择器显式排除 Canvas root，并给 Canvas 建立 scoped reset 和独立 portal root。合法离线字体集先于 Kith golden 确定，替代字体是显式视觉例外；截图、交互和 computed-style 断言共同验收 UI 保护。
+
+完整边界、MVP 和后续能力见 `../superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md`。
+
 ---
 
 ## 6. Chat 与模块联动
@@ -178,6 +196,9 @@ H4 已复用 H3 领域/API 能力交付本节：Home Spaces 提供卡片网格�
 - 业务模块与 Chat 可以并排显示，但模块标签不会暗中改变下一条聊天消息的上下文。
 - 任务、文件、agent 等对象只有通过明确的“在 Chat 中讨论”动作，才会成为 Chat 的 focused item。
 - 每条消息发送时固化结构化 `MessageContextSnapshot`，包含 Space、会话、可见 UI context 和 focused item；UI 与服务端保存 Kith-space 自己的结构，不把特定 runtime 提示格式硬编码进核心模型。
+- Canvas 联动：用户从 Composer“+”菜单选择“画布”后，才在当前 Chat surface 挂整板授权 pending，Composer 在“+”旁显示轻量画布胶囊（无实时缩略图）；用户也可“发送到 Chat”圈选 Frame/元素以附加局部选区，这些选区才进入附件区并带缩略图，两种授权可并存。发送时 Core 冻结当时全部 pending snapshot。关闭 Canvas 标签不丢掉整板 chip 或已圈选发送的卡片；用户点 X、发送成功或清空草稿才移除。
+- Canvas 请求在 DM 中绑定对端 Agent，在频道/话题中绑定明确的一个 Agent；消息可见性与实际执行者继续分离，不因 Canvas context 默认唤醒全体。
+- Agent 的 Canvas mutation 与 server-owned Chat reply 分开建模。UI 可在回执中展示 mutation 链接，但不能把画布已变更误当作 Chat turn 已结算。
 
 ---
 
@@ -185,7 +206,7 @@ H4 已复用 H3 领域/API 能力交付本节：Home Spaces 提供卡片网格�
 
 当前生产壳已完成 A5 入口收口与 P-A7 H4：`App` 只渲染 `WorkspaceFrame`；Agents、Human Settings、Desktop Settings 与 Home-only Spaces 已落地，登录/注册/邀请、Computers、Landing、Features、PWA、SSR/prerender、旧 `Layout` 与 `?legacy=1` 均已退出活跃代码。Agent 详情的“记忆”标签与概览路径通过兼容的 workspace-files API 展示并读取当前 Space 的 `<space>/.kith/agents/<agentId>`；`agentTab=workspace` 只作为既有深链兼容值保留，不再表示共享 Space 工作区。普通冷启动进入 stable Home，显式 ready 深链接仍优先；普通 Space 不显示也不能激活 Spaces。
 
-当前 Chat 壳层已按 sidebar-10 方向收敛为单个可折叠常驻侧栏：`WorkspaceNavigationRail` 组合 Space、模块入口与既有会话分组；`ConversationListContent` 继续复用既有会话数据。Spaces、Inbox、Tasks、Agents 通过 `WorkspaceTabs` 在 Chat 右侧以按 Space 持久化的标签集合呈现。`WorkspaceDock` 已删除，Settings 使用独立模态层并复用原设置内容。案例展示继续保持退役。状态以 `docs/progress.md` 为准。
+当前 Chat 壳层已按 sidebar-10 方向收敛为单个可折叠常驻侧栏：`WorkspaceNavigationRail` 组合 Space、模块入口与既有会话分组；`ConversationListContent` 继续复用既有会话数据。Spaces、Inbox、Tasks、Agents、Canvas 通过 `WorkspaceTabs` 在 Chat 右侧以按 Space 持久化的标签集合呈现；Canvas Library 使用无 resourceId 的模块 tab，实际 Canvas 使用稳定 resourceId。`WorkspaceDock` 已删除，Settings 使用独立模态层并复用原设置内容。案例展示继续保持退役。状态以 `docs/progress.md` 为准。
 
 单窗口壳按职责拆在 `web/src/shell/`：
 

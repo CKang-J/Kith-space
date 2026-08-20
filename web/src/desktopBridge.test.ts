@@ -28,6 +28,7 @@ test("settings routes default and fall back to the Human profile", () => {
   assert.equal(resolveSettingsSection("desktop", false), "human");
   assert.equal(resolveSettingsSection("desktop", true), "desktop");
   assert.equal(resolveSettingsSection("appearance", false), "appearance");
+  assert.equal(resolveSettingsSection("generation", false), "generation");
   assert.equal(resolveSettingsSection("space", false), "space");
   assert.equal(resolveSettingsSection("advisor", false), "advisor");
   assert.equal(resolveSettingsSection("human", false), "human");

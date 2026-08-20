@@ -9,10 +9,12 @@ import { publish } from "../realtime.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import { attachMentions, humanChannels } from "./shared.js";
 import { canHumanReadChannel } from "../channelAccess.js";
-import { normalizeTaskExecutionMode } from "../dispatchGuard.js";
 import { humanIdentityForId } from "../../human/humanIdentity.js";
 import { activeChannels, assertChannelWritable } from "../../channels/channelLifecycle.js";
 import { sendTaskOperationError } from "../tasks/taskHttp.js";
+import { isMessageExecutionBindingError } from "../../messages/messageExecutionBinding.js";
+import { CanvasNotFoundError, CanvasValidationError } from "../../canvas/canvasCore.js";
+import { inspectHumanMessagePost, validateHumanMessagePost } from "./messagePostValidation.js";
 
 export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
   const { req, res, url, method, p, humanId, spaceId } = ctx;
@@ -137,21 +139,38 @@ export async function handleMessages(ctx: SpaceCtx): Promise<boolean> {
   }
   if (p === "/api/messages" && method === "POST") {
     const b = await readJson(req);
-    const hasAtt = Array.isArray(b.attachmentIds) && b.attachmentIds.length > 0;
-    if (!b.channelId || (!b.content && !hasAtt)) return (sendErr(res, 400, "channelId + content (or attachmentIds) required"), true);
+    const invalid = validateHumanMessagePost(b);
+    if (invalid) return (sendErr(res, 400, invalid), true);
+    const { hasAtt, mode } = inspectHumanMessagePost(b);
     if (!(await canHumanReadChannel(spaceId, b.channelId))) return (sendErr(res, 403, "forbidden"), true);
     const human = humanIdentityForId(humanId);
     if (!human) return (sendErr(res, 403, "not the local Human"), true);
-    const mode = normalizeTaskExecutionMode(b.taskExecutionMode ?? b.executionMode);
-    if (b.asTask && !mode) return (sendErr(res, 400, "executionMode must be autopilot or plan-first"), true);
-    if (b.memoryPolicy !== undefined && b.memoryPolicy !== "eligible" && b.memoryPolicy !== "exclude") {
-      return (sendErr(res, 400, "memoryPolicy must be eligible or exclude"), true);
-    }
     try {
-      const msg = await createMessage({ spaceId, channelId: b.channelId, senderType: "human", senderId: humanId, senderName: human.displayName, content: b.content || "", asTask: !!b.asTask, taskExecutionMode: mode ?? undefined, attachmentIds: hasAtt ? b.attachmentIds : undefined, contextSnapshot: b.contextSnapshot, memoryPolicy: b.memoryPolicy ?? "eligible" });
+      const msg = await createMessage({
+        spaceId,
+        channelId: b.channelId,
+        senderType: "human",
+        senderId: humanId,
+        senderName: human.displayName,
+        content: b.content || "",
+        asTask: !!b.asTask,
+        taskExecutionMode: mode ?? undefined,
+        attachmentIds: hasAtt ? b.attachmentIds : undefined,
+        contextSnapshot: b.contextSnapshot,
+        memoryPolicy: b.memoryPolicy ?? "eligible",
+        canvasSelection: b.canvasSelection,
+        canvasSelections: b.canvasSelections,
+        executionBinding: b.executionBinding,
+        structuredMentions: b.structuredMentions,
+      });
       return (sendJson(res, 200, { ok: true, id: msg.id, seq: msg.seq }), true);
     } catch (error) {
       if (sendTaskOperationError(res, error)) return true;
+      if (isMessageExecutionBindingError(error)) {
+        return (sendErr(res, error.code === "INVALID_ARGUMENT" ? 400 : 409, error.message, { code: error.code }), true);
+      }
+      if (error instanceof CanvasNotFoundError) return (sendErr(res, 404, error.message, { code: "NOT_FOUND" }), true);
+      if (error instanceof CanvasValidationError) return (sendErr(res, 400, error.message, { code: "INVALID_ARGUMENT" }), true);
       throw error;
     }
   }

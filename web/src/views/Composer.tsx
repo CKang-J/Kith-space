@@ -7,6 +7,7 @@ import { autosizeComposerInput, observeComposerInputWidth } from "./composerAuto
 import { uniqueMentionedAgentIds } from "./composerTaskMentions.ts";
 import { ComposerActions } from "./composer/ComposerActions.tsx";
 import { ComposerAttachments, type PendingAttachment } from "./composer/ComposerAttachments.tsx";
+import { ComposerCanvasContextList } from "./composer/ComposerCanvasContextList.tsx";
 import { useComposerExpansion } from "./composer/useComposerExpansion.ts";
 import { useComposerReserve } from "./composer/useComposerReserve.ts";
 import {
@@ -17,6 +18,9 @@ import {
 import { insertAgentMention } from "./composerMention.ts";
 import { messageContextSnapshot } from "../messageContextSnapshot.ts";
 import { ConversationActivityStatus } from "./ConversationActivityStatus.tsx";
+import { useComposerCanvasContext } from "./composer/useComposerCanvasContext.ts";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { KITH_COMPOSER_ATTACH_FILE_EVENT, type ComposerAttachFileDetail } from "@/features/canvas/adapters/recombynMarkToChat";
 
 // Shared message composer for channels, DMs, and threads. Owns text, attachment upload
 // (button / paste / drag-drop, with per-file progress), @mention autocomplete, and send.
@@ -50,6 +54,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
   const [taskMentionError, setTaskMentionError] = useState("");
+  const canvas = useComposerCanvasContext({ channelId, api, dmAgent, t });
   const sendingRef = useRef(false);
   const atPosRef = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -79,7 +84,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     t("chat.agentSleepingComposerPlaceholder", { name: reach.names })
   ) : null;
   const effectivePlaceholder = reachPlaceholder ?? (allowAsTask && asTask ? t("chat.taskPlaceholder") : placeholder);
-  const expanded = textNeedsExpansion || pendingAtts.length > 0;
+  const expanded = textNeedsExpansion || pendingAtts.length > 0 || canvas.canvasExpanded;
 
   const changeTaskMode = (active: boolean) => {
     setAsTask(active);
@@ -105,7 +110,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const send = async (forceTask?: boolean) => {
     if (sendingRef.current) return;
-    const v = text.trim(); if ((!v && !pendingAtts.length) || !channelId) return;
+    const v = text.trim(); if ((!v && !pendingAtts.length && !canvas.canvasContexts.length) || !channelId) return;
     const asT = allowAsTask && (forceTask ?? asTask); // ⌘/Ctrl+Shift+Enter forces task; threads (allowAsTask=false) never send as task
     if (asT) {
       if (containsChannelAllMention(v)) {
@@ -120,6 +125,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       }
     }
     setTaskMentionError("");
+    const canvasError = canvas.validateSend(asT);
+    if (canvasError) {
+      setTaskMentionError(canvasError);
+      inputRef.current?.focus();
+      return;
+    }
     const ids = pendingAtts.filter((a) => a.status === "done" || !a.status).map((a) => a.id); // only fully-uploaded attachments
     sendingRef.current = true;
     setSending(true);
@@ -131,9 +142,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         attachmentIds: ids,
         contextSnapshot: messageContextSnapshot(spaceId, channelId, className === "thread-composer"),
         memoryPolicy: memoryExcluded ? "exclude" : "eligible",
+        ...canvas.buildSendPayload(),
       });
       if (result?.error) throw new Error(String(result.error));
       setText(""); setAtQuery(null); setAsTask(false); setMemoryExcluded(false); setPendingAtts([]);
+      canvas.clearAfterSend();
     } catch (error) {
       setTaskMentionError(error instanceof Error ? error.message : String(error));
       inputRef.current?.focus();
@@ -159,6 +172,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       }
     } finally { setUploading(false); }
   };
+  const addFilesRef = useRef(addFiles);
+  addFilesRef.current = addFiles;
+  useEffect(() => {
+    const onAttach = (event: Event) => {
+      const detail = (event as CustomEvent<ComposerAttachFileDetail>).detail;
+      const surface = typeof detail?.surfaceId === "string" ? detail.surfaceId.trim() : "";
+      if (!surface || surface !== channelId) return;
+      if (detail?.file instanceof File) void addFilesRef.current([detail.file]);
+      const caption = String(detail?.caption || "").trim();
+      if (caption) setText((prev) => (prev.trim() ? prev : caption));
+      setTimeout(() => inputRef.current?.focus(), 0);
+    };
+    window.addEventListener(KITH_COMPOSER_ATTACH_FILE_EVENT, onAttach);
+    return () => window.removeEventListener(KITH_COMPOSER_ATTACH_FILE_EVENT, onAttach);
+  }, [channelId]);
   const onPaste = (e: RClipboardEvent) => { const imgs = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/")).map((f, i) => new File([f], `pasted-${Date.now()}${i ? "-" + i : ""}.${f.type.split("/")[1] || "png"}`, { type: f.type })); if (imgs.length) { e.preventDefault(); addFiles(imgs); } };
   const onDrop = (e: RDragEvent) => { const fs = Array.from(e.dataTransfer?.files ?? []); if (fs.length) { e.preventDefault(); addFiles(fs); } };
 
@@ -187,7 +215,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   };
 
   return (
-    <div ref={composerRootRef} className={"composer" + (expanded ? " composer--expanded" : "") + (className ? " " + className : "")}>
+    <div ref={composerRootRef} className={"composer" + (expanded ? " composer--expanded" : "") + (className ? " " + className : "")} data-fly-land={`kith-chat:${channelId}`}>
       {atQuery !== null && cands.length > 0 && (
         <div className="mention-menu">
           {cands.map((c, i) => (
@@ -208,13 +236,40 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       )}
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={onPickFiles} />
       {taskMentionError ? <div className="composer-validation-error" role="alert">{taskMentionError}</div> : null}
+      {canvas.executorLoadError && canvas.canvasContexts.length > 0 && !dmAgent ? <div className="composer-validation-error" role="alert">{canvas.executorLoadError}</div> : null}
       <ConversationActivityStatus channelId={channelId} />
       <div ref={boxRef} className={`composer-box ${expanded ? "is-expanded" : "is-compact"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
-        <ComposerAttachments
-          attachments={pendingAtts}
-          attachmentUrl={attachmentUrl}
-          onRemove={(id) => setPendingAtts((pending) => pending.filter((attachment) => attachment.id !== id))}
-        />
+        {(pendingAtts.length > 0 || canvas.canvasExpanded) ? (
+          <div className="composer-attachments">
+            {pendingAtts.length > 0 ? (
+              <ComposerAttachments
+                attachments={pendingAtts}
+                attachmentUrl={attachmentUrl}
+                onRemove={(id) => setPendingAtts((pending) => pending.filter((attachment) => attachment.id !== id))}
+              />
+            ) : null}
+            {canvas.selectionContexts.length > 0 ? (
+              <ComposerCanvasContextList
+                contexts={canvas.selectionContexts}
+                onRemove={canvas.removeContext}
+              />
+            ) : null}
+            {canvas.canvasContexts.length > 0 && !dmAgent && (canvas.selectionContexts.length > 0 || canvas.executorLoadError || (!canvas.executorAgentId && canvas.canvasExecutors.length > 1)) ? (
+              <div className="composer-canvas-executor">
+                <Select value={canvas.executorAgentId || undefined} onValueChange={canvas.setExecutorAgentId}>
+                  <SelectTrigger size="sm" className="w-full max-w-64" data-canvas-executor-select>
+                    <SelectValue placeholder={t("chat.canvasExecutorPlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {canvas.canvasExecutors.map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id}>{agent.displayName || agent.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <textarea className="composer-input" ref={inputRef} rows={1} value={text} onChange={onInput} onPaste={onPaste} readOnly={sending}
           placeholder={effectivePlaceholder}
           onKeyDown={(e) => {
@@ -237,16 +292,28 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               allowTask={allowAsTask}
               taskActive={asTask}
               memoryExcluded={memoryExcluded}
+              canvasAvailable={canvas.canvasAvailable}
+              canvasActive={canvas.canvasActive}
+              canvasChips={canvas.wholeCanvasContexts.map((item) => ({
+                id: item.id,
+                canvasId: item.canvasId,
+                canvasTitle: item.canvasTitle,
+              }))}
+              openCanvases={canvas.openCanvases}
               uploadDisabled={uploading || sending}
-              taskDisabled={sending}
+              taskDisabled={sending || canvas.canvasContexts.length > 0}
               memoryDisabled={sending}
+              canvasDisabled={sending}
               onAddFiles={() => fileRef.current?.click()}
               onTaskChange={changeTaskMode}
               onMemoryExcludedChange={setMemoryExcluded}
+              onCanvasChange={() => canvas.toggleCanvasAuthorization()}
+              onToggleCanvas={canvas.toggleCanvas}
+              onRemoveCanvas={canvas.removeContext}
             />
           </div>
           <div className="cb-right">
-            <button className="send-btn" title={t("chat.sendTitle")} disabled={sending || (!text.trim() && !pendingAtts.length)} onClick={() => send()}><ArrowUp size={17} aria-hidden="true" /></button>
+            <button className="send-btn" title={t("chat.sendTitle")} disabled={canvas.sendDisabled(sending, !!text.trim(), pendingAtts.length > 0)} onClick={() => send()}><ArrowUp size={17} aria-hidden="true" /></button>
           </div>
         </div>
       </div>

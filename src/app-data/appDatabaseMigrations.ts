@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 
-export const APP_DATABASE_SCHEMA_VERSION = 10;
+export const APP_DATABASE_SCHEMA_VERSION = 12;
 
 export type AppDatabaseCompatibilityReason = "integrity" | "future" | "schema";
 
@@ -774,6 +774,52 @@ APP_SCHEMA_V10.set("appearance_settings", [
   ...APP_SCHEMA_V9.get("appearance_settings")!, "color_mode",
 ]);
 
+const APP_V11_GENERATION_PROVIDERS_SQL = `
+  CREATE TABLE generation_providers (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL UNIQUE
+      CHECK (name IN ('doubao', 'seedream', 'stability', 'runway', 'dalle', 'pika')),
+    type TEXT NOT NULL CHECK (type IN ('image', 'video')),
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    api_key_encrypted TEXT,
+    api_endpoint TEXT,
+    config_json TEXT,
+    priority INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX generation_providers_name_uniq ON generation_providers(name);
+`;
+
+const APP_SCHEMA_V11 = new Map(APP_SCHEMA_V10);
+APP_SCHEMA_V11.set("generation_providers", [
+  "id", "name", "type", "enabled", "api_key_encrypted", "api_endpoint",
+  "config_json", "priority", "created_at", "updated_at",
+]);
+
+const APP_V12_GENERATION_PROVIDERS_AUDIO_SQL = `
+  DROP INDEX IF EXISTS generation_providers_name_uniq;
+  CREATE TABLE generation_providers__v12 (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL UNIQUE
+      CHECK (name IN ('doubao', 'seedream', 'openrouter', 'stability', 'runway', 'dalle', 'pika')),
+    type TEXT NOT NULL CHECK (type IN ('image', 'video', 'audio')),
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    api_key_encrypted TEXT,
+    api_endpoint TEXT,
+    config_json TEXT,
+    priority INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  INSERT INTO generation_providers__v12 SELECT * FROM generation_providers;
+  DROP TABLE generation_providers;
+  ALTER TABLE generation_providers__v12 RENAME TO generation_providers;
+  CREATE UNIQUE INDEX generation_providers_name_uniq ON generation_providers(name);
+`;
+
+const APP_SCHEMA_V12 = new Map(APP_SCHEMA_V11);
+
 function baselineChecksum(): string {
   return createHash("sha256").update(APP_BASELINE_SQL).digest("hex");
 }
@@ -835,7 +881,7 @@ function assertIntegrity(sqlite: Database.Database, dbPath: string): void {
 
 function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_DATABASE_SCHEMA_VERSION): void {
   const missing: string[] = [];
-  const expectedSchema = version >= 10 ? APP_SCHEMA_V10 : version >= 9 ? APP_SCHEMA_V9 : version >= 8 ? APP_SCHEMA_V8 : version >= 7 ? APP_SCHEMA_V7 : version >= 6 ? APP_SCHEMA_V6 : version >= 5 ? APP_SCHEMA_V5 : version >= 4 ? APP_SCHEMA_V4 : version >= 3 ? APP_SCHEMA_V3 : version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
+  const expectedSchema = version >= 12 ? APP_SCHEMA_V12 : version >= 11 ? APP_SCHEMA_V11 : version >= 10 ? APP_SCHEMA_V10 : version >= 9 ? APP_SCHEMA_V9 : version >= 8 ? APP_SCHEMA_V8 : version >= 7 ? APP_SCHEMA_V7 : version >= 6 ? APP_SCHEMA_V6 : version >= 5 ? APP_SCHEMA_V5 : version >= 4 ? APP_SCHEMA_V4 : version >= 3 ? APP_SCHEMA_V3 : version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
   for (const [table, requiredColumns] of expectedSchema) {
     const actual = tableColumns(sqlite, table);
     if (actual.size === 0) {
@@ -1038,6 +1084,24 @@ function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_D
       missing.push("appearance_settings (value)");
     }
   }
+  if (version >= 11) {
+    const indexes = new Set((sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all() as Array<{ name: string }>).map((row) => row.name));
+    if (!indexes.has("generation_providers_name_uniq")) missing.push("generation_providers_name_uniq (index)");
+    const sql = String(sqlite.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'generation_providers'").pluck().get() ?? "")
+      .replaceAll(/\s+/g, " ").toLowerCase();
+    const fragments = version >= 12
+      ? [
+        "name in ('doubao', 'seedream', 'openrouter', 'stability', 'runway', 'dalle', 'pika')",
+        "type in ('image', 'video', 'audio')",
+        "enabled in (0, 1)",
+      ]
+      : [
+        "name in ('doubao', 'seedream', 'stability', 'runway', 'dalle', 'pika')",
+        "type in ('image', 'video')",
+        "enabled in (0, 1)",
+      ];
+    for (const fragment of fragments) if (!sql.includes(fragment)) missing.push(`generation_providers (${fragment})`);
+  }
   if (missing.length > 0) {
     throw new AppDatabaseMigrationError(
       "schema",
@@ -1062,6 +1126,8 @@ function expectedJournal(version: number) {
     ...(version >= 8 ? [{ version: 8, name: "appearance-font-groups", checksum: migrationChecksum(APP_V8_APPEARANCE_FONT_GROUPS_SQL) }] : []),
     ...(version >= 9 ? [{ version: 9, name: "appearance-ui-font-size", checksum: migrationChecksum(APP_V9_APPEARANCE_UI_FONT_SIZE_SQL) }] : []),
     ...(version >= 10 ? [{ version: 10, name: "appearance-color-mode", checksum: migrationChecksum(APP_V10_APPEARANCE_COLOR_MODE_SQL) }] : []),
+    ...(version >= 11 ? [{ version: 11, name: "generation-providers", checksum: migrationChecksum(APP_V11_GENERATION_PROVIDERS_SQL) }] : []),
+    ...(version >= 12 ? [{ version: 12, name: "generation-providers-audio", checksum: migrationChecksum(APP_V12_GENERATION_PROVIDERS_AUDIO_SQL) }] : []),
   ];
 }
 
@@ -1336,6 +1402,36 @@ export function migrateAppDatabase(sqlite: Database.Database, dbPath: string, op
       `).run(10, "appearance-color-mode", migrationChecksum(APP_V10_APPEARANCE_COLOR_MODE_SQL), Date.now());
     });
     applyAppearanceColorMode.immediate();
+    version = 10;
+  }
+  if (version === 10) {
+    assertSchema(sqlite, dbPath, 10);
+    assertJournal(sqlite, dbPath, 10);
+    const applyGenerationProviders = sqlite.transaction(() => {
+      sqlite.exec(APP_V11_GENERATION_PROVIDERS_SQL);
+      assertSchema(sqlite, dbPath, 11);
+      sqlite.pragma("user_version = 11");
+      sqlite.prepare(`
+        INSERT INTO app_migration_journal (version, name, checksum, applied_at)
+        VALUES (?, ?, ?, ?)
+      `).run(11, "generation-providers", migrationChecksum(APP_V11_GENERATION_PROVIDERS_SQL), Date.now());
+    });
+    applyGenerationProviders.immediate();
+    version = 11;
+  }
+  if (version === 11) {
+    assertSchema(sqlite, dbPath, 11);
+    assertJournal(sqlite, dbPath, 11);
+    const applyGenerationProvidersAudio = sqlite.transaction(() => {
+      sqlite.exec(APP_V12_GENERATION_PROVIDERS_AUDIO_SQL);
+      assertSchema(sqlite, dbPath, 12);
+      sqlite.pragma("user_version = 12");
+      sqlite.prepare(`
+        INSERT INTO app_migration_journal (version, name, checksum, applied_at)
+        VALUES (?, ?, ?, ?)
+      `).run(12, "generation-providers-audio", migrationChecksum(APP_V12_GENERATION_PROVIDERS_AUDIO_SQL), Date.now());
+    });
+    applyGenerationProvidersAudio.immediate();
   }
   assertCompatibleAppDatabase(sqlite, dbPath, { requireCurrentVersion: true });
 }

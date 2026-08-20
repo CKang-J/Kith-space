@@ -22,6 +22,14 @@ import { EpisodicMemoryService, type RecalledMemory } from "../memory/episodicMe
 import { UserGlobalMemoryService, type RecalledUserGlobalMemory } from "../memory/userGlobalMemoryService.js";
 import { selectUnifiedMemoryRecall } from "../memory/memoryRecallSelection.js";
 import { SessionCompactionMarkerService } from "../sessions/sessionCompactionMarker.js";
+import {
+  collectBoundObjectRefs,
+  contextObjectSnapshotResolvers,
+} from "./objectSnapshotResolver.js";
+import "./canvasObjectSnapshotResolver.js";
+import { listCanvasAccessGrantsInTransaction } from "../canvas/canvasAccessGrant.js";
+import { canvasSkillPackText, latestCanvasErrorForTurn } from "../canvas/canvasSkills.js";
+import { isCanvasAgentExecutionEnabled } from "../canvas/canvasAgentExecution.js";
 
 type ContextSourceRef = z.infer<typeof ContextSourceRefSchema>;
 type MessageRow = typeof schema.messages.$inferSelect;
@@ -286,10 +294,47 @@ export class ContextAssembler {
         }, "attachment_metadata_at_turn_start", auditRefs, snapshotRows));
       }
     }
-    const uiSnapshot = messages.map((message) => message.contextSnapshot).find((snapshot) => snapshot != null);
+    const uiSnapshots = messages
+      .map((message) => message.contextSnapshot)
+      .filter((snapshot): snapshot is Record<string, unknown> => snapshot != null);
+    const uiSnapshot = uiSnapshots[0] ?? null;
     const uiSnapshotRef = uiSnapshot
       ? this.persistSnapshot("ui", `${turn.id}:ui`, uiSnapshot, "ui_context_at_send", auditRefs, snapshotRows)
       : null;
+    const boundObjectRefs = collectBoundObjectRefs(uiSnapshots);
+    const refsByType = new Map<string, typeof boundObjectRefs>();
+    for (const ref of boundObjectRefs) {
+      const group = refsByType.get(ref.type) ?? [];
+      group.push(ref);
+      refsByType.set(ref.type, group);
+    }
+    for (const resolver of contextObjectSnapshotResolvers()) {
+      const refs = refsByType.get(resolver.type) ?? [];
+      if (!refs.length) continue;
+      for (const resolved of resolver.resolve({
+        spaceId: this.spaceId,
+        turnId: turn.id,
+        agentId: turn.agentId,
+        surfaceId: session.surfaceId,
+        refs,
+        messageIds,
+        db: this.db,
+        now: this.now(),
+      })) {
+        const snapshotRef = this.persistSnapshot(
+          resolved.sourceKind,
+          resolved.sourceId,
+          resolved.payload,
+          resolved.reason,
+          auditRefs,
+          snapshotRows,
+        );
+        snapshotRef.sourceRevision = resolved.sourceRevision;
+        snapshotRef.visibility = resolved.visibility;
+        snapshotRef.disclosureProjection = resolved.disclosureProjection;
+        objectSnapshots.push(snapshotRef);
+      }
+    }
 
     const seenByChannel = new Map<string, number>();
     for (const delivery of deliveries) {
@@ -538,6 +583,12 @@ export class ContextAssembler {
     }
     lines.push("", "File memory indexes (read selectively when relevant):");
     for (const ref of envelope.fileMemoryRefs) lines.push(`- ${ref.path} (${ref.reason}, hash=${ref.contentHash})`);
+    if (isCanvasAgentExecutionEnabled()) {
+      const grants = this.db.transaction((tx) => listCanvasAccessGrantsInTransaction(tx, envelope.turnId, envelope.session.agentId));
+      const lastError = latestCanvasErrorForTurn(this.db, envelope.turnId);
+      const skillPack = canvasSkillPackText(grants, lastError);
+      if (skillPack) lines.push("", skillPack);
+    }
     lines.push("", "Use `kith-space turn context` to inspect the authoritative input IDs before settling them.");
     return lines.join("\n");
   }

@@ -59,15 +59,43 @@ test("task assignment moves from the add menu into a removable hover chip", () =
 });
 
 test("add menu opens on the first available item and retains the last pointer highlight", () => {
-  assert.match(actions, /type ComposerMenuItem = "files" \| "task"/);
+  assert.match(actions, /type ComposerMenuItem = "files" \| "canvas" \| "task" \| "memory"/);
   assert.match(actions, /const \[highlightedItem, setHighlightedItem\] = useState<ComposerMenuItem>\("files"\)/);
-  assert.match(actions, /setHighlightedItem\(firstAvailableItem\)/);
+  assert.match(actions, /setHighlightedItem\(canvasAvailable && !canvasDisabled \? "canvas" : firstAvailableItem\)/);
   assert.match(actions, /highlightedItem === "files" \? "is-highlighted" : undefined/);
+  assert.match(actions, /highlightedItem === "canvas" \? "is-highlighted" : undefined/);
   assert.match(actions, /highlightedItem === "task" \? "is-highlighted" : undefined/);
   assert.match(actions, /onPointerEnter=\{\(\) => setHighlightedItem\("files"\)\}/);
+  assert.match(actions, /onPointerEnter=\{\(\) => setHighlightedItem\("canvas"\)\}/);
   assert.match(actions, /onPointerEnter=\{\(\) => setHighlightedItem\("task"\)\}/);
   assert.doesNotMatch(actions, /onPointerLeave=\{[^}]*setHighlightedItem/);
   assert.match(css, /\.composer-add-menu__popover>button\.is-highlighted/);
+});
+
+test("open canvas authorization uses a lightweight chip beside the add menu, not a live thumbnail", () => {
+  assert.match(actions, /t\("chat\.canvas"\)/);
+  assert.match(actions, /t\("chat\.canvasLabel"/);
+  assert.match(actions, /role="menuitemcheckbox"/);
+  assert.match(actions, /data-canvas-menu-item/);
+  assert.match(actions, /aria-checked=\{canvasActive\}/);
+  assert.match(actions, /className="composer-task-chip composer-canvas-chip"/);
+  assert.match(actions, /data-composer-canvas-chip/);
+  assert.match(actions, /LayoutDashboard/);
+  assert.doesNotMatch(actions, /CanvasSelectionThumbnail/);
+  assert.match(actions, /onClick=\{\(\) => onRemoveCanvas\(chip\.id\)\}/);
+  assert.match(css, /\.composer-canvas-chip__title[^{]*\{[^}]*text-overflow\s*:\s*ellipsis/);
+  assert.equal(zh.chat.canvas, "画布");
+  assert.equal(en.chat.canvas, "Canvas");
+  assert.equal(zh.chat.canvasLabel, "画布: {{title}}");
+  assert.equal(en.chat.canvasLabel, "Canvas: {{title}}");
+  assert.equal(zh.chat.enableCanvasAccess, "授权 Agent 操作整个画布");
+  assert.equal(en.chat.enableCanvasAccess, "Grant agent access to the entire canvas");
+  assert.equal(zh.chat.removeCanvas, "移除画布");
+  assert.equal(en.chat.removeCanvas, "Remove canvas");
+  assert.match(composer, /canvasChips=\{canvas\.wholeCanvasContexts\.map/);
+  assert.match(composer, /canvas\.selectionContexts/);
+  assert.match(composer, /onCanvasChange=\{\(\) => canvas\.toggleCanvasAuthorization\(\)\}/);
+  assert.match(composer, /onToggleCanvas=\{canvas\.toggleCanvas\}/);
 });
 
 test("task assignment shares the compact row and only the remaining safe text width triggers expansion", () => {
@@ -77,7 +105,7 @@ test("task assignment shares the compact row and only the remaining safe text wi
   assert.equal(composerTextNeedsExpansion("task draft", 150, 140), true);
   assert.equal(composerTextNeedsExpansion("safe edge", 200, 200), true);
   assert.equal(composerTextNeedsExpansion("manual\nbreak", 40, 200), true);
-  assert.match(composer, /const expanded = textNeedsExpansion \|\| pendingAtts\.length > 0;/);
+  assert.match(composer, /const expanded = textNeedsExpansion \|\| pendingAtts\.length > 0 \|\| canvas\.canvasExpanded;/);
   assert.doesNotMatch(composer, /const expanded =[^;]*\|\| asTask/);
   assert.match(composer, /expanded \? "is-expanded" : "is-compact"/);
   assert.match(composer, /expanded \? " composer--expanded" : ""/);

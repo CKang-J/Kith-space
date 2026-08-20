@@ -1,0 +1,356 @@
+{
+  "width": 3600,
+  "height": 2400,
+  "deltaSetLike": {
+    "ROOT": {
+      "children": [
+        "G-EaFIeB_a",
+        "XGpk2PHKyI",
+        "JKyKgl9iMv",
+        "vrg_k3RzOq",
+        "0AJVg6U5_t",
+        "vs1VJsKJqD",
+        "lVv1O2c-z7",
+        "NQ1u-Ot0IQ",
+        "X86dxOqq1g",
+        "xZSIO8wKm8",
+        "2QcVLZxTI9",
+        "PH4_B7VEyU"
+      ]
+    },
+    "G-EaFIeB_a": {
+      "id": "G-EaFIeB_a",
+      "key": "shape",
+      "x": 1160,
+      "y": 0,
+      "width": 1080,
+      "height": 1920,
+      "attrs": {
+        "shapeType": "rect",
+        "fill-color": "#F5F1EA",
+        "fill-type": "solid",
+        "border-color": "transparent",
+        "border-width": 0,
+        "strokeAlign": "center",
+        "stroke-align": "center",
+        "stroke-enabled": "false",
+        "stroke-visible": "false",
+        "fill-enabled": "true",
+        "fill-visible": "true",
+        "L": "true",
+        "R": "true",
+        "T": "true",
+        "B": "true",
+        "opacity": 1,
+        "angle": 0,
+        "radiusTL": 0,
+        "radiusTR": 0,
+        "radiusBR": 0,
+        "radiusBL": 0,
+        "radiusLinked": "true"
+      },
+      "children": [],
+      "z": 0
+    },
+    "XGpk2PHKyI": {
+      "id": "XGpk2PHKyI",
+      "key": "shape",
+      "x": 1220,
+      "y": 100,
+      "width": 960,
+      "height": 2,
+      "attrs": {
+        "shapeType": "rect",
+        "fill-color": "#1A1A1A",
+        "fill-type": "solid",
+        "border-color": "transparent",
+        "border-width": 0,
+        "strokeAlign": "center",
+        "stroke-align": "center",
+        "stroke-enabled": "false",
+        "stroke-visible": "false",
+        "fill-enabled": "true",
+        "fill-visible": "true",
+        "L": "true",
+        "R": "true",
+        "T": "true",
+        "B": "true",
+        "opacity": 1,
+        "angle": 0,
+        "radiusTL": 0,
+        "radiusTR": 0,
+        "radiusBR": 0,
+        "radiusBL": 0,
+        "radiusLinked": "true"
+      },
+      "children": [],
+      "z": 0
+    },
+    "JKyKgl9iMv": {
+      "id": "JKyKgl9iMv",
+      "key": "shape",
+      "x": 1220,
+      "y": 1820,
+      "width": 960,
+      "height": 2,
+      "attrs": {
+        "shapeType": "rect",
+        "fill-color": "#1A1A1A",
+        "fill-type": "solid",
+        "border-color": "transparent",
+        "border-width": 0,
+        "strokeAlign": "center",
+        "stroke-align": "center",
+        "stroke-enabled": "false",
+        "stroke-visible": "false",
+        "fill-enabled": "true",
+        "fill-visible": "true",
+        "L": "true",
+        "R": "true",
+        "T": "true",
+        "B": "true",
+        "opacity": 1,
+        "angle": 0,
+        "radiusTL": 0,
+        "radiusTR": 0,
+        "radiusBR": 0,
+        "radiusBL": 0,
+        "radiusLinked": "true"
+      },
+      "children": [],
+      "z": 0
+    },
+    "vrg_k3RzOq": {
+      "id": "vrg_k3RzOq",
+      "key": "text",
+      "x": 1220,
+      "y": 60,
+      "width": 333,
+      "height": 33,
+      "attrs": {
+        "DATA": "[{\"chars\":[{\"char\":\"I\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"S\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"S\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"U\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"E\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\" \",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"0\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"7\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\" \",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"·\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\" \",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"S\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"P\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"R\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"I\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"N\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"G\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\" \",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"2\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"0\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"2\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"5\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}}],\"config\":{}}]",
+        "ORIGIN_DATA": "[{\"children\":[{\"text\":\"ISSUE 07 · SPRING 2025\",\"bold\":false,\"italic\":false,\"strike\":false,\"underline\":false,\"overline\":false,\"font-base\":{\"fontSize\":28,\"color\":\"#1A1A1A\",\"fontFamily\":\"Inter\",\"textAlign\":\"left\",\"lineHeight\":1.15,\"letterSpacing\":0,\"textDecoration\":\"none\"}}]}]",
+        "markdown": "ISSUE 07 · SPRING 2025",
+        "autoSize": "true"
+      },
+      "children": [],
+      "z": 0
+    },
+    "0AJVg6U5_t": {
+      "id": "0AJVg6U5_t",
+      "key": "text",
+      "x": 1960,
+      "y": 60,
+      "width": 144,
+      "height": 33,
+      "attrs": {
+        "DATA": "[{\"chars\":[{\"char\":\"E\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"D\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"I\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"T\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"O\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"R\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"I\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"A\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"L\",\"config\":{\"SIZE\":28,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}}],\"config\":{}}]",
+        "ORIGIN_DATA": "[{\"children\":[{\"text\":\"EDITORIAL\",\"bold\":false,\"italic\":false,\"strike\":false,\"underline\":false,\"overline\":false,\"font-base\":{\"fontSize\":28,\"color\":\"#1A1A1A\",\"fontFamily\":\"Inter\",\"textAlign\":\"right\",\"lineHeight\":1.15,\"letterSpacing\":0,\"textDecoration\":\"none\"}}]}]",
+        "markdown": "EDITORIAL",
+        "autoSize": "true"
+      },
+      "children": [],
+      "z": 0
+    },
+    "vs1VJsKJqD": {
+      "id": "vs1VJsKJqD",
+      "key": "image",
+      "x": 1400,
+      "y": 500,
+      "width": 600,
+      "height": 900,
+      "attrs": {
+        "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='900' viewBox='0 0 600 900'%3E%3Crect width='600' height='900' fill='%23e7e5e4'/%3E%3Cpath d='M120 600l120-160 90 105 65-75 105 130z' fill='%23a8a29e'/%3E%3Ccircle cx='420' cy='260' r='58' fill='%23d6d3d1'/%3E%3C/svg%3E",
+        "name": "Image",
+        "assetKind": "image",
+        "mode": "FIT",
+        "lockAspect": "true",
+        "radiusTL": 0,
+        "radiusTR": 0,
+        "radiusBR": 0,
+        "radiusBL": 0,
+        "radiusLinked": "true",
+        "genPrompt": "editorial product photography of a single minimalist ceramic vase, matte cream white, clean studio lighting, soft shadows, on a warm beige background, high end magazine quality, no text no logos"
+      },
+      "children": [],
+      "z": 0
+    },
+    "lVv1O2c-z7": {
+      "id": "lVv1O2c-z7",
+      "key": "text",
+      "x": 1220,
+      "y": 220,
+      "width": 960,
+      "height": 276,
+      "attrs": {
+        "DATA": "[{\"chars\":[{\"char\":\"T\",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"h\",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"e\",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\" \",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"Q\",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"u\",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"i\",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"e\",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"t\",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\" \",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"O\",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"b\",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"j\",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"e\",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"c\",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"t\",\"config\":{\"SIZE\":120,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"700\",\"FAMILY\":\"Playfair Display\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}}],\"config\":{}}]",
+        "ORIGIN_DATA": "[{\"children\":[{\"text\":\"The Quiet Object\",\"bold\":true,\"italic\":false,\"strike\":false,\"underline\":false,\"overline\":false,\"font-base\":{\"fontSize\":120,\"color\":\"#1A1A1A\",\"fontFamily\":\"Playfair Display\",\"textAlign\":\"left\",\"lineHeight\":1.15,\"letterSpacing\":0,\"textDecoration\":\"none\"}}]}]",
+        "markdown": "The Quiet Object",
+        "autoSize": "true"
+      },
+      "children": [],
+      "z": 0
+    },
+    "NQ1u-Ot0IQ": {
+      "id": "NQ1u-Ot0IQ",
+      "key": "text",
+      "x": 1220,
+      "y": 360,
+      "width": 240,
+      "height": 56,
+      "attrs": {
+        "DATA": "[{\"chars\":[{\"char\":\"静\",\"config\":{\"SIZE\":48,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"300\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\" \",\"config\":{\"SIZE\":48,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"300\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"物\",\"config\":{\"SIZE\":48,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"300\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\" \",\"config\":{\"SIZE\":48,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"300\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"之\",\"config\":{\"SIZE\":48,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"300\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\" \",\"config\":{\"SIZE\":48,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"300\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"诗\",\"config\":{\"SIZE\":48,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"300\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}}],\"config\":{}}]",
+        "ORIGIN_DATA": "[{\"children\":[{\"text\":\"静 物 之 诗\",\"bold\":false,\"italic\":false,\"strike\":false,\"underline\":false,\"overline\":false,\"font-base\":{\"fontSize\":48,\"color\":\"#1A1A1A\",\"fontFamily\":\"Noto Serif SC\",\"textAlign\":\"left\",\"lineHeight\":1.15,\"letterSpacing\":0,\"textDecoration\":\"none\"}}]}]",
+        "markdown": "静 物 之 诗",
+        "autoSize": "true"
+      },
+      "children": [],
+      "z": 0
+    },
+    "X86dxOqq1g": {
+      "id": "X86dxOqq1g",
+      "key": "shape",
+      "x": 1220,
+      "y": 1600,
+      "width": 80,
+      "height": 2,
+      "attrs": {
+        "shapeType": "rect",
+        "fill-color": "#1A1A1A",
+        "fill-type": "solid",
+        "border-color": "transparent",
+        "border-width": 0,
+        "strokeAlign": "center",
+        "stroke-align": "center",
+        "stroke-enabled": "false",
+        "stroke-visible": "false",
+        "fill-enabled": "true",
+        "fill-visible": "true",
+        "L": "true",
+        "R": "true",
+        "T": "true",
+        "B": "true",
+        "opacity": 1,
+        "angle": 0,
+        "radiusTL": 0,
+        "radiusTR": 0,
+        "radiusBR": 0,
+        "radiusBL": 0,
+        "radiusLinked": "true"
+      },
+      "children": [],
+      "z": 0
+    },
+    "xZSIO8wKm8": {
+      "id": "xZSIO8wKm8",
+      "key": "text",
+      "x": 1220,
+      "y": 1620,
+      "width": 500,
+      "height": 116,
+      "attrs": {
+        "DATA": "[{\"chars\":[{\"char\":\"在\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"日\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"常\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"物\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"件\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"中\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"发\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"现\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"\\n\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"被\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"忽\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"略\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"的\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"仪\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"式\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"感\",\"config\":{\"SIZE\":36,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Noto Serif SC\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}}],\"config\":{}}]",
+        "ORIGIN_DATA": "[{\"children\":[{\"text\":\"在日常物件中发现\\n被忽略的仪式感\",\"bold\":false,\"italic\":false,\"strike\":false,\"underline\":false,\"overline\":false,\"font-base\":{\"fontSize\":36,\"color\":\"#1A1A1A\",\"fontFamily\":\"Noto Serif SC\",\"textAlign\":\"left\",\"lineHeight\":1.6,\"letterSpacing\":0,\"textDecoration\":\"none\"}}]}]",
+        "markdown": "在日常物件中发现\n被忽略的仪式感",
+        "autoSize": "true"
+      },
+      "children": [],
+      "z": 0
+    },
+    "2QcVLZxTI9": {
+      "id": "2QcVLZxTI9",
+      "key": "text",
+      "x": 1920,
+      "y": 1620,
+      "width": 260,
+      "height": 192,
+      "attrs": {
+        "DATA": "[{\"chars\":[{\"char\":\"P\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"h\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"o\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"t\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"o\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"g\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"r\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"a\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"p\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"h\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"y\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"\\n\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"b\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"y\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\" \",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"E\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"l\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"e\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"n\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"a\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\" \",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"M\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"a\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"r\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"s\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"h\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"\\n\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"\\n\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"A\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"r\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"t\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\" \",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"D\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"i\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"r\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"e\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"c\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"t\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"i\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"o\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"n\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"\\n\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"S\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"t\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"u\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"d\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"i\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"o\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\" \",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"S\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"t\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"i\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"l\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"l\",\"config\":{\"SIZE\":24,\"COLOR\":\"#666666\",\"WEIGHT\":\"300\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"right\",\"LINE_HEIGHT\":1.6,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}}],\"config\":{}}]",
+        "ORIGIN_DATA": "[{\"children\":[{\"text\":\"Photography\\nby Elena Marsh\\n\\nArt Direction\\nStudio Still\",\"bold\":false,\"italic\":false,\"strike\":false,\"underline\":false,\"overline\":false,\"font-base\":{\"fontSize\":24,\"color\":\"#666666\",\"fontFamily\":\"Inter\",\"textAlign\":\"right\",\"lineHeight\":1.6,\"letterSpacing\":0,\"textDecoration\":\"none\"}}]}]",
+        "markdown": "Photography\nby Elena Marsh\n\nArt Direction\nStudio Still",
+        "autoSize": "true"
+      },
+      "children": [],
+      "z": 0
+    },
+    "PH4_B7VEyU": {
+      "id": "PH4_B7VEyU",
+      "key": "text",
+      "x": 1220,
+      "y": 1850,
+      "width": 73,
+      "height": 28,
+      "attrs": {
+        "DATA": "[{\"chars\":[{\"char\":\"P\",\"config\":{\"SIZE\":24,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\".\",\"config\":{\"SIZE\":24,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\" \",\"config\":{\"SIZE\":24,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"0\",\"config\":{\"SIZE\":24,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"4\",\"config\":{\"SIZE\":24,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}},{\"char\":\"2\",\"config\":{\"SIZE\":24,\"COLOR\":\"#1A1A1A\",\"WEIGHT\":\"400\",\"FAMILY\":\"Inter\",\"STYLE\":\"normal\",\"ALIGN\":\"left\",\"LINE_HEIGHT\":1.15,\"LETTER_SPACING\":0,\"DECORATION\":\"none\"}}],\"config\":{}}]",
+        "ORIGIN_DATA": "[{\"children\":[{\"text\":\"P. 042\",\"bold\":false,\"italic\":false,\"strike\":false,\"underline\":false,\"overline\":false,\"font-base\":{\"fontSize\":24,\"color\":\"#1A1A1A\",\"fontFamily\":\"Inter\",\"textAlign\":\"left\",\"lineHeight\":1.15,\"letterSpacing\":0,\"textDecoration\":\"none\"}}]}]",
+        "markdown": "P. 042",
+        "autoSize": "true"
+      },
+      "children": [],
+      "z": 0
+    }
+  },
+  "x": 0,
+  "y": 0,
+  "backgroundColor": "",
+  "backgroundFillType": "solid",
+  "activeFrameId": null,
+  "activePageId": "TNNVow3B",
+  "frames": [
+    {
+      "id": "ycZqa5MH",
+      "name": "Design",
+      "x": 0,
+      "y": 0,
+      "width": 1080,
+      "height": 1920,
+      "backgroundColor": "#FFFFFF",
+      "clipContent": false
+    },
+    {
+      "id": "jtI481TL",
+      "name": "Design",
+      "x": 1160,
+      "y": 0,
+      "width": 1080,
+      "height": 1920,
+      "backgroundColor": "#FFFFFF",
+      "clipContent": false
+    }
+  ],
+  "pages": [
+    {
+      "id": "TNNVow3B",
+      "children": [
+        "G-EaFIeB_a",
+        "XGpk2PHKyI",
+        "JKyKgl9iMv",
+        "vrg_k3RzOq",
+        "0AJVg6U5_t",
+        "vs1VJsKJqD",
+        "lVv1O2c-z7",
+        "NQ1u-Ot0IQ",
+        "X86dxOqq1g",
+        "xZSIO8wKm8",
+        "2QcVLZxTI9",
+        "PH4_B7VEyU"
+      ]
+    }
+  ],
+  "stackOrder": [
+    "frame:ycZqa5MH",
+    "frame:jtI481TL",
+    "node:G-EaFIeB_a",
+    "node:XGpk2PHKyI",
+    "node:JKyKgl9iMv",
+    "node:vrg_k3RzOq",
+    "node:0AJVg6U5_t",
+    "node:vs1VJsKJqD",
+    "node:lVv1O2c-z7",
+    "node:NQ1u-Ot0IQ",
+    "node:X86dxOqq1g",
+    "node:xZSIO8wKm8",
+    "node:2QcVLZxTI9",
+    "node:PH4_B7VEyU"
+  ]
+}
