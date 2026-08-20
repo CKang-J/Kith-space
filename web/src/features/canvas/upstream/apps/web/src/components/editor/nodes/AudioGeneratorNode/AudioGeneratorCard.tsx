@@ -21,7 +21,6 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useDispatch, useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import {
@@ -35,8 +34,8 @@ import {
   useInteractions,
 } from '@/features/canvas/adapters/recombynFloatingUi';
 import { HiArrowUp, HiOutlineBolt, HiOutlinePlus } from 'react-icons/hi2';
-import { generateAudio, type ChatModelsResponse, type LlmModel } from '@recombyn-native/service/chat';
-import { apiQuery, getHttpErrorMessage } from '@recombyn-native/service/client';
+type LlmModel = { id: string; kind?: string; label?: string; [key: string]: unknown };
+import { getHttpErrorMessage } from '@recombyn-native/service/client';
 import { useBillingEnabled } from '@recombyn-native/service/wallet';
 import { Dropdown, message, Tooltip } from '@recombyn-native/components/base';
 import { rcbScreenPxToScene, useRcbCamera } from '@recombyn-native/components/rcb';
@@ -78,6 +77,8 @@ import { cn } from '@recombyn-native/utils/classnames';
 import { isDesktopLocal } from '@recombyn-native/utils/apiBase';
 import { estimateAudioCredits } from '@recombyn-native/utils/imageCredits';
 import { readFileAsDataUrl, uploadComposerAttachment } from '@recombyn-native/utils/uploadImage';
+import { runCanvasMediaGeneration } from '@/features/canvas/adapters/recombynGeneration';
+import { DEFAULT_KITH_AUDIO_MODEL_ID, kithAudioModels } from '@/features/canvas/adapters/openrouterAudioCatalog';
 import { buildByokAwareModelList, cloudOnlyModelId } from '@recombyn-native/components/editor/panels/agent/llmModelMeta';
 import { customProvidersAsModels } from '@recombyn-native/components/editor/panels/agent/customLlmProviders';
 import store from '@recombyn-native/store';
@@ -89,7 +90,7 @@ type Props = {
   disabled?: boolean;
 };
 
-const DEFAULT_AUDIO_MODEL_ID = 'or-gemini-3-1-flash-tts';
+const DEFAULT_AUDIO_MODEL_ID = DEFAULT_KITH_AUDIO_MODEL_ID;
 
 function modelIsAudioGenerator(model?: Pick<LlmModel, 'kind' | 'id'> | null): boolean {
   if (!model) return false;
@@ -103,7 +104,7 @@ function buildAudioGeneratorModelList(res?: {
   audioModels?: LlmModel[] | null;
 } | null): LlmModel[] {
   return buildByokAwareModelList({
-    byok: customProvidersAsModels(),
+    byok: [...kithAudioModels(), ...customProvidersAsModels()],
     catalogs: [res?.models, res?.audioModels],
     filter: (m) => modelIsAudioGenerator(m),
   });
@@ -135,16 +136,6 @@ function probeAudioDuration(src: string): Promise<number | null> {
     audio.src = src;
     window.setTimeout(() => done(null), 4000);
   });
-}
-
-function pickAudioUrl(r: Awaited<ReturnType<typeof generateAudio>>): string {
-  const fromAudios =
-    Array.isArray(r?.audios) && r.audios.find((u) => String(u || '').trim());
-  if (fromAudios) return String(fromAudios).trim();
-  const fromAssets =
-    Array.isArray(r?.assets) &&
-    r.assets.map((a) => String(a?.url || '').trim()).find(Boolean);
-  return fromAssets ? String(fromAssets).trim() : '';
 }
 
 function AudioGeneratorCard({
@@ -202,44 +193,17 @@ function AudioGeneratorCard({
     return () => cancelAnimationFrame(id);
   }, [showComposer, nodeId, disabled]);
 
-  const modelsCatalogQuery = useQuery({
-    ...apiQuery.chatGetModels.queryOptions(),
-    staleTime: 60_000,
-  });
-
   useEffect(() => {
-    if (modelsCatalogQuery.isPending) {
-      setModelsStatus('loading');
-      return;
-    }
-    if (modelsCatalogQuery.isError) {
-      setModelsStatus('error');
-      return;
-    }
-    if (!modelsCatalogQuery.isFetched) return;
-    const res = modelsCatalogQuery.data as ChatModelsResponse | undefined;
-    if (!res) {
-      setModelsStatus('error');
-      return;
-    }
-    const unique = buildAudioGeneratorModelList(res);
+    const unique = buildAudioGeneratorModelList(null);
     setModels(unique);
     setModelsStatus('ready');
     const nextId = nextAudioModelId(unique, modelId);
     if (nextId) setModelId(nextId);
+    // Stage 1 model choices are local-only; no Recombyn catalog request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    modelsCatalogQuery.data,
-    modelsCatalogQuery.isPending,
-    modelsCatalogQuery.isError,
-    modelsCatalogQuery.isFetched,
-  ]);
-
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort();
-    };
   }, []);
+
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
 
   const selectedModel = models.find((m) => m.id === modelId);
   const billingEnabled = useBillingEnabled();
@@ -502,16 +466,15 @@ function AudioGeneratorCard({
       })
     );
     try {
-      const res = await generateAudio(
-        { prompt: text, model: modelId },
-        { signal: ac.signal }
-      );
-      const src = pickAudioUrl(res);
-      if (!src) throw new Error(t('editor.tools.audioGenEmpty'));
-      await promoteAudio({
-        src,
-        name: text.slice(0, 48) || t('editor.tools.audioGenerator'),
+      const live = (store.getState() as any).editor?.document?.deltaSetLike?.[nodeId];
+      await runCanvasMediaGeneration({
+        jobType: 'audio',
         genPrompt: text,
+        targetNodeId: nodeId,
+        node: live,
+        fallbackBox: sceneBox,
+        model: modelId,
+        signal: ac.signal,
       });
     } catch (err: any) {
       if (ac.signal.aborted) return;

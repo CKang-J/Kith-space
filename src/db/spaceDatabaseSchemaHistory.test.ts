@@ -14,6 +14,7 @@ test("workspace compatibility manifest is selected by the database version", () 
   const v13 = requiredSpaceSchema(13);
   const v14 = requiredSpaceSchema(14);
   const v15 = requiredSpaceSchema(15);
+  const v16 = requiredSpaceSchema(16);
 
   assert.equal(v2.size, 19);
   assert.ok(!v2.get("agents")?.includes("introduced_at"));
@@ -50,6 +51,8 @@ test("workspace compatibility manifest is selected by the database version", () 
   assert.ok(!v14.has("canvas_generation_jobs"));
   assert.ok(v15.has("canvas_generation_jobs"));
   assert.ok(v15.get("canvas_generation_jobs")?.includes("idempotency_key"));
+  assert.ok(v16.has("canvas_generation_jobs"));
+  assert.deepEqual(v16.get("canvas_generation_jobs"), v15.get("canvas_generation_jobs"));
   assert.deepEqual(requiredSpaceIndexes(5), []);
   assert.ok(requiredSpaceIndexes(6).includes("runtime_sessions_current_uniq"));
   assert.ok(requiredSpaceIndexes(8).includes("memory_advisor_jobs_due_idx"));
@@ -64,6 +67,7 @@ test("workspace compatibility manifest is selected by the database version", () 
   assert.ok(requiredSpaceForeignKeys(13).some((foreignKey) => foreignKey.table === "canvas_selection_snapshots" && foreignKey.from === "canvas_id" && foreignKey.onDelete === "NO ACTION"));
   assert.ok(requiredSpaceIndexes(14).includes("canvas_access_grants_turn_snapshot_uniq"));
   assert.ok(requiredSpaceIndexes(15).includes("canvas_generation_jobs_idempotency_uniq"));
+  assert.ok(requiredSpaceIndexes(16).includes("canvas_generation_jobs_idempotency_uniq"));
   assert.ok(requiredSpaceForeignKeys(15).some((foreignKey) => foreignKey.table === "canvas_generation_jobs" && foreignKey.from === "canvas_id" && foreignKey.onDelete === "CASCADE"));
-  assert.ok(requiredSpaceForeignKeys(15).some((foreignKey) => foreignKey.table === "canvas_generation_jobs" && foreignKey.from === "result_asset_id" && foreignKey.onDelete === "SET NULL"));
+  assert.ok(requiredSpaceForeignKeys(16).some((foreignKey) => foreignKey.table === "canvas_generation_jobs" && foreignKey.from === "result_asset_id" && foreignKey.onDelete === "SET NULL"));
 });

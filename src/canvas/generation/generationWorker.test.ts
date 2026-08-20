@@ -11,6 +11,7 @@ import { clearGenerationProviders, registerGenerationProvider } from "./generati
 import { GenerationWorker } from "./generationWorker.js";
 
 const PNG_BYTES = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]);
+const MP3_BYTES = Buffer.from("ID3\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000");
 
 describe("GenerationWorker", () => {
   it("imports a completed image and creates a canvas node", async () => {
@@ -177,6 +178,85 @@ describe("GenerationWorker", () => {
       const live = core.read(canvas.id);
       const nodes = (live.document as { deltaSetLike?: Record<string, unknown> }).deltaSetLike ?? {};
       assert.deepEqual(Object.keys(nodes).filter((id) => id !== "ROOT"), []);
+    } finally {
+      clearGenerationProviders();
+      closeSpaceDb(spaceId);
+      unregisterSpace(spaceId);
+    }
+  });
+
+  it("promotes an existing audio generator plate in place", async () => {
+    const spaceId = randomUUID();
+    const rootPath = path.join(kithSpaceHome(), "generation-worker-test", spaceId);
+    registerSpace({ id: spaceId, name: "Generation Worker Audio", slug: `gen-worker-audio-${spaceId}`, rootPath });
+    const db = dbForSpace(spaceId);
+    const core = new CanvasCore(db, spaceId);
+    const canvas = core.create({
+      title: "Jobs",
+      document: {
+        deltaSetLike: {
+          ROOT: { id: "ROOT", children: ["plate"] },
+          plate: {
+            id: "plate",
+            key: "audio",
+            x: 40,
+            y: 50,
+            width: 360,
+            height: 80,
+            attrs: { audioGenerator: true, name: "voiceover", processStatus: "running" },
+          },
+        },
+        frames: [],
+      },
+    });
+    const fake: IGenerationProvider = {
+      name: "openrouter",
+      type: "audio",
+      async submit() { return "openrouter-bytes:test"; },
+      async getStatus() { return { status: "completed", resultUrl: "openrouter-bytes:test" }; },
+      async downloadResult() { return MP3_BYTES; },
+    };
+    registerGenerationProvider(fake);
+    try {
+      const job = createGenerationJob(db, {
+        canvasId: canvas.id,
+        jobType: "audio",
+        genPrompt: "read this caption aloud",
+        placement: {
+          x: 40,
+          y: 50,
+          width: 360,
+          height: 80,
+          name: "voiceover",
+          targetNodeId: "plate",
+        },
+        provider: "openrouter",
+        idempotencyKey: "worker-audio-promote-1",
+        expectedRevision: canvas.revisions.revision,
+      });
+      const worker = new GenerationWorker(db, spaceId, rootPath);
+      await worker.pollOnce();
+      const completed = getGenerationJob(db, job.id);
+      assert.equal(completed?.status, "completed");
+      assert.equal(completed?.resultNodeId, "plate");
+      const live = core.read(canvas.id);
+      const nodes = (live.document as {
+        deltaSetLike?: Record<string, {
+          key?: string;
+          assetId?: string;
+          attrs?: { src?: string; audioGenerator?: unknown; processStatus?: unknown; assetKind?: string };
+        }>;
+      }).deltaSetLike ?? {};
+      assert.equal(Object.keys(nodes).filter((id) => id !== "ROOT").length, 1);
+      assert.equal(nodes.plate?.key, "audio");
+      assert.equal(nodes.plate?.assetId, completed?.resultAssetId);
+      assert.equal(nodes.plate?.attrs?.audioGenerator, undefined);
+      assert.equal(nodes.plate?.attrs?.processStatus, undefined);
+      assert.equal(nodes.plate?.attrs?.assetKind, "audio");
+      assert.equal(
+        nodes.plate?.attrs?.src,
+        `/api/canvas-assets/${encodeURIComponent(spaceId)}/${encodeURIComponent(canvas.id)}/${encodeURIComponent(completed!.resultAssetId!)}`,
+      );
     } finally {
       clearGenerationProviders();
       closeSpaceDb(spaceId);

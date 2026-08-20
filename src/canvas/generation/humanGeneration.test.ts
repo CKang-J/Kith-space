@@ -64,6 +64,33 @@ describe("enqueueHumanCanvasGenerationJob", () => {
     }
   });
 
+  it("enqueues an audio job against OpenRouter", () => {
+    const f = fixture();
+    const fakeAudio: IGenerationProvider = {
+      name: "openrouter",
+      type: "audio",
+      async submit() { return "job"; },
+      async getStatus() { return { status: "processing" }; },
+      async downloadResult() { return Buffer.alloc(0); },
+    };
+    registerGenerationProvider(fakeAudio);
+    try {
+      const job = enqueueHumanCanvasGenerationJob(f.db, f.spaceId, f.canvasId, {
+        jobType: "audio",
+        genPrompt: "read this caption aloud",
+        placement: { x: 10, y: 20, width: 360, height: 80, targetNodeId: "plate" },
+        config: { model: "or-gemini-3-1-flash-tts", voice: "Zephyr" },
+        idempotencyKey: "human-audio-1",
+      });
+      assert.equal(job.jobType, "audio");
+      assert.equal(job.provider, "openrouter");
+      assert.equal(JSON.parse(job.configJson ?? "{}").model, "or-gemini-3-1-flash-tts");
+      assert.equal(JSON.parse(job.configJson ?? "{}").voice, "Zephyr");
+    } finally {
+      f.cleanup();
+    }
+  });
+
   it("accepts skipNodeCreate so image process jobs do not spawn a second node", () => {
     const f = fixture();
     registerGenerationProvider(fakeImage);

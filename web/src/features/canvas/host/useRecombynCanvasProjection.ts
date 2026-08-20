@@ -4,6 +4,7 @@ import { store } from "@recombyn-native/store";
 import { hydrateCanvasSnapshotMediaSrc, type CanvasCoreClient, type CanvasLibraryItem } from "@/features/canvas/adapters/canvasCoreApi";
 import { connectRecombynCoreProjection, type RecombynCoreProjectionConnection } from "@/features/canvas/adapters/recombynCoreProjection";
 import { survivingNodeSelection } from "@/features/canvas/adapters/recombynSelectionProjection";
+import { planCanvasTitleCommit } from "@/features/canvas/host/canvasTitleCommit";
 
 export function useRecombynCanvasProjection(input: {
   canvasId: string;
@@ -60,8 +61,19 @@ export function useRecombynCanvasProjection(input: {
     const rename = (event: Event) => {
       const detail = (event as CustomEvent<{ title?: unknown; phase?: unknown }>).detail;
       if (typeof detail?.title !== "string") return;
-      if (renameTimer !== null) window.clearTimeout(renameTimer);
-      const commit = () => { void connectionRef.current?.rename(detail.title as string); };
+      if (renameTimer !== null) {
+        window.clearTimeout(renameTimer);
+        renameTimer = null;
+      }
+      const plan = planCanvasTitleCommit(detail.phase, detail.title, latestTitleRef.current);
+      if (plan.kind === "skip") return;
+      const commit = () => {
+        if (plan.kind === "restore") {
+          store.dispatch(renameTemplate(plan.title));
+          return;
+        }
+        void connectionRef.current?.rename(plan.title);
+      };
       if (detail.phase === "commit") commit();
       else renameTimer = window.setTimeout(commit, 300);
     };

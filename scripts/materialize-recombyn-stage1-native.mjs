@@ -140,6 +140,132 @@ for (const item of audit.combinedFiles) {
       changes.push("mount the screen-color overlay inside the Stage 1 island portal root");
       rewritten = `import { getRecombynPortalRoot } from '@/features/canvas/adapters/recombynFloatingUi';\n${rewritten.replace("document.body.appendChild(overlay);", "getRecombynPortalRoot().appendChild(overlay);")}`;
     }
+    if (item.path.endsWith("/components/rcb/scene/document/sceneDocument.ts")) {
+      changes.push("clone Immer reducer drafts without structuredClone");
+      rewritten = replaceRequired(
+        rewritten,
+        "import { produce, type WritableDraft } from 'immer';",
+        "import { current, isDraft, produce, type WritableDraft } from 'immer';",
+        "sceneDocument cloneSceneValue immer imports",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        `/** Isolate a node/frame/doc slice without JSON.parse(JSON.stringify). */
+export function cloneSceneValue<T>(value: T): T {
+  if (value == null || typeof value !== 'object') return value;
+  if (typeof structuredClone === 'function') return structuredClone(value);
+  return { ...(value as object) } as T;
+}`,
+        `/**
+ * Isolate a node/frame/doc slice. \`structuredClone\` cannot copy Immer drafts
+ * (Proxies), and image process clones (eraser / remove-bg / …) run inside the
+ * Redux reducer — unwrap drafts first, then fall back to JSON if the value
+ * still contains a DOM node or other non-cloneable.
+ */
+export function cloneSceneValue<T>(value: T): T {
+  if (value == null || typeof value !== 'object') return value;
+  const plain = isDraft(value) ? current(value) : value;
+  try {
+    if (typeof structuredClone === 'function') return structuredClone(plain);
+  } catch {
+    /* Immer leftovers / non-cloneable attrs */
+  }
+  try {
+    return JSON.parse(JSON.stringify(plain)) as T;
+  } catch {
+    return Array.isArray(plain)
+      ? ([...(plain as unknown[])] as T)
+      : ({ ...(plain as object) } as T);
+  }
+}`,
+        "sceneDocument cloneSceneValue unwrap Immer drafts",
+      );
+    }
+    if (item.path.endsWith("/components/editor/canvas/contextMenu/useCanvasContextMenu.ts")) {
+      changes.push("reopen the canvas context menu when a later right-click lands elsewhere");
+      rewritten = replaceRequired(
+        rewritten,
+        "    const tryOpen = (clientX: number, clientY: number, target: EventTarget | null) => {\n      if (performance.now() - openedAtRef.current < OPEN_DEBOUNCE_MS) return;\n      if (isBogusClient(clientX, clientY)) return;\n      if (!clientInElement(hitEl, clientX, clientY)) return;\n      if (!isCanvasGestureTarget(hitEl, target)) return;\n      openedAtRef.current = performance.now();\n      openMenuAt(clientX, clientY);\n    };",
+        "    let lastOpenX = 0;\n    let lastOpenY = 0;\n    const tryOpen = (clientX: number, clientY: number, target: EventTarget | null) => {\n      if (\n        performance.now() - openedAtRef.current < OPEN_DEBOUNCE_MS &&\n        Math.hypot(clientX - lastOpenX, clientY - lastOpenY) < 12\n      ) {\n        return;\n      }\n      if (isBogusClient(clientX, clientY)) return;\n      if (!clientInElement(hitEl, clientX, clientY)) return;\n      if (!isCanvasGestureTarget(hitEl, target)) return;\n      openedAtRef.current = performance.now();\n      lastOpenX = clientX;\n      lastOpenY = clientY;\n      openMenuAt(clientX, clientY);\n    };",
+        "useCanvasContextMenu debounce same-point only",
+      );
+    }
+    if (item.path.endsWith("/components/rcb/selection/chrome/CanvasContextMenu.tsx")) {
+      changes.push("re-enable pointer events on body-portaled context menu surfaces");
+      changes.push("position the context menu in island portal coordinates");
+      rewritten = replaceRequired(
+        rewritten,
+        "import { createPortal } from '@/features/canvas/adapters/recombynReactDom';\nimport { useTranslation } from 'react-i18next';",
+        "import { createPortal } from '@/features/canvas/adapters/recombynReactDom';\nimport { getRecombynPortalRoot } from '@/features/canvas/adapters/recombynFloatingUi';\nimport {\n  clampPortalMenuPos,\n  portalFlyoutFromAnchor,\n  viewportToPortalPoint,\n} from '@/features/canvas/adapters/recombynPortalMenuPosition';\nimport { useTranslation } from 'react-i18next';",
+        "CanvasContextMenu portal position imports",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "function clampFixedMenuPos(opts: {\n  left: number;\n  top: number;\n  menuW: number;\n  menuH: number;\n}): { left: number; top: number } {\n  const viewW = Math.max(1, window.innerWidth);\n  const viewH = Math.max(1, window.innerHeight);\n  const h = Math.max(1, opts.menuH);\n  const w = Math.min(Math.max(1, opts.menuW), Math.max(1, viewW - PAD * 2));\n  let left = opts.left;\n  let top = opts.top;\n  if (left + w > viewW - PAD) left = viewW - PAD - w;\n  if (left < PAD) left = PAD;\n  if (top + h > viewH - PAD) top = viewH - PAD - h;\n  if (top < PAD) top = PAD;\n  return { left, top };\n}",
+        "function placeMenuInPortal(\n  clientX: number,\n  clientY: number,\n  menuW: number,\n  menuH: number\n): { left: number; top: number } {\n  const origin = viewportToPortalPoint(\n    clientX,\n    clientY,\n    getRecombynPortalRoot().getBoundingClientRect()\n  );\n  return clampPortalMenuPos({\n    left: origin.left,\n    top: origin.top,\n    menuW,\n    menuH,\n    viewW: origin.viewW,\n    viewH: origin.viewH,\n    pad: PAD,\n  });\n}\n\nfunction placeFlyoutInPortal(\n  anchor: DOMRect,\n  flyoutW: number,\n  flyoutH: number\n): { left: number; top: number } {\n  return portalFlyoutFromAnchor({\n    anchor,\n    portal: getRecombynPortalRoot().getBoundingClientRect(),\n    flyoutW,\n    flyoutH,\n    pad: PAD,\n  });\n}",
+        "CanvasContextMenu portal position helpers",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "    const rect = rowRef.current.getBoundingClientRect();\n    const flyoutW = 176;\n    const flyoutH = 152;\n    const preferRight = window.innerWidth - rect.right >= flyoutW + 8;\n    const left = preferRight ? rect.right + 4 : Math.max(PAD, rect.left - flyoutW - 4);\n    let top = rect.top;\n    if (top + flyoutH > window.innerHeight - PAD) {\n      top = Math.max(PAD, rect.bottom - flyoutH);\n    }\n    setFlyoutPos({ left, top });",
+        "    setFlyoutPos(placeFlyoutInPortal(rowRef.current.getBoundingClientRect(), 176, 152));",
+        "CanvasContextMenu generator flyout portal coords",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "    const rect = rowRef.current.getBoundingClientRect();\n    const flyoutW = 128;\n    const flyoutH = exportFlyoutHeight(kind);\n    const preferRight = window.innerWidth - rect.right >= flyoutW + 8;\n    const left = preferRight ? rect.right + 4 : Math.max(PAD, rect.left - flyoutW - 4);\n    let top = rect.top;\n    if (top + flyoutH > window.innerHeight - PAD) {\n      top = Math.max(PAD, rect.bottom - flyoutH);\n    }\n    setFlyoutPos({ left, top });",
+        "    setFlyoutPos(\n      placeFlyoutInPortal(rowRef.current.getBoundingClientRect(), 128, exportFlyoutHeight(kind))\n    );",
+        "CanvasContextMenu export flyout portal coords",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        '        className="fixed inset-0 z-[60]"',
+        '        className="pointer-events-auto absolute inset-0 z-[60]"',
+        "CanvasContextMenu backdrop pointer events",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        '          className="fixed z-[70] min-w-[200px] overflow-hidden rounded-xl bg-[var(--surface)] py-1 shadow-lg ring-1 ring-[var(--line)]"',
+        '          className="pointer-events-auto absolute z-[70] min-w-[200px] overflow-hidden rounded-xl bg-[var(--surface)] py-1 shadow-lg ring-1 ring-[var(--line)]"',
+        "CanvasContextMenu panel pointer events",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        '              className="fixed z-[80] min-w-[11rem] overflow-hidden rounded-xl bg-[var(--surface)] py-1 shadow-lg ring-1 ring-[var(--line)]"',
+        '              className="pointer-events-auto absolute z-[80] min-w-[11rem] overflow-hidden rounded-xl bg-[var(--surface)] py-1 shadow-lg ring-1 ring-[var(--line)]"',
+        "CanvasContextMenu generator flyout pointer events",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        '              className="fixed z-[80] min-w-[8rem] overflow-hidden rounded-xl bg-[var(--surface)] py-1 shadow-lg ring-1 ring-[var(--line)]"',
+        '              className="pointer-events-auto absolute z-[80] min-w-[8rem] overflow-hidden rounded-xl bg-[var(--surface)] py-1 shadow-lg ring-1 ring-[var(--line)]"',
+        "CanvasContextMenu export flyout pointer events",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);",
+        "  const [pos, setPos] = useState<{\n    left: number;\n    top: number;\n    srcX: number;\n    srcY: number;\n  } | null>(null);",
+        "CanvasContextMenu pos tracks source click",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "    setPos(\n      clampFixedMenuPos({\n        left: menu.clientX,\n        top: menu.clientY,\n        menuW: el?.offsetWidth || 200,\n        menuH: el?.offsetHeight || 420,\n      })\n    );",
+        "    const next = placeMenuInPortal(\n      menu.clientX,\n      menu.clientY,\n      el?.offsetWidth || 200,\n      el?.offsetHeight || 420\n    );\n    setPos({ ...next, srcX: menu.clientX, srcY: menu.clientY });",
+        "CanvasContextMenu clamp in portal coords",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "  if (!menu && !guardOpen) return null;\n\n  return createPortal(",
+        "  if (!menu && !guardOpen) return null;\n\n  const placed =\n    menu && pos && pos.srcX === menu.clientX && pos.srcY === menu.clientY\n      ? pos\n      : menu\n        ? placeMenuInPortal(menu.clientX, menu.clientY, 200, 420)\n        : null;\n\n  return createPortal(",
+        "CanvasContextMenu avoid stale pos on new click",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "          style={{\n            left: pos?.left ?? menu.clientX,\n            top: pos?.top ?? menu.clientY,\n          }}",
+        "          style={{\n            left: placed?.left ?? 0,\n            top: placed?.top ?? 0,\n          }}",
+        "CanvasContextMenu panel portal left/top",
+      );
+    }
     if (item.path.endsWith("/components/rcb/selection/shapeBoolean.ts")) {
       changes.push("normalize polygon-clipping CommonJS interop for Vite");
       rewritten = rewritten.replace(
@@ -148,11 +274,10 @@ for (const item of audit.combinedFiles) {
       ).replace("} from 'polygon-clipping';", "} from 'polygon-clipping';\nconst { difference, intersection, union, xor } = polygonClipping;");
     }
     if (item.path.endsWith("/components/editor/panels/agent/ModelPickerPanel.tsx")) {
-      changes.push("replace unverified model-brand bitmaps and package SVG marks with neutral host fallback");
+      changes.push("keep Recombyn LobeHub static SVG brand marks; replace excluded PNG bitmaps with host fallbacks");
       rewritten = rewritten
         .replace("import syncLipsync from '@recombyn-native/assets/model/sync_lipsync.png';", "import { neutralModelAsset as syncLipsync } from '@/features/canvas/adapters/recombynBrandAssets';")
-        .replace("import dreamina from '@recombyn-native/assets/model/dreamina.png';", "const dreamina = syncLipsync;")
-        .replace(/import (\w+) from '@lobehub\/icons-static-svg\/icons\/[^']+';/g, "const $1 = syncLipsync;");
+        .replace("import dreamina from '@recombyn-native/assets/model/dreamina.png';", "const dreamina = jimeng;");
     }
     if (item.path.endsWith("/components/editor/panels/ExportSelectionPanel.tsx")) {
       changes.push("disable Stage 1 export side-effect menu items while retaining native menu UI");
@@ -701,6 +826,70 @@ export async function generateAudio(
         "VideoQuickEdit Kith generation",
       );
     }
+    if (item.path.endsWith("/components/editor/nodes/AudioNode/AudioQuickEditComposer.tsx")) {
+      changes.push("route audio quick-edit TTS through the Kith Canvas generation job host seam");
+      rewritten = replaceRequired(rewritten, "import { useQuery } from '@tanstack/react-query';\n", "", "AudioQuickEdit query import");
+      rewritten = replaceRequired(
+        rewritten,
+        "import { generateAudio, type ChatModelsResponse, type LlmModel } from '@recombyn-native/service/chat';\n",
+        "type LlmModel = { id: string; kind?: string; label?: string; [key: string]: unknown };\n",
+        "AudioQuickEdit job client import",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "import { apiQuery, getHttpErrorMessage } from '@recombyn-native/service/client';\n",
+        "import { getHttpErrorMessage } from '@recombyn-native/service/client';\n",
+        "AudioQuickEdit API import",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "import { readFileAsDataUrl, uploadComposerAttachment } from '@recombyn-native/utils/uploadImage';",
+        "import { readFileAsDataUrl, uploadComposerAttachment } from '@recombyn-native/utils/uploadImage';\nimport { runCanvasMediaGeneration } from '@/features/canvas/adapters/recombynGeneration';\nimport { DEFAULT_KITH_AUDIO_MODEL_ID, kithAudioModels } from '@/features/canvas/adapters/openrouterAudioCatalog';",
+        "AudioQuickEdit Kith generation import",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "const DEFAULT_AUDIO_MODEL_ID = 'or-gemini-3-1-flash-tts';",
+        "const DEFAULT_AUDIO_MODEL_ID = DEFAULT_KITH_AUDIO_MODEL_ID;",
+        "AudioQuickEdit default model",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "    byok: customProvidersAsModels(),",
+        "    byok: [...kithAudioModels(), ...customProvidersAsModels()],",
+        "AudioQuickEdit Kith model catalog",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "import { isDesktopLocal } from '@recombyn-native/utils/apiBase';\n",
+        "",
+        "AudioQuickEdit remove desktop-local gate",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /function pickAudioUrl\(r: Awaited<ReturnType<typeof generateAudio>>\): string \{[\s\S]*?\n\}\n\nfunction probeAudioDuration/,
+        "function probeAudioDuration",
+        "AudioQuickEdit remove Recombyn audio URL picker",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /  const modelsCatalogQuery = useQuery\([\s\S]*?\n  }, \[\n    modelsCatalogQuery\.data,[\s\S]*?\n  \]\);\n\n  useEffect\(\(\) => \(\) => abortRef\.current\?\.abort\(\), \[\]\);/,
+        "  useEffect(() => {\n    const list = buildAudioModelList(null);\n    setModels(list);\n    if (list.length && !list.some((m) => m.id === modelId)) {\n      const preferred = list.find((m) => m.id === DEFAULT_AUDIO_MODEL_ID) || list[0];\n      if (preferred) setModelId(preferred.id);\n    }\n    // Stage 1 never requests the Recombyn model catalog.\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);\n\n  useEffect(() => () => abortRef.current?.abort(), []);",
+        "AudioQuickEdit local model catalog",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /      const res = await generateAudio\(\n        \{ prompt: text, model: modelId \},\n        \{ signal: ac\.signal \}\n      \);\n      const nextSrc = pickAudioUrl\(res\);\n      if \(!nextSrc\) throw new Error\(t\('editor\.tools\.audioGenEmpty'\)\);\n      if \(ac\.signal\.aborted\) return;\n\n      await applyAudioToNode\(\{\n        nextSrc,\n        name: text\.slice\(0, 48\) \|\| String\(node\?\.attrs\?\.name \|\| ''\),\n        genPrompt: text,\n      \);/,
+        "      await runCanvasMediaGeneration({\n        jobType: 'audio',\n        genPrompt: text,\n        targetNodeId: nodeId,\n        node,\n        model: modelId,\n        signal: ac.signal,\n      });",
+        "AudioQuickEdit Kith generation",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "{!readyAudioAtt && !isDesktopLocal() && models.length > 0 ? (",
+        "{!readyAudioAtt && models.length > 0 ? (",
+        "AudioQuickEdit always show model picker",
+      );
+    }
     if (item.path.endsWith("/components/editor/nodes/ImageGeneratorNode/ImageGeneratorCard.tsx")) {
       changes.push("route image generator submit through the Kith Canvas generation job host seam");
       changes.push("always clear the generating overlay on abort or error");
@@ -929,6 +1118,58 @@ export async function generateAudio(
         "VideoGeneratorCard Kith generation",
       );
     }
+    if (item.path.endsWith("/components/editor/nodes/AudioGeneratorNode/AudioGeneratorCard.tsx")) {
+      changes.push("route audio generator TTS through the Kith Canvas generation job host seam");
+      rewritten = replaceRequired(rewritten, "import { useQuery } from '@tanstack/react-query';\n", "", "AudioGeneratorCard query import");
+      rewritten = replaceRequired(
+        rewritten,
+        "import { generateAudio, type ChatModelsResponse, type LlmModel } from '@recombyn-native/service/chat';\n",
+        "type LlmModel = { id: string; kind?: string; label?: string; [key: string]: unknown };\n",
+        "AudioGeneratorCard job client import",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "import { apiQuery, getHttpErrorMessage } from '@recombyn-native/service/client';\n",
+        "import { getHttpErrorMessage } from '@recombyn-native/service/client';\n",
+        "AudioGeneratorCard API query import",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "import { readFileAsDataUrl, uploadComposerAttachment } from '@recombyn-native/utils/uploadImage';",
+        "import { readFileAsDataUrl, uploadComposerAttachment } from '@recombyn-native/utils/uploadImage';\nimport { runCanvasMediaGeneration } from '@/features/canvas/adapters/recombynGeneration';\nimport { DEFAULT_KITH_AUDIO_MODEL_ID, kithAudioModels } from '@/features/canvas/adapters/openrouterAudioCatalog';",
+        "AudioGeneratorCard Kith generation import",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "const DEFAULT_AUDIO_MODEL_ID = 'or-gemini-3-1-flash-tts';",
+        "const DEFAULT_AUDIO_MODEL_ID = DEFAULT_KITH_AUDIO_MODEL_ID;",
+        "AudioGeneratorCard default model",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "    byok: customProvidersAsModels(),",
+        "    byok: [...kithAudioModels(), ...customProvidersAsModels()],",
+        "AudioGeneratorCard Kith model catalog",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /function pickAudioUrl\(r: Awaited<ReturnType<typeof generateAudio>>\): string \{[\s\S]*?\n\}\n\nfunction AudioGeneratorCard/,
+        "function AudioGeneratorCard",
+        "AudioGeneratorCard remove Recombyn audio URL picker",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /  const modelsCatalogQuery = useQuery\([\s\S]*?\n  }, \[\n    modelsCatalogQuery\.data,[\s\S]*?\n  \]\);\n\n  useEffect\(\(\) => \{\n    return \(\) => \{\n      abortRef\.current\?\.abort\(\);\n    };\n  }, \[\]\);/,
+        "  useEffect(() => {\n    const unique = buildAudioGeneratorModelList(null);\n    setModels(unique);\n    setModelsStatus('ready');\n    const nextId = nextAudioModelId(unique, modelId);\n    if (nextId) setModelId(nextId);\n    // Stage 1 model choices are local-only; no Recombyn catalog request.\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);\n\n  useEffect(() => () => { abortRef.current?.abort(); }, []);",
+        "AudioGeneratorCard local model catalog",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        /      const res = await generateAudio\(\n        \{ prompt: text, model: modelId \},\n        \{ signal: ac\.signal \}\n      \);\n      const src = pickAudioUrl\(res\);\n      if \(!src\) throw new Error\(t\('editor\.tools\.audioGenEmpty'\)\);\n      await promoteAudio\(\{\n        src,\n        name: text\.slice\(0, 48\) \|\| t\('editor\.tools\.audioGenerator'\),\n        genPrompt: text,\n      \);/,
+        "      const live = (store.getState() as any).editor?.document?.deltaSetLike?.[nodeId];\n      await runCanvasMediaGeneration({\n        jobType: 'audio',\n        genPrompt: text,\n        targetNodeId: nodeId,\n        node: live,\n        fallbackBox: sceneBox,\n        model: modelId,\n        signal: ac.signal,\n      });",
+        "AudioGeneratorCard Kith generation",
+      );
+    }
     if (item.path.endsWith("/components/rcb/selection/chrome/SelectionContextToolbar.tsx")) {
       changes.push("hide selection pill during upscale/expand/crop sessions");
       changes.push("keep image layering honestly unavailable instead of spawning a failing clone");
@@ -982,6 +1223,191 @@ export async function generateAudio(
         "  if (/timeout/i.test(msg) || (err as { code?: string })?.code === 'ECONNABORTED')\n    return '图片分层超时，请稍后重试（大图首次加载模型会更慢）';",
         "  if (/timed out|timeout/i.test(msg) || (err as { code?: string })?.code === 'ECONNABORTED')\n    return '处理超时：图生图会把原图发给方舟，通常比文生图慢。请检查网络后重试。';",
         "ImageProcessWatcher generation timeout copy",
+      );
+    }
+    if (item.path.endsWith("/components/editor/nodes/ImageNode/toolPanels/ImageToolPanelHost.tsx")) {
+      changes.push("surface startImageProcess clone failures instead of leaving tool panels spinning");
+      rewritten = replaceRequired(
+        rewritten,
+        `  const close = () => dispatch(closeImageToolPanel());
+
+  const runProcess = (kind: ImageToolPanelKind, label: string, size?: {
+    targetWidth?: number;
+    targetHeight?: number;
+  }) => {
+    dispatch(
+      startImageProcess({
+        sourceId: panel.nodeId,
+        kind,
+        label,
+        targetWidth: size?.targetWidth,
+        targetHeight: size?.targetHeight,
+      })
+    );
+    close();
+  };`,
+        `  const close = () => dispatch(closeImageToolPanel());
+
+  const spawnProcess = (payload: {
+    sourceId: string;
+    kind: ImageToolPanelKind | string;
+    label: string;
+    targetWidth?: number;
+    targetHeight?: number;
+    meta?: Record<string, unknown>;
+  }) => {
+    try {
+      dispatch(startImageProcess(payload));
+      close();
+      return true;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      message.error(
+        /could not be cloned|DataCloneError/i.test(msg) ? '无法创建处理节点，请刷新后重试' : msg || '图片处理失败'
+      );
+      return false;
+    }
+  };
+
+  const runProcess = (kind: ImageToolPanelKind, label: string, size?: {
+    targetWidth?: number;
+    targetHeight?: number;
+  }) => {
+    spawnProcess({
+      sourceId: panel.nodeId,
+      kind,
+      label,
+      targetWidth: size?.targetWidth,
+      targetHeight: size?.targetHeight,
+    });
+  };`,
+        "ImageToolPanelHost spawnProcess error toast",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        `          onConfirm={(opts) => {
+            dispatch(
+              startImageProcess({
+                sourceId: panel.nodeId,
+                kind: 'multiAngle',
+                label: '多角度生成中',
+                meta: {
+                  rotate: opts.rotate,
+                  tilt: opts.tilt,
+                  zoom: opts.zoom,
+                  mode: opts.mode,
+                },
+              })
+            );
+            close();
+          }}`,
+        `          onConfirm={(opts) => {
+            spawnProcess({
+              sourceId: panel.nodeId,
+              kind: 'multiAngle',
+              label: '多角度生成中',
+              meta: {
+                rotate: opts.rotate,
+                tilt: opts.tilt,
+                zoom: opts.zoom,
+                mode: opts.mode,
+              },
+            });
+          }}`,
+        "ImageToolPanelHost multiAngle spawnProcess",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        `          onConfirm={(opts) => {
+            dispatch(
+              startImageProcess({
+                sourceId: panel.nodeId,
+                kind: 'replaceText',
+                label: t('editor.imageToolbar.processingReplaceText'),
+                meta: {
+                  originalText: opts.originalText,
+                  newText: opts.newText,
+                },
+              })
+            );
+            close();
+          }}`,
+        `          onConfirm={(opts) => {
+            spawnProcess({
+              sourceId: panel.nodeId,
+              kind: 'replaceText',
+              label: t('editor.imageToolbar.processingReplaceText'),
+              meta: {
+                originalText: opts.originalText,
+                newText: opts.newText,
+              },
+            });
+          }}`,
+        "ImageToolPanelHost replaceText spawnProcess",
+      );
+    }
+    if (item.path.endsWith("/components/editor/nodes/ImageNode/toolPanels/MultiAngleToolPanel.tsx")) {
+      changes.push("do not leave the confirm button spinning when process spawn fails");
+      changes.push("pass cubeScale 1/5/10 as zoom instead of slider-index * 50");
+      rewritten = replaceRequired(
+        rewritten,
+        "import { SegmentedControl } from '@recombyn-native/components/base';",
+        "import { message, SegmentedControl } from '@recombyn-native/components/base';",
+        "MultiAngleToolPanel message import",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        "  const [scale, setScale] = useState<AngleCubeScale>(5);\n  const [busy, setBusy] = useState(false);",
+        "  const [scale, setScale] = useState<AngleCubeScale>(5);",
+        "MultiAngleToolPanel drop busy state",
+      );
+      rewritten = replaceRequired(
+        rewritten,
+        `          <button
+            type="button"
+            disabled={busy}
+            className={cn(confirmBtnClass, 'mt-[10px]')}
+            onClick={() => {
+              setBusy(true);
+              onConfirm({
+                rotate,
+                tilt,
+                zoom: scaleValueToIndex(scale) * 50,
+                mode: tab,
+              });
+            }}
+          >
+            {busy ? (
+              <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            ) : null}
+            <span className="truncate">{t('editor.imageToolbar.useNow')}</span>
+            <PanelConfirmCost amount={IMAGE_TOOL_TOKEN_COST.multiAngle} />
+          </button>`,
+        `          <button
+            type="button"
+            className={cn(confirmBtnClass, 'mt-[10px]')}
+            onClick={() => {
+              try {
+                onConfirm({
+                  rotate,
+                  tilt,
+                  zoom: scale,
+                  mode: tab,
+                });
+              } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : '';
+                message.error(
+                  /could not be cloned|DataCloneError/i.test(msg)
+                    ? '无法创建处理节点，请刷新后重试'
+                    : msg || '多角度失败'
+                );
+              }
+            }}
+          >
+            <span className="truncate">{t('editor.imageToolbar.useNow')}</span>
+            <PanelConfirmCost amount={IMAGE_TOOL_TOKEN_COST.multiAngle} />
+          </button>`,
+        "MultiAngleToolPanel confirm without stuck spinner",
       );
     }
     if (item.path.endsWith("/components/editor/nodes/ImageNode/ImageRemoveBgMenu.tsx")) {

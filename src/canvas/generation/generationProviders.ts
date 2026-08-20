@@ -4,6 +4,7 @@ import type {
   IGenerationProvider,
 } from "./contracts.js";
 import { DoubaoImageProvider } from "./providers/doubaoImageProvider.js";
+import { OpenRouterAudioProvider } from "./providers/openrouterAudioProvider.js";
 import { SeedreamVideoProvider } from "./providers/seedreamVideoProvider.js";
 import { listStoredProviderConfigs } from "./providerConfig.js";
 import { createLogger } from "../../log.js";
@@ -38,6 +39,9 @@ export function preferredGenerationProvider(type: GenerationJobType): IGeneratio
   if (type === "image") {
     return registered.find((provider) => provider.name === "doubao") ?? registered[0];
   }
+  if (type === "audio") {
+    return registered.find((provider) => provider.name === "openrouter") ?? registered[0];
+  }
   return registered.find((provider) => provider.name === "seedream") ?? registered[0];
 }
 
@@ -56,10 +60,15 @@ export async function initializeGenerationProvidersFromStore(): Promise<void> {
     }
     if (config.name === "seedream") {
       registerGenerationProvider(new SeedreamVideoProvider(config.apiKey, config.endpoint, config.model));
+      continue;
+    }
+    if (config.name === "openrouter") {
+      registerGenerationProvider(new OpenRouterAudioProvider(config.apiKey, config.endpoint, config.model));
     }
   }
   log.info("generation providers initialized", {
     image: listGenerationProvidersOfType("image").map((provider) => provider.name),
     video: listGenerationProvidersOfType("video").map((provider) => provider.name),
+    audio: listGenerationProvidersOfType("audio").map((provider) => provider.name),
   });
 }

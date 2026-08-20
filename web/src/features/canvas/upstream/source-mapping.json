@@ -565,9 +565,10 @@
       "changes": [
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
-        "add host-project typecheck boundary"
+        "add host-project typecheck boundary",
+        "reopen the canvas context menu when a later right-click lands elsewhere"
       ],
-      "targetSha256": "7065f4bf151fb148cba934ad8d9b382a788fc68b8e2b03890a206206b4501ba4"
+      "targetSha256": "d64c624f451ddbe3fce474630fd5dea917c3529d2b7a628c51d7d51cb8142bd7"
     },
     {
       "source": "apps/web/src/components/editor/canvas/dragWriteCoalescer.ts",
@@ -854,9 +855,11 @@
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
         "add host-project typecheck boundary",
-        "route Floating UI portals through the Stage 1 island portal adapter"
+        "route Floating UI portals through the Stage 1 island portal adapter",
+        "route audio generator TTS through the Kith Canvas generation job host seam",
+        "inject Kith OpenRouter TTS catalog and keep local upload shortcut"
       ],
-      "targetSha256": "86586e88c0bc1d6616d6cc6a9afa9e217e00ac41e06befd34c2c7495990aceb0"
+      "targetSha256": "3b3d0cfdb3af6cfed861b5dd3c86909618441454180c422b7bce2f4f170130ea"
     },
     {
       "source": "apps/web/src/components/editor/nodes/AudioGeneratorNode/AudioGeneratorOverlay.tsx",
@@ -891,9 +894,11 @@
       "changes": [
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
-        "add host-project typecheck boundary"
+        "add host-project typecheck boundary",
+        "route audio quick-edit TTS through the Kith Canvas generation job host seam",
+        "inject Kith OpenRouter TTS catalog"
       ],
-      "targetSha256": "6cdaaee01797e396a1d07ab826b788e954c766a28c195a889ee077e96e9507ae"
+      "targetSha256": "c51c1b0e06a87a7666d93da69e8176c2b018760555f90e96544120e9d1f13cbb"
     },
     {
       "source": "apps/web/src/components/editor/nodes/AudioNode/AudioSpeedSessionHost.tsx",
@@ -1292,9 +1297,10 @@
       "changes": [
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
-        "add host-project typecheck boundary"
+        "add host-project typecheck boundary",
+        "surface startImageProcess clone failures instead of leaving tool panels spinning"
       ],
-      "targetSha256": "459e3faa77614658a494f75840d4eed8c3797f012e43c68ebe4db00b23bfd115"
+      "targetSha256": "ba6229358a0630a1daa870fe7e8db6585f2da0e2c49995d0fd9bcc9ab0579392"
     },
     {
       "source": "apps/web/src/components/editor/nodes/ImageNode/toolPanels/ImageToolPanelShell.tsx",
@@ -1316,9 +1322,11 @@
       "changes": [
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
-        "add host-project typecheck boundary"
+        "add host-project typecheck boundary",
+        "do not leave the confirm button spinning when process spawn fails",
+        "pass cubeScale 1/5/10 as zoom instead of slider-index * 50"
       ],
-      "targetSha256": "c1f34cc8d30e5d627e7590eda0e7c53e37df27ae401b9d68fa030976d825d25b"
+      "targetSha256": "7ddc64e389f6090a69b65c12eb6aa2767e9d2ea54817b050c56122ab961cdcc8"
     },
     {
       "source": "apps/web/src/components/editor/nodes/ImageNode/toolPanels/OpacityToolPanel.tsx",
@@ -1935,9 +1943,9 @@
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
         "add host-project typecheck boundary",
-        "replace unverified model-brand bitmaps and package SVG marks with neutral host fallback"
+        "keep Recombyn LobeHub static SVG brand marks; replace excluded PNG bitmaps with host fallbacks"
       ],
-      "targetSha256": "8cd06e28b928da01f7106718b66f0c0565123299b33af1f28b0dae9829bbdfd8"
+      "targetSha256": "a78ec6bc73f3a47fd7f522be41ba97f76e55c896ff88016a6ce663bdfa2f8e8d"
     },
     {
       "source": "apps/web/src/components/editor/panels/AgentComposerInput.tsx",
@@ -2608,9 +2616,10 @@
       "changes": [
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
-        "add host-project typecheck boundary"
+        "add host-project typecheck boundary",
+        "clone Immer reducer drafts without structuredClone"
       ],
-      "targetSha256": "e6895aa27dcde8196ef17ed01be67ce787761b4d3a54ede0f8e93010bb439889"
+      "targetSha256": "8a5693d04ac79666687a1a95effc91b372b7d83a009bd491971fe5e72e4d5fb9"
     },
     {
       "source": "apps/web/src/components/rcb/scene/document/sceneEffects.ts",
@@ -2887,9 +2896,12 @@
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
         "add host-project typecheck boundary",
-        "route body-targeted React portals through the Stage 1 island portal adapter"
+        "route body-targeted React portals through the Stage 1 island portal adapter",
+        "re-enable pointer events on body-portaled context menu surfaces",
+        "position the context menu in island portal coordinates",
+        "render Mac shortcut glyphs with system-ui so ⌘ is not a missing kbd mono glyph"
       ],
-      "targetSha256": "38b61af9d2730f108fe57ee9af2b894c7bcc0dfa8635867142c6633961d95de9"
+      "targetSha256": "211fea54423a648cc3d3d57040f476a42f8e41f482056e16c9ce8da66728d6d4"
     },
     {
       "source": "apps/web/src/components/rcb/selection/chrome/CircleShapeHandlesOverlay.tsx",

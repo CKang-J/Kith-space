@@ -9,7 +9,7 @@ export async function importGeneratedAsset(
     canvasId: string;
     bytes: Buffer;
     jobId: string;
-    mimeType: "image/png" | "image/jpeg" | "image/webp" | "video/mp4";
+    mimeType: "image/png" | "image/jpeg" | "image/webp" | "video/mp4" | "audio/mpeg" | "audio/wav";
     filename?: string;
   },
 ): Promise<string> {
@@ -25,9 +25,16 @@ export async function importGeneratedAsset(
 
 export function sniffGeneratedMime(
   bytes: Buffer,
-  jobType: "image" | "video",
-): "image/png" | "image/jpeg" | "image/webp" | "video/mp4" {
+  jobType: "image" | "video" | "audio",
+): "image/png" | "image/jpeg" | "image/webp" | "video/mp4" | "audio/mpeg" | "audio/wav" {
   if (jobType === "video") return "video/mp4";
+  if (jobType === "audio") {
+    const prefix = bytes.subarray(0, 12);
+    if (prefix.subarray(0, 4).toString("ascii") === "RIFF" && prefix.subarray(8, 12).toString("ascii") === "WAVE") {
+      return "audio/wav";
+    }
+    return "audio/mpeg";
+  }
   const prefix = bytes.subarray(0, 12);
   if (prefix.length >= 3 && prefix[0] === 0xff && prefix[1] === 0xd8 && prefix[2] === 0xff) return "image/jpeg";
   if (prefix.subarray(0, 4).toString("ascii") === "RIFF" && prefix.subarray(8, 12).toString("ascii") === "WEBP") {
@@ -38,8 +45,10 @@ export function sniffGeneratedMime(
 
 function generatedFilename(jobId: string, mimeType: string): string {
   const extension = mimeType === "video/mp4" ? ".mp4"
-    : mimeType === "image/jpeg" ? ".jpg"
-      : mimeType === "image/webp" ? ".webp"
-        : ".png";
+    : mimeType === "audio/mpeg" ? ".mp3"
+      : mimeType === "audio/wav" ? ".wav"
+        : mimeType === "image/jpeg" ? ".jpg"
+          : mimeType === "image/webp" ? ".webp"
+            : ".png";
   return `generated-${jobId.slice(0, 8)}${extension}`;
 }

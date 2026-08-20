@@ -15,6 +15,12 @@ import {
   memo,
 } from 'react';
 import { createPortal } from '@/features/canvas/adapters/recombynReactDom';
+import { getRecombynPortalRoot } from '@/features/canvas/adapters/recombynFloatingUi';
+import {
+  clampPortalMenuPos,
+  portalFlyoutFromAnchor,
+  viewportToPortalPoint,
+} from '@/features/canvas/adapters/recombynPortalMenuPosition';
 import { useTranslation } from 'react-i18next';
 import {
   HiOutlineArrowUturnLeft,
@@ -140,23 +146,40 @@ type ExportPickAction =
   | 'exportMp4'
   | 'exportMp3';
 
-function clampFixedMenuPos(opts: {
-  left: number;
-  top: number;
-  menuW: number;
-  menuH: number;
-}): { left: number; top: number } {
-  const viewW = Math.max(1, window.innerWidth);
-  const viewH = Math.max(1, window.innerHeight);
-  const h = Math.max(1, opts.menuH);
-  const w = Math.min(Math.max(1, opts.menuW), Math.max(1, viewW - PAD * 2));
-  let left = opts.left;
-  let top = opts.top;
-  if (left + w > viewW - PAD) left = viewW - PAD - w;
-  if (left < PAD) left = PAD;
-  if (top + h > viewH - PAD) top = viewH - PAD - h;
-  if (top < PAD) top = PAD;
-  return { left, top };
+function placeMenuInPortal(
+  clientX: number,
+  clientY: number,
+  menuW: number,
+  menuH: number
+): { left: number; top: number } {
+  const origin = viewportToPortalPoint(
+    clientX,
+    clientY,
+    getRecombynPortalRoot().getBoundingClientRect()
+  );
+  return clampPortalMenuPos({
+    left: origin.left,
+    top: origin.top,
+    menuW,
+    menuH,
+    viewW: origin.viewW,
+    viewH: origin.viewH,
+    pad: PAD,
+  });
+}
+
+function placeFlyoutInPortal(
+  anchor: DOMRect,
+  flyoutW: number,
+  flyoutH: number
+): { left: number; top: number } {
+  return portalFlyoutFromAnchor({
+    anchor,
+    portal: getRecombynPortalRoot().getBoundingClientRect(),
+    flyoutW,
+    flyoutH,
+    pad: PAD,
+  });
 }
 
 function exportFlyoutHeight(kind: 'image' | 'video') {
@@ -224,7 +247,7 @@ function MenuItem({
       <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">{icon}</span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {shortcut ? (
-        <kbd className="shrink-0 text-[10px] text-[var(--muted)]">{shortcut}</kbd>
+        <kbd className="shrink-0 font-[system-ui] text-[10px] text-[var(--muted)]">{shortcut}</kbd>
       ) : null}
     </button>
   );
@@ -312,16 +335,7 @@ function GeneratorSubmenu({
       setFlyoutPos(null);
       return;
     }
-    const rect = rowRef.current.getBoundingClientRect();
-    const flyoutW = 176;
-    const flyoutH = 152;
-    const preferRight = window.innerWidth - rect.right >= flyoutW + 8;
-    const left = preferRight ? rect.right + 4 : Math.max(PAD, rect.left - flyoutW - 4);
-    let top = rect.top;
-    if (top + flyoutH > window.innerHeight - PAD) {
-      top = Math.max(PAD, rect.bottom - flyoutH);
-    }
-    setFlyoutPos({ left, top });
+    setFlyoutPos(placeFlyoutInPortal(rowRef.current.getBoundingClientRect(), 176, 152));
   }, [open]);
 
   useEffect(
@@ -372,7 +386,7 @@ function GeneratorSubmenu({
             <div
               role="menu"
               data-ctx-menu-flyout
-              className="fixed z-[80] min-w-[11rem] overflow-hidden rounded-xl bg-[var(--surface)] py-1 shadow-lg ring-1 ring-[var(--line)]"
+              className="pointer-events-auto absolute z-[80] min-w-[11rem] overflow-hidden rounded-xl bg-[var(--surface)] py-1 shadow-lg ring-1 ring-[var(--line)]"
               style={{ left: flyoutPos.left, top: flyoutPos.top }}
               onMouseEnter={openMenu}
               onMouseLeave={scheduleClose}
@@ -430,16 +444,9 @@ function ExportSubmenu({
       setFlyoutPos(null);
       return;
     }
-    const rect = rowRef.current.getBoundingClientRect();
-    const flyoutW = 128;
-    const flyoutH = exportFlyoutHeight(kind);
-    const preferRight = window.innerWidth - rect.right >= flyoutW + 8;
-    const left = preferRight ? rect.right + 4 : Math.max(PAD, rect.left - flyoutW - 4);
-    let top = rect.top;
-    if (top + flyoutH > window.innerHeight - PAD) {
-      top = Math.max(PAD, rect.bottom - flyoutH);
-    }
-    setFlyoutPos({ left, top });
+    setFlyoutPos(
+      placeFlyoutInPortal(rowRef.current.getBoundingClientRect(), 128, exportFlyoutHeight(kind))
+    );
   }, [kind, open]);
 
   useEffect(
@@ -492,7 +499,7 @@ function ExportSubmenu({
             <div
               role="menu"
               data-ctx-menu-flyout
-              className="fixed z-[80] min-w-[8rem] overflow-hidden rounded-xl bg-[var(--surface)] py-1 shadow-lg ring-1 ring-[var(--line)]"
+              className="pointer-events-auto absolute z-[80] min-w-[8rem] overflow-hidden rounded-xl bg-[var(--surface)] py-1 shadow-lg ring-1 ring-[var(--line)]"
               style={{ left: flyoutPos.left, top: flyoutPos.top }}
               onMouseEnter={openMenu}
               onMouseLeave={scheduleClose}
@@ -541,7 +548,12 @@ function CanvasContextMenu({
   const hideEnabled = canToggleHidden ?? hasNode;
   const lockEnabled = canToggleLocked ?? layerEnabled;
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const [pos, setPos] = useState<{
+    left: number;
+    top: number;
+    srcX: number;
+    srcY: number;
+  } | null>(null);
   // Keep a full-screen shield after dismiss so the leftover click cannot hit
   // the bottom tool strip under Delete / Export (classic menu click-through).
   const [guardOpen, setGuardOpen] = useState(false);
@@ -601,14 +613,13 @@ function CanvasContextMenu({
       return;
     }
     const el = panelRef.current;
-    setPos(
-      clampFixedMenuPos({
-        left: menu.clientX,
-        top: menu.clientY,
-        menuW: el?.offsetWidth || 200,
-        menuH: el?.offsetHeight || 420,
-      })
+    const next = placeMenuInPortal(
+      menu.clientX,
+      menu.clientY,
+      el?.offsetWidth || 200,
+      el?.offsetHeight || 420
     );
+    setPos({ ...next, srcX: menu.clientX, srcY: menu.clientY });
   }, [menu]);
 
   useEffect(() => {
@@ -633,11 +644,18 @@ function CanvasContextMenu({
 
   if (!menu && !guardOpen) return null;
 
+  const placed =
+    menu && pos && pos.srcX === menu.clientX && pos.srcY === menu.clientY
+      ? pos
+      : menu
+        ? placeMenuInPortal(menu.clientX, menu.clientY, 200, 420)
+        : null;
+
   return createPortal(
     <>
       <div
         data-ctx-menu
-        className="fixed inset-0 z-[60]"
+        className="pointer-events-auto absolute inset-0 z-[60]"
         onPointerDown={onBackdropPointerDown}
         aria-hidden
       />
@@ -645,10 +663,10 @@ function CanvasContextMenu({
         <div
           ref={panelRef}
           data-ctx-menu
-          className="fixed z-[70] min-w-[200px] overflow-hidden rounded-xl bg-[var(--surface)] py-1 shadow-lg ring-1 ring-[var(--line)]"
+          className="pointer-events-auto absolute z-[70] min-w-[200px] overflow-hidden rounded-xl bg-[var(--surface)] py-1 shadow-lg ring-1 ring-[var(--line)]"
           style={{
-            left: pos?.left ?? menu.clientX,
-            top: pos?.top ?? menu.clientY,
+            left: placed?.left ?? 0,
+            top: placed?.top ?? 0,
           }}
           onPointerDown={stopPanelPointer}
           onPointerUp={stopPanelPointer}

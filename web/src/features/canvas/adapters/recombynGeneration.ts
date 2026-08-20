@@ -15,7 +15,7 @@ export type GenerationAspectRatio =
   | "21:9";
 
 export type CanvasMediaGenerationInput = {
-  jobType: "image" | "video";
+  jobType: "image" | "video" | "audio";
   genPrompt: string;
   targetNodeId: string;
   node?: {
@@ -38,7 +38,7 @@ export type CanvasMediaGenerationInput = {
 
 type GenerationBridge = {
   createJob: (body: {
-    jobType: "image" | "video";
+    jobType: "image" | "video" | "audio";
     genPrompt: string;
     placement: {
       x: number;
@@ -150,6 +150,7 @@ export async function runCanvasMediaGeneration(input: CanvasMediaGenerationInput
     signal: input.signal,
     intervalMs: input.jobType === "video" ? 3000 : 1500,
     timeoutMs: input.jobType === "video" ? 8 * 60_000 : IMAGE_JOB_WAIT_MS,
+    timeoutMessage: input.jobType === "audio" ? "Audio generation timed out" : "Generation timed out",
   });
 }
 
@@ -191,7 +192,7 @@ export async function runCanvasImageProcess(input: CanvasImageProcessInput): Pro
 
 export async function waitForCanvasGenerationJob(
   jobId: string,
-  opts?: { signal?: AbortSignal; intervalMs?: number; timeoutMs?: number },
+  opts?: { signal?: AbortSignal; intervalMs?: number; timeoutMs?: number; timeoutMessage?: string },
 ): Promise<CanvasGenerationJob> {
   if (!activeBridge) throw new Error("Canvas generation is not connected");
   const started = Date.now();
@@ -200,7 +201,9 @@ export async function waitForCanvasGenerationJob(
   let current = await activeBridge.getJob(jobId);
   while (current.status === "pending" || current.status === "processing") {
     if (opts?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    if (Date.now() - started > timeoutMs) throw new Error(formatGenerationWaitError("Generation timed out"));
+    if (Date.now() - started > timeoutMs) {
+      throw new Error(formatGenerationWaitError(opts?.timeoutMessage || "Generation timed out"));
+    }
     await delay(intervalMs, opts?.signal);
     current = await activeBridge.getJob(jobId);
   }
@@ -210,6 +213,9 @@ export async function waitForCanvasGenerationJob(
 
 export function formatGenerationWaitError(message: string): string {
   const text = String(message || "").trim();
+  if (/audio generation timed out/i.test(text)) {
+    return "生成超时：请检查 OpenRouter API Key 与网络后重试；卡住的任务不会自动完成。";
+  }
   if (/timed out/i.test(text)) {
     return "生成超时：图生图会把原图发给方舟，通常比文生图慢。请检查网络后重试；卡住的任务不会自动完成。";
   }

@@ -6,6 +6,8 @@ export * from "@floating-ui/react";
 const portalRoot = document.createElement("div");
 portalRoot.dataset.recombynNativePortalRoot = "";
 // Above the scene HTML overlay (z-[1000001]) so Floating UI menus remain clickable.
+// The root itself is pointer-events:none so an empty overlay does not steal canvas
+// pan; portaled interactive surfaces must set pointer-events:auto (see CanvasContextMenu).
 Object.assign(portalRoot.style, {
   position: "absolute",
   inset: "0",

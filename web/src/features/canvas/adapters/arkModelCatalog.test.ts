@@ -21,6 +21,7 @@ test("Kith image catalog matches Ark Seedream families and limit presets", () =>
   assert.deepEqual(fourFive?.imageLimits?.resolutions, ["2K", "4K"]);
   const pro = kithImageModels().find((model) => model.id.includes("pro"));
   assert.deepEqual(pro?.imageLimits?.resolutions, ["1K", "2K"]);
+  assert.ok(kithImageModels().every((model) => model.iconKey === "doubao"));
 });
 
 test("Kith video catalog disables 1080p and 15s on Seedance Lite", () => {
@@ -31,4 +32,5 @@ test("Kith video catalog disables 1080p and 15s on Seedance Lite", () => {
   assert.equal(clamped.resolution, "720p");
   assert.equal(clamped.duration, 12);
   assert.ok(kithVideoModels().some((model) => model.id === DEFAULT_KITH_VIDEO_MODEL_ID));
+  assert.ok(kithVideoModels().every((model) => model.iconKey === "doubao"));
 });

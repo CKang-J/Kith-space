@@ -8,7 +8,7 @@
 import { useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HiOutlineArrowPath } from 'react-icons/hi2';
-import { SegmentedControl } from '@recombyn-native/components/base';
+import { message, SegmentedControl } from '@recombyn-native/components/base';
 import Tooltip from '@recombyn-native/components/base/tooltip';
 import { cn } from '@recombyn-native/utils/classnames';
 import AngleEditorScene, {
@@ -71,7 +71,6 @@ function MultiAngleToolPanel({
   const [rotate, setRotate] = useState(45);
   const [tilt, setTilt] = useState(0);
   const [scale, setScale] = useState<AngleCubeScale>(5);
-  const [busy, setBusy] = useState(false);
 
   const setRotateInt = (v: number) => setRotate(clampInt(v, ROTATE_MIN, ROTATE_MAX));
   const setTiltInt = (v: number) => setTilt(clampInt(v, TILT_MIN, TILT_MAX));
@@ -221,21 +220,25 @@ function MultiAngleToolPanel({
 
           <button
             type="button"
-            disabled={busy}
             className={cn(confirmBtnClass, 'mt-[10px]')}
             onClick={() => {
-              setBusy(true);
-              onConfirm({
-                rotate,
-                tilt,
-                zoom: scaleValueToIndex(scale) * 50,
-                mode: tab,
-              });
+              try {
+                onConfirm({
+                  rotate,
+                  tilt,
+                  zoom: scale,
+                  mode: tab,
+                });
+              } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : '';
+                message.error(
+                  /could not be cloned|DataCloneError/i.test(msg)
+                    ? '无法创建处理节点，请刷新后重试'
+                    : msg || '多角度失败'
+                );
+              }
             }}
           >
-            {busy ? (
-              <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-            ) : null}
             <span className="truncate">{t('editor.imageToolbar.useNow')}</span>
             <PanelConfirmCost amount={IMAGE_TOOL_TOKEN_COST.multiAngle} />
           </button>

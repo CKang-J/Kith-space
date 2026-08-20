@@ -1,7 +1,7 @@
 import { getTableColumns, getTableName, type Table } from "drizzle-orm";
 import * as schema from "./schema.js";
 
-export const SPACE_DATABASE_SCHEMA_VERSION = 15;
+export const SPACE_DATABASE_SCHEMA_VERSION = 16;
 export const MIN_MIGRATABLE_SPACE_DATABASE_SCHEMA_VERSION = 2;
 
 export interface WorkspaceMigrationHistoryEntry {
@@ -31,6 +31,7 @@ export const WORKSPACE_MIGRATION_HISTORY: readonly WorkspaceMigrationHistoryEntr
   { version: 13, tag: "0014_canvas_chat_context", createdAt: 1787011200000, hash: "1e54a376fdb4f03f935506b6dca0d0cdd0bd57cbb41d464265d3bd5a92f134b5" },
   { version: 14, tag: "0015_canvas_agent_execution", createdAt: 1787184000000, hash: "3f9da32702546af1db03d3929816fb89e3fc9b796c79e7ef71e3318b8a2c94d3" },
   { version: 15, tag: "0016_canvas_generation_jobs", createdAt: 1787212800000, hash: "1a35533f117e3bce803b70a97f0dd0217c80aa0cb25ceae6b370c31c6c52369e" },
+  { version: 16, tag: "0017_canvas_generation_audio", createdAt: 1787300000000, hash: "c4ce7ed2ee5142983786bfe2285cf02edb0513790011c1e0caeb26403294aa50" },
 ];
 
 /** Immutable v2 baseline. Later schema entries are layered on explicitly below. */

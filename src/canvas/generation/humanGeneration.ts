@@ -21,6 +21,7 @@ import {
   resolveArkImageModel,
   resolveArkVideoModel,
 } from "./arkModelCatalog.js";
+import { isKnownOpenRouterAudioModelId } from "./openrouterAudioCatalog.js";
 
 const ASPECT_RATIOS = new Set([
   "smart",
@@ -62,9 +63,7 @@ export function enqueueHumanCanvasGenerationJob(
   if (config.referenceAssetId) assertCanvasAsset(db, spaceId, canvasId, config.referenceAssetId);
   const provider = preferredGenerationProvider(jobType);
   if (!provider) {
-    throw new CanvasValidationError(jobType === "video"
-      ? "configure Seedance in Settings or set KITH_CANVAS_SEEDREAM_API_KEY / KITH_CANVAS_ARK_API_KEY"
-      : "configure Doubao in Settings or set KITH_CANVAS_DOUBAO_API_KEY / KITH_CANVAS_ARK_API_KEY");
+    throw new CanvasValidationError(missingProviderMessage(jobType));
   }
   return createGenerationJob(db, {
     canvasId: live.id,
@@ -78,9 +77,19 @@ export function enqueueHumanCanvasGenerationJob(
   });
 }
 
+function missingProviderMessage(jobType: GenerationJobType): string {
+  if (jobType === "video") {
+    return "configure Seedance in Settings or set KITH_CANVAS_SEEDREAM_API_KEY / KITH_CANVAS_ARK_API_KEY";
+  }
+  if (jobType === "audio") {
+    return "configure OpenRouter in Settings or set KITH_CANVAS_OPENROUTER_API_KEY";
+  }
+  return "configure Doubao in Settings or set KITH_CANVAS_DOUBAO_API_KEY / KITH_CANVAS_ARK_API_KEY";
+}
+
 function parseJobType(value: unknown): GenerationJobType {
-  if (value === "image" || value === "video") return value;
-  throw new CanvasValidationError("jobType must be image or video");
+  if (value === "image" || value === "video" || value === "audio") return value;
+  throw new CanvasValidationError("jobType must be image, video, or audio");
 }
 
 function parsePrompt(value: unknown): string {
@@ -145,7 +154,17 @@ function parseConfig(value: unknown, jobType: GenerationJobType): GenerationJobC
     if (jobType === "video" && !isKnownArkVideoModelId(model)) {
       throw new CanvasValidationError("config.model is not a supported Seedance model");
     }
+    if (jobType === "audio" && !isKnownOpenRouterAudioModelId(model)) {
+      throw new CanvasValidationError("config.model is not a supported OpenRouter TTS model");
+    }
     config.model = model;
+  }
+  if (raw.voice != null) {
+    if (jobType !== "audio") throw new CanvasValidationError("config.voice is only valid for audio jobs");
+    if (typeof raw.voice !== "string" || !raw.voice.trim() || raw.voice.length > 80) {
+      throw new CanvasValidationError("config.voice is invalid");
+    }
+    config.voice = raw.voice.trim();
   }
   if (raw.resolution != null) {
     if (typeof raw.resolution !== "string" || !raw.resolution.trim()) {
@@ -157,12 +176,14 @@ function parseConfig(value: unknown, jobType: GenerationJobType): GenerationJobC
         throw new CanvasValidationError("config.resolution must be 1K, 2K, 3K, or 4K for image jobs");
       }
       config.resolution = clampImageResolution(resolution, resolveArkImageModel(config.model));
-    } else {
+    } else if (jobType === "video") {
       const resolution = raw.resolution.trim().toLowerCase();
       if (!VIDEO_RESOLUTIONS.has(resolution)) {
         throw new CanvasValidationError("config.resolution must be 480p, 720p, or 1080p for video jobs");
       }
       config.resolution = clampVideoResolution(resolution, resolveArkVideoModel(config.model));
+    } else {
+      throw new CanvasValidationError("config.resolution is only valid for image or video jobs");
     }
   }
   if (raw.duration != null) {

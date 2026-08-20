@@ -76,6 +76,12 @@ export function materializeRecombynStageTwoHostSeams(source: string, id: string)
       "native share callback",
     );
     result = replacePatternOnce(result, /              onShare=\{openShareDialog\}\n/, "", "native share prop");
+    result = replacePatternOnce(
+      result,
+      /  const projectName = currentTemplate\?\.name \|\| t\('home\.untitled'\);/,
+      "  const projectName = currentTemplate?.name ?? t('home.untitled');",
+      "empty title draft display",
+    );
     return replacePatternOnce(
       result,
       /        \{shareOpen \? \(\n          <ShareDialog open=\{shareOpen\} onClose=\{\(\) => setShareOpen\(false\)\} \/>\n        \) : null\}\n/,
@@ -139,6 +145,7 @@ export function materializeRecombynStageTwoHostSeams(source: string, id: string)
             window.dispatchEvent(new CustomEvent('kith:canvas-title', { detail: { title: e.target.value, phase: 'draft' } }));
           }}
           onBlur={(e) => window.dispatchEvent(new CustomEvent('kith:canvas-title', { detail: { title: e.currentTarget.value, phase: 'commit' } }))}
+          placeholder={t('home.untitled')}
 `,
       "durable title bridge",
     );
@@ -219,6 +226,10 @@ export function materializeRecombynStageTwoHostSeams(source: string, id: string)
     result = replaceCount(result, "        const uploaded = await uploadImageFile(file, { signal });\n", "", 2);
     result = replaceCount(result, "      const uploaded = await uploadImageFile(file);\n      dispatch(\n        finishImageProcess({", "      dispatch(\n        finishImageProcess({", 1);
     result = replaceCount(result, "            ...(prepared.poster ? { poster: prepared.poster } : {}),\n", "", 1);
+    result = replaceCount(result,
+      "/Mac/i.test(navigator.platform) ? '?' : 'Ctrl'",
+      "/Mac/i.test(navigator.platform) ? '\u2318' : 'Ctrl'",
+      1);
     return result;
   }
   return source;

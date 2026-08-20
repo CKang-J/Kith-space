@@ -55,14 +55,14 @@ function buildTextAttrs(text: string, style: Partial<typeof DEFAULT_TEXT_STYLE> 
 
 const DURABLE_OPS = new Set([
   "update_node", "create_shape", "create_text", "create_image", "create_svg",
-  "create_lottie", "create_icon", "create_video", "create_frame", "update_frame", "delete_frame",
+  "create_lottie", "create_icon", "create_video", "create_audio", "create_frame", "update_frame", "delete_frame",
   "delete_nodes", "align_nodes", "distribute_nodes", "reorder_nodes", "group_nodes",
   "ungroup_nodes", "duplicate_nodes", "flip_nodes", "boolean_op", "set_canvas_background",
 ]);
 const DEFERRED_OPS = new Set(["image_process", "outline_text"]);
 const EPHEMERAL_OPS = new Set(["set_viewport"]);
 const SIDE_EFFECT_OPS = new Set(["export_canvas"]);
-const MEDIA_CREATE = new Set(["create_image", "create_lottie", "create_icon", "create_video"]);
+const MEDIA_CREATE = new Set(["create_image", "create_lottie", "create_icon", "create_video", "create_audio"]);
 const CSS_GRADIENT_RE = /^(?:repeating-)?(?:linear|radial|conic)-gradient\s*\(/i;
 const ALLOWED_FILL_TYPES = new Set(["solid", "linear", "radial", "angular", "diffuse", "image"]);
 const GRADIENT_FILL_TYPES = new Set(["linear", "radial", "angular", "diffuse"]);
@@ -213,9 +213,11 @@ function bindCreatedMediaAttrs(
     attrs.assetKind = op === "create_icon" ? "icon"
       : op === "create_video" ? "video"
         : op === "create_lottie" ? "lottie"
-          : "image";
+          : op === "create_audio" ? "audio"
+            : "image";
   }
   if ((op === "create_image" || op === "create_icon") && typeof attrs.mode !== "string") attrs.mode = "FIT";
+  if (op === "create_audio" && attrs.audioSpeed == null) attrs.audioSpeed = 1;
 }
 
 export type MappedCanvasToolOps = {
@@ -580,7 +582,7 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>, context?: Ca
     if (!nodes[parentId]) {
       throw opError("create_parent_missing", "parentId must be ROOT or an existing group from scene_summary", "create ToolOp parent does not exist");
     }
-    const key = op === "create_text" ? "text" : op === "create_svg" ? "svg" : op === "create_image" ? "image" : op === "create_lottie" ? "lottie" : op === "create_icon" ? "icon" : op === "create_video" ? "video" : "shape";
+    const key = op === "create_text" ? "text" : op === "create_svg" ? "svg" : op === "create_image" ? "image" : op === "create_lottie" ? "lottie" : op === "create_icon" ? "icon" : op === "create_video" ? "video" : op === "create_audio" ? "audio" : "shape";
     const createFrameId = typeof raw.frameId === "string" ? raw.frameId : undefined;
     const createFrame = findCanvasFrame(frames, createFrameId);
     const canvasPoint = canvasFrameLocalToCanvas(createFrame, numberOf(raw.x, 0), numberOf(raw.y, 0));

@@ -1,4 +1,4 @@
-export type GenerationJobType = "image" | "video";
+export type GenerationJobType = "image" | "video" | "audio";
 
 export type GenerationJobStatus =
   | "pending"
@@ -10,6 +10,7 @@ export type GenerationJobStatus =
 export type GenerationProvider =
   | "doubao"
   | "seedream"
+  | "openrouter"
   | "stability"
   | "runway"
   | "dalle"
@@ -17,9 +18,12 @@ export type GenerationProvider =
 
 export const IMAGE_GENERATION_PROVIDERS = ["doubao", "stability", "dalle"] as const;
 export const VIDEO_GENERATION_PROVIDERS = ["seedream", "runway", "pika"] as const;
+export const AUDIO_GENERATION_PROVIDERS = ["openrouter"] as const;
 
 export function generationProviderType(name: GenerationProvider): GenerationJobType {
-  return (IMAGE_GENERATION_PROVIDERS as readonly string[]).includes(name) ? "image" : "video";
+  if ((AUDIO_GENERATION_PROVIDERS as readonly string[]).includes(name)) return "audio";
+  if ((IMAGE_GENERATION_PROVIDERS as readonly string[]).includes(name)) return "image";
+  return "video";
 }
 
 export type GenerationAspectRatio =
@@ -45,6 +49,8 @@ export interface GenerationJobConfig {
   model?: string;
   /** Image: 1K/2K/3K/4K. Video: 480p/720p/1080p. */
   resolution?: string;
+  /** OpenRouter TTS voice id; omitted when the catalog model has a provider default. */
+  voice?: string;
 }
 
 export interface GenerationJobPlacement {

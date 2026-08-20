@@ -12,7 +12,7 @@ import {
 test("imageProcessPrompt covers Seedream i2i toolbar kinds", () => {
   assert.match(imageProcessPrompt("upscale", {}, "4K"), /4K/);
   assert.match(imageProcessPrompt("removeBg"), /background/i);
-  assert.match(imageProcessPrompt("multiAngle", { rotate: 45, tilt: -10, zoom: 1, mode: "camera" }), /45/);
+  assert.match(imageProcessPrompt("multiAngle", { rotate: 45, tilt: -10, zoom: 5, mode: "camera" }), /zoom 5/);
   assert.match(imageProcessPrompt("replaceText", { originalText: "Hello", newText: "Hi" }), /Hi/);
 });
 

@@ -19,12 +19,11 @@ import {
   type ChangeEvent,
   type ReactNode,
 } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useDispatch } from 'react-redux';
 import { HiArrowUp, HiOutlinePlus } from 'react-icons/hi2';
-import { generateAudio, type ChatModelsResponse, type LlmModel } from '@recombyn-native/service/chat';
-import { apiQuery, getHttpErrorMessage } from '@recombyn-native/service/client';
+type LlmModel = { id: string; kind?: string; label?: string; [key: string]: unknown };
+import { getHttpErrorMessage } from '@recombyn-native/service/client';
 import { Dropdown, message, Tooltip } from '@recombyn-native/components/base';
 import {
   RcbOverlayPortal,
@@ -56,13 +55,14 @@ import {
   setDocumentFromCanvas,
 } from '@recombyn-native/store/modules/editor';
 import { cn } from '@recombyn-native/utils/classnames';
-import { isDesktopLocal } from '@recombyn-native/utils/apiBase';
 import { readFileAsDataUrl, uploadComposerAttachment } from '@recombyn-native/utils/uploadImage';
+import { runCanvasMediaGeneration } from '@/features/canvas/adapters/recombynGeneration';
+import { DEFAULT_KITH_AUDIO_MODEL_ID, kithAudioModels } from '@/features/canvas/adapters/openrouterAudioCatalog';
 import store from '@recombyn-native/store';
 
 type SceneBox = { left: number; top: number; width: number; height: number };
 
-const DEFAULT_AUDIO_MODEL_ID = 'or-gemini-3-1-flash-tts';
+const DEFAULT_AUDIO_MODEL_ID = DEFAULT_KITH_AUDIO_MODEL_ID;
 
 function modelIsAudio(model?: Pick<LlmModel, 'kind' | 'id'> | null): boolean {
   if (!model) return false;
@@ -75,20 +75,10 @@ function buildAudioModelList(res?: {
   audioModels?: LlmModel[] | null;
 }): LlmModel[] {
   return buildByokAwareModelList({
-    byok: customProvidersAsModels(),
+    byok: [...kithAudioModels(), ...customProvidersAsModels()],
     catalogs: [res?.models, res?.audioModels],
     filter: (m) => modelIsAudio(m),
   });
-}
-
-function pickAudioUrl(r: Awaited<ReturnType<typeof generateAudio>>): string {
-  const fromAudios =
-    Array.isArray(r?.audios) && r.audios.find((u) => String(u || '').trim());
-  if (fromAudios) return String(fromAudios).trim();
-  const fromAssets =
-    Array.isArray(r?.assets) &&
-    r.assets.map((a) => String(a?.url || '').trim()).find(Boolean);
-  return fromAssets ? String(fromAssets).trim() : '';
 }
 
 function probeAudioDuration(src: string): Promise<number | null> {
@@ -167,38 +157,16 @@ function AudioQuickEditComposer({
     return () => cancelAnimationFrame(id);
   }, [nodeId]);
 
-  const modelsCatalogQuery = useQuery({
-    ...apiQuery.chatGetModels.queryOptions(),
-    staleTime: 60_000,
-  });
-
   useEffect(() => {
-    if (modelsCatalogQuery.isPending) return;
-    if (modelsCatalogQuery.isError) {
-      setModels([]);
-      return;
-    }
-    if (!modelsCatalogQuery.isFetched) return;
-    const res = modelsCatalogQuery.data as ChatModelsResponse | undefined;
-    if (!res) {
-      setModels([]);
-      return;
-    }
-    const list = buildAudioModelList(res);
+    const list = buildAudioModelList(null);
     setModels(list);
     if (list.length && !list.some((m) => m.id === modelId)) {
-      const preferred =
-        (!isDesktopLocal() && list.find((m) => m.id === DEFAULT_AUDIO_MODEL_ID)) || list[0];
+      const preferred = list.find((m) => m.id === DEFAULT_AUDIO_MODEL_ID) || list[0];
       if (preferred) setModelId(preferred.id);
     }
+    // Stage 1 never requests the Recombyn model catalog.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    modelsCatalogQuery.data,
-    modelsCatalogQuery.isPending,
-    modelsCatalogQuery.isError,
-    modelsCatalogQuery.isFetched,
-    nodeId,
-  ]);
+  }, []);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -394,18 +362,13 @@ function AudioQuickEditComposer({
       })
     );
     try {
-      const res = await generateAudio(
-        { prompt: text, model: modelId },
-        { signal: ac.signal }
-      );
-      const nextSrc = pickAudioUrl(res);
-      if (!nextSrc) throw new Error(t('editor.tools.audioGenEmpty'));
-      if (ac.signal.aborted) return;
-
-      await applyAudioToNode({
-        nextSrc,
-        name: text.slice(0, 48) || String(node?.attrs?.name || ''),
+      await runCanvasMediaGeneration({
+        jobType: 'audio',
         genPrompt: text,
+        targetNodeId: nodeId,
+        node,
+        model: modelId,
+        signal: ac.signal,
       });
     } catch (err: any) {
       if (ac.signal.aborted) return;
@@ -492,7 +455,7 @@ function AudioQuickEditComposer({
 
         <div className="mt-1 flex items-center gap-1.5 px-2.5 pb-2">
           <div className="flex-1" />
-          {!readyAudioAtt && !isDesktopLocal() && models.length > 0 ? (
+          {!readyAudioAtt && models.length > 0 ? (
             <Dropdown
               trigger="click"
               placement="top-end"

@@ -74,7 +74,7 @@ export type CanvasGenerationJobFeedback = {
   kind: "canvas_generation_job";
   status: "queued";
   jobId: string;
-  jobType: "image" | "video";
+  jobType: "image" | "video" | "audio";
   jobStatus: "pending";
   estimatedTime: number;
   message: string;
@@ -89,10 +89,10 @@ export function canvasGenerationJobFeedback(input: {
   canvasId: string;
   snapshotId: string;
   jobId: string;
-  jobType: "image" | "video";
+  jobType: "image" | "video" | "audio";
   estimatedTime?: number;
 }): CanvasGenerationJobFeedback {
-  const estimatedTime = input.estimatedTime ?? (input.jobType === "video" ? 120 : 30);
+  const estimatedTime = input.estimatedTime ?? (input.jobType === "video" ? 120 : input.jobType === "audio" ? 20 : 30);
   return {
     kind: "canvas_generation_job",
     status: "queued",
@@ -102,7 +102,9 @@ export function canvasGenerationJobFeedback(input: {
     estimatedTime,
     message: input.jobType === "video"
       ? "Video generation queued. The video node will appear when ready (about 1–5 minutes)."
-      : "Image generation queued. The image will appear on the canvas when ready (about 10–60 seconds).",
+      : input.jobType === "audio"
+        ? "Audio generation queued. The audio node will appear when ready (about 10–30 seconds)."
+        : "Image generation queued. The image will appear on the canvas when ready (about 10–60 seconds).",
     canvasId: input.canvasId,
     snapshotId: input.snapshotId,
     operationId: input.operationId,

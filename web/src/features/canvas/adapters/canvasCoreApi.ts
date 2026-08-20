@@ -71,7 +71,7 @@ export interface CanvasLibraryItem extends CanvasCoreSnapshot {
 export interface CanvasGenerationJob {
   id: string;
   canvasId: string;
-  jobType: "image" | "video";
+  jobType: "image" | "video" | "audio";
   status: "pending" | "processing" | "completed" | "failed" | "cancelled";
   genPrompt: string;
   resultAssetId: string | null;
@@ -121,7 +121,7 @@ export const canvasCoreApi = (api: KithApi) => {
   exportScene: (canvasId: string): Promise<{ format: "kith-canvas-scene"; version: 1; title: string; scene: unknown }> => call("GET", `/api/canvases/${encodeURIComponent(canvasId)}/export`),
   deleteCanvas: (canvasId: string, expectedRevision: number): Promise<{ ok: true; deleted: boolean }> => call("DELETE", `/api/canvases/${encodeURIComponent(canvasId)}`, { operationId: crypto.randomUUID(), expectedRevision }),
   createGenerationJob: (canvasId: string, body: {
-    jobType: "image" | "video";
+    jobType: "image" | "video" | "audio";
     genPrompt: string;
     placement: {
       x: number;

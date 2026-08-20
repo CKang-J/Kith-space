@@ -235,20 +235,38 @@ function ImageToolPanelHost({ document }: { document: SceneDocument }): ReactNod
 
   const close = () => dispatch(closeImageToolPanel());
 
+  const spawnProcess = (payload: {
+    sourceId: string;
+    kind: ImageToolPanelKind | string;
+    label: string;
+    targetWidth?: number;
+    targetHeight?: number;
+    meta?: Record<string, unknown>;
+  }) => {
+    try {
+      dispatch(startImageProcess(payload));
+      close();
+      return true;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      message.error(
+        /could not be cloned|DataCloneError/i.test(msg) ? '无法创建处理节点，请刷新后重试' : msg || '图片处理失败'
+      );
+      return false;
+    }
+  };
+
   const runProcess = (kind: ImageToolPanelKind, label: string, size?: {
     targetWidth?: number;
     targetHeight?: number;
   }) => {
-    dispatch(
-      startImageProcess({
-        sourceId: panel.nodeId,
-        kind,
-        label,
-        targetWidth: size?.targetWidth,
-        targetHeight: size?.targetHeight,
-      })
-    );
-    close();
+    spawnProcess({
+      sourceId: panel.nodeId,
+      kind,
+      label,
+      targetWidth: size?.targetWidth,
+      targetHeight: size?.targetHeight,
+    });
   };
 
   const style = panelStyleRight(camera, box, dpr);
@@ -404,20 +422,17 @@ function ImageToolPanelHost({ document }: { document: SceneDocument }): ReactNod
           imageSrc={String(node?.attrs?.src || '') || undefined}
           onCancel={close}
           onConfirm={(opts) => {
-            dispatch(
-              startImageProcess({
-                sourceId: panel.nodeId,
-                kind: 'multiAngle',
-                label: '多角度生成中',
-                meta: {
-                  rotate: opts.rotate,
-                  tilt: opts.tilt,
-                  zoom: opts.zoom,
-                  mode: opts.mode,
-                },
-              })
-            );
-            close();
+            spawnProcess({
+              sourceId: panel.nodeId,
+              kind: 'multiAngle',
+              label: '多角度生成中',
+              meta: {
+                rotate: opts.rotate,
+                tilt: opts.tilt,
+                zoom: opts.zoom,
+                mode: opts.mode,
+              },
+            });
           }}
         />
       );
@@ -470,18 +485,15 @@ function ImageToolPanelHost({ document }: { document: SceneDocument }): ReactNod
           initialOriginal={initialOriginal}
           onCancel={close}
           onConfirm={(opts) => {
-            dispatch(
-              startImageProcess({
-                sourceId: panel.nodeId,
-                kind: 'replaceText',
-                label: t('editor.imageToolbar.processingReplaceText'),
-                meta: {
-                  originalText: opts.originalText,
-                  newText: opts.newText,
-                },
-              })
-            );
-            close();
+            spawnProcess({
+              sourceId: panel.nodeId,
+              kind: 'replaceText',
+              label: t('editor.imageToolbar.processingReplaceText'),
+              meta: {
+                originalText: opts.originalText,
+                newText: opts.newText,
+              },
+            });
           }}
         />
       );

@@ -114,7 +114,9 @@ export class GenerationWorker {
     try {
       const status = await provider.getStatus(job.providerJobId);
       if (status.status === "completed") {
-        const durableJobId = encodeArkUrlJobId(status.resultUrl);
+        const durableJobId = /^https?:\/\//i.test(status.resultUrl)
+          ? encodeArkUrlJobId(status.resultUrl)
+          : job.providerJobId!;
         if (durableJobId !== job.providerJobId) {
           updateJobStatus(this.db, job.id, { providerJobId: durableJobId });
         }
@@ -189,7 +191,7 @@ export class GenerationWorker {
     const live = core.read(job.canvasId);
     const nodes = asNodeMap(live.document);
     const existing = nodes[targetId];
-    const expectedKey = job.jobType === "video" ? "video" : "image";
+    const expectedKey = mediaKeyForJobType(job.jobType);
     if (!existing || String(existing.key) !== expectedKey) return null;
     const next = structuredClone(existing) as Record<string, CanvasJson>;
     next.assetId = assetId;
@@ -201,6 +203,7 @@ export class GenerationWorker {
     attrs.assetId = assetId;
     attrs.assetKind = expectedKey;
     if (expectedKey === "image" && typeof attrs.mode !== "string") attrs.mode = "FIT";
+    if (expectedKey === "audio" && attrs.audioSpeed == null) attrs.audioSpeed = 1;
     if (job.genPrompt) attrs.genPrompt = job.genPrompt;
     if (placement.name && typeof attrs.name !== "string") attrs.name = placement.name;
     next.attrs = attrs;
@@ -224,7 +227,7 @@ export class GenerationWorker {
     const core = new CanvasCore(this.db, this.spaceId);
     const live = core.read(job.canvasId);
     const mapped = mapCanvasToolOps(live.document as CanvasJson, [{
-      op: job.jobType === "video" ? "create_video" : "create_image",
+      op: job.jobType === "video" ? "create_video" : job.jobType === "audio" ? "create_audio" : "create_image",
       id: placement.customId,
       assetId,
       x: placement.x,
@@ -315,6 +318,8 @@ const GENERATOR_ATTRS = [
   "videoGenResolution",
   "videoGenDuration",
   "videoGenModel",
+  "audioGenerator",
+  "audioGenModel",
   "processStatus",
   "processKind",
   "processLabel",
@@ -324,6 +329,12 @@ const GENERATOR_ATTRS = [
   "processMeta",
   "imageVariants",
 ] as const;
+
+function mediaKeyForJobType(jobType: GenerationJobRow["jobType"]): "image" | "video" | "audio" {
+  if (jobType === "video") return "video";
+  if (jobType === "audio") return "audio";
+  return "image";
+}
 
 function isRecord(value: unknown): value is Record<string, CanvasJson> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);

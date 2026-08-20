@@ -39,5 +39,6 @@ test("canvasNodePlacement reads live node geometry and falls back to the plate b
 test("formatGenerationWaitError turns silent timeouts into an actionable Chinese error", () => {
   assert.match(formatGenerationWaitError("Generation timed out"), /生成超时/);
   assert.match(formatGenerationWaitError("Ark request timed out after 90000ms"), /图生图/);
+  assert.match(formatGenerationWaitError("Audio generation timed out"), /OpenRouter/);
   assert.equal(formatGenerationWaitError("Doubao image API error: 401"), "Doubao image API error: 401");
 });

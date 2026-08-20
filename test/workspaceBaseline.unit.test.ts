@@ -125,6 +125,9 @@ test("fresh Space database uses the Personal AgentOS baseline and seeds its Spac
     assert.ok(names.includes("advisor_provider_runs"));
     assert.ok(names.includes("canvas_generation_jobs"));
     assert.ok(columns(sqlite, "canvas_generation_jobs").includes("idempotency_key"));
+    const generationJobsSql = String(sqlite.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'canvas_generation_jobs'").pluck().get() ?? "").toLowerCase();
+    assert.match(generationJobsSql, /'audio'/);
+    assert.match(generationJobsSql, /'openrouter'/);
   } finally {
     sqlite.close();
     unregisterSpace(spaceId);

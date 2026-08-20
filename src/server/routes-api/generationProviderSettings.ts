@@ -6,6 +6,7 @@ import type { HumanCtx } from "./ctx.js";
 import {
   arkSettingsViewFromProviders,
   listProviderSettingsViews,
+  openrouterSettingsViewFromProviders,
   saveArkSharedConfig,
   saveProviderConfig,
 } from "../../canvas/generation/providerConfig.js";
@@ -13,7 +14,7 @@ import { initializeGenerationProvidersFromStore } from "../../canvas/generation/
 import type { GenerationProvider } from "../../canvas/generation/contracts.js";
 
 const SETTINGS_PATH = "/api/settings/generation-providers";
-const ProviderName = z.enum(["ark", "doubao", "seedream", "stability", "runway", "dalle", "pika"]);
+const ProviderName = z.enum(["ark", "doubao", "seedream", "openrouter", "stability", "runway", "dalle", "pika"]);
 const PatchSchema = z.object({
   name: ProviderName,
   apiKey: z.string().max(8_000).optional(),
@@ -24,7 +25,11 @@ const PatchSchema = z.object({
 
 async function settingsPayload() {
   const providers = await listProviderSettingsViews();
-  return { ark: arkSettingsViewFromProviders(providers), providers };
+  return {
+    ark: arkSettingsViewFromProviders(providers),
+    openrouter: openrouterSettingsViewFromProviders(providers),
+    providers,
+  };
 }
 
 export async function handleGenerationProviderSettings(ctx: HumanCtx): Promise<boolean> {

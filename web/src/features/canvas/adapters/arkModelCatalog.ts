@@ -25,10 +25,10 @@ export type KithVideoLimits = {
 export type KithLlmModel = {
   id: string;
   label: string;
-  provider: "doubao";
-  kind: "image" | "video";
+  provider: "doubao" | "openrouter";
+  kind: "image" | "video" | "audio";
   description: string;
-  iconKey: "doubao";
+  iconKey: "doubao" | "openrouter" | "gemini" | "fishaudio";
   imageLimits?: KithImageLimits;
   videoLimits?: KithVideoLimits;
 };

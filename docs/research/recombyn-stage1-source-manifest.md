@@ -77,8 +77,8 @@ Kith 新写代码只位于 host/adapters/state：
 - Paynter `watercolor.png` 缺少可随分发的完整 notice；brush tip 位图不复制，`brush_ops` 延后。
 - `SmileySans-Oblique.woff2` 无同目录可核许可证，不复制。
 - 上游 `fonts.css` 的 Google Fonts/jsDelivr URL 只作为 Apache 源文件引用保留在 source mapping；运行 CSS 中没有这些 URL，也没有下载/打包字体 bytes。保留原字体栈，命中安装级 Alibaba/Noto 或系统 fallback。
-- Recombyn logo-mark/favicon/mascot 二进制未复制；loader 的上游品牌字样替换为 Kith-space。两张模型品牌 PNG `dreamina.png`、`sync_lipsync.png` 因来源/商标结论不足明确排除并使用中性 SVG data URI。
-- `@lobehub/icons-static-svg` 的 87 个公司/模型品牌 SVG 未逐项核清商标与非背书边界，因此不复制、不安装；`ModelPickerPanel` 在 materialize 时统一改用现有中性图标。editor cursor SVG 与 React icon 源代码位于 Apache 上游闭包。不存在在线 AI 资产请求。
+- Recombyn logo-mark/favicon/mascot 二进制未复制；loader 的上游品牌字样替换为 Kith-space。
+- `@lobehub/icons-static-svg` 现已作为 web 构建依赖安装（与 Recombyn 同包、`^1.94.0`），供 Canvas 模型选择器显示供应商图标；静态 SVG 经 Vite `?url` 打进产物，不发起在线图标请求。两张未核清来源的 PNG `dreamina.png`、`sync_lipsync.png` 仍不复制：Dreamina 回退到同包 `jimeng-color.svg`，lipsync 继续用中性 SVG data URI。editor cursor SVG 与 React icon 源代码位于 Apache 上游闭包。不存在在线 AI 资产请求。
 
 ## 能力矩阵
 

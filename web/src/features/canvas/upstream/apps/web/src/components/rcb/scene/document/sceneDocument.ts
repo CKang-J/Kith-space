@@ -5,7 +5,7 @@
  * Apache-2.0 and upstream NOTICE apply.
  */
 // @ts-nocheck -- upstream source is bundle-checked; its original monorepo TS project is not portable.
-import { produce, type WritableDraft } from 'immer';
+import { current, isDraft, produce, type WritableDraft } from 'immer';
 import { nanoid } from '@reduxjs/toolkit';
 import type { ArtboardFrame } from '@recombyn-native/components/rcb/frames/types';
 import type {
@@ -49,11 +49,27 @@ function createPage(id?: string): ScenePage {
   };
 }
 
-/** Isolate a node/frame/doc slice without JSON.parse(JSON.stringify). */
+/**
+ * Isolate a node/frame/doc slice. `structuredClone` cannot copy Immer drafts
+ * (Proxies), and image process clones (eraser / remove-bg / …) run inside the
+ * Redux reducer — unwrap drafts first, then fall back to JSON if the value
+ * still contains a DOM node or other non-cloneable.
+ */
 export function cloneSceneValue<T>(value: T): T {
   if (value == null || typeof value !== 'object') return value;
-  if (typeof structuredClone === 'function') return structuredClone(value);
-  return { ...(value as object) } as T;
+  const plain = isDraft(value) ? current(value) : value;
+  try {
+    if (typeof structuredClone === 'function') return structuredClone(plain);
+  } catch {
+    /* Immer leftovers / non-cloneable attrs */
+  }
+  try {
+    return JSON.parse(JSON.stringify(plain)) as T;
+  } catch {
+    return Array.isArray(plain)
+      ? ([...(plain as unknown[])] as T)
+      : ({ ...(plain as object) } as T);
+  }
 }
 
 /** Unified paint / layer order: `frame:id` | `node:id` (bottom → top). */

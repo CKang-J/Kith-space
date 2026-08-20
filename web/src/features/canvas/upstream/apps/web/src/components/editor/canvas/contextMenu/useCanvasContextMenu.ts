@@ -241,12 +241,21 @@ export function useCanvasContextMenu(args: UseCanvasContextMenuArgs) {
       });
     };
 
+    let lastOpenX = 0;
+    let lastOpenY = 0;
     const tryOpen = (clientX: number, clientY: number, target: EventTarget | null) => {
-      if (performance.now() - openedAtRef.current < OPEN_DEBOUNCE_MS) return;
+      if (
+        performance.now() - openedAtRef.current < OPEN_DEBOUNCE_MS &&
+        Math.hypot(clientX - lastOpenX, clientY - lastOpenY) < 12
+      ) {
+        return;
+      }
       if (isBogusClient(clientX, clientY)) return;
       if (!clientInElement(hitEl, clientX, clientY)) return;
       if (!isCanvasGestureTarget(hitEl, target)) return;
       openedAtRef.current = performance.now();
+      lastOpenX = clientX;
+      lastOpenY = clientY;
       openMenuAt(clientX, clientY);
     };
 

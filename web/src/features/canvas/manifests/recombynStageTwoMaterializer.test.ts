@@ -44,6 +44,8 @@ test("Stage2 materializer uploads native media before any scene document dispatc
     const section = result.slice(result.indexOf(marker), result.indexOf(marker) + 2_500);
     assert.ok(section.indexOf("await uploadImageFile(file") < section.indexOf("dispatch("));
   }
+  assert.match(result, /Mac\/i\.test\(navigator\.platform\) \? '\u2318' : 'Ctrl'/);
+  assert.doesNotMatch(result, /Mac\/i\.test\(navigator\.platform\) \? '\?' : 'Ctrl'/);
 });
 
 test("Stage2 materializer makes the bottom Upload tool durable before its placeholder dispatch", () => {
@@ -150,6 +152,11 @@ test("Stage2 materializer routes title commits and JSON export through host port
   const top = materializeRecombynStageTwoHostSeams(readFileSync(topPath, "utf8"), topPath.pathname);
   assert.match(top, /kith:canvas-title/);
   assert.match(top, /phase: 'commit'/);
+  assert.match(top, /placeholder=\{t\('home\.untitled'\)\}/);
+  const editorPath = new URL("../upstream/apps/web/src/pages/EditorPage.tsx", import.meta.url);
+  const editor = materializeRecombynStageTwoHostSeams(readFileSync(editorPath, "utf8"), editorPath.pathname);
+  assert.match(editor, /currentTemplate\?\.name \?\? t\('home\.untitled'\)/);
+  assert.doesNotMatch(editor, /currentTemplate\?\.name \|\| t\('home\.untitled'\)/);
   const exportPath = new URL("../upstream/apps/web/src/components/editor/panels/ExportSelectionPanel.tsx", import.meta.url);
   const exported = materializeRecombynStageTwoHostSeams(readFileSync(exportPath, "utf8"), exportPath.pathname);
   assert.match(exported, /kith:canvas-export/);

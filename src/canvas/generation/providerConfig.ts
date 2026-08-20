@@ -8,11 +8,16 @@ import {
   DEFAULT_DOUBAO_IMAGE_MODEL,
   DEFAULT_SEEDREAM_VIDEO_MODEL,
 } from "./arkModelCatalog.js";
+import {
+  DEFAULT_OPENROUTER_AUDIO_MODEL_ID,
+  DEFAULT_OPENROUTER_ENDPOINT,
+} from "./openrouterAudioCatalog.js";
 
 export const DEFAULT_ARK_ENDPOINT = "https://ark.cn-beijing.volces.com/api/v3";
-export { DEFAULT_DOUBAO_IMAGE_MODEL, DEFAULT_SEEDREAM_VIDEO_MODEL };
+export { DEFAULT_DOUBAO_IMAGE_MODEL, DEFAULT_SEEDREAM_VIDEO_MODEL, DEFAULT_OPENROUTER_AUDIO_MODEL_ID, DEFAULT_OPENROUTER_ENDPOINT };
 
-const SETTINGS_PROVIDER_NAMES = ["doubao", "seedream"] as const satisfies readonly GenerationProvider[];
+const ARK_PROVIDER_NAMES = ["doubao", "seedream"] as const satisfies readonly GenerationProvider[];
+const SETTINGS_PROVIDER_NAMES = ["doubao", "seedream", "openrouter"] as const satisfies readonly GenerationProvider[];
 
 export interface StoredProviderConfig {
   name: GenerationProvider;
@@ -83,18 +88,21 @@ function envApiKey(name: GenerationProvider): string | undefined {
   if (name === "seedream") {
     return firstEnv("KITH_CANVAS_SEEDREAM_API_KEY", "KITH_CANVAS_ARK_API_KEY");
   }
+  if (name === "openrouter") return firstEnv("KITH_CANVAS_OPENROUTER_API_KEY");
   return undefined;
 }
 
 function envEndpoint(name: GenerationProvider): string | undefined {
   if (name === "doubao") return firstEnv("KITH_CANVAS_DOUBAO_ENDPOINT", "KITH_CANVAS_ARK_ENDPOINT");
   if (name === "seedream") return firstEnv("KITH_CANVAS_SEEDREAM_ENDPOINT", "KITH_CANVAS_ARK_ENDPOINT");
+  if (name === "openrouter") return firstEnv("KITH_CANVAS_OPENROUTER_ENDPOINT");
   return undefined;
 }
 
 function envModel(name: GenerationProvider): string | undefined {
   if (name === "doubao") return firstEnv("KITH_CANVAS_DOUBAO_MODEL");
   if (name === "seedream") return firstEnv("KITH_CANVAS_SEEDREAM_MODEL");
+  if (name === "openrouter") return firstEnv("KITH_CANVAS_OPENROUTER_MODEL");
   return undefined;
 }
 
@@ -107,12 +115,14 @@ function firstEnv(...names: string[]): string | undefined {
 }
 
 function defaultEndpoint(name: GenerationProvider): string {
+  if (name === "openrouter") return envEndpoint(name) ?? DEFAULT_OPENROUTER_ENDPOINT;
   return envEndpoint(name) ?? DEFAULT_ARK_ENDPOINT;
 }
 
 function defaultModel(name: GenerationProvider): string | undefined {
   if (name === "doubao") return envModel(name) ?? DEFAULT_DOUBAO_IMAGE_MODEL;
   if (name === "seedream") return envModel(name) ?? DEFAULT_SEEDREAM_VIDEO_MODEL;
+  if (name === "openrouter") return envModel(name) ?? DEFAULT_OPENROUTER_AUDIO_MODEL_ID;
   return envModel(name);
 }
 
@@ -276,11 +286,22 @@ export function arkSettingsViewFromProviders(views: ProviderSettingsView[]): Ark
   };
 }
 
+export function openrouterSettingsViewFromProviders(views: ProviderSettingsView[]): ArkSettingsView {
+  const openrouter = views.find((item) => item.name === "openrouter");
+  return {
+    hasApiKey: Boolean(openrouter?.hasApiKey),
+    apiKeyHint: openrouter?.apiKeyHint ?? null,
+    endpoint: openrouter?.endpoint || DEFAULT_OPENROUTER_ENDPOINT,
+    source: openrouter?.source ?? "none",
+    enabled: Boolean(openrouter?.enabled),
+  };
+}
+
 export async function saveArkSharedConfig(
   input: Omit<SaveProviderConfigInput, "name" | "model">,
   appDataDir = kithSpaceHome(),
 ): Promise<void> {
-  for (const name of SETTINGS_PROVIDER_NAMES) {
+  for (const name of ARK_PROVIDER_NAMES) {
     await saveProviderConfig({
       name,
       apiKey: input.apiKey,
