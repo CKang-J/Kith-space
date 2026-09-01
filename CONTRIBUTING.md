@@ -2,14 +2,14 @@
 
 感谢你愿意参与 Kith-space。本项目采用轻量 GitHub Flow：只保留一个长期主分支 `main`，每项改动在短分支完成，通过 Pull Request（PR）合入。
 
-项目背景、架构边界和 AI 开发约束以 [`AGENTS.md`](./AGENTS.md) 为准；当前进度以 [`docs/progress.md`](./docs/progress.md) 为准；开发、测试和打包命令以 [`docs/dev-commands.md`](./docs/dev-commands.md) 为准。
+项目背景、架构边界和 AI 开发约束以 [`AGENTS.md`](./AGENTS.md) 为准；产品理念、决策与术语分别见 [`docs/vision.md`](./docs/vision.md)、[`docs/decisions.md`](./docs/decisions.md) 与 [`docs/glossary.md`](./docs/glossary.md)；开发、测试和打包命令以 [`docs/dev-commands.md`](./docs/dev-commands.md) 为准。
 
 ## 开始之前
 
 - 先阅读 `AGENTS.md` 和与改动相关的权威文档。
 - 一个分支、一个 PR 只处理一个目标，不混入无关重构或格式化。
 - 较大的功能、架构变更或拿不准的方向，先开 Issue 讨论；小修复和文档改动可直接提交 PR。
-- `reference/` 仅供本地对照，不纳入提交。OpenLoaf 是 AGPLv3 项目，只能参考理念和交互，不得复制其源码。
+- `reference/` 仅供本地对照，不纳入提交。
 
 ## 分支
 
@@ -38,10 +38,10 @@ git switch -c feat/short-description
 - 新增前端 UI 使用 Tailwind CSS v4 与 shadcn/ui，优先复用 `web/src/components/ui/`，并遵循 `AGENTS.md` 的前端开发规范；存量 CSS 只按触达范围渐进迁移。
 - 提交前查看 `git status`、`git diff --stat` 和 `git diff`，确认没有密钥、本机路径、生成物或无关文件。
 - 代码改动至少运行 `pnpm run typecheck` 和相关测试；完整测试命令见 `docs/dev-commands.md`。
-- 开发共享功能时必须检查 Windows、macOS、Linux 的路径、权限、进程、shell、native module 和 Electron 差异；详细规则与当前缺口见 `docs/cross-platform-compatibility.md`。
+- 开发共享功能时必须检查 Windows、macOS、Linux 的路径、权限、进程、shell、native module 和 Electron 差异；详细规则与当前缺口见 `docs/archive/cross-platform-compatibility.md`。
 - 平台相关 PR 要列出三端验证结果。未在某端运行时写明原因和对应 CI/待办；平台条件 `skip` 不得表述为该端已通过。
 - 只改文档时不要求本地运行完整代码测试，但仍需检查链接、命令和差异；PR 中如实注明未运行的检查。
-- 命令、架构、产品决策、界面信息架构或阶段状态发生变化时，同一个 PR 更新对应权威文档。
+- 命令、架构、产品决策、界面信息架构或阶段状态**发生事实变化**时，同一个 PR 更新对应权威文档；常规小改动、纯实现细节不强制同步。具体按需更新的边界见 `AGENTS.md` 的"文档更新规则"。
 
 ## 提交信息
 

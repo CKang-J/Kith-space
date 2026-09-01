@@ -118,6 +118,6 @@ opencode models --verbose
 实现完成时同步更新：
 
 - `docs/kith-space/architecture-proposal.md`：runtime availability 和模型发现边界；
-- `docs/kith-space/notes/_runtime-research/opencode.md`：实际适配方式与 Windows 进程边界；
+- `docs/archive/historical/notes/_runtime-research/opencode.md`：实际适配方式与 Windows 进程边界；
 - `docs/progress.md`：问题修复状态与验证结果；
 - 若用户可见行为需要补充，再更新 `docs/kith-space/ui-direction.md`。

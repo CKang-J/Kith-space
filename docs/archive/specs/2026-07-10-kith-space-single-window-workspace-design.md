@@ -5,13 +5,13 @@
 - 日期：2026-07-10
 - 状态：设计已实现；最终壳层形态、自动化验证与本轮用户验收均已完成（2026-07-18）
 - 阶段：P4 前端信息架构纠偏与桌面线框原型
-- 依据：用户提供的 Kith-space 截图、OpenLoaf 界面截图与手绘交互图
+- 依据：用户提供的 Kith-space 截图与手绘交互图
 
 ## 1. 决策摘要
 
 Kith-space 不再继续当前“空间总览壳 + 空间内部壳”的双壳方案。新的目标是一个桌面优先的单窗口工作区：普通冷启动进入唯一 Home Space，显式深链接仍可进入目标 Space；Chat 是默认主页与基础工作面，底部 Dock 常驻；点击 Dock 模块后，Chat 与模块按状态机在 Chat 全宽、Chat + 模块分屏、模块全宽三种形态之间切换。Home 的 Spaces 是同一个壳中的真实模块，不恢复双壳。
 
-本设计借鉴 OpenLoaf 的布局关系、Dock 迁移感和界面状态自动感知思想，但不复制 OpenLoaf 的 AGPL 源码或具体实现。
+本设计借鉴成熟协作应用的布局关系、Dock 迁移感和界面状态自动感知思想，但不复制任何受版权保护的源码或具体实现。
 
 本设计取代当前 P4 双壳方向中的以下内容：
 
@@ -41,7 +41,7 @@ Kith-space 不再继续当前“空间总览壳 + 空间内部壳”的双壳方
 ### 2.2 非目标
 
 - 本阶段不实现真正的跨 Space Inbox、Tasks 或其他聚合。
-- 本阶段不实现 OpenLoaf 的“全局主窗口 + 项目窗口”双窗口能力。
+- 本阶段不实现“全局主窗口 + 项目窗口”双窗口能力。
 - 本阶段不实现任意数量、任意停靠的通用窗口管理器。
 - 本阶段不完成 Calendar、Canvas 等尚未具备真实业务能力的模块。
 - 本阶段不确定最终高保真颜色、动效和视觉细节。
@@ -291,7 +291,7 @@ Composer 上方展示紧凑标签，例如：
 
 ### 9.4 Runtime 适配
 
-前端与服务端保存 Kith-space 自己的结构化 Snapshot。不同 runtime 的适配器再按需要编码为 XML、JSON 或 prompt 文本。不得把 OpenLoaf 的 `<stack>` XML 格式硬编码进 UI 或核心数据模型。
+前端与服务端保存 Kith-space 自己的结构化 Snapshot。不同 runtime 的适配器再按需要编码为 XML、JSON 或 prompt 文本。不得把外部 `<stack>` XML 格式硬编码进 UI 或核心数据模型。
 
 ## 10. 路由与持久化边界
 
@@ -352,7 +352,7 @@ Composer 上方展示紧凑标签，例如：
 
 ### 13.1 输出
 
-- 文件：`docs/prototypes/kith-space-single-window-flow.html`
+- 文件：`docs/archive/historical/prototypes/kith-space-single-window-flow.html`
 - 单文件 HTML。
 - 桌面逻辑尺寸：1280 × 800。
 - 黑白灰低保真线框，不提前确定最终视觉皮肤。

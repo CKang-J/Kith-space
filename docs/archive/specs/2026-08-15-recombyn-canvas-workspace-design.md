@@ -5,8 +5,8 @@
 > Kith 基线：`codex/development@4937690`
 > Recombyn 基线：`follow-upstream@abd8198`
 > 决策：`1A / 2A / 3A / 4A / 5A`
-> 关联 ADR：[ADR-0038](../../adr/0038-adopt-recombyn-canvas-module.md)
-> 探索证据：[移植探索](../../research/recombyn-canvas-integration-discovery.md) · [Canvas × Agent 协议研究](../../research/canvas-mcp-protocol-research.md)
+> 关联 ADR：[ADR-0038](../adr/0038-adopt-recombyn-canvas-module.md)
+> 探索证据：[移植探索](../../archive/historical/research/recombyn-canvas-integration-discovery.md) · [Canvas × Agent 协议研究](../../archive/historical/research/canvas-mcp-protocol-research.md)
 
 ## 1. 结论
 
@@ -721,4 +721,4 @@ Canvas 诊断至少记录：canvas/mutation id、可选 job id、actor domain、
 - Kith Context：`src/context/messageContextSnapshot.ts:3`、`:26`；`src/context/contextAssembler.ts:99`、`:371`。
 - Kith Gateway/reply：`src/server/turn-gateway/routes.ts:45`、`:165`；`src/turns/turnOutputService.ts:93`。
 - Kith local upload store：`src/files/localObjectStorage.ts:22`。
-- MCP 官方证据与迁移影响：`docs/research/canvas-mcp-protocol-research.md`。
+- MCP 官方证据与迁移影响：`docs/archive/historical/research/canvas-mcp-protocol-research.md`。

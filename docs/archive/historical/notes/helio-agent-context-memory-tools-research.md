@@ -1430,4 +1430,4 @@ per-surface resumable session
 
 对 Kith-space 来说，正确的参考方向是复制这种**边界清晰、来源可查、失败可降级的 harness 组合**，而不是把所有频道、私信和话题塞进同一个上下文，也不是先做一个不可解释的向量记忆黑盒。
 
-研究结论对应的 Kith-space 目标架构已整理为 [`../../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`](../../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md)。该文已依据两路独立对抗性审查补全为 P-A10 可实施提案，但仍不代表本文研究时的现有代码已经实现这些机制。
+研究结论对应的 Kith-space 目标架构已整理为 [`../../specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`](../../specs/2026-07-19-agent-harness-session-context-memory-tools-design.md)。该文已依据两路独立对抗性审查补全为 P-A10 可实施提案，但仍不代表本文研究时的现有代码已经实现这些机制。

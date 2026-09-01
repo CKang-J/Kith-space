@@ -4,7 +4,7 @@
 
 这份文档承载 Kith-space 的理念与长远方向，是项目的北极星。它写给一个可能完全没有当前上下文的未来读者——无论是接手的人，还是需要理解项目意图的 AI。读完它，你应该能明白 Kith-space 是什么、为什么这样设计、最终要去哪里。
 
-具体的锁定决策见 `decisions.md`，阶段划分见 `roadmap.md`，术语见 `glossary.md`，Home/Space root 规格见 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`，各专项设计见 `docs/kith-space/*.md`（product-brief / mvp-spec / architecture-proposal / ui-direction / migration-plan）。本文引用它们，不重复展开。
+具体的锁定决策见 `decisions.md`，术语见 `glossary.md`，各专项设计见 `docs/kith-space/*.md`（产品定位 / 架构提案 / UI 方向 / 机制导读），历史规格见 `docs/archive/specs/`。本文引用它们，不重复展开。
 
 ## 一句话愿景
 
@@ -64,7 +64,7 @@ Kith-space 首先服务一个人，根植于本地。每个安装实例有一个
 
 ### 五、纯开源，宽松许可
 
-Kith-space 是纯开源项目，采用 MIT / Apache 这类宽松许可。这不是随口一提的姿态，而是贯穿到了技术选型里：底座和参考项目都必须协议干净、可自由采用；正因为协议不兼容，AGPLv3 的 OpenLoaf 才被降级为纯设计参考，不碰其源码。
+Kith-space 是纯开源项目，采用 Apache-2.0 这类宽松许可。这不是随口一提的姿态，而是贯穿到了技术选型里：依赖与可移植代码都必须协议干净、可自由采用。
 
 产品不走闭源商业化路线。宽松许可意味着任何人都能自由使用、修改、分发和商用，我们希望它成为一个可以被信任、被二次创造的公共基础。
 
@@ -74,7 +74,7 @@ Kith-space 保留 Electron 监督 Core Service、唯一 Local Runtime Worker 和
 
 代码结构采用渐进式模块化单体：消息、任务、Agent、频道、文件、Space 与 Runtime 各自形成高内聚的深 Module，通过窄 Interface 和必要 Seam 协作；Transport 与宿主 Adapter 只负责协议和平台差异。优先以特征测试和小切片收敛职责，不做大爆炸式目录重排，也不为抽象而抽象。
 
-TypeScript / Node / Electron / SQLite 继续作为主技术栈。Agent 群聊的主要等待通常来自外部 runtime、模型、工具和无界 fan-out，而不是语言本身。只有可重复基线和 profiler 证明某个稳定热点确实受 JavaScript CPU 限制，且跨平台构建收益大于成本时，才允许把该窄 Implementation 换成 Rust Adapter；全量 Rust 重写不是当前路线。完整工程契约见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
+TypeScript / Node / Electron / SQLite 继续作为主技术栈。Agent 群聊的主要等待通常来自外部 runtime、模型、工具和无界 fan-out，而不是语言本身。只有可重复基线和 profiler 证明某个稳定热点确实受 JavaScript CPU 限制，且跨平台构建收益大于成本时，才允许把该窄 Implementation 换成 Rust Adapter；全量 Rust 重写不是当前路线。完整工程契约见 `docs/archive/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
 
 ## 长远愿景：MVP 只是第一个切片
 
@@ -82,7 +82,7 @@ TypeScript / Node / Electron / SQLite 继续作为主技术栈。Agent 群聊的
 
 Kith-space 的第一版（MVP）是一个**刻意收窄的薄切片**：一个重做过外观的协作空间，加上两个摩擦最低的模块（记忆和任务）作为 MCP 工具，加上外接的本机 runtime。它要验证的核心命题只有一句——“**一个有身份、有记忆的外部 agent，在频道里通过 MCP 操作我的模块，这套手感成不成立？**”
 
-MVP 的范围划分见 roadmap.md 和 mvp-spec.md，本文不展开“做什么”，只讲“最终要去哪里”。请把下面描绘的完整图景，理解为 Kith-space 真正的样子；MVP 是它的第一个切片，不是它的全部。
+MVP 的范围划分见 `docs/archive/kith-space/mvp-spec.md`，本文不展开“做什么”，只讲“最终要去哪里”。请把下面描绘的完整图景，理解为 Kith-space 真正的样子；MVP 是它的第一个切片，不是它的全部。
 
 ### 完整图景
 
@@ -108,7 +108,7 @@ MVP 的范围划分见 roadmap.md 和 mvp-spec.md，本文不展开“做什么�
 
 **控制复杂度，逐层解锁。** 有些能力有明确的工程坑或前置条件，硬提前只会拖垮整体质量：邮箱涉及 OAuth / IMAP，画布对流畅度敏感；而 HTTP 局域网入口与拥有本机工具权限的 agent 组合后，安全边界必须特别清楚。v1 只允许用户显式开启受信任局域网访问，并要求访问 Token；HTTPS 与更细的 runtime 权限是邮箱、浏览器等高风险模块上线前的硬前置。
 
-需要区分“当前地基、延后能力”和“永久边界”：Home、Spaces 目录、用户选择 Space 文件夹以及 Space root cwd 属于当前地基；跨 Space Inbox/Tasks 等聚合、跨 Space agent 写编排、邮箱、日历、画布、macOS/Linux **发行与实机验收**属于延后；多真人、多 agent 主机、公网托管、云同步和独立 Web 发行属于明确非目标。延后 macOS/Linux 发行不允许新增共享代码继续只按单一宿主设计，三端工程基线与当前缺口见 `docs/cross-platform-compatibility.md`。架构不再为永久非目标保留休眠机制。
+需要区分“当前地基、延后能力”和“永久边界”：Home、Spaces 目录、用户选择 Space 文件夹以及 Space root cwd 属于当前地基；跨 Space Inbox/Tasks 等聚合、跨 Space agent 写编排、邮箱、日历、画布、macOS/Linux **发行与实机验收**属于延后；多真人、多 agent 主机、公网托管、云同步和独立 Web 发行属于明确非目标。延后 macOS/Linux 发行不允许新增共享代码继续只按单一宿主设计，三端工程基线与当前缺口见 `docs/archive/cross-platform-compatibility.md`。架构不再为永久非目标保留休眠机制。
 
 ## 非目标与反模式
 
@@ -119,20 +119,10 @@ MVP 的范围划分见 roadmap.md 和 mvp-spec.md，本文不展开“做什么�
 - **不做服务器部署或云端产品。** 正式发行物只有 Desktop 安装包。可选的本机/局域网浏览器入口依附 Desktop 生命周期，不支持公网暴露、SaaS、云同步或云数据库。
 - **不做移动 Web、PWA 或推送。** v1 浏览器入口只验收桌面级浏览器。
 - **不做场景专用硬流程。** 不把开发流水线、客服工单这类特定场景的步骤写死进产品。一旦发现产品在为某个具体场景硬编码流程，就是踩到了反模式。
-- **不做闭源商业化。** 不引入协议不兼容的代码（这就是 OpenLoaf 只能做设计参考的原因），不走闭源路线。
+- **不做闭源商业化。** 不走闭源路线。
 - **不为“开箱即用完成度”牺牲通用性。** 当“硬编码一个流程能让某场景立刻好用”和“把环境设计好让通用 agent 自己搞定”冲突时，选后者。
 - **不让效率优化侵蚀协作手感。** 群聊式的、agent 作为在场团队成员的手感是内核，不能为了流程自动化把它压扁成一个无声的任务队列。
 - **警惕权限债。** MVP 阶段外接 runtime 拥有本机较高权限（这是已知并被记录的技术债）。一旦引入会摄入不可信内容的模块（邮箱、浏览器），权限模型必须先升级——这是提示注入通向破坏性操作的攻击链，不能拖。详见 decisions.md。
-
-## 与四个参考项目的关系
-
-Kith-space 不是从零起步，而是站在四个已有开源项目的肩膀上。它们现在都位于 `reference/` 目录，角色分工明确。
-
-**open-tag（Apache-2.0）是代码底座。** 频道 / 群聊 / 私聊、任务、收件箱、多 runtime 适配器、本地 daemon 这些协作骨架直接复用；Kith-space 在其上重做外观、补齐模块、调整数据层。选它作底座而非 OpenLoaf，核心原因有二：协作空间的成熟度（open-tag 原生就有频道 / 私聊 / 任务的一等公民模型），以及协议干净（Apache-2.0，可自由采用宽松许可）。
-
-**OpenLoaf（AGPLv3）是设计参考，仅此而已。** 它的界面质感、跨会话记忆、画布、邮箱 / 日历等模块思路都很值得借鉴，但它是 AGPLv3 的传染性协议，与本项目 MIT / Apache 的立场冲突——所以只借设计理念、用自己的代码重新实现，绝不拷贝其源码。
-
-**openagents（Apache-2.0）和 zano（MIT）是历史研究与局部参考。** 前者的多设备方向不属于 Kith-space 产品路线，只保留其调研结论作为背景；后者的频道 / 私聊交互可作轻量参照。两者都不作为底座。
 
 ---
 

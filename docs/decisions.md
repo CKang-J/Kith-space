@@ -6,9 +6,9 @@
 
 盘问的方式是一次给一个决策、每次给一个明确建议，让用户在 either/or 之间做取舍。会话过程中有几条决策被推翻或修正过（底座、runtime、Redis 的真实用途、聊天历史随文件夹走的成本），这些演化本身是理解项目为什么长成现在这样的关键，因此单列一节保留。
 
-本文只负责"决定了什么 + 为什么 + 代价是什么"。理念与长远愿景见 `vision.md`，阶段划分见 `roadmap.md`，术语见 `glossary.md`，各专项设计的展开见 `docs/kith-space/*.md`（产品定位、MVP 规格、架构提案、UI 方向、迁移计划），本文引用而不重复。
+本文只负责"决定了什么 + 为什么 + 代价是什么"。理念与长远愿景见 `vision.md`，术语见 `glossary.md`，各专项设计的展开见 `docs/kith-space/*.md`（产品定位、架构提案、UI 方向、机制导读，以及已归档的 MVP 规格与迁移计划），本文引用而不重复。
 
-每条决策统一用同一套小标题：一句话结论、背景、选项与选择、推理与权衡、已核实源码事实（若有，标 `文件:行号`，取自 open-tag 源码）。
+每条决策统一用同一套小标题：一句话结论、背景、选项与选择、推理与权衡、已核实源码事实（若有，标 `文件:行号`，取自源码）。
 
 ## 总览索引
 
@@ -16,7 +16,6 @@
 |---|---|---|
 | 1 | 产品核心 | B（个人工作生活 OS）为主线，A（AI 开发团队分工）也要，长期偏重 B |
 | 2 | Runtime 形态 | 不自研 runtime，agent 全外接，自建模块以 MCP 工具暴露 |
-| 3 | 代码底座 | open-tag（Apache-2.0），OpenLoaf 降为设计参考 |
 | 4 | 用户数 | 一个安装实例永久只有一个 Human，删除多用户机制 |
 | 5 | 机器数 | agent 永久只在本机唯一 Local Runtime Worker 上执行 |
 | 6 | v1 范围 | 薄纵切：协作空间 + 记忆 + 任务两个模块 |
@@ -24,7 +23,6 @@
 | 8 | 工具权限 | 两轴：模块工具按风险分级；外接 runtime 沿用 bypass，记账为债 |
 | 9 | 记忆 | 三层文件式，读用原生文件工具，写工具延后 |
 | 10 | 角色模板 | 空白职责 + 少量可选起点模板，不绑定流程 |
-| 11 | UI 投入 | 信息架构现在定死，视觉学 OpenLoaf，豁免"去 AI 味"清单 |
 | 12 | 壳形态 | 单窗口工作区；普通冷启动进入 Home，旧双壳被推翻 |
 | 13 | Chat 地位 | Chat 是默认且常驻的基础工作面；业务资源在右侧标签显示（由决策 38 修正） |
 | 14 | 导航与模块 | Home 增加 Spaces；普通 Space 保持 `Inbox | Tasks | Agents | Settings`；左侧栏常驻 |
@@ -84,25 +82,11 @@
 
 ---
 
-## 决策 3：底座选 open-tag，OpenLoaf 降为设计参考
-
-**结论**：代码底座 = open-tag（Apache-2.0）。OpenLoaf 只作设计参考，用自己的代码重新实现其模块概念，绝不拷贝源码。
-
-**背景**：这是一条**被推翻后重定**的决策（演化详见后文专节）。底座曾一度锁定 OpenLoaf——因为用户欣赏它的界面质感和 local-first 生产力 OS 的完整形态。
-
-**选项与选择**：OpenLoaf（曾选，后推翻）/ open-tag（最终选）/ openagents / zano。最终选 open-tag。
-
-**推理与权衡**：推翻 OpenLoaf 的直接原因是许可证——用户明确要 MIT/Apache 宽松协议、不走闭源商业化，而 OpenLoaf 是 AGPLv3（传染性 copyleft，不可重新授权），协议立场根本冲突。选 open-tag 的正面理由有二：协作空间成熟度（原生就有频道/私聊/任务的一等公民模型），以及协议干净（Apache-2.0）。代价是放弃 OpenLoaf 现成的画布/邮箱/日历/记忆代码，这些概念要用自己的代码重做。
-
-**已核实源码事实**：许可证已核实——OpenLoaf=AGPLv3，open-tag=Apache-2.0，openagents=Apache-2.0，zano=MIT。open-tag 白给频道/群聊/私聊 + runtime 适配器。
-
----
-
 ## 决策 4：一个安装实例永久只有一个 Human
 
 **当前结论（2026-07-11 推翻）**：一个安装实例只有一个全局 Human，并对全部本地 Space 拥有完整权限。首次启动只填写名称（必填）、邮箱和描述（选填），这是给 agent 使用的本地资料，不是账户注册。删除邀请、登录、密码、owner/admin/member、Human membership、Human-Human DM 和 RBAC。
 
-**原决定**：v1 单真人，但保留 open-tag 多用户能力，等待未来云化/多真人。
+**原决定**：v1 单真人，但保留既有实现的多用户能力，等待未来云化/多真人。
 
 **推理与权衡**：多用户不是“免费保留”。它持续渗透 schema、API、导航、认证和权限判断，并让个人 AgentOS 的领域模型含混。产品定位已经排除团队协作，因此现在删除比长期背负双重语义更低成本。Agent 的频道成员关系仍保留，只承担上下文与唤醒语义。
 
@@ -188,18 +172,6 @@
 
 ---
 
-## 决策 11：UI 投入——信息架构现在定死，视觉学 OpenLoaf，豁免"去 AI 味"清单
-
-**结论**：信息架构现在就定死（不推迟）。视觉方向 = 模仿 OpenLoaf 干净、好看、丝滑的质感。用户**明确豁免**自己 CLAUDE.md 里那套"去 AI 味"清单（字重、卡片、阴影、状态圆点、全大写等约束）对本项目的适用。
-
-**背景**：UI 投入到什么程度、什么时候投入，需要定调。用户在会话中主动调整了这条——从"视觉可后置"上调为"信息架构现在定"。
-
-**选项与选择**：信息架构也后置 / 信息架构现在定死（用户调整后选中）。视觉——遵循"去 AI 味"清单 / 学 OpenLoaf 质感（选中，豁免清单）。
-
-**推理与权衡**：信息架构是贵改（波及面大、返工成本高），必须趁早对齐，作为后续视觉精雕的稳定地基；视觉是便宜改，可后置到架构定死之后。这条排序贯穿迁移计划（P3 定信息架构、P4 做视觉）。豁免"去 AI 味"清单是用户对本项目的明确特批——设计以 OpenLoaf 质感为准绳，允许卡片、bento 分区、适度阴影圆角，只要服务于 OpenLoaf 式观感。代价是本项目视觉判断标准换成"是否贴近 OpenLoaf 干净好看"，而非那份通用清单；但不等于放任视觉噪声，信息优先级依然要清晰。
-
----
-
 ## 决策 12：壳形态改为单窗口工作区
 
 **当前结论（2026-07-12 再修正）**：v1 采用一个 `WorkspaceFrame`。普通冷启动且没有显式深链接时进入唯一 `Home` Space；显式 Space 深链接继续直达目标，托盘重新显示未销毁窗口时保留现场。Chat 是默认主页，功能模块在同一窗口中与 Chat 分屏或独占，不再经过独立空间总览壳。
@@ -278,7 +250,7 @@
 
 **结论**：数据层从 Postgres + Redis 迁移到 SQLite + 进程内替代 Redis（option B）。**修正**：Redis 运行时真正在用的只有两个单调 INCR 计数器（`nextSeq` + `nextTaskNumber`）+ 启动 `reconcileCounters`；其 pub/sub 与 agent-wake 导出都是死代码。所以迁移比初判更小。
 
-**背景**：这是一条**在写文档时被更深源码核实修正**的决策（演化详见后文专节）。open-tag 用 Postgres + Redis；本产品是单用户单机桌面双击形态，需要决定数据层怎么走。
+**背景**：这是一条**在写文档时被更深源码核实修正**的决策。既有实现用 Postgres + Redis；本产品是单用户单机桌面双击形态，需要决定数据层怎么走。
 
 **选项与选择**：保留 Postgres+Redis / 迁移到 SQLite + 进程内替代（option B，选中）。选 SQLite。
 
@@ -292,7 +264,7 @@
 
 **当前结论（2026-07-12 路径补充）**：Space 根植于一个用户可见的本地文件夹、自包含、可移植（option C，升级为“每 Space 独立 SQLite 文件”）。默认 Space 容器为 `~/Kith-space`，唯一 Home 位于 `~/Kith-space/Home`，普通 Space 可由用户选择任意本机文件夹。每个 Space 保留自己的频道、消息、任务、agent、Space Memory 和 Agent Memory；同一 Space 的 agent 共享该 Space 根目录作为 cwd。中央 app data 默认 `~/.kith-space`，保存 app.db、User Memory、runtime state、日志与 CLI wrapper，不作为业务文件 cwd。
 
-**背景**：这是一条**在 SQLite 决策下被重新评估成本**的决策（演化详见后文专节）。工作区数据怎么存、能不能随文件夹搬走？openagents 用中心存储，OpenLoaf 用文件夹根植（`<proj>/.openloaf/`，可移植）。
+**背景**：这是一条**在 SQLite 决策下被重新评估成本**的决策。工作区数据怎么存、能不能随文件夹搬走？既有实现采用中心存储，而可移植文件系统方案用文件夹根植（`<proj>/.openloaf/`）。
 
 **选项与选择**：中心库存全部 / 文件夹根植可移植（option C，选中，并升级为每工作区独立 db 文件）。选文件夹根植。
 
@@ -320,7 +292,7 @@
 
 **删除不是延后**：多真人、远程 agent 主机、公网托管、SaaS、云数据库、移动 Web、PWA 和推送是永久非目标。邮箱、日历、画布、跨 Space 聚合、HTTPS 安全升级及 macOS/Linux 发行才是延后能力。
 
-**实施方式**：先同步权威文档，再依次完成本地领域与 `app.db`、浏览器访问安全、Electron 宿主、UI/入口清理和继承资产总审计。每阶段独立验证、独立提交。完整规格见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`。
+**实施方式**：先同步权威文档，再依次完成本地领域与 `app.db`、浏览器访问安全、Electron 宿主、UI/入口清理和继承资产总审计。每阶段独立验证、独立提交。完整规格见 `docs/archive/specs/2026-07-11-personal-agent-os-local-pivot-design.md`。
 
 **Windows 发行姿态**：Desktop 是唯一正式发行路径，但“有安装器文件”和“已公开发行”必须分开。A6 锁定 x64、per-user、assisted NSIS；本地/CI 产物默认未签名，CI 只上传 artifact。代码签名证书是公开分发的硬前置，真实安装/卸载测试也是正式发布验收的一部分。该约束不改变未来 macOS/Linux 路线，只规定当前 Windows v1 的可验证边界。
 
@@ -348,7 +320,7 @@
 
 **推理与权衡**：Space root cwd 让 Claude Code、Codex、opencode 的体验等价于用户在目标文件夹启动 CLI，多个 agent 也能对同一项目文件协作。代价是失去本就不可靠的 per-agent cwd 心理隔离，因此安全文档必须明确 cwd 不是沙箱。把 Agent Memory 放回 `.kith` 恢复可移植性，把 prompt 临时文件和 adapter 状态留在 app data 则避免污染用户项目。Home 的 Spaces 模块基于真实 registry，不重犯伪全局 Inbox 的错误；跨 Space task/message/dispatch 通过 Core 领域服务按 targetSpaceId 执行、幂等并审计，不直接写其他 SQLite，也不假装是 Human 亲自发送。
 
-**实施边界**：H1-H4（路径、cwd/记忆、文件夹接入、Home Spaces UI）属于 A1-A6 验收前置修复。跨 Space 写编排 H5 后续渐进实现，先只读真实摘要，再接 task/message/dispatch；没有真实数据前不做占位视图。完整规格见 `docs/superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
+**实施边界**：H1-H4（路径、cwd/记忆、文件夹接入、Home Spaces UI）属于 A1-A6 验收前置修复。跨 Space 写编排 H5 后续渐进实现，先只读真实摘要，再接 task/message/dispatch；没有真实数据前不做占位视图。完整规格见 `docs/archive/specs/2026-07-12-home-space-and-space-root-design.md`。
 
 **实施状态**：P-A7 H1-H4 已完成。`src/paths.ts` 已把 `KITH_SPACE_HOME` 收窄为 app data 覆盖，并以 `KITH_SPACE_SPACES_DIR` 独立隔离默认 Space 容器；app.db 保存稳定 homeSpaceId，Home 默认根为 `~/Kith-space/Home`。`src/agents/agentWorkspacePaths.ts` 与 `AgentManager` 已把主要 runtime cwd、Agent Memory 和 runtime state 拆为三个路径，并对派生删除路径做容器逃逸校验；项目 skills 使用 Space root，profile/reset 与 Human 侧记忆浏览使用对应 Agent Memory，同 agent reset/start 串行。OpenCode 已用 child-only inline execution agent 替代覆盖用户 `AGENTS.md`。H3 的 `SpaceRootService` 和 Space API 已实现默认创建、普通目录接入、兼容 workspace.db 稳定 ID 复用、`ready | missing | error` 列表状态与移动后重新定位；重复 root/ID、损坏或不兼容数据库、symlink 和身份不匹配会拒绝，冲突 slug 只调整本机路由别名，接入/打开共用 SQLite 完整性与表列校验。普通 API 不隐式重建缺失 root，relocate 失败回滚 registry；失联深链和全失联恢复保持 relocate 可达。H4 已以 stable Home 身份实现普通冷启动 Home、Home-only Spaces Dock/卡片、搜索/刷新/创建/接入/重连、最近打开记录与同窗导航；普通 Space 不能激活该模块。SpaceSwitcher 只保留快速切换、应急重连和 Home Spaces 入口。2026-07-18 本轮用户验收已完成，H5 未开始。
 
@@ -374,7 +346,7 @@
 
 **推理与权衡**：原实时轨迹栏展示所有会话事件，会把并行 agent 工作误导为当前会话上下文；文件和 thread 索引又散落在 Chat Tab，模块打开后入口与布局规则不一致。一个会话级聚合面板把“当前会话的辅助索引”放在稳定位置，同时保留 Module 一次一个、话题正文仍在 Chat、Tasks 仍是模块的既有边界。代价是三栏需要明确最小宽度和降级顺序，因此聚合面板优先于会话列表、低于主要工作面与 Module；宽度不足时临时收至 `0`，不退化为覆盖 Module 的抽屉。
 
-**实施边界**：聚合面板不是通用停靠系统，不可拖拽改宽，不持久化到 URL；轨迹仍是本次前端会话内每会话 300 条的有界缓冲，不新增历史表。普通话题和P-A10 v2 required turn的server-owned thread都必须在Core归一到父会话，逐条事件与terminal状态不得直接使用thread surface作为聚合`conversationId`。话题列表用独立 thread summaries 查询，文件搜索只覆盖本次加载的当前会话 100 条附件。完整规格见 `docs/superpowers/specs/2026-07-14-chat-aggregate-panel-design.md`。
+**实施边界**：聚合面板不是通用停靠系统，不可拖拽改宽，不持久化到 URL；轨迹仍是本次前端会话内每会话 300 条的有界缓冲，不新增历史表。普通话题和P-A10 v2 required turn的server-owned thread都必须在Core归一到父会话，逐条事件与terminal状态不得直接使用thread surface作为聚合`conversationId`。话题列表用独立 thread summaries 查询，文件搜索只覆盖本次加载的当前会话 100 条附件。完整规格见 `docs/archive/specs/2026-07-14-chat-aggregate-panel-design.md`。
 
 ---
 
@@ -390,7 +362,7 @@
 
 **任务边界**：Human 选择“指派任务”并恰好 `@` 一个 Agent 时，必须把该 Agent 写成真实 assignee，并按明确指派绕过三种模式；没有 `@` 时创建未指派频道任务，仅主动成员可被环境唤醒；多个 Agent mention 因当前任务只有单 assignee 而在提交前拒绝，不能静默挑选目标。
 
-**实施边界与状态**：该决策已于 2026-07-14 落地。纯策略、独立设置与消息适配模块分别位于 `src/agents/agentResponsePolicy.ts`、`agentResponseSettings.ts` 和 `agentResponseDelivery.ts`；实时 wake、reconnect backlog、Agent message check 与 prompt 共同消费响应指令。schema v5、默认值/频道覆盖 API、窄实时失效、真实任务 assignee 与 Agent Profile 默认卡片均已实现。2026-07-16 只调整前端入口：频道昵称后徽标/hover 菜单退役，频道覆盖改由消息头像点击 Agent 卡片承载；该卡片只能写当前频道覆盖或恢复默认，不能修改 Agent 默认值，成员设置页仍不复制第二套编辑器。完整规格与验证状态见 `docs/superpowers/specs/2026-07-14-agent-channel-response-mode-design.md`。
+**实施边界与状态**：该决策已于 2026-07-14 落地。纯策略、独立设置与消息适配模块分别位于 `src/agents/agentResponsePolicy.ts`、`agentResponseSettings.ts` 和 `agentResponseDelivery.ts`；实时 wake、reconnect backlog、Agent message check 与 prompt 共同消费响应指令。schema v5、默认值/频道覆盖 API、窄实时失效、真实任务 assignee 与 Agent Profile 默认卡片均已实现。2026-07-16 只调整前端入口：频道昵称后徽标/hover 菜单退役，频道覆盖改由消息头像点击 Agent 卡片承载；该卡片只能写当前频道覆盖或恢复默认，不能修改 Agent 默认值，成员设置页仍不复制第二套编辑器。完整规格与验证状态见 `docs/archive/specs/2026-07-14-agent-channel-response-mode-design.md`。
 
 ---
 
@@ -416,7 +388,7 @@
 
 **背景与选择**：该决策先后经历了底部 Dock、单一“图标 + 文字”侧栏与最新双层左侧导航。最新参考图和用户反馈明确要求把模块入口收窄为纯图标，并把频道/私信迁入右侧独立消息中栏，同时补充 Messages 入口；输入框与消息中栏搜索不在本轮范围。
 
-**推理与权衡**：导航只回答“去哪个功能”，会话分组只回答“打开哪个会话”，职责拆分后不会再把频道、私信和业务模块混在同一长列表。tooltip 与 `aria-label` 补足识别和可访问性；Dock 不恢复。业务资源后来由 Workspace Tabs 承担，Settings 信息密度和内部二级导航较高，继续使用独立模态层。完整历史规格见 `docs/superpowers/specs/2026-07-23-chat-icon-rail-message-pane-design.md`，当前布局见决策 38。
+**推理与权衡**：导航只回答“去哪个功能”，会话分组只回答“打开哪个会话”，职责拆分后不会再把频道、私信和业务模块混在同一长列表。tooltip 与 `aria-label` 补足识别和可访问性；Dock 不恢复。业务资源后来由 Workspace Tabs 承担，Settings 信息密度和内部二级导航较高，继续使用独立模态层。完整历史规格见 `docs/archive/specs/2026-07-23-chat-icon-rail-message-pane-design.md`，当前布局见决策 38。
 
 **实施状态**：2026-07-23 最新修正已实现。`WorkspaceNavigationRail` 组合 SpaceSwitcher 和纯图标 `SidebarModuleNavigation`；`ChatSidebar` 只在 Chat 中挂载消息中栏，业务模块态只保留图标栏。Settings 由独立 `SettingsDialog` 复用既有设置内容。URL 与模块 resource query 保持可恢复，`WorkspaceDock` 与案例展示继续保持退役。
 
@@ -438,7 +410,7 @@
 
 **Rust 决策门**：只有可重复性能基线显示产品 SLO 未达标、结构性问题已经消除、profiler 把多数可控 CPU 时间归因到一个稳定且可独立输入输出的 Module，并且 Windows/macOS/Linux 构建维护收益为正时，才另立 ADR 评估 sidecar、N-API 或独立二进制 Adapter。替换必须保持 Module Interface 和可回滚路径；全量 Core/项目重写不属于当前路线。
 
-**实施方式**：P-A9.0 先冻结全部消息写入与 Agent 端点所有权矩阵、静态依赖基线、当前 Worker socket-send/reconnect 行为和 1/5/10/20 Agent Core/UI 基线，并产出 P-A9.4 admission/replay 目标契约清单；不要求尚未实现的 ack 测试提前变绿，也不把 socket-send 指标命名为 admission SLO。之后按 Message/Task、Agent Transport、领域依赖、Runtime admission/session 容量、Chat 控制层和证据驱动性能优化逐切片迁移。依赖测试对当前唯一 `agents/agentDeletion -> server/storage` 采用精确临时 allowlist，P-A9.3 强制清除；每个切片保留短期兼容 facade、迁移调用方后删除旧 Implementation。默认不改 schema、公开 URL、Agent CLI 或 `/daemon/connect` 路径；可靠性需要 schema 时必须单独设计。完整规格见 `docs/superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
+**实施方式**：P-A9.0 先冻结全部消息写入与 Agent 端点所有权矩阵、静态依赖基线、当前 Worker socket-send/reconnect 行为和 1/5/10/20 Agent Core/UI 基线，并产出 P-A9.4 admission/replay 目标契约清单；不要求尚未实现的 ack 测试提前变绿，也不把 socket-send 指标命名为 admission SLO。之后按 Message/Task、Agent Transport、领域依赖、Runtime admission/session 容量、Chat 控制层和证据驱动性能优化逐切片迁移。依赖测试对当前唯一 `agents/agentDeletion -> server/storage` 采用精确临时 allowlist，P-A9.3 强制清除；每个切片保留短期兼容 facade、迁移调用方后删除旧 Implementation。默认不改 schema、公开 URL、Agent CLI 或 `/daemon/connect` 路径；可靠性需要 schema 时必须单独设计。完整规格见 `docs/archive/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
 
 **实施状态**：方案已锁定，P-A9.0 当前行为特征测试、精确依赖护栏、Core/UI 性能基线、fake Runtime harness 与 P-A9.4 目标契约清单已完成；P-A9.1a–P-A9.7 的实现、文档、全量门禁、性能回归、packaged/browser smoke 与约定的一次独立只读终审也已完成，并以 `d5261c1` 收口提交。随后真实存量数据暴露了空闲常驻 RuntimeSession 占满容量、队列在 120 秒 TTL 后过期的回归；修复保持容量/队列参数不变，由 AgentManager 按既有消息合并批次和 adapter `online/error` activity 终态产生本地 idle hint，再结合队列压力决定空闲会话是否立即让位，同时让 queued 手动启动延迟到实际 admitted 才进入工作态，并让失败 wake 终止可见回复占位。这不新增跨 Core/Worker 的 turn-complete 协议。socket-send 仍只作为同步 enqueue 诊断指标，total 口径已切到 admission ack，持久 get-or-reserve、RuntimeSession 容量队列以及 P-A9.6 的 20-Agent SQL 260→151 绝对 SLO 结果都已落地。Runtime 契约 v2 在 P-A9 收口时尚未开始，后续已由 P-A10 完成；H5 仍未开始。
 
@@ -484,7 +456,7 @@
 
 **P-A10.6–P-A10.7 实施状态**：workspace schema v8增加restricted advisor control plane、proposal/recall observation与session revision；Claude maintenance运行在无工具/MCP/CLI、ephemeral cwd的独立Port，provider结果经typed actor/evidence、exclude/secret、source ACL、suppression、dedupe、成本/批次/lease验证后才能active/proposed，Codex/opencode当前明确unsupported。Advisor在provider返回和最终写事务内再次CAS校验job lease、Agent/source生命周期，混合retry/source cap按job结算，canonical/revision/evidence/proposal/conflict relation/mutation原子提交；安装级队列限制跨Space maintenance并发。Human面板提供Structured/Files、manage/recall/debug、proposal/revision/relation/evidence/disclosure/source revoke/suppression与advisor freshness，并允许Human把撤权来源的item以新manual revision确认为独立知识而不恢复旧ACL。Core启动和每5秒执行幂等durable-turn恢复扫描，封闭message+delivery提交后所有post-commit effect都失败且再无新事件的窗口。snapshot按session/generation/checksum/64KiB门禁持久和恢复，checklist/short wake跨restart使用session单调revision；compaction以持久turn event revision作为下一Envelope一次性`post_compaction`标记，terminal可重建append后投影失败窗口；高频preview以250ms窗口按类合并并在critical/terminal/cancel/close前flush，event/terminal/usage即时ACK并有60秒snapshot兜底。Codex提供可映射compaction telemetry，Claude/opencode不伪造统一summary。真实Desktop/Web验收发现并根治了Worker turn identity漏接`source=turn`、v2明确任务被legacy task wake双消费并误停Agent、terminal usage未承接final usage event三条跨边界问题。
 
-完整规格：`docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
+完整规格：`docs/archive/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md`。
 
 ---
 
@@ -502,9 +474,9 @@
 
 **备选方案**：否决“每聊天runtime各做一套Advisor”，因为安全与维护逻辑重复；否决“普通内置Agent”与“内置完整Pi coding agent”，因为权限面和资源发现面过大；否决“只调用系统Pi CLI”，因为版本、PATH、全局配置和供应链不可复现；暂缓“捆绑本地模型权重”，因为分发、硬件、质量与许可证成本。保留确定性规则作为模型前后的admission/validation而非唯一语义提炼器；Pi SDK统一多模型调用仍必须走相同授权和审计。
 
-**实施边界**：本决策不命名为P-A10.8，也不吞并P-A11 consolidation、P-A12 skill reconciliation或P-S1 sandbox/approval/Vault。完整提案见`docs/superpowers/specs/2026-07-22-system-memory-advisor-provider-design.md`。
+**实施边界**：本决策不命名为P-A10.8，也不吞并P-A11 consolidation、P-A12 skill reconciliation或P-S1 sandbox/approval/Vault。完整提案见`docs/archive/specs/2026-07-22-system-memory-advisor-provider-design.md`。
 
-**实施事实**：app.db v5持久Provider/Model Profile revision、installation identity、provider/revocation epoch、迁移状态与Pi CLI脱敏快照；workspace schema v9持久逐Agent consent、job执行快照和独立Provider Run。内置`@earendil-works/pi-ai@0.81.1`经one-shot helper只调用公开`createModels → provider factory → getModel → completeSimple`，构建依赖图拒绝`pi-agent-core`、`pi-coding-agent`和compat。CredentialPort、模型Compiler/认证矩阵、artifact digest、最小env/临时HOME、DNS pinning、redirect拒绝、pre/postflight、ProviderEpochGate和最终ACL/epoch复核均已进入实际执行链路。通用Core→Worker completion命令只携带单次activation handle，凭据由Worker经独立本机兑换消息按run/epoch/generation/snapshot取回；Agent/Space/来源频道撤权、设置切换与probe使用同一active-run取消屏障，Core断线时Worker先清理旧helper与准备态再重连。设置UI与Agent Memory面板分别承担安装级配置/诊断/Run审计和逐Agent授权/撤权。
+**实施事实**：app.db v5持久Provider/Model Profile revision、installation identity、provider/revocation epoch、迁移状态与Pi CLI脱敏快照；workspace schema v9持久逐Agent consent、job执行快照和独立Provider Run。内置`@earendil-works/pi-ai@0.84.2`经one-shot helper只调用公开`createModels → provider factory → getModel → completeSimple`，构建依赖图拒绝`pi-agent-core`、`pi-coding-agent`和compat。CredentialPort、模型Compiler/认证矩阵、artifact digest、最小env/临时HOME、DNS pinning、redirect拒绝、pre/postflight、ProviderEpochGate和最终ACL/epoch复核均已进入实际执行链路。通用Core→Worker completion命令只携带单次activation handle，凭据由Worker经独立本机兑换消息按run/epoch/generation/snapshot取回；Agent/Space/来源频道撤权、设置切换与probe使用同一active-run取消屏障，Core断线时Worker先清理旧helper与准备态再重连。设置UI与Agent Memory面板分别承担安装级配置/诊断/Run审计和逐Agent授权/撤权。
 
 ---
 
@@ -522,9 +494,9 @@
 
 **推理与权衡**：自动修改全局 CLI 配置会影响 Kith 之外的终端、引入并发覆盖、schema/版本/企业 managed policy 冲突，并扩大密钥复制面；只靠各 CLI 自有配置又无法提供 Agent/Advisor 可复用、可审计和可迁移的统一体验。Kith-owned 配置加 per-launch compiler 把副作用限制在 Kith 子进程，代价是需要维护四家窄 adapter、在 Codex 等 machine-local 配置受限的 runtime 上使用临时配置根，并在 Space 移机缺少安装级配置时明确进入 `setup_required`。
 
-**安全边界**：普通授权浏览器可管理供应商/模型和选择已有绑定；新增或更换长期密钥额外要求Desktop私有信任，或请求peer、Host与Origin三者全部为loopback且Origin/Host同源（含端口）。本机`localhost:7777`因此可获得与Desktop一致的供应商体验，但跨端口localhost页面与LAN HTTP不承载新密钥。任何已保存密钥的供应商只要backend、API协议、endpoint、network class或allowed egress发生变化，都必须重新输入密钥，禁止旧credential ref静默跟随新的执行身份或目的地。读取本机CLI文件、显示一次性secret与导出诊断仍仅Desktop。聊天 runtime 新增独立 `RuntimeCredentialActivationPort`：Core 只发送强绑定、无密钥 descriptor，Worker 通过Worker-only本机控制通道单次兑换，明文只进入当前Worker内存与child env，并在失败、取消、关闭、超时或lease变化时撤销；不得复用Advisor activation，也不得进入workspace.db、普通控制消息、日志或UI。完整规格见 `docs/superpowers/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`。
+**安全边界**：普通授权浏览器可管理供应商/模型和选择已有绑定；新增或更换长期密钥额外要求Desktop私有信任，或请求peer、Host与Origin三者全部为loopback且Origin/Host同源（含端口）。本机`localhost:7777`因此可获得与Desktop一致的供应商体验，但跨端口localhost页面与LAN HTTP不承载新密钥。任何已保存密钥的供应商只要backend、API协议、endpoint、network class或allowed egress发生变化，都必须重新输入密钥，禁止旧credential ref静默跟随新的执行身份或目的地。读取本机CLI文件、显示一次性secret与导出诊断仍仅Desktop。聊天 runtime 新增独立 `RuntimeCredentialActivationPort`：Core 只发送强绑定、无密钥 descriptor，Worker 通过Worker-only本机控制通道单次兑换，明文只进入当前Worker内存与child env，并在失败、取消、关闭、超时或lease变化时撤销；不得复用Advisor activation，也不得进入workspace.db、普通控制消息、日志或UI。完整规格见 `docs/archive/specs/2026-07-23-model-provider-runtime-memory-settings-design.md`。
 
-**实施事实**：app.db v6与workspace.db v10迁移、稳定对象/不可变revision、三态runtime default、Agent绑定快照、runtime epoch、四家compiler registry、独立聊天activation、Pi RPC v2、脱敏presenter和Settings三页已落地。Pi使用本机0.81.1外部CLI，fixture覆盖strict LF/UTF-8半帧、correlated response、usage、abort、compaction与`agent_settled`；正文增量在Worker合并窗口内拼接，最终消息只补严格缺失尾部，未完成的`toolcall_delta`不再误入正文，工具开始/结束通过`toolCallId`关联并保存有界输入输出。MCP保持unsupported并通过CLI Gateway。CLI导入只读固定用户级文件、拒绝symlink/超限/动态资源，默认从不写回。
+**实施事实**：app.db v6与workspace.db v10迁移、稳定对象/不可变revision、三态runtime default、Agent绑定快照、runtime epoch、四家compiler registry、独立聊天activation、Pi RPC v2、脱敏presenter和Settings三页已落地。Pi使用本机0.84.2外部CLI，fixture覆盖strict LF/UTF-8半帧、correlated response、usage、abort、compaction与`agent_settled`；正文增量在Worker合并窗口内拼接，最终消息只补严格缺失尾部，未完成的`toolcall_delta`不再误入正文，工具开始/结束通过`toolCallId`关联并保存有界输入输出。MCP保持unsupported并通过CLI Gateway。CLI导入只读固定用户级文件、拒绝symlink/超限/动态资源，默认从不写回。
 
 ---
 
@@ -584,7 +556,7 @@
 
 **推理与权衡**：等到开始 macOS/Linux 打包时再补兼容，会让 Windows-only 假设持续进入共享模块，最终形成高成本回填；现在立即宣称三端已支持又与真实发行、CI 和实机证据冲突。因此采用“发行范围与工程基线分离”：产品状态诚实保持 Windows-first，新增工程决策从现在起不继续制造跨平台债，并用活审计清单记录尚未完成的部分。
 
-**验证边界**：平台无关行为先由共享契约测试覆盖；涉及宿主语义的改动再由 Windows/macOS/Linux runner 或真实 smoke 覆盖。条件 `skip` 只代表透明缺口，不算目标平台通过。某平台暂未验证时必须在能力探测、UI/错误、PR 验证说明和 `docs/cross-platform-compatibility.md` 中显式记录，不得静默降级。当前审计已确认三端 CI、Windows 进程树/测试门禁、macOS/Linux packaging 与 platform integration 等缺口，处理顺序以该文档为准。
+**验证边界**：平台无关行为先由共享契约测试覆盖；涉及宿主语义的改动再由 Windows/macOS/Linux runner 或真实 smoke 覆盖。条件 `skip` 只代表透明缺口，不算目标平台通过。某平台暂未验证时必须在能力探测、UI/错误、PR 验证说明和 `docs/archive/cross-platform-compatibility.md` 中显式记录，不得静默降级。当前审计已确认三端 CI、Windows 进程树/测试门禁、macOS/Linux packaging 与 platform integration 等缺口，处理顺序以该文档为准。
 
 ---
 
@@ -618,45 +590,7 @@
 
 **MCP 结论**：`2026-07-28` modern core 的无 `initialize/initialized` 与同版本 Streamable HTTP 的无 `Mcp-Session-Id` 对未来外部 host/多实例有价值，但不提供 Canvas 的身份、ACL、幂等、事务、revision、冲突或撤销。MVP 继续使用现有 broker-backed stdio MCP + CLI fallback；SDK v2 + dual-era 是独立后续，不作为 Canvas 前置。Kith 的 `x-kith-session-handle` 是 application-level broker handle，不是 MCP transport session；它单独无权，仍需当前 activation 与 worker generation 才能解析 turn claims。
 
-**许可与实施边界**：Recombyn 根仓 Apache-2.0 可移植，但首次复制前必须完成 source manifest、Kith NOTICE/修改声明、MIT skill 与 Paynter brush 完整 notice、图标/品牌资产及在线字体许可核验；拿不到完整 Paynter MIT notice 就不复制该笔刷。不得以全量复制后再收拾的方式绕过 UI island、Tailwind 3/Preflight/portal 隔离、Kith-owned SVG sanitizer 和视觉 golden 门。完整规格见 `docs/superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md`，架构决策见 `docs/adr/0038-adopt-recombyn-canvas-module.md`。
-
----
-
-## 被推翻/修正的决策
-
-这一节专门记录会话中演化过的决策。保留它们，是因为"为什么没走另一条路"往往比结论本身更能帮未来的读者理解项目的形状。
-
-### 一、底座：OpenLoaf → open-tag（推翻）
-
-底座曾一度锁定 **OpenLoaf**——它是 local-first 的 AI 生产力 OS（画布、跨会话记忆、自建 ToolLoopAgent runtime、原生邮箱/日历/任务模块），界面质感和完整度都很吸引用户。
-
-推翻的原因是许可证。用户明确要 MIT/Apache 宽松协议、不走闭源商业化，而 **OpenLoaf 是 AGPLv3**——传染性 copyleft，不可重新授权，与项目的宽松许可立场根本冲突。于是底座改为 **open-tag（Apache-2.0）**，OpenLoaf 降级为纯设计参考：借它的模块概念和界面质感，用自己的代码重新实现，绝不拷贝源码。
-
-这次推翻的连锁影响很大——它直接触发了下面 runtime 决策的改变，也定下了此后"凡涉及协议的选型都必须干净可自由采用"的原则。
-
-### 二、runtime：复用 OpenLoaf 现成 runtime → 全外接、不自研（随底座改变）
-
-在底座还是 OpenLoaf 时，runtime 的矛盾（用户既要"不从零造 runtime"、又要"原生丝滑操作"）曾用一个折中化解：**复用 OpenLoaf 现成的 ToolLoopAgent runtime**——既没从零造，又能拿到 in-app runtime 的丝滑。
-
-底座推翻后这个折中不成立了（不能拷 AGPLv3 代码）。于是 runtime 决策重定为**全外接、不自研**（决策 2）：所有 agent 接本机已有 runtime，自建模块以 MCP 工具暴露。"原生丝滑"改由 MCP 层 + UI 桥达成，并明确接受略低的丝滑天花板。这条演化说明：底座这类地基决策一变，上层的技术取舍要跟着重算。
-
-### 三、Redis 用途：三件事 → 只有两个计数器在跑（修正）
-
-Redis 一度被描述为"做三件事"：全局 seq 计数器、SSE pub/sub、agent 唤醒 long-poll（这也是 `redis.ts` 顶部注释的声明，`redis.ts:1`）。据此，迁移到 SQLite 被认为要替代三套机制。
-
-写文档时的更深源码核实**修正**了这个判断：运行时真正依赖 Redis 的**只剩两个 INCR 计数器**（`nextSeq` `redis.ts:50` + `nextTaskNumber` `redis.ts:65`）。pub/sub 与 wake 是死代码——人类端实时早已由 socket.io 单实例直发承担（`realtime.ts:9`），agent 唤醒早已走 daemon WS 定向下发，`publishEvent`（`redis.ts:70`）和 `pokeAgent`（`redis.ts:75`）零调用点。所以迁移比初判小得多：把两个计数器搬进程内、整体删掉 `redis.ts`，`realtime.ts` 几乎不动。这条修正提醒：顶部注释可能滞后于代码实际，判断迁移成本要看真实调用点。
-
-### 四、聊天历史随文件夹走：大改 → 中等有界（修正）
-
-"让聊天历史随工作区文件夹走"一度被判为**大改**——但那个判断成立于 Postgres 语境：消息都在一个中心 PG 库里，要拆到文件夹意味着改存储模型。
-
-SQLite 决策（决策 18）落定后这个成本被**修正**：SQLite 本身就是文件，把整个工作区的库做成 `<folder>/.kith/workspace.db` 即可，不改存储格式。于是"随文件夹走"从大改降为**中等、有界**的改动（每工作区一个 db 文件，趁 P0 数据迁移一起做）。这条修正是决策 18 和决策 19 联动的结果——一个地基决策（换 SQLite）顺带把另一条决策（可移植工作区）的成本大幅拉低。
-
-### 五、per-agent cwd 隔离 -> Space root 共享 cwd（修正）
-
-open-tag 的每 agent 私有 cwd 曾被沿用为默认工作空间，并在权限决策中被描述成一层目录隔离。A1-A6 实际验收证明它会把用户业务文件生成进隐藏 app data，并让 Agent Memory 脱离所属 Space；同时 cwd 从来不能阻止高权限 runtime 访问绝对路径，因此不是安全边界。
-
-决策 23 修正为同一 Space 的 agent 共享 Space root cwd。隔离职责拆开：Agent Memory 以 `<space>/.kith/agents/<id>` 区分，runtime 临时状态以 app data 下的 `<spaceId>/<agentId>` 区分，真正的风险控制仍由工具审批、runtime 权限与未来沙箱承担。
+**许可与实施边界**：Recombyn 根仓 Apache-2.0 可移植，但首次复制前必须完成 source manifest、Kith NOTICE/修改声明、MIT skill 与 Paynter brush 完整 notice、图标/品牌资产及在线字体许可核验；拿不到完整 Paynter MIT notice 就不复制该笔刷。不得以全量复制后再收拾的方式绕过 UI island、Tailwind 3/Preflight/portal 隔离、Kith-owned SVG sanitizer 和视觉 golden 门。完整规格见 `docs/archive/specs/2026-08-15-recombyn-canvas-workspace-design.md`，架构决策见 `docs/adr/0038-adopt-recombyn-canvas-module.md`。
 
 ---
 
@@ -671,4 +605,4 @@ open-tag 的每 agent 私有 cwd 曾被沿用为默认工作空间，并在权�
 
 ---
 
-*本文档记录设计会话的决策与推理，是"为什么这样定"的档案。落地步骤见 `docs/kith-space/migration-plan.md`，功能验收见 `docs/kith-space/mvp-spec.md`。*
+*本文档记录设计会话的决策与推理，是"为什么这样定"的档案。里程碑与产品范围见 `docs/archive/kith-space/`（migration-plan / mvp-spec）。*

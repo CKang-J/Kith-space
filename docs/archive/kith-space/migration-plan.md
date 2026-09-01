@@ -1,6 +1,6 @@
 # Kith-space 分阶段改造计划
 
-本文记录从当前 open-tag 衍生实现收敛到本机个人 AgentOS 的工程顺序。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`，权威转向规格见 `../superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，Home/Space root 补充见 `../superpowers/specs/2026-07-12-home-space-and-space-root-design.md`，当前 P-A9 架构收敛见 `../superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
+本文记录从当前衍生实现收敛到本机个人 AgentOS 的工程顺序。产品边界见 `product-brief.md`，验收见 `mvp-spec.md`，权威转向规格见 `../superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，Home/Space root 补充见 `../superpowers/specs/2026-07-12-home-space-and-space-root-design.md`，当前 P-A9 架构收敛见 `../superpowers/specs/2026-07-18-desktop-modular-monolith-architecture-design.md`。
 
 截至 2026-07-18，A1-A6 原定代码切片与 A7 H1-H4 已完成并通过本轮用户验收；当前先实施 P-A9 模块化单体架构收敛，H5 与 Runtime 契约 v2 继续暂停。
 

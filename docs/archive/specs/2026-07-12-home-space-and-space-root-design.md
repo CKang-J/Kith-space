@@ -4,7 +4,7 @@
 确认日期：2026-07-12。
 适用范围：A1-A6 用户验收后的前置修复；完成前不进入 Runtime 契约 v2。
 
-本文固定四件事：`Home` 的产品角色、用户可见 Space 根目录、agent 的实际工作目录与记忆归属，以及未来跨 Space 编排的安全边界。它补充 `2026-07-11-personal-agent-os-local-pivot-design.md`，并修正从 open-tag 继承的 per-agent cwd 遗留。
+本文固定四件事：`Home` 的产品角色、用户可见 Space 根目录、agent 的实际工作目录与记忆归属，以及未来跨 Space 编排的安全边界。它补充 `2026-07-11-personal-agent-os-local-pivot-design.md`，并修正从既有实现继承的 per-agent cwd 遗留。
 
 ## 1. 目标与非目标
 

@@ -9,7 +9,7 @@ pnpm test --unit
 pnpm run browser-access:dev local --port 7777 --rotate-token
 ```
 
-当前正式打包与实机验收只覆盖 Windows x64；macOS/Linux 尚未进入发行范围。源码与共享命令仍须遵守 [`Windows/macOS/Linux 兼容性基线`](./cross-platform-compatibility.md)。下文以 PowerShell 为主；不含环境变量赋值的 `pnpm` 命令可在 PowerShell、cmd、bash、zsh 中直接运行。`stop`、`wt:*`、`dev:e2e:*` 已统一为 Node 入口，平台进程操作封装在窄适配器中，不再要求 Bash 或 `pkill`。
+当前正式打包与实机验收只覆盖 Windows x64；macOS/Linux 尚未进入发行范围。源码与共享命令仍须遵守 [`Windows/macOS/Linux 兼容性基线`](./archive/cross-platform-compatibility.md)。下文以 PowerShell 为主；不含环境变量赋值的 `pnpm` 命令可在 PowerShell、cmd、bash、zsh 中直接运行。`stop`、`wt:*`、`dev:e2e:*` 已统一为 Node 入口，平台进程操作封装在窄适配器中，不再要求 Bash 或 `pkill`。
 
 ## 1. 首次准备
 
@@ -52,7 +52,7 @@ $env:KITH_SPACE_SPACES_DIR = Join-Path $env:KITH_SPACE_HOME "spaces"
 pnpm run desktop:dev
 ```
 
-这会为本次终端创建一套带随机 GUID 的一次性 app data 与 Space 容器，不是一台电脑唯一的正式目录。正式默认值分别是 `~/.kith-space` 与 `~/Kith-space`。该临时 profile 中创建的 Space 和 Agent Memory 都会随终端验收目录一起丢弃；Claude Code、Codex、opencode 的 cwd 是其中实际注册的 Space root，不要在这套 profile 中保存正式工作。路径分层见 [`Home 与 Space root 设计`](./superpowers/specs/2026-07-12-home-space-and-space-root-design.md)。
+这会为本次终端创建一套带随机 GUID 的一次性 app data 与 Space 容器，不是一台电脑唯一的正式目录。正式默认值分别是 `~/.kith-space` 与 `~/Kith-space`。该临时 profile 中创建的 Space 和 Agent Memory 都会随终端验收目录一起丢弃；Claude Code、Codex、opencode 的 cwd 是其中实际注册的 Space root，不要在这套 profile 中保存正式工作。路径分层见 [`Home 与 Space root 设计`](./archive/specs/2026-07-12-home-space-and-space-root-design.md)。
 
 关闭窗口默认只是进入托盘。彻底停止时使用托盘菜单的 **Quit**，或在启动终端按 `Ctrl+C`。
 
@@ -128,7 +128,7 @@ pnpm exec tsx scripts/p-a9/runtime-baseline.ts
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/p-a9/runtime-cli-smoke.ps1
 ```
 
-Core 与 fake Runtime 默认执行 1/5/10/20 Agent、5 个 round；Core 每轮先预热 100 次，再测 100 次，最终用于观察 RuntimeWorkerPort admission ack 后的 p95 与容量表现。fake Runtime 只核对确定性的 session 启停事实，不承担最终 SLO 证据；P-A9.6 的 20-Agent SQL 已从 260 降到 151，绝对 SLO 通过。`pnpm run typecheck` 同时覆盖 P-A9 TypeScript 基线脚本。浏览器 Chat fixture 与探针属于低频调试，见 [`dev-debugging.md`](./dev-debugging.md#8-p-a9-chat-浏览器基线与回归)。冻结结果、SLO 与 socket-send/admission 口径见 [`performance/p-a9-baseline.md`](./performance/p-a9-baseline.md)。
+Core 与 fake Runtime 默认执行 1/5/10/20 Agent、5 个 round；Core 每轮先预热 100 次，再测 100 次，最终用于观察 RuntimeWorkerPort admission ack 后的 p95 与容量表现。fake Runtime 只核对确定性的 session 启停事实，不承担最终 SLO 证据；P-A9.6 的 20-Agent SQL 已从 260 降到 151，绝对 SLO 通过。`pnpm run typecheck` 同时覆盖 P-A9 TypeScript 基线脚本。浏览器 Chat fixture 与探针属于低频调试，见 [`dev-debugging.md`](./dev-debugging.md#8-p-a9-chat-浏览器基线与回归)。冻结结果、SLO 与 socket-send/admission 口径见 [`performance/p-a9-baseline.md`](./archive/performance/p-a9-baseline.md)。
 
 ## 7. P-A10 契约与本机容量基线
 
@@ -160,4 +160,4 @@ pnpm run desktop:build
 pnpm run desktop:bundle
 ```
 
-`desktop:build`和`desktop:bundle`都会生成`desktop/dist/runtime/pi-advisor-helper.mjs`与`pi-advisor-build-manifest.json`。manifest固定`@earendil-works/pi-ai@0.81.1`、lockfile integrity、helper SHA-256、Node下限和依赖输入；构建在发现`pi-agent-core`、`pi-coding-agent`或`pi-ai/compat`时失败，并以无网络的非法空请求启动helper，确认ESM/Node builtin加载成功且返回有界`provider_request_invalid`。不要直接执行helper处理真实正文；真实能力探测从Settings“记忆 Advisor”发起，它先完成无正文egress preflight，再使用短时单次凭据activation。
+`desktop:build`和`desktop:bundle`都会生成`desktop/dist/runtime/pi-advisor-helper.mjs`与`pi-advisor-build-manifest.json`。manifest固定`@earendil-works/pi-ai@0.84.2`、lockfile integrity、helper SHA-256、Node下限和依赖输入；构建在发现`pi-agent-core`、`pi-coding-agent`或`pi-ai/compat`时失败，并以无网络的非法空请求启动helper，确认ESM/Node builtin加载成功且返回有界`provider_request_invalid`。不要直接执行helper处理真实正文；真实能力探测从Settings“记忆 Advisor”发起，它先完成无正文egress preflight，再使用短时单次凭据activation。

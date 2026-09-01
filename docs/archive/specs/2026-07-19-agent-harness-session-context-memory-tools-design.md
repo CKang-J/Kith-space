@@ -2,7 +2,7 @@
 
 > 状态：已接受并完成；P-A10.0–P-A10.7 已按依赖顺序实现，并通过自动化与全新 Desktop/Web 真实使用验收。
 > 日期：2026-07-19。
-> 依据：`docs/kith-space/notes/helio-agent-context-memory-tools-research.md` 的本机实测，以及 Kith-space 已完成的 P-A7、P-A8、P-A9 架构边界。
+> 依据：`docs/archive/historical/notes/helio-agent-context-memory-tools-research.md` 的本机实测，以及 Kith-space 已完成的 P-A7、P-A8、P-A9 架构边界。
 > 目的：获得与 Helio 相同的“同一个 Agent 像长期同事一样跨私聊、频道和话题延续关系”的体验，同时修正其不可解释记忆、模型重建 thread target、跨私密边界仅靠自律和 cursor replay 等缺陷。
 
 ## 1. 决策摘要

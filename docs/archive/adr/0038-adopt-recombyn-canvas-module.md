@@ -3,7 +3,7 @@
 > 状态：Accepted
 > 日期：2026-08-15
 > 决策者：产品用户（`1A / 2A / 3A / 4A / 5A`）
-> 详细规格：[Recombyn Canvas Workspace 设计](../superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md)
+> 详细规格：[Recombyn Canvas Workspace 设计](../specs/2026-08-15-recombyn-canvas-workspace-design.md)
 
 ## 背景
 
