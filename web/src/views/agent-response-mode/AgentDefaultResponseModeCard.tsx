@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MessageSquareReply } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { SlidingSegmentedControl, type SlidingSegmentOption } from "../../components/SlidingTabs.tsx";
 import { useStore } from "../../store.tsx";
@@ -54,9 +55,13 @@ export function AgentDefaultResponseModeCard({ agentId, value, onSaved }: AgentD
   };
 
   return (
-    <section className="card agent-response-mode-card" aria-labelledby={`agent-response-mode-${agentId}`}>
-      <h3 id={`agent-response-mode-${agentId}`}>{t("responseMode.title")}</h3>
-      <p className="meta agent-response-mode-card__description">{t("responseMode.defaultDescription")}</p>
+    <section className="card space-y-3" aria-labelledby={`agent-response-mode-${agentId}`}>
+      <div>
+        <h3 id={`agent-response-mode-${agentId}`} className="text-base font-semibold text-foreground flex items-center gap-2">
+          <MessageSquareReply className="size-4 text-primary" /> {t("responseMode.title")}
+        </h3>
+        <p className="text-xs text-muted-foreground mt-1">{t("responseMode.defaultDescription")}</p>
+      </div>
       <SlidingSegmentedControl<AgentResponseMode>
         value={selected}
         options={modeOptions}
@@ -64,9 +69,11 @@ export function AgentDefaultResponseModeCard({ agentId, value, onSaved }: AgentD
         ariaLabel={t("responseMode.title")}
         className="agent-response-mode-card__segments"
       />
-      <p className="agent-response-mode-card__hint">{t(RESPONSE_MODE_COPY[selected].descriptionKey)}</p>
-      <p className="agent-response-mode-card__hint">{t("responseMode.directMessageException")}</p>
-      {error ? <div className="agent-response-mode-card__error" role="alert">{error}</div> : null}
+      <div className="space-y-1 text-xs text-muted-foreground bg-muted/20 p-2.5 rounded-lg border border-border/40">
+        <p className="leading-relaxed font-medium text-foreground/90">{t(RESPONSE_MODE_COPY[selected].descriptionKey)}</p>
+        <p className="leading-relaxed text-muted-foreground/80">{t("responseMode.directMessageException")}</p>
+      </div>
+      {error ? <div className="text-xs text-destructive font-medium" role="alert">{error}</div> : null}
     </section>
   );
 }

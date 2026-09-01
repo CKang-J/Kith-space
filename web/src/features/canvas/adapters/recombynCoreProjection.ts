@@ -130,6 +130,10 @@ export function connectRecombynCoreProjection(
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
   let scheduledDocument: unknown | null = null;
   let scheduledBaseDocument: unknown | null = null;
+  // Latest document reference seen while a pointer interaction was active.
+  // Captured without deep comparison or clones so flush() can persist the
+  // final pointer state exactly once on release (drag/pan/zoom).
+  let interactionPendingDocument: unknown | null = null;
   let queuedDocument = structuredClone(initial.document);
   const report = (error: unknown) => {
     try { port.reportError(error); } catch { /* diagnostics must not poison the mutation queue */ }
@@ -192,25 +196,44 @@ export function connectRecombynCoreProjection(
   const flushScheduled = () => {
     if (settleTimer !== null) clearTimeout(settleTimer);
     settleTimer = null;
-    const next = scheduledDocument;
-    const base = scheduledBaseDocument;
+    let next = scheduledDocument;
+    let base = scheduledBaseDocument;
+    const hadScheduled = scheduledDocument !== null;
     scheduledDocument = null;
     scheduledBaseDocument = null;
+    const deferred = interactionPendingDocument;
+    interactionPendingDocument = null;
+    if (deferred !== null && !same(projected, deferred)) {
+      // The document changed while a pointer interaction was active; the final
+      // state was deferred to keep drag/zoom frames cheap. Persist it now.
+      if (!hadScheduled) pendingMutations += 1;
+      next = deferred;
+      base = structuredClone(projected);
+    }
     if (next !== null && base !== null) enqueueDocument(base, next);
   };
   const unsubscribe = store.subscribe(() => {
     if (closed || suppressProjection) return;
-    // Skip expensive deep comparison and clones during active interactions (drag/pan/zoom).
-    // The debounce timer will catch the final state once the pointer is released.
-    if (options.interactionActive?.()) return;
     const next = (store.getState() as { editor?: { document?: unknown } }).editor?.document;
-    if (next === undefined || same(projected, next)) return;
+    if (next === undefined) return;
+    if (options.interactionActive?.()) {
+      // Skip expensive deep comparison and clones during active interactions
+      // (drag/pan/zoom). Remember only the latest reference; flush() persists
+      // the final pointer state once the pointer is released.
+      interactionPendingDocument = next;
+      return;
+    }
+    if (same(projected, next)) {
+      interactionPendingDocument = null;
+      return;
+    }
     if (scheduledDocument === null) {
       pendingMutations += 1;
       scheduledBaseDocument = structuredClone(projected);
     }
     projected = structuredClone(next);
     scheduledDocument = structuredClone(next);
+    interactionPendingDocument = null;
     if (settleTimer !== null) clearTimeout(settleTimer);
     settleTimer = setTimeout(flushScheduled, options.settleDelayMs ?? 0);
   });

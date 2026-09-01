@@ -128,7 +128,7 @@
     }
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "0.81.1",
+    "@earendil-works/pi-ai": "0.84.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.11.1",
     "busboy": "^1.6.0",

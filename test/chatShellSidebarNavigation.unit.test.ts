@@ -161,7 +161,7 @@ test("collapsed Sidebar previews from the window edge and workspaces auto-collap
   assert.match(frame, /SIDEBAR_LAYOUT_MOTION_MS = 420/);
   assert.match(frame, /data-sidebar-transitioning=\{sidebarTransitioning \? "true" : undefined\}/);
   assert.match(frame, /const CHAT_ONLY_PANE_STYLE: CSSProperties = \{[\s\S]*?width: "auto"[\s\S]*?flexBasis: 0[\s\S]*?flexGrow: 1[\s\S]*?flexShrink: 1/);
-  assert.match(frame, /const chatPaneStyle = activeTab \? undefined : CHAT_ONLY_PANE_STYLE/);
+  assert.match(frame, /const chatPaneStyle = workspacePanelOpen \? undefined : CHAT_ONLY_PANE_STYLE/);
   assert.match(frame, /style=\{chatPaneStyle\}/);
   assert.match(frame, /WORKSPACE_WIDTH_SETTLE_MS = 80/);
   assert.match(frame, /const observer = new ResizeObserver\(scheduleWidthUpdate\)/);
@@ -277,7 +277,7 @@ test("the shell uses semantic theme tokens, a full Sidebar, and tabbed workspace
   assert.doesNotMatch(shellCss, /\.shell-workspace-tabs\s*\{[^}]*border-bottom:/);
   assert.match(shellCss, /\.shell-workspace-tab\s*\{[^}]*height:\s*28px/);
   assert.match(shellCss, /\.shell-workspace-tab:hover,\s*\.shell-workspace-tab:has\(\[data-state="active"\]\)\s*\{[^}]*background:\s*var\(--muted\)/);
-  assert.match(shellCss, /\.shell-workspace-tab__trigger\s*\{[^}]*padding-right:\s*0;[^}]*padding-left:\s*8px/);
+  assert.match(shellCss, /\.shell-workspace-tab__trigger\s*\{[^}]*padding-right:\s*0;[^}]*padding-left:\s*6px/);
   assert.match(shellCss, /\.shell-workspace-tab__close\s*\{[^}]*margin-right:\s*2px;[^}]*opacity:\s*0;[^}]*visibility:\s*hidden;[^}]*pointer-events:\s*none/);
   assert.match(shellCss, /\.shell-workspace-tab:hover \.shell-workspace-tab__close,[\s\S]*?\.shell-workspace-tab:has\(\[data-state="active"\]\) \.shell-workspace-tab__close\s*\{[^}]*opacity:\s*1;[^}]*visibility:\s*visible;[^}]*pointer-events:\s*auto/);
   assert.match(shellCss, /\.shell-workspace-tab \.shell-workspace-tab__close:hover\s*\{[^}]*background:\s*color-mix\(in oklch,\s*var\(--muted\) 92%,\s*var\(--foreground\)\)/);
@@ -332,7 +332,7 @@ test("macOS integrates the native drag region into the interactive workspace hea
     shellCss,
     /\.peer\[data-state="collapsed"\]\s*~\s*\.shell-workspace-inset\s+\.shell-chat-main-card\s+\.chat-head::before\s*\{[^}]*width:\s*120px;[^}]*pointer-events:\s*none;[^}]*-webkit-app-region:\s*no-drag/,
   );
-  assert.match(sidebarComponent, /state === "expanded" \? PanelLeftCloseIcon : PanelLeftOpenIcon/);
+  assert.match(sidebarComponent, /PanelVisibilityIcon open=\{state === "expanded"\} \/>/);
   assert.match(shellCss, /\.shell-workspace-tabs\s+:is\(button,\s*\[role="tab"\]\)\s*>\s*svg\s*\{[^}]*width:\s*14px;[^}]*height:\s*14px/);
   assert.match(globalCss, /\.chat-head-icon-btn>svg\{width:14px;height:14px\}/);
   assert.match(globalCss, /\.chat-head__channel-title \.channel-row-icon\{width:14px;height:14px/);

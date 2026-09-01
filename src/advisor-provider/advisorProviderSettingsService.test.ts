@@ -73,3 +73,25 @@ test("provider and model revisions are independent and exact consent is invalida
     unregisterSpace(spaceId);
   }
 });
+
+test("switching to an executor with incompatible model clears only the active binding", async () => {
+  const service = new AdvisorProviderSettingsService();
+  const sqlite = appDataConnection();
+  const revision = Number(sqlite.prepare("SELECT coalesce(max(revision), 0) + 1 FROM advisor_model_profile_revisions").pluck().get());
+  sqlite.prepare(String.raw`INSERT INTO advisor_model_profile_revisions (
+    revision, source_kind, source_snapshot_digest, descriptor_trust, backend_id, model_id, api_kind,
+    thinking_level, canonical_origin, region, tenant_or_project_digest, credential_source_kind,
+    credential_identity_digest, credential_ref, provider_schema_version, data_policy_revision,
+    data_policy_provenance, network_class, allowed_egress_json, model_metadata_json,
+    source_model_configuration_id, source_model_configuration_revision, created_at
+  ) VALUES (?, 'manual', 'test', 'manual', 'anthropic', 'not-in-pi-catalog', 'anthropic-messages',
+    'off', 'https://api.anthropic.com', NULL, NULL, 'kith_secret', 'digest', NULL, 1,
+    'test', 'human_asserted', 'public_cloud', '["https://api.anthropic.com"]', '{}', NULL, NULL, ?)` )
+    .run(revision, Date.now());
+  sqlite.prepare("UPDATE advisor_provider_settings SET current_model_profile_revision = ?, model_configuration_id = 'stale-model', model_configuration_revision = 1 WHERE singleton_id = 1").run(revision);
+  const result = await service.selectProvider("pi_sdk");
+  assert.equal(result.modelProfile, null);
+  const row = sqlite.prepare("SELECT model_configuration_id, model_configuration_revision FROM advisor_provider_settings WHERE singleton_id = 1").get() as { model_configuration_id: string | null; model_configuration_revision: number | null };
+  assert.deepEqual(row, { model_configuration_id: null, model_configuration_revision: null });
+  assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM advisor_model_profile_revisions WHERE revision = ?").get(revision) as { count: number }).count, 1);
+});

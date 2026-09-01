@@ -281,6 +281,7 @@ test("private audited sources require an exact consume-once Human disclosure gra
       outputId: f.db.select().from(schema.turnOutputs).where(eq(schema.turnOutputs.messageId, message.id)).get()?.id,
       messageId: message.id,
       sourceRefs,
+      outputRefs: [],
       disclosureGrantId: grant.id,
     });
   } finally {

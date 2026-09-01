@@ -40,7 +40,7 @@ export function requestCanvasSelectionToChat(
         canvasTitle: source?.canvasTitle,
         documentRevision: source?.documentRevision,
         previewDocument: source?.previewDocument,
-        markedRegions: source?.markedRegions,
+        ...(source?.markedRegions !== undefined ? { markedRegions: source.markedRegions } : {}),
       } satisfies CanvasSelectionToChatDetail,
     }),
   );

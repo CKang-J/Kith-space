@@ -3,7 +3,7 @@ import path from "node:path";
 import { canonicalAdvisorOrigin } from "./advisorModelCompiler.js";
 import { ADVISOR_API_KINDS, type AdvisorApiKind, type AdvisorCredentialSourceKind, type AdvisorThinkingLevel } from "./contracts.js";
 import { VerifiedConfigFileReader, type VerifiedConfigFile } from "./verifiedConfigFileReader.js";
-import { piSdkModelCompatibility } from "./piSdkCatalog.js";
+import { piSdkModelRunnability } from "./advisorModelRunnability.js";
 import { advisorCredentialEnvAllowed } from "./credentialEnvPolicy.js";
 
 export type PiImportWarningCode =
@@ -157,7 +157,7 @@ export class PiCliConfigImporter {
           credentialSourceKind: source.kind,
           ...(source.env ? { credentialEnvRef: source.env } : {}),
           advisorExecutable: Boolean(modelId && apiKnown && originValid && source.kind !== "unsupported"
-            && piSdkModelCompatibility({ backendId, modelId, apiKind, canonicalOrigin, thinkingLevel: thinking }).compatible),
+            && piSdkModelRunnability({ backendId, modelId, apiKind, canonicalOrigin, thinkingLevel: thinking }).supported),
           descriptorTrust: "pi_cli_imported",
         });
       }

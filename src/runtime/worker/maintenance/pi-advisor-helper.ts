@@ -1,11 +1,17 @@
 import {
   createModels,
+  createProvider,
   getSupportedThinkingLevels,
+  type Api,
   type Credential,
   type CredentialInfo,
   type CredentialStore,
+  type Model,
   type ModelThinkingLevel,
+  type Provider,
 } from "@earendil-works/pi-ai";
+import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
+import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { amazonBedrockProvider } from "@earendil-works/pi-ai/providers/amazon-bedrock";
 import { azureOpenAIResponsesProvider } from "@earendil-works/pi-ai/providers/azure-openai-responses";
@@ -70,17 +76,61 @@ async function main(): Promise<void> {
       refresh: "",
       expires: input.credential.expires ?? Date.now() + 60_000,
     } : undefined;
-  const backendId = input.backendId as keyof typeof factories;
+  const backendId = input.backendId;
   const credentials = new FrozenCredentialStore(backendId, credential);
-  const models = createModels({
-    credentials,
-    authContext: { async env() { return undefined; }, async fileExists() { return false; } },
-  });
-  models.setProvider(factories[backendId]());
-  const model = models.getModel(backendId, input.modelId);
+  const authContext = { async env() { return undefined; }, async fileExists() { return false; } };
+  const openAiCompatible = input.apiKind === "openai-completions" || input.apiKind === "openai-responses";
+  const factory = factories[backendId as keyof typeof factories];
+  const models = createModels({ credentials, authContext });
+  let model: Model<Api> | undefined;
+  if (factory) {
+    // Strict path: the bundled provider catalog knows the model id and the
+    // provider's own base URL matches the reviewed canonical origin.
+    models.setProvider(factory());
+    const candidate = models.getModel(backendId, input.modelId);
+    if (candidate && candidate.api === input.apiKind
+      && new URL(candidate.baseUrl).origin === input.canonicalOrigin
+      && getSupportedThinkingLevels(candidate).includes(input.thinkingLevel as ModelThinkingLevel)) {
+      model = candidate;
+    }
+  }
+  if (!model && openAiCompatible) {
+    // OpenAI-compatible endpoint: serve the configured model id at the reviewed
+    // canonical origin through a dynamically constructed provider. pi-ai
+    // auto-detects endpoint compatibility (DeepSeek, Z.AI, Together, ...) from
+    // the base URL, so this path honors the same wire behavior as its catalog.
+    const api = input.apiKind === "openai-completions" ? openAICompletionsApi() : openAIResponsesApi();
+    models.setProvider(createProvider({
+      id: backendId,
+      name: "OpenAI-compatible",
+      baseUrl: input.canonicalOrigin,
+      auth: {
+        apiKey: {
+          name: "API key",
+          resolve: async ({ credential: stored }) => stored?.type === "api_key"
+            && typeof stored.key === "string" && stored.key.length > 0
+            ? { auth: { apiKey: stored.key } }
+            : undefined,
+        },
+      },
+      models: [{
+        id: input.modelId,
+        name: input.modelId,
+        api: input.apiKind,
+        provider: backendId,
+        baseUrl: input.canonicalOrigin,
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 128000,
+        maxTokens: 8192,
+      }],
+      api,
+    }));
+    model = models.getModel(backendId, input.modelId);
+  }
   const thinkingLevel = input.thinkingLevel as ModelThinkingLevel;
-  if (!model || model.api !== input.apiKind) throw new Error("provider_model_incompatible");
-  if (new URL(model.baseUrl).origin !== input.canonicalOrigin) throw new Error("provider_model_incompatible");
+  if (!model) throw new Error("provider_model_incompatible");
   if (!getSupportedThinkingLevels(model).includes(thinkingLevel)) throw new Error("provider_model_incompatible");
   const result = await models.completeSimple(model, {
     systemPrompt: input.systemInstruction,

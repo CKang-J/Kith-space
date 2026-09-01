@@ -11,11 +11,11 @@ export const ADVISOR_PROVIDER_CAPABILITIES: AdvisorProviderCapabilities = Object
   cancellation: "supported",
   usage: "exact",
 });
-export const PI_AI_PACKAGE_INTEGRITY = "sha512-hzHE7Z8l5mgJk+ke67Lge0rwS2+wbKJrFKl9o5M1R1rh33+cCT7D1AHz1OAtX5wFs90E1/BTGhyJRTUHaMxGvQ==";
+export const PI_AI_PACKAGE_INTEGRITY = "sha512-6MzsrYIYNVlE7SfpbL2yYb67Qo58p/7Q+xWG1RZvoX1P80aRCHSod2/13aFpxkow1lPO2LEh3c495J0Gwmyjig==";
 
 const PI_PROVIDER: AdvisorProviderDescriptor = Object.freeze({
     adapterId: "pi_sdk",
-    adapterVersion: "0.81.1",
+    adapterVersion: "0.84.2",
     label: "Built-in Pi SDK",
     bundled: true,
     capabilities: ADVISOR_PROVIDER_CAPABILITIES,

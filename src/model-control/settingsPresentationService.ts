@@ -4,6 +4,7 @@ import type {
   ModelProviderConnection,
   ModelProviderConnectionRevision,
 } from "./contracts.js";
+import { advisorModelCompatibility } from "./advisorModelCompatibility.js";
 
 function destinationLabel(networkClass: ModelProviderConnectionRevision["networkClass"]): string {
   if (networkClass === "loopback") return "Local";
@@ -37,6 +38,10 @@ export class SettingsPresentationService {
       maxOutputTokens: input.model.maxOutputTokens,
       inputCapabilities: [...input.model.inputCapabilities],
       compatibility: { ...input.model.runtimeCompatibilitySnapshot },
+      advisorCompatibility: {
+        pi_sdk: advisorModelCompatibility({ executorId: "pi_sdk", ...input.provider, modelId: input.model.modelId, thinkingLevel: input.model.reasoning, runtimeCompatibilitySnapshot: input.model.runtimeCompatibilitySnapshot }),
+        claude_cli: advisorModelCompatibility({ executorId: "claude_cli", ...input.provider, modelId: input.model.modelId, thinkingLevel: input.model.reasoning, runtimeCompatibilitySnapshot: input.model.runtimeCompatibilitySnapshot }),
+      },
       destination: {
         host: origin.host,
         networkClass: input.provider.networkClass,

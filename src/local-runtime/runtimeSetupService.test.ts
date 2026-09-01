@@ -119,6 +119,23 @@ test("runtime setup does not mistake negative or ambiguous auth output for ready
   }
 }));
 
+test("Pi runtime setup checks provider auth instead of treating model discovery as pending confirmation", () => withTemporaryHome(async () => {
+  const executable = managedRuntimeExecutable("pi");
+  mkdirSync(path.dirname(executable), { recursive: true });
+  writeFileSync(executable, "#!/bin/sh\nexit 0\n");
+  chmodSync(executable, 0o755);
+  const service = new RuntimeSetupService(async (_command, args) => {
+    if (args[0] === "--version") return { status: 0, stdout: "0.84.2\n", stderr: "" };
+    if (args[0] === "--list-models") return { status: 0, stdout: "provider  model\ndeepseek deepseek-v4-flash\n", stderr: "" };
+    assert.deepEqual(args, ["auth", "check", "--provider", "deepseek", "--json", "--no-refresh"]);
+    return { status: 0, stdout: "{\"status\":\"ready\"}\n", stderr: "" };
+  }, {} as any);
+  const snapshot = await service.inspect("pi", true);
+  assert.equal(snapshot.installation.version, "0.84.2");
+  assert.equal(snapshot.account.state, "ready");
+  assert.equal(snapshot.account.label, "已找到本机 Pi 凭据");
+}));
+
 test("managed installation is pinned, recorded and removable without touching system CLIs", () => withTemporaryHome(async () => {
   const updates: Array<{ runtimeId: string; executablePreference: string | null }> = [];
   let executablePreference: string | null = null;

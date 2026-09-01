@@ -4,6 +4,9 @@ export const PI_ADVISOR_MAX_INPUT_BYTES = 256 * 1024;
 const MAX_CREDENTIAL_BYTES = 64 * 1024;
 const MAX_SYSTEM_INSTRUCTION_BYTES = 96 * 1024;
 const MAX_TRANSCRIPT_BYTES = 96 * 1024;
+// OpenAI-compatible endpoints are served through a dynamically constructed
+// provider, so the backend id is a bounded label rather than a factory key.
+const SAFE_BACKEND_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 export type PiAdvisorHelperInput = {
   schemaVersion: 1;
@@ -24,7 +27,7 @@ function within(value: string, max: number): boolean { return Buffer.byteLength(
 export function validatePiAdvisorHelperInput(value: unknown, supportedBackends: ReadonlySet<string>): PiAdvisorHelperInput {
   if (!value || typeof value !== "object") throw new Error("provider_request_invalid");
   const input = value as Partial<PiAdvisorHelperInput>;
-  if (input.schemaVersion !== 1 || typeof input.backendId !== "string" || !supportedBackends.has(input.backendId)
+  if (input.schemaVersion !== 1 || typeof input.backendId !== "string" || !(supportedBackends.has(input.backendId) || SAFE_BACKEND_ID.test(input.backendId))
     || typeof input.modelId !== "string" || !input.modelId || input.modelId.length > 256
     || typeof input.apiKind !== "string" || input.apiKind.length > 128
     || typeof input.thinkingLevel !== "string" || input.thinkingLevel.length > 32

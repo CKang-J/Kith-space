@@ -1,5 +1,23 @@
 import { useEffect, useState } from "react";
-import { MessageCircle, X } from "lucide-react";
+import {
+  Activity,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Copy,
+  Cpu,
+  Folder,
+  Layers,
+  MessageCircle,
+  Pencil,
+  Play,
+  RotateCw,
+  Sparkles,
+  Square,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useStore } from "../store.tsx";
@@ -18,6 +36,8 @@ import { normalizeAgentResponseMode } from "./agent-response-mode/responseModeMo
 import { AgentMemoryPanel } from "./agent-memory/AgentMemoryPanel.tsx";
 import { AgentModelBindingEditor } from "./model-settings/AgentModelBindingEditor.tsx";
 import { AgentActivityTimeline } from "../features/trajectory/AgentActivityTimeline.tsx";
+import { Button } from "../components/ui/button.tsx";
+import { cn } from "../lib/utils.ts";
 import type { TrajSource } from "../trajBuffer.ts";
 
 // Unified agent status label: fine-grained activity (working/thinking/online) takes priority;
@@ -66,7 +86,7 @@ export function Agents({ agentIdOverride }: AgentsProps = {}) {
         <div className="sec">{t("common.agents")} <span className="cnt">{agents.length}</span><button className="addbtn agents-create-button" title={t("members.createAgent")} onClick={() => setModal(true)}>+</button></div>
         {filteredAgents.map((a) => (
           <button key={a.id} className={"item agent-list-item" + (a.id === agentId ? " active" : "")} onClick={() => openAgent(a.id)}>
-            <Avatar seed={a.name} url={avFor(a.avatarUrl)} size={20} /><span className="grow">{a.name}</span><span className={"dot " + statusOf(a)} role="img" aria-label={t("members.statusLabel", { status: agentStatusLabel(t, statusOf(a)) })} title={agentStatusLabel(t, statusOf(a))} />
+            <Avatar seed={a.name} url={avFor(a.avatarUrl)} size={20} /><span className="grow">{a.displayName || a.name}</span><span className={"dot " + statusOf(a)} role="img" aria-label={t("members.statusLabel", { status: agentStatusLabel(t, statusOf(a)) })} title={agentStatusLabel(t, statusOf(a))} />
           </button>
         ))}
         {query && filteredAgents.length === 0 && <div className="empty agent-search-empty">{t("members.searchEmpty")}</div>}
@@ -94,18 +114,29 @@ function Roster({ agents, onCreate }: { agents: any[]; onCreate: () => void }) {
         {agents.length === 0 ? <div className="empty">{t("members.rosterEmpty")} {t("members.rosterEmptyCreate")} <button className="addbtn" onClick={onCreate}>+</button></div>
           : <>
             {agents.length > 0 && <div className="sec">{t("common.agents")} <span className="cnt">{agents.length}</span></div>}
-            {agents.map((a) => {
-              const to = workspaceLocationForModule(location.pathname, location.search, { moduleId: "agents", agent: a.id });
-              const state = statusOf(a);
-              return (
-                <div className="card card-link" key={a.id} role="button" tabIndex={0} onClick={() => nav(to)} onKeyDown={(e) => goKey(e, to)}>
-                  <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}><Avatar seed={a.name} url={avFor(a.avatarUrl)} size={24} />{a.displayName || a.name} <small className="meta">@{a.name}</small></h3>
-                  <div className="meta">{a.description || t("members.generalAgent")}</div>
-                  <div className="kv"><b>{t("common.runtime")}</b> {a.runtime} · {a.model || t("members.useLocalDefault")}</div>
-                  <div className="kv"><b>{t("common.status")}</b> {agentStatusLabel(t, state)}</div>
-                </div>
-              );
-            })}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {agents.map((a) => {
+                const to = workspaceLocationForModule(location.pathname, location.search, { moduleId: "agents", agent: a.id });
+                const state = statusOf(a);
+                return (
+                  <div className="card card-link p-4 rounded-xl border border-border/60 bg-card hover:border-border hover:shadow-xs transition-all cursor-pointer" key={a.id} role="button" tabIndex={0} onClick={() => nav(to)} onKeyDown={(e) => goKey(e, to)}>
+                    <div className="flex items-center gap-2.5 mb-2">
+                      <Avatar seed={a.name} url={avFor(a.avatarUrl)} size={28} />
+                      <div className="min-w-0 grow">
+                        <h3 className="text-sm font-semibold text-foreground truncate">{a.displayName || a.name}</h3>
+                        <div className="text-xs text-muted-foreground">@{a.name}</div>
+                      </div>
+                      <span className={"dot " + state} />
+                    </div>
+                    <div className="text-xs text-muted-foreground line-clamp-2 mb-3 min-h-[32px]">{a.description || t("members.generalAgent")}</div>
+                    <div className="flex items-center justify-between text-xs pt-2 border-t border-border/40 text-muted-foreground">
+                      <span>{a.runtime} · {a.model || t("members.useLocalDefault")}</span>
+                      <span className="font-medium text-foreground/80">{agentStatusLabel(t, state)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </>}
       </div>
     </>
@@ -161,11 +192,32 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
     nav(mergeWorkspaceSearch(`/s/${slug}/channel/${cid}`, discussionSearch));
   };
   const acts = (
-    <div className="agent-acts">
-      <button className="joinbtn" onClick={onMessage ?? msgAgent}><MessageCircle size={13} style={{ verticalAlign: "-2px" }} /> {t("members.dm")}</button>
-      <button className="joinbtn" onClick={() => ctl(a.status === "active" ? "stop" : "start")}>{a.status === "active" ? t("members.stop") : t("members.start")}</button>
-      <button className="joinbtn" onClick={() => setShowRestart(true)}>{t("members.restart")}</button>
-      <button className="joinbtn" style={{ color: "var(--error)" }} onClick={del}>{t("members.delete")}</button>
+    <div className="agent-acts flex items-center gap-1.5 flex-wrap">
+      <Button variant="outline" size="sm" onClick={onMessage ?? msgAgent} className="gap-1.5 h-7 text-xs">
+        <MessageCircle className="size-3.5 text-primary" /> {t("members.dm")}
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => ctl(a.status === "active" ? "stop" : "start")}
+        className="gap-1.5 h-7 text-xs"
+      >
+        {a.status === "active" ? (
+          <>
+            <Square className="size-3.5 text-amber-500" /> {t("members.stop")}
+          </>
+        ) : (
+          <>
+            <Play className="size-3.5 text-green-500" /> {t("members.start")}
+          </>
+        )}
+      </Button>
+      <Button variant="outline" size="sm" onClick={() => setShowRestart(true)} className="gap-1.5 h-7 text-xs">
+        <RotateCw className="size-3.5 text-muted-foreground" /> {t("members.restart")}
+      </Button>
+      <Button variant="ghost" size="sm" onClick={del} className="gap-1.5 h-7 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive">
+        <Trash2 className="size-3.5" /> {t("members.delete")}
+      </Button>
     </div>
   );
   return (
@@ -177,20 +229,56 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
           <button className="joinbtn pph-close" title={t("members.close")} onClick={onClose}><X size={14} /></button>
           {acts}
         </div>
-      ) : <div className="head head-agent"><AvatarPicker name={a.name} url={signedAvatar} size={48} editable busy={avBusy} onPickSeed={onPickSeed} onPickFile={onPickAvatar} /><div className="head-id"><h1>{a.displayName || a.name}</h1><small>@{a.name} <span className={"dot " + live} />{avErr ? <span className="form-err" style={{ marginLeft: 8 }}>{avErr}</span> : null}</small></div>{acts}</div>}
-      <div className="ptabs">
-        {/* Tab order follows AgentDetailPanel spec: integrations (not apps) */}
-        {([
-          ["profile", t("members.tabProfile")],
-          ["permissions", t("members.tabPermissions")],
-          ["dms", t("members.tabDms")],
-          ["reminders", t("members.tabReminders")],
-          ["workspace", t("members.tabMemory")], // keep the query value for existing agentTab=workspace deep links
-          ["integrations", t("members.tabIntegrations")],
-          ["activity", t("members.tabActivity")],
-        ] as [string, string][]).map(([k, label]) => (
-          <button key={k} className={tab === k ? "on" : ""} onClick={() => setSp((prev) => { const n = new URLSearchParams(prev); n.set("agentTab", k); return n; })}>{label}</button>
-        ))}
+      ) : (
+        <div className="head head-agent flex items-center justify-between gap-4 flex-wrap pb-3">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <AvatarPicker name={a.name} url={signedAvatar} size={48} editable busy={avBusy} onPickSeed={onPickSeed} onPickFile={onPickAvatar} />
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold text-foreground tracking-tight flex items-center gap-2 truncate">
+                {a.displayName || a.name}
+              </h1>
+              <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                <span>@{a.name}</span>
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted/60 text-muted-foreground font-medium text-[11px]">
+                  <span className={"dot " + live} />
+                  {agentStatusLabel(t, live)}
+                </span>
+                {avErr && <span className="text-destructive font-medium ml-1">{avErr}</span>}
+              </div>
+            </div>
+          </div>
+          {acts}
+        </div>
+      )}
+      <div className="border-b border-border/40 px-6 py-2 bg-transparent">
+        <div className="inline-flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+          {([
+            ["profile", t("members.tabProfile")],
+            ["permissions", t("members.tabPermissions")],
+            ["dms", t("members.tabDms")],
+            ["reminders", t("members.tabReminders")],
+            ["workspace", t("members.tabMemory")],
+            ["integrations", t("members.tabIntegrations")],
+            ["activity", t("members.tabActivity")],
+          ] as [string, string][]).map(([k, label]) => {
+            const active = tab === k;
+            return (
+              <button
+                key={k}
+                type="button"
+                className={cn(
+                  "px-3 py-1.5 text-xs font-medium rounded-lg transition-all cursor-pointer whitespace-nowrap select-none border-0 outline-none",
+                  active
+                    ? "bg-foreground text-background font-semibold shadow-xs"
+                    : "bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/70"
+                )}
+                onClick={() => setSp((prev) => { const n = new URLSearchParams(prev); n.set("agentTab", k); return n; })}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
       {tab === "workspace" ? <AgentMemoryPanel agentId={id} />
         : tab === "activity" ? <ActivityTab activity={live} id={id} name={a.name} />
@@ -199,20 +287,76 @@ export function AgentProfile({ id, onDeleted, onClose, onMessage }: { id: string
         : tab === "dms" ? <DmsTab id={id} name={a.name} />
         : tab === "reminders" ? <RemindersTab id={id} name={a.name} />
         : (
-          <div className="scroll">
-            <div className="card">
-              <div className="meta">{a.description || t("members.generalAgent")}</div>
-              <div className="kv"><b>{t("common.runtime")}</b> {a.runtime}</div>
-              <div className="kv"><b>{t("common.model")}</b> {a.model || t("members.useLocalDefault")}</div>
-              {a.runtimeConfig?.reasoningEffort && <div className="kv"><b>{t("common.reasoning")}</b> {a.runtimeConfig.reasoningEffort}</div>}
-                <div className="kv"><b>{t("common.status")}</b> <span className="kv-v"><span className={"dot " + live} /> {agentStatusLabel(t, live)}</span></div>
-              <div className="kv"><b>{t("common.session")}</b> {a.sessionId || "(none)"}</div>
-              <div className="kv"><b>{t("common.memory")}</b> <AgentMemoryRoot id={a.id} /></div>
-              {a.createdAt && <div className="kv"><b>{t("common.created")}</b> {fmtDateTime(a.createdAt)}</div>}
-              <div className="task-acts" style={{ marginTop: 14 }}>
-                <button className="joinbtn" onClick={startEdit}>{t("members.editProfile")}</button>
+          <div className="scroll space-y-3">
+            <div className="card space-y-3.5">
+              {a.description ? (
+                <div className="text-xs text-foreground/90 leading-relaxed bg-muted/30 p-3 rounded-lg border border-border/40">
+                  {a.description}
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground italic">
+                  {t("members.generalAgent")}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                <div className="flex flex-col gap-1 p-2.5 rounded-lg border border-border/50 bg-background/50">
+                  <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
+                    <Cpu className="size-3.5 text-primary" /> {t("common.runtime")}
+                  </span>
+                  <span className="text-xs font-semibold text-foreground uppercase">{a.runtime}</span>
+                </div>
+
+                <div className="flex flex-col gap-1 p-2.5 rounded-lg border border-border/50 bg-background/50">
+                  <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
+                    <Sparkles className="size-3.5 text-primary" /> {t("common.model")}
+                  </span>
+                  <span className="text-xs font-medium text-foreground truncate" title={a.model || t("members.useLocalDefault")}>
+                    {a.model || t("members.useLocalDefault")}
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-1 p-2.5 rounded-lg border border-border/50 bg-background/50">
+                  <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
+                    <Activity className="size-3.5 text-primary" /> {t("common.status")}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={"dot " + live} />
+                    <span className="text-xs font-medium text-foreground">{agentStatusLabel(t, live)}</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1 p-2.5 rounded-lg border border-border/50 bg-background/50">
+                  <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
+                    <Layers className="size-3.5 text-primary" /> {t("common.session")}
+                  </span>
+                  <span className="text-xs font-mono text-muted-foreground truncate">{a.sessionId || "(none)"}</span>
+                </div>
+
+                <div className="flex flex-col gap-1 p-2.5 rounded-lg border border-border/50 bg-background/50 sm:col-span-2">
+                  <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
+                    <Folder className="size-3.5 text-primary" /> {t("common.memory")}
+                  </span>
+                  <AgentMemoryRoot id={a.id} />
+                </div>
+
+                {a.createdAt && (
+                  <div className="flex flex-col gap-1 p-2.5 rounded-lg border border-border/50 bg-background/50">
+                    <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
+                      <Clock className="size-3.5 text-primary" /> {t("common.created")}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{fmtDateTime(a.createdAt)}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <Button variant="outline" size="sm" onClick={startEdit} className="gap-1.5 h-7 text-xs">
+                  <Pencil className="size-3.5" /> {t("members.editProfile")}
+                </Button>
               </div>
             </div>
+
             <AgentModelBindingEditor agent={a} api={api} onSaved={refetch} />
             <AgentDefaultResponseModeCard
               agentId={id}
@@ -233,20 +377,65 @@ function SkillsSection({ id }: { id: string }) {
   const { t } = useTranslation();
   const { api } = useStore();
   const [d, setD] = useState<{ global: any[]; workspace: any[] } | null>(null);
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   useEffect(() => { (async () => { try { setD(await api("GET", `/api/agents/${id}/skills`)); } catch { setD({ global: [], workspace: [] }); } })(); }, [id]);
   if (!d) return null;
   const all = [...(d.workspace || []).map((s) => ({ ...s, scope: t("members.scopeWorkspace") })), ...(d.global || []).map((s) => ({ ...s, scope: t("members.scopeGlobal") }))];
+
+  const toggleExpand = (idx: number) => {
+    setExpanded((prev) => ({ ...prev, [idx]: !prev[idx] }));
+  };
+
   return (
-    <>
-      <div className="sec">{t("common.skills")} <span className="cnt">{all.length}</span></div>
-      {all.length === 0 ? <div className="empty">{t("members.skillsEmpty")}</div>
-        : all.map((s, i) => (
-          <div className="card skill-row" key={i} title={`${s.displayName || s.name}${s.description ? "\n\n" + s.description : ""}`}>
-            <div className="who">{s.displayName || s.name} <span className="meta">· {s.scope}{s.userInvocable ? ` · ${t("members.skillInvocable")}` : ""}</span></div>
-            {s.description ? <div className="meta skill-desc">{s.description}</div> : <div className="meta" style={{ opacity: .6 }}>{t("members.noDescription")}</div>}
-          </div>
-        ))}
-    </>
+    <section className="card space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
+          <Sparkles className="size-4 text-primary" /> {t("common.skills")}
+        </h3>
+        <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">{all.length}</span>
+      </div>
+      {all.length === 0 ? (
+        <div className="text-xs text-muted-foreground py-4 text-center">{t("members.skillsEmpty")}</div>
+      ) : (
+        <div className="grid grid-cols-1 gap-2.5">
+          {all.map((s, i) => {
+            const isLong = (s.description?.length || 0) > 100;
+            const isExp = expanded[i];
+            return (
+              <div key={i} className="p-3 rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/30 transition-colors">
+                <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                  <span className="font-medium text-xs text-foreground">{s.displayName || s.name}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">{s.scope}</span>
+                    {s.userInvocable && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">{t("members.skillInvocable")}</span>
+                    )}
+                  </div>
+                </div>
+                {s.description ? (
+                  <div>
+                    <p className={cn("text-xs text-muted-foreground leading-relaxed", !isExp && "line-clamp-2")}>
+                      {s.description}
+                    </p>
+                    {isLong && (
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(i)}
+                        className="mt-1 text-[11px] text-primary/80 hover:text-primary font-medium flex items-center gap-0.5"
+                      >
+                        {isExp ? <>收起 <ChevronUp className="size-3" /></> : <>展开全部 <ChevronDown className="size-3" /></>}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground/60 italic">{t("members.noDescription")}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -264,22 +453,30 @@ function PermissionsTab({ id }: { id: string }) {
   const groups: Record<string, any[]> = {};
   for (const s of data.catalog || []) (groups[s.group] ||= []).push(s);
   return (
-    <div className="scroll">
-      <div className="perm-head">
-        <span className="meta">{data.mode === "custom" ? t("members.permCustom") : t("members.permDefault")} · rev {data.revision}</span>
-        <button className="joinbtn" onClick={() => save((data.catalog || []).map((s: any) => s.key))}>{t("members.grantAll")}</button>
-        <button className="ok" style={{ marginLeft: "auto" }} onClick={() => save([...granted])}>{t("members.save")}</button>
-        {saved && <span className="saved">{t("members.savedConfirm")}</span>}
+    <div className="scroll space-y-3">
+      <div className="perm-head flex items-center justify-between gap-3 p-3 rounded-lg border border-border/50 bg-card">
+        <span className="text-xs text-muted-foreground">{data.mode === "custom" ? t("members.permCustom") : t("members.permDefault")} · rev {data.revision}</span>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => save((data.catalog || []).map((s: any) => s.key))} className="h-7 text-xs">{t("members.grantAll")}</Button>
+          <Button size="sm" onClick={() => save([...granted])} className="h-7 text-xs">{t("members.save")}</Button>
+          {saved && <span className="saved text-xs text-green-500 font-medium">{t("members.savedConfirm")}</span>}
+        </div>
       </div>
       {Object.entries(groups).map(([g, list]) => (
-        <div key={g} className="perm-group">
-          <div className="sec sec-sub">{t(`members.permissionGroups.${g}`, { defaultValue: g })}</div>
-          {list.map((s: any) => (
-            <label key={s.key} className="perm-row">
-              <input type="checkbox" checked={granted.has(s.key)} onChange={() => toggle(s.key)} />
-              <span className="grow"><span className="who">{t(`members.permissions.${s.key.replace(":", "_")}.label`, { defaultValue: s.label })}</span> <code className="perm-key">{s.key}</code><div className="meta">{t(`members.permissions.${s.key.replace(":", "_")}.description`, { defaultValue: s.description })}</div></span>
-            </label>
-          ))}
+        <div key={g} className="perm-group card space-y-2">
+          <div className="text-xs font-semibold text-foreground uppercase tracking-wider">{t(`members.permissionGroups.${g}`, { defaultValue: g })}</div>
+          <div className="space-y-1.5 pt-1">
+            {list.map((s: any) => (
+              <label key={s.key} className="flex items-start gap-2.5 p-2 rounded-lg hover:bg-muted/30 cursor-pointer transition-colors">
+                <input type="checkbox" className="mt-1 rounded accent-primary" checked={granted.has(s.key)} onChange={() => toggle(s.key)} />
+                <span className="grow min-w-0">
+                  <span className="text-xs font-medium text-foreground">{t(`members.permissions.${s.key.replace(":", "_")}.label`, { defaultValue: s.label })}</span>{" "}
+                  <code className="text-[11px] font-mono text-muted-foreground px-1 py-0.2 rounded bg-muted">{s.key}</code>
+                  <div className="text-xs text-muted-foreground mt-0.5">{t(`members.permissions.${s.key.replace(":", "_")}.description`, { defaultValue: s.description })}</div>
+                </span>
+              </label>
+            ))}
+          </div>
         </div>
       ))}
     </div>
@@ -366,15 +563,44 @@ function ActivityTab({ activity, id, name }: { activity?: string; id: string; na
 function AgentMemoryRoot({ id }: { id: string }) {
   const { api } = useStore();
   const [root, setRoot] = useState("...");
+  const [copied, setCopied] = useState(false);
   useEffect(() => {
     let active = true;
     setRoot("...");
     void api("GET", `/api/agents/${id}/workspace-files`).then((result) => {
-      if (active && result.root) setRoot(result.root);
+      if (active && result?.root) setRoot(result.root);
     });
     return () => { active = false; };
   }, [id]);
-  return <>{root}</>;
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (root && root !== "...") {
+      void navigator.clipboard.writeText(root);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  };
+
+  const displayPath = root.length > 40 ? "..." + root.slice(-36) : root;
+
+  return (
+    <div className="flex items-center gap-1.5 max-w-full">
+      <span className="font-mono text-[11px] text-muted-foreground truncate bg-muted/40 px-2 py-0.5 rounded border border-border/40" title={root}>
+        {displayPath}
+      </span>
+      {root !== "..." && (
+        <button
+          type="button"
+          onClick={handleCopy}
+          title={copied ? "已复制" : "复制完整路径"}
+          className="p-1 text-muted-foreground hover:text-foreground rounded transition-colors"
+        >
+          {copied ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5" />}
+        </button>
+      )}
+    </div>
+  );
 }
 
 function AgentProfileEditModal({ name, displayName, description, onDisplayNameChange, onDescriptionChange, onClose, onSave }: {

@@ -9,8 +9,8 @@ const shellCss = read("../web/src/shell/shell.css");
 
 test("module workspaces use an accessible resizable split without duplicating chat", () => {
   assert.match(frame, /const chatWorkspace = \([\s\S]*?<ChatWorkspace/);
-  assert.match(frame, /const tabWorkspace = activeTab && contentModuleId \? \(/);
-  assert.match(frame, /<WorkspaceSplitPane[\s\S]*?workspace=\{tabWorkspace\}[\s\S]*?workspaceOpen=\{!!tabWorkspace\}/);
+  assert.match(frame, /const workspaceContent = activeTab && contentModuleId \? \(/);
+  assert.match(frame, /<WorkspaceSplitPane[\s\S]*?workspace=\{workspaceContent\}[\s\S]*?workspaceOpen=\{workspacePanelOpen\}/);
   assert.match(splitPane, /<ResizablePanelGroup[\s\S]*?orientation="horizontal"/);
   assert.match(splitPane, /defaultSize="38%"/);
   assert.match(splitPane, /minSize=\{320\}/);

@@ -30,6 +30,33 @@ test("egress preflight pins all resolved addresses and rejects undeclared proxy"
   }, async () => ["8.8.8.8"]), /provider_preflight_destination_mismatch/);
 });
 
+test("egress preflight accepts a canonical base path and requires it in allowed egress", async () => {
+  const plan = await preflightEgress({
+    canonicalOrigin: "https://api.example.com/v1",
+    networkClass: "public_cloud",
+    allowedEgress: ["https://api.example.com/v1"],
+  }, async () => ["8.8.8.8"]);
+  assert.match(plan.resolvedAddressDigest, /^[0-9a-f]{64}$/);
+
+  // The base path must be allowlisted with the origin; the bare origin alone is not enough.
+  await assert.rejects(() => preflightEgress({
+    canonicalOrigin: "https://api.example.com/v1",
+    networkClass: "public_cloud",
+    allowedEgress: ["https://api.example.com"],
+  }, async () => ["8.8.8.8"]), /provider_preflight_destination_mismatch/);
+  // Unsafe or non-canonical path shapes are rejected.
+  await assert.rejects(() => preflightEgress({
+    canonicalOrigin: "https://api.example.com/../etc",
+    networkClass: "public_cloud",
+    allowedEgress: ["https://api.example.com/../etc"],
+  }, async () => ["8.8.8.8"]), /provider_preflight_destination_mismatch/);
+  await assert.rejects(() => preflightEgress({
+    canonicalOrigin: "https://api.example.com/v1?x=1",
+    networkClass: "public_cloud",
+    allowedEgress: ["https://api.example.com/v1"],
+  }, async () => ["8.8.8.8"]), /provider_preflight_destination_mismatch/);
+});
+
 test("egress preflight supports RFC 2544 transparent-proxy DNS only behind an HTTPS hostname", async () => {
   const plan = await preflightEgress({
     canonicalOrigin: "https://api.example.com",
@@ -43,4 +70,13 @@ test("egress preflight supports RFC 2544 transparent-proxy DNS only behind an HT
     networkClass: "public_cloud",
     allowedEgress: ["https://198.18.0.89"],
   }), /provider_preflight_destination_mismatch/);
+});
+
+test("egress preflight accepts transparent-proxy DNS with a companion ULA IPv6 record behind an HTTPS hostname", async () => {
+  const plan = await preflightEgress({
+    canonicalOrigin: "https://api.example.com",
+    networkClass: "public_cloud",
+    allowedEgress: ["https://api.example.com"],
+  }, async () => ["198.18.0.89", "fdfe:dcba:9876::d0"]);
+  assert.match(plan.resolvedAddressDigest, /^[0-9a-f]{64}$/);
 });
