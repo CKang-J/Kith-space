@@ -1,0 +1,15 @@
+{
+  "id": "landing-001",
+  "surface": "landing_page",
+  "expectedSkill": "landing_page",
+  "prompt": "给一款番茄钟专注 App 做一个 1440×1024 的产品落地页首屏：左边大标题加一句价值主张和一个主按钮，右边放产品示意，不要三张等宽卡片。",
+  "checks": [
+    "hero_coverage_between[0.3,0.8]",
+    "no_out_of_bounds",
+    "h1_h2_ratio_between[1.25,5]",
+    "anti_slop_hits_eq[0]",
+    "text_nodes_at_least[6]",
+    "node_count_at_least[14]"
+  ],
+  "notes": "低复杂度落地页：单屏结构 + 首屏焦点，对应 landing_page Hard rules 2/3。"
+}

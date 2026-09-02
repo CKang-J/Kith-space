@@ -1,0 +1,14 @@
+{
+  "id": "type-specimen-002",
+  "surface": "type_specimen",
+  "expectedSkill": "type_specimen",
+  "prompt": "为两款可编辑字体做一张 1440×1080 的对比样张：上下两块各展示一款字体的展示字、常用字与段落文本，右侧留一列字号/字重元信息，全部用真实可编辑文本而不是图片字。",
+  "checks": [
+    "no_out_of_bounds",
+    "h1_h2_ratio_between[1.5,12]",
+    "anti_slop_hits_eq[0]",
+    "text_nodes_at_least[8]",
+    "node_count_at_least[10]"
+  ],
+  "notes": "高复杂度样张：双字族对比 + 元信息列，对应 type_specimen Hard rules 1/2。"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "banner-002",
+  "surface": "banner_ad",
+  "expectedSkill": "banner_ad",
+  "prompt": "为在线课程做一条 1080×360 的横幅广告：主张「三十天写出第一篇小说」，配一个简短卖点短语和报名按钮，视觉焦点集中在一个方向上，不要塞成小落地页。",
+  "checks": [
+    "hero_coverage_between[0.2,0.8]",
+    "no_out_of_bounds",
+    "h1_h2_ratio_between[1.25,6]",
+    "anti_slop_hits_eq[0]",
+    "text_nodes_at_least[3]",
+    "node_count_at_least[7]"
+  ],
+  "notes": "高复杂度横幅：在窄高度里维持焦点方向与层级，对应 banner_ad Hard rules 2/3。"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "landing-002",
+  "surface": "landing_page",
+  "expectedSkill": "landing_page",
+  "prompt": "为独立开发者的笔记工具做一个 1440×2048 长落地页：首屏是主标题+副文案+CTA，往下依次是功能介绍区、一条用户评价和页脚，功能点大小与排布要有主次，不要做成整齐的三卡墙。",
+  "checks": [
+    "hero_coverage_between[0.25,0.8]",
+    "no_out_of_bounds",
+    "h1_h2_ratio_between[1.25,5]",
+    "anti_slop_hits_eq[0]",
+    "text_nodes_at_least[9]",
+    "node_count_at_least[20]"
+  ],
+  "notes": "高复杂度落地页：多区块长页里保持家族感与不均质排布，对应 landing_page Hard rules 3/4/5。"
+}

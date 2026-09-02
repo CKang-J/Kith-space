@@ -1,0 +1,15 @@
+{
+  "id": "mobile-app-002",
+  "surface": "mobile_app",
+  "expectedSkill": "mobile_app_ui",
+  "prompt": "为记账 App 做一个 390×844 的明细页：顶部月份切换、中间一列 5 条收支记录、底部汇总栏和「记一笔」主按钮，图标用几何图形画，别拿 emoji 当列表图标。",
+  "checks": [
+    "hero_coverage_between[0.2,0.85]",
+    "no_out_of_bounds",
+    "h1_h2_ratio_between[1.15,5]",
+    "anti_slop_hits_eq[0]",
+    "text_nodes_at_least[8]",
+    "node_count_at_least[16]"
+  ],
+  "notes": "高复杂度移动界面：列表信息密度 + 真图标，对应 mobile_app_ui Hard rules 1/2。"
+}

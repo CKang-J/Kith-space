@@ -1,0 +1,15 @@
+{
+  "id": "poster-001",
+  "surface": "poster",
+  "expectedSkill": "poster_craft",
+  "prompt": "给夏日露天音乐节做一张竖版主视觉海报，尺寸 1080×1920，标题是「仲夏声浪」，配一句简短副标题和一行时间地点信息；先建画板再排版，视觉主角要立得住。",
+  "checks": [
+    "hero_coverage_between[0.55,0.9]",
+    "no_out_of_bounds",
+    "h1_h2_ratio_between[1.25,5]",
+    "anti_slop_hits_eq[0]",
+    "text_nodes_at_least[3]",
+    "node_count_at_least[8]"
+  ],
+  "notes": "低复杂度海报：考单一 hero、标题层级与基本留白，对应 poster_craft 的 Hard rules 2/5/6。"
+}

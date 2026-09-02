@@ -1,0 +1,15 @@
+{
+  "id": "poster-002",
+  "surface": "poster",
+  "expectedSkill": "poster_craft",
+  "prompt": "为城市马拉松做一张 1080×1920 竖版招募海报：大标题「跑进城市的心脏」，下方分出日期、路线亮点、报名入口三块信息层级，没有的真实数据宁可留占位也不要编造。",
+  "checks": [
+    "hero_coverage_between[0.5,0.9]",
+    "no_out_of_bounds",
+    "h1_h2_ratio_between[1.25,5]",
+    "anti_slop_hits_eq[0]",
+    "text_nodes_at_least[5]",
+    "node_count_at_least[12]"
+  ],
+  "notes": "高复杂度海报：多信息区块仍要保持单一 hero 与清晰层级，对应 poster_craft Hard rules 2/3/7。"
+}

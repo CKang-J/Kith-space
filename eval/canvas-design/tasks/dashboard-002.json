@@ -1,0 +1,15 @@
+{
+  "id": "dashboard-002",
+  "surface": "dashboard",
+  "expectedSkill": "dashboard_ui",
+  "prompt": "为客服团队做一张 1440×960 的监控后台：左侧导航、顶部筛选条，中部一张大的会话趋势区，右侧一个次要的待办列表；不要摆四张一模一样的 KPI 卡，也不要玻璃拟态卡片。",
+  "checks": [
+    "hero_coverage_between[0.35,0.85]",
+    "no_out_of_bounds",
+    "h1_h2_ratio_between[1.15,4]",
+    "anti_slop_hits_eq[0]",
+    "text_nodes_at_least[12]",
+    "node_count_at_least[24]"
+  ],
+  "notes": "高复杂度后台：一主一次的区域秩序 + 反 KPI 墙，对应 dashboard_ui Hard rules 2/3/4。"
+}
