@@ -3,6 +3,9 @@ import type { SpaceDb } from "../db/index.js";
 import { schema } from "../db/index.js";
 import type { CanvasAccessGrantRow } from "./canvasAccessGrant.js";
 import { parseCanvasOpError } from "./canvasToolOps.js";
+import { loadSkill } from "./skills/skillLoader.js";
+import { listSkills } from "./skills/skillRegistry.js";
+import { matchedSkillKeys } from "./skills/skillTriggers.js";
 
 export const CANVAS_LAST_ERROR_TOOL = "canvas.last_error";
 export const CANVAS_LAST_ERROR_KEY = "canvas:last_error";
@@ -53,7 +56,7 @@ When creating posters / banners / KV:
 3. **LAYOUT PLAN**: Pick one composition archetype (center_hero / bottom_weighted / rule_of_thirds / editorial / typographic)
 4. **EXECUTION**: create_frame → ground (update_frame backgroundColor) → hero marks (shapes/boolean_op) → title (create_text) → support → CTA → sparse decoration
 5. **OBSERVE**: Re-read canvas.scene_summary to verify placement and hierarchy
-6. **REVIEW**: Check hierarchy (title > support > meta), color contrast, slop hits
+6. **REVIEW**: Self-check against the design_review dimensions — hierarchy (title > support > meta), color contrast, slop hits
 7. **SUBTRACT**: Second pass removes unnecessary decoration, not adds more
 
 ### Honesty Rule
@@ -62,6 +65,9 @@ Unless the user provides them, **do not invent**:
 - Prices, phone numbers, review counts
 - Extra slogans or marketing copy
 - Product images or photos
+
+### Settle gate (before turn.reply)
+After the final canvas mutation and before turn.reply, re-read canvas.scene_summary and self-check against the design_review dimensions (composition, hierarchy, typography, color, consistency, content, originality). Fix every must_fix item before settling. Prioritize DESIGN_BRIEF fidelity, then SKILL_CRAFT.
 `;
 
 export const CANVAS_CAPABILITY_DISCOVERY = `This turn has a server-owned CanvasAccessGrant derived from a frozen Selection Snapshot. Discover tools with capability.describe.
@@ -321,37 +327,75 @@ canvas.set_canvas_background({ fill: "#FFF" })
 canvas.create_shape({ shapeType: "circle", fill: "red" })
 ✅ Fix:
 canvas.create_shape({ shapeType: "circle", fill: "#FF0000", fillType: "solid", x, y, width, height, frameId })
-
-=== CANVAS_SKILLS_CATALOG ===
-Available design skills (use canvas.skill_get to load full content):
-
-Foundation:
-- design_brief: Structured design brief template (purpose/audience/emotion/visual_thesis/composition)
-- composition: Layout archetypes and composition rules
-- color: Color theory and palette strategies
-- typography: Type ladders and font selection rules
-- anti_ai_slop: Common AI design clichés to avoid
-- polish: Refinement and self-review checklist
-
-Domains:
-- poster_craft: Poster / roll-up / KV design playbook
-- landing_page: Landing page / homepage design playbook
-- banner_ad: Banner ad design playbook
-
-How to choose:
-- New design from scratch → load ONE primary surface skill (poster_craft / landing_page / banner_ad) + design_brief
-- Just recolor / rearrange → no skill needed, use typed tools directly
-- Style/color decisions → load color + composition
-- Always keep anti_ai_slop in mind (or load it explicitly)
 `;
 
-export function canvasSkillPackText(grants: CanvasAccessGrantRow[], lastError?: string | null): string {
+const MAX_TRIGGERED_SKILLS_CHARS = 6000;
+
+function canvasSkillsCatalogText(preloaded: ReadonlySet<string>): string {
+  const catalog = listSkills();
+  const foundation = [...catalog.foundation].sort((a, b) => a.skillKey.localeCompare(b.skillKey));
+  const domains = [...catalog.domains].sort((a, b) => a.skillKey.localeCompare(b.skillKey));
+  const line = (skill: { skillKey: string; description: string }) =>
+    `- ${skill.skillKey}: ${skill.description}${preloaded.has(skill.skillKey) ? " [preloaded]" : ""}`;
+  return [
+    "=== CANVAS_SKILLS_CATALOG ===",
+    "Available design skills (use canvas.skill_get to load full content):",
+    "",
+    "Foundation:",
+    ...foundation.map(line),
+    "",
+    "Domains:",
+    ...domains.map(line),
+    "",
+    "How to choose:",
+    "- New design from scratch → load ONE primary surface skill (poster_craft / landing_page / banner_ad) + design_brief",
+    "- Just recolor / rearrange → no skill needed, use typed tools directly",
+    "- Style/color decisions → load color + composition",
+    "- Always keep anti_ai_slop in mind (or load it explicitly)",
+    "- A skill marked [preloaded] is already injected below — do not canvas.skill_get it again",
+  ].join("\n");
+}
+
+function triggeredSkillBlocks(skillKeys: readonly string[]): { text: string; preloaded: ReadonlySet<string> } {
+  const preloaded = new Set<string>();
+  const blocks: string[] = [];
+  let remaining = MAX_TRIGGERED_SKILLS_CHARS;
+  for (const key of skillKeys) {
+    if (remaining <= 0) break;
+    const skill = loadSkill(key);
+    if (!skill) continue;
+    const content = skill.content.trim();
+    if (!content) continue;
+    const header = `### ${key}`;
+    const overhead = header.length + 2;
+    if (content.length <= remaining - overhead) {
+      blocks.push(`${header}\n\n${content}`);
+      preloaded.add(key);
+      remaining -= overhead + content.length;
+    } else {
+      const cut = content.slice(0, Math.max(0, remaining - overhead));
+      if (cut.trim()) {
+        blocks.push(`${header} [truncated]\n\n${cut}`);
+        preloaded.add(key);
+      }
+      remaining = 0;
+    }
+  }
+  return { text: blocks.join("\n\n"), preloaded };
+}
+
+export function canvasSkillPackText(grants: CanvasAccessGrantRow[], lastError?: string | null, userText?: string | null): string {
   if (!grants.length) return "";
+  const catalog = listSkills();
+  const triggered = matchedSkillKeys(userText, [...catalog.foundation, ...catalog.domains]);
+  const { text: preloadedText, preloaded } = triggeredSkillBlocks(triggered);
   const lines = [
     "## Canvas skill pack",
     ...(lastError ? [canvasLastErrorContextLine(lastError)] : []),
     CANVAS_DESIGN_PRINCIPLES,
     CANVAS_CAPABILITY_DISCOVERY,
+    canvasSkillsCatalogText(preloaded),
+    ...(preloadedText ? ["", "### Triggered skills (preloaded by request)", preloadedText] : []),
     "Authorized grants:",
     ...grants.map((grant) => {
       const scope = grant.objectScope;

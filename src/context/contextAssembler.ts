@@ -528,6 +528,7 @@ export class ContextAssembler {
       eq(schema.turnContextSources.phase, "initial"),
     )).all().sort((a, b) => a.ordinal - b.ordinal);
     const seen = new Set<string>();
+    const userMessageContents: string[] = [];
     const lines = [
       "Kith-space durable turn context",
       `Turn: ${envelope.turnId}`,
@@ -543,6 +544,7 @@ export class ContextAssembler {
       seen.add(key);
       if (ref.sourceKind === "message") {
         const message = this.db.select().from(schema.messages).where(eq(schema.messages.id, ref.sourceId)).get();
+        if (message && ref.reason.startsWith("delivery:")) userMessageContents.push(message.content);
         lines.push(message
           ? `[message ${message.id} seq=${message.seq} from=${message.senderName} reason=${ref.reason}]\n${boundedContextContent(message.content)}`
           : `[message ${ref.sourceId} deleted; lineage HMAC=${ref.contentHmac}]`);
@@ -586,7 +588,8 @@ export class ContextAssembler {
     if (isCanvasAgentExecutionEnabled()) {
       const grants = this.db.transaction((tx) => listCanvasAccessGrantsInTransaction(tx, envelope.turnId, envelope.session.agentId));
       const lastError = latestCanvasErrorForTurn(this.db, envelope.turnId);
-      const skillPack = canvasSkillPackText(grants, lastError);
+      const userText = userMessageContents.length ? userMessageContents.join("\n") : null;
+      const skillPack = canvasSkillPackText(grants, lastError, userText);
       if (skillPack) lines.push("", skillPack);
     }
     lines.push("", "Use `kith-space turn context` to inspect the authoritative input IDs before settling them.");

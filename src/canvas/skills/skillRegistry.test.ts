@@ -4,16 +4,16 @@ import test from "node:test";
 import { getAllSkillKeys, getSkillMetadata, listSkills } from "./skillRegistry.js";
 import { loadSkill, skillFilePath } from "./skillLoader.js";
 
-const FOUNDATION_KEYS = ["design_brief", "composition", "color", "typography", "anti_ai_slop", "polish"];
-const DOMAIN_KEYS = ["poster_craft", "landing_page", "banner_ad"];
+const FOUNDATION_KEYS = ["design_brief", "composition", "color", "typography", "anti_ai_slop", "polish", "design_review", "design_system", "imagery", "layout", "responsive", "visual_direction"];
+const DOMAIN_KEYS = ["poster_craft", "landing_page", "banner_ad", "awesome_design_md", "dashboard_ui", "ecommerce_surface", "garden_style", "icon_set", "image_gen", "long_scroll", "mobile_app_ui", "resume_layout", "shadcn_ui", "type_specimen"];
 
-test("skill registry lists 6 foundation and 3 domain skills", () => {
+test("skill registry lists 12 foundation and 14 domain skills", () => {
   const catalog = listSkills();
-  assert.equal(catalog.foundation.length, 6);
-  assert.equal(catalog.domains.length, 3);
+  assert.equal(catalog.foundation.length, 12);
+  assert.equal(catalog.domains.length, 14);
   assert.deepEqual(catalog.foundation.map((skill) => skill.skillKey).sort(), [...FOUNDATION_KEYS].sort());
   assert.deepEqual(catalog.domains.map((skill) => skill.skillKey).sort(), [...DOMAIN_KEYS].sort());
-  assert.equal(getAllSkillKeys().length, 9);
+  assert.equal(getAllSkillKeys().length, 26);
   assert.equal(getSkillMetadata("poster_craft")?.priority, "P0");
   assert.equal(getSkillMetadata("poster_craft")?.category, "domains");
   assert.ok(getSkillMetadata("poster_craft")?.relatedSkills?.includes("design_brief"));

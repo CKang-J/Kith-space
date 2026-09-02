@@ -246,7 +246,7 @@ function formatCanvasSceneContextText(input: {
         node.stroke ? `stroke=${node.stroke}` : "",
         node.shapeType ? `shapeType=${node.shapeType}` : "",
       ].filter(Boolean);
-      const preview = node.text ? ` text_preview=${JSON.stringify(node.text.slice(0, 40))}` : "";
+      const preview = node.text ? ` text_preview=${JSON.stringify(node.text.slice(0, 120))}` : "";
       const local = node.frameId && input.focusFrameId === node.frameId
         ? (() => {
           const frame = input.selectedFrames.find((item) => item.id === node.frameId);
