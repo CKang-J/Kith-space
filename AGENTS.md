@@ -41,7 +41,7 @@ Kith-space 是一个**桌面优先、单人使用的个人 AgentOS**：一个 Hu
 - **数据层**：**SQLite**。每 Space 一个 `<folder>/.kith/workspace.db`（当前 workspace schema v16）；中央 `app.db`（当前 v12）保存唯一 Human、Home 身份、Space registry、Web 模式、访问 Token、浏览器会话、Desktop/外观设置、记忆/Advisor 控制面与模型/运行器配置。数据版本与迁移规则见对应 specs。
 - **启动与发行**：推荐 `pnpm install` → `pnpm run desktop:dev`。全新数据目录由 Desktop 首次初始化界面创建 Human 与 `Home`，无需 `seed`。`desktop:build/bundle/pack/dist` 分别对应 main/preload、生产 bundle、Windows unpacked 与 NSIS 安装器；当前正式安装器仍是 Windows 未签名产物，公开分发前必须配置代码签名证书并完成真实安装/卸载验收。`server`、`daemon`、`web`、`browser-access:dev`、`dev:e2e:up` 保留为分进程调试入口。命令详见 `docs/dev-commands.md`，低频参数见 `docs/dev-debugging.md`。
 - **测试**：内置 `node:test`。`pnpm test --unit` / `pnpm test --integration` / `pnpm run typecheck`。测试 runner 会把 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR` 指向随机临时 profile。文本型契约测试不得依赖 CRLF/LF，读取后先转成 canonical LF 再验证。改动须配套运行相关测试并如实记录未通过项。
-- **Git/PR**：轻量 GitHub Flow，只保留长期分支 `main`；从最新 `main` 建短分支，PR Squash 合入。当前频繁开发阶段不为 `pull_request` 自动触发完整三端 CI，提交者须在 PR 中如实记录本地验证。提交使用中文 Conventional Commits。完整流程见 `CONTRIBUTING.md`。
+- **Git/PR**：轻量 GitHub Flow，只保留长期分支 `main`；**每次新功能或改动，都先从最新 `main` 拉一个短特性分支，在短分支上提交并推送到远程，再开 PR Squash 合入 `main`——不直推 `main`**。当前频繁开发阶段不为 `pull_request` 自动触发完整三端 CI，提交者须在 PR 中如实记录本地验证。提交使用中文 Conventional Commits。完整流程见 `CONTRIBUTING.md`。
 - **提交权限**：只在用户明确要求时创建提交、推送或 PR；先分支，不直推 `main`。
 - **安全**：外接 runtime 的高权限是追踪中的技术债。LAN 浏览器 v1 使用 HTTP + 访问 Token 且仅限受信任私网；邮箱/浏览器等不可信内容模块上线前，必须先完成 HTTPS 与审批/沙箱权限升级（见 `decisions.md` 决策 8/17/21）。
 
