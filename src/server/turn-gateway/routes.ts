@@ -23,9 +23,11 @@ import {
   CanvasCreateTextCommandSchema,
   CanvasDeleteFrameCommandSchema,
   CanvasDeleteNodesCommandSchema,
+  CanvasDesignReviewCommandSchema,
   CanvasDistributeNodesCommandSchema,
   CanvasDuplicateNodesCommandSchema,
   CanvasFlipNodesCommandSchema,
+  CanvasGenerationStatusCommandSchema,
   CanvasGroupNodesCommandSchema,
   CanvasReorderNodesCommandSchema,
   CanvasElementsApplyCommandSchema,
@@ -249,6 +251,18 @@ export async function handleTurnGateway(
       const body = CanvasSkillGetCommandSchema.parse(await readGatewayJson(req));
       const { claims } = authorize(req, "canvas.read");
       sendJson(res, 200, capabilityGateway(claims.spaceId).canvasSkillGet(claims, body));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/design_review" && method === "POST") {
+      CanvasDesignReviewCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.read");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasDesignReview(claims, {}));
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/generation_status" && method === "POST") {
+      const body = CanvasGenerationStatusCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.read");
+      sendJson(res, 200, capabilityGateway(claims.spaceId).canvasGenerationStatus(claims, body));
       return true;
     }
     if (url.pathname === "/agent-gateway/canvas/create_frame" && method === "POST") {

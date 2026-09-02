@@ -14,9 +14,11 @@ import {
   CanvasCreateTextCommandSchema,
   CanvasDeleteFrameCommandSchema,
   CanvasDeleteNodesCommandSchema,
+  CanvasDesignReviewCommandSchema,
   CanvasDistributeNodesCommandSchema,
   CanvasDuplicateNodesCommandSchema,
   CanvasFlipNodesCommandSchema,
+  CanvasGenerationStatusCommandSchema,
   CanvasGroupNodesCommandSchema,
   CanvasReorderNodesCommandSchema,
   CanvasSceneSummaryCommandSchema,
@@ -89,7 +91,7 @@ register("turn.reply", "Commit a server-targeted Chat reply and settle the liste
     projection: z.enum(["canonical", "internal_summary", "shareable_summary", "ref_only"]),
   }).strict()).max(20).default([]),
   outputRefs: z.array(z.object({
-    kind: z.literal("canvas_mutation"),
+    kind: z.enum(["canvas_mutation", "canvas_generation_job"]),
     artifactId: z.string().min(1),
   }).strict()).max(20).default([]),
   disclosureGrantId: z.string().min(1).optional(),
@@ -195,6 +197,8 @@ register("canvas.asset_import", "Import a turn-bound local attachment into the a
 registerSchema("canvas.scene_summary", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.scene_summary"], CanvasSceneSummaryCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.scene_summary"]);
 registerSchema("canvas.skill_list", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.skill_list"], CanvasSkillListCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.skill_list"]);
 registerSchema("canvas.skill_get", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.skill_get"], CanvasSkillGetCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.skill_get"]);
+registerSchema("canvas.design_review", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.design_review"], CanvasDesignReviewCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.design_review"]);
+registerSchema("canvas.generation_status", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.generation_status"], CanvasGenerationStatusCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.generation_status"]);
 registerSchema("canvas.create_frame", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_frame"], CanvasCreateFrameCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_frame"]);
 registerSchema("canvas.create_text", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_text"], CanvasCreateTextCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_text"]);
 registerSchema("canvas.create_shape", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_shape"], CanvasCreateShapeCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_shape"]);

@@ -43,7 +43,7 @@ export const TurnReplyCommandSchema = z.object({
   attachmentIds: z.array(z.string().min(1)).max(20).default([]),
   sourceRefs: z.array(DisclosureSourceRefSchema).max(20).default([]),
   outputRefs: z.array(z.object({
-    kind: z.literal("canvas_mutation"),
+    kind: z.enum(["canvas_mutation", "canvas_generation_job"]),
     artifactId: z.string().min(1),
   }).strict()).max(20).default([]),
   disclosureGrantId: z.string().min(1).optional(),

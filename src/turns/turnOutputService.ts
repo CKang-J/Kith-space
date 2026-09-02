@@ -26,8 +26,8 @@ import { EpisodicMemoryService } from "../memory/episodicMemoryService.js";
 import { UserGlobalMemoryService } from "../memory/userGlobalMemoryService.js";
 import { enqueueMemoryAdvisorJobInTransaction } from "../memory/memoryAdvisorService.js";
 import {
-  bindCanvasMutationOutputArtifactsInTransaction,
-  type CanvasMutationOutputRef,
+  bindCanvasOutputArtifactsInTransaction,
+  type CanvasOutputRef,
 } from "../canvas/canvasOutputArtifacts.js";
 
 export interface TurnOutputEventSink {
@@ -74,7 +74,7 @@ export class TurnOutputService {
     attachmentIds?: string[];
     attachmentActivationId?: string;
     sourceRefs?: DisclosureSourceRef[];
-    outputRefs?: CanvasMutationOutputRef[];
+    outputRefs?: CanvasOutputRef[];
     disclosureGrantId?: string;
     allowedDisclosureGrantIds?: string[];
     handledInputIds: string[];
@@ -386,7 +386,7 @@ export class TurnOutputService {
         outputKind: "reply",
         messageId: created.id,
       }).returning().get();
-      bindCanvasMutationOutputArtifactsInTransaction(tx, {
+      bindCanvasOutputArtifactsInTransaction(tx, {
         spaceId: this.spaceId,
         turnId: turn.id,
         outputId: output.id,

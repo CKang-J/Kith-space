@@ -237,6 +237,16 @@ canvas.command("skill-get").argument("<skillKey>", "skill key from skill-list")
       idempotencyKey: opts.idempotencyKey,
     }), null, 2));
   });
+canvas.command("design-review")
+  .action(async () => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/design_review", {}), null, 2));
+  });
+canvas.command("generation-status").requiredOption("--job-id <id>", "jobId from create-image/video-generate feedback")
+  .action(async (opts) => {
+    console.log(JSON.stringify(await brokerApi("POST", "/agent-gateway/canvas/generation_status", {
+      jobId: opts.jobId,
+    }), null, 2));
+  });
 canvas.command("create-frame").requiredOption("--expected-revision <n>")
   .requiredOption("--x <n>").requiredOption("--y <n>").requiredOption("--width <n>").requiredOption("--height <n>")
   .option("--name <name>").option("--id <id>").option("--canvas-id <id>").option("--snapshot-id <id>")

@@ -43,7 +43,7 @@ Then emit `canvas.create_image(genPrompt)` — or `canvas.video_generate` for a 
 
 ## 4. Kith generation seam
 
-`canvas.create_image` accepts an existing Canvas `assetId` **or** `genPrompt` for a queued generation job. Generation is async: the tool returns a `jobId` immediately, and the image node lands on the canvas when the worker finishes (about 10–60s). Do not claim the image exists until `canvas.scene_summary` shows it. For cutouts use `removeBg=true`; for in-image lettering pass `letteringText`.
+`canvas.create_image` accepts an existing Canvas `assetId` **or** `genPrompt` for a queued generation job. Generation is async: the tool returns a `jobId` immediately — poll `canvas.generation_status` with that jobId until `status=completed` (image about 10–60s), then confirm the node with `canvas.scene_summary`. Do not claim the image exists until `canvas.scene_summary` shows it. For cutouts use `removeBg=true`; for in-image lettering pass `letteringText`.
 
 ## 5. Forbidden: baked title
 

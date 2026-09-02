@@ -32,6 +32,8 @@ import type {
   CanvasFlipNodesCommand,
   CanvasGroupNodesCommand,
   CanvasReorderNodesCommand,
+  CanvasDesignReviewCommand,
+  CanvasGenerationStatusCommand,
   CanvasSceneSummaryCommand,
   CanvasSkillGetCommand,
   CanvasSkillListCommand,
@@ -64,9 +66,11 @@ import { requiredAgentScopes } from "./gatewayContracts.js";
 import {
   executeCanvasAssetImport,
   executeCanvasContextBundleCreate,
+  executeCanvasDesignReview,
   executeCanvasElementsApply,
   executeCanvasElementsGet,
   executeCanvasExport,
+  executeCanvasGenerationStatus,
   executeCanvasSceneSummary,
   executeCanvasSkillGet,
   executeCanvasSkillList,
@@ -563,6 +567,28 @@ export class CapabilityGateway {
       return this.db.transaction((tx) => {
         this.assertLiveCapabilityInTransaction(tx, claims, "canvas.read");
         return executeCanvasSceneSummary(this.db, tx, this.spaceId, claims, command, this.now());
+      });
+    } catch (error) {
+      mapCanvasToolError(error);
+    }
+  }
+
+  canvasDesignReview(claims: TurnCapabilityClaims, _command: CanvasDesignReviewCommand) {
+    try {
+      return this.db.transaction((tx) => {
+        this.assertLiveCapabilityInTransaction(tx, claims, "canvas.read");
+        return executeCanvasDesignReview(this.db, tx, this.spaceId, claims, this.now());
+      });
+    } catch (error) {
+      mapCanvasToolError(error);
+    }
+  }
+
+  canvasGenerationStatus(claims: TurnCapabilityClaims, command: CanvasGenerationStatusCommand) {
+    try {
+      return this.db.transaction((tx) => {
+        this.assertLiveCapabilityInTransaction(tx, claims, "canvas.read");
+        return executeCanvasGenerationStatus(tx, claims, command, this.now());
       });
     } catch (error) {
       mapCanvasToolError(error);
