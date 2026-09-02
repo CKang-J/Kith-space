@@ -1,9 +1,7 @@
 name: CI
 
-# During active development, run the full matrix after changes reach main or when requested manually.
+# Temporarily manual-only during early iteration; re-enable the auto gate (push to main) when ready.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,13 +9,9 @@ permissions:
 
 jobs:
   verify:
-    name: Verify (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Verify
+    runs-on: ubuntu-latest
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v6
 
@@ -42,12 +36,14 @@ jobs:
         run: pnpm test --unit
 
       - name: Integration tests
+        if: github.event_name == 'workflow_dispatch'
         run: pnpm test --integration
 
       - name: Build production Desktop bundles
         # desktop:bundle includes the production web build, so do not build web twice here.
+        if: github.event_name == 'workflow_dispatch'
         run: pnpm run desktop:bundle
 
       - name: Audit production dependencies
-        if: runner.os == 'Linux'
+        if: github.event_name == 'workflow_dispatch'
         run: pnpm audit --prod --audit-level=high

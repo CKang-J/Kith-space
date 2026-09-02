@@ -21,6 +21,20 @@ function runErrorLabel(code: string): string {
   return labels[code] ?? "整理未完成，请重新测试当前设置";
 }
 
+function advisorCompatibilityLabel(reason?: string): string {
+  const labels: Record<string, string> = {
+    unknown_model: "内置 Pi SDK 未收录此模型",
+    api_mismatch: "接口类型与整理执行器不兼容",
+    origin_mismatch: "API 地址与整理执行器不匹配",
+    keyless_unsupported: "自动整理不复用本机 CLI 登录，需要显式凭据",
+    provider_mismatch: "Claude Code 仅支持 Anthropic 官方接口",
+    ambient_only: "此供应商只支持 CLI 环境登录，不能用于后台整理",
+    thinking_unsupported: "当前推理级别不受支持",
+    provider_model_incompatible: "当前整理方式不支持这个模型",
+  };
+  return labels[reason ?? ""] ?? "当前整理方式不支持这个模型";
+}
+
 export function MemoryAdvisorSettings({ api }: { api: Api }) {
   const [summary, setSummary] = useState<any>(null);
   const [models, setModels] = useState<any[]>([]);
@@ -54,7 +68,7 @@ export function MemoryAdvisorSettings({ api }: { api: Api }) {
       setSummary(result);
       setNotice("设置已保存。");
     } catch (cause: any) {
-      setError(cause?.message ?? "无法更新自动整理记忆");
+      setError(runErrorLabel(cause?.message ?? ""));
     } finally {
       setBusy("");
     }
@@ -98,15 +112,8 @@ export function MemoryAdvisorSettings({ api }: { api: Api }) {
   }
   const currentState = stateLabel(summary.state, summary.requiresAuthorization);
   const executorId = summary.executor?.id ?? "pi_sdk";
-  const compatibleModels = models.filter((model) => {
-    if (model.status !== "active" || model.provider?.credential !== "configured") return false;
-    if (executorId === "claude_cli") {
-      return model.provider?.backendId === "anthropic"
-        && model.provider?.apiKind === "anthropic-messages"
-        && model.destination?.host === "api.anthropic.com";
-    }
-    return !["amazon-bedrock", "google-vertex"].includes(model.provider?.backendId);
-  });
+  const candidateModels = models.filter((model) => model.status === "active");
+  const compatibleModels = candidateModels.filter((model) => model.advisorCompatibility?.[executorId]?.supported);
 
   return (
     <div className="model-settings">
@@ -152,19 +159,29 @@ export function MemoryAdvisorSettings({ api }: { api: Api }) {
             <select value={summary.modelConfiguration?.id ?? ""} disabled={Boolean(busy)}
               onChange={(event) => {
                 const model = models.find((item) => item.id === event.target.value);
-                if (model) void patch({
+                if (model?.advisorCompatibility?.[executorId]?.supported) void patch({
                   modelConfigurationId: model.id,
                   modelConfigurationRevision: model.currentRevision,
                 });
               }}>
-              <option value="">请选择模型</option>
-              {compatibleModels.map((model) => (
-                  <option key={model.id} value={model.id}>{model.displayName} · {model.provider.displayName}</option>
-                ))}
+                <option value="">请选择模型</option>
+              {candidateModels.map((model) => {
+                const compatibility = model.advisorCompatibility?.[executorId];
+                const supported = Boolean(compatibility?.supported);
+                return (
+                  <option key={model.id} value={model.id} disabled={!supported}>
+                    {model.displayName} · {model.provider.displayName}{supported ? "" : `（${advisorCompatibilityLabel(compatibility?.reason)}）`}
+                  </option>
+                );
+              })}
             </select>
             <small>{summary.modelConfiguration
               ? `当前发送到 ${summary.modelConfiguration.destinationHost}`
-              : "先到“模型与供应商”添加一个模型，再回到这里选择。"}</small>
+              : compatibleModels.length > 0
+                ? "请选择一个与当前整理执行器兼容的模型。"
+                : executorId === "pi_sdk"
+                  ? "没有可用模型：内置 Pi SDK 支持其目录内模型及任意 OpenAI 兼容端点（需显式凭据）。"
+                  : "没有可用模型：Claude Code 需要 Anthropic Messages、api.anthropic.com 和显式凭据，不会自动复用 CLI 登录。"}</small>
           </label>
         </div>
 

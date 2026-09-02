@@ -2,7 +2,7 @@
 
 本文固定 Kith-space 的关键术语，给出准确、稳定的口径，防止未来文档与代码互相漂移。每条只给一句定义、必要时与相近概念的区分、以及它落在架构的哪一层。理念、决策、阶段、界面等展开内容各有专文（见 `docs/kith-space/` 五份设计文档），本文只做定义，需要展开处引用它们。
 
-术语按主题分组。事实以 `decisions.md` 的当前结论和 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md` 为准。
+术语按主题分组。事实以 `decisions.md` 的当前结论和 `docs/archive/specs/2026-07-11-personal-agent-os-local-pivot-design.md` 为准。
 
 ---
 
@@ -216,7 +216,7 @@
 : P-A10.6起在eligible completed turn后异步提取episodic memory candidate的受限后台能力。它不复用user-facing session；exclude lineage、typed actor/source、secret/噪音、source ACL、suppression、dedupe/disclosure与job lease验证后才能proposed/active，失败不阻塞原turn。当前`provider_v1`由安装级Provider处理Claude/Codex/opencode聊天Agent的eligible turn，旧Claude maintenance仅作`legacy_runtime`回滚路径。
 
 **Advisor Provider / 记忆顾问执行器**
-: 负责一次受限结构化completion的安装级可替换执行适配器。它不是普通Agent，不拥有频道身份、消息、工具、MCP、持久session、ACL或记忆写入规则；Core仍负责evidence、validation、suppression、revision和事务。fresh install默认使用Desktop内置、精确锁版的`@earendil-works/pi-ai@0.81.1`，Claude Code为可切换Provider；每个Provider revision固定artifact/package、配置与能力digest。
+: 负责一次受限结构化completion的安装级可替换执行适配器。它不是普通Agent，不拥有频道身份、消息、工具、MCP、持久session、ACL或记忆写入规则；Core仍负责evidence、validation、suppression、revision和事务。fresh install默认使用Desktop内置、精确锁版的`@earendil-works/pi-ai@0.84.2`，Claude Code为可切换Provider；每个Provider revision固定artifact/package、配置与能力digest。
 
 **Advisor Model Profile / 记忆顾问模型配置**
 : 当前已实现的安装级、不可变版本化 Advisor 执行快照，描述模型供应商、模型、API类型、endpoint、thinking level、凭据来源、数据政策与来源摘要。2026-07-23 后续方案实施后，它继续承担job固定、预检、授权和审计，但会由可复用的“模型配置”编译生成，不再作为普通用户直接编辑的产品概念。
@@ -240,7 +240,7 @@
 : Runtime adapter能证明时上报的`compaction_started/completed`事件与session revision。P-A10.7只把下一轮Context Envelope标为`post_compaction`并记录可用metadata，不自研统一summary。当前Codex支持映射，Claude/opencode明确unsupported。
 
 **一事一文件 + 索引约定**
-: 借鉴 OpenLoaf 的记忆结构——每个知识点一个文件，`MEMORY.md` 作自足索引指向 `notes/` 里的细节，compaction 前后以 `MEMORY.md` 为恢复点。它是写进 system prompt 强制执行的**约定**，不是工具。写记忆的 MCP 工具（如 `memory_save`）v1 延后，agent 先用原生文件操作写。
+: 一种记忆结构——每个知识点一个文件，`MEMORY.md` 作自足索引指向 `notes/` 里的细节，compaction 前后以 `MEMORY.md` 为恢复点。它是写进 system prompt 强制执行的**约定**，不是工具。写记忆的 MCP 工具（如 `memory_save`）v1 延后，agent 先用原生文件操作写。
 
 ---
 
@@ -396,7 +396,7 @@
 : app data root 中的中央 SQLite 库，保存唯一 Human、稳定 homeSpaceId、Desktop/Web 设置、访问 Token 哈希、浏览器会话、Space registry 和最近打开记录；不保存 Space 消息或任务。
 
 **Machine / Computer / serverId（退役术语）**
-: open-tag 遗留的多主机和工作区领域命名。Machine/Computer 已从服务、API、Worker 协议、UI 和物理 schema 删除；产品 `server/serverId` 兼容边界也已删除并统一为 `space/spaceId`。HTTP 技术进程称 Core Service；历史研究文档可保留原术语，但不代表当前产品能力。
+: 遗留的多主机和工作区领域命名。Machine/Computer 已从服务、API、Worker 协议、UI 和物理 schema 删除；产品 `server/serverId` 兼容边界也已删除并统一为 `space/spaceId`。HTTP 技术进程称 Core Service；历史研究文档可保留原术语，但不代表当前产品能力。
 
 **进程内替代 Redis**
 : 单机单进程下用内存计数器 / EventEmitter 取代 Redis。核实后 Redis 运行时只余两个单调计数器（seq、任务号），pub/sub 与 agent 唤醒已分别由 socket.io 直发和 daemon WS 承担，故 `redis.ts` 可整体删除。
@@ -405,17 +405,14 @@
 
 ## 许可证与代码组织
 
-**Apache-2.0（底座）**
-: open-tag 的许可证，也是 Kith-space 采用的宽松协议。保留原 LICENSE/NOTICE 并追加衍生声明与归属即可自由采用。
-
-**AGPLv3（OpenLoaf，仅参考）**
-: OpenLoaf 的传染性 copyleft 协议，与本项目宽松许可立场冲突，故 OpenLoaf 被降级为**纯设计参考**——只借界面质感、记忆/模块概念，用自己的代码重实现，绝不拷贝其源码。
+**Apache-2.0**
+: Kith-space 采用的宽松协议。保留 LICENSE/NOTICE 并追加衍生声明与归属即可自由采用。
 
 **MIT**
-: zano 的许可证（协议干净的局部参考之一）；也代表本项目认可的宽松协议家族。openagents 为 Apache-2.0，同为局部参考。
+: 本项目认可的宽松协议家族之一，与 Apache-2.0 同属可自由采用的许可。
 
 **reference/（只读上游）**
-: 存放上游项目源码的只读目录，作查阅与设计参照之用，不在其中开发。当前上游（open-tag / OpenLoaf / openagents / zano）用于对照。
+: 存放上游项目源码的只读目录，作查阅与设计参照之用，不在其中开发。仅供本机对照，不纳入提交。
 
-**根目录 src/（开发副本）**
-: Kith-space 自身的开发代码，从 open-tag fork 而来并逐步改造。与 reference/ 的区别：reference/ 是不改的上游原件，src/ 是可改的产品代码。
+**根目录 src/（开发代码）**
+: Kith-space 自身的开发代码。与 reference/ 的区别：reference/ 是不改的上游原件，src/ 是可改的产品代码。

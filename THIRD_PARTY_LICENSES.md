@@ -1,6 +1,6 @@
 # Third-party licenses
 
-## @earendil-works/pi-ai 0.81.1
+## @earendil-works/pi-ai 0.84.2
 
 MIT License
 

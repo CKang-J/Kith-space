@@ -53,7 +53,7 @@ export const RUNTIME_SETUP_CATALOG: readonly RuntimeSetupDefinition[] = [
     command: "pi",
     summary: "轻量、可扩展的编码 Agent；聊天运行器与记忆整理器相互独立。",
     packageName: "@earendil-works/pi-coding-agent",
-    testedVersion: "0.81.1",
+    testedVersion: "0.84.2",
     installExtraArgs: ["--ignore-scripts"],
     loginCommand: "pi",
     accountHelp: "在 Pi 中选择供应商并完成登录，或使用 Kith 模型配置。",

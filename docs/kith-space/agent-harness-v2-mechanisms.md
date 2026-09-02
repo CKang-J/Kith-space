@@ -1,7 +1,7 @@
 # Kith-space Agent Harness v2 机制全景
 
 > 状态：P-A10.0–P-A10.7 已实现并完成自动化与 Desktop/Web 真实验收。更新：2026-07-21。读者：需要理解 Kith-space 会话、上下文、记忆、工具、消息投递与恢复机制的开发者、产品设计者和 Agent 作者。
-> 详细契约与 ADR：[`2026-07-19-agent-harness-session-context-memory-tools-design.md`](../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md)。当前进度与验收事实：[`progress.md`](../progress.md)。
+> 详细契约与 ADR：[`2026-07-19-agent-harness-session-context-memory-tools-design.md`](../archive/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md)。
 
 ## 1. 一句话理解
 
@@ -533,7 +533,7 @@ flowchart LR
   Commit --> UI
 ```
 
-Advisor 与 user-facing Agent session 是两个物理端口。fresh install默认内置`pi_sdk@0.81.1`，Claude CLI可显式切换；既有安装先保持`legacy_runtime`：
+Advisor 与 user-facing Agent session 是两个物理端口。fresh install默认内置`pi_sdk@0.84.2`，Claude CLI可显式切换；既有安装先保持`legacy_runtime`：
 
 - 不 resume 用户对话 session；
 - 无 shell、文件、MCP、CLI、Vault 或消息发送能力；
@@ -948,10 +948,9 @@ P-A10 基线中，最小 `message + delivery rows` 单事务 20-Agent fan-out me
 
 ## 26. 相关文档
 
-- [Agent Harness v2 完整规格、ADR、失败模式与43场景](../superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md)
-- [Helio 会话、上下文、记忆与工具实测研究](notes/helio-agent-context-memory-tools-research.md)
+- [Agent Harness v2 完整规格、ADR、失败模式与43场景](../archive/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md)
+- [Helio 会话、上下文、记忆与工具实测研究](../archive/historical/notes/helio-agent-context-memory-tools-research.md)
 - [Kith-space 目标架构](architecture-proposal.md)
-- [Agent 频道响应模式](../superpowers/specs/2026-07-14-agent-channel-response-mode-design.md)
-- [P-A10 性能基线](../performance/p-a10-baseline.md)
-- [当前进度与真实验收事实](../progress.md)
+- [Agent 频道响应模式](../archive/specs/2026-07-14-agent-channel-response-mode-design.md)
+- [P-A10 性能基线](../archive/performance/p-a10-baseline.md)
 - [术语表](../glossary.md)

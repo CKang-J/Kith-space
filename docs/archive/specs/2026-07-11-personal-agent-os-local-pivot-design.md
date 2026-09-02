@@ -8,7 +8,7 @@
 
 Kith-space 定位为桌面优先、单人使用的个人 AgentOS。一个 Human 与本机的一组 agent 在多个本地 Space 中协作。agent 继续由本机 Claude Code、Codex、opencode 等 runtime 承载，Kith-space 不自研 runtime。
 
-产品不再沿 open-tag 的服务器部署、多真人、多 agent 主机和多设备协作方向演进。保留 open-tag 的消息、频道、daemon 和 runtime 接入基础，但收敛为单台物理电脑上的一个应用。
+产品不再沿服务器部署、多真人、多 agent 主机和多设备协作方向演进。保留既有消息、频道、daemon 和 runtime 接入基础，但收敛为单台物理电脑上的一个应用。
 
 ## 2. 不可变产品边界
 
@@ -175,7 +175,7 @@ Dock 按 Space 类型固定：Home 为 `Chat | Spaces | Inbox | Tasks | Agents |
 
 - 每个阶段独立验证、独立提交，并同步相应权威文档。
 - 不在路线清理中顺手重写消息、任务、记忆或 runtime 适配器。
-- open-tag 仍是 Apache-2.0 底座；OpenLoaf 只作设计参考，禁止复制 AGPL 源码。
+- 项目保持纯开源、Apache-2.0 宽松许可。
 - P4 与本轮 UI 验收已结束；P-A9 只把现有交互作为回归基线，不在架构切片中夹带视觉重做。
 - 邮箱、浏览器等高风险模块必须等待 HTTPS 与 runtime 权限升级，不得在现有 HTTP LAN + bypass 权限前提下上线。
 

@@ -17,7 +17,7 @@ function fixture(t: test.TestContext) {
   const config = { backendId: "deepseek", modelId: "model", apiKind: "openai-completions", thinkingLevel: "off",
     canonicalOrigin: "https://api.deepseek.com", networkClass: "public_cloud", allowedEgress: ["https://api.deepseek.com"],
     credentialSlot: "kith_secret", providerFactoryId: "deepseek", providerSchemaVersion: 1, options: {} } as CompiledAdvisorModelConfig;
-  const snapshot = { adapterId: "pi_sdk", adapterVersion: "0.81.1", backendId: config.backendId, modelId: config.modelId,
+  const snapshot = { adapterId: "pi_sdk", adapterVersion: "0.84.2", backendId: config.backendId, modelId: config.modelId,
     apiKind: config.apiKind, thinkingLevel: config.thinkingLevel, canonicalOrigin: config.canonicalOrigin,
     networkClass: config.networkClass, providerSchemaVersion: 1, allowedEgress: config.allowedEgress,
     sanitizedConfig: { credentialSourceKind: "kith_secret" }, executionSnapshotDigest: "snapshot",

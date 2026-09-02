@@ -38,3 +38,13 @@ test("Advisor status keeps its hook order stable while async state is loading", 
   assert.equal(card.indexOf("useState(", loadingReturn), -1);
   assert.equal(card.indexOf("useEffect(", loadingReturn), -1);
 });
+
+test("Memory Advisor model choices use backend compatibility and explain unavailable models", () => {
+  const panel = source("./views/advisor-provider/MemoryAdvisorSettings.tsx");
+  assert.match(panel, /advisorCompatibility/);
+  assert.match(panel, /disabled={!supported}/);
+  assert.match(panel, /keyless_unsupported/);
+  assert.match(panel, /内置 Pi SDK 支持其目录内模型及任意 OpenAI 兼容端点（需显式凭据）/);
+  assert.match(panel, /不会自动复用 CLI 登录/);
+  assert.doesNotMatch(panel, /backendId === "anthropic"/);
+});

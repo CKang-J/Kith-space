@@ -42,7 +42,7 @@ const PROVIDER_PRESETS = {
     label: "自定义",
     backendId: "custom",
     apiKind: "openai-completions",
-    canonicalOrigin: "https://",
+    canonicalOrigin: "",
   },
 } as const;
 

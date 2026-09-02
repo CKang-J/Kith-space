@@ -27,7 +27,18 @@ export function canonicalAdvisorOrigin(value: string, networkClass: AdvisorModel
   let parsed: URL;
   try { parsed = new URL(value); } catch { return incompatible("endpoint is not an absolute URL"); }
   if (parsed.username || parsed.password || parsed.search || parsed.hash) incompatible("endpoint contains credentials, query, or fragment");
-  if (parsed.pathname !== "/" && parsed.pathname !== "") incompatible("endpoint must be a canonical origin");
+  // OpenAI-compatible endpoints often live under a base path (e.g. /v1). Only
+  // bounded, simple path segments are accepted; the path stays part of the
+  // allowlisted endpoint so the helper's pinned egress guard covers the full
+  // base URL, not just the origin.
+  const pathname = parsed.pathname.replace(/\/+$/, "");
+  if (pathname !== "") {
+    if (pathname.includes("//")) incompatible("unsafe endpoint path");
+    const segments = pathname.slice(1).split("/");
+    if (segments.length > 8 || segments.some((segment) => segment === "." || segment === ".."
+      || !/^[A-Za-z0-9._~-]+$/.test(segment))) incompatible("unsafe endpoint path");
+    if (pathname.length > 200) incompatible("endpoint path is too long");
+  }
   const isLoopbackName = parsed.hostname === "localhost" || parsed.hostname.endsWith(".localhost");
   const ip = net.isIP(parsed.hostname.replace(/^\[|\]$/g, ""));
   const isLoopbackIp = ip === 4
@@ -39,7 +50,7 @@ export function canonicalAdvisorOrigin(value: string, networkClass: AdvisorModel
   if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && networkClass === "loopback")) {
     incompatible("external endpoints require HTTPS");
   }
-  return parsed.origin;
+  return parsed.origin + pathname;
 }
 
 export function compileAdvisorModel(profile: AdvisorModelProfile): CompiledAdvisorModelConfig {

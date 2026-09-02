@@ -52,7 +52,7 @@ pnpm run browser-access:dev lan --port 7777 --token "a-custom-token-at-least-16-
 
 需要检查Electron渲染DOM时，开发脚本允许把参数转发给Electron：`pnpm run desktop:dev --remote-debugging-port=9222`。只可在本机隔离profile使用并在验收后停止进程；不要给LAN地址开放该端口，也不要从DevTools输出一次性Token。production bundle/pack不会自动启用调试端口。
 
-Recombyn Canvas 阶段 1 harness 只在 Vite 开发环境提供：启动 `pnpm --dir web run dev` 后访问 `http://127.0.0.1:5173/?__canvas_stage1=1`。该查询参数加载原生导出内存 fixture 与隔离 UI Island，不注册正式 Canvas 模块、不访问 Core/SQLite，也不会写回 Agent；production build 静态排除该入口。`pnpm run canvas:stage1:materialize` 对 clean、固定 commit 的上游闭包重放来源/隔离转换，`pnpm run canvas:stage1:build` 在 OS 临时目录验证仅开发岛的完整 bundle，不污染 `web/dist`。该入口仍不是正式产品能力。固定视口、快捷键、computed-style、portal 与性能采集口径见 [`recombyn-stage1-visual-performance-baseline.md`](./research/recombyn-stage1-visual-performance-baseline.md)。
+Recombyn Canvas 阶段 1 harness 只在 Vite 开发环境提供：启动 `pnpm --dir web run dev` 后访问 `http://127.0.0.1:5173/?__canvas_stage1=1`。该查询参数加载原生导出内存 fixture 与隔离 UI Island，不注册正式 Canvas 模块、不访问 Core/SQLite，也不会写回 Agent；production build 静态排除该入口。`pnpm run canvas:stage1:materialize` 对 clean、固定 commit 的上游闭包重放来源/隔离转换，`pnpm run canvas:stage1:build` 在 OS 临时目录验证仅开发岛的完整 bundle，不污染 `web/dist`。该入口仍不是正式产品能力。固定视口、快捷键、computed-style、portal 与性能采集口径见 [`recombyn-stage1-visual-performance-baseline.md`](./archive/historical/research/recombyn-stage1-visual-performance-baseline.md)。
 
 ## 3. 数据库与调试数据
 
@@ -118,7 +118,7 @@ pnpm run desktop:pack    # dist/desktop/win-unpacked
 pnpm run desktop:dist    # x64、per-user、assisted NSIS 安装器
 ```
 
-`desktop:pack` 和 `desktop:dist` 会创建一次性 staging project，以锁文件和 `--package-import-method=copy` 安装完整构建依赖，再只在 staging 中为 Electron x64 重建 `better-sqlite3`；electron-builder 仍只把 production dependency 打入产品。构建 CLI 也从 staging 自身解析，因此开发工作区的 `node_modules` 与 pnpm store 都不会被重建改写。staging 无论成功或失败都会清理，依赖安装使用 `--prefer-offline` 复用本机缓存但允许补齐缺失包。安装器当前未签名，workflow 显式关闭证书自动发现；公开分发前必须配置 Windows 代码签名证书。A6 的具体构建与 smoke 验收记录以 [`progress.md`](./progress.md) 为准。
+`desktop:pack` 和 `desktop:dist` 会创建一次性 staging project，以锁文件和 `--package-import-method=copy` 安装完整构建依赖，再只在 staging 中为 Electron x64 重建 `better-sqlite3`；electron-builder 仍只把 production dependency 打入产品。构建 CLI 也从 staging 自身解析，因此开发工作区的 `node_modules` 与 pnpm store 都不会被重建改写。staging 无论成功或失败都会清理，依赖安装使用 `--prefer-offline` 复用本机缓存但允许补齐缺失包。安装器当前未签名，workflow 显式关闭证书自动发现；公开分发前必须配置 Windows 代码签名证书。A6 的具体构建与 smoke 验收记录以仓库提交历史为准。
 
 ## 8. P-A9 Chat 浏览器基线与回归
 
@@ -158,7 +158,7 @@ pnpm exec tsx scripts/p-a9/append-chat-baseline.ts `
   --round 1
 ```
 
-追加完成后调用 `readRealtime()`。滚动样本先调用 `loadHistory(100|500|1000)`，确认 article 全量挂载，再执行 5 次 `scrollRound(100)`。结束时调用 `cleanup()`、停止 Core/Vite 并删除本轮临时 profile。Core SQL 与 Worker admission 证据分别由 `core-baseline.ts` 和 `runtime-baseline.ts` 采集；统计口径、真实样本和绝对 SLO 见 [`performance/p-a9-baseline.md`](./performance/p-a9-baseline.md)。
+追加完成后调用 `readRealtime()`。滚动样本先调用 `loadHistory(100|500|1000)`，确认 article 全量挂载，再执行 5 次 `scrollRound(100)`。结束时调用 `cleanup()`、停止 Core/Vite 并删除本轮临时 profile。Core SQL 与 Worker admission 证据分别由 `core-baseline.ts` 和 `runtime-baseline.ts` 采集；统计口径、真实样本和绝对 SLO 见 [`performance/p-a9-baseline.md`](./archive/performance/p-a9-baseline.md)。
 
 ## 9. P-A10 Runtime Contract 基线
 
@@ -180,4 +180,4 @@ v2 runtime子进程只看到stable `KITH_SPACE_BROKER_HANDLE`、loopback endpoin
 - 每run创建独立临时HOME/cwd并只传allowlist env和一个显式凭据值；不得为了排障恢复完整`process.env`、系统profile、ADC、IMDS、代理变量或用户HOME。Claude Provider同样使用绝对可执行路径、artifact digest、临时HOME与显式凭据。
 - 模型供应商密钥由CredentialPort加密保存在`$KITH_SPACE_HOME/secrets/advisor-credentials.json`。macOS/Linux会拒绝非当前用户或不符合调用方权限掩码的凭据、CLI配置和helper文件；Windows不检查Node合成的POSIX `mode`，而是主动把secrets目录和凭据文件收紧为当前owner SID的私有DACL，并在读取前验证owner/Allow ACL。已有较宽松ACL会在读取时自动升级；无法收紧或验证时fail closed。若Windows在选择已保存模型、导入Pi CLI配置或测试内置Pi时出现`provider_auth_required`、`config_file_untrusted`或`provider_unavailable`，先确认运行的是包含该平台修复的版本，不要通过安装Pi CLI、伪造Pi配置或放宽文件ACL绕过。
 - Pi CLI导入只在Human点击后读取所选全局目录。Importer不会执行`!command`、复合env、OAuth refresh/login、provider hook、网络刷新或写回；命令/危险env/literal secret/过期OAuth只形成脱敏warning。不要把`auth.json`、凭据、Access Token、activation handle或helper stdin/stdout复制进日志和fixture。
-- Settings诊断页只显示可执行物是否存在、digest是否匹配、隔离策略和脱敏Provider Run；`provider_preflight_destination_mismatch`通常表示DNS分类、allowed origin、proxy或metadata边界不一致，`provider_postflight_destination_mismatch`表示redirect或DNS/egress漂移，均应根因修复而非关闭门禁。
+- Settings诊断页只显示可执行物是否存在、digest是否匹配、隔离策略和脱敏Provider Run；`provider_preflight_destination_mismatch`通常表示DNS分类、allowed origin、proxy或metadata边界不一致，`provider_postflight_destination_mismatch`表示redirect或DNS/egress漂移，均应根因修复而非关闭门禁。某些透明代理 DNS 会同时返回 RFC 2544 IPv4 和伴随 ULA IPv6；只要 HTTPS 主机名仍命中透明代理地址，伴随记录按同一代理路径处理。

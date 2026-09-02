@@ -57,3 +57,29 @@ test("AdvisorModelCompiler permits explicit HTTP loopback but not a mismatched n
   assert.equal(local.canonicalOrigin, "http://127.0.0.1:11434");
   assert.throws(() => compileAdvisorModel({ ...base, canonicalOrigin: "https://127.0.0.1:8443" }), /provider_model_incompatible/);
 });
+
+test("AdvisorModelCompiler accepts bounded OpenAI-compatible base paths and rejects unsafe ones", () => {
+  const withPath = compileAdvisorModel({
+    ...base,
+    backendId: "openai",
+    modelId: "deepseek-v4-flash",
+    apiKind: "openai-responses",
+    canonicalOrigin: "https://api.deepseek.com/v1",
+    allowedEgress: ["https://api.deepseek.com/v1"],
+  });
+  assert.equal(withPath.canonicalOrigin, "https://api.deepseek.com/v1");
+  assert.deepEqual(withPath.allowedEgress, ["https://api.deepseek.com/v1"]);
+  // Trailing slash is normalized away; the origin-only shape stays unchanged.
+  assert.equal(compileAdvisorModel({ ...base, canonicalOrigin: "https://api.anthropic.com/", allowedEgress: ["https://api.anthropic.com"] }).canonicalOrigin, "https://api.anthropic.com");
+  // The base path must be allowlisted together with the origin.
+  assert.throws(() => compileAdvisorModel({
+    ...base, backendId: "openai", modelId: "deepseek-v4-flash", apiKind: "openai-responses",
+    canonicalOrigin: "https://api.deepseek.com/v1", allowedEgress: ["https://api.deepseek.com"],
+  }), /provider_model_incompatible/);
+  for (const bad of ["https://api.example.com/..", "https://api.example.com//v1", "https://api.example.com/v1;x", "https://api.example.com/ä"]) {
+    assert.throws(() => compileAdvisorModel({
+      ...base, backendId: "openai", modelId: "m", apiKind: "openai-completions",
+      canonicalOrigin: bad, allowedEgress: [bad],
+    }), /provider_model_incompatible/, bad);
+  }
+});

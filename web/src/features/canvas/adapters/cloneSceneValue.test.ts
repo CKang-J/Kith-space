@@ -36,7 +36,9 @@ test("cloneSceneValue copies an Immer draft image node (eraser confirm path)", (
 test("cloneSceneValue inside a Redux Toolkit reducer does not throw", () => {
   const slice = createSlice({
     name: "editor",
-    initialState: { document: { deltaSetLike: { "img-1": imageNode } } },
+    // Canvas node bags are open-ended (arbitrary attrs); keep the test document
+    // loosely typed so the reducer can simulate writing eraser-process attrs.
+    initialState: { document: { deltaSetLike: { "img-1": imageNode } as Record<string, any> } },
     reducers: {
       spawnProcessClone(state) {
         const src = state.document.deltaSetLike["img-1"];
