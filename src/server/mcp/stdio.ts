@@ -7,9 +7,12 @@ import {
   CanvasAlignNodesCommandSchema,
   CanvasBooleanOpCommandSchema,
   CanvasCreateFrameCommandSchema,
+  CanvasCreateIconCommandSchema,
   CanvasCreateImageCommandSchema,
   CanvasCreateShapeCommandSchema,
+  CanvasCreateSvgCommandSchema,
   CanvasCreateTextCommandSchema,
+  CanvasDeleteFrameCommandSchema,
   CanvasDeleteNodesCommandSchema,
   CanvasDistributeNodesCommandSchema,
   CanvasDuplicateNodesCommandSchema,
@@ -196,8 +199,11 @@ registerSchema("canvas.create_frame", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.cre
 registerSchema("canvas.create_text", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_text"], CanvasCreateTextCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_text"]);
 registerSchema("canvas.create_shape", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_shape"], CanvasCreateShapeCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_shape"]);
 registerSchema("canvas.create_image", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_image"], CanvasCreateImageCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_image"]);
+registerSchema("canvas.create_svg", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_svg"], CanvasCreateSvgCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_svg"]);
+registerSchema("canvas.create_icon", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_icon"], CanvasCreateIconCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.create_icon"]);
 registerSchema("canvas.update_node", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.update_node"], CanvasUpdateNodeCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.update_node"]);
 registerSchema("canvas.delete_nodes", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.delete_nodes"], CanvasDeleteNodesCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.delete_nodes"]);
+registerSchema("canvas.delete_frame", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.delete_frame"], CanvasDeleteFrameCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.delete_frame"]);
 registerSchema("canvas.update_frame", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.update_frame"], CanvasUpdateFrameCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.update_frame"]);
 registerSchema("canvas.align_nodes", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.align_nodes"], CanvasAlignNodesCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.align_nodes"]);
 registerSchema("canvas.distribute_nodes", CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.distribute_nodes"], CanvasDistributeNodesCommandSchema, "POST", CANVAS_AGENT_GATEWAY_PATHS["canvas.distribute_nodes"]);

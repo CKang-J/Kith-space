@@ -372,11 +372,16 @@ export class ContextAssembler {
       used -= estimateContextTokens(removed.path);
       omittedByKind.set("file_memory", (omittedByKind.get("file_memory") ?? 0) + 1);
     }
+    // 画布选择快照是本轮编辑授权的依据（模型没有它就不知道改哪块画布），
+    // 驱逐时拆到更受保护的梯队：仅先于 parentSnapshot.messageRefs 被驱逐，
+    // 其余 object 快照（task/attachments/compaction）保持原位。
+    const canvasSnapshotRefs = objectSnapshots.filter((ref) => ref.sourceKind === "canvas_selection_snapshot");
     const optionalByEvictionPriority = [
       ...[...memorySourceRefs].reverse(),
-      ...objectSnapshots,
+      ...objectSnapshots.filter((ref) => ref.sourceKind !== "canvas_selection_snapshot"),
       ...(uiSnapshotRef ? [uiSnapshotRef] : []),
       ...recentSurface,
+      ...canvasSnapshotRefs,
       ...(parentSnapshot?.messageRefs ?? []),
     ];
     for (const ref of optionalByEvictionPriority) {

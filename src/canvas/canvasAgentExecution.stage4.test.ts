@@ -215,6 +215,18 @@ test("ToolOps durable subset maps to Core patches while viewport/export/deferred
   assert.throws(() => mapCanvasToolOps(scene as CanvasJson, [{ op: "export_canvas" }]), /canvas\.export/);
   assert.throws(() => mapCanvasToolOps(scene as CanvasJson, [{ op: "image_process" }]), /deferred/);
   assert.throws(() => mapCanvasToolOps(scene as CanvasJson, [{ op: "outline_text" }]), /deferred/);
+  // reorder_nodes 的 order 数组语义：不带 action 时 ids 即新的完整前后顺序，
+  // 未列出的节点整体排到其后（canvasToolOps reorder_nodes else 分支）。
+  const reordered = mapCanvasToolOps(scene as CanvasJson, [{ op: "reorder_nodes", ids: ["shape-2", "shape-1"] }]);
+  const stack = reordered.operation?.type === "document.patch"
+    ? reordered.operation.patches.find((patch) => patch.path[0] === "stackOrder")?.value
+    : null;
+  assert.deepEqual(stack, ["shape-2", "shape-1"]);
+  assert.deepEqual(reordered.reorderedElementIds, ["shape-2", "shape-1"]);
+  // delete_frame op：从 frames 移除并清理 stack 中的 frame 条目。
+  const deletedFrame = mapCanvasToolOps(scene as CanvasJson, [{ op: "delete_frame", frameId: "frame-1" }]);
+  assert.deepEqual(deletedFrame.deletedFrameIds, ["frame-1"]);
+  assert.throws(() => mapCanvasToolOps(scene as CanvasJson, [{ op: "delete_frame", frameId: "nope" }]), /delete_frame_missing_target/);
 });
 
 test("stage4 grant forge/expand/expiry and snapshot authorization fail closed", async () => {

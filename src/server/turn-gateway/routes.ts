@@ -16,9 +16,12 @@ import {
   CanvasBooleanOpCommandSchema,
   CanvasContextBundleCreateCommandSchema,
   CanvasCreateFrameCommandSchema,
+  CanvasCreateIconCommandSchema,
   CanvasCreateImageCommandSchema,
   CanvasCreateShapeCommandSchema,
+  CanvasCreateSvgCommandSchema,
   CanvasCreateTextCommandSchema,
+  CanvasDeleteFrameCommandSchema,
   CanvasDeleteNodesCommandSchema,
   CanvasDistributeNodesCommandSchema,
   CanvasDuplicateNodesCommandSchema,
@@ -270,6 +273,24 @@ export async function handleTurnGateway(
       const body = CanvasCreateImageCommandSchema.parse(await readGatewayJson(req));
       const { claims } = authorize(req, "canvas.write");
       sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasCreateImage(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/create_svg" && method === "POST") {
+      const body = CanvasCreateSvgCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasCreateSvg(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/create_icon" && method === "POST") {
+      const body = CanvasCreateIconCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasCreateIcon(claims, body) });
+      return true;
+    }
+    if (url.pathname === "/agent-gateway/canvas/delete_frame" && method === "POST") {
+      const body = CanvasDeleteFrameCommandSchema.parse(await readGatewayJson(req));
+      const { claims } = authorize(req, "canvas.write");
+      sendJson(res, 200, { ok: true, ...capabilityGateway(claims.spaceId).canvasDeleteFrame(claims, body) });
       return true;
     }
     if (url.pathname === "/agent-gateway/canvas/update_node" && method === "POST") {

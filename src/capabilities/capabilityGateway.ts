@@ -17,9 +17,12 @@ import type {
   CanvasAlignNodesCommand,
   CanvasBooleanOpCommand,
   CanvasCreateFrameCommand,
+  CanvasCreateIconCommand,
   CanvasCreateImageCommand,
   CanvasCreateShapeCommand,
+  CanvasCreateSvgCommand,
   CanvasCreateTextCommand,
+  CanvasDeleteFrameCommand,
   CanvasDeleteNodesCommand,
   CanvasDistributeNodesCommand,
   CanvasDuplicateNodesCommand,
@@ -607,12 +610,24 @@ export class CapabilityGateway {
     return this.canvasTypedWrite(claims, "canvas.create_image", command);
   }
 
+  canvasCreateSvg(claims: TurnCapabilityClaims, command: CanvasCreateSvgCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.create_svg", command);
+  }
+
+  canvasCreateIcon(claims: TurnCapabilityClaims, command: CanvasCreateIconCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.create_icon", command);
+  }
+
   canvasUpdateNode(claims: TurnCapabilityClaims, command: CanvasUpdateNodeCommand): CanvasMutationFeedback {
     return this.canvasTypedWrite(claims, "canvas.update_node", command);
   }
 
   canvasDeleteNodes(claims: TurnCapabilityClaims, command: CanvasDeleteNodesCommand): CanvasMutationFeedback {
     return this.canvasTypedWrite(claims, "canvas.delete_nodes", command);
+  }
+
+  canvasDeleteFrame(claims: TurnCapabilityClaims, command: CanvasDeleteFrameCommand): CanvasMutationFeedback {
+    return this.canvasTypedWrite(claims, "canvas.delete_frame", command);
   }
 
   canvasUpdateFrame(claims: TurnCapabilityClaims, command: CanvasUpdateFrameCommand): CanvasMutationFeedback {

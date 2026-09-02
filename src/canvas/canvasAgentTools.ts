@@ -140,6 +140,31 @@ export const CanvasCreateImageCommandSchema = z.object({
   id: CustomId.optional(),
 }).strict();
 
+/** Raw inline SVG markup. The host re-runs the fail-closed sanitizer (canvasAssetStore) on apply. */
+export const CanvasCreateSvgCommandSchema = z.object({
+  ...WriteLocator,
+  svg: z.string().min(1).max(100_000),
+  x: z.number().finite(),
+  y: z.number().finite(),
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive(),
+  fill: ColorString.optional(),
+  parentId: Id.optional(),
+  frameId: Id.optional(),
+  name: NameString.optional(),
+  id: CustomId.optional(),
+}).strict();
+
+/** create_icon 与 create_svg 共用同一 create_svg ToolOp（raw svg string），仅描述侧重图标语义。 */
+export const CanvasCreateIconCommandSchema = CanvasCreateSvgCommandSchema;
+
+export const CanvasDeleteFrameCommandSchema = z.object({
+  ...WriteLocator,
+  frameId: Id,
+  id: Id.optional(), // ToolOp alias; schema still requires frameId
+  confirmDestructive: z.boolean().optional(),
+}).strict();
+
 export const CanvasUpdateNodeCommandSchema = z.object({
   ...WriteLocator,
   nodeId: Id,
@@ -169,6 +194,11 @@ export const CanvasUpdateNodeCommandSchema = z.object({
   fontSize: z.number().finite().positive().optional(),
   fontWeight: z.union([z.string().trim().min(1).max(40), z.number().finite()]).optional(),
   fontFamily: z.string().trim().min(1).max(120).optional(),
+  textAlign: z.enum(["left", "center", "right"]).optional(),
+  lineHeight: z.number().finite().positive().optional(),
+  letterSpacing: z.number().finite().optional(),
+  fontStyle: z.enum(["normal", "italic"]).optional(),
+  textDecoration: z.enum(["none", "underline", "line-through", "overline"]).optional(),
   name: NameString.optional(),
   hidden: z.boolean().optional(),
   locked: z.boolean().optional(),
@@ -187,6 +217,8 @@ export const CanvasUpdateFrameCommandSchema = z.object({
   ...WriteLocator,
   frameId: Id,
   id: Id.optional(),
+  x: z.number().finite().optional(),
+  y: z.number().finite().optional(),
   width: z.number().finite().positive().optional(),
   height: z.number().finite().positive().optional(),
   name: NameString.optional(),
@@ -242,6 +274,7 @@ export const CanvasBooleanOpCommandSchema = z.object({
   ...WriteLocator,
   nodeIds: z.array(Id).min(2).max(200),
   mode: BooleanMode,
+  resultId: CustomId.optional(),
   confirmDestructive: z.boolean().optional(),
 }).strict();
 
@@ -279,6 +312,9 @@ export type CanvasCreateFrameCommand = z.infer<typeof CanvasCreateFrameCommandSc
 export type CanvasCreateTextCommand = z.infer<typeof CanvasCreateTextCommandSchema>;
 export type CanvasCreateShapeCommand = z.infer<typeof CanvasCreateShapeCommandSchema>;
 export type CanvasCreateImageCommand = z.infer<typeof CanvasCreateImageCommandSchema>;
+export type CanvasCreateSvgCommand = z.infer<typeof CanvasCreateSvgCommandSchema>;
+export type CanvasCreateIconCommand = z.infer<typeof CanvasCreateIconCommandSchema>;
+export type CanvasDeleteFrameCommand = z.infer<typeof CanvasDeleteFrameCommandSchema>;
 export type CanvasUpdateNodeCommand = z.infer<typeof CanvasUpdateNodeCommandSchema>;
 export type CanvasDeleteNodesCommand = z.infer<typeof CanvasDeleteNodesCommandSchema>;
 export type CanvasUpdateFrameCommand = z.infer<typeof CanvasUpdateFrameCommandSchema>;
@@ -298,8 +334,11 @@ export type CanvasTypedMutationCommand =
   | CanvasCreateTextCommand
   | CanvasCreateShapeCommand
   | CanvasCreateImageCommand
+  | CanvasCreateSvgCommand
+  | CanvasCreateIconCommand
   | CanvasUpdateNodeCommand
   | CanvasDeleteNodesCommand
+  | CanvasDeleteFrameCommand
   | CanvasUpdateFrameCommand
   | CanvasAlignNodesCommand
   | CanvasDistributeNodesCommand
@@ -317,8 +356,11 @@ export const CANVAS_MUTATION_TOOL_NAMES = [
   "canvas.create_text",
   "canvas.create_shape",
   "canvas.create_image",
+  "canvas.create_svg",
+  "canvas.create_icon",
   "canvas.update_node",
   "canvas.delete_nodes",
+  "canvas.delete_frame",
   "canvas.update_frame",
   "canvas.align_nodes",
   "canvas.distribute_nodes",
@@ -345,7 +387,7 @@ export const CANVAS_MEDIA_GENERATE_SEAM = {
 };
 
 export const CANVAS_TYPED_TOOL_DESCRIPTIONS = {
-  "canvas.scene_summary": "Read a grant-scoped, model-friendly Canvas summary. Returns JSON plus contextText with CANVAS_SCENE / SCENE_FRAMES / SCENE_NODES / FOCUS_FRAME_ID / GRANT / AVAILABLE_FONTS. Call this before creating or editing. Do not inspect project source to learn Canvas. 画布摘要/先读再改",
+  "canvas.scene_summary": "Read a grant-scoped, model-friendly Canvas summary. Returns JSON plus contextText with CANVAS_SCENE / SCENE_FRAMES / SCENE_NODES / SCENE_FACTS (computed layout facts for design_review self-scoring: hero_coverage, whitespace, h1_h2_ratio, out_of_frame/canvas, overlap, anti_slop) / FOCUS_FRAME_ID / GRANT / AVAILABLE_FONTS. Call this before creating or editing. Do not inspect project source to learn Canvas. 画布摘要/先读再改",
   "canvas.skill_list": "List Canvas design skills (foundation + domains). Returns catalog with skillKey, category, whenToUse, priority. Load one primary surface skill before a new poster/landing/banner. Read-only. 设计技能目录",
   "canvas.skill_get": "Load the full Markdown playbook for one skillKey from skill_list (e.g. poster_craft, design_brief, anti_ai_slop). Read-only. 加载设计技能全文",
   "canvas.create_frame": "Create a frame/artboard. Args: x,y,width,height,name?. Fixed-size poster/mobile/H5/banner: MUST create_frame first at the deliverable size — never replace the artboard with a full-bleed create_shape bg rect. Exception only if the user explicitly refuses a frame (不要画板/自由画布/不要 create_frame). Multi-screen or multi-poster: one create_frame per board (name it), then that board's content, then the next create_frame — do not merge into one tall frame. Custom id cannot be ROOT and cannot collide with an existing element or Frame. 画框/画板/先建 frame",
@@ -353,9 +395,21 @@ export const CANVAS_TYPED_TOOL_DESCRIPTIONS = {
   "canvas.create_shape": "Add a shape. Args: shapeType|type = rect|ellipse|circle|line|arrow|triangle|polygon|star|path|pen|pencil (+ path for pen/pencil/path; sides for polygon/star), x,y,width,height, fill, stroke, borderWidth. " +
     "**Icon construction**: Prefer simple primitives (circle/rect/polygon) + boolean_op for complex icons. " +
     "Example: moon = circle + circle → boolean_op subtract; magnifier = circle + rect → boolean_op union. " +
-    "Prefer primitives + canvas.boolean_op for complex single-path marks. If you truly need create_svg, it has no typed tool — reach it only via the canvas.elements_apply ToolOps subset. " +
+    "Prefer primitives + canvas.boolean_op for complex single-path marks. If you truly need raw SVG beyond primitives, use canvas.create_svg or canvas.create_icon (sanitized inline markup, viewBox required). " +
     "**Never use emoji (🏠🔍❤️) in create_text as icons**. " +
     "strokeAlign=center|inside|outside (default center — ink + selection indicator sit on stroke mid-band; outside/inside shift the band). Fills: solid → fill=#RRGGBB|rgba(…); gradient → fillType=linear|radial|angular|diffuse + fill + fillEnd + gradientAngle? (example vignette: fillType=linear fill=rgba(0,0,0,0) fillEnd=rgba(0,0,0,0.35) gradientAngle=90). NEVER put CSS linear-gradient()/radial-gradient()/conic-gradient() in fill — rejected by host. Diffuse may pass meshSize/meshPoints. Optional: strokeStyle, strokeLinecap, strokeLinejoin, strokeOpacity, cornerRadius, rotation, blendMode, opacity, flipX, flipY. Pen=pen+path (icons: closed path for filled silhouettes). Brush/板绘=pencil tip-stamp: path (M/L only)+pathPressure (csv 0.05-1, same length as points)+brushStyle tip id (solid|pencil-hb|soft|fountain|calligraphy|brushpen|marker|highlighter|chalk|charcoal|bristle|airbrush|watercolor|needle|bold)+optional brushHardness 0-100 (soft→hard tip, default ~80)+optional pressureEnabled true|false (default true when pathPressure set); stroke-only. Line/arrow are open center strokes (full arrow path includes head). For Q-illustration / pencil sketch do NOT collage with circles — use multiple pencil strokes with pressure. Prefer frameId from the selected Frame; never delete+recreate the same object to restyle it. 形状/填充/描边/渐变/禁止 CSS gradient",
+  "canvas.create_svg": "Add a raw SVG node (inline markup). " +
+    "Args: svg (required raw SVG string), x, y, width, height, fill?, frameId?, parentId?, name?. " +
+    "svg = full <svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">…</svg> (a viewBox is required so the node scales into x/y/width/height). " +
+    "path d: use spaced commands Mm Ll Hh Vv Cc Ss Qq Tt Aa Zz + numbers; never glue arc params (bad: a22001…). " +
+    "Host sanitizer REJECTS active/external content: script/foreignObject/iframe/object/embed/link/meta/style tags, on* event attributes, javascript: URLs, and any href/url() reference that is not a local #id fragment — malformed markup is rejected, not escaped. " +
+    "For constructed icons with cutouts prefer create_shape + boolean_op / pen over one giant path. " +
+    "内联 SVG/矢量标记/禁止 script 与外链",
+  "canvas.create_icon": "Add a compact SVG icon mark (same sanitized svg input as canvas.create_svg). " +
+    "REQUIRED: non-empty svg string with <svg viewBox=\"0 0 24 24\"> and at least one <path d=\"…\"> (or simple shapes). Prefer viewBox 0 0 24 24; valid path d only. " +
+    "NEVER use emoji/text as the mark — that is create_text, not create_icon. Empty svg and active/external content (script, on* handlers, external refs) are rejected by the same sanitizer as create_svg. " +
+    "For icons that need cutouts/combines, prefer create_shape + boolean_op or pen instead of one giant path. " +
+    "图标/矢量标记",
   "canvas.create_image": "Create an image node. " +
     "Args: assetId (existing Canvas asset) OR genPrompt (AI image generation, queued job). " +
     "When using genPrompt: " +
@@ -367,16 +421,17 @@ export const CANVAS_TYPED_TOOL_DESCRIPTIONS = {
     "Generation is async: tool returns jobId, image appears when ready (10-60s). " +
     "Remote URLs and data URLs are still rejected. Missing or cross-canvas assetId is rejected. " +
     "图片/assetId 或 genPrompt 生成/可选抠图和风格",
-  "canvas.update_node": "Patch an existing node by nodeId|id (keeps z-order). Geometry: x,y,width,height. Morph shape: shapeType|type=rect|ellipse|circle|triangle|polygon|star|line|arrow|… (rect→circle = update_node shapeType=circle on same id — NEVER delete+create_shape). Style: fill (solid hex/rgba only — NEVER CSS linear-gradient()/radial-gradient()), fillType=solid|linear|radial|angular|diffuse|image?, fillEnd?, gradientAngle?, stroke,borderWidth,strokeAlign=center|inside|outside (default center; selection chrome sits on mid of stroke band), strokeStyle, strokeLinecap, strokeLinejoin, strokeOpacity, opacity,cornerRadius,rotation,blendMode,name, flipX/flipY, fontSize, fontWeight, fontFamily, text styles…. Gradients: fillType=linear|radial|angular|diffuse + fill + fillEnd (+ gradientAngle?). Pencil tip edits: brushStyle (tip id), brushHardness 0-100, pathPressure csv, pressureEnabled. Visibility/edit: hidden, locked (boolean). Keep the same id; do not delete+create to change type or style. 改节点/改填充/改字号/禁止删除重建",
+  "canvas.update_node": "Patch an existing node by nodeId|id (keeps z-order). Geometry: x,y,width,height. Morph shape: shapeType|type=rect|ellipse|circle|triangle|polygon|star|line|arrow|… (rect→circle = update_node shapeType=circle on same id — NEVER delete+create_shape). Style: fill (solid hex/rgba only — NEVER CSS linear-gradient()/radial-gradient()), fillType=solid|linear|radial|angular|diffuse|image?, fillEnd?, gradientAngle?, stroke,borderWidth,strokeAlign=center|inside|outside (default center; selection chrome sits on mid of stroke band), strokeStyle, strokeLinecap, strokeLinejoin, strokeOpacity, opacity,cornerRadius,rotation,blendMode,name, flipX/flipY. Text styles (text nodes): text, fontSize, fontWeight, fontFamily, textAlign=left|center|right, lineHeight (multiplier, e.g. 1.2), letterSpacing (px, may be negative), fontStyle=normal|italic, textDecoration=none|underline|line-through|overline. Gradients: fillType=linear|radial|angular|diffuse + fill + fillEnd (+ gradientAngle?). Pencil tip edits: brushStyle (tip id), brushHardness 0-100, pathPressure csv, pressureEnabled. Visibility/edit: hidden, locked (boolean). Keep the same id; do not delete+create to change type or style. 改节点/改填充/改字号/禁止删除重建",
   "canvas.delete_nodes": "Remove nodes by id. Args: ids|nodeIds (string[]). Only when user asked to delete. Destructive: confirmDestructive must be true. Never put ids in the chat reply. 删除节点/需确认",
-  "canvas.update_frame": "Update frame size/name/background/lock. Args: frameId|id (must match FOCUS_FRAME_ID when set), width?, height?, name?, backgroundColor?, locked? (boolean — prevent moving/resizing the artboard). When FOCUS_FRAME_ID is present, always use that id — never retarget by name. 改画框/改画板背景",
-  "canvas.align_nodes": "Align 2+ nodes. Args: nodeIds, mode=left|centerX|right|top|middle|bottom (FE reads mode; centerX not center). Do not invent align=center or axis=x/y. 对齐",
-  "canvas.distribute_nodes": "Distribute 3+ nodes. Args: nodeIds, axis=h|v (h=horizontal, v=vertical). Do not pass x/y. 分布/均分",
-  "canvas.reorder_nodes": "Z-order. Args: nodeIds, action=front|back|forward|backward. Do not pass order/bring_to_front. 图层顺序/置顶置底",
-  "canvas.group_nodes": "Group nodes. Args: nodeIds (2+). 成组",
-  "canvas.ungroup_nodes": "Ungroup. Args: nodeIds (group ids). Replaces the group node — confirmDestructive must be true. 解组",
-  "canvas.duplicate_nodes": "Duplicate nodes. Args: nodeIds, offsetX?, offsetY?. 复制节点",
-  "canvas.flip_nodes": "Flip nodes. Args: nodeIds, flipX?=true and/or flipY?=true. Do not pass axis. 翻转",
+  "canvas.delete_frame": "Delete a Frame by frameId|id (from SCENE_FRAMES). Destructive: confirmDestructive must be true. Only when the user asked to delete the artboard — never delete the FOCUS frame to fake a clear (use update_frame for background/name changes). Never put ids in the chat reply. 删除画框/需确认",
+  "canvas.update_frame": "Update frame position/size/name/background/lock. Args: frameId|id (must match FOCUS_FRAME_ID when set), x?, y? (move the artboard), width?, height?, name?, backgroundColor?, locked? (boolean — prevent moving/resizing the artboard). When FOCUS_FRAME_ID is present, always use that id — never retarget by name. 改画框/移动画板/改画板背景",
+  "canvas.align_nodes": "Align 2+ nodes to a shared edge or center line. Args: nodeIds (2+ from SCENE_NODES), mode=left|centerX|right|top|middle|bottom (FE reads mode; centerX not center). left/right align x edges to the leftmost/rightmost node, top/bottom align y edges, centerX aligns horizontal centers, middle aligns vertical centers. Do not invent align=center or axis=x/y — only mode is accepted. 对齐",
+  "canvas.distribute_nodes": "Distribute 3+ nodes evenly. Args: nodeIds (3+ from SCENE_NODES), axis=h|v (h=horizontal, v=vertical). The first and last nodes in that axis stay put; nodes between them move to equal steps. Do not pass x/y. 分布/均分",
+  "canvas.reorder_nodes": "Z-order (stack). Args: nodeIds (from SCENE_NODES), action?=front|back|forward|backward. With action: move the listed nodes to front / to back / one step forward / one step backward. Without action: nodeIds is the complete new front-to-back order — the listed nodes go on top in that order and every unlisted node drops below them. Do not pass order/bring_to_front fields. 图层顺序/置顶置底",
+  "canvas.group_nodes": "Group nodes under a new group node. Args: nodeIds (2+ from SCENE_NODES), id? (unique group id). Children keep their canvas positions; the group is a container with no own fill. Frames cannot be grouped — frame ids belong to the frame tools. 成组",
+  "canvas.ungroup_nodes": "Ungroup. Args: nodeIds (group node ids from SCENE_NODES). Dissolves the group and reparents children to the group's parent — the group node is replaced, so confirmDestructive must be true. 解组",
+  "canvas.duplicate_nodes": "Duplicate nodes. Args: nodeIds, offsetX? (default 16), offsetY? (default 16) — each copy is shifted by the offset from its original. Copies get new ids and keep all style/attrs. 复制节点",
+  "canvas.flip_nodes": "Flip nodes in place around their center. Args: nodeIds, flipX?=true and/or flipY?=true (at least one). Repeated flips toggle back. Do not pass axis. 翻转",
   "canvas.boolean_op": "Boolean operations on 2+ shapes — PRIMARY tool for constructing complex icons with cutouts/combines. " +
     "Prefer this over create_svg when the icon can be built from primitives. " +
     "Examples: " +
@@ -384,8 +439,8 @@ export const CANVAS_TYPED_TOOL_DESCRIPTIONS = {
     "magnifier = circle union rect handle (mode=union); " +
     "ring = outer circle subtract inner circle (mode=subtract); " +
     "heart = two circles + triangle boolean union. " +
-    "Args: nodeIds (2+ from SCENE), mode=union|subtract|intersect|exclude, confirmDestructive=true. " +
-    "Operands are replaced. 布尔运算/挖空/合并/构建复杂图标",
+    "Args: nodeIds (2+ from SCENE), mode=union|subtract|intersect|exclude, resultId? (custom id for the combined result node), confirmDestructive=true. " +
+    "Operands are replaced by the single result node. 布尔运算/挖空/合并/构建复杂图标",
   "canvas.set_canvas_background": "Set infinite-canvas stage background (not artboard fill). Args: color|fill|backgroundColor (solid hex/rgba — never CSS gradient()), fillType?=solid|linear|radial|angular|diffuse|image, fillEnd?, gradientAngle?, opacity?. Do not use a full-bleed rect as the canvas stage background. 画布背景/不是画板填充",
   "canvas.video_generate": "Generate a short video (2-12s) and place it as a video node. " +
     "Args: genPrompt (scene description), optional referenceImageAssetId (image-to-video from an existing Canvas asset), " +
@@ -421,8 +476,11 @@ export const CANVAS_AGENT_GATEWAY_PATHS = {
   "canvas.create_text": "/agent-gateway/canvas/create_text",
   "canvas.create_shape": "/agent-gateway/canvas/create_shape",
   "canvas.create_image": "/agent-gateway/canvas/create_image",
+  "canvas.create_svg": "/agent-gateway/canvas/create_svg",
+  "canvas.create_icon": "/agent-gateway/canvas/create_icon",
   "canvas.update_node": "/agent-gateway/canvas/update_node",
   "canvas.delete_nodes": "/agent-gateway/canvas/delete_nodes",
+  "canvas.delete_frame": "/agent-gateway/canvas/delete_frame",
   "canvas.update_frame": "/agent-gateway/canvas/update_frame",
   "canvas.align_nodes": "/agent-gateway/canvas/align_nodes",
   "canvas.distribute_nodes": "/agent-gateway/canvas/distribute_nodes",
@@ -488,11 +546,13 @@ export function typedCanvasCommandToToolOp(
 ): Record<string, unknown> {
   const createNode = toolName === "canvas.create_text"
     || toolName === "canvas.create_shape"
-    || toolName === "canvas.create_image";
+    || toolName === "canvas.create_image"
+    || toolName === "canvas.create_svg"
+    || toolName === "canvas.create_icon";
   let parentId: string | undefined;
   let frameId: string | undefined;
   if (createNode) {
-    const input = command as CanvasCreateTextCommand | CanvasCreateShapeCommand | CanvasCreateImageCommand;
+    const input = command as CanvasCreateTextCommand | CanvasCreateShapeCommand | CanvasCreateImageCommand | CanvasCreateSvgCommand | CanvasCreateIconCommand;
     parentId = input.parentId ?? defaultCreateParentId(grant);
     frameId = input.frameId ?? defaultCreateFrameId(grant);
     if (parentId && grant.objectScope.frameIds.includes(parentId)) {
@@ -587,6 +647,31 @@ export function typedCanvasCommandToToolOp(
       attrs: compactAttrs({ name: input.name }),
     };
   }
+  if (toolName === "canvas.create_svg" || toolName === "canvas.create_icon") {
+    const input = command as CanvasCreateSvgCommand;
+    return {
+      op: "create_svg",
+      id: input.id,
+      parentId,
+      frameId,
+      x: input.x,
+      y: input.y,
+      width: input.width,
+      height: input.height,
+      svg: input.svg,
+      attrs: compactAttrs({ fill: input.fill, name: input.name }),
+    };
+  }
+  if (toolName === "canvas.delete_frame") {
+    const input = command as CanvasDeleteFrameCommand;
+    const frameId = input.frameId ?? input.id;
+    if (!frameId) throw new CanvasValidationError("delete_frame requires frameId");
+    return {
+      op: "delete_frame",
+      frameId,
+      id: frameId,
+    };
+  }
   if (toolName === "canvas.update_node") {
     const input = command as CanvasUpdateNodeCommand;
     const nodeId = input.nodeId ?? input.id;
@@ -619,6 +704,11 @@ export function typedCanvasCommandToToolOp(
     assign("fontSize", input.fontSize);
     assign("fontWeight", input.fontWeight);
     assign("fontFamily", input.fontFamily);
+    assign("textAlign", input.textAlign);
+    assign("lineHeight", input.lineHeight);
+    assign("letterSpacing", input.letterSpacing);
+    assign("fontStyle", input.fontStyle);
+    assign("textDecoration", input.textDecoration);
     assign("shapeType", input.shapeType);
     for (const forbidden of ["src", "url", "href", "dataUrl", "genPrompt"]) {
       if (forbidden in patch) {
@@ -651,6 +741,8 @@ export function typedCanvasCommandToToolOp(
       op: "update_frame",
       frameId: input.frameId,
       id: input.frameId ?? input.id,
+      x: input.x,
+      y: input.y,
       width: input.width,
       height: input.height,
       name: input.name,
@@ -731,6 +823,7 @@ export function typedCanvasCommandToToolOp(
       ids: input.nodeIds,
       mode: input.mode,
       operation: input.mode,
+      resultId: input.resultId,
     };
   }
   if (toolName === "canvas.set_canvas_background") {

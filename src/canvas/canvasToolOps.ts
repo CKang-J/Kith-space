@@ -446,24 +446,53 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>, context?: Ca
       attrs["border-width"] = raw.strokeWidth;
     }
 
-    // Handle text update: frontend expects DATA and ORIGIN_DATA
-    if (typeof raw.text === "string" && next.key === "text") {
-      const currentStyle = {
-        fontSize: typeof raw.fontSize === "number" ? raw.fontSize : typeof attrs.fontSize === "number" ? Number(attrs.fontSize) : 16,
-        fill: String(attrs["fill-color"] || raw.fill || next.fill || "#000000"),
-        fontWeight: String(raw.fontWeight || attrs.fontWeight || "400"),
-        fontFamily: String(raw.fontFamily || attrs.fontFamily || "Inter"),
+    // Handle text updates: the editor renders text from attrs.DATA per-char config, so rebuild
+    // DATA/ORIGIN_DATA whenever the text or any text style key is touched. Typed tools pass these
+    // via patch; elements_apply may pass them top-level — both are merged here.
+    if (next.key === "text") {
+      const pickString = (key: string, fallback: string): string => {
+        const value = key in patch ? patch[key] : raw[key];
+        if (typeof value === "string" && value) return value;
+        if (typeof value === "number" && Number.isFinite(value)) return String(value);
+        return fallback;
       };
-      const textAttrs = buildTextAttrs(raw.text, currentStyle);
-      Object.assign(attrs, textAttrs);
-      next.text = raw.text;
+      const pickNumber = (key: string, fallback: number): number => {
+        const value = key in patch ? patch[key] : raw[key];
+        return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+      };
+      const textStyleKeys = ["text", "fontSize", "fontWeight", "fontFamily", "fill", "textAlign", "lineHeight", "letterSpacing", "fontStyle", "textDecoration"];
+      const textStyleRequested = textStyleKeys.some((key) => key in patch || key in raw);
+      if (textStyleRequested) {
+        const text = pickString("text", typeof next.text === "string" && next.text
+          ? next.text
+          : typeof attrs.text === "string" && attrs.text ? attrs.text : "");
+        const textStyle = {
+          fontSize: pickNumber("fontSize", typeof attrs.fontSize === "number" ? Number(attrs.fontSize) : DEFAULT_TEXT_STYLE.fontSize),
+          fill: String(attrs["fill-color"] || next.fill || DEFAULT_TEXT_STYLE.fill),
+          fontWeight: pickString("fontWeight", String(attrs.fontWeight ?? DEFAULT_TEXT_STYLE.fontWeight)),
+          fontFamily: pickString("fontFamily", String(attrs.fontFamily ?? DEFAULT_TEXT_STYLE.fontFamily)),
+          fontStyle: pickString("fontStyle", String(attrs.fontStyle ?? DEFAULT_TEXT_STYLE.fontStyle)),
+          textAlign: pickString("textAlign", String(attrs.textAlign ?? DEFAULT_TEXT_STYLE.textAlign)),
+          lineHeight: pickNumber("lineHeight", typeof attrs.lineHeight === "number" ? Number(attrs.lineHeight) : DEFAULT_TEXT_STYLE.lineHeight),
+          letterSpacing: pickNumber("letterSpacing", typeof attrs.letterSpacing === "number" ? Number(attrs.letterSpacing) : DEFAULT_TEXT_STYLE.letterSpacing),
+          textDecoration: pickString("textDecoration", String(attrs.textDecoration ?? DEFAULT_TEXT_STYLE.textDecoration)),
+        };
+        Object.assign(attrs, buildTextAttrs(text, textStyle));
+        if (typeof patch.text === "string") next.text = patch.text;
+      }
+      if (typeof raw.text === "string") next.text = raw.text;
     }
 
-    // Handle fontSize, fontWeight, fontFamily updates for text nodes
+    // Keep flat style attrs visible for the editor and scene facts (patch keys were already applied).
     if (next.key === "text") {
       if (typeof raw.fontSize === "number") attrs.fontSize = raw.fontSize;
-      if (typeof raw.fontWeight === "string") attrs.fontWeight = raw.fontWeight;
+      if (typeof raw.fontWeight === "string" || typeof raw.fontWeight === "number") attrs.fontWeight = raw.fontWeight;
       if (typeof raw.fontFamily === "string") attrs.fontFamily = raw.fontFamily;
+      if (typeof raw.fontStyle === "string") attrs.fontStyle = raw.fontStyle;
+      if (typeof raw.textAlign === "string") attrs.textAlign = raw.textAlign;
+      if (typeof raw.lineHeight === "number") attrs.lineHeight = raw.lineHeight;
+      if (typeof raw.letterSpacing === "number") attrs.letterSpacing = raw.letterSpacing;
+      if (typeof raw.textDecoration === "string") attrs.textDecoration = raw.textDecoration;
     }
 
     // Handle rotation: frontend uses 'angle' field in attrs
@@ -645,7 +674,17 @@ function mapOne(document: CanvasJson, raw: Record<string, unknown>, context?: Ca
     if (op === "create_svg") {
       const markup = typeof raw.svg === "string" ? raw.svg : typeof raw.markup === "string" ? raw.markup : "";
       if (!markup) throw opError("create_svg_missing_markup", "pass sanitized svg markup with a viewBox", "create_svg requires sanitized svg markup");
-      node.svg = sanitizeInlineSvgMarkup(markup);
+      try {
+        node.svg = sanitizeInlineSvgMarkup(markup);
+      } catch {
+        // 复用 canvasAssetStore 的 fail-closed 消毒器；把拒绝转成 CanvasToolError，
+        // 让 LAST_CANVAS_ERROR 能给出可读的 code/fix 而不是裸 500。
+        throw opError(
+          "create_svg_invalid_markup",
+          "svg was rejected by the host sanitizer — remove script/foreignObject/iframe/meta/style tags, on* event attributes, javascript: URLs, and any non-#id href/url() reference",
+          "sanitizer rejected svg markup",
+        );
+      }
     }
     return {
       ...empty,

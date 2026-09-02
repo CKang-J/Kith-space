@@ -12,6 +12,7 @@ import type { CanvasSceneSummaryCommand } from "./canvasAgentTools.js";
 import { MAX_CANVAS_SELECTION_IDS } from "./canvasSelectionSnapshot.js";
 import { canvasNodeBelongsToFrame } from "./canvasFrameMembership.js";
 import { CANVAS_AVAILABLE_FONTS, canvasAvailableFontLabels } from "./fonts/fontsCatalog.js";
+import { computeCanvasSceneFacts, formatCanvasSceneFacts, type CanvasSceneFacts } from "./canvasSceneFacts.js";
 
 const MAX_SCENE_NODES = 50;
 
@@ -229,6 +230,7 @@ function formatCanvasSceneContextText(input: {
   actions: string[];
   selectedElementIds: string[];
   selectedFrameIds: string[];
+  sceneFacts: CanvasSceneFacts | null;
 }): string {
   const frameLines = input.selectedFrames.length
     ? input.selectedFrames.map((frame) => {
@@ -271,6 +273,11 @@ function formatCanvasSceneContextText(input: {
     "=== SCENE_NODES ===",
     ...nodeLines,
     "",
+    "=== SCENE_FACTS ===",
+    ...(input.sceneFacts
+      ? [formatCanvasSceneFacts(input.sceneFacts)]
+      : ["Computed facts unavailable on a snapshot-only grant (no live canvas read). 计算事实/快照只读时不可用"]),
+    "",
     "=== GRANT ===",
     `actions: ${input.actions.join(", ") || "—"}`,
     `createParents: ${input.allowedCreateParents.join(", ") || "—"}`,
@@ -307,10 +314,12 @@ export function executeCanvasSceneSummary(
   let selectedFrames = snapshotFrames(grant, snapshot);
   let elements = snapshotElements(grant, snapshot);
   let canvasSize = { width: null as number | null, height: null as number | null };
+  let liveDocument: CanvasJson | null = null;
   if (liveRead) {
     const live = new CanvasCore(db, spaceId).read(grant.canvasId);
     revision = live.revisions.revision;
     const document = live.document as CanvasJson;
+    liveDocument = document;
     canvasSize = liveCanvasSize(document);
     const frames = liveFrames(document);
     const allowedFrames = new Set(grant.objectScope.frameIds);
@@ -325,6 +334,9 @@ export function executeCanvasSceneSummary(
       ? grant.objectScope.frameIds[0]!
       : (selectedFrames.length === 1 ? selectedFrames[0]!.id : null);
   const availableFonts = [...CANVAS_AVAILABLE_FONTS];
+  const sceneFacts = liveDocument
+    ? computeCanvasSceneFacts(liveDocument, { scope: grant.objectScope, focusFrameId })
+    : null;
   const nextSuggestedAction = !canCreate && grant.objectScope.emptySelection
     ? "Grant is read-only. Use canvas.snapshot_get / canvas.export. Do not call create/update/delete."
     : grant.objectScope.emptySelection
@@ -345,6 +357,7 @@ export function executeCanvasSceneSummary(
     actions: grant.actions,
     selectedElementIds: grant.objectScope.elementIds,
     selectedFrameIds: grant.objectScope.frameIds,
+    sceneFacts,
   });
   return {
     canvasId: grant.canvasId,
