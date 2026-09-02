@@ -1,13 +1,13 @@
 version: 2
-# Keep routine dependency maintenance visible without flooding this single-maintainer
-# project. Major upgrades remain deliberate work and are not opened automatically.
+# Dependabot temporarily paused during early iteration: no PRs are opened.
+# Re-enable later by setting open-pull-requests-limit back to > 0 (major upgrades stay manual).
 updates:
   # Root workspace: Core Service, Local Runtime Worker, Desktop, and CLI.
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "monthly"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 0
     groups:
       root-minor-patch:
         update-types: ["minor", "patch"]
@@ -20,7 +20,7 @@ updates:
     directory: "/web"
     schedule:
       interval: "monthly"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 0
     groups:
       web-minor-patch:
         update-types: ["minor", "patch"]
@@ -33,7 +33,7 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 0
     groups:
       github-actions:
         patterns: ["*"]
