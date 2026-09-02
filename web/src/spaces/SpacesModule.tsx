@@ -6,7 +6,6 @@ import {
   CheckSquare,
   Folder,
   FolderOpen,
-  FolderPlus,
   Link2,
   RefreshCw,
   Star,
@@ -318,7 +317,7 @@ export function SpacesModule() {
         <div className="spaces-module__header-end">
           {!bulkSelectionEnabled ? (
             <SearchField
-              className="spaces-module__search"
+              className="w-[min(276px,100%)] max-[820px]:w-full"
               value={query}
               onValueChange={setQuery}
               clearLabel={t("spacesModule.clearSearch")}
@@ -538,13 +537,7 @@ export function SpacesModule() {
                   {t("spacesModule.clearSearch")}
                 </Button>
               ) : null}
-              <Button type="button" onClick={() => openCreate("default")}>
-                <FolderPlus data-icon="inline-start" aria-hidden="true" />
-                {t("spacesModule.createBlank")}
-              </Button>
-              <Button type="button" variant="outline" onClick={() => openCreate("attach")}>
-                {t("spacesModule.attachExisting")}
-              </Button>
+              <SpaceCreateMenu onSelect={openCreate} />
             </div>
           </div>
         )}

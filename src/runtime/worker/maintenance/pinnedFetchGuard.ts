@@ -2,7 +2,15 @@ import net from "node:net";
 import { Agent } from "undici";
 
 export function installPinnedFetchGuard(input: { allowedEgress: string[]; pinnedAddresses: string[] }): () => Promise<void> {
-  const allowedOrigins = new Set(input.allowedEgress);
+  // Allowed egress entries may carry a base path (OpenAI-compatible /v1
+  // endpoints); the request origin must match an allowlisted entry's origin.
+  // The pinned addresses still pin the exact host, and redirects stay rejected.
+  let allowedOrigins: Set<string>;
+  try {
+    allowedOrigins = new Set(input.allowedEgress.map((entry) => new URL(entry).origin));
+  } catch {
+    throw new Error("provider_request_invalid");
+  }
   const pinned = [...new Set(input.pinnedAddresses)];
   if (!pinned.length || pinned.some((address) => net.isIP(address) === 0)) throw new Error("provider_request_invalid");
   const dispatcher = new Agent({ connect: { lookup(_hostname, options, callback) {

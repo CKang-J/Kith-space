@@ -437,4 +437,4 @@ Kith 当前是 `@modelcontextprotocol/sdk ^1.29.0`。v2 是拆包且有行为边
 - `src/capabilities/capabilityGateway.ts:52-61` — MCP/CLI 共享 use-case module
 - `src/capabilities/capabilityGateway.ts:515-637` — transaction、idempotency、external reconciliation
 - `docs/kith-space/agent-harness-v2-mechanisms.md:220-260` — Kith runtime session/generation 与资源边界
-- `docs/superpowers/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md:647-694` — durable admission、公平、幂等与 Agent 串行约束
+- `docs/archive/specs/2026-07-19-agent-harness-session-context-memory-tools-design.md:647-694` — durable admission、公平、幂等与 Agent 串行约束

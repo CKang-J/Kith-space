@@ -1,6 +1,6 @@
 # Kith-space 产品定位
 
-> 本文负责回答“这是什么、给谁用、明确不是什么”。完整本机化规格见 `../superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，Home/Space root 补充见 `../superpowers/specs/2026-07-12-home-space-and-space-root-design.md`。
+> 本文负责回答“这是什么、给谁用、明确不是什么”。完整本机化规格见 `../archive/specs/2026-07-11-personal-agent-os-local-pivot-design.md`，Home/Space root 补充见 `../archive/specs/2026-07-12-home-space-and-space-root-design.md`。
 
 ## 一句话定位
 
@@ -54,8 +54,6 @@ Windows 是 v1 正式平台，macOS 和 Linux 后续支持。局域网 v1 只做
 
 ## 源项目关系与许可证
 
-- open-tag（Apache-2.0）是代码底座，复用消息、频道、任务、Local Runtime Worker 和 runtime 适配骨架；它的服务器部署、多用户、多机器、公共 daemon/npm 与独立 Web 发布假设已经清除。
-- OpenLoaf（AGPLv3）只作视觉和产品思路参考，禁止复制源码。
-- openagents 和 zano 是历史研究与局部交互参考，不定义产品路线。
+Kith-space 建立在本机协作基础设施之上，并从中吸收消息、频道、任务、Local Runtime Worker 与 runtime 适配的骨架，同时清除了其服务器部署、多用户、多机器、公共 daemon/npm 与独立 Web 发布假设，收敛为单台电脑上的一个应用。
 
-Kith-space 保持纯开源与宽松许可（Apache-2.0/MIT）。
+Kith-space 保持纯开源与宽松许可（Apache-2.0）。

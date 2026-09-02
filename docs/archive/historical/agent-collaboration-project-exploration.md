@@ -1,6 +1,6 @@
 # 多 Agent 协作项目探索报告
 
-> 历史调研说明：本文记录 2026-07-09 选底座时对四个项目的原始探索，包含当时尚未排除的多真人、多设备、公网和云端方案。2026-07-11 产品已锁定为单 Human、本机 agent、Desktop 唯一正式宿主；本文中的多设备/公网内容只用于解释参考项目，不是 Kith-space 路线。当前结论见 `docs/superpowers/specs/2026-07-11-personal-agent-os-local-pivot-design.md`。
+> 历史调研说明：本文记录 2026-07-09 选底座时对四个项目的原始探索，包含当时尚未排除的多真人、多设备、公网和云端方案。2026-07-11 产品已锁定为单 Human、本机 agent、Desktop 唯一正式宿主；本文中的多设备/公网内容只用于解释参考项目，不是 Kith-space 路线。当前结论见 `docs/archive/specs/2026-07-11-personal-agent-os-local-pivot-design.md`。
 
 日期：2026-07-09
 

@@ -45,8 +45,8 @@ test("Space cards expose accessible project actions and focused dialogs", () => 
   assert.match(menu, /ContextMenuTrigger/);
   assert.match(menu, /ContextMenuItem/);
   assert.match(menu, /data-disabled:pointer-events-auto/);
-  assert.match(menu, /bg-transparent/);
-  assert.match(menu, /data-\[state=open\]:bg-\[var\(--canvas-soft\)\]/);
+  assert.match(menu, /bg-background\/70/);
+  assert.match(menu, /data-\[state=open\]:bg-muted/);
   assert.doesNotMatch(menu, /document\.addEventListener|createPortal/);
   assert.match(menu, /spacesModule\.revealInFileManager/);
   assert.match(menu, /spacesModule\.favorite/);
@@ -106,7 +106,6 @@ test("Space creation uses a modal and browser host-directory picker", () => {
   assert.match(form, /<HostDirectoryPicker/);
   assert.doesNotMatch(form, /space\.hostPathPlaceholder/);
   assert.match(hostDirectoryApi, /\/api\/host-directories/);
-  assert.match(picker, /spacesModule\.folderBrowseHint/);
   assert.match(picker, /onSelect\(next\.path\)/);
   assert.match(form, /space\.attachSubtitle/);
   assert.match(picker, /spacesModule\.folderLocationLabel/);
@@ -121,21 +120,21 @@ test("Spaces module keeps the card grid responsive inside the existing module pa
   assert.match(css, /grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(/);
   assert.match(css, /\.spaces-module__card\s*\{[^}]*border-radius:/s);
   assert.match(css, /\.spaces-module__name\s*\{[^}]*font-size:\s*var\(--font-size-title\)\s*!important/s);
-  assert.match(css, /\.spaces-module__path,[\s\S]*?font-size:\s*var\(--font-size-meta\)\s*!important/s);
+  assert.match(css, /\.spaces-module__path-value\s*\{[^}]*font-size:\s*var\(--font-size-meta\)\s*!important/s);
 });
 
 test("Spaces search uses the shared pill geometry without feature CSS overrides", () => {
   const source = fs.readFileSync(sourceUrl, "utf8");
   const css = fs.readFileSync(cssUrl, "utf8");
 
-  assert.match(source, /className="w-\[min\(276px,100%\)\]"/);
+  assert.match(source, /className="w-\[min\(276px,100%\)\] max-\[820px\]:w-full"/);
   assert.doesNotMatch(css, /\.spaces-module__search/);
 });
 
-test("Spaces header keeps the search group centered independently of side actions", () => {
+test("Spaces header keeps title, search, and actions on one wrapping row with compact actions", () => {
   const css = fs.readFileSync(cssUrl, "utf8");
 
-  assert.match(css, /\.spaces-module__header\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) auto minmax\(0,\s*1fr\)/s);
-  assert.match(css, /\.spaces-module__actions\s*\{[^}]*justify-self:\s*end/s);
-  assert.match(css, /@media \(max-width:\s*820px\)[\s\S]*?\.spaces-module__header\s*\{[^}]*display:\s*flex/s);
+  assert.match(css, /\.spaces-module__header\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*space-between;[^}]*flex-wrap:\s*wrap/s);
+  assert.match(css, /\.spaces-module__header-end\s*\{[^}]*flex:\s*1;[^}]*justify-content:\s*flex-end/s);
+  assert.match(css, /\.spaces-module__actions\s*\{[^}]*flex:\s*none/s);
 });

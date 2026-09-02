@@ -18,11 +18,13 @@ import { PiCliConfigImporter } from "./piCliConfigImporter.js";
 import { VerifiedConfigFileReader } from "./verifiedConfigFileReader.js";
 import { getContentHmacKey } from "../app-data/appDatabase.js";
 import { ADVISOR_PROVIDER_CAPABILITIES, PI_AI_PACKAGE_INTEGRITY, advisorProviderDescriptor, listAdvisorProviderDescriptors } from "./providerRegistry.js";
-import { piSdkCatalogDigest, piSdkModelCompatibility } from "./piSdkCatalog.js";
+import { piSdkCatalogDigest } from "./piSdkCatalog.js";
+import { piSdkModelRunnability } from "./advisorModelRunnability.js";
 import { advisorCredentialEnvAllowed } from "./credentialEnvPolicy.js";
 import { cancelActiveAdvisorRuns } from "./activeAdvisorRuns.js";
 import { resolveExecutable, sha256File } from "./providerArtifact.js";
 import { advisorAuthenticationCapability } from "./advisorAuthentication.js";
+import { advisorModelCompatibility } from "../model-control/advisorModelCompatibility.js";
 
 type SettingsRow = {
   installation_identity_digest: string;
@@ -49,6 +51,7 @@ type ModelRow = {
   credential_ref: string | null; provider_schema_version: number; data_policy_revision: string;
   data_policy_provenance: AdvisorModelProfile["dataPolicyProvenance"]; network_class: AdvisorModelProfile["networkClass"];
   allowed_egress_json: string; model_metadata_json: string; created_at: number;
+  source_model_configuration_id: string | null; source_model_configuration_revision: number | null;
 };
 
 function settingsRow(): SettingsRow {
@@ -197,7 +200,7 @@ export class AdvisorProviderSettingsService {
     compileAdvisorModel(candidateProfile);
     const providerBeforeSecret = providerRow(settingsRow().current_provider_revision);
     if (providerBeforeSecret && (!advisorAuthenticationCapability(providerBeforeSecret.adapter_id, candidateProfile).supported
-      || (providerBeforeSecret.adapter_id === "pi_sdk" && !piSdkModelCompatibility(candidateProfile).compatible))) {
+      || (providerBeforeSecret.adapter_id === "pi_sdk" && !piSdkModelRunnability(candidateProfile).supported))) {
       throw new AdvisorProviderError("provider_model_incompatible");
     }
     let credentialRef = input.credentialRef ?? null;
@@ -249,7 +252,7 @@ export class AdvisorProviderSettingsService {
     if (activeProvider && !advisorAuthenticationCapability(activeProvider.adapter_id, profile).supported) {
       throw new AdvisorProviderError("provider_model_incompatible");
     }
-    if (activeProvider?.adapter_id === "pi_sdk" && !piSdkModelCompatibility(profile).compatible) {
+    if (activeProvider?.adapter_id === "pi_sdk" && !piSdkModelRunnability(profile).supported) {
       throw new AdvisorProviderError("provider_model_incompatible");
     }
     let revision = 0;
@@ -315,16 +318,22 @@ export class AdvisorProviderSettingsService {
 
   async selectProvider(adapterId: AdvisorProviderDescriptor["adapterId"]): Promise<ReturnType<AdvisorProviderSettingsService["summary"]>> {
     const descriptor = advisorProviderDescriptor(adapterId);
-    const currentModel = modelRow(settingsRow().current_model_profile_revision);
-    if (currentModel) {
-      const profile = mapProfile(currentModel);
-      if (!advisorAuthenticationCapability(adapterId, profile).supported
-        || (adapterId === "pi_sdk" && !piSdkModelCompatibility(profile).compatible)) throw new AdvisorProviderError("provider_model_incompatible");
-    }
     await providerEpochGate.withWrite(async () => {
       const sqlite = appDataConnection();
       let nextEpoch = 0;
       const transaction = sqlite.transaction(() => {
+        const currentSettings = settingsRow();
+        const currentModel = modelRow(currentSettings.current_model_profile_revision);
+        const clearModelBinding = currentModel != null && !advisorModelCompatibility({
+          executorId: adapterId,
+          backendId: currentModel.backend_id,
+          modelId: currentModel.model_id,
+          apiKind: currentModel.api_kind,
+          canonicalOrigin: currentModel.canonical_origin,
+          credentialSourceKind: currentModel.credential_source_kind,
+          networkClass: currentModel.network_class,
+          thinkingLevel: currentModel.thinking_level,
+        }).supported;
         const revision = Number(sqlite.prepare("SELECT coalesce(max(revision), 0) + 1 FROM advisor_provider_revisions").pluck().get());
         const artifactPath = adapterId === "pi_sdk" ? resolvePiAdvisorHelper() : resolveExecutable("claude");
         if (!artifactPath || !existsSync(artifactPath)) throw new AdvisorProviderError("provider_unavailable");
@@ -338,8 +347,12 @@ export class AdvisorProviderSettingsService {
           .run(revision, adapterId, descriptor.adapterVersion, artifactPath, artifactDigest,
             adapterId === "pi_sdk" ? digest(PI_AI_PACKAGE_INTEGRITY) : null, canonicalJson(config), digest(config), capabilityDigest, Date.now());
         sqlite.prepare(`UPDATE advisor_provider_settings SET execution_mode = 'migrating', provider_state = 'probing',
-          current_provider_revision = ?, provider_epoch = provider_epoch + 1, revocation_epoch = revocation_epoch + 1,
-          updated_at = ? WHERE singleton_id = 1`).run(revision, Date.now());
+          current_provider_revision = ?,
+          current_model_profile_revision = CASE WHEN ? THEN NULL ELSE current_model_profile_revision END,
+          model_configuration_id = CASE WHEN ? THEN NULL ELSE model_configuration_id END,
+          model_configuration_revision = CASE WHEN ? THEN NULL ELSE model_configuration_revision END,
+          provider_epoch = provider_epoch + 1, revocation_epoch = revocation_epoch + 1,
+          updated_at = ? WHERE singleton_id = 1`).run(revision, clearModelBinding ? 1 : 0, clearModelBinding ? 1 : 0, clearModelBinding ? 1 : 0, Date.now());
         nextEpoch = settingsRow().provider_epoch;
       });
       transaction.immediate();

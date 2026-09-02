@@ -676,7 +676,7 @@ Phase 2 全部完成时，需满足：
 
 - `src/canvas/canvasSkills.ts` — 当前 Canvas skill pack
 - `src/canvas/canvasAgentTools.ts` — 工具定义和描述
-- `docs/superpowers/specs/2026-08-19-canvas-agent-effect-alignment.md` — 总体规格
+- `docs/archive/specs/2026-08-19-canvas-agent-effect-alignment.md` — 总体规格
 
 ---
 

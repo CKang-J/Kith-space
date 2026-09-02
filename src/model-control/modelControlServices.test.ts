@@ -11,6 +11,7 @@ process.env.KITH_SPACE_HOME = root;
 const { closeAppDatabase } = await import("../app-data/appDatabase.js");
 const { ModelProviderConnectionService } = await import("./modelProviderConnectionService.js");
 const { ModelConfigurationService } = await import("./modelConfigurationService.js");
+const { AdvisorBindingService } = await import("./advisorBindingService.js");
 const { RuntimeProfileService } = await import("./runtimeProfileService.js");
 const { runtimeConfigurationEpochGate } = await import("../runtime/config/runtimeConfigurationEpochGate.js");
 const { runtimeCredentialActivationPort } = await import("../runtime/config/runtimeCredentialActivationPort.js");
@@ -99,6 +100,23 @@ test("runtime compatibility rejects unsupported wire APIs without weakening the 
     enabled: true,
     defaultBinding: { mode: "unmanaged_cli_native", modelConfigurationId: null, modelConfigurationRevision: null },
   })).defaultBinding.mode, "unmanaged_cli_native");
+});
+
+test("Pi memory advisor accepts DeepSeek-style OpenAI-compatible model configurations", async () => {
+  const providers = new ModelProviderConnectionService();
+  const models = new ModelConfigurationService(providers);
+  const advisor = new AdvisorBindingService();
+  const provider = await providers.create({
+    displayName: "DeepSeek", backendId: "openai", apiKind: "openai-responses",
+    canonicalOrigin: "https://api.deepseek.com", networkClass: "public_cloud",
+    credentialSourceKind: "kith_secret", credentialValue: "test-key",
+    dataPolicyRevision: "human-v1", dataPolicyProvenance: "human_asserted",
+    allowedEgress: ["https://api.deepseek.com"],
+  });
+  const model = await models.create({ displayName: "deepseek-v4-flash", providerConnectionId: provider.connection.id, modelId: "deepseek-v4-flash" });
+  const result = await advisor.bindModelConfiguration(model.configuration.id);
+  assert.equal(result.executor?.id, "pi_sdk");
+  assert.equal(result.modelConfiguration?.id, model.configuration.id);
 });
 
 test("disabling a provider cascades to unused models and refuses models still bound to a runtime", async () => {

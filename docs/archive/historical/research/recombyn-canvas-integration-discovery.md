@@ -268,7 +268,7 @@ MVP 后按独立切片增加：
 4. **发起与完成语义（4A）**：Canvas 调用绑定明确私聊/频道/话题与一个执行 Agent；Canvas mutation 和 server-owned Chat 回执都必须留存。
 5. **MVP 边界（5A）**：先交付 Recombyn 原生编辑能力、多 Canvas 标签、选区发 Chat、一个明确 Agent 的 revisioned 回写；便签、链接、任意文件、语义图、多 Agent 区域与 AI 视频/音频后置。
 
-正式方案见 [Recombyn Canvas Workspace 设计规格](../superpowers/specs/2026-08-15-recombyn-canvas-workspace-design.md)。
+正式方案见 [Recombyn Canvas Workspace 设计规格](../../specs/2026-08-15-recombyn-canvas-workspace-design.md)。
 
 ## 12. 关键源码证据
 

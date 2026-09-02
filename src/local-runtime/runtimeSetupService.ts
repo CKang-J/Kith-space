@@ -87,7 +87,32 @@ async function accountState(runtimeId: SetupRuntimeId, executable: string, runne
     }
   }
   if (runtimeId === "pi") {
-    if (probe.status === 0 && output.split(/\r?\n/).length > 1) {
+    if (probe.status === 0) {
+      // Pi's model listing is not an authentication probe.  Since Pi 0.84,
+      // `auth check --json --no-refresh` provides a side-effect-free status for
+      // each provider; use it so a valid local credential is not shown as
+      // permanently awaiting confirmation.
+      const providers = [...new Set(output
+        .split(/\r?\n/)
+        .slice(1)
+        .map((line) => /^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s+\S+/.exec(line)?.[1])
+        .filter((provider): provider is string => Boolean(provider)))];
+      if (providers.length > 0) {
+        const authChecks = await Promise.all(providers.map(async (provider) => {
+          const auth = await runner(executable, ["auth", "check", "--provider", provider, "--json", "--no-refresh"]);
+          if (auth.status !== 0) return "unknown" as const;
+          try {
+            const parsed = JSON.parse(stripControlCharacters(auth.stdout)) as { status?: unknown };
+            return parsed.status === "ready" ? "ready" as const : "signed_out" as const;
+          } catch {
+            return "unknown" as const;
+          }
+        }));
+        if (authChecks.includes("ready")) return { state: "ready" as const, label: "已找到本机 Pi 凭据" };
+        if (authChecks.every((state) => state === "signed_out")) {
+          return { state: "signed_out" as const, label: "尚未配置 Pi 凭据" };
+        }
+      }
       return { state: "unknown" as const, label: "模型目录可读取，凭据待确认" };
     }
   }

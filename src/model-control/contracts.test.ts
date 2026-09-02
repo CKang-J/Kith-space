@@ -38,8 +38,9 @@ const model: ModelConfigurationRevision = {
   maxOutputTokens: 8_192,
   inputCapabilities: ["text"],
   runtimeCompatibilitySnapshot: {
-    claude: { supported: true },
+    claude: { supported: false, reason: "wire_api_not_supported" },
     codex: { supported: false, reason: "requires_responses_api" },
+    pi: { supported: true },
   },
   options: {},
   createdAt: 2,
@@ -85,6 +86,8 @@ test("settings presenter exposes actionable summaries without credential refs or
     label: "Cloud",
   });
   assert.equal(presented.compatibility.codex?.reason, "requires_responses_api");
+  assert.equal(presented.advisorCompatibility.pi_sdk?.supported, true);
+  assert.equal(presented.advisorCompatibility.claude_cli?.supported, false);
   const serialized = JSON.stringify(presented);
   assert.doesNotMatch(serialized, /secret-ref-must-not-leak/);
   assert.doesNotMatch(serialized, new RegExp("a{64}|b{64}"));

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
-const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
 test("the frontend Store exposes one Human and agent-only collaboration", () => {
   const store = source("./store.tsx");
@@ -92,7 +92,7 @@ test("the frontend exposes only the local product shell", () => {
   assert.doesNotMatch(frame, /legacyHref/);
   assert.doesNotMatch(navigationRail, /legacyHref|MoreHorizontal|<a\b/);
   assert.doesNotMatch(navigationRail, /QuickSwitcher|shell-topbar__tools/);
-  assert.match(navigationRail, /<Sidebar collapsible="offcanvas"[\s\S]*?<SpaceSwitcher/);
+  assert.match(navigationRail, /<Sidebar\s+collapsible="offcanvas"[\s\S]*?<SpaceSwitcher/);
   assert.match(navigationRail, /<ConversationListContent/);
   assert.match(frame, /<SidebarProvider/);
   assert.match(frame, /<WorkspaceNavigationRail/);

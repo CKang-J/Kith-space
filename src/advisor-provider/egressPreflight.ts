@@ -67,8 +67,13 @@ export async function prepareEgressLease(
 ): Promise<PreparedEgressLease> {
   let endpoint: URL;
   try { endpoint = new URL(input.canonicalOrigin); } catch { return fail(); }
-  if (endpoint.origin !== input.canonicalOrigin || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) fail();
-  if (!input.allowedEgress.includes(endpoint.origin)) fail();
+  if (endpoint.username || endpoint.password || endpoint.search || endpoint.hash) fail();
+  const canonicalPath = endpoint.pathname === "/" ? "" : endpoint.pathname.replace(/\/+$/, "");
+  if (endpoint.origin + canonicalPath !== input.canonicalOrigin) fail();
+  if (canonicalPath !== "" && (canonicalPath.includes("//")
+    || canonicalPath.slice(1).split("/").some((segment) => segment === "." || segment === ".."
+      || !/^[A-Za-z0-9._~-]+$/.test(segment)))) fail();
+  if (!input.allowedEgress.includes(input.canonicalOrigin)) fail();
   if (input.proxyUrl && !input.allowDeclaredProxy) fail();
   if (input.proxyUrl) {
     let proxy: URL;
@@ -80,8 +85,10 @@ export async function prepareEgressLease(
   const addresses = literalAddress ? [hostname] : await lookup(hostname);
   if (!addresses.length) fail();
   const kinds = addresses.map(ipKind);
+  const transparentProxyDns = !literalAddress && endpoint.protocol === "https:" && kinds.includes("transparent_proxy");
   if (input.networkClass === "public_cloud" && kinds.some((kind) => kind !== "public"
-    && !(kind === "transparent_proxy" && !literalAddress && endpoint.protocol === "https:"))) fail();
+    && !(kind === "transparent_proxy" && transparentProxyDns)
+    && !(kind === "lan" && transparentProxyDns))) fail();
   if (input.networkClass === "loopback" && kinds.some((kind) => kind !== "loopback")) fail();
   if (input.networkClass === "lan" && kinds.some((kind) => kind !== "lan")) fail();
   if (kinds.includes("metadata")) fail();

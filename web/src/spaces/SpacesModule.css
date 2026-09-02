@@ -44,11 +44,6 @@
   gap: 10px;
 }
 
-.spaces-module__search {
-  width: min(240px, 100%);
-  flex: 0 1 240px;
-}
-
 .spaces-module__actions {
   display: flex;
   flex: none;
@@ -538,7 +533,6 @@
     flex-direction: column;
     align-items: stretch;
   }
-  .spaces-module__search { width: 100%; flex: 1 1 auto; }
   .spaces-module__actions { width: 100%; }
   .spaces-module__action { flex: 1; justify-content: center; }
   .spaces-module__action--icon { flex: 0 0 32px; }

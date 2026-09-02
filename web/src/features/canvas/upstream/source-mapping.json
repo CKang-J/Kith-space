@@ -2738,9 +2738,10 @@
         "prepend fixed source/Apache modification notice",
         "rewrite repository-local import aliases",
         "add host-project typecheck boundary",
-        "route Tauri dynamic imports through the Stage 1 unavailable adapter"
+        "route Tauri dynamic imports through the Stage 1 unavailable adapter",
+        "use Kith browser session/Desktop trust instead of Recombyn Bearer for host canvas assets"
       ],
-      "targetSha256": "4bbc94036a8a22c6c06d49d442c79efc76f8fe49ff339e61fe0b88c409ebbd39"
+      "targetSha256": "70cbbfa2ad330099942fe028df06f7b0ba60a9a8c8b73d5360fe550ad190c33e"
     },
     {
       "source": "apps/web/src/components/rcb/scene/paint/exportRaster.worker.ts",
@@ -3468,7 +3469,7 @@
         "remove the Stage 1 AgentDock composition and route selection-to-chat through the host seam",
         "include originating canvasId in selection-to-chat host events"
       ],
-      "targetSha256": "723c4fd1e0f20708ae073d64bda4eea758e777cc8952d670d3569a0d4d50de1a"
+      "targetSha256": "37dcca01bab319384257e3d890b56b2c9c35d19f02cd85fb9a8020e9cbcb1c39"
     },
     {
       "source": "apps/web/src/plugins/canvas/host.ts",
