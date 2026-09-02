@@ -86,6 +86,17 @@ export function getGenerationJob(
   return row ? toJobRow(row) : undefined;
 }
 
+export function listGenerationJobsByTurn(
+  db: SpaceDb,
+  turnId: string,
+): GenerationJobRow[] {
+  return db.select().from(canvasGenerationJobs)
+    .where(eq(canvasGenerationJobs.turnId, turnId))
+    .orderBy(asc(canvasGenerationJobs.createdAt))
+    .all()
+    .map(toJobRow);
+}
+
 export function listPendingJobs(
   db: SpaceDb,
   limit = 10,

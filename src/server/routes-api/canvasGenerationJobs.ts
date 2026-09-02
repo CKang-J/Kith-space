@@ -1,5 +1,5 @@
 import { dbForSpace } from "../../db/index.js";
-import { getGenerationJob } from "../../canvas/generation/generationJobQueue.js";
+import { getGenerationJob, listGenerationJobsByTurn } from "../../canvas/generation/generationJobQueue.js";
 import { kickGenerationWorker } from "../../canvas/generation/generationSupervisor.js";
 import {
   CanvasNotFoundError,
@@ -15,6 +15,7 @@ import type { SpaceCtx } from "./ctx.js";
  *   POST /api/canvases/:canvasId/generation-jobs
  *   GET  /api/canvases/:canvasId/generation-jobs/:jobId
  *   GET  /api/spaces/:spaceId/canvas-generation-jobs/:jobId
+ *   GET  /api/canvas-generation-jobs/by-turn/:turnId
  *
  * Agent enqueue stays on the Gateway; this route does not require a Canvas Access Grant.
  */
@@ -55,6 +56,13 @@ export async function handleCanvasGenerationJobs(ctx: SpaceCtx): Promise<boolean
     const job = getGenerationJob(dbForSpace(ctx.spaceId), jobId);
     if (!job) return (sendErr(ctx.res, 404, "Generation job not found"), true);
     return (sendJson(ctx.res, 200, publicGenerationJob(job, ctx.spaceId)), true);
+  }
+
+  const turnGet = /^\/api\/canvas-generation-jobs\/by-turn\/([^/]+)$/.exec(ctx.p);
+  if (turnGet && ctx.method === "GET") {
+    const turnId = decodeURIComponent(turnGet[1]!);
+    const jobs = listGenerationJobsByTurn(dbForSpace(ctx.spaceId), turnId);
+    return (sendJson(ctx.res, 200, { jobs: jobs.map((job) => publicGenerationJob(job, ctx.spaceId)) }), true);
   }
 
   return false;

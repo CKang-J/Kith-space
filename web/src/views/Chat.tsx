@@ -36,6 +36,7 @@ import { shouldGroupMessage } from "./chat-message/messageGrouping.ts";
 import { surfaceForSender } from "./chat-message/messagePresentation.ts";
 import { buildMessageImageGallery, isSingleImageMessage } from "./chat-message/messageImageGallery.ts";
 import { TurnDetailsButton } from "./chat-message/TurnDetailsButton.tsx";
+import { GenerationJobProgress } from "./chat-message/GenerationJobProgress.tsx";
 import { CanvasContextChip } from "./chat-message/CanvasContextChip.tsx";
 import { CanvasChip } from "./chat-message/CanvasChip.tsx";
 import type { LightboxImage } from "../Lightbox.tsx";
@@ -633,6 +634,7 @@ export function Chat({
                     {isAgentReplyPreview && !m.content
                       ? <AgentReplyPreviewBody m={m} />
                       : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={messageChannels} nav={navToken} /></div>}
+                    {m.producedByTurnId ? <GenerationJobProgress turnId={m.producedByTurnId} /> : null}
                     {!!m.attachments?.length && <div className={`msg-atts attachment-list${isSingleImageMessage(m.attachments) ? " attachment-list--single-image" : ""}`}>{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} gallery={messageImageGallery} />)}</div>}
                     {(() => {
                       const contexts = messageCanvasContexts(m);
@@ -864,6 +866,7 @@ function ThreadPanel({ channelId, parent, followed, readOnly = false, solo = fal
         {isAgentReplyPreview && !m.content
           ? <AgentReplyPreviewBody m={m} />
           : !!m.content && <div className="mbody"><MessageContent content={m.content} mentions={m.mentions || []} channels={[...channels, ...archivedChannels]} nav={navToken} /></div>}
+        {m.producedByTurnId ? <GenerationJobProgress turnId={m.producedByTurnId} /> : null}
         {!!m.attachments?.length && <div className={`msg-atts attachment-list${isSingleImageMessage(m.attachments) ? " attachment-list--single-image" : ""}`}>{m.attachments.map((a) => <AttCard key={a.id} a={a} url={attachmentUrl(a.id)} gallery={threadImageGallery} />)}</div>}
         {(() => {
           const contexts = messageCanvasContexts(m);
