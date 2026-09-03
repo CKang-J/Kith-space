@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 
-export const APP_DATABASE_SCHEMA_VERSION = 12;
+export const APP_DATABASE_SCHEMA_VERSION = 14;
 
 export type AppDatabaseCompatibilityReason = "integrity" | "future" | "schema";
 
@@ -820,6 +820,39 @@ const APP_V12_GENERATION_PROVIDERS_AUDIO_SQL = `
 
 const APP_SCHEMA_V12 = new Map(APP_SCHEMA_V11);
 
+const APP_V13_PI_BUILTIN_RUNTIME_AND_AGENT_ONBOARDING_SQL = `
+  ALTER TABLE installation_state ADD COLUMN agent_onboarding_completed_at INTEGER;
+
+  INSERT INTO runtime_profiles (
+    runtime_id, enabled, default_binding_mode,
+    default_model_configuration_id, default_model_configuration_revision,
+    current_revision, updated_at
+  ) VALUES
+    ('pi-builtin', 1, 'unset', NULL, NULL, 1, unixepoch() * 1000);
+  INSERT INTO runtime_profile_revisions (
+    runtime_id, revision, executable_preference, runtime_options_json, created_at
+  ) VALUES
+    ('pi-builtin', 1, NULL, '{}', unixepoch() * 1000);
+`;
+
+const APP_SCHEMA_V13 = new Map(APP_SCHEMA_V12);
+APP_SCHEMA_V13.set("installation_state", [
+  ...(APP_SCHEMA_V12.get("installation_state") ?? []),
+  "agent_onboarding_completed_at",
+]);
+
+// Applied after v13 shipped: model configurations created before the built-in
+// runtime existed carry compatibility snapshots without a pi-builtin key, so
+// they could not be bound or pinned to pi-builtin. The backfill is idempotent.
+const APP_V14_PI_BUILTIN_MODEL_COMPAT_BACKFILL_SQL = `
+  UPDATE model_configuration_revisions
+  SET runtime_compatibility_snapshot_json = json_set(
+    runtime_compatibility_snapshot_json, '$."pi-builtin"', json_object('supported', json('true'))
+  );
+`;
+
+const APP_SCHEMA_V14 = new Map(APP_SCHEMA_V13);
+
 function baselineChecksum(): string {
   return createHash("sha256").update(APP_BASELINE_SQL).digest("hex");
 }
@@ -881,7 +914,7 @@ function assertIntegrity(sqlite: Database.Database, dbPath: string): void {
 
 function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_DATABASE_SCHEMA_VERSION): void {
   const missing: string[] = [];
-  const expectedSchema = version >= 12 ? APP_SCHEMA_V12 : version >= 11 ? APP_SCHEMA_V11 : version >= 10 ? APP_SCHEMA_V10 : version >= 9 ? APP_SCHEMA_V9 : version >= 8 ? APP_SCHEMA_V8 : version >= 7 ? APP_SCHEMA_V7 : version >= 6 ? APP_SCHEMA_V6 : version >= 5 ? APP_SCHEMA_V5 : version >= 4 ? APP_SCHEMA_V4 : version >= 3 ? APP_SCHEMA_V3 : version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
+  const expectedSchema = version >= 14 ? APP_SCHEMA_V14 : version >= 13 ? APP_SCHEMA_V13 : version >= 12 ? APP_SCHEMA_V12 : version >= 11 ? APP_SCHEMA_V11 : version >= 10 ? APP_SCHEMA_V10 : version >= 9 ? APP_SCHEMA_V9 : version >= 8 ? APP_SCHEMA_V8 : version >= 7 ? APP_SCHEMA_V7 : version >= 6 ? APP_SCHEMA_V6 : version >= 5 ? APP_SCHEMA_V5 : version >= 4 ? APP_SCHEMA_V4 : version >= 3 ? APP_SCHEMA_V3 : version >= 2 ? APP_SCHEMA_V2 : APP_SCHEMA_V1;
   for (const [table, requiredColumns] of expectedSchema) {
     const actual = tableColumns(sqlite, table);
     if (actual.size === 0) {
@@ -1009,7 +1042,7 @@ function assertSchema(sqlite: Database.Database, dbPath: string, version = APP_D
       "SELECT runtime_configuration_epoch FROM installation_state WHERE singleton_key = 1",
     ).pluck().get());
     if (!Number.isSafeInteger(epoch) || epoch < 1) missing.push("installation_state.runtime_configuration_epoch (value)");
-    for (const runtimeId of ["claude", "codex", "opencode", "pi"]) {
+    for (const runtimeId of ["claude", "codex", "opencode", "pi", ...(version >= 13 ? ["pi-builtin"] : [])]) {
       const row = sqlite.prepare(`
         SELECT default_binding_mode, default_model_configuration_id, default_model_configuration_revision
         FROM runtime_profiles WHERE runtime_id = ?
@@ -1128,6 +1161,8 @@ function expectedJournal(version: number) {
     ...(version >= 10 ? [{ version: 10, name: "appearance-color-mode", checksum: migrationChecksum(APP_V10_APPEARANCE_COLOR_MODE_SQL) }] : []),
     ...(version >= 11 ? [{ version: 11, name: "generation-providers", checksum: migrationChecksum(APP_V11_GENERATION_PROVIDERS_SQL) }] : []),
     ...(version >= 12 ? [{ version: 12, name: "generation-providers-audio", checksum: migrationChecksum(APP_V12_GENERATION_PROVIDERS_AUDIO_SQL) }] : []),
+    ...(version >= 13 ? [{ version: 13, name: "pi-builtin-runtime-and-agent-onboarding", checksum: migrationChecksum(APP_V13_PI_BUILTIN_RUNTIME_AND_AGENT_ONBOARDING_SQL) }] : []),
+    ...(version >= 14 ? [{ version: 14, name: "pi-builtin-model-compat-backfill", checksum: migrationChecksum(APP_V14_PI_BUILTIN_MODEL_COMPAT_BACKFILL_SQL) }] : []),
   ];
 }
 
@@ -1432,6 +1467,30 @@ export function migrateAppDatabase(sqlite: Database.Database, dbPath: string, op
       `).run(12, "generation-providers-audio", migrationChecksum(APP_V12_GENERATION_PROVIDERS_AUDIO_SQL), Date.now());
     });
     applyGenerationProvidersAudio.immediate();
+  }
+  if (version < 13) {
+    const applyPiBuiltinRuntime = sqlite.transaction(() => {
+      sqlite.exec(APP_V13_PI_BUILTIN_RUNTIME_AND_AGENT_ONBOARDING_SQL);
+      assertSchema(sqlite, dbPath, 13);
+      sqlite.pragma("user_version = 13");
+      sqlite.prepare(`
+        INSERT INTO app_migration_journal (version, name, checksum, applied_at)
+        VALUES (?, ?, ?, ?)
+      `).run(13, "pi-builtin-runtime-and-agent-onboarding", migrationChecksum(APP_V13_PI_BUILTIN_RUNTIME_AND_AGENT_ONBOARDING_SQL), Date.now());
+    });
+    applyPiBuiltinRuntime.immediate();
+  }
+  if (version < 14) {
+    const applyPiBuiltinCompatBackfill = sqlite.transaction(() => {
+      sqlite.exec(APP_V14_PI_BUILTIN_MODEL_COMPAT_BACKFILL_SQL);
+      assertSchema(sqlite, dbPath, 14);
+      sqlite.pragma("user_version = 14");
+      sqlite.prepare(`
+        INSERT INTO app_migration_journal (version, name, checksum, applied_at)
+        VALUES (?, ?, ?, ?)
+      `).run(14, "pi-builtin-model-compat-backfill", migrationChecksum(APP_V14_PI_BUILTIN_MODEL_COMPAT_BACKFILL_SQL), Date.now());
+    });
+    applyPiBuiltinCompatBackfill.immediate();
   }
   assertCompatibleAppDatabase(sqlite, dbPath, { requireCurrentVersion: true });
 }

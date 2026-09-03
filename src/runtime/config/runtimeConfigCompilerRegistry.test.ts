@@ -11,10 +11,10 @@ const base = {
   backendId: "openai", providerOptions: {}, compilerPolicyVersion: 1, compilerPolicyDigest: "policy",
 };
 
-test("four managed runtime compilers keep credentials child-only and Pi reports MCP unsupported", async () => {
+test("five managed runtime compilers keep credentials child-only and Pi reports MCP unsupported", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "kith-compilers-"));
   const registry = new RuntimeConfigCompilerRegistry();
-  assert.deepEqual(registry.list().map((item) => item.runtimeId), ["claude", "codex", "opencode", "pi"]);
+  assert.deepEqual(registry.list().map((item) => item.runtimeId), ["claude", "codex", "opencode", "pi", "pi-builtin"]);
   const activation = { value: "secret-value", identityDigest: "identity" };
   const claude = await registry.get("claude").compile({
     ...base, runtimeId: "claude", runtimeStateDir: root, apiKind: "anthropic-messages",
@@ -41,6 +41,26 @@ test("four managed runtime compilers keep credentials child-only and Pi reports 
   assert.ok(compiledPi.args.includes("--no-context-files"));
   assert.doesNotMatch(readFileSync(compiledPi.ephemeralFiles[0]!.path, "utf8"), /secret-value/);
   await compiledPi.cleanup();
+  const piBuiltin = registry.get("pi-builtin");
+  const capabilities = piBuiltin.describeCapabilities("test");
+  assert.equal(capabilities.mcpBootstrap, "unsupported");
+  assert.equal(capabilities.unmanagedCliNative, false);
+  const compiledBuiltin = await piBuiltin.compile({
+    ...base, runtimeId: "pi-builtin", runtimeStateDir: root,
+  }, activation);
+  assert.ok(compiledBuiltin.args.includes("--provider"));
+  assert.ok(compiledBuiltin.args.includes("--thinking"));
+  assert.equal(compiledBuiltin.env.PI_CODING_AGENT_DIR?.includes("pi-builtin-"), true);
+  assert.equal(compiledBuiltin.env.PI_OFFLINE, "1");
+  assert.equal(compiledBuiltin.env.PI_TELEMETRY, "0");
+  assert.equal(compiledBuiltin.env.DO_NOT_TRACK, "1");
+  assert.equal(compiledBuiltin.env.KITH_PI_API_KEY, "secret-value");
+  const modelsJson = readFileSync(compiledBuiltin.ephemeralFiles.find((file) => file.path.endsWith("models.json"))!.path, "utf8");
+  assert.match(modelsJson, /KITH_PI_API_KEY/);
+  assert.doesNotMatch(modelsJson, /secret-value/);
+  const settingsJson = readFileSync(compiledBuiltin.ephemeralFiles.find((file) => file.path.endsWith("settings.json"))!.path, "utf8");
+  assert.equal(JSON.parse(settingsJson).defaultProjectTrust, "never");
+  await compiledBuiltin.cleanup();
 });
 
 test("keyless local managed providers omit credential env without weakening activation identity", async () => {

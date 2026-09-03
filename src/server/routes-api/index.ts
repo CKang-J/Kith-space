@@ -25,6 +25,7 @@ import { handleHumanAttachmentGet, handleAttachments } from "./attachments.js";
 import { handleAuthenticatedBrowserAuth, handleDesktopBrowserAccess, handlePublicBrowserAuth } from "./browserAccess.js";
 import { handleDesktopSettings } from "./desktopSettings.js";
 import { handlePersonalSetup } from "./setup.js";
+import { handleAgentOnboarding } from "./agentOnboarding.js";
 import { handleSpacesHumanScope } from "./spaces.js";
 import { handleLocalRuntimeHumanScope } from "./localRuntime.js";
 import { handleSpacePreferences } from "./spacePreferences.js";
@@ -66,6 +67,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   const humanId = auth.humanId;
   const humanCtx: HumanCtx = { ...base, humanId };
   if (await handleAuthenticatedBrowserAuth(base, auth)) return true;
+  if (await handleAgentOnboarding(humanCtx)) return true;
   if (await handleHumanAttachmentGet(humanCtx)) return true;
   if (await handleHumanProfile(humanCtx)) return true;
   if (await handleHostDirectories(humanCtx)) return true;

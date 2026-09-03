@@ -38,6 +38,12 @@ const PROVIDER_PRESETS = {
     apiKind: "openai-completions",
     canonicalOrigin: "https://api.deepseek.com",
   },
+  pi: {
+    label: "Pi 官方预设",
+    backendId: "",
+    apiKind: "",
+    canonicalOrigin: "",
+  },
   custom: {
     label: "自定义",
     backendId: "custom",
@@ -45,6 +51,22 @@ const PROVIDER_PRESETS = {
     canonicalOrigin: "",
   },
 } as const;
+
+interface PiPresetProvider {
+  backendId: string;
+  apiKind: string;
+  canonicalOrigin: string;
+  models: Array<{ id: string; name: string; thinkingLevels: readonly string[] }>;
+}
+
+interface PiImportProvider {
+  backendId: string;
+  apiKind: string;
+  canonicalOrigin: string;
+  models: Array<{ id: string; name: string }>;
+  credential: { kind: string };
+  warnings: string[];
+}
 
 type ProviderPreset = keyof typeof PROVIDER_PRESETS;
 type ProviderDraft = {
@@ -139,6 +161,16 @@ export function ModelProviderSettings({ api }: { api: Api }) {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [importing, setImporting] = useState<string | null>(null);
+  const [piPresets, setPiPresets] = useState<PiPresetProvider[]>([]);
+  const [piPresetsLoading, setPiPresetsLoading] = useState(false);
+  const [piPresetProvider, setPiPresetProvider] = useState("");
+  const [piPresetModel, setPiPresetModel] = useState("");
+  const [piImport, setPiImport] = useState<{
+    providers: PiImportProvider[];
+    warnings: string[];
+    sourceMtimeDigest: string;
+  } | null>(null);
+  const [piImporting, setPiImporting] = useState(false);
   const dialogRef = useRef<HTMLElement | null>(null);
   const firstFieldRef = useRef<HTMLInputElement | null>(null);
   const dialogTrigger = useRef<HTMLElement | null>(null);
@@ -214,6 +246,20 @@ export function ModelProviderSettings({ api }: { api: Api }) {
   const applyPreset = (value: ProviderPreset) => {
     const next = PROVIDER_PRESETS[value];
     setPreset(value);
+    if (value === "pi") {
+      setDraft({ displayName: "", backendId: "", apiKind: "", canonicalOrigin: "", credentialValue: "" });
+      setModelDrafts([]);
+      setPiPresetProvider("");
+      setPiPresetModel("");
+      if (!piPresets.length && !piPresetsLoading) {
+        setPiPresetsLoading(true);
+        void request("GET", "/api/settings/pi-presets")
+          .then((result) => setPiPresets((result.providers ?? []) as PiPresetProvider[]))
+          .catch(() => setDialogError("无法读取 Pi 官方预设，请稍后重试。"))
+          .finally(() => setPiPresetsLoading(false));
+      }
+      return;
+    }
     setDraft({
       displayName: next.label === "自定义" ? "" : next.label,
       backendId: next.backendId,
@@ -221,6 +267,33 @@ export function ModelProviderSettings({ api }: { api: Api }) {
       canonicalOrigin: next.canonicalOrigin,
       credentialValue: "",
     });
+  };
+
+  const piPresetProviders = piPresets;
+  const selectedPiPresetProvider = piPresets.find((item) => item.backendId === piPresetProvider);
+
+  const applyPiPresetProvider = (backendId: string) => {
+    setPiPresetProvider(backendId);
+    setPiPresetModel("");
+    const provider = piPresets.find((item) => item.backendId === backendId);
+    if (!provider) return;
+    setDraft({
+      displayName: provider.backendId,
+      backendId: provider.backendId,
+      apiKind: provider.apiKind,
+      canonicalOrigin: provider.canonicalOrigin,
+      credentialValue: "",
+    });
+  };
+
+  const addPiPresetModel = () => {
+    if (!piPresetModel || !selectedPiPresetProvider) return;
+    const model = selectedPiPresetProvider.models.find((item) => item.id === piPresetModel);
+    if (!model) return;
+    setModelDrafts((current) => current.some((item) => item.modelId === model.id)
+      ? current
+      : [...current, { key: crypto.randomUUID(), displayName: model.name, modelId: model.id }]);
+    setPiPresetModel("");
   };
 
   const openCreate = (trigger: HTMLElement) => {
@@ -352,6 +425,40 @@ export function ModelProviderSettings({ api }: { api: Api }) {
     }
   };
 
+  const previewPiImport = async () => {
+    setError("");
+    setNotice("");
+    setPiImporting(true);
+    setPiImport(null);
+    try {
+      const preview = await request("POST", "/api/settings/pi-config-import/preview", {});
+      setPiImport(preview as any);
+    } catch (cause: any) {
+      setError(cause?.message ?? "无法读取本机 Pi 配置");
+    } finally {
+      setPiImporting(false);
+    }
+  };
+
+  const applyPiImport = async () => {
+    if (!piImport) return;
+    setPiImporting(true);
+    try {
+      const result = await request("POST", "/api/settings/pi-config-import/apply", {
+        sourceMtimeDigest: piImport.sourceMtimeDigest,
+      });
+      await reload();
+      setPiImport(null);
+      setNotice(result.applied
+        ? `已从本机 Pi 配置导入 ${result.applied} 个模型供应商；原 Pi 配置文件没有被修改。`
+        : "没有可导入的新供应商，已导入过的会被跳过。");
+    } catch (cause: any) {
+      setError(cause?.message ?? "Pi 配置导入失败");
+    } finally {
+      setPiImporting(false);
+    }
+  };
+
   return (
     <div className="model-settings model-settings--wide" data-testid="model-provider-settings">
       <header className="settings-page-heading settings-page-heading--models">
@@ -452,6 +559,52 @@ export function ModelProviderSettings({ api }: { api: Api }) {
         </div>
       </details>
 
+      <details className="settings-import-panel">
+        <summary><Upload size={17} />导入本机 Pi-Agent 的模型配置</summary>
+        <p>
+          读取 <code>~/.pi/agent/models.json</code> 与 <code>auth.json</code> 中的供应商、模型与凭据，保存为 Kith 模型来源；
+          不会执行命令式凭据、复合环境插值或写回任何 Pi 配置。密钥随导入存储在本机，请确认目标地址后再导入。
+        </p>
+        {piImport ? (
+          <div className="pi-import-summary" role="status">
+            <p>发现 {piImport.providers.length} 个可导入供应商：</p>
+            <ul>
+              {piImport.providers.map((provider) => (
+                <li key={provider.backendId}>
+                  <strong>{provider.backendId}</strong> · {provider.apiKind} · {provider.canonicalOrigin} ·{" "}
+                  {provider.models.length} 个模型 · 凭据：
+                  {provider.credential.kind === "pi_cli_auth" ? "使用 Pi 已登录凭据"
+                    : provider.credential.kind === "literal" ? "来自配置文件"
+                    : provider.credential.kind === "env_ref" ? "来自环境变量"
+                    : "未导入（可稍后手动填写）"}
+                </li>
+              ))}
+            </ul>
+            {piImport.warnings.length ? (
+              <ul className="pi-import-warnings">
+                {piImport.warnings.slice(0, 8).map((warning) => <li key={warning}>{warning}</li>)}
+              </ul>
+            ) : null}
+            <div className="settings-actions">
+              <button className="settings-button settings-button--secondary" type="button"
+                disabled={piImporting} onClick={() => setPiImport(null)}>取消</button>
+              <button className="settings-button settings-button--primary" type="button"
+                disabled={piImporting || piImport.providers.length === 0}
+                onClick={() => void applyPiImport()}>
+                {piImporting ? "导入中…" : "确认导入"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="settings-actions">
+            <button className="settings-button settings-button--secondary" type="button"
+              disabled={!desktop || piImporting} onClick={() => void previewPiImport()}>
+              {piImporting ? "读取中…" : "读取本机 Pi 配置"}
+            </button>
+          </div>
+        )}
+      </details>
+
       {showDialog ? (
         <div className="settings-modal-backdrop" role="presentation" onMouseDown={() => setShowDialog(false)}>
           <section className="settings-modal settings-modal--provider" role="dialog" aria-modal="true"
@@ -479,6 +632,38 @@ export function ModelProviderSettings({ api }: { api: Api }) {
                   ))}
                 </select>
               </label>
+              {preset === "pi" ? (
+                <section className="provider-dialog-pi-preset">
+                  <label className="settings-field"><span>Pi 预设供应商</span>
+                    <select value={piPresetProvider}
+                      disabled={piPresetsLoading || !piPresets.length}
+                      onChange={(event) => applyPiPresetProvider(event.target.value)}>
+                      <option value="">{piPresetsLoading ? "读取官方预设中…" : piPresets.length ? "选择供应商" : "暂无可用预设"}</option>
+                      {piPresetProviders.map((item) => (
+                        <option key={item.backendId} value={item.backendId}>
+                          {item.backendId} · {item.models.length} 个官方模型
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {selectedPiPresetProvider ? (
+                    <div className="settings-field settings-field--row">
+                      <select value={piPresetModel} onChange={(event) => setPiPresetModel(event.target.value)}
+                        aria-label="选择预设模型">
+                        <option value="">选择模型…</option>
+                        {selectedPiPresetProvider.models.map((model) => (
+                          <option key={model.id} value={model.id}>{model.id}</option>
+                        ))}
+                      </select>
+                      <button className="settings-button settings-button--secondary" type="button"
+                        disabled={!piPresetModel} onClick={addPiPresetModel}>
+                        <Plus size={15} />加入列表
+                      </button>
+                    </div>
+                  ) : null}
+                  <p className="provider-dialog-hint">来自锁定版本 Pi 的官方模型目录；选择供应商后添加你需要的模型。</p>
+                </section>
+              ) : null}
               <label className="settings-field"><span>接口类型</span>
                 <select value={draft.apiKind} onChange={(event) => setDraft({ ...draft, apiKind: event.target.value })}>
                   {API_KINDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}

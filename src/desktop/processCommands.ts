@@ -25,6 +25,7 @@ export type DesktopProcessCommandOptions = PackagedProcessCommandOptions | Devel
 export function buildDesktopProcessCommands(options: DesktopProcessCommandOptions): DesktopProcessCommands {
   if (options.mode === "development") {
     const advisorHelper = path.join(options.appRoot, "desktop", "dist", "runtime", "pi-advisor-helper.mjs");
+    const agentHelper = path.join(options.appRoot, "desktop", "dist", "runtime", "pi-agent-helper.mjs");
     return {
       core: {
         command: options.executable,
@@ -40,7 +41,7 @@ export function buildDesktopProcessCommands(options: DesktopProcessCommandOption
         command: options.executable,
         args: [options.tsxCli, "src/daemon/index.ts"],
         cwd: options.appRoot,
-        env: { KITH_SPACE_PI_ADVISOR_HELPER: advisorHelper },
+        env: { KITH_SPACE_PI_ADVISOR_HELPER: advisorHelper, KITH_SPACE_PI_AGENT_HELPER: agentHelper },
       },
       vite: {
         command: options.executable,
@@ -53,6 +54,7 @@ export function buildDesktopProcessCommands(options: DesktopProcessCommandOption
 
   const electronNodeEnv: NodeJS.ProcessEnv = { ELECTRON_RUN_AS_NODE: "1" };
   const advisorHelper = path.join(options.resourcesPath, "runtime", "pi-advisor-helper.mjs");
+  const agentHelper = path.join(options.resourcesPath, "runtime", "pi-agent-helper.mjs");
   return {
     core: {
       command: options.executable,
@@ -71,7 +73,7 @@ export function buildDesktopProcessCommands(options: DesktopProcessCommandOption
       command: options.executable,
       args: [path.join(options.resourcesPath, "runtime", "worker.mjs")],
       cwd: options.resourcesPath,
-      env: { ...electronNodeEnv, KITH_SPACE_PI_ADVISOR_HELPER: advisorHelper },
+      env: { ...electronNodeEnv, KITH_SPACE_PI_ADVISOR_HELPER: advisorHelper, KITH_SPACE_PI_AGENT_HELPER: agentHelper },
     },
   };
 }

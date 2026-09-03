@@ -458,6 +458,16 @@
 
 .settings-confirm-remove p { margin: 0 0 10px; color: #7e3933; font-size: 13px; line-height: 1.5; }
 
+.pi-import-summary { margin: 0 15px 15px; display: grid; gap: 10px; font-size: 13px; }
+.pi-import-summary p { margin: 0; }
+.pi-import-summary ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.pi-import-summary .pi-import-warnings { color: #8a5a12; }
+.pi-import-summary .settings-actions { margin-top: 4px; }
+
+.provider-dialog-pi-preset { display: grid; gap: 10px; border: 1px solid var(--settings-border); border-radius: 10px; padding: 12px; background: #fafafa; }
+.provider-dialog-pi-preset .settings-field--row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.provider-dialog-pi-preset .provider-dialog-hint { margin: 0; color: var(--settings-muted); font-size: 12px; }
+
 .settings-workbench--providers { min-height: 560px; }
 
 .settings-page-heading--models { margin-bottom: 2px; }

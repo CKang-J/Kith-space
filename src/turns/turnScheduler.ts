@@ -622,7 +622,7 @@ export class HarnessTurnScheduler {
 }
 
 function isSupportedRuntime(runtime: string | undefined): runtime is keyof typeof RUNTIME_V2_CAPABILITY_MATRIX {
-  return runtime === "claude" || runtime === "codex" || runtime === "opencode" || runtime === "pi";
+  return runtime === "claude" || runtime === "codex" || runtime === "opencode" || runtime === "pi" || runtime === "pi-builtin";
 }
 
 function sessionDescriptor(session: RuntimeSessionRecord, snapshot: RuntimeSessionSnapshot | null) {

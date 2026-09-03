@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
   Activity,
   Check,
@@ -28,7 +28,6 @@ import { useConfirm, useEscClose } from "../ConfirmModal.tsx";
 import { useToast } from "../toast.tsx";
 import i18n from "../i18n";
 import { mergeWorkspaceSearch, workspaceLocationForModule, workspaceSearchForShellState } from "../shell/workspaceRoute.ts";
-import { useRuntimeDiscovery } from "../useRuntimeDiscovery.ts";
 import { agentStatusLabel } from "../agentStatus.ts";
 import { SearchField } from "../components/SearchField.tsx";
 import { AgentDefaultResponseModeCard } from "./agent-response-mode/AgentDefaultResponseModeCard.tsx";
@@ -627,111 +626,16 @@ function AgentProfileEditModal({ name, displayName, description, onDisplayNameCh
   );
 }
 
+// Lazy-loaded so the wizard's CSS import stays out of the node:test import
+// chain (Chat.tsx imports this module; node cannot parse bare .css imports).
+const AgentCreationWizard = lazy(() => import("./AgentCreationWizard.tsx").then((m) => ({ default: m.AgentCreationWizard })));
+
 export function CreateAgentModal({ onClose, prefill, onCreated }: { onClose: () => void; prefill?: { name?: string; description?: string }; onCreated?: (r: { id: string; name: string }) => void }) {
-  const { t } = useTranslation();
-  const toast = useToast();
-  useEscClose(onClose);
-  const { api, reload } = useStore();
-  const [name, setName] = useState(prefill?.name ?? ""); const [desc, setDesc] = useState(prefill?.description ?? "");
-  const [fast, setFast] = useState(false);
-  const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
-  const [bindingMode, setBindingMode] = useState<"runtime_default" | "pinned">("runtime_default");
-  const [modelConfigurations, setModelConfigurations] = useState<any[]>([]);
-  const [modelConfigurationId, setModelConfigurationId] = useState("");
-  const [runtimeDefaultUnset, setRuntimeDefaultUnset] = useState(false);
-  const {
-    runtime, setRuntime, runtimeOptions, runtimesLoading, runtimeError, runtimeInstalled,
-  } = useRuntimeDiscovery(api, false);
-  useEffect(() => {
-    void api("GET", "/api/settings/model-configurations")
-      .then((result: any) => setModelConfigurations(
-        (result.items ?? []).filter((item: any) => item.status === "active"),
-      ))
-      .catch(() => setModelConfigurations([]));
-  }, [api]);
-  useEffect(() => {
-    if (!runtime) { setRuntimeDefaultUnset(false); return; }
-    let cancelled = false;
-    void api("GET", `/api/settings/runtimes/${encodeURIComponent(runtime)}`)
-      .then((result: any) => {
-        if (!cancelled) setRuntimeDefaultUnset(result?.defaultBinding?.mode === "unset");
-      })
-      .catch(() => { if (!cancelled) setRuntimeDefaultUnset(false); });
-    return () => { cancelled = true; };
-  }, [api, runtime]);
-  useEffect(() => {
-    const saved = sessionStorage.getItem("kith-agent-create-draft");
-    if (!saved) return;
-    try {
-      const value = JSON.parse(saved);
-      if (!prefill?.name && typeof value.name === "string") setName(value.name);
-      if (!prefill?.description && typeof value.description === "string") setDesc(value.description);
-      if (value.bindingMode === "runtime_default" || value.bindingMode === "pinned") setBindingMode(value.bindingMode);
-      if (typeof value.modelConfigurationId === "string") setModelConfigurationId(value.modelConfigurationId);
-    } catch { /* ignore stale draft */ }
-  }, []);
-  useEffect(() => {
-    sessionStorage.setItem("kith-agent-create-draft", JSON.stringify({
-      name, description: desc, runtime, bindingMode, modelConfigurationId,
-    }));
-  }, [bindingMode, desc, modelConfigurationId, name, runtime]);
-  const create = async () => {
-    const nm = name.trim();
-    if (!nm) { setErr(t("members.nameRequired")); return; }
-    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(nm) || nm.length > 64) { setErr(t("members.nameInvalid")); return; } // @mention handle must be token-safe; keep regex + length 64 in sync with core.ts AGENT_NAME_RE / MAX_AGENT_NAME
-    if (!runtimeInstalled) { setErr(t("members.runtimeUnavailable")); return; }
-    if (bindingMode === "pinned" && !modelConfigurationId) { setErr("请选择 Kith 模型配置"); return; }
-    if (bindingMode === "runtime_default" && runtimeDefaultUnset) { setErr(t("members.runtimeDefaultUnset")); return; }
-    setBusy(true); setErr("");
-    try {
-      const selectedConfiguration = modelConfigurations.find((item) => item.id === modelConfigurationId);
-      const r = await api("POST", "/api/agents", { name: nm,
-        description: desc.trim() || null, runtime,
-        model: null,
-        modelBinding: bindingMode === "pinned"
-          ? { mode: "pinned", modelConfigurationId, modelConfigurationRevision: selectedConfiguration?.currentRevision ?? 1 }
-          : { mode: "runtime_default" },
-        reasoning: null, fastMode: fast,
-      });
-      if (r?.error) {
-        setErr(r.code === "model_binding_setup_required" ? t("members.modelBindingSetupRequired") : r.error);
-        return;
-      }
-      await reload();
-      if (r?.id) { if (r.started === false) toast.info(t("members.agentCreatedOffline")); onCreated?.({ id: r.id, name: r.name ?? nm }); }
-      sessionStorage.removeItem("kith-agent-create-draft");
-      onClose();
-    } catch (e: any) { setErr(String(e?.message || e)); } finally { setBusy(false); }
-  };
+  const { api } = useStore();
   return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{t("members.createAgentTitle")}</h3>
-        <label>{t("members.nameLabel")}</label><input value={name} maxLength={64} onChange={(e) => setName(e.target.value)} placeholder={t("members.namePlaceholder")} />
-        <label>{t("members.descriptionLabel")}</label><textarea value={desc} maxLength={3000} onChange={(e) => setDesc(e.target.value)} placeholder={t("members.descriptionPlaceholder")} />
-        <label>Runtime</label>
-        <fieldset disabled={runtimesLoading} style={{ border: 0, padding: 0, margin: 0, opacity: runtimesLoading ? 0.6 : 1 }}>
-          <Select ariaLabel="Runtime" value={runtime} options={runtimeOptions} onChange={setRuntime} placeholder={runtimesLoading ? t("members.detectingRuntimes") : undefined} />
-        </fieldset>
-        {runtimeError && <div className="form-err">{runtimeError}</div>}
-        <label>模型绑定</label>
-        <Select ariaLabel="模型绑定方式" value={bindingMode} onChange={(value) => setBindingMode(value as "runtime_default" | "pinned")}
-          options={[
-            { value: "runtime_default", label: "跟随运行器默认配置" },
-            { value: "pinned", label: "固定 Kith 模型配置" },
-          ]} />
-        {bindingMode === "pinned" ? <>
-          <label>Kith 模型配置</label>
-          <Select ariaLabel="Kith 模型配置" value={modelConfigurationId} onChange={setModelConfigurationId}
-            options={modelConfigurations.filter((item) => item.compatibility?.[runtime]?.supported)
-              .map((item) => ({ value: item.id, label: `${item.displayName} · ${item.provider.displayName}` }))}
-            placeholder="请先在“设置 → 模型与供应商”创建兼容配置" />
-        </> : runtimeDefaultUnset ? <div className="form-err">{t("members.runtimeDefaultUnset")}</div> : null}
-        <label className="ck-row"><input type="checkbox" checked={fast} onChange={(e) => setFast(e.target.checked)} /><span>{t("members.fastMode")}</span></label>
-        {err && <div className="form-err">{err}</div>}
-        <div className="acts"><button className="cancel" onClick={onClose}>{t("members.cancel")}</button><button className="ok" onClick={create} disabled={busy || runtimesLoading || !runtimeInstalled || (bindingMode === "pinned" && !modelConfigurationId) || (bindingMode === "runtime_default" && runtimeDefaultUnset)}>{busy ? t("members.creating") : t("members.create")}</button></div>
-      </div>
-    </div>
+    <Suspense fallback={null}>
+      <AgentCreationWizard api={api} mode="create" prefill={prefill} onCreated={onCreated} onClose={onClose} />
+    </Suspense>
   );
 }
 

@@ -10,6 +10,8 @@ import {
 } from "../components/ui/sidebar.tsx";
 import { TooltipProvider } from "../components/ui/tooltip.tsx";
 import { useStore } from "../store.tsx";
+import { loadAgentOnboardingStatus, type AgentOnboardingStatus } from "../agentOnboarding.ts";
+import { AgentCreationWizard } from "../views/AgentCreationWizard.tsx";
 import { ChannelSettingsPanel } from "../views/channel-settings/index.ts";
 import { ConversationAggregatePanel } from "../views/conversation-aggregate/ConversationAggregatePanel.tsx";
 import { LiveTrace } from "../views/LiveTrace.tsx";
@@ -106,6 +108,7 @@ export function WorkspaceFrame() {
   const [workspaceWidth, setWorkspaceWidth] = useState(() => typeof window === "undefined" ? 1280 : window.innerWidth);
   const [aggregateOpen, setAggregateOpen] = useState(true);
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
+  const [onboarding, setOnboarding] = useState<AgentOnboardingStatus | null>(null);
   const [aggregateTransitioning, setAggregateTransitioning] = useState(false);
   const [sidebarTransitioning, setSidebarTransitioning] = useState(false);
   const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
@@ -163,6 +166,17 @@ export function WorkspaceFrame() {
   const layoutState = workspaceLayoutForSpace(requestedLayoutState, isHome);
   const { activeModule } = layoutState;
   const settingsOpen = activeModule === "settings";
+
+  // One-time Agent creation wizard: only in the Home space, only while the
+  // installation-level onboarding gate is still pending.
+  useEffect(() => {
+    if (!isHome) return;
+    let cancelled = false;
+    loadAgentOnboardingStatus(api)
+      .then((status) => { if (!cancelled) setOnboarding(status); })
+      .catch(() => { if (!cancelled) setOnboarding(null); });
+    return () => { cancelled = true; };
+  }, [api, isHome]);
   const routeContentModuleId = activeModule && activeModule !== "settings"
     ? activeModule as ContentModuleId
     : null;
@@ -677,6 +691,13 @@ export function WorkspaceFrame() {
             />
           ) : null}
           {quickSwitcherOpen ? <QuickSwitcher onClose={() => setQuickSwitcherOpen(false)} /> : null}
+          {isHome && onboarding?.pending ? (
+            <AgentCreationWizard
+              api={api}
+              mode="onboarding"
+              onClose={() => setOnboarding((current) => current ? { ...current, pending: false } : current)}
+            />
+          ) : null}
         </section>
         </SidebarInset>
       </SidebarProvider>

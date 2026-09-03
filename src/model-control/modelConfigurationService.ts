@@ -22,17 +22,17 @@ export interface SaveModelConfigurationInput {
 }
 
 const SUPPORTED: Record<string, readonly RuntimeId[]> = {
-  "anthropic-messages": ["claude", "opencode", "pi"],
-  "openai-responses": ["codex", "opencode", "pi"],
-  "openai-completions": ["opencode", "pi"],
-  "google-generative-ai": ["opencode", "pi"],
-  "google-vertex": ["claude", "opencode", "pi"],
-  "bedrock-converse-stream": ["claude", "pi"],
+  "anthropic-messages": ["claude", "opencode", "pi", "pi-builtin"],
+  "openai-responses": ["codex", "opencode", "pi", "pi-builtin"],
+  "openai-completions": ["opencode", "pi", "pi-builtin"],
+  "google-generative-ai": ["opencode", "pi", "pi-builtin"],
+  "google-vertex": ["claude", "opencode", "pi", "pi-builtin"],
+  "bedrock-converse-stream": ["claude", "pi", "pi-builtin"],
 };
 
 export function computeRuntimeCompatibility(apiKind: string): Partial<Record<RuntimeId | "pi_sdk", RuntimeCompatibility>> {
-  const supported = new Set(SUPPORTED[apiKind] ?? ["pi"]);
-  return Object.fromEntries((["claude", "codex", "opencode", "pi"] as RuntimeId[]).map((runtimeId) => [
+  const supported = new Set(SUPPORTED[apiKind] ?? ["pi", "pi-builtin"]);
+  return Object.fromEntries((["claude", "codex", "opencode", "pi", "pi-builtin"] as RuntimeId[]).map((runtimeId) => [
     runtimeId,
     supported.has(runtimeId)
       ? { supported: true }

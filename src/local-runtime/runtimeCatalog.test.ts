@@ -15,8 +15,21 @@ test("runtime availability keeps the full catalog and sorts installed runtimes f
   );
 });
 
+test("the built-in Pi Agent is always available without any installed CLI", () => {
+  const result = runtimeAvailability([]);
+  const builtin = result.find((runtime) => runtime.id === "pi-builtin");
+  assert.equal(builtin?.installed, true);
+  assert.equal(builtin?.builtIn, true);
+  assert.equal(builtin?.label, "Pi Agent（内置）");
+});
+
 test("unknown worker capabilities do not leak into the supported runtime catalog", () => {
-  assert.equal(runtimeAvailability(["unknown-runtime"]).some((runtime) => runtime.installed), false);
+  const result = runtimeAvailability(["unknown-runtime" as any]);
+  assert.equal(result.some((runtime) => runtime.id === ("unknown-runtime" as any)), false);
+  assert.deepEqual(
+    result.filter((runtime) => runtime.installed).map((runtime) => runtime.id),
+    ["pi-builtin"],
+  );
 });
 
 test("OpenCode creation requires an explicit provider/model", () => {

@@ -27,6 +27,21 @@ type SpawnPi = (command: string, args: string[], options: {
   cwd: string; env: NodeJS.ProcessEnv; stdio: ["pipe", "pipe", "pipe"];
 }) => ChildProcess;
 
+export interface PiRpcSpawnOptions {
+  cwd: string; env: NodeJS.ProcessEnv; stdio: ["pipe", "pipe", "pipe"];
+}
+
+/**
+ * Everything that differs between the external `pi` CLI and the bundled
+ * built-in helper. Both speak the identical JSONL RPC protocol, so the
+ * session state machine and event mapping are fully shared.
+ */
+export interface PiRpcSpawnSpec {
+  fingerprintRuntime: string;
+  eventRuntime: string;
+  spawn(args: string[], options: PiRpcSpawnOptions): ChildProcess;
+}
+
 type ActiveTurn = {
   input: RuntimeTurnInput;
   sink: RuntimeEventSink;
@@ -93,7 +108,7 @@ function assistantText(message: any): string {
     .join("");
 }
 
-function configFingerprint(options: OpenRuntimeSessionOptions): string {
+function configFingerprint(options: OpenRuntimeSessionOptions, fingerprintRuntime: string): string {
   const compiled = options.runtimeConfig?.compiledRuntimeConfiguration;
   const stableRuntimeConfig = compiled && typeof compiled === "object"
     && typeof (compiled as { fingerprint?: unknown }).fingerprint === "string"
@@ -106,7 +121,7 @@ function configFingerprint(options: OpenRuntimeSessionOptions): string {
       reasoningEffort: options.runtimeConfig?.reasoningEffort ?? null,
     };
   return createHash("sha256").update(JSON.stringify({
-    runtime: "pi", model: options.model ?? null, runtimeConfig: stableRuntimeConfig,
+    runtime: fingerprintRuntime, model: options.model ?? null, runtimeConfig: stableRuntimeConfig,
     prompt: options.systemPrompt.digest, cwd: path.resolve(options.cwd),
   })).digest("hex");
 }
@@ -128,16 +143,16 @@ class PiRpcSession implements RuntimeSessionV2 {
 
   constructor(
     private readonly options: OpenRuntimeSessionOptions,
-    private readonly spawnPi: SpawnPi,
+    private readonly spec: PiRpcSpawnSpec,
     private readonly now: () => number,
   ) {
     this.generationRoot = path.join(
       options.runtimeStateDir, "pi-rpc", options.runtimeSessionId, `g${options.sessionGeneration}`,
     );
-    this.fingerprint = configFingerprint(options);
+    this.fingerprint = configFingerprint(options, spec.fingerprintRuntime);
     const restored = options.restoredSnapshot?.adapterSnapshot;
     if (restored?.schemaVersion === 1
-      && restored.payload.runtime === "pi"
+      && restored.payload.runtime === spec.fingerprintRuntime
       && restored.payload.configFingerprint === this.fingerprint
       && validOpaqueSessionId(restored.payload.engineSessionId)
       && restored.payload.resumable === true) {
@@ -157,7 +172,7 @@ class PiRpcSession implements RuntimeSessionV2 {
       input, sink, ordinal: 0, chain: Promise.resolve(), resolve, finished, resolveFinished,
       settled: false, cancelRequested: false, messageStreamedText: "",
     };
-    this.emit("turn_started", { runtime: "pi", protocol: "rpc", mcpMode: "none", gateway: "cli" });
+    this.emit("turn_started", { runtime: this.spec.eventRuntime, protocol: "rpc", mcpMode: "none", gateway: "cli" });
     try {
       const response = await this.command(
         "prompt",
@@ -213,7 +228,7 @@ class PiRpcSession implements RuntimeSessionV2 {
     return {
       schemaVersion: 1,
       payload: {
-        runtime: "pi", adapterSchema: 1, engineSessionId: this.engineSessionId,
+        runtime: this.spec.fingerprintRuntime, adapterSchema: 1, engineSessionId: this.engineSessionId,
         resumable: !this.closed && Boolean(this.engineSessionId), configFingerprint: this.fingerprint,
       },
     };
@@ -263,7 +278,7 @@ class PiRpcSession implements RuntimeSessionV2 {
     };
     if (!this.options.env.PI_CODING_AGENT_DIR) delete env.PI_CODING_AGENT_DIR;
     delete env.NODE_OPTIONS;
-    const child = this.spawnPi("pi", args, { cwd: this.options.cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+    const child = this.spec.spawn(args, { cwd: this.options.cwd, env, stdio: ["pipe", "pipe", "pipe"] });
     this.process = child;
     child.stdout?.on("data", (chunk: Buffer) => this.onStdout(chunk));
     child.stderr?.on("data", () => { /* Drain diagnostics so the child cannot block on a full pipe. */ });
@@ -436,15 +451,26 @@ class PiRpcSession implements RuntimeSessionV2 {
   }
 }
 
+export function createPiRpcRuntimeV2WithSpawn(
+  spec: PiRpcSpawnSpec,
+  now: () => number = Date.now,
+): RuntimeV2 {
+  return {
+    name: spec.eventRuntime,
+    capabilities: PI_RPC_PROTOCOL_BASELINE.capabilities,
+    async openSession(options) { return new PiRpcSession(options, spec, now); },
+  };
+}
+
 export function createPiRpcRuntimeV2(
   spawnPi: SpawnPi = (command, args, options) => spawnRuntimeProcess(command, args, options, { rawBytes: true }),
   now: () => number = Date.now,
 ): RuntimeV2 {
-  return {
-    name: "pi",
-    capabilities: PI_RPC_PROTOCOL_BASELINE.capabilities,
-    async openSession(options) { return new PiRpcSession(options, spawnPi, now); },
-  };
+  return createPiRpcRuntimeV2WithSpawn({
+    fingerprintRuntime: "pi",
+    eventRuntime: "pi",
+    spawn: (args, options) => spawnPi("pi", args, options),
+  }, now);
 }
 
 export const piRpcRuntimeV2 = createPiRpcRuntimeV2();

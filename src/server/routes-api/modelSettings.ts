@@ -10,6 +10,8 @@ import { RuntimeProfileService } from "../../model-control/runtimeProfileService
 import { SettingsPresentationService } from "../../model-control/settingsPresentationService.js";
 import { AdvisorBindingService } from "../../model-control/advisorBindingService.js";
 import { CliConfigImportService } from "../../model-control/cliConfigImportService.js";
+import { PiConfigModelImportService, piAgentConfigRoot } from "../../model-control/piConfigModelImportService.js";
+import { listPiSdkCatalog } from "../../advisor-provider/piSdkCatalog.js";
 import { readJson, sendErr, sendJson } from "../util.js";
 import type { HumanCtx } from "./ctx.js";
 import { workerRuntimes } from "../../local-runtime/workerHub.js";
@@ -151,6 +153,7 @@ export async function handleModelSettings(ctx: HumanCtx): Promise<boolean> {
   const presenter = new SettingsPresentationService();
   const advisor = new AdvisorBindingService();
   const cliImports = new CliConfigImportService(runtimes);
+  const piModelImports = new PiConfigModelImportService(providers, configurations);
   const runtimeSetup = new RuntimeSetupService(undefined, runtimes);
   try {
     if (ctx.p === "/api/settings/model-providers" && ctx.method === "GET") {
@@ -306,8 +309,71 @@ export async function handleModelSettings(ctx: HumanCtx): Promise<boolean> {
       sendJson(ctx.res, 200, await cliImports.apply(body.runtimeId, body.sourceMtimeDigest));
       return true;
     }
+    if (ctx.p === "/api/settings/pi-presets" && ctx.method === "GET") {
+      const byProvider = new Map<string, {
+        backendId: string;
+        apiKind: string;
+        canonicalOrigin: string;
+        models: Array<{ id: string; name: string; thinkingLevels: readonly string[] }>;
+      }>();
+      for (const item of listPiSdkCatalog()) {
+        const existing = byProvider.get(item.backendId);
+        const model = { id: item.modelId, name: item.modelId, thinkingLevels: item.thinkingLevels };
+        if (existing) existing.models.push(model);
+        else byProvider.set(item.backendId, {
+          backendId: item.backendId,
+          apiKind: item.apiKind,
+          canonicalOrigin: item.canonicalOrigin,
+          models: [model],
+        });
+      }
+      const providers = [...byProvider.values()]
+        .sort((left, right) => left.backendId.localeCompare(right.backendId))
+        .map((provider) => ({
+          ...provider,
+          models: provider.models.sort((left, right) => left.id.localeCompare(right.id)),
+        }));
+      sendJson(ctx.res, 200, { providers });
+      return true;
+    }
+    if (ctx.p === "/api/settings/pi-config-import/preview" && ctx.method === "POST") {
+      if (!isDesktopTrustedRequest(ctx.req)) throw new ModelControlError("desktop_trust_required");
+      sendJson(ctx.res, 200, piModelImports.preview());
+      return true;
+    }
+    if (ctx.p === "/api/settings/pi-config-import/apply" && ctx.method === "POST") {
+      if (!isDesktopTrustedRequest(ctx.req)) throw new ModelControlError("desktop_trust_required");
+      // The import root is fixed to the user's Pi CLI config directory; callers
+      // cannot redirect the read to an arbitrary path.
+      const body = z.object({
+        sourceMtimeDigest: z.string().length(64),
+      }).strict().parse(await readJson(ctx.req));
+      sendJson(ctx.res, 200, await piModelImports.apply(piAgentConfigRoot(), body.sourceMtimeDigest));
+      return true;
+    }
     const runtimeSetupMatch = /^\/api\/settings\/runtimes\/([^/]+)\/setup$/.exec(ctx.p);
     if (runtimeSetupMatch) {
+      if (runtimeSetupMatch[1] === "pi-builtin") {
+        // The built-in Pi Agent ships with the app: nothing to install or probe.
+        if (ctx.method === "GET") {
+          sendJson(ctx.res, 200, {
+            runtimeId: "pi-builtin",
+            label: "Pi Agent（内置）",
+            summary: "随 Kith-space 内置的 Pi Agent 运行时，无需安装或登录。",
+            installation: {
+              state: "installed", source: null, version: null, executablePath: null,
+              testedVersion: "builtin",
+            },
+            account: { state: "ready", label: "随应用内置", help: "", loginCommand: "" },
+            managedInstall: {
+              packageName: "", canInstall: false, canRemove: false, restartRequiredAfterChange: true,
+            },
+          });
+          return true;
+        }
+        sendErr(ctx.res, 409, "内置运行时无需安装或卸载", { code: "runtime_setup_unavailable" });
+        return true;
+      }
       const runtimeId = z.enum(SETUP_RUNTIME_IDS).parse(runtimeSetupMatch[1]) as SetupRuntimeId;
       if (ctx.method === "GET") {
         sendJson(ctx.res, 200, await runtimeSetup.inspect(runtimeId));
@@ -325,6 +391,12 @@ export async function handleModelSettings(ctx: HumanCtx): Promise<boolean> {
     }
     const runtimeMatch = /^\/api\/settings\/runtimes\/([^/]+)$/.exec(ctx.p);
     const runtimeProbeMatch = /^\/api\/settings\/runtimes\/([^/]+)\/probe$/.exec(ctx.p);
+    if (runtimeProbeMatch && ctx.method === "POST" && runtimeProbeMatch[1] === "pi-builtin") {
+      // Nothing to probe: the built-in runtime ships with the app. Return the
+      // profile so the settings page can refresh its default binding.
+      sendJson(ctx.res, 200, runtimes.get("pi-builtin"));
+      return true;
+    }
     if (runtimeProbeMatch && ctx.method === "POST") {
       const runtimeId = z.enum(SETUP_RUNTIME_IDS).parse(runtimeProbeMatch[1]) as SetupRuntimeId;
       const setup = await runtimeSetup.inspect(runtimeId, true);
