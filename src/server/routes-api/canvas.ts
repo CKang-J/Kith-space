@@ -7,7 +7,10 @@ import { publish } from "../realtime.js";
 import { sendErr, sendJson } from "../util.js";
 import type { HumanCtx, SpaceCtx } from "./ctx.js";
 
-/** Same-origin media resolver: Human session authenticates the request; path pins the Space and Canvas. */
+/**
+ * Same-origin media resolver: Human session authenticates the request; path pins the Space and Canvas.
+ * Range requests get a single 206 slice so <video> nodes can stream and seek Space-local assets.
+ */
 export function handleCanvasAssetResolver(ctx: HumanCtx): boolean {
   if (ctx.method !== "GET") return false;
   const match = /^\/api\/canvas-assets\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(ctx.p);
@@ -19,19 +22,54 @@ export function handleCanvasAssetResolver(ctx: HumanCtx): boolean {
     const rootPath = spaceRecord(spaceId)?.rootPath;
     if (!rootPath) return (sendErr(ctx.res, 404, "Space not found"), true);
     const found = new CanvasAssetStore(dbForSpace(spaceId), spaceId, rootPath).read(canvasId, assetId);
-    const svg = found.asset.mimeType === "image/svg+xml";
-    ctx.res.writeHead(200, {
-      "content-type": found.asset.mimeType,
-      "content-length": String(found.bytes.length),
-      "cache-control": "private, max-age=31536000, immutable",
-      "x-content-type-options": "nosniff",
-      ...(svg ? { "content-security-policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'" } : {}),
-    });
-    ctx.res.end(found.bytes);
+    sendAssetBytes(ctx, found.bytes, found.asset.mimeType);
   } catch (error) {
     return sendCanvasError({ ...ctx, spaceId: "" }, error);
   }
   return true;
+}
+
+const BYTE_RANGE_PATTERN = /^bytes=(\d*)-(\d*)$/;
+
+function sendAssetBytes(
+  ctx: Pick<HumanCtx, "req" | "res">,
+  bytes: Buffer,
+  mimeType: string,
+): void {
+  const svg = mimeType === "image/svg+xml";
+  const headers = {
+    "content-type": mimeType,
+    "accept-ranges": "bytes",
+    "cache-control": "private, max-age=31536000, immutable",
+    "x-content-type-options": "nosniff",
+    ...(svg ? { "content-security-policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'" } : {}),
+  };
+  const range = typeof ctx.req.headers.range === "string" ? BYTE_RANGE_PATTERN.exec(ctx.req.headers.range) : null;
+  if (!range) {
+    ctx.res.writeHead(200, { ...headers, "content-length": String(bytes.length) });
+    ctx.res.end(bytes);
+    return;
+  }
+  const total = bytes.length;
+  let start = range[1] ? Number(range[1]) : 0;
+  let end = range[2] ? Number(range[2]) : total - 1;
+  if (!range[1] && range[2]) {
+    start = Math.max(0, total - Number(range[2]));
+    end = total - 1;
+  }
+  if (start > end || start >= total) {
+    ctx.res.writeHead(416, { "content-range": `bytes */${total}` });
+    ctx.res.end();
+    return;
+  }
+  end = Math.min(end, total - 1);
+  const slice = bytes.subarray(start, end + 1);
+  ctx.res.writeHead(206, {
+    ...headers,
+    "content-range": `bytes ${start}-${end}/${total}`,
+    "content-length": String(slice.length),
+  });
+  ctx.res.end(slice);
 }
 
 async function readCanvasJson<T>(ctx: SpaceCtx, maxBytes = 20 * 1024 * 1024): Promise<T> {
@@ -125,15 +163,7 @@ export async function handleCanvas(ctx: SpaceCtx): Promise<boolean> {
       }
       if (assetId && ctx.method === "GET") {
         const found = assets.read(canvasId, assetId);
-        const svg = found.asset.mimeType === "image/svg+xml";
-        ctx.res.writeHead(200, {
-          "content-type": found.asset.mimeType,
-          "content-length": String(found.bytes.length),
-          "cache-control": "private, max-age=31536000, immutable",
-          "x-content-type-options": "nosniff",
-          ...(svg ? { "content-security-policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'" } : {}),
-        });
-        ctx.res.end(found.bytes);
+        sendAssetBytes(ctx, found.bytes, found.asset.mimeType);
         return true;
       }
       if (assetId && ctx.method === "DELETE") {

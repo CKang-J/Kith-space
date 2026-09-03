@@ -683,6 +683,20 @@
       "usage": "用量",
       "outcome": "结果"
     },
+    "generationJob": {
+      "running": "正在生成{{kind}}…",
+      "completed": "{{kind}}已生成并放置到画布",
+      "failed": "{{kind}}生成失败",
+      "failedUnknown": "未知错误",
+      "cancelled": "{{kind}}生成已取消",
+      "estimateSeconds": "预计约 {{seconds}} 秒",
+      "estimateMinutes": "预计约 {{minutes}} 分钟",
+      "kind": {
+        "image": "图像",
+        "video": "视频",
+        "audio": "音频"
+      }
+    },
     "unsave": "取消保存",
     "saveMessage": "保存消息",
     "convertToTask": "转为任务",

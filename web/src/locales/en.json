@@ -683,6 +683,20 @@
       "usage": "Usage",
       "outcome": "Outcome"
     },
+    "generationJob": {
+      "running": "Generating {{kind}}…",
+      "completed": "{{kind}} generated and placed on the canvas",
+      "failed": "{{kind}} generation failed",
+      "failedUnknown": "unknown error",
+      "cancelled": "{{kind}} generation cancelled",
+      "estimateSeconds": "~{{seconds}}s estimated",
+      "estimateMinutes": "~{{minutes}} min estimated",
+      "kind": {
+        "image": "image",
+        "video": "video",
+        "audio": "audio"
+      }
+    },
     "unsave": "Unsave",
     "saveMessage": "Save message",
     "convertToTask": "Convert to task",
