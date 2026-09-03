@@ -12,6 +12,11 @@ import { EpisodicMemoryService } from "../memory/episodicMemoryService.js";
 import { UserGlobalMemoryService } from "../memory/userGlobalMemoryService.js";
 import { SessionCompactionMarkerService } from "../sessions/sessionCompactionMarker.js";
 import { CapabilityGateway } from "../capabilities/capabilityGateway.js";
+import { CanvasCore } from "../canvas/canvasCore.js";
+import {
+  attachCanvasSelectionToMessage,
+  freezeCanvasSelectionInTransaction,
+} from "../canvas/canvasSelectionSnapshot.js";
 import type { TurnCapabilityClaims } from "../capabilities/contracts.js";
 
 test("thread Context Envelope freezes root, as-of parent snapshot, current batch and UI context", () => {
@@ -311,6 +316,104 @@ test("TurnLedger leaves required delivery overflow pending for the next logical 
     const assembled = new ContextAssembler(spaceId, db).assemble(turn!.id, "activation", "cold");
     assert.equal(assembled.envelope.currentBatch.length, 2);
     assert.equal(assembled.envelope.budget.used <= assembled.envelope.budget.available, true);
+  } finally {
+    closeSpaceDb(spaceId);
+    unregisterSpace(spaceId);
+  }
+});
+
+test("canvas selection snapshots survive fallback budget pressure ahead of surface history", () => {
+  const spaceId = randomUUID();
+  const agentId = randomUUID();
+  const channelId = randomUUID();
+  registerSpace({ id: spaceId, name: "CanvasEvict", slug: `canvas-evict-${spaceId}`, rootPath: path.join(kithSpaceHome(), "canvas-evict", spaceId) });
+  const db = dbForSpace(spaceId);
+  try {
+    db.insert(schema.agents).values({ id: agentId, spaceId, name: "canvas-evict-agent", displayName: "Evict Agent", runtime: "claude", status: "active" }).run();
+    db.insert(schema.channels).values({ id: channelId, spaceId, name: "studio", type: "channel" }).run();
+    db.insert(schema.channelAgentMembers).values({ channelId, agentId }).run();
+    // 12 条 16000 字符的 surface 历史 ≈ 48000 tokens，制造超过 8000 fallback 预算的压力。
+    for (let seq = 1; seq <= 14; seq += 1) {
+      db.insert(schema.messages).values({
+        id: randomUUID(), seq, spaceId, channelId, senderType: "human", senderId: "human", senderName: "Human",
+        content: "x".repeat(16_000),
+      }).run();
+    }
+    const core = new CanvasCore(db, spaceId);
+    const canvas = core.create({ title: "EvictBoard", document: {
+      width: 800,
+      height: 600,
+      deltaSetLike: {
+        ROOT: { children: ["shape-1"] },
+        "shape-1": { id: "shape-1", key: "shape", x: 10, y: 20, width: 100, height: 80, attrs: {}, children: [] },
+      },
+      frames: [{ id: "frame-1", name: "Board", x: 0, y: 0, width: 400, height: 300 }],
+      stackOrder: ["shape-1"],
+    } as never });
+    const sessionId = randomUUID();
+    const turnId = randomUUID();
+    db.insert(schema.runtimeSessions).values({
+      id: sessionId, spaceId, agentId, surfaceKind: "channel", surfaceId: channelId, sessionGeneration: 1,
+      runtime: "claude", runtimeConfigFingerprint: "config", adapterVersion: "test", workspaceRootFingerprint: "root", status: "idle",
+    }).run();
+    db.insert(schema.agentTurns).values({ id: turnId, runtimeSessionId: sessionId, sessionGeneration: 1, spaceId, agentId, effectiveDirective: "required" }).run();
+    const messageId = randomUUID();
+    const snapshotId = randomUUID();
+    const message = db.insert(schema.messages).values({
+      id: messageId,
+      seq: 15,
+      spaceId,
+      channelId,
+      senderType: "human",
+      senderId: "human",
+      senderName: "Human",
+      content: "edit this board",
+      contextSnapshot: {
+        spaceId,
+        module: "canvas",
+        routeId: "canvas.board",
+        openObjectRefs: [{ type: "canvas_selection_snapshot", id: snapshotId }],
+        capturedAt: 15,
+      },
+    }).returning().get();
+    db.transaction((tx) => {
+      freezeCanvasSelectionInTransaction(tx, spaceId, { canvasId: canvas.id, selectedIds: ["shape-1"] }, "human", snapshotId);
+      attachCanvasSelectionToMessage(tx, snapshotId, message.id);
+    });
+    db.insert(schema.messageExecutionBindings).values({
+      messageId: message.id,
+      executorAgentId: agentId,
+      mode: "required",
+      bindingSource: "explicit_picker",
+    }).run();
+    db.insert(schema.agentDeliveryItems).values({
+      id: randomUUID(),
+      spaceId,
+      agentId,
+      messageId: message.id,
+      sourceChannelId: channelId,
+      sourceSeq: message.seq,
+      cursorOwnerChannelId: channelId,
+      targetSurfaceKind: "channel",
+      targetSurfaceId: channelId,
+      targetRuntimeSessionId: sessionId,
+      directive: "required",
+      reason: "mention",
+      policySnapshot: {},
+      disposition: "bound",
+      turnId,
+    }).run();
+
+    const assembled = new ContextAssembler(spaceId, db).assemble(turnId, "activation-canvas-evict");
+    // 预算被压缩后 surface 历史确实被驱逐（压力真实存在）。
+    assert.ok(assembled.envelope.recentSurface.some((ref) => ref.injectionMode === "omitted"));
+    assert.ok(assembled.envelope.budget.used <= assembled.envelope.budget.available);
+    // 画布选择快照在更受保护的梯队里，仍是本轮编辑授权的依据，不被预算压力驱逐。
+    const canvasRef = assembled.envelope.objectSnapshots.find((ref) => ref.sourceKind === "canvas_selection_snapshot");
+    assert.ok(canvasRef, "canvas selection snapshot must be present in objectSnapshots");
+    assert.notEqual(canvasRef!.injectionMode, "omitted");
+    assert.ok(canvasRef!.estimatedTokens > 0);
+    assert.match(assembled.renderedContext, /shape-1/);
   } finally {
     closeSpaceDb(spaceId);
     unregisterSpace(spaceId);

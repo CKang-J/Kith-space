@@ -101,10 +101,13 @@ test("CLI/MCP canvas context_bundle_create and asset_import share Gateway contra
     assert.ok(names.has("canvas.create_text"));
     assert.ok(names.has("canvas.create_shape"));
     assert.ok(names.has("canvas.create_image"));
+    assert.ok(names.has("canvas.create_svg"));
+    assert.ok(names.has("canvas.create_icon"));
     assert.ok(names.has("canvas.video_generate"));
     assert.ok(names.has("canvas.create_frame"));
     assert.ok(names.has("canvas.update_node"));
     assert.ok(names.has("canvas.delete_nodes"));
+    assert.ok(names.has("canvas.delete_frame"));
     assert.ok(names.has("canvas.update_frame"));
     assert.ok(names.has("canvas.align_nodes"));
     assert.ok(names.has("canvas.distribute_nodes"));

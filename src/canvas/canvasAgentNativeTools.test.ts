@@ -8,9 +8,12 @@ import {
   CanvasAlignNodesCommandSchema,
   CanvasBooleanOpCommandSchema,
   CanvasCreateFrameCommandSchema,
+  CanvasCreateIconCommandSchema,
   CanvasCreateImageCommandSchema,
   CanvasCreateShapeCommandSchema,
+  CanvasCreateSvgCommandSchema,
   CanvasCreateTextCommandSchema,
+  CanvasDeleteFrameCommandSchema,
   CanvasDeleteNodesCommandSchema,
   CanvasSceneSummaryCommandSchema,
   CanvasUpdateFrameCommandSchema,
@@ -319,11 +322,85 @@ test("typed Canvas tool schemas reject unknown fields and remote image inputs", 
     id: "ROOT",
     idempotencyKey: "frame-root",
   }), /id cannot be ROOT/);
+  CanvasCreateSvgCommandSchema.parse({
+    expectedRevision: 1,
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2 L22 20 L2 20 Z"/></svg>',
+    x: 0,
+    y: 0,
+    width: 24,
+    height: 24,
+    idempotencyKey: "svg-ok",
+  });
+  assert.throws(() => CanvasCreateSvgCommandSchema.parse({
+    expectedRevision: 1,
+    x: 0,
+    y: 0,
+    width: 24,
+    height: 24,
+    idempotencyKey: "svg-missing-markup",
+  }), /svg/);
+  assert.throws(() => CanvasCreateSvgCommandSchema.parse({
+    expectedRevision: 1,
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"/>',
+    x: 0,
+    y: 0,
+    width: 24,
+    height: 24,
+    extra: true,
+    idempotencyKey: "svg-extra",
+  }));
+  CanvasCreateIconCommandSchema.parse({
+    expectedRevision: 1,
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2 L22 20 L2 20 Z"/></svg>',
+    x: 0,
+    y: 0,
+    width: 24,
+    height: 24,
+    idempotencyKey: "icon-ok",
+  });
+  CanvasDeleteFrameCommandSchema.parse({
+    expectedRevision: 1,
+    frameId: "frame-1",
+    confirmDestructive: true,
+    idempotencyKey: "frame-del",
+  });
+  assert.throws(() => CanvasDeleteFrameCommandSchema.parse({
+    expectedRevision: 1,
+    idempotencyKey: "frame-del-missing",
+  }), /frameId/);
+  CanvasUpdateNodeCommandSchema.parse({
+    expectedRevision: 1,
+    nodeId: "shape-1",
+    textAlign: "center",
+    lineHeight: 1.4,
+    letterSpacing: 2,
+    fontStyle: "italic",
+    textDecoration: "underline",
+    idempotencyKey: "upd-typography",
+  });
+  CanvasBooleanOpCommandSchema.parse({
+    expectedRevision: 1,
+    nodeIds: ["a", "b"],
+    mode: "subtract",
+    resultId: "moon-1",
+    confirmDestructive: true,
+    idempotencyKey: "bool-result",
+  });
+  CanvasUpdateFrameCommandSchema.parse({
+    expectedRevision: 1,
+    frameId: "frame-1",
+    x: 120,
+    y: 40,
+    idempotencyKey: "frame-move",
+  });
   assert.equal(CANVAS_MEDIA_GENERATE_SEAM.status, "accepted");
   assert.ok(CANVAS_MUTATION_TOOL_NAMES.includes("canvas.create_text"));
   assert.ok(CANVAS_MUTATION_TOOL_NAMES.includes("canvas.elements_apply"));
   assert.ok(CANVAS_MUTATION_TOOL_NAMES.includes("canvas.align_nodes"));
   assert.ok(CANVAS_MUTATION_TOOL_NAMES.includes("canvas.boolean_op"));
+  assert.ok(CANVAS_MUTATION_TOOL_NAMES.includes("canvas.create_svg"));
+  assert.ok(CANVAS_MUTATION_TOOL_NAMES.includes("canvas.create_icon"));
+  assert.ok(CANVAS_MUTATION_TOOL_NAMES.includes("canvas.delete_frame"));
   const shape = CanvasCreateShapeCommandSchema.parse({
     expectedRevision: 1,
     x: 0,
@@ -378,6 +455,18 @@ test("typed Canvas tool schemas reject unknown fields and remote image inputs", 
   assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_shape"], /NEVER put CSS/);
   assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_shape"], /Never use emoji/);
   assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_shape"], /boolean_op subtract/);
+  assert.doesNotMatch(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_shape"], /no typed tool/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_shape"], /use canvas\.create_svg or canvas\.create_icon/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_svg"], /viewBox/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_svg"], /sanitizer REJECTS/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_svg"], /禁止 script 与外链/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_icon"], /viewBox="0 0 24 24"/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.create_icon"], /NEVER use emoji\/text as the mark/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.delete_frame"], /confirmDestructive must be true/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.update_node"], /textAlign=left\|center\|right/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.update_frame"], /x\?, y\? \(move the artboard\)/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.boolean_op"], /resultId\?/);
+  assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.reorder_nodes"], /complete new front-to-back order/);
   assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.update_node"], /fillType/);
   assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.boolean_op"], /moon = large circle subtract/);
   assert.match(CANVAS_TYPED_TOOL_DESCRIPTIONS["canvas.boolean_op"], /magnifier = circle union rect handle/);
@@ -446,6 +535,72 @@ test("typed Canvas commands map onto the same ToolOp names Core already executes
   }, grant);
   assert.equal(alignOp.op, "align_nodes");
   assert.equal(alignOp.mode, "left");
+  const svgOp = typedCanvasCommandToToolOp("canvas.create_svg", {
+    expectedRevision: 1,
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2 L22 20 L2 20 Z"/></svg>',
+    x: 8,
+    y: 16,
+    width: 48,
+    height: 48,
+    idempotencyKey: "map-svg",
+  }, grant);
+  assert.equal(svgOp.op, "create_svg");
+  assert.equal(svgOp.parentId, "ROOT");
+  assert.equal(svgOp.frameId, "frame-1");
+  assert.match(String(svgOp.svg), /viewBox="0 0 24 24"/);
+  const iconOp = typedCanvasCommandToToolOp("canvas.create_icon", {
+    expectedRevision: 1,
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2 L22 20 L2 20 Z"/></svg>',
+    x: 8,
+    y: 16,
+    width: 48,
+    height: 48,
+    idempotencyKey: "map-icon",
+  }, grant);
+  assert.equal(iconOp.op, "create_svg");
+  assert.equal(iconOp.svg, svgOp.svg);
+  const deleteFrameOp = typedCanvasCommandToToolOp("canvas.delete_frame", {
+    expectedRevision: 1,
+    frameId: "frame-1",
+    confirmDestructive: true,
+    idempotencyKey: "map-frame-del",
+  }, grant);
+  assert.equal(deleteFrameOp.op, "delete_frame");
+  assert.equal(deleteFrameOp.frameId, "frame-1");
+  const typographyOp = typedCanvasCommandToToolOp("canvas.update_node", {
+    expectedRevision: 1,
+    nodeId: "shape-1",
+    textAlign: "center",
+    lineHeight: 1.4,
+    letterSpacing: 2,
+    fontStyle: "italic",
+    textDecoration: "underline",
+    idempotencyKey: "map-typography",
+  }, grant);
+  const typographyPatch = typographyOp.patch as Record<string, unknown>;
+  assert.equal(typographyPatch.textAlign, "center");
+  assert.equal(typographyPatch.lineHeight, 1.4);
+  assert.equal(typographyPatch.letterSpacing, 2);
+  assert.equal(typographyPatch.fontStyle, "italic");
+  assert.equal(typographyPatch.textDecoration, "underline");
+  const booleanOp = typedCanvasCommandToToolOp("canvas.boolean_op", {
+    expectedRevision: 1,
+    nodeIds: ["shape-1", "shape-2"],
+    mode: "subtract",
+    resultId: "moon-1",
+    confirmDestructive: true,
+    idempotencyKey: "map-boolean",
+  }, grant);
+  assert.equal(booleanOp.resultId, "moon-1");
+  const frameMoveOp = typedCanvasCommandToToolOp("canvas.update_frame", {
+    expectedRevision: 1,
+    frameId: "frame-1",
+    x: 120,
+    y: 40,
+    idempotencyKey: "map-frame-move",
+  }, grant);
+  assert.equal(frameMoveOp.x, 120);
+  assert.equal(frameMoveOp.y, 40);
   assert.throws(() => CanvasUpdateNodeCommandSchema.parse({
     expectedRevision: 1,
     nodeId: "shape-1",
@@ -498,6 +653,12 @@ test("canvas intent stays unknown from natural language and pure questions do no
   assert.match(pack, /Never use emoji/);
   assert.match(pack, /markedRegions/);
   assert.match(pack, /do not paste markedRegions/);
+  assert.match(pack, /=== SCENE_FACTS ===/);
+  assert.match(pack, /Computed layout facts for design_review self-scoring/);
+  assert.match(pack, /Preferred tools:[^\n]*canvas\.create_svg[^\n]*canvas\.create_icon/);
+  assert.match(pack, /Preferred tools:[^\n]*canvas\.delete_frame/);
+  assert.doesNotMatch(pack, /ToolOps durable subset[^\n]*create_svg/);
+  assert.doesNotMatch(pack, /ToolOps durable subset[^\n]*delete_frame/);
 });
 
 test("scene_summary is grant-scoped and typed create/update/delete share Gateway→Core with mutation feedback", async () => {
@@ -546,6 +707,10 @@ test("scene_summary is grant-scoped and typed create/update/delete share Gateway
     assert.match(summary.contextText, /=== SCENE_NODES ===/);
     assert.match(summary.contextText, /shape-1/);
     assert.doesNotMatch(summary.contextText, /shape-2/);
+    assert.match(summary.contextText, /=== SCENE_FACTS ===/);
+    assert.match(summary.contextText, /hero_coverage:/);
+    assert.match(summary.contextText, /not error alerts/);
+    assert.doesNotMatch(summary.contextText, /shape-2∩/);
     assert.ok(summary.availableFonts.includes("Inter"));
     assert.ok(summary.availableFonts.length >= 40);
     assert.ok(summary.availableFonts.includes("Zhi Mang Xing"));
@@ -779,6 +944,228 @@ test("create_image binds durable attrs.src from assetId so the editor can paint 
   assert.equal(record?.attrs?.src, "/api/canvas-assets/space-a/canvas-a/asset-1");
   assert.equal(record?.attrs?.uploadKey, "asset-1");
   assert.equal(record?.attrs?.name, "hero");
+});
+
+function patchedNodeOf(mapped: ReturnType<typeof mapCanvasToolOps>, id: string): Record<string, unknown> | null {
+  const value = mapped.operation && mapped.operation.type === "document.patch"
+    ? mapped.operation.patches.find((patch) => patch.path[0] === "deltaSetLike" && patch.path[1] === id)?.value
+    : null;
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+const VALID_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2 A10 10 0 1 0 22 12 A8 8 0 1 1 12 2 Z"/></svg>';
+
+test("create_svg reuses the shared sanitizer and rejects active/external content at op level", () => {
+  const doc = scene as CanvasJson;
+  const created = mapCanvasToolOps(doc, [{
+    op: "create_svg",
+    id: "svg-1",
+    x: 0,
+    y: 0,
+    width: 24,
+    height: 24,
+    svg: VALID_SVG,
+  }]);
+  const node = patchedNodeOf(created, "svg-1");
+  assert.equal(node?.key, "svg");
+  assert.match(String(node?.svg), /viewBox="0 0 24 24"/);
+  for (const [label, svg] of Object.entries({
+    script: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><script>alert(1)</script></svg>',
+    eventAttribute: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" onload="alert(1)"><path d="M0 0h24v24H0z"/></svg>',
+    externalHref: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><image href="https://evil.example/x.png"/></svg>',
+    externalUrl: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="url(https://evil.example/x.png)" d="M0 0h24v24H0z"/></svg>',
+    styleTag: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><style>@import url(https://evil.example)</style></svg>',
+  })) {
+    assert.throws(() => mapCanvasToolOps(doc, [{
+      op: "create_svg",
+      id: "svg-x",
+      x: 0,
+      y: 0,
+      width: 24,
+      height: 24,
+      svg,
+    }]), /code=create_svg_invalid_markup/, label);
+  }
+});
+
+test("update_node writes textAlign/lineHeight/letterSpacing/fontStyle/textDecoration into the text DATA config", () => {
+  const textDoc: CanvasJson = {
+    width: 400,
+    height: 300,
+    deltaSetLike: {
+      ROOT: { children: ["t-1"] },
+      "t-1": { id: "t-1", key: "text", x: 10, y: 10, width: 200, height: 40, text: "Poster title", attrs: { fontSize: 48 }, children: [] },
+    },
+    frames: [],
+    stackOrder: ["t-1"],
+  };
+  const mapped = mapCanvasToolOps(textDoc, [{
+    op: "update_node",
+    nodeId: "t-1",
+    textAlign: "center",
+    lineHeight: 1.5,
+    letterSpacing: 2,
+    fontStyle: "italic",
+    textDecoration: "underline",
+  }]);
+  const node = patchedNodeOf(mapped, "t-1");
+  const attrs = (node?.attrs ?? {}) as { DATA?: string; textAlign?: string; markdown?: string };
+  const data = JSON.parse(String(attrs.DATA)) as Array<{ chars: Array<{ config: Record<string, unknown> }> }>;
+  assert.equal(data[0]?.chars[0]?.config.ALIGN, "center");
+  assert.equal(data[0]?.chars[0]?.config.LINE_HEIGHT, 1.5);
+  assert.equal(data[0]?.chars[0]?.config.LETTER_SPACING, 2);
+  assert.equal(data[0]?.chars[0]?.config.STYLE, "italic");
+  assert.equal(data[0]?.chars[0]?.config.DECORATION, "underline");
+  assert.equal(data[0]?.chars[0]?.config.SIZE, 48);
+  assert.equal(attrs.textAlign, "center");
+  // Style-only updates must not lose the existing copy.
+  assert.equal(node?.text, "Poster title");
+  assert.equal(attrs.markdown, "Poster title");
+
+  // Typed tools deliver style keys through patch — same rebuild must happen.
+  const throughPatch = mapCanvasToolOps(textDoc, [{ op: "update_node", nodeId: "t-1", patch: { textAlign: "right" } }]);
+  const patched = patchedNodeOf(throughPatch, "t-1");
+  const patchedAttrs = (patched?.attrs ?? {}) as { DATA?: string };
+  const patchedData = JSON.parse(String(patchedAttrs.DATA)) as Array<{ chars: Array<{ config: Record<string, unknown> }> }>;
+  assert.equal(patchedData[0]?.chars[0]?.config.ALIGN, "right");
+  assert.equal(patchedData[0]?.chars[0]?.config.SIZE, 48);
+
+  // Recoloring a text node (fill only) rebuilds the DATA color config too.
+  const recolored = mapCanvasToolOps(textDoc, [{ op: "update_node", nodeId: "t-1", patch: { fill: "#FF0000" } }]);
+  const recoloredNode = patchedNodeOf(recolored, "t-1");
+  const recoloredAttrs = (recoloredNode?.attrs ?? {}) as { DATA?: string; "fill-color"?: string };
+  const recoloredData = JSON.parse(String(recoloredAttrs.DATA)) as Array<{ chars: Array<{ config: Record<string, unknown> }> }>;
+  assert.equal(recoloredAttrs["fill-color"], "#FF0000");
+  assert.equal(recoloredData[0]?.chars[0]?.config.COLOR, "#FF0000");
+});
+
+test("typed create_svg/create_icon/delete_frame flow through Gateway with sanitizer and confirmDestructive", async () => {
+  const f = fixture("svg-icon-frame");
+  try {
+    const executor = f.addAgent("executor");
+    const channel = f.addChannel();
+    f.addMember(channel.id, executor.id);
+    const modules = posting();
+    const message = await modules.messagePosting.post({
+      kind: "chat",
+      context: { spaceId: f.spaceId, channelId: channel.id, sender: { type: "human", id: f.humanId, name: "Human" } },
+      content: "画一个矢量图标",
+      canvasSelection: { canvasId: f.canvas.id, selectedIds: ["frame:frame-1", "shape-1"] },
+      executionBinding: { executorAgentId: executor.id, mode: "required" },
+    });
+    const turn = await prepareTurn({
+      spaceId: f.spaceId,
+      db: f.db,
+      agentId: executor.id,
+      channelId: channel.id,
+      messageId: message.id,
+    });
+    const grant = f.db.select().from(schema.canvasAccessGrants).where(eq(schema.canvasAccessGrants.turnId, turn.turnId)).get();
+    assert.ok(grant);
+    const baseRevision = f.core.read(f.canvas.id).revisions.revision;
+    for (const [label, svg] of Object.entries({
+      script: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><script>alert(1)</script></svg>',
+      eventAttribute: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" onload="alert(1)"><path d="M0 0h24v24H0z"/></svg>',
+      externalRef: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><image href="https://evil.example/x.png"/></svg>',
+    })) {
+      assert.throws(() => turn.gateway.canvasCreateSvg(turn.claims, {
+        snapshotId: grant.snapshotId,
+        expectedRevision: baseRevision,
+        svg,
+        x: 0,
+        y: 0,
+        width: 24,
+        height: 24,
+        idempotencyKey: `svg-${label}`,
+      }), (error: unknown) => {
+        assert.ok(error instanceof HarnessError, `${label}: expected HarnessError`);
+        assert.equal(error.code, "capability_scope_denied", label);
+        assert.equal(error.details.canvasErrorCode, "create_svg_invalid_markup", label);
+        return true;
+      }, label);
+    }
+    const created = turn.gateway.canvasCreateSvg(turn.claims, {
+      snapshotId: grant.snapshotId,
+      expectedRevision: baseRevision,
+      svg: VALID_SVG,
+      x: 24,
+      y: 40,
+      width: 48,
+      height: 48,
+      name: "moon",
+      idempotencyKey: "svg-valid",
+    });
+    assert.equal(created.status, "committed");
+    const svgNode = (f.core.read(f.canvas.id).document as { deltaSetLike: Record<string, { key?: string; svg?: string; frameId?: string }> }).deltaSetLike[created.createdIds[0]!];
+    assert.equal(svgNode?.key, "svg");
+    assert.equal(svgNode?.frameId, "frame-1");
+    assert.match(svgNode?.svg ?? "", /viewBox="0 0 24 24"/);
+
+    const icon = turn.gateway.canvasCreateIcon(turn.claims, {
+      snapshotId: grant.snapshotId,
+      expectedRevision: created.revision,
+      svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2 L22 20 L2 20 Z"/></svg>',
+      x: 24,
+      y: 100,
+      width: 48,
+      height: 48,
+      idempotencyKey: "icon-valid",
+    });
+    assert.equal(icon.status, "committed");
+    const iconNode = (f.core.read(f.canvas.id).document as { deltaSetLike: Record<string, { key?: string }> }).deltaSetLike[icon.createdIds[0]!];
+    assert.equal(iconNode?.key, "svg");
+
+    const text = turn.gateway.canvasCreateText(turn.claims, {
+      snapshotId: grant.snapshotId,
+      expectedRevision: icon.revision,
+      text: "Poster title",
+      x: 10,
+      y: 200,
+      fontSize: 48,
+      idempotencyKey: "svg-frame-text",
+    });
+    const styled = turn.gateway.canvasUpdateNode(turn.claims, {
+      snapshotId: grant.snapshotId,
+      expectedRevision: text.revision,
+      nodeId: text.createdIds[0]!,
+      textAlign: "center",
+      lineHeight: 1.5,
+      letterSpacing: 2,
+      fontStyle: "italic",
+      textDecoration: "underline",
+      idempotencyKey: "svg-frame-typography",
+    });
+    assert.equal(styled.status, "committed");
+    const styledNode = (f.core.read(f.canvas.id).document as { deltaSetLike: Record<string, { text?: string; attrs?: Record<string, unknown> }> }).deltaSetLike[text.createdIds[0]!];
+    const data = JSON.parse(String(styledNode?.attrs?.DATA)) as Array<{ chars: Array<{ config: Record<string, unknown> }> }>;
+    assert.equal(data[0]?.chars[0]?.config.ALIGN, "center");
+    assert.equal(data[0]?.chars[0]?.config.LINE_HEIGHT, 1.5);
+    assert.equal(data[0]?.chars[0]?.config.LETTER_SPACING, 2);
+    assert.equal(data[0]?.chars[0]?.config.STYLE, "italic");
+    assert.equal(data[0]?.chars[0]?.config.DECORATION, "underline");
+    assert.equal(styledNode?.text, "Poster title");
+
+    const beforeDelete = f.core.read(f.canvas.id).revisions.revision;
+    assert.throws(() => turn.gateway.canvasDeleteFrame(turn.claims, {
+      snapshotId: grant.snapshotId,
+      expectedRevision: beforeDelete,
+      frameId: "frame-1",
+      idempotencyKey: "frame-del-no-confirm",
+    }), /confirmDestructive/);
+    const deleted = turn.gateway.canvasDeleteFrame(turn.claims, {
+      snapshotId: grant.snapshotId,
+      expectedRevision: beforeDelete,
+      frameId: "frame-1",
+      confirmDestructive: true,
+      idempotencyKey: "frame-del-ok",
+    });
+    assert.equal(deleted.status, "committed");
+    assert.ok(deleted.deletedIds.includes("frame-1"));
+    const framesAfter = (f.core.read(f.canvas.id).document as { frames: Array<{ id: string }> }).frames;
+    assert.equal(framesAfter.some((frame) => frame.id === "frame-1"), false);
+  } finally {
+    f.cleanup();
+  }
 });
 
 test("mapCanvasToolError attaches canvasErrorCode/fix/detail for CanvasToolError", () => {

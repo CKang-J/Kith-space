@@ -23,7 +23,7 @@ export const CANVAS_DESIGN_PRINCIPLES = `
 ### Icon Construction Hierarchy (如何构建复杂图标)
 1. **Primitives + boolean_op** (moon = large circle subtract small circle)
 2. **create_shape with pen path** (closed path for filled silhouettes)
-3. **create_svg** (only for complex single-path marks that can't be built from primitives)
+3. **canvas.create_svg / canvas.create_icon** (only for complex single-path marks that can't be built from primitives)
 
 Examples:
 - Moon: create_shape circle (large) + create_shape circle (small) → boolean_op mode=subtract
@@ -79,7 +79,7 @@ You decide whether this turn is edit, question, read, or export. The server does
 If you judge this is an edit (draw, add text/images, modify Frames, layout, or otherwise change the authorized selection):
 1. Call canvas.scene_summary (canvas.snapshot_get only when you need the immutable historical snapshot).
 2. Inspect existing objects with canvas.elements_get when needed. Create inside allowedCreateParents from scene_summary. Frame ids belong in frameId; node parentId is ROOT or a group (a Frame id passed as parentId is remapped).
-3. Call typed tools: canvas.create_frame, canvas.create_text, canvas.create_shape, canvas.create_image, canvas.update_node, canvas.delete_nodes, canvas.update_frame, canvas.align_nodes, canvas.distribute_nodes, canvas.reorder_nodes, canvas.group_nodes, canvas.ungroup_nodes, canvas.duplicate_nodes, canvas.flip_nodes, canvas.boolean_op, canvas.set_canvas_background. canvas.elements_apply remains a low-level batch compatibility tool, not the default. If LAST_CANVAS_ERROR is present, fix that code first — do not repeat the same invalid fill/args.
+3. Call typed tools: canvas.create_frame, canvas.create_text, canvas.create_shape, canvas.create_image, canvas.create_svg, canvas.create_icon, canvas.update_node, canvas.delete_nodes, canvas.update_frame, canvas.align_nodes, canvas.distribute_nodes, canvas.reorder_nodes, canvas.group_nodes, canvas.ungroup_nodes, canvas.duplicate_nodes, canvas.flip_nodes, canvas.boolean_op, canvas.set_canvas_background. canvas.elements_apply remains a low-level batch compatibility tool, not the default. If LAST_CANVAS_ERROR is present, fix that code first — do not repeat the same invalid fill/args.
 4. After a write, read mutationId, revision, createdIds, updatedIds, deletedIds, and nextSuggestedAction. Re-run canvas.scene_summary if you need to verify placement.
 5. Only after a mutation is committed, call turn.reply and include outputRefs of kind canvas_mutation with that mutationId. Never treat sourceRefs as canvas output.
 6. Do not claim the canvas was drawn or edited unless a Canvas mutation actually committed.
@@ -213,11 +213,13 @@ Prefer typed tools. canvas.elements_apply is a low-level batch compatibility pat
 | Place imported bitmap | canvas.asset_import then canvas.create_image(assetId) |
 | Generate atmosphere / lettering / product still | canvas.create_image(genPrompt) |
 | Generate a short video | canvas.video_generate |
+| Raw SVG mark / compact icon | canvas.create_svg / canvas.create_icon |
 | Recolor / rewrite / resize / morph / cornerRadius | canvas.update_node |
 | Artboard name / size / background / lock | canvas.update_frame |
 | Align / distribute / reorder / group / flip / duplicate | canvas.align_nodes, canvas.distribute_nodes, canvas.reorder_nodes, canvas.group_nodes, canvas.ungroup_nodes, canvas.flip_nodes, canvas.duplicate_nodes |
 | Cutout / combine shapes | canvas.boolean_op |
 | Infinite-canvas background | canvas.set_canvas_background (only if GRANT actions include it) |
+| Delete an artboard | canvas.delete_frame (confirmDestructive) |
 | Export a file | canvas.export |
 
 Do not inspect project source to discover extra tools.
@@ -250,6 +252,10 @@ canvasId, snapshotId, revision, FOCUS_FRAME_ID, CANVAS_SIZE
 === SCENE_NODES ===
 - <nodeId>: key name x y w h parent frame style fill/stroke/shapeType text_preview?
 
+=== SCENE_FACTS ===
+Computed layout facts for design_review self-scoring (informational, not error alerts):
+hero_coverage, whitespace, h1_h2_ratio, out_of_frame, out_of_canvas, overlap, anti_slop
+
 === GRANT ===
 actions, createParents, selectedElements, selectedFrames
 
@@ -267,7 +273,7 @@ If FOCUS_FRAME_ID is "(none)", the grant is either multi-frame, element-only, or
   - Moon: large circle subtract small circle (mode=subtract)
   - Magnifier: circle union handle rect (mode=union)
   - Ring: outer circle subtract inner circle (mode=subtract)
-- Only use create_svg for complex single-path marks
+- Only use canvas.create_svg / canvas.create_icon for complex single-path marks (sanitized inline markup, viewBox required)
 - Never use emoji or pictograph Unicode (🏠🔍❤️) inside create_text as an icon stand-in — labels are plain words only
 
 ### Path-based icons
@@ -401,10 +407,10 @@ export function canvasSkillPackText(grants: CanvasAccessGrantRow[], lastError?: 
       const scope = grant.objectScope;
       return `- grant ${grant.id} snapshot=${grant.snapshotId} canvas=${grant.canvasId} actions=${grant.actions.join(",")} empty=${scope.emptySelection ? "yes" : "no"} elements=${scope.elementIds.join(",") || "—"} frames=${scope.frameIds.join(",") || "—"} createParents=${scope.createParents.join(",") || "—"} expiresAt=${grant.expiresAt instanceof Date ? grant.expiresAt.toISOString() : "—"}`;
     }),
-    "Preferred tools: canvas.scene_summary, canvas.skill_list, canvas.skill_get, canvas.create_frame, canvas.create_text, canvas.create_shape, canvas.create_image(assetId|genPrompt), canvas.video_generate, canvas.update_node, canvas.delete_nodes, canvas.update_frame, canvas.align_nodes, canvas.distribute_nodes, canvas.reorder_nodes, canvas.group_nodes, canvas.ungroup_nodes, canvas.duplicate_nodes, canvas.flip_nodes, canvas.boolean_op, canvas.set_canvas_background.",
+    "Preferred tools: canvas.scene_summary, canvas.skill_list, canvas.skill_get, canvas.create_frame, canvas.create_text, canvas.create_shape, canvas.create_image(assetId|genPrompt), canvas.create_svg, canvas.create_icon, canvas.video_generate, canvas.update_node, canvas.delete_nodes, canvas.delete_frame, canvas.update_frame, canvas.align_nodes, canvas.distribute_nodes, canvas.reorder_nodes, canvas.group_nodes, canvas.ungroup_nodes, canvas.duplicate_nodes, canvas.flip_nodes, canvas.boolean_op, canvas.set_canvas_background.",
     "Compatibility: canvas.elements_apply still maps a ToolOps list onto Canvas Core. Prefer typed tools.",
     "Also available: canvas.snapshot_get, canvas.elements_get, canvas.export, canvas.context_bundle_create, canvas.asset_import.",
-    "ToolOps durable subset if using elements_apply: update_node, create_shape, create_text, create_image(assetId), create_video(assetId), create_svg, create_lottie(assetId), create_icon(assetId), create_frame, update_frame, delete_frame, delete_nodes, align_nodes, distribute_nodes, reorder_nodes, group_nodes, ungroup_nodes, duplicate_nodes, flip_nodes, boolean_op, set_canvas_background.",
+    "ToolOps durable subset if using elements_apply: update_node, create_shape, create_text, create_image(assetId), create_video(assetId), create_lottie(assetId), create_frame, update_frame, delete_nodes, align_nodes, distribute_nodes, reorder_nodes, group_nodes, ungroup_nodes, duplicate_nodes, flip_nodes, boolean_op, set_canvas_background.",
     "Not scene-batch: set_viewport (suggestion), export_canvas (canvas.export), image_process (deferred), outline_text (deferred).",
   ];
   return lines.join("\n");
