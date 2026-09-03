@@ -50,7 +50,7 @@ test("development Desktop proxies browser frontend to Vite while keeping a dist 
   assert.equal(commands.core.env?.KITH_SPACE_VITE_DEV_URL, "http://127.0.0.1:5273");
   assert.equal(commands.core.env?.KITH_SPACE_PI_ADVISOR_HELPER, path.join(appRoot, "desktop/dist/runtime/pi-advisor-helper.mjs"));
   assert.equal(commands.worker.env?.KITH_SPACE_PI_ADVISOR_HELPER, path.join(appRoot, "desktop/dist/runtime/pi-advisor-helper.mjs"));
-  assert.equal(commands.core.env?.KITH_CANVAS_AGENT_EXECUTION, "1");
-  assert.equal(commands.worker.env?.KITH_CANVAS_AGENT_EXECUTION, "1");
+  assert.equal(commands.core.env?.KITH_CANVAS_AGENT_EXECUTION, undefined);
+  assert.equal(commands.worker.env?.KITH_CANVAS_AGENT_EXECUTION, undefined);
   assert.equal(commands.vite?.env?.KITH_CANVAS_AGENT_EXECUTION, undefined);
 });
