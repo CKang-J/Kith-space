@@ -560,8 +560,8 @@ test("scene_summary is grant-scoped and typed create/update/delete share Gateway
       snapshotId: grant.snapshotId,
       idempotencyKey: "skill-list-1",
     });
-    assert.equal(catalog.catalog.foundation.length, 6);
-    assert.equal(catalog.catalog.domains.length, 3);
+    assert.equal(catalog.catalog.foundation.length, 12);
+    assert.equal(catalog.catalog.domains.length, 14);
     assert.ok(catalog.catalog.domains.some((skill) => skill.skillKey === "poster_craft"));
     const poster = turn.gateway.canvasSkillGet(turn.claims, {
       snapshotId: grant.snapshotId,

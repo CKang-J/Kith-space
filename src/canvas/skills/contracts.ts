@@ -1,6 +1,12 @@
 export type SkillCategory = "foundation" | "domains";
 export type SkillPriority = "P0" | "P1" | "P2";
 
+/** Server-side pre-filter keywords (from Recombyn `_meta.json` `triggers.prompt_includes_any`). */
+export interface SkillTriggers {
+  promptIncludesAny?: string[];
+  negatePromptIncludesAny?: string[];
+}
+
 export interface SkillMetadata {
   skillKey: string;
   displayName: string;
@@ -9,6 +15,7 @@ export interface SkillMetadata {
   description: string;
   relatedSkills?: string[];
   priority: SkillPriority;
+  triggers?: SkillTriggers;
 }
 
 export interface Skill {

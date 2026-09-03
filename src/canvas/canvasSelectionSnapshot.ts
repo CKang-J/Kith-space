@@ -24,7 +24,7 @@ import type {
 export const CANVAS_SELECTION_SNAPSHOT_REF_TYPE = "canvas_selection_snapshot";
 export const MAX_CANVAS_SELECTION_IDS = 80;
 export const MAX_CANVAS_MARKED_REGIONS = 8;
-const MAX_TEXT = 240;
+const MAX_TEXT = 400;
 const FRAME_PREFIX = "frame:";
 const MARKED_REGION_KINDS = new Set(["manual", "image", "text", "subject"]);
 
