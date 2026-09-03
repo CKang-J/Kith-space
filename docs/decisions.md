@@ -592,6 +592,12 @@
 
 **许可与实施边界**：Recombyn 根仓 Apache-2.0 可移植，但首次复制前必须完成 source manifest、Kith NOTICE/修改声明、MIT skill 与 Paynter brush 完整 notice、图标/品牌资产及在线字体许可核验；拿不到完整 Paynter MIT notice 就不复制该笔刷。不得以全量复制后再收拾的方式绕过 UI island、Tailwind 3/Preflight/portal 隔离、Kith-owned SVG sanitizer 和视觉 golden 门。完整规格见 `docs/archive/specs/2026-08-15-recombyn-canvas-workspace-design.md`，架构决策见 `docs/adr/0038-adopt-recombyn-canvas-module.md`。
 
+## 决策 39：画布设计质量用原创 eval 基线量化，新增顶层 `eval/` 目录承载
+
+**状态**：Accepted（2026-09-03）。
+
+**结论**：为解决"画布产出比原项目效果差一点"不可度量的问题，引入确定性 eval 基线：`eval/canvas-design/` 下维护 16 个原创中文设计任务（8 个 surface × 2 档复杂度）、打分 runner 与结果记录 `results.json`；打分逻辑是 `src/canvas/canvasEvalScore.ts` 纯函数，复用 `canvasSceneFacts` 的零 LLM 确定性事实（hero 覆盖率、h1/h2 层级比、越界、anti-slop 命中等）对任务检查项逐项判定。工作流是改动前后用同一批提示词手动跑 Agent、导出画布、用 runner 打分并对比 `results.json`。这是 reference `eval/design-agent/` 思路（同一批任务 + 量化对比）在 Kith 约束下的等价物，但任务文案全部原创、不复制上游，也不引入上游 eval framework；后续若做"eval 反哺 skill 硬规则"的自进化，再单独决策。新增顶层 `eval/` 目录作为实验性评估设施的固定落点，与 `scripts/`（开发脚本）、`test/`（集成测试）区分。
+
 ---
 
 ## 尚未决定 / 刻意留白

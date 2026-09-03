@@ -1,0 +1,14 @@
+{
+  "id": "resume-002",
+  "surface": "resume",
+  "expectedSkill": "resume_layout",
+  "prompt": "为转岗数据分析师做一张 794×1123 的双栏简历：左窄栏放技能与证书，右宽栏放时间倒序的经历条目，每条经历有职位、时间与一行说明，扫描路径要顺，四边留白均匀，不要做成海报。",
+  "checks": [
+    "no_out_of_bounds",
+    "h1_h2_ratio_between[1.15,10]",
+    "anti_slop_hits_eq[0]",
+    "text_nodes_at_least[12]",
+    "node_count_at_least[16]"
+  ],
+  "notes": "高复杂度简历：双栏扫描路径 + 均匀边距，对应 resume_layout Hard rules 1/3。"
+}

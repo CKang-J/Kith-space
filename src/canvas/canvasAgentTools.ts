@@ -52,6 +52,12 @@ export const CanvasSkillGetCommandSchema = z.object({
   idempotencyKey: IdempotencyKey,
 }).strict();
 
+export const CanvasDesignReviewCommandSchema = z.object({}).strict();
+
+export const CanvasGenerationStatusCommandSchema = z.object({
+  jobId: Id,
+}).strict();
+
 export const CanvasCreateFrameCommandSchema = z.object({
   ...WriteLocator,
   x: z.number().finite(),
@@ -308,6 +314,8 @@ export const CanvasVideoGenerateCommandSchema = z.object({
 export type CanvasSceneSummaryCommand = z.infer<typeof CanvasSceneSummaryCommandSchema>;
 export type CanvasSkillListCommand = z.infer<typeof CanvasSkillListCommandSchema>;
 export type CanvasSkillGetCommand = z.infer<typeof CanvasSkillGetCommandSchema>;
+export type CanvasDesignReviewCommand = z.infer<typeof CanvasDesignReviewCommandSchema>;
+export type CanvasGenerationStatusCommand = z.infer<typeof CanvasGenerationStatusCommandSchema>;
 export type CanvasCreateFrameCommand = z.infer<typeof CanvasCreateFrameCommandSchema>;
 export type CanvasCreateTextCommand = z.infer<typeof CanvasCreateTextCommandSchema>;
 export type CanvasCreateShapeCommand = z.infer<typeof CanvasCreateShapeCommandSchema>;
@@ -390,6 +398,8 @@ export const CANVAS_TYPED_TOOL_DESCRIPTIONS = {
   "canvas.scene_summary": "Read a grant-scoped, model-friendly Canvas summary. Returns JSON plus contextText with CANVAS_SCENE / SCENE_FRAMES / SCENE_NODES / SCENE_FACTS (computed layout facts for design_review self-scoring: hero_coverage, whitespace, h1_h2_ratio, out_of_frame/canvas, overlap, anti_slop) / FOCUS_FRAME_ID / GRANT / AVAILABLE_FONTS. Call this before creating or editing. Do not inspect project source to learn Canvas. 画布摘要/先读再改",
   "canvas.skill_list": "List Canvas design skills (foundation + domains). Returns catalog with skillKey, category, whenToUse, priority. Load one primary surface skill before a new poster/landing/banner. Read-only. 设计技能目录",
   "canvas.skill_get": "Load the full Markdown playbook for one skillKey from skill_list (e.g. poster_craft, design_brief, anti_ai_slop). Read-only. 加载设计技能全文",
+  "canvas.design_review": "Run the in-turn design review dossier over the authorized Canvas grant (no args). Returns one integrated contextText: the grant-scoped scene summary (CANVAS_SCENE / SCENE_FRAMES / SCENE_NODES / SCENE_FACTS / GRANT / AVAILABLE_FONTS) plus DESIGN_REVIEW_RUBRIC (dimension caps: composition 20, hierarchy 20, typography 15, color 15, consistency 15, content 10, originality 5 — sum 100) plus SCORING_CONTRACT (0-100 self-score; <70 rework / 70-89 fix majors / >=90 pass; must_fix blocks settle). Call it after the last mutation and before turn.reply: score every dimension within its cap using SCENE_FACTS, fix every must_fix, then settle. Read-only; it does not score for you. 评审档案/自评打分/settle 门禁",
+  "canvas.generation_status": "Poll one queued generation job. Args: jobId (required, from canvas.create_image(genPrompt) or canvas.video_generate). Returns status (pending|processing|completed|failed|cancelled), kind (image|video|audio), provider, resultNodeId when completed, error when failed, elapsedMs. A job is only visible to the agent whose turn created it. Poll this instead of blind-waiting; after status=completed confirm the node with canvas.scene_summary. Do not claim the image/video exists before completed. 生成任务状态/轮询/异步job",
   "canvas.create_frame": "Create a frame/artboard. Args: x,y,width,height,name?. Fixed-size poster/mobile/H5/banner: MUST create_frame first at the deliverable size — never replace the artboard with a full-bleed create_shape bg rect. Exception only if the user explicitly refuses a frame (不要画板/自由画布/不要 create_frame). Multi-screen or multi-poster: one create_frame per board (name it), then that board's content, then the next create_frame — do not merge into one tall frame. Custom id cannot be ROOT and cannot collide with an existing element or Frame. 画框/画板/先建 frame",
   "canvas.create_text": "Add a text node. Args: text, x, y, width?, height?, fontSize?, fill?, fontWeight?, fontFamily?, rotation?, opacity?, blendMode?, name?. fontFamily only from Available fonts, and only when that face is ~≥90% similar to the needed look. Hero/main titles below that bar → prefer create_image+letteringText instead of forcing a near calligraphy font. Do not invent font names. Do not map 书法感→Zhi Mang Xing by default. Prefer frameId from the selected Frame in canvas.scene_summary; node parentId is ROOT or a group (Frame ids passed as parentId are remapped). 文字/标题/不要编字体",
   "canvas.create_shape": "Add a shape. Args: shapeType|type = rect|ellipse|circle|line|arrow|triangle|polygon|star|path|pen|pencil (+ path for pen/pencil/path; sides for polygon/star), x,y,width,height, fill, stroke, borderWidth. " +
@@ -457,6 +467,8 @@ export const CANVAS_TYPED_READ_TOOL_NAMES = [
   "canvas.scene_summary",
   "canvas.skill_list",
   "canvas.skill_get",
+  "canvas.design_review",
+  "canvas.generation_status",
 ] as const;
 export type CanvasTypedReadToolName = (typeof CANVAS_TYPED_READ_TOOL_NAMES)[number];
 export const CANVAS_GENERATION_TOOL_NAMES = [
@@ -472,6 +484,8 @@ export const CANVAS_AGENT_GATEWAY_PATHS = {
   "canvas.scene_summary": "/agent-gateway/canvas/scene_summary",
   "canvas.skill_list": "/agent-gateway/canvas/skill_list",
   "canvas.skill_get": "/agent-gateway/canvas/skill_get",
+  "canvas.design_review": "/agent-gateway/canvas/design_review",
+  "canvas.generation_status": "/agent-gateway/canvas/generation_status",
   "canvas.create_frame": "/agent-gateway/canvas/create_frame",
   "canvas.create_text": "/agent-gateway/canvas/create_text",
   "canvas.create_shape": "/agent-gateway/canvas/create_shape",

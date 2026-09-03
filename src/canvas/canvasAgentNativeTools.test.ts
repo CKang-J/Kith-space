@@ -19,6 +19,7 @@ import {
   CanvasUpdateFrameCommandSchema,
   CanvasUpdateNodeCommandSchema,
 } from "../capabilities/gatewayContracts.js";
+import { TurnReplyCommandSchema } from "../turns/contracts.js";
 import { SessionCapabilityBroker } from "../capabilities/sessionCapabilityBroker.js";
 import { TurnCapabilityService } from "../capabilities/turnCapabilityService.js";
 import { ContextAssembler } from "../context/contextAssembler.js";
@@ -49,6 +50,9 @@ import { CanvasAssetStore } from "./canvasAssetStore.js";
 import { classifyCanvasTurnIntent, evaluateCanvasEditCompletion } from "./canvasIntentGate.js";
 import { mapCanvasToolError } from "./canvasGatewayTools.js";
 import { canvasSkillPackText } from "./canvasSkills.js";
+import { extractDesignReviewRubric } from "./canvasDesignReview.js";
+import { updateJobStatus } from "./generation/generationJobQueue.js";
+import { loadSkill } from "./skills/skillLoader.js";
 import { CanvasToolError, mapCanvasToolOps } from "./canvasToolOps.js";
 import type { CanvasAccessGrantRow } from "./canvasAccessGrant.js";
 import type { CanvasJson } from "./canvasTypes.js";
@@ -1647,6 +1651,248 @@ test("empty selection issues a whole-canvas write grant with FOCUS_FRAME_ID none
     assert.equal(text?.y, (frame?.y ?? 0) + 80);
     assert.equal(text?.text, "新品上市");
   } finally {
+    f.cleanup();
+  }
+});
+
+test("canvas.design_review assembles the grant-scoped review dossier", async () => {
+  const f = fixture("design-review");
+  try {
+    const executor = f.addAgent("executor");
+    const channel = f.addChannel();
+    f.addMember(channel.id, executor.id);
+    const modules = posting();
+    const message = await modules.messagePosting.post({
+      kind: "chat",
+      context: { spaceId: f.spaceId, channelId: channel.id, sender: { type: "human", id: f.humanId, name: "Human" } },
+      content: "帮我评审这张海报",
+      canvasSelection: { canvasId: f.canvas.id, selectedIds: ["frame:frame-1", "shape-1"] },
+      executionBinding: { executorAgentId: executor.id, mode: "required" },
+    });
+    const turn = await prepareTurn({
+      spaceId: f.spaceId,
+      db: f.db,
+      agentId: executor.id,
+      channelId: channel.id,
+      messageId: message.id,
+    });
+    const grant = f.db.select().from(schema.canvasAccessGrants).where(eq(schema.canvasAccessGrants.turnId, turn.turnId)).get();
+    assert.ok(grant);
+    const review = turn.gateway.canvasDesignReview(turn.claims, {});
+    assert.equal(review.canvasId, f.canvas.id);
+    assert.equal(review.snapshotId, grant.snapshotId);
+    assert.equal(review.grantId, grant.id);
+    assert.ok(review.sceneFacts);
+    assert.match(review.contextText, /=== CANVAS_SCENE ===/);
+    assert.match(review.contextText, /=== SCENE_NODES ===/);
+    assert.match(review.contextText, /shape-1/);
+    assert.doesNotMatch(review.contextText, /shape-2/);
+    assert.match(review.contextText, /=== SCENE_FACTS ===/);
+    assert.match(review.contextText, /hero_coverage:/);
+    assert.match(review.contextText, /=== DESIGN_REVIEW_RUBRIC ===/);
+    assert.match(review.contextText, /## Dimensions & caps/);
+    assert.match(review.contextText, /## Pass thresholds/);
+    assert.doesNotMatch(review.contextText, /## What you judge/);
+    assert.match(review.contextText, /=== SCORING_CONTRACT ===/);
+    assert.match(review.scoringContract, /< 70: rework/);
+    assert.match(review.scoringContract, /must_fix/);
+    assert.match(review.nextSuggestedAction, /must_fix/);
+    const rubric = extractDesignReviewRubric(loadSkill("design_review")!.content);
+    assert.match(rubric, /## Dimensions & caps/);
+    assert.match(rubric, /## Pass thresholds/);
+    assert.doesNotMatch(rubric, /## What you judge/);
+    assert.equal(review.rubric, rubric);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("canvas.design_review denies turns without a canvas grant", async () => {
+  const f = fixture("design-review-deny");
+  try {
+    const executor = f.addAgent("executor");
+    const channel = f.addChannel();
+    f.addMember(channel.id, executor.id);
+    const modules = posting();
+    const message = await modules.messagePosting.post({
+      kind: "chat",
+      context: { spaceId: f.spaceId, channelId: channel.id, sender: { type: "human", id: f.humanId, name: "Human" } },
+      content: "plain chat without canvas",
+      structuredMentions: [{ type: "agent", id: executor.id }],
+    });
+    const turn = await prepareTurn({
+      spaceId: f.spaceId,
+      db: f.db,
+      agentId: executor.id,
+      channelId: channel.id,
+      messageId: message.id,
+    });
+    assert.throws(() => turn.gateway.canvasDesignReview(turn.claims, {}), /activation does not allow canvas\.read|capability_scope_denied/);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("generation_status is agent-owned and canvas_generation_job outputRefs bind this turn's jobs", async () => {
+  const f = fixture("generation-status");
+  const fake: IGenerationProvider = {
+    name: "doubao",
+    type: "image",
+    async submit() { return "ark-url:https://example.invalid/generated.png"; },
+    async getStatus() { return { status: "completed", resultUrl: "https://example.invalid/generated.png" }; },
+    async downloadResult() { return PNG_BYTES; },
+  };
+  registerGenerationProvider(fake);
+  try {
+    const parsed = TurnReplyCommandSchema.parse({
+      schemaVersion: 1,
+      body: "queued",
+      handledInputIds: ["input-1"],
+      operationKey: "reply:job-parse",
+      outputRefs: [{ kind: "canvas_generation_job", artifactId: "job-1" }],
+    });
+    assert.equal(parsed.outputRefs[0]?.kind, "canvas_generation_job");
+
+    const executor = f.addAgent("executor");
+    const other = f.addAgent("other");
+    const channel = f.addChannel();
+    f.addMember(channel.id, executor.id);
+    f.addMember(channel.id, other.id);
+    const modules = posting();
+    const message = await modules.messagePosting.post({
+      kind: "chat",
+      context: { spaceId: f.spaceId, channelId: channel.id, sender: { type: "human", id: f.humanId, name: "Human" } },
+      content: "生成星空背景",
+      canvasSelection: { canvasId: f.canvas.id, selectedIds: ["frame:frame-1"] },
+      executionBinding: { executorAgentId: executor.id, mode: "required" },
+    });
+    const turn = await prepareTurn({
+      spaceId: f.spaceId,
+      db: f.db,
+      agentId: executor.id,
+      channelId: channel.id,
+      messageId: message.id,
+    });
+    const grant = f.db.select().from(schema.canvasAccessGrants).where(eq(schema.canvasAccessGrants.turnId, turn.turnId)).get();
+    assert.ok(grant);
+    const baseRevision = f.core.read(f.canvas.id).revisions.revision;
+    const queued = turn.gateway.canvasCreateImage(turn.claims, {
+      snapshotId: grant.snapshotId,
+      expectedRevision: baseRevision,
+      genPrompt: "a starry night poster background",
+      x: 12,
+      y: 16,
+      width: 80,
+      height: 120,
+      frameId: "frame-1",
+      idempotencyKey: "img-gen-status",
+    });
+    const jobId = "jobId" in queued ? queued.jobId : null;
+    assert.ok(jobId);
+
+    const pending = turn.gateway.canvasGenerationStatus(turn.claims, { jobId: jobId! });
+    assert.equal(pending.status, "pending");
+    assert.equal(pending.kind, "image");
+    assert.equal(pending.provider, "doubao");
+    assert.equal(pending.resultNodeId, null);
+    assert.equal(pending.error, null);
+    assert.ok(pending.elapsedMs >= 0);
+    assert.match(pending.nextSuggestedAction, /canvas\.generation_status/);
+
+    updateJobStatus(f.db, jobId!, {
+      status: "completed",
+      completedAt: Date.now() + 1_000,
+      resultNodeId: "node-gen-1",
+    });
+    const completed = turn.gateway.canvasGenerationStatus(turn.claims, { jobId: jobId! });
+    assert.equal(completed.status, "completed");
+    assert.equal(completed.resultNodeId, "node-gen-1");
+    assert.ok(completed.elapsedMs >= 1_000);
+    assert.match(completed.nextSuggestedAction, /canvas\.scene_summary/);
+
+    assert.throws(
+      () => turn.gateway.canvasGenerationStatus(turn.claims, { jobId: "missing-job" }),
+      (error: unknown) => error instanceof HarnessError && error.code === "capability_scope_denied"
+        && String(error.message).includes("missing-job"),
+    );
+    const orphan = f.db.insert(schema.canvasGenerationJobs).values({
+      id: "orphan-job",
+      canvasId: f.canvas.id,
+      jobType: "image",
+      status: "pending",
+      genPrompt: "orphan",
+      placementJson: "{}",
+      provider: "doubao",
+      turnId: null,
+      idempotencyKey: "orphan-key",
+      expectedRevision: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }).returning().get()!;
+    assert.throws(
+      () => turn.gateway.canvasGenerationStatus(turn.claims, { jobId: orphan.id }),
+      (error: unknown) => error instanceof HarnessError && error.code === "capability_scope_denied"
+        && String(error.message).includes("orphan-job"),
+    );
+
+    await turn.outputs.reply({
+      turnId: turn.turnId,
+      attemptId: turn.attemptId,
+      idempotencyKey: "reply:job",
+      body: "queued the starry background",
+      handledInputIds: [turn.deliveryId],
+      outputRefs: [{ kind: "canvas_generation_job", artifactId: jobId! }],
+    });
+    const artifacts = f.db.select().from(schema.turnOutputArtifacts)
+      .where(eq(schema.turnOutputArtifacts.turnId, turn.turnId)).all();
+    assert.deepEqual(artifacts.map((artifact) => artifact.kind), ["canvas_generation_job"]);
+    assert.equal(artifacts[0]?.artifactId, jobId);
+
+    const follow = await modules.messagePosting.post({
+      kind: "chat",
+      context: { spaceId: f.spaceId, channelId: channel.id, sender: { type: "human", id: f.humanId, name: "Human" } },
+      content: "再看一次",
+      canvasSelection: { canvasId: f.canvas.id, selectedIds: ["frame:frame-1"] },
+      executionBinding: { executorAgentId: other.id, mode: "required" },
+    });
+    const next = await prepareTurn({
+      spaceId: f.spaceId,
+      db: f.db,
+      agentId: other.id,
+      channelId: channel.id,
+      messageId: follow.id,
+    });
+    assert.throws(
+      () => next.gateway.canvasGenerationStatus(next.claims, { jobId: jobId! }),
+      (error: unknown) => error instanceof HarnessError && error.code === "capability_scope_denied"
+        && String(error.message).includes(jobId!),
+    );
+    await assert.rejects(() => next.outputs.reply({
+      turnId: next.turnId,
+      attemptId: next.attemptId,
+      idempotencyKey: "reply:steal-job",
+      body: "cannot bind another turn's job",
+      handledInputIds: [next.deliveryId],
+      outputRefs: [{ kind: "canvas_generation_job", artifactId: jobId! }],
+    }), (error: unknown) => {
+      assert.ok(error instanceof HarnessError);
+      assert.match(error.message, /created by this turn|already bound|capability_scope_denied/);
+      return true;
+    });
+    await assert.rejects(() => next.outputs.reply({
+      turnId: next.turnId,
+      attemptId: next.attemptId,
+      idempotencyKey: "reply:missing-job",
+      body: "cannot bind a missing job",
+      handledInputIds: [next.deliveryId],
+      outputRefs: [{ kind: "canvas_generation_job", artifactId: "no-such-job" }],
+    }), (error: unknown) => {
+      assert.ok(error instanceof HarnessError);
+      assert.match(error.message, /does not reference a queued generation job|capability_scope_denied/);
+      return true;
+    });
+  } finally {
+    clearGenerationProviders();
     f.cleanup();
   }
 });

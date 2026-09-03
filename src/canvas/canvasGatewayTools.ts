@@ -37,6 +37,8 @@ import {
 } from "./canvasAgentTools.js";
 import { canvasMutationFeedback, canvasGenerationJobFeedback, type CanvasMutationFeedback, type CanvasGenerationJobFeedback } from "./canvasMutationFeedback.js";
 import { executeCanvasSceneSummary } from "./canvasSceneSummary.js";
+import { executeCanvasDesignReview } from "./canvasDesignReview.js";
+import { executeCanvasGenerationStatus } from "./canvasGenerationStatus.js";
 import { loadSkill } from "./skills/skillLoader.js";
 import { listSkills } from "./skills/skillRegistry.js";
 import type { CanvasSkillGetResult, CanvasSkillListResult } from "./skills/contracts.js";
@@ -44,7 +46,7 @@ import { createGenerationJob } from "./generation/generationJobQueue.js";
 import { preferredGenerationProvider } from "./generation/generationProviders.js";
 import { inferAspectRatio } from "./generation/arkClient.js";
 
-export { executeCanvasSceneSummary };
+export { executeCanvasSceneSummary, executeCanvasDesignReview, executeCanvasGenerationStatus };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;

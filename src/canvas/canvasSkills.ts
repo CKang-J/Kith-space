@@ -67,7 +67,7 @@ Unless the user provides them, **do not invent**:
 - Product images or photos
 
 ### Settle gate (before turn.reply)
-After the final canvas mutation and before turn.reply, re-read canvas.scene_summary and self-check against the design_review dimensions (composition, hierarchy, typography, color, consistency, content, originality). Fix every must_fix item before settling. Prioritize DESIGN_BRIEF fidelity, then SKILL_CRAFT.
+After the final canvas mutation and before turn.reply, call canvas.design_review (no args) to load the review dossier: grant-scoped scene summary + SCENE_FACTS + rubric caps + scoring contract. Self-score every dimension within its cap (0-100 total; <70 rework, 70-89 fix majors, >=90 pass), fix every must_fix item, then settle. Prioritize DESIGN_BRIEF fidelity, then SKILL_CRAFT.
 `;
 
 export const CANVAS_CAPABILITY_DISCOVERY = `This turn has a server-owned CanvasAccessGrant derived from a frozen Selection Snapshot. Discover tools with capability.describe.
@@ -88,7 +88,7 @@ If you judge this is a question, capability explanation, selection read, or expo
 
 The server does not hard-refuse turn.reply from natural-language intent (there is no Agent finish/intent tool yet). It only checks Grant/action, whether a mutation committed, and that outputRefs bind this turn's mutations. Use turn.cede if you must ask a blocking question instead of claiming an edit is done.
 
-canvas.create_image accepts either an existing Canvas assetId or genPrompt for a queued Doubao image job. Import a turn-bound local attachment with canvas.asset_import first when you already have a file. Remote URLs and data URLs are rejected. Cross-canvas or missing assets are rejected. Generation returns jobId immediately; the image node appears when the worker finishes (about 10–60s). Do not claim the image exists until scene_summary shows it. Use canvas.video_generate for short video clips.
+canvas.create_image accepts either an existing Canvas assetId or genPrompt for a queued Doubao image job. Import a turn-bound local attachment with canvas.asset_import first when you already have a file. Remote URLs and data URLs are rejected. Cross-canvas or missing assets are rejected. Generation returns jobId immediately; poll canvas.generation_status with that jobId until status=completed, then confirm the node with canvas.scene_summary (image about 10–60s, video 1–5 minutes). Do not claim the image exists until scene_summary shows it. Use canvas.video_generate for short video clips.
 
 Ordinary body @name text does not grant Canvas write. Do not invent or expand canvasId, snapshotId, elementId, action, or grant scope. Destructive ops require confirmDestructive. Viewport suggestions are ephemeral; export is a file side effect; image_process and outline_text are deferred jobs.
 
@@ -407,7 +407,7 @@ export function canvasSkillPackText(grants: CanvasAccessGrantRow[], lastError?: 
       const scope = grant.objectScope;
       return `- grant ${grant.id} snapshot=${grant.snapshotId} canvas=${grant.canvasId} actions=${grant.actions.join(",")} empty=${scope.emptySelection ? "yes" : "no"} elements=${scope.elementIds.join(",") || "—"} frames=${scope.frameIds.join(",") || "—"} createParents=${scope.createParents.join(",") || "—"} expiresAt=${grant.expiresAt instanceof Date ? grant.expiresAt.toISOString() : "—"}`;
     }),
-    "Preferred tools: canvas.scene_summary, canvas.skill_list, canvas.skill_get, canvas.create_frame, canvas.create_text, canvas.create_shape, canvas.create_image(assetId|genPrompt), canvas.create_svg, canvas.create_icon, canvas.video_generate, canvas.update_node, canvas.delete_nodes, canvas.delete_frame, canvas.update_frame, canvas.align_nodes, canvas.distribute_nodes, canvas.reorder_nodes, canvas.group_nodes, canvas.ungroup_nodes, canvas.duplicate_nodes, canvas.flip_nodes, canvas.boolean_op, canvas.set_canvas_background.",
+    "Preferred tools: canvas.scene_summary, canvas.skill_list, canvas.skill_get, canvas.design_review, canvas.create_frame, canvas.create_text, canvas.create_shape, canvas.create_image(assetId|genPrompt), canvas.create_svg, canvas.create_icon, canvas.video_generate, canvas.generation_status, canvas.update_node, canvas.delete_nodes, canvas.delete_frame, canvas.update_frame, canvas.align_nodes, canvas.distribute_nodes, canvas.reorder_nodes, canvas.group_nodes, canvas.ungroup_nodes, canvas.duplicate_nodes, canvas.flip_nodes, canvas.boolean_op, canvas.set_canvas_background.",
     "Compatibility: canvas.elements_apply still maps a ToolOps list onto Canvas Core. Prefer typed tools.",
     "Also available: canvas.snapshot_get, canvas.elements_get, canvas.export, canvas.context_bundle_create, canvas.asset_import.",
     "ToolOps durable subset if using elements_apply: update_node, create_shape, create_text, create_image(assetId), create_video(assetId), create_lottie(assetId), create_frame, update_frame, delete_nodes, align_nodes, distribute_nodes, reorder_nodes, group_nodes, ungroup_nodes, duplicate_nodes, flip_nodes, boolean_op, set_canvas_background.",

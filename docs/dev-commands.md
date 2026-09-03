@@ -98,6 +98,16 @@ pnpm test                # 全量测试
 
 测试 runner 会同时生成临时 `KITH_SPACE_HOME` 与 `KITH_SPACE_SPACES_DIR`，避免污染真实 app data 和 `~/Kith-space`，并显式使用根目录 `tsconfig.test.json`，使 tsx 行为测试与 Vite/Web TypeScript 共用 `@/* → web/src/*` 别名而不修改 Core 根配置。手工直跑单个测试时必须同时设置两者，并使用 `pnpm exec tsx --tsconfig tsconfig.test.json --test <测试文件>`；只给fixture传`rootPath`仍可能把Space注册进默认`~/.kith-space/app.db`，不能代替app data隔离。standalone integration应在finally注销自己的registry并删除fixture root，但这只是崩溃外的第二道防线，不能作为省略环境变量的理由。
 
+## 4.1 画布设计 eval 打分
+
+画布质量对齐的前后对比基线（决策 39）。任务提示词需先在画布 Agent 里手动跑出结果，再对导出的 canvas 打分：
+
+```bash
+node eval/canvas-design/run.mjs --db <Space>/workspace.db --canvas <canvasId> --task poster-001
+```
+
+逐项打印 PASS/FAIL 表并追加到 `eval/canvas-design/results.json`（含时间戳/分支/git rev）；全部通过退出码 0。任务套件、检查项类型与编写规范见 `eval/canvas-design/README.md`。
+
 ## 5. 构建与打包
 
 ```powershell

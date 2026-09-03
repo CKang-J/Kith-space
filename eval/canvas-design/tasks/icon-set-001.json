@@ -1,0 +1,13 @@
+{
+  "id": "icon-set-001",
+  "surface": "icon_set",
+  "expectedSkill": "icon_set",
+  "prompt": "用矢量画 4 个一套的天气图标：晴天、多云、小雨、雷暴，统一 24×24 网格和同一套描边语言，每个图标下面放文字标签，禁止用 emoji 代替图形。",
+  "checks": [
+    "no_out_of_bounds",
+    "anti_slop_hits_eq[0]",
+    "node_count_at_least[8]",
+    "text_nodes_at_least[4]"
+  ],
+  "notes": "低复杂度图标组：一套系统语言 + 真几何而非字符，对应 icon_set Hard rules 1/2。"
+}

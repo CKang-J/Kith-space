@@ -289,19 +289,30 @@ function formatCanvasSceneContextText(input: {
   ].join("\n");
 }
 
-export function executeCanvasSceneSummary(
+export type CanvasSceneSummaryAssembly = {
+  grant: CanvasAccessGrantRow;
+  summary: CanvasSceneSummary;
+  sceneFacts: CanvasSceneFacts | null;
+};
+
+/**
+ * Grant-scoped scene summary assembly shared by canvas.scene_summary and
+ * canvas.design_review. `requested` narrows the grant when the caller can
+ * disambiguate; empty locator uses the single active grant as-is.
+ */
+export function assembleCanvasSceneSummaryInTransaction(
   db: SpaceDb,
   tx: SpaceTransaction,
   spaceId: string,
   claims: TurnCapabilityClaims,
-  command: CanvasSceneSummaryCommand,
+  requested: { canvasId?: string; snapshotId?: string },
   now: number,
-): CanvasSceneSummary {
+): CanvasSceneSummaryAssembly {
   const grant = resolveCanvasAccessGrantInTransaction(tx, {
     turnId: claims.turnId,
     executorAgentId: claims.agentId,
-    requestedCanvasId: command.canvasId,
-    requestedSnapshotId: command.snapshotId,
+    requestedCanvasId: requested.canvasId,
+    requestedSnapshotId: requested.snapshotId,
   });
   const liveRead = grant.actions.includes("read_live");
   const { snapshot } = assertLiveCanvasAccessGrant(tx, grant, {
@@ -360,18 +371,33 @@ export function executeCanvasSceneSummary(
     sceneFacts,
   });
   return {
-    canvasId: grant.canvasId,
-    snapshotId: grant.snapshotId,
-    revision,
-    grantId: grant.id,
-    focusFrameId,
-    canvasSize,
-    selectedFrames,
-    elements,
-    allowedCreateParents,
-    availableFonts,
-    emptySelection: grant.objectScope.emptySelection,
-    nextSuggestedAction,
-    contextText,
+    grant,
+    sceneFacts,
+    summary: {
+      canvasId: grant.canvasId,
+      snapshotId: grant.snapshotId,
+      revision,
+      grantId: grant.id,
+      focusFrameId,
+      canvasSize,
+      selectedFrames,
+      elements,
+      allowedCreateParents,
+      availableFonts,
+      emptySelection: grant.objectScope.emptySelection,
+      nextSuggestedAction,
+      contextText,
+    },
   };
+}
+
+export function executeCanvasSceneSummary(
+  db: SpaceDb,
+  tx: SpaceTransaction,
+  spaceId: string,
+  claims: TurnCapabilityClaims,
+  command: CanvasSceneSummaryCommand,
+  now: number,
+): CanvasSceneSummary {
+  return assembleCanvasSceneSummaryInTransaction(db, tx, spaceId, claims, command, now).summary;
 }

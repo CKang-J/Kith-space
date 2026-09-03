@@ -1,0 +1,15 @@
+{
+  "id": "dashboard-001",
+  "surface": "dashboard",
+  "expectedSkill": "dashboard_ui",
+  "prompt": "给仓库管理做一张 1440×900 的后台界面：主区是待处理订单表格（表头加五行示例数据），顶部一条工具栏，左侧窄导航，主任务区要占绝对主导，没有真实指标就用 — 占位。",
+  "checks": [
+    "hero_coverage_between[0.35,0.85]",
+    "no_out_of_bounds",
+    "h1_h2_ratio_between[1.15,4]",
+    "anti_slop_hits_eq[0]",
+    "text_nodes_at_least[10]",
+    "node_count_at_least[20]"
+  ],
+  "notes": "低复杂度后台：任务优先于装饰、表格主导，对应 dashboard_ui Hard rules 1/2。"
+}

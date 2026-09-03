@@ -108,6 +108,6 @@ export function canvasGenerationJobFeedback(input: {
     canvasId: input.canvasId,
     snapshotId: input.snapshotId,
     operationId: input.operationId,
-    nextSuggestedAction: `Queued; do not claim the ${input.jobType} exists yet. Call canvas.scene_summary after ~${estimatedTime}s. Do not turn.reply with a canvas_mutation outputRef until a mutation actually commits.`,
+    nextSuggestedAction: `Queued; do not claim the ${input.jobType} exists yet. Poll canvas.generation_status with jobId=${input.jobId} until status=completed (about ${estimatedTime}s), then confirm with canvas.scene_summary. Do not turn.reply with a canvas_mutation outputRef until a mutation actually commits.`,
   };
 }

@@ -1,0 +1,13 @@
+{
+  "id": "icon-set-002",
+  "surface": "icon_set",
+  "expectedSkill": "icon_set",
+  "prompt": "为一个笔记应用画 6 个功能图标：新建、搜索、标签、提醒、归档、设置，全部用布尔运算或钢笔路径构建，带挖空关系的图形优先用形状组合而不是一整块路径，风格必须一致。",
+  "checks": [
+    "no_out_of_bounds",
+    "anti_slop_hits_eq[0]",
+    "node_count_at_least[12]",
+    "text_nodes_at_least[6]"
+  ],
+  "notes": "高复杂度图标组：多挖空造型 + 光学平衡，对应 icon_set Hard rules 1/2/3。"
+}

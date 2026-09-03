@@ -1,0 +1,14 @@
+{
+  "id": "resume-001",
+  "surface": "resume",
+  "expectedSkill": "resume_layout",
+  "prompt": "做一张 794×1123 的单页简历版式：顶部姓名与联系方式，中间按「经历、项目、技能」三段排版，用文字线做分隔，内容我口述你没听到的就留空，别编造工作经历。",
+  "checks": [
+    "no_out_of_bounds",
+    "h1_h2_ratio_between[1.15,10]",
+    "anti_slop_hits_eq[0]",
+    "text_nodes_at_least[8]",
+    "node_count_at_least[10]"
+  ],
+  "notes": "低复杂度简历：网格先行 + 无溢出，对应 resume_layout Hard rules 1/2。"
+}

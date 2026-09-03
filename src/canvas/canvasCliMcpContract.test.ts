@@ -98,6 +98,8 @@ test("CLI/MCP canvas context_bundle_create and asset_import share Gateway contra
     assert.ok(names.has("canvas.scene_summary"));
     assert.ok(names.has("canvas.skill_list"));
     assert.ok(names.has("canvas.skill_get"));
+    assert.ok(names.has("canvas.design_review"));
+    assert.ok(names.has("canvas.generation_status"));
     assert.ok(names.has("canvas.create_text"));
     assert.ok(names.has("canvas.create_shape"));
     assert.ok(names.has("canvas.create_image"));
@@ -157,6 +159,10 @@ test("CLI canvas subcommands expose context-bundle-create and asset-import", asy
   assert.match(canonical, /\/agent-gateway\/canvas\/skill_list/);
   assert.match(canonical, /canvas\.command\("skill-get"\)/);
   assert.match(canonical, /\/agent-gateway\/canvas\/skill_get/);
+  assert.match(canonical, /canvas\.command\("design-review"\)/);
+  assert.match(canonical, /\/agent-gateway\/canvas\/design_review/);
+  assert.match(canonical, /canvas\.command\("generation-status"\)/);
+  assert.match(canonical, /\/agent-gateway\/canvas\/generation_status/);
   assert.match(canonical, /canvas\.command\("create-text"\)/);
   assert.match(canonical, /\/agent-gateway\/canvas\/create_text/);
   assert.match(canonical, /--font-weight/);

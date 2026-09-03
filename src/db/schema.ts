@@ -917,7 +917,7 @@ export const turnOutputArtifacts = sqliteTable("turn_output_artifacts", {
   id: id("id").primaryKey(),
   outputId: text("output_id").notNull().references(() => turnOutputs.id, { onDelete: "cascade" }),
   turnId: text("turn_id").notNull().references(() => agentTurns.id, { onDelete: "cascade" }),
-  kind: text("kind").$type<"canvas_mutation">().notNull(),
+  kind: text("kind").$type<"canvas_mutation" | "canvas_generation_job">().notNull(),
   artifactId: text("artifact_id").notNull(),
   createdAt: timestamp("created_at").default(now).notNull(),
 }, (t) => ({
