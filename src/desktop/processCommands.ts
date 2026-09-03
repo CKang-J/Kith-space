@@ -25,15 +25,12 @@ export type DesktopProcessCommandOptions = PackagedProcessCommandOptions | Devel
 export function buildDesktopProcessCommands(options: DesktopProcessCommandOptions): DesktopProcessCommands {
   if (options.mode === "development") {
     const advisorHelper = path.join(options.appRoot, "desktop", "dist", "runtime", "pi-advisor-helper.mjs");
-    // Desktop development smoke must exercise Canvas Agent grants; packaged stays fail-closed.
-    const canvasAgentExecutionDev: NodeJS.ProcessEnv = { KITH_CANVAS_AGENT_EXECUTION: "1" };
     return {
       core: {
         command: options.executable,
         args: [options.tsxCli, "src/server/index.ts"],
         cwd: options.appRoot,
         env: {
-          ...canvasAgentExecutionDev,
           KITH_SPACE_WEB_DIST: path.join(options.appRoot, "web", "dist"),
           KITH_SPACE_VITE_DEV_URL: `http://127.0.0.1:${options.uiPort}`,
           KITH_SPACE_PI_ADVISOR_HELPER: advisorHelper,
@@ -43,7 +40,7 @@ export function buildDesktopProcessCommands(options: DesktopProcessCommandOption
         command: options.executable,
         args: [options.tsxCli, "src/daemon/index.ts"],
         cwd: options.appRoot,
-        env: { ...canvasAgentExecutionDev, KITH_SPACE_PI_ADVISOR_HELPER: advisorHelper },
+        env: { KITH_SPACE_PI_ADVISOR_HELPER: advisorHelper },
       },
       vite: {
         command: options.executable,

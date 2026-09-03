@@ -600,6 +600,16 @@
 
 ---
 
+## 决策 40：Canvas Agent 执行入口默认开启，环境变量降级为整体退出开关
+
+**状态**：Implemented（2026-09-03）。
+
+**结论**：`KITH_CANVAS_AGENT_EXECUTION` 由"显式开启（默认 fail-closed）"反转为"默认开启（可显式关闭）"：未设置或设为 `1`/`true`/`on` 时 Canvas Agent Gateway/MCP/CLI 执行入口开启，仅 `0`/`false`/`off` 关闭。`src/desktop/processCommands.ts` 不再为 development 模式注入专用开关。推翻决策 38 状态记录中"生产入口仍受 `KITH_CANVAS_AGENT_EXECUTION` 保护（packaged 默认 fail-closed）"的默认取向，决策 38 其余内容不变。
+
+**推理与权衡**：fail-closed 默认是阶段 4 移植期的保守护栏，前提是 Canvas Agent 工具面尚未验收。P0–P2 质量对齐工作（skill 系统补全、SCENE_FACTS 事实区、design_review 评审档案、生成链路收尾）落地并经单测验证后，画布 Agent 已是核心产品能力，打包产物默认关闭会让正式安装中的整个画布 Agent 面不可用。权限边界的实质防线是 per-turn `CanvasAccessGrant`（canvas/object/action scope、revision、fail-closed 撤销），而非进程级总开关；保留环境变量作为运维/排查的紧急停用手段，语义从 opt-in 变为 opt-out。若未来出现需要按安装关闭画布 Agent 的场景，再评估升级为用户可见设置项。
+
+---
+
 ## 尚未决定 / 刻意留白
 
 以下几项要么已定、要么被有意推后，记录在此以免将来误以为遗漏。

@@ -38,7 +38,7 @@ pnpm run desktop:dev
 
 它会构建 Electron main/preload，并统一启动 Core Service、Local Runtime Worker、Vite 和 Electron。全新数据目录无需 `seed`；首次窗口会收集 Human 名称、邮箱和描述，并自动创建 `Home` Space。
 
-`desktop:dev` 通过 Desktop development process env adapter（`src/desktop/processCommands.ts`）为 Core/Worker 显式注入 `KITH_CANVAS_AGENT_EXECUTION=1`，以便真实选区消息能派生 Canvas Access Grant 与 `canvas.read/write/import/export` activation scopes。打包/生产 process command 不强制开启该开关，默认仍 fail-closed；手动分进程调试需自行设置，见 [`dev-debugging.md`](./dev-debugging.md#1-手动分进程环境变量)。
+Canvas Agent 执行入口 `KITH_CANVAS_AGENT_EXECUTION` 自决策 40 起默认开启：真实选区消息默认派生 Canvas Access Grant 与 `canvas.read/write/import/export` activation scopes；设 `0`/`false`/`off` 可整体关闭（含打包产物，需重启进程且新 turn 生效，旧 activation 不会被静默降级）。`src/desktop/processCommands.ts` 不再注入开发专用开关，见 [`dev-debugging.md`](./dev-debugging.md#1-手动分进程环境变量)。
 
 开发模式下，Core 的本机 Web 入口（例如 `http://127.0.0.1:7777`）会把前端请求代理到 Vite `5273`，因此浏览器与 Electron 窗口一样支持热更新；Vite 尚未就绪时刷新即可。若在 Desktop 的“Desktop & Web”设置中启用了本机 Web，7777 首次访问应显示访问 Token 登录页，而不是 `{"error":"not found"}`。
 
