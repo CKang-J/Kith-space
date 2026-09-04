@@ -43,11 +43,10 @@ export function PiProviderForm({ preset, onSave, onCancel }: PiProviderFormProps
     setErrorMessage("");
 
     try {
-      const response = await fetch("/api/model-settings/test-connection", {
+      const response = await fetch("/api/settings/pi-agent-config/test-connection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          runtime: "pi",
           apiKey: apiKey.trim(),
           baseUrl: baseUrl.trim(),
           apiFormat: preset?.apiFormat || "openai-chat",
