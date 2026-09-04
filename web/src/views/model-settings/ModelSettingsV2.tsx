@@ -6,6 +6,9 @@
 import { useState } from "react";
 import { RuntimeTabs } from "./RuntimeTabs";
 import { PiRuntimeSettings } from "./PiRuntimeSettings";
+import { ClaudeRuntimeSettings } from "./ClaudeRuntimeSettings";
+import { CodexRuntimeSettings } from "./CodexRuntimeSettings";
+import { OpenCodeRuntimeSettings } from "./OpenCodeRuntimeSettings";
 import type { RuntimeId } from "../../types/runtimeTypes";
 import "./modelSettings.css";
 
@@ -23,21 +26,9 @@ export function ModelSettingsV2() {
 
       <div className="model-settings-content">
         {activeRuntime === "pi" && <PiRuntimeSettings />}
-        {activeRuntime === "claude" && (
-          <div style={{ padding: "40px", textAlign: "center", color: "var(--settings-muted)" }}>
-            Claude Code 运行器设置即将推出
-          </div>
-        )}
-        {activeRuntime === "codex" && (
-          <div style={{ padding: "40px", textAlign: "center", color: "var(--settings-muted)" }}>
-            Codex 运行器设置即将推出
-          </div>
-        )}
-        {activeRuntime === "opencode" && (
-          <div style={{ padding: "40px", textAlign: "center", color: "var(--settings-muted)" }}>
-            OpenCode 运行器设置即将推出
-          </div>
-        )}
+        {activeRuntime === "claude" && <ClaudeRuntimeSettings />}
+        {activeRuntime === "codex" && <CodexRuntimeSettings />}
+        {activeRuntime === "opencode" && <OpenCodeRuntimeSettings />}
       </div>
     </div>
   );

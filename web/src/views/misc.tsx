@@ -28,6 +28,7 @@ import { workspaceLocationForConversation, workspaceLocationForModule } from "..
 import { MemoryAdvisorSettings } from "./advisor-provider/MemoryAdvisorSettings.tsx";
 import { ModelProviderSettings } from "./model-settings/ModelProviderSettings.tsx";
 import { RuntimeSettings } from "./model-settings/RuntimeSettings.tsx";
+import { ModelSettingsV2 } from "./model-settings/ModelSettingsV2.tsx";
 import { AppearanceSettings } from "./appearance-settings/AppearanceSettings.tsx";
 import { GenerationProviderSettings } from "./generation-settings/GenerationProviderSettings.tsx";
 import { cn } from "@/lib/utils";
@@ -357,7 +358,7 @@ export function Settings({ sectionOverride }: { sectionOverride?: string } = {})
                 : cur === "space"
                   ? <SpaceSettings api={api} spaceId={spaceId} />
                 : cur === "models"
-                  ? <ModelProviderSettings api={api} />
+                  ? <ModelSettingsV2 />
                 : cur === "runtimes"
                   ? <RuntimeSettings api={api} />
                 : cur === "advisor"
