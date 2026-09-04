@@ -2,7 +2,7 @@
 
 ## 前言
 
-这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）；随后授权浏览器的目录选择收敛为受限主机目录浏览器（决策 24）。2026-07-14 又锁定会话聚合面板（决策 25）与 Agent 频道响应模式（决策 26）；2026-07-15 在该响应机制上补充 Human 专属的频道全体提及（决策 27），并把 ChatOnly 的模块导航迁入左侧栏、模块打开态继续使用 Dock，同时退役案例展示（决策 28）。2026-07-18 本轮 UI 验收结束后，项目锁定“保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，以模块化单体渐进收敛、性能证据驱动 Rust 决策”的工程路线（决策 29）；P-A10 的 Agent Harness v2 形成决策 30，2026-07-22 至 23 又形成并修订系统 Memory Advisor Provider、模型配置和快捷安装边界（决策 31–33）；2026-07-24 新增前端统一采用 Tailwind CSS v4 + shadcn/ui 的渐进迁移决策（决策 34）。2026-08-15 又确认以 Recombyn RCB、既有 Workspace Tabs、Kith Harness 和 revisioned Canvas Module 交付 Canvas MVP（决策 38）。当前结论以每条决策中的最新修正为准。
+这份文档记录 Kith-space 的锁定决策。第一轮 `/grill-me` 会话发生在 2026-07-09，形成最初 19 条决策；随后包管理迁移形成决策 20。第二轮 `/grill-me` 发生在 2026-07-11，在 40 个问题内把产品正式收敛为本机、单 Human 的个人 AgentOS，并形成决策 21，推翻原先“多用户/多机器能力休眠保留”的路线。2026-07-12 的 A1-A6 用户验收进一步确认 Agent 首轮生命周期（决策 22）以及 Home 总控 Space、用户可见 Space 根目录和跨 Space 委派边界（决策 23）；随后授权浏览器的目录选择收敛为受限主机目录浏览器（决策 24）。2026-07-14 又锁定会话聚合面板（决策 25）与 Agent 频道响应模式（决策 26）；2026-07-15 在该响应机制上补充 Human 专属的频道全体提及（决策 27），并把 ChatOnly 的模块导航迁入左侧栏、模块打开态继续使用 Dock，同时退役案例展示（决策 28）。2026-07-18 本轮 UI 验收结束后，项目锁定“保留 Desktop/Core/Worker 拓扑与 TypeScript 主栈，以模块化单体渐进收敛、性能证据驱动 Rust 决策”的工程路线（决策 29）；P-A10 的 Agent Harness v2 形成决策 30，2026-07-22 至 23 又形成并修订系统 Memory Advisor Provider、模型配置和快捷安装边界（决策 31–33）；2026-07-24 新增前端统一采用 Tailwind CSS v4 + shadcn/ui 的渐进迁移决策（决策 34）。2026-08-15 又确认以 Recombyn RCB、既有 Workspace Tabs、Kith Harness 和 revisioned Canvas Module 交付 Canvas MVP（决策 38）。2026-09-03 用原创 eval 基线量化画布设计质量并默认开启 Canvas Agent 执行入口（决策 39–40）。2026-09-02 决定随装内置锁定版 Pi-Agent 运行时并配套模型预设、本地配置导入与首启 Agent 向导（决策 41）。当前结论以每条决策中的最新修正为准。
 
 盘问的方式是一次给一个决策、每次给一个明确建议，让用户在 either/or 之间做取舍。会话过程中有几条决策被推翻或修正过（底座、runtime、Redis 的真实用途、聊天历史随文件夹走的成本），这些演化本身是理解项目为什么长成现在这样的关键，因此单列一节保留。
 
@@ -51,6 +51,7 @@
 | 36 | 三端工程基线 | 发行保持 Windows-first，共享工程同时评估 Windows/macOS/Linux |
 | 37 | Agent 活动来源 | 活动历史持久保存来源渠道；会话聚合面板不重复显示来源 |
 | 38 | Recombyn Canvas Module | 保留 Recombyn 编辑器 UI，接入既有 Workspace Tabs 与 Kith Harness；Core revisioned command 是唯一真相源 |
+| 41 | 内置 Pi-Agent 运行时 | 随装内置锁定版 pi-agent-core/pi-coding-agent 驱动的 `pi-builtin` 运行时，复用官方 `runRpcMode` 协议；模型设置接入 Pi 官方预设与本地 Pi 配置导入；首次进入 Home 弹窗引导创建第一个 Agent |
 
 > 历史档案中“UI 字号与字重”和“三端工程基线”曾同时编号为决策 36；本轮保留原编号，避免改写既有引用。
 
@@ -609,6 +610,26 @@
 **推理与权衡**：fail-closed 默认是阶段 4 移植期的保守护栏，前提是 Canvas Agent 工具面尚未验收。P0–P2 质量对齐工作（skill 系统补全、SCENE_FACTS 事实区、design_review 评审档案、生成链路收尾）落地并经单测验证后，画布 Agent 已是核心产品能力，打包产物默认关闭会让正式安装中的整个画布 Agent 面不可用。权限边界的实质防线是 per-turn `CanvasAccessGrant`（canvas/object/action scope、revision、fail-closed 撤销），而非进程级总开关；保留环境变量作为运维/排查的紧急停用手段，语义从 opt-in 变为 opt-out。若未来出现需要按安装关闭画布 Agent 的场景，再评估升级为用户可见设置项。
 
 ---
+
+## 决策 41：内置 Pi-Agent 作为随装可用的 Agent 运行时，复用官方 RPC 协议与模型预设
+
+**状态**：Accepted（2026-09-02；实现于 `task/1`，通过 typecheck、单元测试与 helper 冒烟验证）。
+
+**结论**：Kith-space 随装内置一个由锁定版 `@earendil-works/pi-agent-core@0.84.2` + `@earendil-works/pi-coding-agent@0.84.2` SDK 驱动的 Pi Agent 运行时，runtime id 为 `pi-builtin`，用户即使本机没有任何 Agent CLI 也能直接创建 Agent。该结论部分推翻决策 31 中"否决内置完整 Pi coding agent"的取舍：当时否决的是让内置 Pi 成为普通 Agent 并放任其权限面与资源发现面；现在保留同一否决精神，以 Kith-owned helper 子进程 + 私有配置根 + 离线模型运行时 + 禁用扩展/技能/模板/主题/上下文文件的方式内置，权限面与既有外部 Pi runtime 对齐（cli_only 网关、无 sandbox、默认内置工具），资源发现与全局 `~/.pi/agent` 配置读取均不执行。
+
+**运行形态**：内置 Pi 不启动完整 CLI，而是在 Worker 侧新增 `pi-agent-helper.mjs`（打包进 `desktop/dist/runtime/`，与 `pi-advisor-helper.mjs` 同构）。helper 用 SDK 的 `ModelRuntime.create({ allowModelNetwork:false, refreshOnCreate:false })` + `createAgentSessionServices`（`noExtensions/noSkills/noPromptTemplates/noThemes/noContextFiles`，`appendSystemPrompt` 注入 Harness v2 系统提示）+ `createAgentSessionRuntime` 构建会话，随后调用官方 `runRpcMode(runtime)` 以 stdio JSONL 提供与外部 Pi CLI `--mode rpc` 完全相同的协议。这样 Worker 侧把既有 `piRpcRuntimeV2` 的协议客户端泛化为共享实现，外部 `pi` 与内置 `pi-builtin` 两个适配器只差 spawn 规格（可执行文件 + 参数 + env），会话恢复（session-dir + session-id）、usage、compaction、cancel、`agent_settled` 等基线能力天然一致。`@earendil-works/pi-coding-agent` 只进入 helper bundle，不进 Worker/Advisor bundle，Advisor 的 `pi-agent-core/pi-coding-agent/compat` 禁用校验保持不变。
+
+**配置与凭据边界**：新增 `PiBuiltinRuntimeConfigCompiler`（runtimeId `pi-builtin`），沿用 Pi 编译器的私有根模式：每会话在 `runtimeStateDir` 下生成 0o700 私有根，写入 `models.json`（`kith` provider：`baseUrl`/`api`/`apiKey: "$KITH_PI_API_KEY"`/模型）与 `settings.json`（`defaultProjectTrust: "never"`），env 注入 `PI_CODING_AGENT_DIR=<私有根>`、`PI_CODING_AGENT_SESSION_DIR`、`KITH_PI_API_KEY`（Worker 经既有 credential redemption 兑换的单次激活值）、`PI_OFFLINE=1`、`PI_TELEMETRY=0`、`DO_NOT_TRACK=1`。helper 的 `authPath`/`modelsPath`/`sessionDir` 全部指向私有根，不读取用户 `~/.pi/agent` 的 auth/models/settings，不执行 OAuth 刷新、`!command` 值解析与模型目录网络刷新；运行时目录由既有 compiled cleanup 回收。`pi-builtin` 与 `pi` 一样如实标记 `mcp: none`、`toolIsolation: none`，通过 Kith CLI Gateway 提供产品能力。
+
+**模型配置器与官方预设**：设置页的"添加模型供应商"弹窗新增"Pi 预设"入口，数据来自 `src/advisor-provider/piSdkCatalog.ts` 的 `listPiSdkCatalog()`（同一锁定版 pi-ai 的官方 provider 目录：openai 的 openai-responses、anthropic 的 anthropic-messages、deepseek/openrouter/groq/xai 等的 openai-completions，以及 google、mistral 等），选择预设即预填 backendId/apiKind/canonicalOrigin 与官方模型清单（含 thinking levels）。新增 `piConfigModelImportService` 复用 `VerifiedConfigFileReader` 与 `PiCliConfigImporter` 的安全边界（拒绝 symlink/超限/`!command`/复合 env 插值/危险 env 名），把本机 `~/.pi/agent/models.json` 的 provider/模型导入为 Kith 供应商连接 + 模型配置；凭据优先级为 auth.json 中选中的 api_key/未过期 oauth access（`pi_cli_auth`）、models.json 字面 apiKey（Desktop 下存为 `kith_secret` 并告警）、`$VAR` 环境引用（Desktop 进程环境可解析时冻结为 `kith_secret`，否则 `keyless_local` 并提示补录）。preview/apply 采用既有 CLI import 的 source digest 防漂移模式，apply 在单事务内聚合提交。导入只读、脱敏快照、不写回任何 Pi CLI 配置。
+
+**首启向导**：`app.db` v8 在 `installation_state` 增加 `agent_onboarding_completed_at`（NULL 表示未完成）。首次进入 Home 后（而非 setup 页内），应用以弹窗形式引导创建第一个 Agent：步骤 1 选择运行时（内置 Pi-Agent 置顶并恒为可用，其后列本机已安装的 Claude Code/Codex/OpenCode/Pi 等）；步骤 2 配置模型（Pi 官方预设 / 导入本地 Pi 配置 / 手动填写，三者最终都落为 Kith 模型供应商+配置）；步骤 3 填写 Agent 名称与职责并走既有 `POST /api/agents` 创建（model binding 沿用 `runtime_default`/`pinned` 语义）。用户跳过或完成后写 `agent_onboarding_completed_at` 不再弹出；向导同时可用在模型设置与 Agent 创建弹窗中复用。
+
+**模型绑定与目录**：`pi-builtin` 进入 `RUNTIME_CATALOG`（`alwaysAvailable: true`，Worker 检测 helper 可解析即上报 installed）、`RUNTIME_V2_CAPABILITY_MATRIX`（与 `pi` 同基线）、`modelConfigurationService.SUPPORTED`（与 `pi` 相同 wire api 集合）、`turnScheduler` v2 判定与 `runtimeSessionPreparation` 的 cli_only 网关特判；`runtimeSetupCatalog` 的安装/卸载集合不含 `pi-builtin`（内置无需安装），运行器设置页仅展示"内置"状态。
+
+**推理与权衡**：用户选择 Pi-Agent 的动机是"没有 Claude/Codex 也能用"——即安装即用与低配置成本。官方 RPC 模式文档明确支持把 `AgentSession` 嵌进应用；复用 `runRpcMode` 而非自造协议，把兼容风险从"复刻一个不断演进的协议"降为"锁定版本内两条路径共用同一实现"。代价是 helper bundle 显著增大（引入 coding-agent 依赖树）且 Pi 无内置 sandbox——前者只影响安装包体积，后者与既有外部 Pi runtime 权限面一致并已如实标记，不引入新的信任边界。预设与导入复用官方 provider 目录与既有 Pi CLI import 安全解析器，避免自维护第三方模型清单。
+
+**已核实源码事实**：`src/local-runtime/runtimeCatalog.ts:1`（目录）、`src/runtime/adapters/piRpcRuntimeV2.ts:1`（外部 Pi RPC 协议客户端）、`src/runtime/config/runtimeCompilers.ts:98`（Pi 编译器）、`src/advisor-provider/piSdkCatalog.ts:20`（官方预设目录）、`src/advisor-provider/piCliConfigImporter.ts:106`（Pi CLI 配置导入）、`src/runtime/worker/maintenance/pi-advisor-helper.ts:1`（helper 同构模式）、`scripts/build-desktop.mjs:67`（helper 打包）、`src/server/routes-api/setup.ts:12`（首启 API）、`web/src/personalSetupBoundary.tsx:22`（首启门控）、`src/app-data/appDatabaseMigrations.ts:712`（installation_state 演进）。
 
 ## 尚未决定 / 刻意留白
 

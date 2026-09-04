@@ -194,7 +194,8 @@ export async function prepareRuntimeSession(input: {
   try { await access(memory.agent.indexFile); }
   catch { await writeFile(memory.agent.indexFile, seedMemory(input.config.displayName || input.config.name, input.config.description)); }
   const here = path.dirname(fileURLToPath(import.meta.url));
-  let gateway = input.config.runtime === "pi"
+  const piRuntime = input.config.runtime === "pi" || input.config.runtime === "pi-builtin";
+  let gateway = piRuntime
     ? {
       capabilityMode: "cli_only" as const,
       cliAvailable: true,
@@ -210,7 +211,7 @@ export async function prepareRuntimeSession(input: {
       sessionId: input.record.id,
       electron: !!process.versions.electron,
     });
-  if (input.config.runtime !== "pi") gateway = await verifyRuntimeGatewayLaunch(gateway);
+  if (!piRuntime) gateway = await verifyRuntimeGatewayLaunch(gateway);
   const systemText = buildHarnessV2SystemPrompt({
     name: input.config.name,
     displayName: input.config.displayName,

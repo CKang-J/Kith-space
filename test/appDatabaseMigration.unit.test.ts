@@ -41,7 +41,28 @@ function removeV8AppearanceSettings(sqlite: Database.Database): void {
   `);
 }
 
+function removeV14PiBuiltinCompatBackfill(sqlite: Database.Database): void {
+  sqlite.exec(`
+    DELETE FROM app_migration_journal WHERE version >= 14;
+  `);
+  sqlite.pragma("user_version = 13");
+}
+
+function removeV13PiBuiltinRuntime(sqlite: Database.Database): void {
+  sqlite.pragma("foreign_keys = OFF");
+  sqlite.exec(`
+    DELETE FROM runtime_profiles WHERE runtime_id = 'pi-builtin';
+    DELETE FROM runtime_profile_revisions WHERE runtime_id = 'pi-builtin';
+  `);
+  sqlite.pragma("foreign_keys = ON");
+  sqlite.exec(`
+    ALTER TABLE installation_state DROP COLUMN agent_onboarding_completed_at;
+    DELETE FROM app_migration_journal WHERE version >= 13;
+  `);
+}
+
 function removeV12GenerationProvidersAudio(sqlite: Database.Database): void {
+  removeV13PiBuiltinRuntime(sqlite);
   sqlite.exec(`
     DROP INDEX IF EXISTS generation_providers_name_uniq;
     CREATE TABLE generation_providers__v11 (
@@ -66,6 +87,7 @@ function removeV12GenerationProvidersAudio(sqlite: Database.Database): void {
 }
 
 function removeV11GenerationProviders(sqlite: Database.Database): void {
+  removeV13PiBuiltinRuntime(sqlite);
   sqlite.exec(`
     DROP TABLE IF EXISTS generation_providers;
     DELETE FROM app_migration_journal WHERE version >= 11;
@@ -198,6 +220,8 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       { version: 10, name: "appearance-color-mode", checksumLength: 64 },
       { version: 11, name: "generation-providers", checksumLength: 64 },
       { version: 12, name: "generation-providers-audio", checksumLength: 64 },
+      { version: 13, name: "pi-builtin-runtime-and-agent-onboarding", checksumLength: 64 },
+      { version: 14, name: "pi-builtin-model-compat-backfill", checksumLength: 64 },
     ]);
     assert.match(String(sqlite.prepare("SELECT content_hmac_key FROM installation_state WHERE singleton_key = 1").pluck().get()), /^[0-9a-f]{64}$/);
     for (const table of [
@@ -278,7 +302,12 @@ test("fresh app.db migrates transactionally to the versioned installation baseli
       { runtime_id: "codex", default_binding_mode: "unset", default_model_configuration_id: null, default_model_configuration_revision: null },
       { runtime_id: "opencode", default_binding_mode: "unset", default_model_configuration_id: null, default_model_configuration_revision: null },
       { runtime_id: "pi", default_binding_mode: "unset", default_model_configuration_id: null, default_model_configuration_revision: null },
+      { runtime_id: "pi-builtin", default_binding_mode: "unset", default_model_configuration_id: null, default_model_configuration_revision: null },
     ]);
+    assert.equal(sqlite.prepare(`
+      SELECT agent_onboarding_completed_at
+      FROM installation_state WHERE singleton_key = 1
+    `).pluck().get(), null);
     assert.throws(() => sqlite.prepare(`
       UPDATE runtime_profiles
       SET default_binding_mode = 'kith_model_configuration',
@@ -400,6 +429,48 @@ test("version 11 app.db rebuilds generation provider checks for OpenRouter audio
       sqlite.prepare("SELECT type FROM generation_providers WHERE name = 'openrouter'").pluck().get(),
       "audio",
     );
+  });
+});
+
+test("pre-existing v13 model configurations receive the pi-builtin compatibility key", () => {
+  withAppDatabase((sqlite, dbPath) => {
+    migrateAppDatabase(sqlite, dbPath);
+    // Rewind to v13 and plant a legacy model configuration whose compatibility
+    // snapshot only knows the four pre-builtin runtimes.
+    removeV14PiBuiltinCompatBackfill(sqlite);
+    sqlite.pragma("foreign_keys = OFF");
+    sqlite.exec(`
+      INSERT INTO model_provider_connections (id, display_name, status, current_revision, created_at, updated_at)
+        VALUES ('legacy-provider', 'Legacy', 'active', 1, 1, 1);
+      INSERT INTO model_provider_connection_revisions (
+        connection_id, revision, backend_id, api_kind, canonical_origin, network_class,
+        credential_source_kind, credential_ref, credential_identity_digest, data_policy_revision,
+        data_policy_provenance, allowed_egress_json, capability_snapshot_json, source_kind,
+        source_snapshot_digest, created_at
+      ) VALUES ('legacy-provider', 1, 'openai', 'openai-responses', 'https://api.openai.com', 'public_cloud',
+        'keyless_local', NULL, '', 'v1', 'human_asserted', '[]', '{}', 'manual', 'legacy', 1);
+      INSERT INTO model_configurations (id, display_name, status, current_revision, created_at, updated_at)
+        VALUES ('legacy-model', 'Legacy Model', 'active', 1, 1, 1);
+      INSERT INTO model_configuration_revisions (
+        configuration_id, revision, provider_connection_id, provider_revision, model_id,
+        reasoning, context_window, max_output_tokens, input_capabilities_json,
+        runtime_compatibility_snapshot_json, options_json, created_at
+      ) VALUES ('legacy-model', 1, 'legacy-provider', 1, 'gpt-legacy', NULL, NULL, NULL, '["text"]',
+        '{"claude":{"supported":false,"reason":"wire_api_not_supported"},"codex":{"supported":true},"opencode":{"supported":true},"pi":{"supported":true}}',
+        '{}', 1);
+    `);
+    sqlite.pragma("foreign_keys = ON");
+
+    migrateAppDatabase(sqlite, dbPath);
+
+    const snapshot = JSON.parse(sqlite.prepare(
+      "SELECT runtime_compatibility_snapshot_json FROM model_configuration_revisions WHERE configuration_id = 'legacy-model'",
+    ).pluck().get() as string);
+    assert.equal(snapshot["pi-builtin"]?.supported, true);
+    assert.equal(snapshot.claude?.supported, false);
+    assert.equal(snapshot.claude?.reason, "wire_api_not_supported");
+    assert.equal(snapshot.codex?.supported, true);
+    assert.equal(snapshot.pi?.supported, true);
   });
 });
 

@@ -35,7 +35,12 @@ test("Machine and Computers are absent from the frontend product surface", () =>
   );
   assert.match(modules, /\{ id: "search",[^\n]+sidebar: false \}/);
   assert.match(runtimeDiscovery, /\/api\/local-runtime\/models\/\$\{runtime\}/);
-  assert.match(agents, /api\("POST", "\/api\/agents", \{ name:/);
+  // Agent creation moved into the shared creation wizard; the contract keeps
+  // requiring that Members still owns the entry point and that creation goes
+  // through the store api against POST /api/agents.
+  assert.match(agents, /CreateAgentModal/);
+  const agentCreation = source("./agentOnboarding.ts");
+  assert.match(agentCreation, /api\("POST", "\/api\/agents", \{\s*name: input\.name,/);
 });
 
 test("Human membership, invite, and profile surfaces are absent", () => {

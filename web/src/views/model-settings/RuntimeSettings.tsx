@@ -16,13 +16,14 @@ import { copyText } from "../../clipboard.ts";
 import "./modelSettings.css";
 
 type Api = (method: string, path: string, body?: unknown) => Promise<any>;
-type RuntimeId = "claude" | "codex" | "opencode" | "pi";
+type RuntimeId = "claude" | "codex" | "opencode" | "pi" | "pi-builtin";
 
-const RUNTIMES: Array<{ id: RuntimeId; label: string; icon: typeof Bot }> = [
+const RUNTIMES: Array<{ id: RuntimeId; label: string; icon: typeof Bot; builtIn?: boolean }> = [
   { id: "claude", label: "Claude Code", icon: Bot },
   { id: "codex", label: "Codex", icon: TerminalSquare },
   { id: "opencode", label: "OpenCode", icon: Braces },
   { id: "pi", label: "Pi", icon: CircleHelp },
+  { id: "pi-builtin", label: "Pi Agent（内置）", icon: CircleHelp, builtIn: true },
 ];
 
 type SetupSnapshot = {
@@ -199,6 +200,7 @@ export function RuntimeSettings({ api }: { api: Api }) {
   };
 
   const currentMeta = RUNTIMES.find((item) => item.id === selected)!;
+  const currentIsBuiltIn = currentMeta.builtIn === true;
   const currentProfile = profiles[selected];
   const currentSetup = setups[selected];
   const compatibleModels = useMemo(
@@ -286,7 +288,9 @@ export function RuntimeSettings({ api }: { api: Api }) {
                   : "安装和账号状态已检查，可以继续选择默认模型。"}</p>
             </div>
             <div className="runtime-overview__actions">
-              {currentSetup?.installation.state === "not_installed" ? (
+              {currentIsBuiltIn ? (
+                <span className="settings-inline-note">随应用内置，无需安装、登录或检查。</span>
+              ) : currentSetup?.installation.state === "not_installed" ? (
                 <button className="settings-button settings-button--primary" type="button"
                   disabled={!desktop || Boolean(busy)}
                   onClick={() => void changeManagedInstall(selected)}>
@@ -299,7 +303,7 @@ export function RuntimeSettings({ api }: { api: Api }) {
                   {busy === `probe:${selected}` ? "检查中…" : "重新检查"}
                 </button>
               )}
-              {currentSetup?.account.state !== "ready" && currentSetup?.installation.state === "installed" ? (
+              {!currentIsBuiltIn && currentSetup?.account.state !== "ready" && currentSetup?.installation.state === "installed" ? (
                 <button className="settings-button settings-button--secondary" type="button"
                   onClick={() => void copyLoginCommand(currentSetup.account.loginCommand)}>
                   <Copy size={16} />复制登录命令

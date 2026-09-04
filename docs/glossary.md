@@ -135,6 +135,9 @@
 **Pi Agent Runtime**
 : 对本机外部 Pi CLI 的正式 P-A10 v2 runtime 适配器。它以RPC模式维护per-surface session，接入durable turn、Context Envelope、Kith CLI Gateway、usage、cancel、snapshot和compaction telemetry；默认禁用项目/用户extension、skill、prompt、theme和context资源，MCP诚实标为unsupported。它与内置Pi SDK Memory Advisor是两条独立路径。
 
+**Pi Agent Runtime（内置） / Built-in Pi Agent Runtime**
+: runtime id `pi-builtin`。随应用内置、由锁定版 `@earendil-works/pi-agent-core` 与 `@earendil-works/pi-coding-agent` 驱动的 Pi Agent 运行时：Worker 以 `pi-agent-helper.mjs`（打包进 `desktop/dist/runtime/` 的官方 CLI 入口）子进程方式启动会话，复用与外部 Pi CLI 相同的 JSONL RPC 协议；每会话私有配置根（`PI_CODING_AGENT_DIR` 指向 `runtimeStateDir` 下的 0o700 目录）、离线模型运行时、禁用 extension/skill/prompt/theme/context 资源，无需本机安装任何 Agent CLI。模型供应商预设与本地 Pi 配置导入均以官方 provider 目录与既有 Pi CLI import 安全边界为准。
+
 **交流表面 / Surface**
 : Agent 一段局部对话所属的稳定产品对象，当前聊天类表面为公开频道、私有频道、Human-Agent DM 和话题。P-A10已以surface隔离runtime session；任务沿用其owning thread，不另造聊天表面。automation只保留未来类型，必须等对应事实源/cursor/ACL另立契约。
 

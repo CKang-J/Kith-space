@@ -118,3 +118,41 @@ export class PiRuntimeConfigCompiler extends BaseRuntimeConfigCompiler {
     });
   }
 }
+
+/**
+ * Built-in Pi Agent runtime: the bundled pi-agent-helper speaks the same
+ * `--mode rpc` protocol as the external Pi CLI, so the compiled surface is
+ * identical except that unmanaged CLI-native mode does not exist (the runtime
+ * ships with the app) and a minimal settings.json pins project trust to never.
+ */
+export class PiBuiltinRuntimeConfigCompiler extends BaseRuntimeConfigCompiler {
+  readonly runtimeId = "pi-builtin";
+  private readonly apiKinds = ["anthropic-messages", "openai-responses", "openai-completions", "google-generative-ai", "google-vertex", "bedrock-converse-stream"];
+  describeCapabilities() {
+    const capabilities = base(this.apiKinds, "unsupported");
+    return { ...capabilities, unmanagedCliNative: false };
+  }
+  validate(input: RuntimeConfigurationInput) { return supported(input, this.apiKinds); }
+  async compile(input: RuntimeConfigurationInput, activation: ActivatedRuntimeCredential | null) {
+    this.requireValid(input);
+    const credential = this.credential(activation);
+    const root = await this.privateRoot(input, "pi-builtin");
+    const files = [
+      await this.privateFile(root, "models.json", JSON.stringify({
+        providers: { kith: { baseUrl: input.canonicalOrigin,
+          ...(credential ? { apiKey: "$KITH_PI_API_KEY" } : {}), api: input.apiKind,
+          models: [{ id: input.modelId, name: input.modelId }] } },
+      })),
+      await this.privateFile(root, "settings.json", JSON.stringify({ defaultProjectTrust: "never" })),
+    ];
+    return this.result(input, activation, {
+      args: ["--mode", "rpc", "--provider", "kith", "--model", input.modelId,
+        ...(input.reasoning ? ["--thinking", input.reasoning] : []),
+        "--no-approve", "--no-context-files", "--no-extensions", "--no-skills",
+        "--no-prompt-templates", "--no-themes"],
+      env: { PI_CODING_AGENT_DIR: root, ...(credential ? { KITH_PI_API_KEY: credential } : {}),
+        PI_OFFLINE: "1", PI_TELEMETRY: "0", PI_DISABLE_UPDATE_CHECK: "1", DO_NOT_TRACK: "1" },
+      files, cleanupRoot: root,
+    });
+  }
+}
