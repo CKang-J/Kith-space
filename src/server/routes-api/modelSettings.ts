@@ -234,6 +234,7 @@ export async function handleModelSettings(ctx: HumanCtx): Promise<boolean> {
       return true;
     }
     if (providerMatch && ctx.method === "DELETE") {
+      // 移除"使用中无法删除"的限制，直接标记为 disabled
       sendJson(ctx.res, 200, presentProvider(await providers.setStatus(providerMatch[1]!, "disabled")));
       return true;
     }
