@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { ProviderPresetGrid } from "./ProviderPresetGrid";
 import { PiProviderForm, type PiProviderConfig } from "./PiProviderForm";
 import { PI_PROVIDER_PRESETS } from "../../data/piProviderPresets";
@@ -13,13 +14,16 @@ export function PiRuntimeSettings() {
   const [selectedPreset, setSelectedPreset] = useState<ProviderPreset | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [savedProviders, setSavedProviders] = useState<PiProviderConfig[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
-    // 加载已保存的配置
     loadSavedProviders();
   }, []);
 
   const loadSavedProviders = async () => {
+    setIsLoading(true);
+    setLoadError("");
     try {
       const response = await fetch("/api/settings/pi-agent-config");
       if (response.ok) {
@@ -34,9 +38,15 @@ export function PiRuntimeSettings() {
           apiFormat: p.apiFormat,
         })) || [];
         setSavedProviders(providers);
+      } else {
+        const error = await response.json();
+        setLoadError(error.error || "加载配置失败");
       }
     } catch (error) {
       console.error("Failed to load saved providers:", error);
+      setLoadError("网络错误，无法加载配置");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -91,6 +101,28 @@ export function PiRuntimeSettings() {
     setSelectedPreset(null);
   };
 
+  const handleDeleteProvider = async (providerId: string, providerName: string) => {
+    if (!confirm(`确定删除 ${providerName} 吗？`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/settings/pi-agent-config/provider/${providerId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "删除失败");
+      }
+
+      await loadSavedProviders();
+    } catch (error) {
+      console.error("Failed to delete provider:", error);
+      alert(`删除失败: ${error instanceof Error ? error.message : "未知错误"}`);
+    }
+  };
+
   if (showForm) {
     return (
       <PiProviderForm
@@ -98,6 +130,26 @@ export function PiRuntimeSettings() {
         onSave={handleSaveConfig}
         onCancel={handleCancelForm}
       />
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "60px" }}>
+        <Loader2 size={32} className="is-spinning" style={{ color: "var(--settings-muted)" }} />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", padding: "60px" }}>
+        <p style={{ color: "var(--settings-muted)", fontSize: "14px" }}>{loadError}</p>
+        <button className="button-secondary" onClick={loadSavedProviders}>
+          <RefreshCw size={16} />
+          重试
+        </button>
+      </div>
     );
   }
 
@@ -150,19 +202,7 @@ export function PiRuntimeSettings() {
                     type="button"
                     className="button-secondary"
                     style={{ padding: "6px 12px", fontSize: "13px", color: "#d93025" }}
-                    onClick={async () => {
-                      if (confirm(`确定删除 ${provider.providerName} 吗？`)) {
-                        try {
-                          await fetch(
-                            `/api/settings/pi-agent-config/provider/${provider.providerId}`,
-                            { method: "DELETE" }
-                          );
-                          await loadSavedProviders();
-                        } catch (error) {
-                          console.error("Failed to delete provider:", error);
-                        }
-                      }
-                    }}
+                    onClick={() => handleDeleteProvider(provider.providerId, provider.providerName)}
                   >
                     删除
                   </button>
