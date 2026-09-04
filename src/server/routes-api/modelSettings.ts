@@ -22,6 +22,14 @@ import { RuntimeSetupError, RuntimeSetupService } from "../../local-runtime/runt
 import { SETUP_RUNTIME_IDS, type SetupRuntimeId } from "../../local-runtime/runtimeSetupCatalog.js";
 import { availableSpaceDbs } from "../../db/index.js";
 import { scheduleV2Turns } from "../harnessComposition.js";
+import {
+  readPiConfig,
+  upsertPiProvider,
+  deletePiProvider,
+  getPiProvider,
+  testPiProviderConnection,
+  type PiProvider,
+} from "./piConfigService.js";
 
 const SECRET_SHAPED_KEY = /(api[_-]?key|token|secret|password|credential|authorization|cookie)/i;
 
@@ -468,6 +476,57 @@ export async function handleModelSettings(ctx: HumanCtx): Promise<boolean> {
       for (const { space } of availableSpaceDbs()) {
         void scheduleV2Turns(space.id).catch(() => {});
       }
+      return true;
+    }
+    // Pi Agent 配置管理
+    if (ctx.p === "/api/settings/pi-agent-config" && ctx.method === "GET") {
+      const config = await readPiConfig();
+      sendJson(ctx.res, 200, config);
+      return true;
+    }
+    if (ctx.p === "/api/settings/pi-agent-config/provider" && ctx.method === "POST") {
+      const provider = z.object({
+        id: z.string(),
+        name: z.string(),
+        apiKey: z.string(),
+        baseUrl: z.string(),
+        models: z.array(z.object({
+          id: z.string(),
+          displayName: z.string().optional(),
+          contextWindow: z.number().optional(),
+          maxOutputTokens: z.number().optional(),
+          capabilities: z.array(z.string()).optional(),
+        })),
+        apiFormat: z.string(),
+        enabled: z.boolean().optional(),
+      }).parse(await readJson(ctx.req)) as PiProvider;
+      await upsertPiProvider(provider);
+      sendJson(ctx.res, 200, { success: true });
+      return true;
+    }
+    const piProviderMatch = /^\/api\/settings\/pi-agent-config\/provider\/([^/]+)$/.exec(ctx.p);
+    if (piProviderMatch && ctx.method === "GET") {
+      const provider = await getPiProvider(piProviderMatch[1]!);
+      if (!provider) {
+        sendErr(ctx.res, 404, "Provider not found");
+        return true;
+      }
+      sendJson(ctx.res, 200, provider);
+      return true;
+    }
+    if (piProviderMatch && ctx.method === "DELETE") {
+      await deletePiProvider(piProviderMatch[1]!);
+      sendJson(ctx.res, 200, { success: true });
+      return true;
+    }
+    if (ctx.p === "/api/settings/pi-agent-config/test-connection" && ctx.method === "POST") {
+      const body = z.object({
+        apiKey: z.string(),
+        baseUrl: z.string(),
+        apiFormat: z.string(),
+      }).parse(await readJson(ctx.req));
+      const result = await testPiProviderConnection(body.apiKey, body.baseUrl, body.apiFormat);
+      sendJson(ctx.res, 200, result);
       return true;
     }
     return false;
