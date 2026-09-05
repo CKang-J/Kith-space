@@ -30,6 +30,7 @@ import {
   testPiProviderConnection,
   type PiProvider,
 } from "./piConfigService.js";
+import { fetchModelsFromProvider } from "./modelFetchService.js";
 
 const SECRET_SHAPED_KEY = /(api[_-]?key|token|secret|password|credential|authorization|cookie)/i;
 
@@ -532,6 +533,22 @@ export async function handleModelSettings(ctx: HumanCtx): Promise<boolean> {
       }).parse(await readJson(ctx.req));
       const result = await testPiProviderConnection(body.apiKey, body.baseUrl, body.apiFormat);
       sendJson(ctx.res, 200, result);
+      return true;
+    }
+    if (ctx.p === "/api/settings/pi-agent-config/fetch-models" && ctx.method === "POST") {
+      const body = z.object({
+        apiKey: z.string(),
+        baseUrl: z.string(),
+        apiFormat: z.string(),
+      }).parse(await readJson(ctx.req));
+
+      try {
+        const models = await fetchModelsFromProvider(body.baseUrl, body.apiKey, body.apiFormat);
+        sendJson(ctx.res, 200, { success: true, models });
+      } catch (error) {
+        console.error("Failed to fetch models:", error);
+        sendErr(ctx.res, 400, error instanceof Error ? error.message : "Failed to fetch models");
+      }
       return true;
     }
     return false;

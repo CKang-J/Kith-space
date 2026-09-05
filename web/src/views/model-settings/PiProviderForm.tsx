@@ -2,7 +2,7 @@
  * Pi Agent 供应商配置表单
  */
 
-import { AlertCircle, CheckCircle, Eye, EyeOff, ExternalLink, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle, Eye, EyeOff, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import type { ProviderPreset, ModelPreset } from "../../types/runtimeTypes";
 
@@ -26,10 +26,65 @@ export function PiProviderForm({ preset, onSave, onCancel }: PiProviderFormProps
   const [showApiKey, setShowApiKey] = useState(false);
   const [baseUrl, setBaseUrl] = useState(preset?.canonicalOrigin || "");
   const [selectedModelId, setSelectedModelId] = useState(preset?.models?.[0]?.id || "");
+  const [availableModels, setAvailableModels] = useState<ModelPreset[]>(preset?.models || []);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  const handleFetchModels = async () => {
+    if (!apiKey.trim()) {
+      setErrorMessage("请先输入 API Key");
+      return;
+    }
+
+    if (!baseUrl.trim()) {
+      setErrorMessage("请先输入 API 端点");
+      return;
+    }
+
+    setIsFetchingModels(true);
+    setErrorMessage("");
+
+    try {
+      const response = await fetch("/api/settings/pi-agent-config/fetch-models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: apiKey.trim(),
+          baseUrl: baseUrl.trim(),
+          apiFormat: preset?.apiFormat || "openai-chat",
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success && result.models) {
+        const models: ModelPreset[] = result.models.map((m: any) => ({
+          id: m.id,
+          displayName: m.id,
+          contextWindow: 0,
+          maxOutputTokens: 0,
+          inputCapabilities: [],
+        }));
+
+        setAvailableModels(models);
+
+        if (models.length > 0 && !selectedModelId) {
+          setSelectedModelId(models[0].id);
+        }
+
+        setConnectionStatus("success");
+      } else {
+        setErrorMessage(result.error || "获取模型列表失败");
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "网络错误");
+    } finally {
+      setIsFetchingModels(false);
+    }
+  };
 
   const handleTestConnection = async () => {
     if (!apiKey.trim()) {
@@ -183,55 +238,83 @@ export function PiProviderForm({ preset, onSave, onCancel }: PiProviderFormProps
         </div>
 
         {/* 模型选择 */}
-        {preset?.models && preset.models.length > 0 && (
-          <div className="form-field">
-            <label htmlFor="model">模型</label>
-            <select
-              id="model"
-              value={selectedModelId}
-              onChange={(e) => setSelectedModelId(e.target.value)}
+        <div className="form-field">
+          <label htmlFor="model">
+            <span>模型</span>
+            <button
+              type="button"
+              className="form-field-link"
+              style={{
+                border: 'none',
+                background: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '13px',
+                color: 'var(--settings-primary)',
+              }}
+              onClick={handleFetchModels}
+              disabled={isFetchingModels || !apiKey.trim() || !baseUrl.trim()}
             >
-              {preset.models.map((model: ModelPreset) => (
-                <option key={model.id} value={model.id}>
-                  {model.displayName}
-                  {model.contextWindow && ` (${(model.contextWindow / 1000).toFixed(0)}k)`}
-                </option>
-              ))}
-            </select>
-            {selectedModelId && (
-              <div className="model-info">
-                {(() => {
-                  const selectedModel = preset.models?.find((m) => m.id === selectedModelId);
-                  if (!selectedModel) return null;
-                  return (
-                    <>
-                      {selectedModel.contextWindow && (
-                        <span>上下文: {(selectedModel.contextWindow / 1000).toFixed(0)}k tokens</span>
-                      )}
-                      {selectedModel.inputCapabilities && selectedModel.inputCapabilities.length > 0 && (
-                        <span>支持: {selectedModel.inputCapabilities.join(", ")}</span>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 自定义模型 ID（无预设时） */}
-        {(!preset || !preset.models || preset.models.length === 0) && (
-          <div className="form-field">
-            <label htmlFor="custom-model">模型 ID</label>
+              {isFetchingModels ? (
+                <>
+                  <Loader2 size={12} className="is-spinning" />
+                  <span>获取中...</span>
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={12} />
+                  <span>获取模型列表</span>
+                </>
+              )}
+            </button>
+          </label>
+          {availableModels.length > 0 ? (
+            <>
+              <select
+                id="model"
+                value={selectedModelId}
+                onChange={(e) => setSelectedModelId(e.target.value)}
+              >
+                <option value="">请选择模型</option>
+                {availableModels.map((model: ModelPreset) => (
+                  <option key={model.id} value={model.id}>
+                    {model.displayName}
+                    {model.contextWindow && model.contextWindow > 0 && ` (${(model.contextWindow / 1000).toFixed(0)}k)`}
+                  </option>
+                ))}
+              </select>
+              {selectedModelId && (
+                <div className="model-info">
+                  {(() => {
+                    const selectedModel = availableModels.find((m) => m.id === selectedModelId);
+                    if (!selectedModel) return null;
+                    return (
+                      <>
+                        {selectedModel.contextWindow && selectedModel.contextWindow > 0 && (
+                          <span>上下文: {(selectedModel.contextWindow / 1000).toFixed(0)}k tokens</span>
+                        )}
+                        {selectedModel.inputCapabilities && selectedModel.inputCapabilities.length > 0 && (
+                          <span>支持: {selectedModel.inputCapabilities.join(", ")}</span>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+            </>
+          ) : (
             <input
-              id="custom-model"
+              id="model"
               type="text"
               value={selectedModelId}
               onChange={(e) => setSelectedModelId(e.target.value)}
-              placeholder="gpt-4, claude-3-5-sonnet-20241022, etc."
+              placeholder="输入模型 ID 或点击上方获取模型列表"
             />
-          </div>
-        )}
+          )}
+        </div>
 
         {/* 连接测试 */}
         <div className="form-field">
