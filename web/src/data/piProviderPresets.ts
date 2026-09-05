@@ -20,29 +20,8 @@ export const PI_PROVIDER_PRESETS: ProviderPreset[] = [
     apiFormat: "anthropic-messages",
     canonicalOrigin: "https://api.anthropic.com",
     iconColor: "#D4915D",
-    models: [
-      {
-        id: "claude-3-5-sonnet-20241022",
-        displayName: "Claude 3.5 Sonnet",
-        contextWindow: 200000,
-        maxOutputTokens: 8192,
-        inputCapabilities: ["文本", "图像"],
-      },
-      {
-        id: "claude-3-5-haiku-20241022",
-        displayName: "Claude 3.5 Haiku",
-        contextWindow: 200000,
-        maxOutputTokens: 8192,
-        inputCapabilities: ["文本", "图像"],
-      },
-      {
-        id: "claude-3-opus-20240229",
-        displayName: "Claude 3 Opus",
-        contextWindow: 200000,
-        maxOutputTokens: 4096,
-        inputCapabilities: ["文本", "图像"],
-      },
-    ],
+    // 不预填模型，使用"获取模型列表"功能动态获取
+    models: [],
   },
   {
     id: "openai",
@@ -57,36 +36,8 @@ export const PI_PROVIDER_PRESETS: ProviderPreset[] = [
     apiFormat: "openai-chat",
     canonicalOrigin: "https://api.openai.com",
     iconColor: "#10A37F",
-    models: [
-      {
-        id: "gpt-4o",
-        displayName: "GPT-4o",
-        contextWindow: 128000,
-        maxOutputTokens: 16384,
-        inputCapabilities: ["文本", "图像", "音频"],
-      },
-      {
-        id: "gpt-4o-mini",
-        displayName: "GPT-4o mini",
-        contextWindow: 128000,
-        maxOutputTokens: 16384,
-        inputCapabilities: ["文本", "图像"],
-      },
-      {
-        id: "o1",
-        displayName: "o1",
-        contextWindow: 200000,
-        maxOutputTokens: 100000,
-        inputCapabilities: ["文本"],
-      },
-      {
-        id: "o1-mini",
-        displayName: "o1-mini",
-        contextWindow: 128000,
-        maxOutputTokens: 65536,
-        inputCapabilities: ["文本"],
-      },
-    ],
+    // 不预填模型，使用"获取模型列表"功能
+    models: [],
   },
   {
     id: "kimi",
@@ -102,29 +53,7 @@ export const PI_PROVIDER_PRESETS: ProviderPreset[] = [
     apiFormat: "openai-chat",
     canonicalOrigin: "https://api.moonshot.cn",
     iconColor: "#2E5CFF",
-    models: [
-      {
-        id: "moonshot-v1-8k",
-        displayName: "Moonshot v1 8k",
-        contextWindow: 8000,
-        maxOutputTokens: 4000,
-        inputCapabilities: ["文本"],
-      },
-      {
-        id: "moonshot-v1-32k",
-        displayName: "Moonshot v1 32k",
-        contextWindow: 32000,
-        maxOutputTokens: 4000,
-        inputCapabilities: ["文本"],
-      },
-      {
-        id: "moonshot-v1-128k",
-        displayName: "Moonshot v1 128k",
-        contextWindow: 128000,
-        maxOutputTokens: 4000,
-        inputCapabilities: ["文本"],
-      },
-    ],
+    models: [],
   },
   {
     id: "deepseek",
@@ -139,22 +68,7 @@ export const PI_PROVIDER_PRESETS: ProviderPreset[] = [
     apiFormat: "openai-chat",
     canonicalOrigin: "https://api.deepseek.com",
     iconColor: "#1A73E8",
-    models: [
-      {
-        id: "deepseek-chat",
-        displayName: "DeepSeek Chat",
-        contextWindow: 64000,
-        maxOutputTokens: 4096,
-        inputCapabilities: ["文本"],
-      },
-      {
-        id: "deepseek-reasoner",
-        displayName: "DeepSeek Reasoner",
-        contextWindow: 64000,
-        maxOutputTokens: 8000,
-        inputCapabilities: ["文本"],
-      },
-    ],
+    models: [],
   },
   {
     id: "zhipu",
@@ -169,29 +83,7 @@ export const PI_PROVIDER_PRESETS: ProviderPreset[] = [
     apiFormat: "openai-chat",
     canonicalOrigin: "https://open.bigmodel.cn",
     iconColor: "#6366F1",
-    models: [
-      {
-        id: "glm-4-plus",
-        displayName: "GLM-4-Plus",
-        contextWindow: 128000,
-        maxOutputTokens: 4096,
-        inputCapabilities: ["文本"],
-      },
-      {
-        id: "glm-4-air",
-        displayName: "GLM-4-Air",
-        contextWindow: 128000,
-        maxOutputTokens: 4096,
-        inputCapabilities: ["文本"],
-      },
-      {
-        id: "glm-4-flash",
-        displayName: "GLM-4-Flash",
-        contextWindow: 128000,
-        maxOutputTokens: 4096,
-        inputCapabilities: ["文本"],
-      },
-    ],
+    models: [],
   },
   {
     id: "qwen",
@@ -206,29 +98,7 @@ export const PI_PROVIDER_PRESETS: ProviderPreset[] = [
     apiFormat: "openai-chat",
     canonicalOrigin: "https://dashscope.aliyuncs.com",
     iconColor: "#FF6A00",
-    models: [
-      {
-        id: "qwen-max",
-        displayName: "Qwen Max",
-        contextWindow: 30000,
-        maxOutputTokens: 8000,
-        inputCapabilities: ["文本"],
-      },
-      {
-        id: "qwen-plus",
-        displayName: "Qwen Plus",
-        contextWindow: 30000,
-        maxOutputTokens: 8000,
-        inputCapabilities: ["文本"],
-      },
-      {
-        id: "qwen-turbo",
-        displayName: "Qwen Turbo",
-        contextWindow: 30000,
-        maxOutputTokens: 8000,
-        inputCapabilities: ["文本"],
-      },
-    ],
+    models: [],
   },
   {
     id: "minimax",
@@ -242,22 +112,7 @@ export const PI_PROVIDER_PRESETS: ProviderPreset[] = [
     apiFormat: "openai-chat",
     canonicalOrigin: "https://api.minimax.chat",
     iconColor: "#7C3AED",
-    models: [
-      {
-        id: "abab6.5s-chat",
-        displayName: "abab6.5s Chat",
-        contextWindow: 245000,
-        maxOutputTokens: 8192,
-        inputCapabilities: ["文本"],
-      },
-      {
-        id: "abab6.5-chat",
-        displayName: "abab6.5 Chat",
-        contextWindow: 200000,
-        maxOutputTokens: 8192,
-        inputCapabilities: ["文本"],
-      },
-    ],
+    models: [],
   },
   {
     id: "google",
@@ -272,29 +127,7 @@ export const PI_PROVIDER_PRESETS: ProviderPreset[] = [
     apiFormat: "google-generative-ai",
     canonicalOrigin: "https://generativelanguage.googleapis.com",
     iconColor: "#4285F4",
-    models: [
-      {
-        id: "gemini-2.0-flash-exp",
-        displayName: "Gemini 2.0 Flash",
-        contextWindow: 1000000,
-        maxOutputTokens: 8192,
-        inputCapabilities: ["文本", "图像", "音频", "视频"],
-      },
-      {
-        id: "gemini-1.5-pro",
-        displayName: "Gemini 1.5 Pro",
-        contextWindow: 2000000,
-        maxOutputTokens: 8192,
-        inputCapabilities: ["文本", "图像", "音频", "视频"],
-      },
-      {
-        id: "gemini-1.5-flash",
-        displayName: "Gemini 1.5 Flash",
-        contextWindow: 1000000,
-        maxOutputTokens: 8192,
-        inputCapabilities: ["文本", "图像", "音频", "视频"],
-      },
-    ],
+    models: [],
   },
   {
     id: "openrouter",
