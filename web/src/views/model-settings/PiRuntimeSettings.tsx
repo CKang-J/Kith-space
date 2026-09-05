@@ -1,10 +1,10 @@
 /**
  * Pi Agent 运行器设置容器
- * 管理预设选择和配置表单的切换
+ * 显示本机现有配置并支持添加新供应商
  */
 
 import { useState, useEffect } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, AlertCircle } from "lucide-react";
 import { ProviderPresetGrid } from "./ProviderPresetGrid";
 import { PiProviderForm, type PiProviderConfig } from "./PiProviderForm";
 import { PI_PROVIDER_PRESETS } from "../../data/piProviderPresets";
@@ -32,7 +32,7 @@ export function PiRuntimeSettings() {
         const providers = data.providers?.map((p: any) => ({
           providerId: p.id,
           providerName: p.name,
-          apiKey: p.apiKey,
+          apiKey: p.apiKey || "***",  // 不显示完整密钥
           baseUrl: p.baseUrl,
           selectedModelId: p.models?.[0]?.id || "",
           apiFormat: p.apiFormat,
@@ -155,6 +155,30 @@ export function PiRuntimeSettings() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      {/* 配置说明 */}
+      <div
+        style={{
+          border: "1px solid #e0e7ff",
+          borderRadius: "12px",
+          padding: "16px 20px",
+          background: "#f5f7ff",
+          display: "flex",
+          alignItems: "flex-start",
+          gap: "12px",
+        }}
+      >
+        <AlertCircle size={20} style={{ color: "#6366f1", flexShrink: 0, marginTop: "2px" }} />
+        <div style={{ flex: 1 }}>
+          <h4 style={{ margin: "0 0 6px", fontSize: "14px", fontWeight: 700, color: "#202124" }}>
+            本机配置
+          </h4>
+          <p style={{ margin: 0, fontSize: "13px", color: "#5f6368", lineHeight: "1.5" }}>
+            以下显示从 <code style={{ padding: "2px 6px", background: "#e8eaed", borderRadius: "4px", fontSize: "12px" }}>~/.pi/agent/models.json</code> 读取的配置。
+            您可以直接使用现有配置，或添加新的供应商。
+          </p>
+        </div>
+      </div>
+
       {/* 已保存的配置列表 */}
       {savedProviders.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
