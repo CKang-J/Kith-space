@@ -50,14 +50,22 @@ async function ensureConfigDir(): Promise<void> {
 export async function readPiConfig(): Promise<PiModelConfig> {
   try {
     const content = await fs.readFile(PI_MODELS_FILE, "utf-8");
-    return JSON.parse(content);
+    const parsed = JSON.parse(content);
+    // 确保返回的数据结构正确
+    return {
+      providers: Array.isArray(parsed.providers) ? parsed.providers : [],
+    };
   } catch (error) {
-    // 文件不存在时返回空配置
+    // 文件不存在或解析错误时返回空配置
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return { providers: [] };
     }
+    if (error instanceof SyntaxError) {
+      console.error("Pi config JSON parse error:", error);
+      return { providers: [] };
+    }
     console.error("Failed to read Pi config:", error);
-    throw error;
+    return { providers: [] }; // 任何错误都返回空配置，不抛出异常
   }
 }
 

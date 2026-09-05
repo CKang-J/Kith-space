@@ -480,8 +480,13 @@ export async function handleModelSettings(ctx: HumanCtx): Promise<boolean> {
     }
     // Pi Agent 配置管理
     if (ctx.p === "/api/settings/pi-agent-config" && ctx.method === "GET") {
-      const config = await readPiConfig();
-      sendJson(ctx.res, 200, config);
+      try {
+        const config = await readPiConfig();
+        sendJson(ctx.res, 200, config);
+      } catch (error) {
+        console.error("Failed to read Pi config:", error);
+        sendJson(ctx.res, 200, { providers: [] }); // 返回空配置而不是错误
+      }
       return true;
     }
     if (ctx.p === "/api/settings/pi-agent-config/provider" && ctx.method === "POST") {
