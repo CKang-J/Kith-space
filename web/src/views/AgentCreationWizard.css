@@ -258,6 +258,18 @@
 .onboarding-summary p { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; color: #4a4c52; }
 .onboarding-summary svg { color: #3f7d4d; }
 
+.onboarding-model-info {
+  border: 1px solid #e2e3e6;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: #fafafa;
+  font-size: 12px;
+  color: #4a4c52;
+}
+.onboarding-model-info p { margin: 4px 0; line-height: 1.5; }
+.onboarding-model-info p:first-child { margin-top: 0; }
+.onboarding-model-info p:last-child { margin-bottom: 0; }
+
 .onboarding-footer__right { display: flex; gap: 8px; }
 
 .onboarding-button {

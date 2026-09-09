@@ -41,6 +41,7 @@ import { handleMemoryAdvisor } from "./memoryAdvisor.js";
 import { handleDisclosureGrants } from "./disclosureGrants.js";
 import { handleAdvisorProvider } from "./advisorProvider.js";
 import { handleModelSettings } from "./modelSettings.js";
+import { handleLocalRuntimeConfig } from "./localRuntimeConfig.js";
 import { handleAppearanceSettings } from "./appearanceSettings.js";
 import { handleGenerationProviderSettings } from "./generationProviderSettings.js";
 import { handleCanvas, handleCanvasAssetResolver } from "./canvas.js";
@@ -77,6 +78,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   if (await handleGenerationProviderSettings(humanCtx)) return true;
   if (await handleAdvisorProvider(humanCtx)) return true;
   if (await handleModelSettings(humanCtx)) return true;
+  if (await handleLocalRuntimeConfig(humanCtx)) return true;
   if (handleCanvasAssetResolver(humanCtx)) return true;
 
   // ---- gate 2: require a registered local Space context ----

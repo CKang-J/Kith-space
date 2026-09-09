@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bot, Check, ChevronLeft, ChevronRight, KeyRound, Server, Sparkles, Upload, X } from "lucide-react";
+import { Bot, Check, ChevronLeft, ChevronRight, KeyRound, RefreshCw, Server, Sparkles, Upload, X } from "lucide-react";
 import { useStore } from "../store.tsx";
 import { useToast } from "../toast.tsx";
 import {
@@ -8,13 +8,18 @@ import {
   createOnboardingAgent,
   createOnboardingModel,
   loadOnboardingModelConfigurations,
-  loadOnboardingPresets,
   loadOnboardingRuntimes,
   type OnboardingModelConfiguration,
   type OnboardingPiImportProvider,
-  type OnboardingPresetProvider,
   type OnboardingRuntime,
 } from "../agentOnboarding.ts";
+import {
+  adoptLocalModel,
+  loadLocalRuntimeConfig,
+  type LocalConfigIssue,
+  type LocalProvider,
+  type LocalRuntimeConfig,
+} from "../data/localRuntimeConfig.ts";
 import "./AgentCreationWizard.css";
 
 interface AgentCreationWizardProps {
@@ -26,7 +31,7 @@ interface AgentCreationWizardProps {
   onCreated?: (r: { id: string; name: string }) => void;
 }
 
-type ModelConfigTab = "existing" | "preset" | "import" | "manual";
+type ModelConfigTab = "local" | "existing" | "new" | "import";
 
 type ModelChoice =
   | { kind: "runtime_default"; label: string }
@@ -63,18 +68,19 @@ export function AgentCreationWizard({ api, onClose, mode, prefill, onCreated }: 
   const [runtimeId, setRuntimeId] = useState("");
   const [runtimeError, setRuntimeError] = useState("");
 
-  const [presets, setPresets] = useState<OnboardingPresetProvider[]>([]);
-  const [presetsLoading, setPresetsLoading] = useState(false);
-  const [presetsRequested, setPresetsRequested] = useState(false);
-  const [presetProviderId, setPresetProviderId] = useState("");
-  const [presetModelId, setPresetModelId] = useState("");
-  const [presetKey, setPresetKey] = useState("");
-
-  const [modelTab, setModelTab] = useState<ModelConfigTab>(isCreate ? "existing" : "preset");
+  const [modelTab, setModelTab] = useState<ModelConfigTab>(isCreate ? "local" : "new");
   const [existingModels, setExistingModels] = useState<OnboardingModelConfiguration[]>([]);
   const [existingModelId, setExistingModelId] = useState("");
   const [runtimeDefaultLabel, setRuntimeDefaultLabel] = useState<string | null>(null);
   const [runtimeDefaultLoading, setRuntimeDefaultLoading] = useState(false);
+  const [localProviders, setLocalProviders] = useState<LocalProvider[]>([]);
+  const [localProvidersLoading, setLocalProvidersLoading] = useState(false);
+  const [localProvidersError, setLocalProvidersError] = useState("");
+  /** 运行器没有本机配置适配器时的说明，与「读到了但是空的」区分开。 */
+  const [localUnsupported, setLocalUnsupported] = useState("");
+  /** 本机配置的主文件路径与读取过程中的非致命问题，用于界面显示「读自 xxx」。 */
+  const [localConfigMeta, setLocalConfigMeta] = useState<{ primaryPath: string; issues: LocalConfigIssue[] } | null>(null);
+  const [localSelection, setLocalSelection] = useState<{ providerId: string; modelId: string } | null>(null);
   const [piImport, setPiImport] = useState<{
     providers: OnboardingPiImportProvider[];
     warnings: string[];
@@ -165,6 +171,55 @@ export function AgentCreationWizard({ api, onClose, mode, prefill, onCreated }: 
     return () => { cancelled = true; };
   }, [api, isCreate, step, runtimeId]);
 
+  /**
+   * 把服务端读到的本机配置铺进界面状态，并默认选中第一个「带模型」的供应商。
+   * 跳过 models 为空的供应商：Pi 的 models-store.json 可能缓存了一个还没拉过模型列表的
+   * 供应商，把它选中会让「使用这个模型」按钮永远点不动。
+   */
+  const applyLocalConfig = (config: LocalRuntimeConfig) => {
+    setLocalProviders(config.providers);
+    setLocalConfigMeta({ primaryPath: config.primaryPath, issues: config.issues });
+    const firstWithModel = config.providers.find((provider) => provider.models.length > 0);
+    if (firstWithModel) {
+      const preferred = firstWithModel.defaultModelId
+        && firstWithModel.models.some((model) => model.id === firstWithModel.defaultModelId)
+        ? firstWithModel.defaultModelId
+        : firstWithModel.models[0]!.id;
+      setLocalSelection({ providerId: firstWithModel.id, modelId: preferred });
+    } else {
+      setLocalSelection(null);
+    }
+  };
+
+  // Load local runtime providers (from config files)
+  useEffect(() => {
+    if (step !== 1 || !runtimeId) return;
+    let cancelled = false;
+    setLocalProviders([]);
+    setLocalSelection(null);
+    setLocalUnsupported("");
+    setLocalConfigMeta(null);
+    setLocalProvidersLoading(true);
+    setLocalProvidersError("");
+    loadLocalRuntimeConfig(api, runtimeId)
+      .then((result) => {
+        if (cancelled) return;
+        if (!result.supported) {
+          setLocalUnsupported(result.reason);
+          return;
+        }
+        applyLocalConfig(result.config);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error("Failed to load local runtime config:", error);
+          setLocalProvidersError("无法读取本机配置");
+        }
+      })
+      .finally(() => { if (!cancelled) setLocalProvidersLoading(false); });
+    return () => { cancelled = true; };
+  }, [api, step, runtimeId]);
+
   // Runtime-default state drives the "follow default" option in create mode.
   useEffect(() => {
     if (!isCreate || step !== 1 || !runtimeId) return;
@@ -191,18 +246,19 @@ export function AgentCreationWizard({ api, onClose, mode, prefill, onCreated }: 
   }, [api, existingModels, isCreate, runtimeId, selectedRuntimeIsV2, step]);
 
   useEffect(() => {
-    if (step !== 1 || modelTab !== "preset" || presetsRequested) return;
-    setPresetsRequested(true);
-    setPresetsLoading(true);
-    loadOnboardingPresets(api)
-      .then((items) => {
-        setPresets(items);
-        const preferred = items.find((item) => item.backendId === "deepseek") ?? items[0];
-        if (preferred) setPresetProviderId(preferred.backendId);
-      })
-      .catch(() => setModelError("无法读取 Pi 官方预设，请改用其他方式配置模型。"))
-      .finally(() => setPresetsLoading(false));
-  }, [api, modelTab, presetsRequested, step]);
+    if (step !== 1 || modelTab !== "new" || !runtimeId) return;
+    // Initialize manual draft with runtime-appropriate API kind
+    const preferredApiKind = selectedRuntimeIsV2 ? "openai-completions" : "openai-completions";
+    setManualDraft((current) => ({ ...current, apiKind: preferredApiKind }));
+  }, [step, modelTab, runtimeId, selectedRuntimeIsV2]);
+
+  // Reset model tab if current tab becomes invalid after runtime change
+  useEffect(() => {
+    const isPiRuntime = runtimeId === "pi" || runtimeId === "pi-builtin";
+    if (modelTab === "import" && !isPiRuntime) {
+      setModelTab(isCreate ? "existing" : "new");
+    }
+  }, [runtimeId, modelTab, isCreate]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -212,24 +268,17 @@ export function AgentCreationWizard({ api, onClose, mode, prefill, onCreated }: 
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  // In create mode the presets list is filtered to the selected runtime's
-  // wire-API support; unknown api kinds fall back to the Pi family, matching
-  // computeRuntimeCompatibility on the server.
-  const presetOptions = useMemo(() => {
-    if (!isCreate) return presets;
-    return presets.filter((provider) =>
-      (API_KIND_RUNTIMES[provider.apiKind] ?? ["pi", "pi-builtin"]).includes(runtimeId));
-  }, [isCreate, presets, runtimeId]);
-
-  const selectedPresetProvider = presetOptions.find((item) => item.backendId === presetProviderId)
-    ?? (isCreate ? undefined : presets.find((item) => item.backendId === presetProviderId));
-  const selectedPresetModel = selectedPresetProvider?.models.find((item) => item.id === presetModelId);
-
   const existingModelOptions = useMemo(
     () => existingModels.filter((item) => item.compatibility?.[runtimeId]?.supported),
     [existingModels, runtimeId],
   );
   const selectedExistingModel = existingModelOptions.find((item) => item.id === existingModelId);
+  const localModelCount = useMemo(
+    () => localProviders.reduce((total, provider) => total + provider.models.length, 0),
+    [localProviders],
+  );
+  const selectedLocalProvider = localProviders.find((item) => item.id === localSelection?.providerId);
+  const selectedLocalModel = selectedLocalProvider?.models.find((item) => item.id === localSelection?.modelId);
 
   const startPiImportPreview = () => {
     setPiImportError("");
@@ -264,27 +313,6 @@ export function AgentCreationWizard({ api, onClose, mode, prefill, onCreated }: 
     }
   };
 
-  const usePresetModel = async () => {
-    if (!selectedPresetProvider || !selectedPresetModel) return;
-    setModelBusy("preset");
-    setModelError("");
-    try {
-      const created = await createOnboardingModel(api, {
-        displayName: selectedPresetProvider.backendId,
-        backendId: selectedPresetProvider.backendId,
-        apiKind: selectedPresetProvider.apiKind,
-        canonicalOrigin: selectedPresetProvider.canonicalOrigin,
-        ...(presetKey ? { credentialValue: presetKey } : {}),
-        modelId: selectedPresetModel.id,
-      });
-      await finishModelStep(created.configurationId, created.configurationRevision, selectedPresetModel.id);
-    } catch (cause: any) {
-      setModelError(cause?.message ?? "无法保存模型配置");
-    } finally {
-      setModelBusy("");
-    }
-  };
-
   const useExistingModel = () => {
     if (!selectedExistingModel) return;
     setModelChoice({
@@ -293,6 +321,63 @@ export function AgentCreationWizard({ api, onClose, mode, prefill, onCreated }: 
       configurationRevision: selectedExistingModel.currentRevision,
       label: `${selectedExistingModel.displayName} · ${selectedExistingModel.provider.backendId}`,
     });
+  };
+
+  /**
+   * 本机配置里的「供应商 + 模型」不是数据库里的模型配置，Agent 绑定需要真实的
+   * configurationId，所以这里必须走 adopt 接口让服务端落库，不能前端自己拼 id。
+   */
+  const useLocalModel = async () => {
+    if (!localSelection || !runtimeId) return;
+    const provider = localProviders.find((item) => item.id === localSelection.providerId);
+    const model = provider?.models.find((item) => item.id === localSelection.modelId);
+    if (!provider || !model) return;
+    setModelBusy("local");
+    setModelError("");
+    try {
+      const adopted = await adoptLocalModel(api, {
+        runtimeId,
+        providerId: provider.id,
+        modelId: model.id,
+      });
+      setModelChoice({
+        kind: "pinned",
+        configurationId: adopted.configurationId,
+        configurationRevision: adopted.configurationRevision,
+        label: adopted.displayName,
+      });
+      if (adopted.credentialNotice) {
+        toast.info(adopted.credentialNotice);
+      }
+    } catch (error) {
+      const cause = error as { message?: string };
+      setModelError(cause?.message ?? "无法采用这个本机模型");
+    } finally {
+      setModelBusy("");
+    }
+  };
+
+  const refreshLocalProviders = () => {
+    if (!runtimeId) return;
+    setLocalProvidersLoading(true);
+    setLocalProvidersError("");
+    setLocalUnsupported("");
+    loadLocalRuntimeConfig(api, runtimeId)
+      .then((result) => {
+        if (!result.supported) {
+          setLocalProviders([]);
+          setLocalConfigMeta(null);
+          setLocalSelection(null);
+          setLocalUnsupported(result.reason);
+          return;
+        }
+        applyLocalConfig(result.config);
+      })
+      .catch((error) => {
+        console.error("Failed to refresh local runtime config:", error);
+        setLocalProvidersError("无法刷新本机配置");
+      })
+      .finally(() => setLocalProvidersLoading(false));
   };
 
   const applyPiImportAndSelect = async () => {
@@ -321,7 +406,7 @@ export function AgentCreationWizard({ api, onClose, mode, prefill, onCreated }: 
       setModelError("请填写供应商 ID、API 地址和模型 ID");
       return;
     }
-    setModelBusy("manual");
+    setModelBusy("new");
     setModelError("");
     try {
       const created = await createOnboardingModel(api, {
@@ -398,9 +483,18 @@ export function AgentCreationWizard({ api, onClose, mode, prefill, onCreated }: 
       ? Boolean(modelChoice) || (isCreate && !selectedRuntimeIsV2)
       : Boolean(agentDraft.name.trim() && agentDraft.displayName.trim());
 
+  const isPiRuntime = runtimeId === "pi" || runtimeId === "pi-builtin";
   const tabs: Array<[ModelConfigTab, string]> = isCreate
-    ? [["existing", "已有模型"], ["preset", "Pi 官方预设"], ["import", "导入 Pi 配置"], ["manual", "手动填写"]]
-    : [["preset", "Pi 官方预设"], ["import", "导入本地 Pi 配置"], ["manual", "手动填写"]];
+    ? [
+        ["local", "使用本机配置"],
+        ["existing", "使用现有配置"],
+        ["new", "添加新配置"],
+        ...(isPiRuntime ? [["import", "导入本地配置"] as [ModelConfigTab, string]] : []),
+      ]
+    : [
+        ["new", "添加新配置"],
+        ...(isPiRuntime ? [["import", "导入本地配置"] as [ModelConfigTab, string]] : []),
+      ];
 
   return (
     <div className="onboarding-backdrop" role="presentation" onClick={skip}>
@@ -503,6 +597,112 @@ export function AgentCreationWizard({ api, onClose, mode, prefill, onCreated }: 
                     ))}
                   </div>
 
+                  {modelTab === "local" ? (
+                    <div className="onboarding-model-panel">
+                      {localProvidersLoading ? (
+                        <p className="onboarding-muted">正在读取本机配置...</p>
+                      ) : localProviders.length > 0 ? (
+                        <>
+                          <div className="onboarding-field" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <p className="onboarding-muted" style={{ margin: 0, flex: 1 }}>
+                              读到 {localProviders.length} 个供应商、{localModelCount} 个可用模型
+                              {localConfigMeta ? ` · ${localConfigMeta.primaryPath}` : ""}
+                            </p>
+                            <button
+                              type="button"
+                              className="onboarding-icon-button"
+                              onClick={refreshLocalProviders}
+                              disabled={localProvidersLoading}
+                              title="刷新本机配置"
+                            >
+                              <RefreshCw size={16} />
+                            </button>
+                          </div>
+                          <label className="onboarding-field"><span>供应商</span>
+                            <select value={localSelection?.providerId ?? ""}
+                              onChange={(event) => {
+                                const provider = localProviders.find((p) => p.id === event.target.value);
+                                setLocalSelection({
+                                  providerId: event.target.value,
+                                  modelId: provider?.models[0]?.id ?? "",
+                                });
+                              }}>
+                              {localProviders.map((provider) => (
+                                <option key={provider.id} value={provider.id}>
+                                  {provider.displayName}
+                                  {provider.models.length ? `（${provider.models.length} 个模型）` : "（未缓存模型）"}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="onboarding-field"><span>模型</span>
+                            <select value={localSelection?.modelId ?? ""} disabled={!selectedLocalProvider?.models.length}
+                              onChange={(event) => setLocalSelection((current) =>
+                                current ? { ...current, modelId: event.target.value } : current)}>
+                              {selectedLocalProvider?.models.length ? (
+                                selectedLocalProvider.models.map((model) => (
+                                  <option key={model.id} value={model.id}>
+                                    {model.tierLabel ? `${model.tierLabel} · ` : ""}{model.displayName || model.id}
+                                  </option>
+                                ))
+                              ) : (
+                                <option value="">该供应商的配置文件里没有模型列表</option>
+                              )}
+                            </select>
+                          </label>
+                          {selectedLocalProvider ? (
+                            <div className="onboarding-model-info">
+                              {selectedLocalProvider.baseUrl
+                                ? <p><strong>API 地址：</strong>{selectedLocalProvider.baseUrl}</p>
+                                : null}
+                              {selectedLocalProvider.apiFormat
+                                ? <p><strong>接口类型：</strong>{selectedLocalProvider.apiFormat}</p>
+                                : null}
+                              <p><strong>密钥：</strong>
+                                {selectedLocalProvider.credential.configured
+                                  ? `已在本机配置${selectedLocalProvider.credential.source ? `（${selectedLocalProvider.credential.source}）` : ""}`
+                                  : "本机配置里没有密钥，采用后可能需要单独填写"}
+                              </p>
+                              {selectedLocalModel?.contextWindow
+                                ? <p><strong>上下文窗口：</strong>{selectedLocalModel.contextWindow.toLocaleString()}</p>
+                                : null}
+                              {selectedLocalProvider.sourcePaths.length
+                                ? <p className="onboarding-muted">读自 {selectedLocalProvider.sourcePaths.join("、")}</p>
+                                : null}
+                            </div>
+                          ) : null}
+                        </>
+                      ) : (
+                        <div className="onboarding-import-empty">
+                          <Server size={18} />
+                          {localUnsupported ? (
+                            <p>{localUnsupported}</p>
+                          ) : (
+                            <>
+                              <p>
+                                本机配置里还没有可用的供应商
+                                {localConfigMeta ? `（已检查 ${localConfigMeta.primaryPath}）` : ""}
+                                。可以先在运行器里配置好，或切换到其他 Tab 手动添加。
+                              </p>
+                              <button type="button" className="onboarding-secondary-button"
+                                onClick={refreshLocalProviders} disabled={localProvidersLoading}>
+                                <RefreshCw size={14} /> 重新读取
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      {localConfigMeta?.issues.length ? (
+                        <ul className="onboarding-muted" style={{ margin: "8px 0 0", paddingLeft: "18px" }}>
+                          {localConfigMeta.issues.map((issue) => (
+                            <li key={`${issue.kind}:${issue.path}`}>{issue.message}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {localProvidersError ? <p className="onboarding-error" role="alert">{localProvidersError}</p> : null}
+                    </div>
+                  ) : null}
+
                   {modelTab === "existing" ? (
                     <div className="onboarding-model-panel">
                       <label className="onboarding-field"><span>已有模型配置</span>
@@ -516,41 +716,6 @@ export function AgentCreationWizard({ api, onClose, mode, prefill, onCreated }: 
                           ))}
                         </select>
                       </label>
-                    </div>
-                  ) : null}
-
-                  {modelTab === "preset" ? (
-                    <div className="onboarding-model-panel">
-                      <label className="onboarding-field"><span>供应商</span>
-                        <select value={presetProviderId} disabled={presetsLoading || !presetOptions.length}
-                          onChange={(event) => { setPresetProviderId(event.target.value); setPresetModelId(""); }}>
-                          <option value="">{presetsLoading ? "读取官方预设中…" : presetOptions.length ? "选择供应商" : "暂无兼容预设"}</option>
-                          {presetOptions.map((provider) => (
-                            <option key={provider.backendId} value={provider.backendId}>
-                              {provider.backendId} · {API_KIND_LABELS[provider.apiKind] ?? provider.apiKind}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="onboarding-field"><span>模型</span>
-                        <select value={presetModelId} disabled={!selectedPresetProvider}
-                          onChange={(event) => setPresetModelId(event.target.value)}>
-                          <option value="">选择模型…</option>
-                          {(selectedPresetProvider?.models ?? []).map((model) => (
-                            <option key={model.id} value={model.id}>{model.id}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="onboarding-field"><span>API Key <small>（可选，可稍后在模型设置中补填）</small></span>
-                        <div className="onboarding-secret-field"><KeyRound size={15} />
-                          <input type="password" autoComplete="off" value={presetKey}
-                            placeholder="留空表示无需密钥或稍后再填"
-                            onChange={(event) => setPresetKey(event.target.value)} />
-                        </div>
-                      </label>
-                      {selectedPresetProvider ? (
-                        <p className="onboarding-muted">将请求发送到 <strong>{selectedPresetProvider.canonicalOrigin}</strong></p>
-                      ) : null}
                     </div>
                   ) : null}
 
@@ -594,7 +759,7 @@ export function AgentCreationWizard({ api, onClose, mode, prefill, onCreated }: 
                     </div>
                   ) : null}
 
-                  {modelTab === "manual" ? (
+                  {modelTab === "new" ? (
                     <div className="onboarding-model-panel">
                       <label className="onboarding-field"><span>供应商 ID</span>
                         <input value={manualDraft.backendId} placeholder="例如 my-provider"
@@ -634,17 +799,22 @@ export function AgentCreationWizard({ api, onClose, mode, prefill, onCreated }: 
                     </p>
                   ) : (
                     <div className="onboarding-model-actions">
+                      {modelTab === "local" ? (
+                        <button className="onboarding-button onboarding-button--primary" type="button"
+                          disabled={Boolean(modelBusy) || !selectedLocalModel} onClick={() => void useLocalModel()}>
+                          {modelBusy === "local" ? "采用中…" : "使用此模型"}
+                        </button>
+                      ) : null}
                       {modelTab === "existing" ? (
                         <button className="onboarding-button onboarding-button--primary" type="button"
                           disabled={Boolean(modelBusy) || !selectedExistingModel} onClick={useExistingModel}>
                           使用此模型
                         </button>
                       ) : null}
-                      {modelTab === "preset" ? (
+                      {modelTab === "new" ? (
                         <button className="onboarding-button onboarding-button--primary" type="button"
-                          disabled={Boolean(modelBusy) || !selectedPresetProvider || !selectedPresetModel}
-                          onClick={() => void usePresetModel()}>
-                          {modelBusy === "preset" ? "保存中…" : modelBusy === "bind" ? "绑定中…" : "使用此模型"}
+                          disabled={Boolean(modelBusy)} onClick={() => void useManualModel()}>
+                          {modelBusy === "new" ? "保存中…" : modelBusy === "bind" ? "绑定中…" : "使用此模型"}
                         </button>
                       ) : null}
                       {modelTab === "import" ? (
@@ -652,12 +822,6 @@ export function AgentCreationWizard({ api, onClose, mode, prefill, onCreated }: 
                           disabled={Boolean(modelBusy) || piImportLoading || (Boolean(piImport) && !importSelection)}
                           onClick={() => (piImport ? void applyPiImportAndSelect() : startPiImportPreview())}>
                           {piImportLoading ? "读取中…" : piImport ? (modelBusy ? "导入中…" : "导入并选择此模型") : "读取本机 Pi 配置"}
-                        </button>
-                      ) : null}
-                      {modelTab === "manual" ? (
-                        <button className="onboarding-button onboarding-button--primary" type="button"
-                          disabled={Boolean(modelBusy)} onClick={() => void useManualModel()}>
-                          {modelBusy === "manual" ? "保存中…" : modelBusy === "bind" ? "绑定中…" : "使用此模型"}
                         </button>
                       ) : null}
                     </div>

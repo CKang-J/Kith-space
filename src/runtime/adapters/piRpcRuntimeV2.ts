@@ -363,7 +363,11 @@ class PiRpcSession implements RuntimeSessionV2 {
       // Pi emits one message_end for each assistant message around tool execution. The
       // next message and any retry must start a new comparison window.
       this.active.messageStreamedText = "";
-      if (event.message.stopReason === "error") this.active.terminalError = "pi_model_error";
+      if (event.message.stopReason === "error") {
+        // 提取更详细的错误信息，如果可用
+        const errorDetail = event.message.error?.message || event.message.error?.type || "model_error";
+        this.active.terminalError = `pi_model_error: ${errorDetail}`;
+      }
     } else if (event?.type === "tool_execution_start") {
       this.emit("tool_started", {
         toolCallId: typeof event.toolCallId === "string" ? event.toolCallId : "",

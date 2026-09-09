@@ -12,13 +12,6 @@ export interface OnboardingRuntime {
   builtIn?: boolean;
 }
 
-export interface OnboardingPresetProvider {
-  backendId: string;
-  apiKind: string;
-  canonicalOrigin: string;
-  models: Array<{ id: string; name: string; thinkingLevels: readonly string[] }>;
-}
-
 export interface OnboardingPiImportProvider {
   backendId: string;
   apiKind: string;
@@ -75,11 +68,6 @@ export async function completeAgentOnboarding(api: Api): Promise<AgentOnboarding
 export async function loadOnboardingRuntimes(api: Api): Promise<OnboardingRuntime[]> {
   const result = await api("GET", "/api/local-runtime/runtimes");
   return (result?.runtimes ?? []) as OnboardingRuntime[];
-}
-
-export async function loadOnboardingPresets(api: Api): Promise<OnboardingPresetProvider[]> {
-  const result = await api("GET", "/api/settings/pi-presets");
-  return (result?.providers ?? []) as OnboardingPresetProvider[];
 }
 
 export async function loadOnboardingModelConfigurations(api: Api): Promise<OnboardingModelConfiguration[]> {

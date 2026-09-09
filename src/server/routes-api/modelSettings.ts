@@ -22,6 +22,7 @@ import { RuntimeSetupError, RuntimeSetupService } from "../../local-runtime/runt
 import { SETUP_RUNTIME_IDS, type SetupRuntimeId } from "../../local-runtime/runtimeSetupCatalog.js";
 import { availableSpaceDbs } from "../../db/index.js";
 import { scheduleV2Turns } from "../harnessComposition.js";
+import { fetchModelsFromProvider } from "./modelFetchService.js";
 
 const SECRET_SHAPED_KEY = /(api[_-]?key|token|secret|password|credential|authorization|cookie)/i;
 
@@ -234,6 +235,7 @@ export async function handleModelSettings(ctx: HumanCtx): Promise<boolean> {
       return true;
     }
     if (providerMatch && ctx.method === "DELETE") {
+      // 移除"使用中无法删除"的限制，直接标记为 disabled
       sendJson(ctx.res, 200, presentProvider(await providers.setStatus(providerMatch[1]!, "disabled")));
       return true;
     }
@@ -307,33 +309,6 @@ export async function handleModelSettings(ctx: HumanCtx): Promise<boolean> {
         sourceMtimeDigest: z.string().length(64),
       }).strict().parse(await readJson(ctx.req));
       sendJson(ctx.res, 200, await cliImports.apply(body.runtimeId, body.sourceMtimeDigest));
-      return true;
-    }
-    if (ctx.p === "/api/settings/pi-presets" && ctx.method === "GET") {
-      const byProvider = new Map<string, {
-        backendId: string;
-        apiKind: string;
-        canonicalOrigin: string;
-        models: Array<{ id: string; name: string; thinkingLevels: readonly string[] }>;
-      }>();
-      for (const item of listPiSdkCatalog()) {
-        const existing = byProvider.get(item.backendId);
-        const model = { id: item.modelId, name: item.modelId, thinkingLevels: item.thinkingLevels };
-        if (existing) existing.models.push(model);
-        else byProvider.set(item.backendId, {
-          backendId: item.backendId,
-          apiKind: item.apiKind,
-          canonicalOrigin: item.canonicalOrigin,
-          models: [model],
-        });
-      }
-      const providers = [...byProvider.values()]
-        .sort((left, right) => left.backendId.localeCompare(right.backendId))
-        .map((provider) => ({
-          ...provider,
-          models: provider.models.sort((left, right) => left.id.localeCompare(right.id)),
-        }));
-      sendJson(ctx.res, 200, { providers });
       return true;
     }
     if (ctx.p === "/api/settings/pi-config-import/preview" && ctx.method === "POST") {
@@ -466,6 +441,24 @@ export async function handleModelSettings(ctx: HumanCtx): Promise<boolean> {
       sendJson(ctx.res, 200, await runtimes.update(runtimeMatch[1] as any, RuntimeSchema.parse(await readJson(ctx.req))));
       for (const { space } of availableSpaceDbs()) {
         void scheduleV2Turns(space.id).catch(() => {});
+      }
+      return true;
+    }
+    // Pi Agent 供应商的模型探测：写配置统一走 /api/local-runtime-config/pi/*，
+    // 这里只保留「按 baseUrl + 密钥拉一次模型列表」这个纯读取能力。
+    if (ctx.p === "/api/settings/pi-agent-config/fetch-models" && ctx.method === "POST") {
+      const body = z.object({
+        apiKey: z.string(),
+        baseUrl: z.string(),
+        apiFormat: z.string(),
+      }).parse(await readJson(ctx.req));
+
+      try {
+        const models = await fetchModelsFromProvider(body.baseUrl, body.apiKey, body.apiFormat);
+        sendJson(ctx.res, 200, { success: true, models });
+      } catch (error) {
+        console.error("Failed to fetch models:", error);
+        sendErr(ctx.res, 400, error instanceof Error ? error.message : "Failed to fetch models");
       }
       return true;
     }
