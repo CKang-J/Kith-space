@@ -6,7 +6,9 @@
 /**
  * 运行器 ID 类型
  */
-export type RuntimeId = 'claude' | 'codex' | 'pi' | 'opencode';
+export const RUNTIME_IDS = ['claude', 'codex', 'pi', 'opencode'] as const;
+
+export type RuntimeId = (typeof RUNTIME_IDS)[number];
 
 /**
  * API 格式类型
@@ -32,7 +34,7 @@ export interface RuntimeConfig {
   name: string;
   displayName: string;
   description: string;
-  configPath: string;  // 配置文件路径（相对于用户目录）
+  /** 配置文件路径由 runtime-config/paths.ts 统一解析（含环境变量覆盖），此处不再重复声明。 */
   apiFormats: ApiFormat[];  // 支持的 API 格式
   icon?: string;
   enabled: boolean;
@@ -111,7 +113,6 @@ export const RUNTIME_CONFIGS: Record<RuntimeId, RuntimeConfig> = {
     name: 'claude',
     displayName: 'Claude Code',
     description: 'Anthropic Claude 官方编程工具',
-    configPath: '~/.claude/config.toml',
     apiFormats: ['anthropic-messages', 'openai-chat', 'openai-responses'],
     icon: 'claude',
     enabled: true,
@@ -121,7 +122,6 @@ export const RUNTIME_CONFIGS: Record<RuntimeId, RuntimeConfig> = {
     name: 'codex',
     displayName: 'Codex',
     description: 'OpenAI Codex 编程工具',
-    configPath: '~/.codex/config.toml',
     apiFormats: ['openai-responses', 'openai-completions', 'openai-chat'],
     icon: 'codex',
     enabled: true,
@@ -131,7 +131,6 @@ export const RUNTIME_CONFIGS: Record<RuntimeId, RuntimeConfig> = {
     name: 'pi',
     displayName: 'Pi Agent',
     description: 'Pi AI 编程助手',
-    configPath: '~/.pi/agent/models.json',
     apiFormats: [
       'openai-completions',
       'openai-responses',
@@ -146,7 +145,6 @@ export const RUNTIME_CONFIGS: Record<RuntimeId, RuntimeConfig> = {
     name: 'opencode',
     displayName: 'OpenCode',
     description: 'AI SDK 驱动的编程工具',
-    configPath: '~/.opencode/opencode.json',
     apiFormats: ['openai-completions', 'openai-responses', 'anthropic-messages'],
     icon: 'opencode',
     enabled: true,

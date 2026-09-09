@@ -19,46 +19,6 @@ const API_KINDS = [
   ["anthropic-messages", "Anthropic Messages"],
 ] as const;
 
-const PROVIDER_PRESETS = {
-  openai: {
-    label: "OpenAI",
-    backendId: "openai",
-    apiKind: "openai-responses",
-    canonicalOrigin: "https://api.openai.com",
-  },
-  anthropic: {
-    label: "Anthropic",
-    backendId: "anthropic",
-    apiKind: "anthropic-messages",
-    canonicalOrigin: "https://api.anthropic.com",
-  },
-  deepseek: {
-    label: "DeepSeek",
-    backendId: "deepseek",
-    apiKind: "openai-completions",
-    canonicalOrigin: "https://api.deepseek.com",
-  },
-  pi: {
-    label: "Pi 官方预设",
-    backendId: "",
-    apiKind: "",
-    canonicalOrigin: "",
-  },
-  custom: {
-    label: "自定义",
-    backendId: "custom",
-    apiKind: "openai-completions",
-    canonicalOrigin: "",
-  },
-} as const;
-
-interface PiPresetProvider {
-  backendId: string;
-  apiKind: string;
-  canonicalOrigin: string;
-  models: Array<{ id: string; name: string; thinkingLevels: readonly string[] }>;
-}
-
 interface PiImportProvider {
   backendId: string;
   apiKind: string;
@@ -68,7 +28,6 @@ interface PiImportProvider {
   warnings: string[];
 }
 
-type ProviderPreset = keyof typeof PROVIDER_PRESETS;
 type ProviderDraft = {
   displayName: string;
   backendId: string;
@@ -153,7 +112,6 @@ export function ModelProviderSettings({ api }: { api: Api }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showDialog, setShowDialog] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [preset, setPreset] = useState<ProviderPreset>("openai");
   const [draft, setDraft] = useState<ProviderDraft>(emptyProvider);
   const [modelDrafts, setModelDrafts] = useState<ModelDraft[]>([]);
   const [error, setError] = useState("");
@@ -161,10 +119,6 @@ export function ModelProviderSettings({ api }: { api: Api }) {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [importing, setImporting] = useState<string | null>(null);
-  const [piPresets, setPiPresets] = useState<PiPresetProvider[]>([]);
-  const [piPresetsLoading, setPiPresetsLoading] = useState(false);
-  const [piPresetProvider, setPiPresetProvider] = useState("");
-  const [piPresetModel, setPiPresetModel] = useState("");
   const [piImport, setPiImport] = useState<{
     providers: PiImportProvider[];
     warnings: string[];
@@ -243,63 +197,9 @@ export function ModelProviderSettings({ api }: { api: Api }) {
     return grouped;
   }, [models]);
 
-  const applyPreset = (value: ProviderPreset) => {
-    const next = PROVIDER_PRESETS[value];
-    setPreset(value);
-    if (value === "pi") {
-      setDraft({ displayName: "", backendId: "", apiKind: "", canonicalOrigin: "", credentialValue: "" });
-      setModelDrafts([]);
-      setPiPresetProvider("");
-      setPiPresetModel("");
-      if (!piPresets.length && !piPresetsLoading) {
-        setPiPresetsLoading(true);
-        void request("GET", "/api/settings/pi-presets")
-          .then((result) => setPiPresets((result.providers ?? []) as PiPresetProvider[]))
-          .catch(() => setDialogError("无法读取 Pi 官方预设，请稍后重试。"))
-          .finally(() => setPiPresetsLoading(false));
-      }
-      return;
-    }
-    setDraft({
-      displayName: next.label === "自定义" ? "" : next.label,
-      backendId: next.backendId,
-      apiKind: next.apiKind,
-      canonicalOrigin: next.canonicalOrigin,
-      credentialValue: "",
-    });
-  };
-
-  const piPresetProviders = piPresets;
-  const selectedPiPresetProvider = piPresets.find((item) => item.backendId === piPresetProvider);
-
-  const applyPiPresetProvider = (backendId: string) => {
-    setPiPresetProvider(backendId);
-    setPiPresetModel("");
-    const provider = piPresets.find((item) => item.backendId === backendId);
-    if (!provider) return;
-    setDraft({
-      displayName: provider.backendId,
-      backendId: provider.backendId,
-      apiKind: provider.apiKind,
-      canonicalOrigin: provider.canonicalOrigin,
-      credentialValue: "",
-    });
-  };
-
-  const addPiPresetModel = () => {
-    if (!piPresetModel || !selectedPiPresetProvider) return;
-    const model = selectedPiPresetProvider.models.find((item) => item.id === piPresetModel);
-    if (!model) return;
-    setModelDrafts((current) => current.some((item) => item.modelId === model.id)
-      ? current
-      : [...current, { key: crypto.randomUUID(), displayName: model.name, modelId: model.id }]);
-    setPiPresetModel("");
-  };
-
   const openCreate = (trigger: HTMLElement) => {
     dialogTrigger.current = trigger;
     setEditingId(null);
-    setPreset("openai");
     setDraft(emptyProvider());
     setModelDrafts([{ key: crypto.randomUUID(), displayName: "", modelId: "" }]);
     setDialogError("");
@@ -309,9 +209,6 @@ export function ModelProviderSettings({ api }: { api: Api }) {
   const openEdit = (provider: any, trigger: HTMLElement) => {
     dialogTrigger.current = trigger;
     setEditingId(provider.id);
-    const matchingPreset = (Object.entries(PROVIDER_PRESETS)
-      .find(([, item]) => item.backendId === provider.backendId)?.[0] ?? "custom") as ProviderPreset;
-    setPreset(matchingPreset);
     setDraft({
       displayName: provider.displayName,
       backendId: provider.backendId,
@@ -625,45 +522,6 @@ export function ModelProviderSettings({ api }: { api: Api }) {
                 <input ref={firstFieldRef} value={draft.displayName} placeholder="例如：团队 DeepSeek"
                   onChange={(event) => setDraft({ ...draft, displayName: event.target.value })} />
               </label>
-              <label className="settings-field"><span>供应商</span>
-                <select value={preset} onChange={(event) => applyPreset(event.target.value as ProviderPreset)}>
-                  {Object.entries(PROVIDER_PRESETS).map(([value, item]) => (
-                    <option key={value} value={value}>{item.label}</option>
-                  ))}
-                </select>
-              </label>
-              {preset === "pi" ? (
-                <section className="provider-dialog-pi-preset">
-                  <label className="settings-field"><span>Pi 预设供应商</span>
-                    <select value={piPresetProvider}
-                      disabled={piPresetsLoading || !piPresets.length}
-                      onChange={(event) => applyPiPresetProvider(event.target.value)}>
-                      <option value="">{piPresetsLoading ? "读取官方预设中…" : piPresets.length ? "选择供应商" : "暂无可用预设"}</option>
-                      {piPresetProviders.map((item) => (
-                        <option key={item.backendId} value={item.backendId}>
-                          {item.backendId} · {item.models.length} 个官方模型
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {selectedPiPresetProvider ? (
-                    <div className="settings-field settings-field--row">
-                      <select value={piPresetModel} onChange={(event) => setPiPresetModel(event.target.value)}
-                        aria-label="选择预设模型">
-                        <option value="">选择模型…</option>
-                        {selectedPiPresetProvider.models.map((model) => (
-                          <option key={model.id} value={model.id}>{model.id}</option>
-                        ))}
-                      </select>
-                      <button className="settings-button settings-button--secondary" type="button"
-                        disabled={!piPresetModel} onClick={addPiPresetModel}>
-                        <Plus size={15} />加入列表
-                      </button>
-                    </div>
-                  ) : null}
-                  <p className="provider-dialog-hint">来自锁定版本 Pi 的官方模型目录；选择供应商后添加你需要的模型。</p>
-                </section>
-              ) : null}
               <label className="settings-field"><span>接口类型</span>
                 <select value={draft.apiKind} onChange={(event) => setDraft({ ...draft, apiKind: event.target.value })}>
                   {API_KINDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
